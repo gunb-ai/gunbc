@@ -60,6 +60,9 @@ import gunbc.host.build_cache_daemon_ensure {
   build_cache_ensure_run,
   build_cache_ensure_run_legs,
   build_cache_plan_legs_of_kind,
+  // THE CITED SELECTOR for the digest-read leg. Claim 3 above takes its probe leg from here rather than
+  // indexing the plan, so it cannot drift from the plan's real ordering.
+  build_cache_plan_gate_op,
   build_cache_daemon_ensure_observation,
   build_cache_daemon_ensure_plan,
   build_cache_ensure_is_needed,
@@ -84,6 +87,10 @@ import gunbc.host.host_effect_realize {
   RunArgvTransportRefused,
   ShellExecObserved,
   build_cache_fold_ensure_ops_with_outcomes,
+  // THE SHARED STEP, not only the fold that calls it. The pairing claim below needs to drive the step on its
+  // own and compare it against the fold; a claim that could only reach the fold could not tell whether the
+  // fold decided for itself or asked.
+  build_cache_fold_op_executed,
   build_cache_run_ensure_ops,
   // THE PRODUCTION FUNCTION, not a test-local copy of it. A claim about "the route that actuates" that drives
   // anything other than this name would be a claim about a model of the route.
@@ -1099,6 +1106,194 @@ test fn the_fold_runs_no_leg_after_a_leg_has_stopped_the_sequence() -> Bool {
          EnsureFailed { op: _, observed: _ } => false
          EnsureDigestRefused { op: _, refusal: _ } => false
        }
+}
+
+test fn a_failing_leg_answer_stops_the_sequence_and_is_named_by_the_refusal() -> Bool {
+  // THE `set -e` ARM, DRIVEN WITH A FAILING ANSWER. Every other claim on this effect hands the fold legs that
+  // SUCCEEDED, because the only digest-shaped failure the fold can see comes from the digest line; nothing in
+  // this module had ever handed it a leg whose process EXITED NON-ZERO. That arm is the typed replacement for
+  // the retired script's `set -e` -- the one rule the migration existed to carry over -- and an unexercised
+  // arm is an unfalsified one: mutation D5 (make the step walk on past a stopped leg) came back byte-identical
+  // to the clean control before this claim existed.
+  //
+  // THE BOUNDARY VALUE IS SUPPLIED, NOT ASSERTED. `exit_code: 1` enters through the same
+  // `RunArgvTransportObserved` carrier the transport itself fills, so the claim is not grading its own
+  // arithmetic: the value has to travel through `build_cache_ensure_leg_verdict` (the cited authority that
+  // decides pass-vs-stop) and reappear in the refusal. Asserting the code comes back is what stops a step that
+  // fabricates `EnsureFailed { exit_code: 0 }`, or that swaps which leg it blames, from satisfying this.
+  //
+  // WHY THE FOLD AND NOT THE LOOP: the transport arms that could answer exit 1 (LocalShell/SshShell/FleetSsh)
+  // are real execution, and a claim that runs a host command is wet by the standing rule (see
+  // build_cache_endpoint_observe.dag, which deleted exactly that); the hermetic ssh mock has a single `0 =>`
+  // arm. A supplied outcome is the one dry way to hand a leg's ANSWER over, which is the same shape #14174
+  // uses, and the fold is the pure function both routes share -- so this exercises the decision the loop also
+  // makes, not a copy of it.
+  let ops = build_cache_contract_install_plan()
+  let failed = build_cache_fold_ensure_ops_with_outcomes(
+    state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
+    plan: ops,
+    digest: sccache_release_0_15_0.digest_x86_64,
+    supplied: fold(
+      ops,
+      init: [],
+      f: (acc, op) =>
+        append(acc, items: [BuildCacheEnsureSuppliedOutcome {
+          op: op,
+          ran: RunArgvTransportObserved {
+            observed: ShellExecObserved {
+              // EVERY LEG IS HANDED A SUCCESS except none of them matters: the fold must stop at the FIRST one,
+              // and the first one is the fetch, which answers with a non-zero exit. Making the later legs
+              // successes is what turns this into a claim about stopping rather than about reachability.
+              exit_code: if (op.kind == FetchArchive) { 1 } else { 0 },
+              success: op.kind != FetchArchive,
+              stdout: "",
+              stderr: if (op.kind == FetchArchive) { "curl: (7) Failed to connect" } else { "" },
+            },
+          },
+        }]),
+    ),
+  )
+  match failed.executed {
+    EnsureFailed { op: blamed, observed: seen } =>
+      // THE LEG BLAMED IS THE FETCH, so nothing after it -- the install, the unit -- was ever applied.
+      blamed.kind == FetchArchive
+        // THE HOST'S OWN WORDS SURVIVE THE TRIP. Not a paraphrase, not an empty default: the exit code and the
+        // stderr the answer carried are the ones reported.
+        && seen.exit_code == 1
+        && string_contains(s: seen.stderr, pattern: "curl")
+        // AND THE READ NEVER PRODUCED A LINE, which is what "we stopped before the digest" has to mean here.
+        && match build_cache_ensure_fold_digest_line(fold_state: failed) {
+             Absent => true
+             Present { value: _ } => false
+           }
+    // EVERY OTHER ARM IS THE DEFECT. EnsureCompleted is precisely what D5 measures -- walking on past a dead
+    // leg and reporting success. A transport/digest arm would mean the step consulted something other than the
+    // answer it was handed.
+    EnsureCompleted => false
+    EnsureSkipped => false
+    EnsurePlanRefused { reason: _ } => false
+    EnsureTransportBlocked { op: _, reason: _ } => false
+    EnsureDigestRefused { op: _, refusal: _ } => false
+  }
+}
+
+test fn a_leg_that_exited_zero_is_reported_as_progress_and_the_plan_completes() -> Bool {
+  // THE GREEN TWIN, AND THE HALF THAT MAKES THE RED ABOVE A CHECK. Identical inputs, identical fold, identical
+  // plan; the ONE thing that differs is the exit code, which is now 0 on every leg. The verdict must flip from
+  // refusal to completion. Without this twin, the claim above could be satisfied by a step that refuses
+  // everything -- which is the exact vacuity this lane's reviews have repeatedly called out, and the reason no
+  // RED is reported here without its green pair.
+  let ops = build_cache_contract_install_plan()
+  let done = build_cache_fold_ensure_ops_with_outcomes(
+    state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
+    plan: ops,
+    digest: sccache_release_0_15_0.digest_x86_64,
+    supplied: fold(
+      ops,
+      init: [],
+      f: (acc, op) =>
+        append(acc, items: [BuildCacheEnsureSuppliedOutcome {
+          op: op,
+          ran: RunArgvTransportObserved {
+            observed: ShellExecObserved { exit_code: 0, success: true, stdout: "", stderr: "" },
+          },
+        }]),
+    ),
+  )
+  match done.executed {
+    // Completion, and there was actually a plan to complete -- an empty plan would "complete" trivially.
+    EnsureCompleted => list_length(items: ops) > 2
+    EnsureFailed { op: _, observed: _ } => false
+    EnsureSkipped => false
+    EnsurePlanRefused { reason: _ } => false
+    EnsureTransportBlocked { op: _, reason: _ } => false
+    EnsureDigestRefused { op: _, refusal: _ } => false
+  }
+}
+
+test fn the_step_and_the_plan_walking_fold_give_the_same_verdict_on_one_failing_leg() -> Bool {
+  // THE INHABITANCE PAIRING FOR THE STOP RULE. The fold owns the SEQUENCE; the step owns what one ANSWER means,
+  // and the fold reaches that meaning only by CALLING the step. That delegation is the integration this claim
+  // exists to defend, because it is exactly the seam a mutation can sever: with the step's `LegStopped` arm made
+  // to fall through (mutation D5) the fold stops reporting what the step decided and starts reporting its own
+  // optimism, while every other claim in this module keeps passing because none of them ever handed a leg a
+  // non-zero exit before this pair existed.
+  //
+  // Drive the step DIRECTLY with one failing answer, drive the fold with the SAME answer AT THE SAME LEG of the
+  // SAME plan, and require agreement on three things a lie could differ on: which arm, which leg is blamed, and
+  // what exit code is reported. Agreement on the arm alone would still let the two blame different legs.
+  //
+  // THE GATE LEG IS CHOSEN BY THE PRODUCTION SELECTOR, `build_cache_plan_gate_op`, not by an index, so this
+  // claim cannot drift away from the plan's real ordering; and it is the leg whose verdict depends on nothing
+  // but its exit code, which makes it the cleanest possible probe of who decides. Every OTHER leg is handed a
+  // success, so the only stop available anywhere in the sequence is the one this answer carries.
+  //
+  // The loop's half of the same chain is the pairing claim above it, falsified by D13 (the loop's own guard) and
+  // D14 (the loop's delegation); this is the step half, deliberately not a third copy.
+  let ops = build_cache_contract_install_plan()
+  let failed_run = RunArgvTransportObserved {
+    observed: ShellExecObserved {
+      exit_code: 1,
+      success: false,
+      stdout: "",
+      stderr: "curl: (22) HTTP error 503 from the mirror",
+    },
+  }
+  match build_cache_plan_gate_op(ops: ops) {
+    // A plan with no digest-read leg is not the plan this effect ships, and the claims above already pin that it
+    // has one; refusing here keeps the claim from passing vacuously on a plan that cannot fail the way asked.
+    Absent => false
+    Present { value: gate_op } => {
+      let via_step = build_cache_fold_op_executed(
+        acc: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
+        op: gate_op,
+        ran: failed_run,
+        plan: ops,
+        digest: sccache_release_0_15_0.digest_x86_64,
+      )
+      let via_fold = build_cache_fold_ensure_ops_with_outcomes(
+        state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
+        plan: ops,
+        digest: sccache_release_0_15_0.digest_x86_64,
+        supplied: fold(
+          ops,
+          init: [],
+          f: (acc, op) =>
+            append(acc, items: [BuildCacheEnsureSuppliedOutcome {
+              op: op,
+              ran: if (op.kind == ReadDigest) { failed_run } else {
+                RunArgvTransportObserved {
+                  observed: ShellExecObserved { exit_code: 0, success: true, stdout: "", stderr: "" },
+                }
+              },
+            }]),
+        ),
+      )
+      match via_step.executed {
+        EnsureFailed { op: step_op, observed: step_seen } =>
+          match via_fold.executed {
+            EnsureFailed { op: fold_op, observed: fold_seen } =>
+              step_op.kind == fold_op.kind
+                && step_op.kind == ReadDigest
+                && step_seen.exit_code == fold_seen.exit_code
+                && step_seen.exit_code == 1
+                && step_seen.stderr == fold_seen.stderr
+            // The fold produced some OTHER verdict from an answer the step had already decided: it is not asking.
+            EnsureCompleted => false
+            EnsureSkipped => false
+            EnsurePlanRefused { reason: _ } => false
+            EnsureTransportBlocked { op: _, reason: _ } => false
+            EnsureDigestRefused { op: _, refusal: _ } => false
+          }
+        // The step itself declined to refuse a non-zero exit, so the cited authority has stopped deciding.
+        EnsureCompleted => false
+        EnsureSkipped => false
+        EnsurePlanRefused { reason: _ } => false
+        EnsureTransportBlocked { op: _, reason: _ } => false
+        EnsureDigestRefused { op: _, refusal: _ } => false
+      }
+    }
+  }
 }
 
 test fn a_fold_that_never_read_a_digest_is_never_permitted_the_whole_plan() -> Bool {

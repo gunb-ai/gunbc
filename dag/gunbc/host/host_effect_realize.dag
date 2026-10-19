@@ -4111,8 +4111,15 @@ fn build_cache_read_leg_gate(
   }
 }
 
-// ONE OP'S OUTCOME, FOLDED INTO THE CARRIER. The terminal arm comes from build_cache_op_executed, which is
-// the single place exit codes become receipt arms; the carrier's digest_line is updated HERE, against the
+// ONE OP'S OUTCOME, FOLDED INTO THE CARRIER. The terminal arm on the failing path comes from
+// build_cache_ensure_leg_verdict, in the module that owns this effect -- it is the single place exit codes
+// become receipt arms, and this site only hands it its input and reports what came back. (An earlier revision
+// of this comment named a DIFFERENT fn as that source. It was wrong twice over: this fn never called it, and
+// that fn was never called by anything at all, so citing it as the authority pointed at dead code while the
+// live rule sat one call away. The dead fn is deleted with this correction, and its name is deliberately NOT
+// reproduced here -- a bare identifier in a comment that resolves to nothing in the tree reads as a citation
+// and is worse than no comment. Its history is in this PR's git blame, which is where history belongs.)
+// The carrier's digest_line is updated HERE, against the
 // leg's DECLARED kind, so the second pass is decided by a pure fn over a recorded observation rather than
 // by an if buried in the loop. A leg of any other kind leaves the line untouched — inventing a digest line
 // from a fetch or a chmod would be the same silent default this effect removes.
@@ -4177,23 +4184,6 @@ fn build_cache_fold_op_executed(
   }
 }
 
-// ONE OP'S OUTCOME AS A RECORD. exit 0 is completion; a non-zero exit carries the op and everything the
-// host said; a transport refusal carries the op and the transport's reason, with NO exit code invented for
-// a process that never started.
-fn build_cache_op_executed(op: BuildCacheEnsureOp, ran: RunArgvTransportOutcome) -> BuildCacheEnsureExecuted {
-  match ran {
-    RunArgvTransportRefused { reason: r } => EnsureTransportBlocked { op: op, reason: r }
-    RunArgvTransportObserved { observed: o } =>
-      if o.exit_code == 0 {
-        EnsureCompleted
-      } else {
-        EnsureFailed {
-          op: op,
-          observed: BuildCacheHostRunObserved { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr },
-        }
-      }
-  }
-}
 
 fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload: String, transport: HostEffectTransport) -> RunArgvTransportOutcome {
   match transport {
