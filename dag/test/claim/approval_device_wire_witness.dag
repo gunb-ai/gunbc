@@ -18,8 +18,8 @@ import gunbc.auth.approval_device_wire {
   push_update_json, decode_push_update, ReadAuthentication, read_authentication_json, decode_read_request, PushUpdateRequest, push_update_request_json, decode_push_update_request, path_segment, device_request_path, device_push_update_client_data, decode_path_segment, PathSegmentDecoded, PathSegmentMalformed,
 }
 import extdeps.apple.apns { ApnsProduction }
-import extdeps.ietf.http_semantics { POST, http_field_content_type, http_field_name_wire }
-import extdeps.http.server { media_type_wire_label, application_json, http_method_label }
+import extdeps.ietf.http_semantics { POST }
+import extdeps.http.server { http_method_label }
 
 data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
 data key_b: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYB" }
@@ -249,11 +249,9 @@ test fn witness_a_route_without_a_row_is_refused() -> Bool {
   !approval_device_routes_cover(rows: approval_device_routes |> filter(r => approval_device_route_path(r: r) != (approval_device_push_path as String)), paths: approval_device_route_paths)
 }
 
-// The method token, header field name and media type the app spells today, read from the IETF/IANA rows.
-test fn witness_device_routes_are_json_posts() -> Bool {
-  all(approval_device_routes, r => r.method == POST && media_type_wire_label(m: r.request_media_type) == "application/json")
-    && http_method_label(method: POST) == "POST"
-    && http_field_name_wire(f: http_field_content_type) == "Content-Type"
+// The method token the app spells today, read from the IETF row.
+test fn witness_device_routes_are_posts() -> Bool {
+  all(approval_device_routes, r => r.method == POST) && http_method_label(method: POST) == "POST"
 }
 
 // PATHS: every identity has a route, "id-" + base64url(UTF-8). The expected strings were computed

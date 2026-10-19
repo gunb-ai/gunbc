@@ -11,9 +11,7 @@ import extdeps.apple.app_attest { AttestKeyId }
 import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
 import extdeps.ietf.http_semantics { HttpMethod, POST }
-import extdeps.http.server { MediaType, application_json, HttpRequestBodyKind, JsonRequestBody }
 import extdeps.uri_path { PathTemplate, PathParamBinding, LiteralToken, ParamToken, render_path_template }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, UInt8 }
@@ -947,9 +945,6 @@ data approval_device_push_protocol: NonEmptyStr = "gunbc.approval-device-push.v1
 type ApprovalDeviceRoute {
   path_template: PathTemplate
   method: HttpMethod
-  request_body: HttpRequestBodyKind
-  request_body_type: DeclarationRef
-  request_media_type: MediaType
 }
 
 data approval_device_path_segment: String = "segment"
@@ -964,21 +959,19 @@ fn approval_device_prefix_template(prefix: NonEmptyStr) -> PathTemplate {
   PathTemplate { tokens: [LiteralToken { text: prefix as String }, ParamToken { name: approval_device_path_segment }] }
 }
 
-fn approval_device_json_route(path_template: PathTemplate, body: NonEmptyStr) -> ApprovalDeviceRoute {
-  ApprovalDeviceRoute { path_template: path_template, method: POST, request_body: JsonRequestBody, request_body_type: approval_device_body_type(decl_name: body), request_media_type: application_json }
-}
-
-fn approval_device_body_type(decl_name: NonEmptyStr) -> DeclarationRef {
-  DeclarationRef { module_path: "gunbc.auth.approval_device_wire", decl_name: decl_name, field: WholeDeclaration }
-}
+// One named row per route: the server binds a handler to the ROW, so a bound route cannot be absent
+// from the table by construction. Body type, media type and Content-Type name rows return with
+// their first reader (the Swift client and vector generator), not before.
+data approval_device_enrol_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_fixed_template(path: approval_device_enrol_path), method: POST }
+data approval_device_pending_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_fixed_template(path: approval_device_pending_path), method: POST }
+data approval_device_request_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_prefix_template(prefix: approval_device_request_path_prefix), method: POST }
+data approval_device_redeem_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_fixed_template(path: approval_device_redeem_path), method: POST }
+data approval_device_enrollment_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_prefix_template(prefix: approval_device_enrollment_path_prefix), method: POST }
+data approval_device_push_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_fixed_template(path: approval_device_push_path), method: POST }
 
 data approval_device_routes: List<ApprovalDeviceRoute> = [
-  approval_device_json_route(path_template: approval_device_fixed_template(path: approval_device_enrol_path), body: "EnrolmentRequest"),
-  approval_device_json_route(path_template: approval_device_fixed_template(path: approval_device_pending_path), body: "ReadAuthentication"),
-  approval_device_json_route(path_template: approval_device_prefix_template(prefix: approval_device_request_path_prefix), body: "ReadAuthentication"),
-  approval_device_json_route(path_template: approval_device_fixed_template(path: approval_device_redeem_path), body: "SignedRedemption"),
-  approval_device_json_route(path_template: approval_device_prefix_template(prefix: approval_device_enrollment_path_prefix), body: "ReadAuthentication"),
-  approval_device_json_route(path_template: approval_device_fixed_template(path: approval_device_push_path), body: "PushUpdateRequest"),
+  approval_device_enrol_route, approval_device_pending_route, approval_device_request_route,
+  approval_device_redeem_route, approval_device_enrollment_route, approval_device_push_route,
 ]
 
 // The served path template of a route: a prefix route takes one ParamToken segment, a fixed route

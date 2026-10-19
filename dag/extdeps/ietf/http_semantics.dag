@@ -80,17 +80,6 @@ data iana_http_field_names_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type HttpFieldName {
-  registered_spelling: NonEmptyStr
-}
-
-// RFC 9110 section 8.3: the Content-Type header field indicates the media type of the content.
-data http_field_content_type: HttpFieldName = HttpFieldName { registered_spelling: "Content-Type" as NonEmptyStr }
-
-fn http_field_name_wire(f: HttpFieldName) -> String {
-  f.registered_spelling as String
-}
-
 // RFC 9110 section 15 STATUS CODE CLASSES: "The first digit of the status code defines the class of
 // response." Five classes, in the RFC's order. A status code itself is std.types HttpStatus (the
 // 100-599 range); this is the class a code falls in, which is what a service declaration's `5xx`

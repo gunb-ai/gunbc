@@ -51,8 +51,7 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_listen_host,
   approval_broker_serving_base_url,
 }
-import gunbc.auth.approval_device_wire { approval_device_enrol_path, approval_device_redeem_path, approval_device_pending_path, approval_device_push_path, approval_device_request_path_prefix, approval_device_enrollment_path_prefix, approval_device_routes, ApprovalDeviceRoute, approval_device_route_template, approval_device_route_path, approval_device_route_path }
-import std.list { first_where }
+import gunbc.auth.approval_device_wire { ApprovalDeviceRoute, approval_device_route_template, approval_device_enrol_route, approval_device_redeem_route, approval_device_pending_route, approval_device_request_route, approval_device_enrollment_route, approval_device_push_route }
 import gunbc.auth.approval_device_routes {
   DeviceRouteResponse,
   device_enrol_response, device_redeem_response, device_pending_response, device_request_response, device_enrollment_readback_response, device_push_update_response,
@@ -144,33 +143,29 @@ type ApprovalBrokerHandler
 // the same four paths are also what the notification link is built from, what the front door
 // mounts, and what the boot client posts to -- four readers of one fact, and a path that is
 // spelled once per reader agrees until one of them moves.
-// A device route's method and path are read from approval_device_routes
-// (gunbc.auth.approval_device_wire), the one table that states them; this file binds only the
-// handler. A bound path with no row is omitted, which the eleven-route witness refuses.
+// A device route's method and path are read from its ApprovalDeviceRoute row
+// (gunbc.auth.approval_device_wire), the one place that states them; this file binds only the
+// handler, and binds it to the ROW itself, so a bound route cannot be missing from the table.
 type DeviceRouteHandlerBinding {
-  path: NonEmptyStr
+  route: ApprovalDeviceRoute
   handler: ApprovalBrokerHandler
 }
 
 data device_route_handlers: List<DeviceRouteHandlerBinding> = [
-  DeviceRouteHandlerBinding { path: approval_device_enrol_path, handler: DeviceEnrolHandler },
-  DeviceRouteHandlerBinding { path: approval_device_redeem_path, handler: DeviceRedeemHandler },
-  DeviceRouteHandlerBinding { path: approval_device_pending_path, handler: DevicePendingHandler },
-  DeviceRouteHandlerBinding { path: approval_device_request_path_prefix, handler: DeviceRequestHandler },
-  DeviceRouteHandlerBinding { path: approval_device_enrollment_path_prefix, handler: DeviceEnrollmentReadbackHandler },
-  DeviceRouteHandlerBinding { path: approval_device_push_path, handler: DevicePushUpdateHandler },
+  DeviceRouteHandlerBinding { route: approval_device_enrol_route, handler: DeviceEnrolHandler },
+  DeviceRouteHandlerBinding { route: approval_device_redeem_route, handler: DeviceRedeemHandler },
+  DeviceRouteHandlerBinding { route: approval_device_pending_route, handler: DevicePendingHandler },
+  DeviceRouteHandlerBinding { route: approval_device_request_route, handler: DeviceRequestHandler },
+  DeviceRouteHandlerBinding { route: approval_device_enrollment_route, handler: DeviceEnrollmentReadbackHandler },
+  DeviceRouteHandlerBinding { route: approval_device_push_route, handler: DevicePushUpdateHandler },
 ]
 
 fn device_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
-  device_route_specs_over(rows: approval_device_routes)
+  device_route_specs_over(bindings: device_route_handlers)
 }
 
-fn device_route_specs_over(rows: List<ApprovalDeviceRoute>) -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
-  flat_map(device_route_handlers, b =>
-    match first_where(rows, r => approval_device_route_path(r: r) == (b.path as String)) {
-      Present { value: r } => [ServedRouteSpec { method: r.method, raw: approval_device_route_template(r: r), handler: b.handler }]
-      Absent => []
-    })
+fn device_route_specs_over(bindings: List<DeviceRouteHandlerBinding>) -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
+  map(bindings, b => ServedRouteSpec { method: b.route.method, raw: approval_device_route_template(r: b.route), handler: b.handler })
 }
 
 fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
