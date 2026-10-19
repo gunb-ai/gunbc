@@ -7027,7 +7027,7 @@ fn authored_import_binds_provider_declaration(name: String, import_module: Strin
                   || is_type_alias_item(item: item, source_indices: source_indices)
                   || is_type_decl_item(item: item, source_indices: source_indices))
                 && match item.ident_span {
-                  Present { value: sp } => binding_declares_span(binding: binding, sp: sp)
+                  Present { value: sp } => binding_declares_span(binding: binding, sp: sp.span)
                   Absent => false
                 }
               )
