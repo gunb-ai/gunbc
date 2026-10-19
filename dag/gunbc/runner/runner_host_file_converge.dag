@@ -909,9 +909,22 @@ fn runner_slot_unit_standing_wire(standing: RunnerSlotUnitStanding) -> String {
   }
 }
 
+// THE RELOAD STATE IS ITS OWN FACT, never a value of the lifecycle standing. A loaded unit that owes a
+// reload is still a fabric member running a runner, or a teardown-effective slot, and a later
+// classification of the lifecycle must not overwrite it. Derived once, from the raw show observation.
+type SlotReloadStatus = SlotReloadNotPending | SlotReloadOwed | SlotReloadUnobserved
+
 type RunnerSlotUnitResult {
   unit: NonEmptyStr
   standing: RunnerSlotUnitStanding
+  reload: SlotReloadStatus
+}
+
+fn slot_reload_status_for(unit: NonEmptyStr, show_stdout: String) -> SlotReloadStatus {
+  match parse_runner_slot_reading_for(unit: unit, show_stdout: show_stdout) {
+    Absent => SlotReloadUnobserved
+    Present { value: rd } => if trim(s: rd.need_daemon_reload) == "no" { SlotReloadNotPending } else { SlotReloadOwed }
+  }
 }
 
 type RunnerSlotPopulation
@@ -1010,6 +1023,7 @@ fn classify_runner_slot_population_with_fabric(units: List<NonEmptyStr>, fabric:
           Absent => SlotUnitUnread
           Present { value: rd } => classify_fabric_member_unit(reading: rd)
         },
+        reload: r.reload,
       }
     } else { r })
 }
@@ -1031,6 +1045,7 @@ fn classify_runner_slot_population(units: List<NonEmptyStr>, retirements: List<R
       unit: u,
       standing: fold(readings, init: SlotUnitUnread, f: (acc, r) =>
         if (r.unit as String) == (u as String) { classify_runner_slot_unit_against_retirement(reading: r, expect: expect, retirements: retirements) } else { acc }),
+      reload: slot_reload_status_for(unit: u, show_stdout: show_stdout),
     })
 }
 
@@ -2052,13 +2067,14 @@ fn runner_host_cap_files_state(subject: RunnerHostFileSubject, context: FleetSsh
   }
 }
 
-// A UNIT-FILE CHANGE IS PENDING when any observed instance owes a reload; an instance that could not be
-// read is unknown and counts as pending (an unread unit proves nothing about what a reload would load).
+// A UNIT-FILE CHANGE IS PENDING when any observed instance owes a reload, read from its own reload status
+// (never from the lifecycle standing, which a fabric or retirement classification replaces); an instance
+// that could not be read is unknown and counts as pending (an unread unit proves nothing about what a reload would load).
 // systemd reports an instance's NeedDaemonReload for the template's drop-ins too.
 fn runner_host_cap_pending_reload(population: RunnerSlotPopulation) -> Bool {
   match population {
     SlotPopulationUnobservable { reason: _ } => true
-    SlotPopulationObserved { units: us } => any(us, r => match r.standing { SlotReloadPending => true SlotUnitUnread => true SlotTeardownEffective => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false })
+    SlotPopulationObserved { units: us } => any(us, r => match r.reload { SlotReloadNotPending => false SlotReloadOwed => true SlotReloadUnobserved => true })
   }
 }
 

@@ -76,6 +76,7 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_files_deliver_fragment,
   RunnerSlotExpectation,
   runner_slot_expectation,
+  SlotReloadNotPending,
   SlotAllocationNotEffective,
   RetiredResidueObservation,
   ResidueAbsent,
@@ -708,7 +709,7 @@ test fn each_unit_is_judged_on_its_own_block_and_a_missing_block_is_unread() -> 
 }
 
 fn population_of(standings: List<RunnerSlotUnitStanding>) -> RunnerSlotPopulation {
-  SlotPopulationObserved { units: map(standings, st => RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: st }) }
+  SlotPopulationObserved { units: map(standings, st => RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: st, reload: SlotReloadNotPending }) }
 }
 
 // THE HOST-WIDE VERDICT IS OVER EVERY UNIT. One not-effective, not-loaded, pending or unread unit among
