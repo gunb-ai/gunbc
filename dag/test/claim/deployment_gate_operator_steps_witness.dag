@@ -571,5 +571,7 @@ test fn the_configured_installation_is_separate_from_the_readback() -> Bool {
     installation_id: GitHubAppInstallationId { value: 1900000001 },
     app_id: GitHubAppId { value: 1234567 },
   }
-    configured.installation_id == 1900000001 && configured.app_id == 1234567
+    // two separate axes with two separate numbers, and two separate TYPES: this line used to be the
+    // test that they were not mixed up, and mixing them is now a compile error rather than a mistake
+    configured.installation_id.value == 1900000001 && configured.app_id.value == 1234567
 }
