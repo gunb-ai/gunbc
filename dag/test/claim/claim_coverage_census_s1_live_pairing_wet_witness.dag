@@ -1,4 +1,4 @@
-module test.claim.census.claim_coverage_census_s1_live_pairing_wet_witness
+module test.claim.claim_coverage_census_s1_live_pairing_wet_witness
 
 // THE PAIRING CLAIM THAT READS THE CHECKOUT (Charter 4 exit census, sunny-ibex-149; warm-wolf-570's GO).
 //

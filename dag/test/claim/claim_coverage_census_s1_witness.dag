@@ -34,7 +34,7 @@ import gunbc.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
 // `a_live_function_resolves_and_names_nothing_for_a_producer_that_names_nothing`). Importing is not
 // READING: the one entry this corpus calls is a pure match over producer variants. The claims that DO read
 // the checkout -- the scoped real-discovery pairing claims -- live in
-// `test.claim.census.claim_coverage_census_s1_live_pairing_wet_witness`, which states why they cannot live here.
+// `test.claim.claim_coverage_census_s1_live_pairing_wet_witness`, which states why they cannot live here.
 import gunbc.claim_coverage_census_s1_live { producer_named_identities }
 import gunbc.target_binding { TargetProducer, RequiredFloorProducer }
 

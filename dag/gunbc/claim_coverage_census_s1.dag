@@ -1,8 +1,8 @@
 module gunbc.claim_coverage_census_s1
 
-import std.types { String, Bool, List, Int, Map }
+import std.types { String, Bool, List, Int, Set }
 import std.optional { Optional, Absent, Present }
-import std.algebra { empty_map, map_insert, map_lookup, is_empty, string_contains }
+import std.algebra { empty_set, set_insert, set_contains, is_empty, string_contains }
 
 // THE DISCOVERED UNIVERSE, CLASSIFIED (manager ruling 2026-10-19, Charter 4, plus the two scope
 // additions: the ungroundable drop members, and jolly-boar-495's StaleEnrolled standing).
@@ -142,12 +142,8 @@ fn classifier_member_text(row: ClassifierRow) -> String {
 }
 
 // Universe membership is the join everywhere; one map build so no call site scans.
-fn universe_index(universe: List<String>) -> Map<String, Bool> {
-  fold(
-    universe,
-    init: empty_map(),
-    f: fn(acc, id) { map_insert(m: acc, key: id, value: true) }
-  )
+fn universe_set(universe: List<String>) -> Set<String> {
+  fold(universe, init: empty_set(), f: fn(acc, id) { set_insert(set: acc, item: id) })
 }
 
 // THE ONE EXPANSION. A FileMember reaches identities only here: the discovered rows its declared relation
@@ -202,16 +198,16 @@ fn matches_member(relation: ClaimMemberMatch, member: String, path: String) -> B
 // with its drop and its declared text. A SUBSTRING member (the frontier's own form) is refused the same way when it
 // selects no discovered file: a pattern that matches nothing covers nothing, and printing that as grounded
 // would be the stale-present-tense lie DESIGN 3 names, in census form.
-fn classify_row(index: Map<String, Bool>, rows: List<ClaimRow>, row: ClassifierRow) -> ClassifierStanding {
+fn classify_row(universe: Set<String>, rows: List<ClaimRow>, row: ClassifierRow) -> ClassifierStanding {
   match row.member {
     IdentityMember { identity: identity } =>
-      if in_index(index: index, key: identity) {
+      if set_contains(set: universe, item: identity) {
         grounded(row: row, covers: [identity])
       } else {
         StaleEnrolled { row: row }
       }
     DeclaredMember { text: text } =>
-      if in_index(index: index, key: text) {
+      if set_contains(set: universe, item: text) {
         grounded(row: row, covers: [text])
       } else {
         let covers = expand_file(
@@ -251,25 +247,19 @@ fn grounded(row: ClassifierRow, covers: List<String>) -> ClassifierStanding {
   }
 }
 
-// THE ONE MEMBERSHIP ACCESSOR (review 82845, ctrl predicate-dissolution policy; DESIGN §6b: a second local
-// implementation of one rule is the trigger). `Present => true / Absent => false` over `Optional` was
-// written out three times in this file -- here, in `derive_executed`, and twice in `s1_uncovered`. No
-// `std.algebra` map-membership helper exists to call, so the rule is defined once and every site calls it.
-fn in_index(index: Map<String, Bool>, key: String) -> Bool {
-  match map_lookup(m: index, key: key) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 // THE JOIN, AT LINEAR COST PER ROW (review 82804, DESIGN §6: a proven cost-shape defect is always fixed).
-// The universe index is built ONCE here and handed to every row; before, each row rebuilt it, so classifying
-// the carriers cost O(rows x |S1|) and the "one map build so no call site scans" comment was false.
+// The universe SET is built ONCE here and handed to every row; before, each row rebuilt it, so classifying
+// the carriers cost O(rows x |S1|) and the "one map build so no call site scans" comment was false. A SET,
+// not a `Map<String, Bool>` whose value was always `true` (review 82943): the dummy value made
+// `map_insert(key, false)` a writable state that reads as absent -- a member that is not a member -- and
+// `std.types::Set` with `std.algebra`'s `set_contains` is the corpus's own membership authority
+// (`std.graph`'s visited set), so the hand-rolled `Present => true / Absent => false` predicate dissolves
+// instead of being centralised.
 fn classify_rows(universe: List<String>, rows: List<ClaimRow>, classifier_rows: List<ClassifierRow>) -> List<ClassifierStanding> {
-  let index = universe_index(universe: universe)
+  let universe_members = universe_set(universe: universe)
   map(
     classifier_rows,
-    row => classify_row(index: index, rows: rows, row: row)
+    row => classify_row(universe: universe_members, rows: rows, row: row)
   )
 }
 
@@ -279,32 +269,28 @@ fn classify_rows(universe: List<String>, rows: List<ClaimRow>, classifier_rows: 
 // nothing, and a name discovery does not enrol executes no ENROLLED claim (that is what makes a run
 // step over an ordinary fn report honestly instead of closing the census's gap).
 fn derive_executed(rows: List<ClaimRow>, produced: List<String>) -> List<String> {
-  let universe_set = universe_index(universe: map(rows, r => r.identity))
-  filter(produced, name => in_index(index: universe_set, key: name))
+  let enrolled = universe_set(universe: map(rows, r => r.identity))
+  filter(produced, name => set_contains(set: enrolled, item: name))
 }
 
 // Every S1 identity neither executed by a bound producer nor reached by any grounded COVER row:
 // the exit-1 arm's report of the floor.
 fn s1_uncovered(census: S1Census) -> List<String> {
-  let executed_set = universe_index(universe: census.executed)
-  let covered_set = fold(
+  let executed = universe_set(universe: census.executed)
+  let covered = fold(
     census.stands,
-    init: empty_map(),
+    init: empty_set(),
     f: fn(acc, standing) {
       match standing {
         GroundedCover { row: _, covers: covers } =>
-          fold(
-            covers,
-            init: acc,
-            f: fn(inner, id) { map_insert(m: inner, key: id, value: true) }
-          )
+          fold(covers, init: acc, f: fn(inner, id) { set_insert(set: inner, item: id) })
         _ => acc
       }
     }
   )
   filter(
     census.universe,
-    id => !in_index(index: executed_set, key: id) && !in_index(index: covered_set, key: id)
+    id => !set_contains(set: executed, item: id) && !set_contains(set: covered, item: id)
   )
 }
 

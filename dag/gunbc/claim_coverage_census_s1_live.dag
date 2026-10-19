@@ -471,27 +471,69 @@ fn s1_compose_scoped(roots: List<String>) -> S1Composition {
 // revision, asked of git through the sealed argv builder for that one operation
 // (`extdeps.git git_rev_parse_head_command`, the builder the revision-job witness asks); where the run is
 // an Actions run, the runner's pinned `GITHUB_SHA` is the fallback, since that revision IS the subject the
-// run was dispatched for. Both authorities answering nothing is printed as such rather than printed as a
-// head: a receipt must not certify a revision it did not read. This is a locator printed beside the
-// standings, not an input the census depends on -- an unreadable head does not invalidate the enumeration,
-// so it is a note on the receipt and never an unread input.
-fn census_head_reading() -> String {
-  let git_head = match run_shell_command_capture(
+// run was dispatched for.
+//
+// ABSENCE IS TYPED, NOT SPELL-CHECKED (review 82943, DESIGN §5: every degradation typed, located and
+// countable; §3b's absence domain is `std.optional::Optional`). The first version collapsed both refusals
+// to the empty string and then tested `!= ""`, and when neither authority answered it RETURNED THE STRING
+// "UNREADABLE (...)" -- a placeholder printed where a revision belongs, which is the fabricated default §5
+// rejects, and which contradicted the comment on the line that prints it. Now: `Present { value }` carries a
+// revision that was actually read, and `Absent { cause }` carries WHY the locator could not be read,
+// including the exit code and stderr the process reported. Nothing downstream has to guess whether an empty
+// string meant absent, and a reader can tell a refused git from an unset variable.
+type HeadReading
+  = RevisionRead { revision: String }
+  | RevisionAbsent { cause: String }
+
+// A captured answer counts as no answer when it is empty AFTER trimming: that is the shape the transport
+// itself reports (an executed-but-silent command), and the corpus's own convention for "the transport gave
+// me nothing" is `if text == ""` at its parse sites (`extdeps.github.push_event`, `extdeps.docker.cli`).
+// It is a check on the OBSERVATION, made in one place, and it is not how absence is represented -- that is
+// the sum above.
+fn head_from_git() -> HeadReading {
+  match run_shell_command_capture(
     command: git_rev_parse_head_command(repository_dir: census_checkout_dir),
     transport: LocalExec
   ) {
-    ProcessOutputPresent { text: text } => trim(s: text)
-    ProcessOutputAbsent => ""
-    ProcessRefused { exit_code: _, stderr: _ } => ""
+    ProcessOutputPresent { text: text } => {
+      let revision = trim(s: text)
+      if revision != "" {
+        RevisionRead { revision: revision }
+      } else {
+        RevisionAbsent { cause: "git rev-parse --short HEAD printed nothing" }
+      }
+    }
+    ProcessRefused { exit_code: exit_code, stderr: stderr } => RevisionAbsent {
+      cause: concat("git rev-parse --short HEAD refused (exit ", concat(to_string(exit_code), concat("): ", stderr)))
+    }
+    ProcessOutputAbsent => RevisionAbsent { cause: "git rev-parse --short HEAD could not be spawned" }
   }
-  if git_head != "" {
-    return git_head
+}
+
+fn census_head_reading() -> HeadReading {
+  match head_from_git() {
+    RevisionRead { revision: revision } => RevisionRead { revision: revision }
+    RevisionAbsent { cause: git_cause } => {
+      let runner_sha = actions_variable_trimmed(name: github_sha_variable_name as NonEmptyStr)
+      if runner_sha != "" {
+        RevisionRead { revision: runner_sha }
+      } else {
+        RevisionAbsent { cause: concat(git_cause, "; and GITHUB_SHA is unset") }
+      }
+    }
   }
-  let runner_sha = actions_variable_trimmed(name: github_sha_variable_name as NonEmptyStr)
-  if runner_sha != "" {
-    return runner_sha
+}
+
+// THE RUNNER STAMPS THE LOCATOR, OR OMITS IT WITH ITS CAUSE. The census takes no head, so the stamp is the
+// runner's business: the live entry calls this, and a runner that cannot ask (the host-native route has no
+// git) prints a typed cause in place of the revision rather than a placeholder dressed as one. Either way
+// the receipt says what it knows: the verdicts never depended on the locator, and they are printed either
+// way.
+fn s1_head_receipt_line() -> String {
+  match census_head_reading() {
+    RevisionRead { revision: revision } => concat("S1-CENSUS head:", revision)
+    RevisionAbsent { cause: cause } => concat("S1-CENSUS head UNREADABLE: ", cause)
   }
-  return "UNREADABLE (git rev-parse --short HEAD refused and GITHUB_SHA unset)"
 }
 
 // THE LIVE ENTRY'S BLOCK: the one pure exit policy (`gunbc.claim_coverage_census_s1 s1_block`) applied to
