@@ -40,9 +40,13 @@ import gunbc.github_effect_perform {
 // gunbc.auth.privileged_effect_census rows this site through
 // gunbc.auth.authorization_pattern_selection select_authorization_pattern -- and the credential's
 // own capability is still checked here, against the same effect algebra the mint uses.
+// THE EXIT IS THE LISTENER'S OBSERVED TERMINATION, NOT A JOB RESULT. actions/runner exits 0 on a completed
+// job and also on session token expiry and on deprovision, so a zero status says only that the listener
+// ended cleanly; whether a job ran is a separate reading (GitHub's job record), and no arm here claims it.
+// Deregistration is required on every arm regardless.
 type JitSlotExit
-  = SlotJobCompleted
-  | SlotJobFailed { cause: NonEmptyStr }
+  = SlotListenerExitedClean
+  | SlotListenerExitedNonzero { cause: NonEmptyStr }
   | SlotNeverLaunched { cause: NonEmptyStr }
 
 // THE SUBJECT IS MINTED FROM THE AUTHORIZED DISPATCH AND NOWHERE ELSE. jit_registration_of is its

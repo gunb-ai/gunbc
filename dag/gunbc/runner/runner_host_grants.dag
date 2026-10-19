@@ -34,6 +34,7 @@ import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directiv
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, srv1_microvm_shakedown_slot }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_reserve_unit_name }
+import gunbc.runner.runner_revision_job_unit { revision_job_host_instances, revision_job_runner_unit_instance_name }
 import gunbc.fabric.fabric_cell_converge {
   fabric_cell_base_dir,
   fabric_cell_root_path,
@@ -58,6 +59,7 @@ import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, runne
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir }
 import gunbc.runner.runner_host_deploy { runner_index_seq }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.runner.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner.runner_unit { runner_unit_name_of_registration }
 import gunbc.host.managed_host_unit_hold { unit_hold_store_root, unit_hold_store_hosts }
@@ -72,6 +74,11 @@ import gunbc.host.host_boot_attempt_admission { boot_attempt_slot_root }
 // re-typing the path. Until then the drift is real -- moving the state directory today requires
 // finding three unrelated string sites, and missing one produces a lease that guards a directory
 // nothing else uses.
+// WHERE THE RENDERED gunbc-ghrunner.sudoers IS INSTALLED ON A HOST: one fact, read by the fci1 sha256
+// probe and by gunbc.fleet.fleet_host_grant_coverage (which reads the installed drop-in to tell a
+// rendered grant from one installed by hand).
+data runner_host_sudoers_install_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrunner"
+
 data gunbc_fleet_converge_state_dir: NonEmptyStr = fleet_converge_state_root
 
 // THE TWO SERVICE TRANSITIONS ARE GRANTED PER UNIT AND SEPARATELY, one enable line and one start
@@ -379,6 +386,16 @@ fn microvm_slot_reserve_start_operations(deploy: RunnerHostDeploy) -> List<Execu
   }
 }
 
+// THE REVISION JOB'S ONE GRANT PER JOB UNIT: START IT, ON THE HOST THAT CARRIES ITS SLOT. Same shape
+// and the same reasoning as the shakedown broker's: the unit is root-owned, installed from the
+// root-owned locus, and re-derives and verifies everything it runs (the spec's commit tree, the pinned
+// image, the cell grant), so the line authorizes a request and carries no payload. One exact argv per
+// declared revision-job slot (gunbc.runner.runner_slot_allocation revision_job_slots), never a pattern.
+fn revision_job_start_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  map(revision_job_host_instances(host: deploy.host_label as String), instance =>
+    SystemdStartUnit { unit: revision_job_runner_unit_instance_name(slot_instance: instance) })
+}
+
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
   let job = deploy.job_user
   let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
@@ -389,6 +406,7 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     + fabric_allocation_store_privileged_operations(deploy: deploy)
     + workspace_host_launch_operations(deploy: deploy)
     + microvm_slot_reserve_start_operations(deploy: deploy)
+    + revision_job_start_operations(deploy: deploy)
     + runner_host_wide_privileged_operations(deploy: deploy)
     + microvm_network_granted_operations()
     + dashboard_directory_observation_operations(deploy: deploy)
@@ -470,6 +488,29 @@ fn runner_host_refused_sudoers_content(spec: RunnerHostSpec, cause: String, arti
       ops: runner_host_refused_privileged_operations(spec: spec),
     ),
   ], "")
+}
+
+// THE ONE DECISION between the found, refused-width and unmodeled renderings of a host's sudoers file.
+// It lived inline in gunbc.tier_o_artifact_emit, which cannot be imported by the converge route that
+// installs the file (it pulls the witness modules in, closing a cycle); both now consume this.
+type RunnerHostSudoersBody
+  = RunnerHostSudoersBodyProduced { content: String }
+  | RunnerHostSudoersBodyRefused { reason: String }
+
+fn runner_host_sudoers_body(host: HostIdentity, artifact_path: String) -> RunnerHostSudoersBody {
+  match runner_host_deploy_for(host: host) {
+    RunnerHostDeployFound { deploy } =>
+      RunnerHostSudoersBodyProduced { content: runner_host_sudoers_content(deploy: deploy, artifact_path: artifact_path) }
+    RunnerHostDeployUnmodeled { host: unmodeled } =>
+      RunnerHostSudoersBodyRefused { reason: concat("no runner host deploy row for enrolled host ", unmodeled as String) }
+    RunnerHostDeployRefused { host: refused, cause: why } =>
+      match runner_host_spec_for(host: refused) {
+        RunnerHostSpecFound { spec: spec } =>
+          RunnerHostSudoersBodyProduced { content: runner_host_refused_sudoers_content(spec: spec, cause: why, artifact_path: artifact_path) }
+        RunnerHostSpecAbsent { host: h } =>
+          RunnerHostSudoersBodyRefused { reason: concat("runner host refused with no spec: ", h as String) }
+      }
+  }
 }
 
 fn runner_host_sudoers_content(deploy: RunnerHostDeploy, artifact_path: String) -> String {

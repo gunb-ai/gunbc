@@ -55,6 +55,10 @@ data approve_ios_transcribed_swift_frontier: DissolutionCondition = unbound_diss
 //     Approve/Wire.swift and ApproveTests/ProtocolVectorTests.swift (gunbc.approve_ios_swift_protocol,
 //     gunbc.approve_ios_swift_wire, gunbc.approve_ios_swift_protocol_vector_tests); the trees are
 //     transcribed, named by approve_ios_transcribed_swift_frontier above.
+//   PRINTED FROM A MODEL'S EVALUATION, drift-gated: Approve/EnrolmentMachine.swift (the enrolment
+//     transition table) and ApproveTests/EnrolmentMachineTests.swift, both from
+//     gunbc.approve_ios_swift_enrolment_machine over gunbc.approve_ios_enrolment_machine. AppState.swift
+//     and EnrolmentState.swift keep only the UI glue and payload persistence, and call that table.
 //   HAND-AUTHORED REALIZATION: the other .swift files under apps/approve-ios/Approve, named by
 //     approve_ios_hand_authored_swift_frontier above, and the operator-local Config/Team.xcconfig,
 //     which is operator identity, not a model fact.
