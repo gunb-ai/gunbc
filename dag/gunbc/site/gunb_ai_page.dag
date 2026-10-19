@@ -752,7 +752,7 @@ fn parity_served_texts() -> List<String> {
 // Variant names are unique across the whole closure, so the two refusal arms carry their kind: a
 // refusal from the render is not the same event as a refusal from the filesystem.
 type PageWrite
-  = PageWritten { path: String, bytes: Int }
+  = PageWritten { path: String }
   | PageWriteRefused { reason: String }
 
 // Write the page, or refuse. The bytes are produced IN FULL before the first Filesystem call, so a
@@ -765,7 +765,7 @@ fn page_write(dir: String) -> PageWrite {
       let path = join([dir, "/", output_name], "")
       let wrote = Filesystem.Write(path: path, content: b)
       if wrote.success {
-        PageWritten { path: path, bytes: string_length(s: b) }
+        PageWritten { path: path }
       } else {
         PageWriteRefused { reason: join(["write failed: ", path], "") }
       }
@@ -778,7 +778,7 @@ data output_name: String = "index.html"
 
 fn page_exit(run: PageWrite) -> ProcessExit {
   match run {
-    PageWritten { path: _, bytes: _ } => ExitSuccess
+    PageWritten { path: _ } => ExitSuccess
     PageWriteRefused { reason: r } => exit_failure(reason: join([page_render_refusal_prefix, r], ""))
   }
 }
