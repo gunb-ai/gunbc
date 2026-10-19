@@ -724,8 +724,22 @@ module test.producer_collision
 import std.types { Map }
 import std.algebra { empty_map }
 
-fn ints() -> Map<Int, Int> { empty_map() }
-fn texts() -> Map<String, Int> { empty_map() }
+fn takes_int_map(m: Map<Int, Int>) -> Int { 0 }
+fn takes_string_map(m: Map<String, Int>) -> Int { 0 }
+
+// BOTH calls in ONE body, the first constrained before the second is introduced. Two
+// separate top-level functions could never expose a shared unbound variable: whatever the
+// two calls share, each is checked only against its own formal, so no comparison between
+// them ever happens. Inside one body, the first call's constraints land on the shared
+// variable before the second call is compared against a DIFFERENT settled instance -- which
+// is where a name-keyed variable turns into a wrong answer.
+fn collide() -> Int {
+  let a = empty_map()
+  let n = takes_int_map(a)
+  let b = empty_map()
+  let m = takes_string_map(b)
+  n + m
+}
 "#;
 
 fn collision_resolved() -> ResolvedPipelineResult {
