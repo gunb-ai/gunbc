@@ -787,6 +787,7 @@ pub fn crc_serve_before_bind(startup: bool) -> String {
             "m".to_string(),
             Rc::new(vec![]),
             startup.clone(),
+            false,
         );
         match Rc::new(
             file.content
@@ -821,6 +822,37 @@ pub fn a_driver_with_no_startup_binds_before_it_realizes_its_worker_on_the_reque
         let head = crc_serve_before_bind(false);
         (!v1_rt::string_contains(&head, "realize_generation(&stuck".to_string())
             && !v1_rt::string_contains(&head, "startup_deadline".to_string()))
+    }
+}
+
+pub fn a_declared_startup_bound_replaces_the_contracts_default_before_the_first_worker_is_realized(
+) -> bool {
+    {
+        let file = crate::v1_compiler_emit_rust::emit_native_serve_driver_main_rs(
+            "c".to_string(),
+            "m".to_string(),
+            Rc::new(vec![]),
+            true,
+            true,
+        );
+        match Rc::new(
+            file.content
+                .clone()
+                .split(&"TcpListener::bind((".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .first()
+        .cloned()
+        {
+            Some(head) => {
+                (v1_rt::string_contains(
+                    &head,
+                    "contract.startup_deadline = native_serve_startup_bound();".to_string(),
+                ) && v1_rt::string_contains(&head, "let mut contract".to_string()))
+            }
+            std::option::Option::None => false,
+        }
     }
 }
 
