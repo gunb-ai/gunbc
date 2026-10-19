@@ -25286,20 +25286,6 @@ pub fn substitute_generics(
     }
 }
 
-pub fn generic_substitution_leaf(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: _, .. }) => true,
-        _ => {
-            ((((n.children.clone().len() as i64) == 0)
-                && (n.connective.clone() == Connective::NoConnective))
-                && ((n.params.clone().len() as i64) == 0))
-        }
-    }
-}
-
 pub fn generic_leaf_replacement(
     n: Rc<Node>,
     subst: Rc<HashMap<String, Rc<Node>>>,
@@ -25321,13 +25307,22 @@ pub fn generic_leaf_replacement(
                 std::option::Option::None => std::option::Option::None,
             }
         }
-        _ => match v1_rt::map_get(&subst, type_node_label(n.clone(), source_indices.clone())) {
-            Some(c) => Some(crate::v1_std_core::preserve_outer_optional_cardinality(
-                n.clone(),
-                c.clone(),
-            )),
-            std::option::Option::None => std::option::Option::None,
-        },
+        _ => {
+            if ((((n.children.clone().len() as i64) == 0)
+                && (n.connective.clone() == Connective::NoConnective))
+                && ((n.params.clone().len() as i64) == 0))
+            {
+                match v1_rt::map_get(&subst, type_node_label(n.clone(), source_indices.clone())) {
+                    Some(c) => Some(crate::v1_std_core::preserve_outer_optional_cardinality(
+                        n.clone(),
+                        c.clone(),
+                    )),
+                    std::option::Option::None => std::option::Option::None,
+                }
+            } else {
+                std::option::Option::None
+            }
+        }
     }
 }
 
@@ -25361,23 +25356,70 @@ pub fn generic_slot_holding(slot: Rc<Node>, ty: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn generic_node_is_bare(n: Rc<Node>) -> bool {
+    ((((n.children.clone().len() as i64) == 0)
+        && (n.connective.clone() == Connective::NoConnective))
+        && ((n.params.clone().len() as i64) == 0))
+}
+
 pub fn substitute_generics_child(
     c: Rc<Node>,
     subst: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    if generic_substitution_leaf(c.clone(), source_indices.clone()) {
-        match generic_leaf_replacement(c.clone(), subst.clone(), source_indices.clone()) {
-            Some(ty) => match c.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: _, .. }) => {
-                    generic_slot_holding(c.clone(), ty.clone())
+    match generic_leaf_replacement(c.clone(), subst.clone(), source_indices.clone()) {
+        Some(ty) => match c.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: _, .. }) => {
+                generic_slot_holding(c.clone(), ty.clone())
+            }
+            _ => ty.clone(),
+        },
+        std::option::Option::None => match c.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                if (generic_node_is_bare(c.clone()) && !generic_node_is_bare(rt.clone())) {
+                    {
+                        let new_rt = substitute_generics_apply(
+                            rt.clone(),
+                            subst.clone(),
+                            source_indices.clone(),
+                        );
+                        if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
+                            c.clone()
+                        } else {
+                            Rc::new(Node {
+                                occurrence_identity: c.occurrence_identity.clone(),
+                                name: c.name.clone(),
+                                span: c.span.clone(),
+                                ident_span: c.ident_span.clone(),
+                                children: Rc::new(vec![]),
+                                connective: Connective::NoConnective,
+                                params: Rc::new(vec![]),
+                                inferred: Some(Rc::new(InferredNode::Resolved {
+                                    node: new_rt.clone(),
+                                })),
+                                return_cardinality: c.return_cardinality.clone(),
+                                uses: c.uses.clone(),
+                                body: c.body.clone(),
+                                transport: c.transport.clone(),
+                                properties: c.properties.clone(),
+                                type_annotation: c.type_annotation.clone(),
+                                is_self_recursive: c.is_self_recursive.clone(),
+                                has_non_tail_self_call: c.has_non_tail_self_call.clone(),
+                                match_pattern: c.match_pattern.clone(),
+                                module_item_kind: c.module_item_kind.clone(),
+                                declaration_marker: c.declaration_marker.clone(),
+                                declaration: c.declaration.clone(),
+                                expr_data: c.expr_data.clone(),
+                                ident: None,
+                            })
+                        }
+                    }
+                } else {
+                    substitute_generics_apply(c.clone(), subst.clone(), source_indices.clone())
                 }
-                _ => ty.clone(),
-            },
-            std::option::Option::None => c.clone(),
-        }
-    } else {
-        substitute_generics_apply(c.clone(), subst.clone(), source_indices.clone())
+            }
+            _ => substitute_generics_apply(c.clone(), subst.clone(), source_indices.clone()),
+        },
     }
 }
 
@@ -25386,12 +25428,30 @@ pub fn substitute_generics_apply(
     subst: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if generic_substitution_leaf(n.clone(), source_indices.clone()) {
-            match generic_leaf_replacement(n.clone(), subst.clone(), source_indices.clone()) {
-                Some(ty) => ty.clone(),
-                std::option::Option::None => n.clone(),
+    match generic_leaf_replacement(n.clone(), subst.clone(), source_indices.clone()) {
+        Some(ty) => ty.clone(),
+        std::option::Option::None => {
+            if generic_node_is_bare(n.clone()) {
+                n.clone()
+            } else {
+                substitute_generics_walk(n.clone(), subst.clone(), source_indices.clone())
             }
+        }
+    }
+}
+
+pub fn substitute_generics_walk(
+    n: Rc<Node>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    {
+        let is_type_variable_node = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: _, .. }) => true,
+            _ => false,
+        };
+        if is_type_variable_node.clone() {
+            n.clone()
         } else {
             {
                 let new_children = Rc::new({
@@ -25466,7 +25526,7 @@ pub fn substitute_generics_apply(
                 }
             }
         }
-    })
+    }
 }
 
 pub fn kernel_span(name: String) -> Rc<SourceSpan> {
