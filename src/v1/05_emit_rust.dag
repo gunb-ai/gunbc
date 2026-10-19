@@ -9246,14 +9246,14 @@ fn enum_variant_field_type_node(env: TypeEnv, enum_name: String, variant_name: S
   }
 }
 
-fn render_variant_payload_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn render_variant_payload_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if n.connective == NoConnective && n.children |> count > 0 {
     let tn = authored_name_at(source_indices: source_indices, node: n)
-    let args = n.children |> map(c => render_rust_type(n: child_type_node(ch: c), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()))
+    let args = n.children |> map(c => render_rust_type(n: child_type_node(ch: c), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
     let spec = language_spec(target: Rust)
     concat(coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: Rust), dag_name: tn), spec.type_arg_open, args |> join(separator: ", "), spec.type_arg_close)
   } else {
-    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   }
 }
 
@@ -9284,7 +9284,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
             enum_variant_field_type_node(env: env, enum_name: enum_name, variant_name: child_text, field_name: "0", fallback: fallback, source_indices: env.source_indices)
           } else { fallback }
           let raw_ty = if positional_payload {
-            render_variant_payload_type(n: type_node, shared_types: shared_types, source_indices: env.source_indices)
+            render_variant_payload_type(n: type_node, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
           } else {
             render_rust_type(n: type_node, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
           }
@@ -18111,7 +18111,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   } else {
     concat("&self, ", params_str)
   }
-  let output_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
+  let output_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let bound = bind_operation_transport(t: eff_transport, op_node: op_node, source_indices: env.source_indices)
   let is_rest = match bound {
@@ -18220,7 +18220,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 // function no longer asks what the operation IS, only how Rust spells it.
 fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   match bound {
-    RestBound { transport: t } => emit_rest_call(op_name: op_name, transport: t, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
+    RestBound { transport: t } => emit_rest_call(op_name: op_name, transport: t, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env, emit_info: emit_info)
     ShellBound { transport: t, result_fields: rsf } => emit_shell_call(op_name: op_name, transport: t, registry: registry, depth: depth, result_fields: rsf, op_node: op_node, source_indices: source_indices, env: env, shared_types: shared_types, emit_info: emit_info)
     FileBound { verb: v, path_template: pt, result_fields: fs } =>
       emit_file_call(verb: v, path_template: pt, result_fields: fs, source_indices: source_indices)
@@ -18232,7 +18232,7 @@ fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<Str
   }
 }
 
-fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
+fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let has_config_auth = match service_config_auth(n: service_item, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
   let has_basic_auth = match transport_auth_basic(t: transport, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
   if has_config_auth && has_basic_auth {
@@ -18251,7 +18251,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
     let val_str = emit_simple_expr(expr: hval, target: Rust, source_indices: source_indices)
     concat("let request = request.header(\"", field_init_node_name_at(n: h, source_indices: source_indices), "\", ", val_str, ");")
   )
-  let output_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+  let output_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   let result_lowering = emit_rust_rest_result_lowering(op_node: op_node, transport: transport, output_type: output_type, source_indices: source_indices, shared_types: shared_types, env: env)
   let all_lines = concat([client_init, url_line, auth_line, basic_auth_line],
     header_lines, [query_line, body_line, result_lowering])
