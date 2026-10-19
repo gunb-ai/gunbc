@@ -1,0 +1,37 @@
+module test.claim.wire_schema_derivation_witness
+
+import std.types { String, List, Bool }
+import v2.std.decl_index { decl_facts, DeclFact }
+import v2.std.node { Node, Authored, StructuralLabel, Positional }
+import test.claim.wire_strict_reader_witness { read_authentication_declared }
+
+// THE ONE INHABITANCE CLAIM for wire_strict_reader_witness: the batched decl_facts pass over
+// [dag, src/v2] yields, for ReadAuthentication, the field list the differential witness supplies.
+// The pool read runs here once and not in every decode assertion (DESIGN 3).
+test fn derived_fields_of_read_authentication_are_the_supplied_list() -> Bool {
+  let hits = ra_hits()
+  count(hits) == 1 && all(hits, f => node_field_names(n: f.node) == read_authentication_declared)
+}
+
+// The fields a record type declaration's node carries: its direct children, one Authored edge per
+// field whose label is the field name and whose target is the field's type (a record type is not a
+// payload Conj of binders, which is why declared_field_list reads it as empty).
+fn node_field_names(n: Node) -> List<String> {
+  fold(n.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Authored { name: nm } => concat(acc, [nm as String])
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+}
+
+// RED: a field list that is not the declared one is not the derived one.
+test fn derived_fields_differ_from_a_reordered_list() -> Bool {
+  let hits = ra_hits()
+  count(hits) == 1 && all(hits, f => node_field_names(n: f.node) != ["requested_at", "enrollment_id", "assertion_b64"])
+}
+
+fn ra_hits() -> List<DeclFact> {
+  decl_facts(pool_roots: ["dag", "src/v2"]) |> filter(f => f.qualified_name == "gunbc.auth.approval_device_wire.ReadAuthentication")
+}
