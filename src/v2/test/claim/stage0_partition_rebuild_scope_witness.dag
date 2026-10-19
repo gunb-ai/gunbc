@@ -32,6 +32,7 @@ import gunbc.stage0_partition_rebuild_scope {
   stage0_partition_rebuild_release_scope_empty_today,
   stage0_next_pass_executable_assembly,
   regen_convergence_bound_exceeded,
+  regen_convergence_generation_bound,
   stage0_partition_authority_storage_path,
   stage0_partition_move_explained_by_changed_paths
 }
@@ -548,4 +549,11 @@ test fn witness_shell_crate_root_has_an_owner_holds() -> Bool {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: _, executable_assembly: _ } => count(o) == 1
     _ => false
   }
+}
+
+// ONE bound serves progress admission and loop termination: the getter the host passes to
+// regen_admit_generation_progress is the very quantity the termination predicate compares.
+test fn witness_regen_bound_getter_and_predicate_agree_holds() -> Bool {
+  !regen_convergence_bound_exceeded(generation_ordinal: regen_convergence_generation_bound() - 1)
+    && regen_convergence_bound_exceeded(generation_ordinal: regen_convergence_generation_bound())
 }
