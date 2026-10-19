@@ -359,37 +359,38 @@ fn unanswered<T>(row: RuntimeIdentityAxisRow, report: AxisReport<T>) -> AxisExam
 // modeling DESIGN section 2 forbids. The witness
 // `test_refusal_is_unprovable_and_preserves_its_kind` is what keeps this honest.
 // THE FOURTH AND FIFTH ARMS ARE NOT SYNONYMS FOR `Unread`. `Unread` means the side gave no answer at all;
-// these two mean the side ANSWERED and the answer was not evidence. They split on WHO HAS TO DO SOMETHING,
-// which is the only thing that matters to the operator reading the verdict:
-//  - `NoEligibleEvidence` -- the octets themselves could not name an interface (all-null, locally
-//    administered, group, or simply an empty list). That is a fact about the UNIT.
-//  - `ProvenanceUnestablished` -- the octets may be flawless and the SOURCE cannot show permanence, which
-//    is a fact about the PROBE and the file it read. Blaming the unit for it is how a tooling defect gets a
-//    machine condemned, and it is the reason this arm is not folded into the one above: a fold that picks
-//    whichever check noticed first would report a probe bug as a unit bug roughly half the time.
-// A side can be in BOTH states at once -- some addresses from a current-only source, others whose origin was
-// never recorded -- and the fold reports both gaps rather than the first it found. Folding either into
-// `Unread` would tell an operator "nobody answered", the wrong diagnosis and the wrong next human; folding
-// either into a divergence would report two machines that never disagreed as disagreeing (DESIGN section 5,
-// a fabricated output). Only counts are carried: the eligible count is 0 by definition -- that is what the
-// arm's NAME asserts -- and a field that can hold exactly one value is noise beside a real one. The count is
-// what makes the gap actionable: "reported 4, none usable" is a probe bug, "reported 0" is a unit problem,
-// and those are different tickets. The
-// addresses themselves are NOT carried, because this module must not become a storable register of who the
-// fleet's machines are (header), and a gap is not the place to start.
+// these two mean the side ANSWERED and the answer was not evidence. They split on WHICH EVIDENCE IS MISSING,
+// which is the only thing this model is entitled to distinguish:
+//  - `NoEligibleEvidence` -- no handed-over address can name an interface at all (all-null, locally
+//    administered, group, or simply an empty list). The octets themselves are what disqualifies them.
+//  - `ProvenanceUnestablished` -- the octets may be unobjectionable and the SUPPLIED PROVENANCE does not
+//    establish permanence. Nothing about the octets is in question; what is missing is a source standing.
+// Neither arm says which component is at fault, and the model has no evidence to say it: a gap records what
+// was not established, not who to tell. Conflating the two would report the same missing evidence either way
+// and lose the one distinction an operator can act on -- re-check what was reported, or supply a source
+// standing. A side can be in BOTH states at once, and the fold reports both gaps rather than the first it
+// found. Folding either into `Unread` would say "nobody answered", which is a different claim; folding either
+// into a divergence would report two machines that never disagreed as disagreeing (DESIGN section 5, a
+// fabricated output). `NoEligibleEvidence` carries a count and no list: the eligible count is 0 by definition
+// -- that is what the arm's NAME asserts -- and a field that can hold exactly one value is noise beside a real
+// one, while `reported 0` and `reported 5` are genuinely different situations. `ProvenanceUnestablished`
+// carries the CAUSES (below), so it carries no separate count. The addresses themselves are NOT carried in
+// either arm, because this module must not become a storable register of who the fleet's machines are
+// (header), and a gap is not the place to start.
 type RuntimeIdentityAbsence
   = Unread { reason: NonEmptyStr }
   | ControllerRefused { refusal: RuntimeIdentityRefusal }
   // THIS SIDE HANDED OVER ADDRESSES AND NONE OF THEM CAN NAME AN INTERFACE: each was null, locally
-  // administered, or group. The count is how many it handed over, so `reported 0` (read nothing) and
-  // `reported 5` (read a list of soft addresses) are distinguishable -- different faults, different fixes.
+  // administered, or group. The count is how many it handed over, so `reported 0` (nothing handed over) and
+  // `reported 5` (a list of addresses that all fail the address tests) are distinguishable -- different
+  // missing evidence, and an operator acts on them differently.
   | NoEligibleEvidence { reported_count: Int }
-  // THIS SIDE HANDED OVER ADDRESSES WHOSE SOURCE CANNOT ESTABLISH PERMANENCE -- a current address read from
-  // `ip link`-style state, or an address of unknown origin. DISTINCT from `NoEligibleEvidence` on purpose and
-  // on the operator's behalf: there the addresses themselves were unusable, which is a fact about the unit;
-  // here the six octets may be flawless and the PROBE read the wrong file, which is a fact about the
-  // tooling. Folding the two into one arm is how a probe defect gets blamed on a machine, and the fold
-  // reports BOTH when both are true rather than picking the first one it noticed.
+  // THIS SIDE HANDED OVER ADDRESSES WHOSE SUPPLIED PROVENANCE DOES NOT ESTABLISH PERMANENCE -- a current
+  // address, or an address whose source was never recorded. DISTINCT from `NoEligibleEvidence` because the
+  // missing evidence is different: there it is the addresses that cannot name an interface; here the octets
+  // may be unobjectionable and what is absent is a source standing. Neither reading assigns fault -- this is
+  // a statement about the evidence supplied, not about who supplied it badly -- and the fold reports BOTH
+  // gaps when both are true, rather than picking the first one it noticed.
   //
   // WHY IT CARRIES THE CAUSES THEMSELVES AND NOT A COUNT OF THEM. The causes ARE the diagnostic content of
   // this gap: "the probe reported the address IN USE, from `read from live interface state`" and "no source
@@ -654,18 +655,21 @@ fn axes_agree(pair: AxisReadingPair) -> Bool {
 // IEEE says must not be used as an identifier -- see `extdeps.network.mac.mac_address_is_null`) AGREED, and
 // two sides where the OS reported an empty list "disagreed" with a firmware that had plenty. Neither is a
 // divergence; both mean this axis did not answer, and now each says WHICH side and HOW MUCH it reported, so
-// an operator can tell a mute NIC from a probe reading the wrong file.
+// the two cases stay distinguishable in the verdict instead of collapsing into one silence.
 //
 // TWO INDEPENDENT THINGS MAKE AN ADDRESS USABLE, and only one of them is a property of the six octets.
 // `mac_is_permanent_interface_identity` reads the octets and says the address is universally administered
 // and unicast; nothing in the octets says the address is the one etched on the interface, because software
 // can set any address it likes and the octets will look perfect. So each reported address also carries the
-// SOURCE it came from (`ReportedNetworkAddress.provenance`), and an address is usable only when BOTH say so.
-// An earlier shape inferred permanence from the octets alone: a current address spoofed to match a
-// burned-in one produced a Match, and nothing in the verdict could say the address had been assigned by
-// software rather than read from firmware. That is the silent widen DESIGN section 5 refuses, and it is why
-// `ProvenanceNotEstablished` is its own absence rather than an `Unread` -- "nobody told me the source" and
-// "the source was a software-set current address" send an operator to different files.
+// SUPPLIED PROVENANCE the caller asserts for it (`ReportedNetworkAddress.provenance`), and this fold uses an
+// address only when the octets pass the address tests AND the supplied provenance is `PermanenceEstablished`
+// -- which is that arm ASSERTING a permanent source, not a source travelling on the arm or being verified
+// here (see `AddressProvenance`). An earlier shape inferred permanence from the octets alone: a current
+// address spoofed to match a burned-in one produced a Match, and nothing in the verdict could record that
+// the address had been assigned by software rather than read from firmware. That is the silent widen DESIGN
+// section 5 refuses, and it is why `ProvenanceNotEstablished` is its own absence rather than an `Unread`:
+// "no provenance was supplied" and "the supplied provenance says current-only" are different missing
+// evidence, and the causes keep them apart.
 //
 // WHY THE ADDRESSES ARE STRUCTURED RATHER THAN THE STANDING. This axis still uses the ONE `AxisStanding<T>`
 // every other axis uses; what changed is T. A parallel `Observed | Unobserved | Refused` sum carrying
@@ -683,9 +687,10 @@ fn axes_agree(pair: AxisReadingPair) -> Bool {
 // to a fn whose parameter names the concrete type -- which is why the two helpers below are concrete and
 // small rather than general. The deficit and its climb trigger are tracked as
 // gunbc.recurring_failure_mode.nested_field_read_through_a_binder_of_an_inferred_generic_result (third
-// specimen); when that row climbs, `nic_examination` collapses onto `standing_report` and `resolve_nic_side`
-// loses its duplicated table. Until then the duplication here is the tracked cost of the deficit, and it is
-// the ONLY reason these two fns exist -- the four combinations they enumerate are otherwise the generic's.
+// specimen); when that row climbs, `nic_examination` collapses onto `standing_report` and loses the four-way
+// shape it shares with it. `resolve_nic_side` does NOT retire with it: which addresses are usable and which
+// gap each absence earns is this axis's own domain logic, not the generic's. What the deficit costs today is
+// only the duplicated four-way shape inside `nic_examination`.
 //
 // ONE ADDRESS AS THIS AXIS SEES IT: the octets, and where they came from. A record rather than a pair of
 // booleans -- not because a bool could not record the conclusion (the free-standing `PermanenceEstablished`
@@ -767,10 +772,12 @@ fn nic_side_evidence(standing: AxisStanding<List<ReportedNetworkAddress>>) -> Ni
 }
 
 // THE TWO CONDITIONS, APPLIED TOGETHER, in the one place that decides them. Extraction rather than a
-// predicate: flat_map over the provenance keeps only what a source established, so no `is_established` bool
-// matches a variant and no caller can ask for the conclusion without the source. The octet screen then runs
-// on that, and both are needed -- an established address that is locally administered is as useless to this
-// axis as a permanent-looking address nobody can source.
+// predicate: flat_map keeps only the addresses whose supplied provenance is `PermanenceEstablished` (that
+// arm asserts the source standing; it is not verified here -- see `AddressProvenance`), so no
+// `is_established` bool is invented to stand in for reading the arm itself, and the eligibility decision and
+// the arm it rests on cannot drift apart. The octet screen then runs on that, and both are needed -- an
+// established address that is locally administered is as useless to this axis as a permanent-looking address
+// whose supplied provenance does not establish permanence.
 fn usable_addresses(reported: List<ReportedNetworkAddress>) -> List<Eui48Address> {
   reported
     .flat_map(r => addresses_from_established_source(entry: r))
@@ -828,7 +835,7 @@ fn nic_examination(
 // "it answered" and "what it answered is usable" are settled in one place, per side, before the two sides
 // ever meet. `reported_count` survives the screen because the gap must be able to say how much was
 // rejected: `reported 0` (nothing was read at all) and `reported 5` (read, and none of it usable) are
-// different faults with different fixes, and both used to collapse into the same silence.
+// different missing evidence and are not the same silence, which is what the count is for.
 fn resolve_nic_side(standing: AxisStanding<List<ReportedNetworkAddress>>) -> ResolvedNicSide {
   match nic_side_evidence(standing: standing) {
     NicDidNotAnswer { absence: a } => SideCannotAnswer { absences: [a] }
@@ -887,7 +894,7 @@ type UnestablishedRemedy
   // unsourced address may still be the machine's real permanent address, and nothing here may say otherwise.
   | RecordTheSourceBeforeTrustingTheAddress
 
-// WHAT THE PROBE FAILED TO ESTABLISH, IN THE OPERATOR'S TERMS. The reason this fn exists at all is to make
+// WHAT THE SUPPLIED PROVENANCE DID NOT ESTABLISH, AS A REMEDY DERIVED FROM THE CAUSE. The reason this fn
 // the carried causes CONSUMED rather than merely stored: a cause nobody reads is documentation with a type
 // annotation, and the HOLD named precisely that -- a distinction authored, promised, and discarded. Two
 // causes, two remedies, and the current-only one QUOTES THE PROBE'S OWN WORDS, so a fold that substituted,

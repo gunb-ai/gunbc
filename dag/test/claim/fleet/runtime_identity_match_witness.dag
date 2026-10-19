@@ -150,9 +150,9 @@ fn current_only_report(addr: Eui48Address, detail: NonEmptyStr) -> ReportedNetwo
   }
 }
 
-// AN ADDRESS WITH NO RECORDED SOURCE AT ALL. Not the same as current-only: that is a known limitation to
-// reason about, this is an unknown one, and the module keeps them apart so an operator can tell a probe that
-// read the wrong file from a probe that never recorded what it read.
+// AN ADDRESS WITH NO RECORDED SOURCE AT ALL. Not the same as current-only: one says what was read (live
+// state), the other says nothing was recorded about where the address came from. The module keeps them apart
+// so the two situations stay distinguishable in the verdict.
 fn unsourced_report(addr: Eui48Address) -> ReportedNetworkAddress {
   ReportedNetworkAddress {
     address: addr,
@@ -718,9 +718,9 @@ fn gap_kinds(gaps: List<RuntimeIdentityGap>) -> List<String> {
 }
 
 // A gap list that says EXACTLY THIS: one gap, on one named side, of one named kind, with one count. Used by
-// the provenance tests, where WHICH side failed and WHY are the whole claim -- an assertion that only
-// counted gaps would pass on a module that blamed the wrong side or gave the wrong reason, and both of those
-// were real defects in this file's history. Written as one conjunction per kind rather than one helper
+// the provenance tests, where WHICH side is missing evidence and WHAT kind is missing are the whole claim --
+// an assertion that only counted gaps would pass on a module that put the gap on the other side or gave the
+// wrong reason, and both of those were real defects in this file's history. Written as one conjunction per kind rather than one helper
 // switched by a flag, because a Bool argument selecting which invariant to check is a rule that can be asked
 // about the wrong way round.
 fn one_provenance_gap_on(gaps: List<RuntimeIdentityGap>, side: IdentitySide, count: Int) -> Bool {
@@ -1458,9 +1458,9 @@ test fn test_model_divergence_is_a_corroborating_mismatch() -> Bool {
 // THE HOLD'S FIRST EXAMPLE ROW, VERBATIM IN SHAPE: a firmware side that answered with only the null
 // address, and an OS side whose query was REFUSED. Fail-closed alone was never the question -- the verdict
 // already refused -- the question is whether it reports BOTH failures. It must not quietly reduce to "the
-// controller refused" and drop the fact that the firmware handed over an address that cannot name anything,
-// because an operator told only about the refusal will fix the controller and come back to the same unit
-// still unidentified.
+// controller refused" and drop that the firmware side's address could not name an interface: a verdict that
+// names one gap and not the other leaves the second unaddressed whoever reads it, so each side is reported
+// on its own evidence.
 test fn test_an_ineligible_reading_survives_a_refusal_on_the_other_side() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
@@ -1537,11 +1537,10 @@ test fn test_identical_octets_differing_only_in_provenance_bind_nothing() -> Boo
   }
 }
 
-// AN ADDRESS WITH NO RECORDED SOURCE IS ITS OWN DIAGNOSIS, not current-only and not "nobody answered". The
-// distinction is who the operator goes to next: current-only means a probe that read live state and said so;
-// unestablished means a caller that handed over an address it cannot account for. A module that folded the
-// two together would send the operator to the tooling when the real fault is an unaccounted input, and both
-// are Unprovable, so nothing else would tell them apart.
+// AN ADDRESS WITH NO RECORDED SOURCE IS ITS OWN EVIDENCE STATE, not current-only and not "nobody answered".
+// What separates them is what was supplied: current-only arrives with the words describing what was read,
+// unestablished arrives with no source statement at all. Both are Unprovable, so nothing else in the verdict
+// would tell them apart -- which is exactly why the causes must survive the fold intact.
 test fn test_an_unsourced_address_reports_its_own_cause() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
@@ -1697,8 +1696,9 @@ test fn test_a_side_failing_two_ways_reports_two_reasons() -> Bool {
         && gaps.all(g => g.axis == NicSetAxis && g.side == PostBootOsSide)
         && gaps.any(g => gap_is_unprovenance(gap: g) && gap_unestablished_count(gap: g) == 1)
         && gaps.any(g => gap_is_no_eligible(gap: g) && gap_reported_count(gap: g) == 2)
-        // AND ONLY ONE OF THE TWO OFFERS A REMEDY. The other is a fact about the unit's addresses, not about
-        // the probe, and this fold does not advise on facts about units. Asserting the whole remedy list across
+        // AND ONLY ONE OF THE TWO OFFERS A REMEDY. The other gap's missing evidence is about addresses that
+        // cannot name an interface, not about a source standing, and the fold advises only on the latter.
+        // Asserting the whole remedy list across
         // BOTH gaps is what pins it: the provenance gap must contribute its one remedy and the ineligible gap
         // must contribute NOTHING. Under an implementation that answered "record the source" for every gap --
         // which is what an unconsidered arm looks like -- this line is the one that goes red, and it goes red
@@ -1710,10 +1710,10 @@ test fn test_a_side_failing_two_ways_reports_two_reasons() -> Bool {
 }
 
 // A GAP THAT IS NOT ABOUT PROVENANCE OFFERS NO REMEDY, whatever kind it is. The remedy map is a function from
-// `PermanenceNotEstablishedCause`, and only the provenance gap can name one: silence is an operator's question
-// to answer, a refusal is the controller's to explain, and "no eligible address" is a fact about the unit. An
-// implementation that handed advice on those gaps would send an operator to re-read a probe that was never
-// asked, or blame the tooling for a machine that has no usable address -- both wrong, and both invisible until
+// `PermanenceNotEstablishedCause`, and only the provenance gap can name one: silence, refusal, and
+// "no eligible address" each report missing evidence that is not about a source standing, so there is no
+// cause for the map to act on. An implementation that handed a remedy on those gaps would advise about a
+// source standing nobody reported missing -- advice untethered from its own evidence, and invisible until
 // somebody asks what a NON-provenance gap says. Each arm below is reached through the public verdict, so the
 // assertions are about `runtime_identity_match`'s output and not about a helper nobody else calls.
 test fn test_silence_and_refusal_gaps_offer_no_remedy() -> Bool {
@@ -1798,10 +1798,10 @@ test fn test_usability_needs_both_grounds() -> Bool {
 // ---------------------------------------------------------------------------
 
 // THE INELIGIBLE FIRMWARE SIDE IS STILL REPORTED WHEN THE OS MERELY STAYED SILENT. This is the specific
-// defect that stood here: the pre-side's own failure was only ever reported when the other side had answered,
-// so "firmware listed only soft addresses, OS never reported" produced a single gap blaming the OS and the
-// firmware's ineligibility VANISHED. Blaming one side for the other's silence is a diagnosis, and a wrong
-// diagnosis is worse than none.
+// defect that stood here: the pre-side's own missing evidence was only ever reported when the other side had
+// answered, so "firmware listed only soft addresses, OS never reported" produced a single gap on the OS and
+// the firmware's ineligibility VANISHED. Dropping one side's gap because of what the other side did is not a
+// finding; each side's evidence is reported on its own.
 test fn test_an_ineligible_firmware_side_is_reported_even_when_the_os_is_silent() -> Bool {
   let pre = PreBootIdentityStanding {
     unit: fixture_unit,
@@ -1882,8 +1882,8 @@ test fn test_two_sides_failing_differently_report_their_own_kinds() -> Bool {
         && one_no_eligible_gap_on(gaps: gaps.filter(g => g.side == PreBootFirmwareSide), side: PreBootFirmwareSide, count: 1)
         && one_provenance_gap_on(gaps: gaps.filter(g => g.side == PostBootOsSide), side: PostBootOsSide, count: 1)
         // AND the kinds are NAMED, not merely distinguishable. The helper that renders refusal kinds is the
-        // same helper that must render these two, so an operator gets a different sentence for "the unit
-        // gave us nothing usable" and "the probe never said where it read". Each side is filtered before it
+        // same helper that must render these two, so the verdict names "no address able to name an interface"
+        // and "supplied provenance does not establish permanence" as different absences. Each side is filtered before it
         // is asked, because a module that named one kind for both sides would satisfy every assertion above
         // this one. This is also what makes the ProvenanceUnestablished arm of that helper load-bearing
         // rather than dead code written to satisfy the compiler.
