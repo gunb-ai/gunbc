@@ -55,7 +55,7 @@ module test.claim.compute.output_capture_absence_wet_witness
 //      the Filesystem reads/writes with no mock_response.
 
 import std.types { Bool, Int, NonEmptyStr, String }
-import std.algebra { string_contains, to_string, trim }
+import std.algebra { length, string_contains, to_string, trim }
 import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
