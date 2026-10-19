@@ -863,6 +863,9 @@ fn zz_diag_count(d: Diagnostics) -> String {
 }
 
 fn zz_depth(n: Node) -> Int {
-  fold_list(xs: n.children, empty: 0, cons: fn(m, e) { let d = zz_depth(n: e.target)
-    if d > m { d } else { m } }) + 1
+  fold(n.children, init: 0, f: fn(m: Int, e: Edge) { zz_max(a: m, b: zz_depth(n: e.target)) }) + 1
+}
+
+fn zz_max(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
 }
