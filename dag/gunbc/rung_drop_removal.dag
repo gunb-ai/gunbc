@@ -33,6 +33,13 @@ import extdeps.git.inspect { MergeBaseOutcome, MergeBaseReported, NoCommonAncest
 // offline and deterministically; a PR number would make the law depend on an external service.
 // `pr` is a secondary citation and is not checked.
 //
+// CONSUMER, CLASSIFIED (DESIGN 3c). Consumed today by test.claim.rung_drop_removal_witness only, which
+// executes the law on a fixture repository and the live roster against HEAD; that witness is not on
+// the required path, so the law is not yet enforced per PR. DECLARED FRONTIER, named consumer: a
+// removals line per drop in the gunbc.design_ledgers rung-drop projection (docs/design-rung-drops.md),
+// whose rendering would call observed_removal_verdict. TRIGGER: that projection landing with its
+// regenerated artifact; until then this roster is a record, not an enforcement.
+//
 // DECLARATION GRAIN IS A NAMED FRONTIER, NOT A SILENT GAP. `removed_paths` are file paths, absent at
 // head by `git cat-file -e HEAD:<path>`. A removal of a symbol inside a surviving file needs the
 // native declaration index (neat-crab-340's DeclarationRef resolution); until that lands, such a
