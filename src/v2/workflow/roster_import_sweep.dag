@@ -1,7 +1,7 @@
 module v2.workflow.roster_import_sweep
 
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
-import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
+import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator, zz_normalize_probe }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.reference_site_collector {
@@ -1588,7 +1588,7 @@ fn zz_probe(stage: Int, path: String) -> String {
           match parse_module_prepared(tokens: stream, prepared: prepared) {
             Rejected { diagnostics: _ } => "parse-refused"
             Accepted { value: artifact, diagnostics: _ } =>
-              if stage == 2 { "parsed" } else {
+              if stage == 2 { "parsed" } else if stage >= 21 { zz_normalize_probe(stage: stage - 20, parse_tree: artifact.tree, spans: artifact.span_index) } else {
               match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
                 Rejected { diagnostics: _ } => "norm-refused"
                 Accepted { value: scoped, diagnostics: _ } =>

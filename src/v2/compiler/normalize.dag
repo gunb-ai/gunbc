@@ -1,11 +1,11 @@
 module v2.compiler.normalize
 
-import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list }
+import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list, is_empty }
 import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget, CapturedImports }
 import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.grammar { ParseTree, parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Correction, Diagnostic, Diagnostics, Locus, node_locus, Outcome, UserInputBoundary, Accepted, None, diagnostics_merge, diagnostics_singleton, rejected_with_pending, bind_outcome, outcome_accepted, Rejected, Unavailable }
-import v2.std.node { Edge, Node, Symbol, TypeNode, allocate_pending_occurrences, content_hash, node_occurrence_allocator_after, node_rebuild, node_subtree_nodes, well_formed, ComputationNode }
+import v2.std.node { Edge, Node, Symbol, TypeNode, allocate_pending_occurrences, content_hash, node_occurrence_allocator_after, node_rebuild, node_subtree_nodes, node_subtree_count, well_formed, ComputationNode }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, ScopedOccurrenceAllocator, scoped_occurrence_allocator }
 import v2.std.compilers.sugar { ProductionIdentityKey, SugarKey, apply_sugar, sugar_rule_for_key }
 import v2.compiler.body_lowering_fold { BodyLowering, body_term_of, BodyLoweredTree, WrapperRetention, body_lowering_after_pending, body_lower_finish_for_normalize, body_lowered_tree_map_node, body_lowered_tree_of, body_lowered_tree_over, body_lowered_tree_retained, body_lowered_tree_then, no_wrapper_retentions, wrapper_retentions_concat, body_lower_fn_decl_to_census_arrow, body_lower_service_decl, body_lower_resource_decl, body_lower_resource_decl_declared_kind_optional, body_lower_is_deferred_lower_at_normalize, DeclaredTypeKind, DeclaredTypeModifiers, DeclaredTypeModifiersAbsent, DeclaredTypeModifiersPresent, body_lower_type_decl_declared_kind_optional, body_lower_type_decl_declared_modifiers, declared_record_names, declared_resource_names }
@@ -789,6 +789,57 @@ fn normalize_census(parse_tree: ParseTree) -> Outcome<CensusTree> {
               )
             }
           }
+      }
+  }
+}
+
+fn zz_normalize_probe(stage: Int, parse_tree: ParseTree, spans: SpanIndex) -> String {
+  match bind_retention_free(o: normalize_node(n: parse_tree)) {
+    Rejected { diagnostics: _ } => "fold-refused"
+    Accepted { value: normalized, diagnostics: d } =>
+      if stage == 1 { "folded" } else {
+      match normalize_module_graft_finish(folded: normalized, cd: d) {
+        Rejected { diagnostics: _ } => "graft-refused"
+        Accepted { value: lowered, diagnostics: d1 } =>
+          if stage == 2 { "grafted" } else {
+          let allocated = allocate_pending_occurrences(root: lowered, allocator: normalize_allocator_resolve(source: NormalizeWithIsolatedAllocator, parse_tree: parse_tree))
+          let grafted = allocated.root
+          if stage == 3 { if node_subtree_count(n: grafted) > 0 { "allocated" } else { "x" } } else {
+          let wf = well_formed(n: grafted)
+          if stage == 4 { if wf { "wf" } else { "not-wf" } } else {
+          let parse_nodes = node_subtree_nodes(root: parse_tree)
+          if stage == 5 { "nodes" } else {
+          match test_marker_capture(tree: parse_tree) {
+            Rejected { diagnostics: _ } => "markers-refused"
+            Accepted { value: markers, diagnostics: _ } =>
+              if stage == 6 { "markers" } else {
+              match import_binding_capture(tree: parse_tree, nodes: parse_nodes, spans: spans) {
+                Rejected { diagnostics: _ } => "imports-refused"
+                Accepted { value: CapturedImports { bindings: bindings, modules: modules }, diagnostics: _ } =>
+                  if stage == 7 { "imports" } else {
+                  match type_declaration_modifier_capture(nodes: parse_nodes) {
+                    Rejected { diagnostics: _ } => "mods-refused"
+                    Accepted { value: modifiers, diagnostics: _ } =>
+                      let kinds = type_declaration_kind_capture(nodes: parse_nodes)
+                      if stage == 8 { "kinds" } else {
+                      match admit_normalized_tree(root: grafted, test_markers: markers, import_bindings: bindings, imported_modules: modules, type_declaration_kinds: kinds, type_declaration_modifiers: modifiers, diagnostics: d1) {
+                        Rejected { diagnostics: _ } => "admit-refused"
+                        Accepted { value: tree, diagnostics: _ } =>
+                          if stage == 9 { "admitted" } else {
+                            if is_empty(xs: member_declaration_capture(tree: parse_tree)) { "members0" } else { "members" }
+                          }
+                      }
+                      }
+                  }
+                  }
+              }
+              }
+          }
+          }
+          }
+          }
+          }
+      }
       }
   }
 }
