@@ -1,0 +1,198 @@
+diff --git a/src/v1/stage0/src/cli_run.rs b/src/v1/stage0/src/cli_run.rs
+index 17a7e0e1fd31..09dfbddb3d23 100644
+--- a/src/v1/stage0/src/cli_run.rs
++++ b/src/v1/stage0/src/cli_run.rs
+@@ -15267,16 +15267,27 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
+                     let mut lock = errors.lock().expect("parse error lock");
+                     for d in fill.diagnostics.iter() {
+                         let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
+-                        let located = if span.file == path_str {
+-                            let lc =
+-                                crate::v1_std_core::byte_to_line_col(index.clone(), span.start);
+-                            format!("{path_str}:{}:{}", lc.line, lc.col)
+-                        } else {
+-                            path_str.clone()
+-                        };
++                        // THE LOCATION IS THE AUTHORITY'S. This site used to decide the shape of a
++                        // location itself -- `format!("{path_str}:{}:{}", lc.line, lc.col)` -- and to
++                        // special-case the one span shape it knew about (a synthetic span rendering
++                        // as the bare path). That is a third renderer in host Rust: it could only
++                        // ever answer "located" or "the path", never "this refusal has no position,
++                        // and here is why". It now CALLS the function emitted from the span
++                        // authority in `src/v1/00_core.dag`, which owns `file:line:col` AND the
++                        // typed unlocated arms, so the CLI, the compile lane, the module index and
++                        // this sweep all answer in the same units.
++                        //
++                        // The index is keyed by the span's OWN file, not by the path being swept:
++                        // a diagnostic may point at the file it was parsed from, and pinning the
++                        // key here would silently locate it against the wrong text.
++                        let mut source_indices = std::collections::HashMap::new();
++                        source_indices.insert(span.file.clone(), index.clone());
+                         lock.push(format!(
+                             "{}: {}",
+-                            located,
++                            crate::v1_std_core::render_span_location(
++                                (*span).clone(),
++                                std::rc::Rc::new(source_indices),
++                            ),
+                             crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
+                         ));
+                     }
+diff --git a/src/v1/stage0/src/cli_run/emit_host.rs b/src/v1/stage0/src/cli_run/emit_host.rs
+index 6531c5e4de83..1b150b6a2000 100644
+--- a/src/v1/stage0/src/cli_run/emit_host.rs
++++ b/src/v1/stage0/src/cli_run/emit_host.rs
+@@ -1147,8 +1147,12 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
+     > {
+         match resolved {
+             Ok((graph, _)) => {
+-                let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
++                // The location in each line comes from the ONE authority in 00_core.dag; the
++                // index is the graph's own, so the lane line and the CLI line for one diagnostic
++                // cannot be computed against two different files' text.
++                let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                     graph.diagnostics.clone(),
++                    crate::v1_compiler_compile::dag_graph_source_indices(graph.clone()),
+                 );
+                 if !blocking.is_empty() {
+                     let detail = blocking.iter().cloned().collect::<Vec<_>>().join("; ");
+@@ -1487,8 +1491,9 @@ fn compile_dag_primitive_call_edges_on_this_thread(
+     v1_rt::trace_mark("primitive-call-edges.resolve.done".to_string());
+     v1_rt::trace_mark("primitive-call-edges.walk.begin".to_string());
+     let Some(graph) = resolved.graph.clone() else {
+-        let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
++        let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+             resolved.diagnostics.clone(),
++            resolved.source_indices.clone(),
+         );
+         return PrimitiveCallEdgeCensus::Refused {
+             cause: format!(
+@@ -1501,8 +1506,9 @@ fn compile_dag_primitive_call_edges_on_this_thread(
+     let mut blocked_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
+     for d in resolved.diagnostics.iter() {
+         if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+-            let message = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
++            let message = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                 Rc::new(vec![d.clone()].into()),
++                resolved.source_indices.clone(),
+             )
+             .iter()
+             .next()
+diff --git a/src/v1/stage0/src/declaration_index.rs b/src/v1/stage0/src/declaration_index.rs
+index 51a2fb4e7aad..f63ae3015cea 100644
+--- a/src/v1/stage0/src/declaration_index.rs
++++ b/src/v1/stage0/src/declaration_index.rs
+@@ -3213,10 +3213,25 @@ pub fn render_finding(
+     let located = match finding.offset {
+         Some(offset) => match std::fs::read_to_string(workspace.join(&finding.rel_path)) {
+             Ok(content) => {
++                // THE ONE AUTHORITY, NOT A SECOND RENDERER. Composing byte_to_line_col into a
++                // `path:line:col` string HERE would be a fork of the format the seed owns -- the
++                // arithmetic would agree and the printed shape could still drift. The index is
++                // keyed by the SAME path the span carries, which is what the authority looks up.
+                 let index =
+                     crate::v1_std_core::build_newline_index(finding.rel_path.clone(), content);
+-                let lc = crate::v1_std_core::byte_to_line_col(index, offset);
+-                format!("{}:{}:{}", finding.rel_path, lc.line, lc.col)
++                let mut source_indices: std::collections::HashMap<
++                    String,
++                    std::rc::Rc<crate::v1_std_core::NewlineIndex>,
++                > = std::collections::HashMap::new();
++                source_indices.insert(finding.rel_path.clone(), std::rc::Rc::new(index));
++                crate::v1_std_core::render_span_location(
++                    crate::v1_std_core::SourceSpan {
++                        file: finding.rel_path.clone(),
++                        start: offset,
++                        end: offset,
++                    },
++                    std::rc::Rc::new(source_indices),
++                )
+             }
+             Err(_) => finding.rel_path.clone(),
+         },
+diff --git a/src/v1/stage0/src/module_path_index/index.rs b/src/v1/stage0/src/module_path_index/index.rs
+index 346123186921..ded9000f0dfe 100644
+--- a/src/v1/stage0/src/module_path_index/index.rs
++++ b/src/v1/stage0/src/module_path_index/index.rs
+@@ -36,6 +36,10 @@ pub struct ModuleBindingRefusal {
+     /// distinguishable and the location stays host-independent.
+     pub source_path: String,
+     pub diagnostic: Rc<CompilerDiagnostic>,
++    /// The file's own text, carried so the location can be RENDERED rather than guessed.
++    /// Without it this host site had no way to ask the seed where the span is, and it printed
++    /// byte offsets instead -- see `rendered`.
++    pub source: String,
+ }
+ 
+ impl ModuleBindingRefusal {
+@@ -43,14 +47,31 @@ impl ModuleBindingRefusal {
+         diagnostic_to_span(self.diagnostic.clone())
+     }
+ 
+-    /// Rendering is for display only; the typed diagnostic above is the authority.
++    /// THE LOCATION IS THE AUTHORITY'S. This is host Rust, and it used to own its own format:
++    /// `format!("{}:{}-{}: {}", path, span.start, span.end, message)` -- two byte offsets wearing
++    /// a `file:line:col` shape, which is why a refusal whose span landed past a trailing comment
++    /// (`…m.dag:90-90`) was unlocatable: the reader has no line 90 and no way to find what `90`
++    /// means. It now CALLS the function emitted from `00_core.dag`'s span authority, so there is
++    /// one renderer for the whole compiler -- the CLI, the compile lane, the parse sweep, and this
++    /// line. A second renderer written here in Rust is the fork that work removes.
++    ///
++    /// The index is built from the file's own text, so the coordinates are computed against the
++    /// same bytes the span indexes into; a refusal about a file this site never read would come
++    /// back as the authority's typed unlocated line, which is the honest answer.
+     pub fn rendered(&self) -> String {
+         let span = self.span();
++        let index = crate::v1_std_core::build_newline_index(
++            self.source_path.clone(),
++            self.source.clone(),
++        );
++        let mut source_indices = std::collections::HashMap::new();
++        source_indices.insert(self.source_path.clone(), index);
+         format!(
+-            "{}:{}-{}: {}",
+-            self.source_path,
+-            span.start,
+-            span.end,
++            "{}: {}",
++            crate::v1_std_core::render_span_location(
++                (*span).clone(),
++                std::rc::Rc::new(source_indices),
++            ),
+             diagnostic_to_message(self.diagnostic.clone())
+         )
+     }
+@@ -149,6 +170,7 @@ pub fn parse_module_binding(
+             return Err(ModuleBindingRefusal {
+                 source_path: key,
+                 diagnostic: err.diagnostic.clone(),
++                source: content.to_string(),
+             });
+         }
+         // UNCHANGED, and still a conflation: see `module_declaration_line_present`.
+diff --git a/src/v1/stage0/src/target_invocation_host.rs b/src/v1/stage0/src/target_invocation_host.rs
+index 4c8a0e2e4a14..b32e751a1e32 100644
+--- a/src/v1/stage0/src/target_invocation_host.rs
++++ b/src/v1/stage0/src/target_invocation_host.rs
+@@ -1158,8 +1158,9 @@ fn run_cli_wire_census(
+             };
+         }
+     };
+-    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
++    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+         graph.diagnostics.clone(),
++        source_indices.clone(),
+     );
+     if !blocking.is_empty() {
+         return InvocationOutcome {
+@@ -1247,8 +1248,9 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
+             };
+         }
+     };
+-    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
++    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+         graph.diagnostics.clone(),
++        source_indices.clone(),
+     );
+     if !blocking.is_empty() {
+         return InvocationOutcome {
