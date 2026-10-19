@@ -21,7 +21,6 @@ import extdeps.swift_toolchain {
   Ubuntu2404,
   Verified,
   Unverified,
-  CitedToAuthority,
   pinned_swift_toolchain,
   swift_toolchain_pinned_archive,
   swift_toolchain_archive_as_pin,

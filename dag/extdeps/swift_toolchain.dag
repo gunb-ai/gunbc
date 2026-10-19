@@ -5,7 +5,13 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
-import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority }
+import extdeps.external_authority {
+  ExternalAuthority,
+  CitedFigureStanding,
+  CitedToAuthority,
+  TranscribedUncited,
+  ObservedByReceipt
+}
 import extdeps.uri { Uri, Https }
 import extdeps.version { VersionIdentity }
 
@@ -400,7 +406,16 @@ fn swift_toolchain_digest_is_a_known_refused_value(digest: Sha256Digest) -> Bool
 // The pin, readable only as a verified archive. A caller gets the typed row or nothing -- there is no
 // path by which an unverified row is handed out as a pin.
 fn swift_toolchain_pinned_archive() -> SwiftToolchainVerifiedArchive? {
-  match pinned_swift_toolchain {
+  swift_toolchain_archive_as_pin(archive: pinned_swift_toolchain)
+}
+
+// THE RULE, TAKING DATA. The row above is one archive, so an arm on it alone is a rule no caller can
+// exercise: nothing can hand `swift_toolchain_pinned_archive` an unverified row to see what it does, and
+// the claim that the boundary holds would be the module asserting it about itself. This is the same rule
+// with the archive as an argument, which is what lets a claim drive the boundary from BOTH sides -- an
+// unverified row built in the claim yields nothing, the pin yields its typed archive.
+fn swift_toolchain_archive_as_pin(archive: SwiftToolchainArchive) -> SwiftToolchainVerifiedArchive? {
+  match archive {
     Verified { archive: a } => Present { value: a }
     Unverified { declared: _ } => Absent
   }
