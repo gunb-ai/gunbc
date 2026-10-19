@@ -2,7 +2,7 @@ module gunbc.runner.runner_slot_cap_converge
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
-import std.algebra { trim }
+import std.algebra { trim, FreeSemigroup, non_empty_to_list }
 import std.measure { ByteSize, byte_size_count }
 import extdeps.systemd { MemoryMax, MemorySwapMax, MemoryHigh, TasksMax, ControlGroup, systemd_unit_property_wire, SystemdUnitProperty }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, SystemctlStep, ManagerReloadedImplicitly, ManagerReloadedExplicitly, ManagerNotReloaded, systemctl_mask_step, systemctl_unmask_step, systemctl_enable_step, systemctl_start_step, systemctl_stop_step, systemctl_daemon_reload_step }
@@ -162,6 +162,37 @@ fn host_cap_idle_gate(readings: List<SlotIdleReading>) -> HostCapIdleGate {
   if length(busy) == 0 && length(unproven) == 0 { HostCapsAllIdle } else { HostCapsBusy { busy: busy, unproven: unproven } }
 }
 
+// WHICH UNITS OWE A RELOAD, AND WHY WE KNOW (or do not). Owed: the unit's own NeedDaemonReload is not no.
+// Unobserved: no complete show block came back for it, which proves nothing about what a reload would load.
+// A population that could not be listed at all is its own arm, never a unit.
+type PendingReloadKind = PendingReloadOwed | PendingReloadUnobserved
+
+type UnitPendingReload {
+  unit: NonEmptyStr
+  kind: PendingReloadKind
+}
+
+type HostPendingReloads
+  = HostNoReloadPending
+  | HostReloadsPending { units: FreeSemigroup<UnitPendingReload> }
+  | HostPopulationUnobserved { reason: String }
+
+fn host_pending_reloads_owed(p: HostPendingReloads) -> Bool {
+  match p {
+    HostNoReloadPending => false
+    HostReloadsPending { units: _ } => true
+    HostPopulationUnobserved { reason: _ } => true
+  }
+}
+
+fn host_pending_reloads_wire(p: HostPendingReloads) -> String {
+  match p {
+    HostNoReloadPending => "none"
+    HostReloadsPending { units: us } => join(map(non_empty_to_list(xs: us), u => join([u.unit as String, match u.kind { PendingReloadOwed => " reload=owed (NeedDaemonReload is not no)" PendingReloadUnobserved => " reload=unobserved (systemctl show returned no complete block for it)" }], "")), "; ")
+    HostPopulationUnobserved { reason: r } => concat("the slot population was not observed: ", r)
+  }
+}
+
 // THE HOST PLAN, PURE: one decision for the whole host from every slot's standing and the idle gate.
 // Unread or disagreeing readings withhold (nothing is known well enough to touch); all at desired leaves
 // the caps in place; a differing cap runs only when every slot is idle, and the write+reload is then
@@ -231,27 +262,27 @@ fn host_cap_bracket_reloads(unit: NonEmptyStr) -> Bool {
 // because nothing is pending), writes, reloads once, activates and reads back. Everything else that is
 // not already at desired is Withheld, typed and named, and a withheld host BARS every other reload site:
 // a stale or hand-placed lower-cap file would otherwise load through an unrelated reload.
-// `pending_reload` is true when any observed instance owes a reload or was not read.
-fn host_cap_plan(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, files: CapFilesState, extras: List<NonEmptyStr>, pending_reload: Bool, retirement_cause: String?) -> HostCapPlan {
+// `pending_reloads` locates every instance that owes a reload or was not read, as a typed carrier rendered only into the Withheld cause.
+fn host_cap_plan(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, files: CapFilesState, extras: List<NonEmptyStr>, pending_reloads: HostPendingReloads, retirement_cause: String?) -> HostCapPlan {
   let problems = filter(map(standings, x => match host_cap_standing_problem(unit: x.unit, s: x.standing) { Present { value: v } => v Absent => "" }), v => v != "")
   if length(problems) > 0 {
     HostCapsWithheld { cause: join(problems, "; ") }
   } else {
     match files {
       CapFilesUnreadable { cause: c } => HostCapsWithheld { cause: concat("the cap files could not be observed: ", c) }
-      CapFilesSettled => host_cap_plan_settled_files(standings: standings, gate: gate, files_differ: false, extras: extras, pending_reload: pending_reload, retirement_cause: retirement_cause)
-      CapFilesDiffer => host_cap_plan_settled_files(standings: standings, gate: gate, files_differ: true, extras: extras, pending_reload: pending_reload, retirement_cause: retirement_cause)
+      CapFilesSettled => host_cap_plan_settled_files(standings: standings, gate: gate, files_differ: false, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
+      CapFilesDiffer => host_cap_plan_settled_files(standings: standings, gate: gate, files_differ: true, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
     }
   }
 }
 
-fn host_cap_plan_settled_files(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, files_differ: Bool, extras: List<NonEmptyStr>, pending_reload: Bool, retirement_cause: String?) -> HostCapPlan {
+fn host_cap_plan_settled_files(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, files_differ: Bool, extras: List<NonEmptyStr>, pending_reloads: HostPendingReloads, retirement_cause: String?) -> HostCapPlan {
   // PENDING IS CHECKED FIRST, BEFORE ANY ARM THAT OPENS A RELOAD OR AN ACTIVATION, THE LEAVE-IN-PLACE ARM
   // INCLUDED. "Nothing differs" covers only the managed files and the current values; a reload applies
   // every source the manager has pending (a hand-placed instance drop-in with a lower MemoryMax among
   // them), so a pending or unknown reload withholds whatever the managed files say.
-  if pending_reload && any(map(standings, x => x.unit), u => host_cap_bracket_reloads(unit: u)) {
-    HostCapsWithheld { cause: "a unit-file change is pending reload (or an instance could not be read), and a reload applies every pending source to every running slot, undrained: the managed cap files settling does not cover it" }
+  if host_pending_reloads_owed(p: pending_reloads) && any(map(standings, x => x.unit), u => host_cap_bracket_reloads(unit: u)) {
+    HostCapsWithheld { cause: join(["a unit-file change is pending reload (or an instance could not be read), and a reload applies every pending source to every running slot, undrained: the managed cap files settling does not cover it. pending: ", host_pending_reloads_wire(p: pending_reloads)], "") }
   } else if !files_differ && !any(standings, x => host_cap_standing_differs(s: x.standing)) {
     HostCapsLeaveInPlace
   } else {
