@@ -231,3 +231,55 @@ test fn list_introduction_eval_stage_refusal_is_lookup_miss() -> Bool {
     Present { value: Rejected { diagnostics: ds } } => ds.head.reason == ^eval_rejected_runtime_binding_lookup_miss
   }
 }
+
+fn list_introduction_eval_reason_is(wanted: Symbol) -> Bool {
+  match list_introduction_eval_of(source: list_introduction_eval_forward_source) {
+    Absent => false
+    Present { value: Accepted { value: _, diagnostics: _ } } => false
+    Present { value: Rejected { diagnostics: ds } } => ds.head.reason == wanted
+  }
+}
+
+test fn list_introduction_eval_reason_grounding_not_derived() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_grounding_not_derived)
+}
+
+test fn list_introduction_eval_reason_invalid_node() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_invalid_node)
+}
+
+test fn list_introduction_eval_reason_resolved_type_mismatch() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_resolved_type_mismatch)
+}
+
+test fn list_introduction_eval_reason_inhabitance_mismatch() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_inhabitance_mismatch)
+}
+
+test fn list_introduction_eval_reason_canonical_mismatch() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_canonical_mismatch)
+}
+
+test fn list_introduction_eval_reason_type_node() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_type_node)
+}
+
+test fn list_introduction_eval_reason_pending_children() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_pending_children)
+}
+
+test fn list_introduction_eval_reason_callee_absent() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_callee_absent)
+}
+
+test fn list_introduction_eval_reason_unsupported_callee() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_unsupported_callee)
+}
+
+test fn list_introduction_eval_reason_grounding_node_mismatch() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_grounding_node_mismatch)
+}
+
+test fn list_introduction_eval_reason_runtime_value_node_unrepresentable() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^eval_rejected_runtime_value_node_unrepresentable)
+}
