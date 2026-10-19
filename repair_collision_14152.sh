@@ -26,12 +26,40 @@ D="${REPO_DIR:-/tmp/repair_14152}"
 URL=https://github.com/gunb-ai/gunbc
 INSTR_REF="scratch/rebind-census"
 LOGS=/tmp/repair_14152_logs
+ROWS='collision_two_zero_arg_generic_calls_both_type
+collision_pair_still_refuses_when_instantiated_twice
+fold_replaces_a_binding_that_is_the_generic_declarations_own_form
+fold_refuses_a_declared_parameter_type_bound_to_a_distinct_settled_instance
+fold_replaces_a_binding_that_still_carries_a_type_variable_leaf
+fold_keeps_a_settled_binding_against_an_actual_that_still_carries_a_type_variable
+fold_refuses_two_distinct_settled_bindings_of_the_same_shape
+fold_refuses_int_bound_then_bool'
+
 rm -rf "$D" "$LOGS"; mkdir -p "$LOGS"
+
+say(){ echo "=== $* ==="; }
+
+if [ "${1:-}" = "--selfcheck" ]; then
+  # Run locally, no cargo and no network: proves the script's own scaffolding (function
+  # definition order, the row list, the per-row grep patterns) before a 30-minute dispatch.
+  # bash -n cannot catch "say: command not found" -- that is a runtime error, which is
+  # exactly what one dispatch cost me.
+  say "SELFCHECK"
+  echo "row-count=$(printf '%s\n' $ROWS | wc -l)"
+  for r in $ROWS; do
+    case "$r" in *collision*|*fold_*) ;; *) echo "BAD_ROW $r"; exit 1;; esac
+  done
+  echo "patcher-present=$(test -f "$(dirname "$0")/patch_producer_instantiate.py" && echo yes || echo NO)"
+  regen_present=$(test -f "$(dirname "$0")/instruments/regen_full.sh" && echo yes || echo NO)
+  echo "regen_present=${regen_present}"
+  test -f "$(dirname "$0")/patch_producer_instantiate.py" || { echo "SELFCHECK FAIL patcher"; exit 1; }
+  [ "$regen_present" = yes ] || { echo "SELFCHECK FAIL regen"; exit 1; }
+  echo "SELFCHECK OK"
+  exit 0
+fi
 
 say "cargo location"
 command -v cargo || { echo "FATAL no cargo on PATH"; exit 1; }
-
-say(){ echo "=== $* ==="; }
 
 say "clone"
 timeout 900 git clone -q "$URL" "$D/repo" || { echo "FATAL clone"; exit 1; }
@@ -58,14 +86,6 @@ patcher(){ python3 "$D/instr/patch_producer_instantiate.py" "$@"; }
 INFER=src/v1/04_infer.dag
 cp "$INFER" "$LOGS/infer.orig"
 
-ROWS='collision_two_zero_arg_generic_calls_both_type
-collision_pair_still_refuses_when_instantiated_twice
-fold_replaces_a_binding_that_is_the_generic_declarations_own_form
-fold_refuses_a_declared_parameter_type_bound_to_a_distinct_settled_instance
-fold_replaces_a_binding_that_still_carries_a_type_variable_leaf
-fold_keeps_a_settled_binding_against_an_actual_that_still_carries_a_type_variable
-fold_refuses_two_distinct_settled_bindings_of_the_same_shape
-fold_refuses_int_bound_then_bool'
 
 testrows(){ # testrows <label>  -- one cargo invocation, per-row verdicts by name
   local label="$1" log="$LOGS/test_$label.log"

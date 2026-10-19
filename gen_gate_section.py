@@ -266,15 +266,15 @@ p.append(
     "belong to the bound node's **head** (builtin `Map`), not to the callee, which is why the "
     "`(n.params|>count)==0 -> false` gate fires as designed.\n")
 p.append(
-    "So the question is not how to admit `A` bound as `Map(K,V)`, but **which producer hands the fold a `Map` "
-    "whose arguments are builtin `Map`'s own formal parameters instead of instantiated types or fresh "
-    "variables** \u2014 an empty-map constructor, or a declared type read without instantiation. Probe v16 names "
-    "that producer per row, by production call / expression identity, and the deliverable is whether it is "
-    "one producer or several; the outcome was pre-registered (O1 kernel-file leaves \u2192 a std substrate "
-    "prerequisite dispatched separately and this PR waits; O2 a handful of user positions \u2192 repair at that "
-    "construct; O3 all synthetic \u2192 name the minter; O4 many positions across modules \u2192 no single producer, "
-    "a binding-policy question; O5 empty columns \u2192 the probe did not measure). Until that measurement lands, "
-    "no code is built for B and no head-declared-parameters accessor is added inside this PR.\n")
+    "So the question was not how to admit `A` bound as `Map(K,V)` but **which producer hands the fold a "
+    "`Map` whose arguments are builtin `Map`'s own formal parameters instead of instantiated types or fresh "
+    "variables**. Probe v16 answered it and the answer is in the next section: **two producers by distinct "
+    "node signature, and 39 of the %d rows are ONE node** -- `borrowed_callable_call_type` returning a "
+    "callee\'s DECLARED generic return type un-instantiated, because a callable whose parameters are all "
+    "generic leaves the argument fold\'s subst empty and `substitute_generics` short-circuits on an empty "
+    "subst. It is not a builtin-generic substrate fact (pre-registered outcome O1 did NOT fire), so this PR "
+    "does not wait on a std prerequisite. The repair is in its own commit with its own RED, below.\n"
+    % (sh["fam"]["B"] + vc["fam"]["B"]))
 p.append(
     "Rows: %s (self-host); %s (v2-native-cli).\n" % (top("self-host", "B"), top("v2-native-cli", "B")))
 p.append(
