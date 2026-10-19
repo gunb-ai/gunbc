@@ -20,6 +20,12 @@ import std.types { List, String }
 // in a space it does not speak, so the shared fact is the part that is genuinely one fact.
 data emitted_population_manifest_basename: String = "emitted_population.rs"
 
+// The first line of the self-host step's verdict file, stated once beside the manifest it is read
+// with: the Rust writer (cli_run native_lane_runner run_self_host_frontier) and the .dag reader
+// (v2.compiler.self_host.seed_retention_frontier) both call these rather than each owning a copy.
+data self_host_frontier_verdict_passed_word: String = "controls-passed"
+data self_host_frontier_verdict_not_passed_word: String = "controls-not-passed"
+
 // The manifest's line grammar, stated once for the same reason the basename is.
 //
 // The emitter renders one line per path as `line_prefix ++ path`, joined by the separator; the

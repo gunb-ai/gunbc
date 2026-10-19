@@ -294,7 +294,7 @@ test fn witness_report_crate_entry_files_are_unexecuted_not_refused() -> Bool {
   let r = self_host_frontier_report_over(
     roster: frontier_roster,
     manifest_text: "// src/emitted_in_closure.rs\n// src/main.rs\n// src/lib.rs\n",
-    verdict_text: "controls-passed\nemitted_in_closure\n",
+    verdict_text: "controls-passed\nemitted_in_closure\nmain\nlib\n",
     observed_text: "src/alpha.rs\nsrc/bin/gamma.rs\nsrc/emitted_in_closure.rs\nsrc/main.rs\nsrc/lib.rs\n"
   )
   report_has(lines: r.lines, pattern: "self_emitted=1 emitted_unexecuted=2 seed_retained=2 unclassified=0")

@@ -18,7 +18,11 @@ import v2.compiler.self_host.emitter_producer_provenance {
 import std.integer { int_to_decimal_string }
 import gunbc.rust_emitted_edge { rust_module_emit_filename }
 import extdeps.rust.cargo { CargoTarget, Lib, Bin, cargo_target_source_path }
-import gunbc.stage0.stage0_emitted_population_manifest { emitted_population_paths_from_manifest }
+import gunbc.stage0.stage0_emitted_population_manifest {
+  emitted_population_paths_from_manifest,
+  self_host_frontier_verdict_passed_word,
+  self_host_frontier_verdict_not_passed_word
+}
 import v2.std.integer { Int }
 import v2.std.text { String }
 
@@ -628,11 +632,15 @@ fn frontier_path_standing(
   path: String
 ) -> FrontierStanding {
   match emitted_row_for_path(rows: emitted, path: path) {
-    Cons { head: row, tail: _ } => frontier_emitted_standing(
-      row: row,
-      executed_closure_modules: executed_closure_modules,
-      controls: controls
-    )
+    Cons { head: row, tail: _ } => if frontier_path_is_crate_entry(path: path) {
+      EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
+    } else {
+      frontier_emitted_standing(
+        row: row,
+        executed_closure_modules: executed_closure_modules,
+        controls: controls
+      )
+    }
     Empty => match retention_row_for_path(roster: roster, path: path) {
       Cons { head: row, tail: _ } => SeedRetained { row: row }
       Empty => Unclassified { crate_relative_path: path }
@@ -755,8 +763,6 @@ type SelfHostFrontierReport {
   exit: Int
 }
 
-data frontier_verdict_passed_word: String = "controls-passed"
-data frontier_verdict_not_passed_word: String = "controls-not-passed"
 
 fn frontier_nonempty_lines(text: String) -> List<String> {
   filter(xs: split(s: text, delimiter: "\n"), predicate: fn(line) { string_length(s: line) > 0 })
@@ -781,6 +787,10 @@ fn frontier_crate_entry_paths() -> List<String> {
     ],
     f: fn(parts) { frontier_file_path(parts: parts) }
   )
+}
+
+fn frontier_path_is_crate_entry(path: String) -> Bool {
+  length(xs: filter(xs: frontier_crate_entry_paths(), predicate: fn(entry) { entry == path })) > 0
 }
 
 fn frontier_path_is_emit_shaped(path: String) -> Bool {
@@ -876,7 +886,7 @@ fn self_host_frontier_report_over(roster: List<SeedRetentionFrontierRow>, manife
         frontier_no_observation(detail: "no observed stage0 .rs paths were given")
       } else if length(xs: filter(xs: manifest_paths, predicate: fn(p) { !frontier_path_is_emit_shaped(path: p) })) > 0 {
         frontier_no_observation(detail: concat("a manifest path is not emission-shaped src/<stem>.rs: ", match filter(xs: manifest_paths, predicate: fn(p) { !frontier_path_is_emit_shaped(path: p) }) { Cons { head: h, tail: _ } => h Empty => "" }))
-      } else if (word != frontier_verdict_passed_word) && (word != frontier_verdict_not_passed_word) {
+      } else if (word != self_host_frontier_verdict_passed_word) && (word != self_host_frontier_verdict_not_passed_word) {
         frontier_no_observation(detail: concat("unknown controls verdict word ", word))
       } else {
         let frontier = self_host_frontier(
@@ -884,7 +894,7 @@ fn self_host_frontier_report_over(roster: List<SeedRetentionFrontierRow>, manife
           observed_crate_rust_paths: observed,
           emitted: frontier_emitted_rows(paths: manifest_paths),
           executed_closure_modules: closure,
-          controls: if word == frontier_verdict_passed_word { ControlsPassed } else { ControlsNotPassed }
+          controls: if word == self_host_frontier_verdict_passed_word { ControlsPassed } else { ControlsNotPassed }
         )
         SelfHostFrontierReport {
           lines: concat([frontier_summary_line(frontier: frontier)], frontier_standing_refusal_lines(frontier: frontier)),
