@@ -61,8 +61,12 @@ fn sccache_release_archive_dir(rel: SccacheBinaryRelease, arch: NonEmptyStr) -> 
 
 fn sccache_release_archive_url(rel: SccacheBinaryRelease, arch: NonEmptyStr) -> NonEmptyStr {
   let dir = sccache_release_archive_dir(rel: rel, arch: arch)
-  join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "")
-    as NonEmptyStr
+  // `as NonEmptyStr` MUST sit on the same line as the closing `join(...)`: on its own line the parser
+  // starts a fresh statement and reports `undefined variable 'as'` (measured at head d233a87daeb, one
+  // hard diagnostic, the whole module refusing to emit). fleet_tailnet.dag:52 keeps `], "") as
+  // NonEmptyStr` on one line for the same reason. Non-emptiness is genuinely guaranteed here: the join
+  // always emits the literal `https://` prefix, so no release row can produce an empty url.
+  join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "") as NonEmptyStr
 }
 
 // THE PARAMETER RECORD BOTH CONSUMERS RUN THE EFFECT THROUGH. `+x` rather than `0755`: the cited
