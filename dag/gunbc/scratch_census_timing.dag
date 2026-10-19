@@ -10,6 +10,17 @@ import v2.compiler.module_acquisition { AcquisitionEnvReady, AcquisitionEnvUnpre
 import v2.workflow.floor_discovery_producer { FloorDiscoverySourcesObserved, FloorDiscoverySourcesRefused, floor_discovery_source_inventory_live }
 import gunbc.claim_coverage_census_s1_live { governed_bindings, content_index, marked_over_files, discovery_walk }
 
+import std.optional { Absent, Present }
+import std.algebra { map_lookup }
+import v2.cli.repository_layout { repository_module_file_of_path }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.source_authority { module_file_key }
+import v2.std.node { symbol_intern_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.test_marker_capture { test_marker_content }
+
+
 fn done(text: String) -> CliWireResponse {
   CliWirePrintable { bytes: concat(text, "\n"), exit: ExitSuccess }
 }
@@ -49,16 +60,6 @@ fn markers_n(n: Int) -> CliWireResponse {
 fn t3_markers_100() -> CliWireResponse { markers_n(n: 100) }
 fn t3_markers_200() -> CliWireResponse { markers_n(n: 200) }
 fn t3_markers_400() -> CliWireResponse { markers_n(n: 400) }
-
-import std.optional { Absent, Present }
-import std.algebra { map_lookup }
-import v2.cli.repository_layout { repository_module_file_of_path }
-import v2.compiler.tokenize { tokenize_prepared }
-import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.source_authority { module_file_key }
-import v2.std.node { symbol_intern_lexeme }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.compiler.test_marker_capture { test_marker_content }
 
 // stage 1 = tokenize, 2 = tokenize+parse, 3 = +test_marker_content; counts files that were Accepted.
 fn probe_one(env: AcquisitionEnv, stage: Int, path: String, contents: Map<String, String>) -> Int {
