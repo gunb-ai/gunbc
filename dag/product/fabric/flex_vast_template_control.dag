@@ -74,6 +74,39 @@ fn flex_template_create(api_key: Secret, spec: FlexTemplateSpec) -> String uses 
   }
 }
 
+// THE TYPED VERDICT OF A RUN: ensured only when the readback by name decides Noop (the template exists
+// with exactly the declared content and no credential env) AND the retired hash still reads back as
+// exactly one row. The exit and the receipt text are both derived from it; no text is searched.
+type FlexTemplateOutcome = FlexTemplateEnsured { hash: String } | FlexTemplateNotEnsured { reason: String }
+
+fn flex_template_outcome(spec: FlexTemplateSpec, after: FlexTemplateListing, retired: FlexTemplateListing) -> FlexTemplateOutcome {
+  match after {
+    FlexTemplateListRefused { cause: c } => FlexTemplateNotEnsured { reason: concat("READBACK FAILED: ", c) }
+    FlexTemplateListed { rows: rs } =>
+      match flex_template_decide(spec: spec, named: rs) {
+        FlexTemplateApply => FlexTemplateNotEnsured { reason: "READBACK FAILED: the template is not listed after the ensure" }
+        FlexTemplateRefuse { cause: c } => FlexTemplateNotEnsured { reason: concat("READBACK REFUSED: ", c) }
+        FlexTemplateNoop { hash: h } =>
+          match retired {
+            FlexTemplateListRefused { cause: c } => FlexTemplateNotEnsured { reason: concat("retired: UNREAD ", c) }
+            FlexTemplateListed { rows: rr } =>
+              if list_length(rr) == 1 {
+                FlexTemplateEnsured { hash: h }
+              } else {
+                FlexTemplateNotEnsured { reason: concat("retired: rows=", list_length(rr) as String) }
+              }
+          }
+      }
+  }
+}
+
+fn flex_template_outcome_line(outcome: FlexTemplateOutcome) -> String {
+  match outcome {
+    FlexTemplateEnsured { hash: h } => concat("OK hash=", h)
+    FlexTemplateNotEnsured { reason: r } => r
+  }
+}
+
 fn flex_template_run(api_key: Secret) -> ProcessExit uses net: Network {
   let spec = flex_vast_template_spec
   let first = flex_template_list(api_key: api_key, filter: flex_template_name_filter(name: spec.name))
@@ -88,28 +121,16 @@ fn flex_template_run(api_key: Secret) -> ProcessExit uses net: Network {
       }
       let after = flex_template_list(api_key: api_key, filter: flex_template_name_filter(name: spec.name))
       let retired = flex_template_list(api_key: api_key, filter: flex_template_hash_filter(hash: flex_template_retired_hash))
-      let verdict = match after {
-        FlexTemplateListRefused { cause: c } => concat("READBACK FAILED: ", c)
-        FlexTemplateListed { rows: rs } =>
-          match flex_template_decide(spec: spec, named: rs) {
-            FlexTemplateNoop { hash: h } => concat("OK hash=", h)
-            FlexTemplateApply => "READBACK FAILED: the template is not listed after the ensure"
-            FlexTemplateRefuse { cause: c } => concat("READBACK REFUSED: ", c)
-          }
-      }
-      let retired_line = match retired {
-        FlexTemplateListRefused { cause: c } => concat("retired: UNREAD ", c)
-        FlexTemplateListed { rows: rs } =>
-          concat("retired: rows=", list_length(rs) as String)
-      }
-      let text = join([spec.name as String, "act=" , acted, verdict, retired_line], "\n")
+      let outcome = flex_template_outcome(spec: spec, after: after, retired: retired)
+      let text = join([spec.name as String, "act=", acted, flex_template_outcome_line(outcome: outcome)], "\n")
       let written = Filesystem.Write(path: flex_vast_template_receipt_path, content: text)
       if !written.success {
         exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error))
-      } else if verdict.contains("OK hash=") && (retired_line == "retired: rows=1") {
-        ExitSuccess
       } else {
-        exit_failure(reason: text)
+        match outcome {
+          FlexTemplateEnsured { hash: _ } => ExitSuccess
+          FlexTemplateNotEnsured { reason: _ } => exit_failure(reason: text)
+        }
       }
     }
   }
