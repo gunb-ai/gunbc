@@ -895,6 +895,9 @@ test fn the_mint_refuses_a_body_for_another_environment() -> Bool {
     AcceptedReviewRefused {
       because: BodyNamesAnotherEnvironment { body_environment: b, claimed: c },
     } => b == other_env && c == gated_env
+    // Any OTHER refusal means the mint blocked this probe for a reason other than the one under test, so
+    // the test would be green for the wrong cause.
+    AcceptedReviewRefused { because: _ } => false
     Accepted { receipt: _ } => false
   }
 }
@@ -916,6 +919,7 @@ test fn the_mint_refuses_a_status_it_does_not_accept() -> Bool {
     ownership: minted_ownership(),
   ) {
     AcceptedReviewRefused { because: NotAcceptedStatus { status: s } } => s == 200
+    AcceptedReviewRefused { because: _ } => false
     Accepted { receipt: _ } => false
   }
 }
@@ -937,6 +941,7 @@ test fn the_mint_refuses_a_path_from_another_run() -> Bool {
     ownership: minted_ownership(),
   ) {
     AcceptedReviewRefused { because: PathNotForThisRun { run_id: r } } => r == 35447067113
+    AcceptedReviewRefused { because: _ } => false
     Accepted { receipt: _ } => false
   }
 }
@@ -982,7 +987,9 @@ test fn the_configured_installation_carries_both_ids_and_no_readback_can() -> Bo
   configured.installation_id == 888800001
     && configured.app_id == gate_app_id
     && configured.app_id != configured.installation_id
-    // and no readback can supply it: the enabled-rule row has exactly three fields, none of them an
-    // installation id — which is why the identity has to be READ from the installation endpoint.
-    && (fx_enabled_rule().app.id == gate_app_id)
+  // That the enabled-rule readback carries NO installation id — only id, enabled, and an app object with
+  // id and slug — is upstream's fact and is red there
+  // (test.claim.github_deployment_protection_rule_witness's four-field row test). Restating it here
+  // would be a second authority over one field list.
+}
 }
