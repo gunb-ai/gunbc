@@ -653,8 +653,10 @@ fn in_band_channel_of_command(command: IpmiCommandInvocation) -> InBandAccessWit
       InBandChannelNotObserved {
         refusal: RefusalTransportUnrecognized {
           wire: w,
-          why: "the -I name is not a transport ipmitool implements, so ipmi_intf_load would return NULL and "
-            "the command would exit before any channel was read" as NonEmptyStr,
+          why: concat(
+            "the -I name is not a transport ipmitool implements, so ipmi_intf_load would return NULL" as NonEmptyStr,
+            " and the command would exit before any channel was read"
+          ) as NonEmptyStr,
         },
       }
     IpmiCommandNotInBand { wire: w, why_not_in_band: why } =>
@@ -668,9 +670,13 @@ fn in_band_channel_of_command(command: IpmiCommandInvocation) -> InBandAccessWit
         refusal: RefusalRemoteHostWithInBandName {
           host: h,
           wire: w,
-          why: "an in-band -I name beside a -H host is a contradiction: in-band reaches the BMC through the "
-            "host's own device node, so this is not a host-to-BMC path, and the name cannot be trusted over "
-            "the argument that contradicts it" as NonEmptyStr,
+          why: concat(
+            concat(
+              "an in-band -I name beside a -H host is a contradiction: in-band reaches the BMC through the" as NonEmptyStr,
+              " host's own device node, so this is not a host-to-BMC path,"
+            ) as NonEmptyStr,
+            " and the name cannot be trusted over the argument that contradicts it"
+          ) as NonEmptyStr,
         },
       }
   }
@@ -1287,6 +1293,7 @@ fn pattern_identity_text(p: AuthorizationPattern) -> NonEmptyStr {
     OperatorApprovedCapability => "operator-approved capability" as NonEmptyStr
     HumanOnlyStep { step: _ } => "human-only step" as NonEmptyStr
     OperatorOwnSession => "operator's own session" as NonEmptyStr
+    AdministratorEdge => "administrator edge" as NonEmptyStr
   }
 }
 
@@ -1298,6 +1305,7 @@ fn realized_authorization_text(r: RealizedAuthorization) -> NonEmptyStr {
     RealizedHumanStep => "human step" as NonEmptyStr
     RealizedOperatorSession { arm: _ } => "operator session" as NonEmptyStr
     RealizedUnauthorized => "unauthorized" as NonEmptyStr
+    RealizedAdministratorEdge => "administrator edge" as NonEmptyStr
   }
 }
 
@@ -3389,6 +3397,8 @@ test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
                // inconclusive answer with the right words passed.
                ReadbackInconclusive { cause: ReadbackBodyCouldNotBeRead { why: _ }, evidence: e, observed_at: _ } =>
                  e == recovery_post_reset_readback_capture_ref
+               ReadbackInconclusive { cause: ReadbackNamedNoPasswordChangeMessage, evidence: _, observed_at: _ } =>
+                 false
                FactoryCredentialActiveAwaitingChange { message_id: _, evidence: _, observed_at: _ } => false
                CredentialNotAccepted { evidence: _, observed_at: _ } => false
              })
