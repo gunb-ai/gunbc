@@ -124,7 +124,8 @@ data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaa
 fn pin_with(secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeChainloaderPin {
   SitePxeEdgeChainloaderPinned {
     build: site_pxe_edge_chainloader_build_receipt(
-      upstream_revision: "ipxe-fixture-revision",
+      embedded_revision: "ipxe-fixture-revision",
+      built_from_commit: "fixture-commit",
       build_target: ipxe_arm64_efi_snponly,
       architecture: Aarch64,
       digest: digest_a,
