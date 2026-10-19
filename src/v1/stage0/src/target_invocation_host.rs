@@ -2006,17 +2006,31 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
             return unreached(format!("the rewritten modules could not be read: {cause}"))
         }
     };
-    let (base, base_tree) = if plan == "merge" || plan.starts_with("malformed") {
+    // (base worktree, base census, head census) per plan arm; an arm the reader adds and this
+    // match does not name refuses rather than falling through to a default.
+    let (use_base, base_census, use_head) = match plan.as_str() {
+        "full" => (true, true, true),
+        "base" => (true, true, false),
+        "shard" => (true, false, true),
+        "merge" => (false, false, false),
+        malformed if malformed.starts_with("malformed") => (false, false, false),
+        other => {
+            return unreached(format!(
+                "binding_diff_wave_plan returned an unknown plan: {other}"
+            ))
+        }
+    };
+    let (base, base_tree) = if !use_base {
         ((String::new(), None), String::new())
     } else {
-        match run_base_ambient_name_census(&scratch, &base_ref, &head, plan != "shard") {
+        match run_base_ambient_name_census(&scratch, &base_ref, &head, base_census) {
             Ok(base) => base,
             Err(cause) => return unreached(format!("base: {cause}")),
         }
     };
     // The base tree stays until the standing has read the texts the edit proof is computed from.
     let _base_tree = BaseTreeGuard(base_tree.clone());
-    let head_run = if plan == "full" || plan == "shard" {
+    let head_run = if use_head {
         match run_head_ambient_name_census(&head) {
             Ok(run) => run,
             Err(cause) => return unreached(format!("head: {cause}")),
