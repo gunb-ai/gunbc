@@ -16233,12 +16233,18 @@ fn emit_stored_record_field(f: Node, resolved_type: Node, outer_type_name: Strin
 // plain literal of a shared, unboxed struct is reused the same way, because the slot it fills is
 // overwritten and so its old box is dead too. No field's type changes: every slot stays Rc<T>, so
 // no container element widens (recurring_failure_mode by_value_record_widens_container_slots).
-type DyingLitField {
+type DyingLitInit {
   name: String
   stored: String
-  inner_struct: String
-  inner_names: List<String>
-  inner_stored: List<String>
+}
+
+type DyingLitShape
+  = DyingPlain { stored: String }
+  | DyingNested { struct_name: String, inits: List<DyingLitInit> }
+
+type DyingLitField {
+  name: String
+  shape: DyingLitShape
 }
 
 type DyingLitPlan {
@@ -16295,12 +16301,15 @@ fn dying_literal_plan(lit: Node, registry: Map<String, ItemInfo>, scope: InferSc
             let inner_fields = f_value.children
             DyingLitField {
               name: f_name,
-              stored: stored,
-              inner_struct: inner_tn,
-              inner_names: inner_fields |> map(g => field_init_node_name_at(n: g, source_indices: si)),
-              inner_stored: inner_fields |> map(g => emit_stored_record_field(f: g, resolved_type: inner_rt, outer_type_name: Present { value: inner_tn }, summary_name: inner_tn, ctor_name: inner_tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+              shape: DyingNested {
+                struct_name: inner_tn,
+                inits: inner_fields |> map(g => DyingLitInit {
+                  name: field_init_node_name_at(n: g, source_indices: si),
+                  stored: emit_stored_record_field(f: g, resolved_type: inner_rt, outer_type_name: Present { value: inner_tn }, summary_name: inner_tn, ctor_name: inner_tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+                })
+              }
             }
-          Absent => DyingLitField { name: f_name, stored: stored, inner_struct: "", inner_names: [], inner_stored: [] }
+          Absent => DyingLitField { name: f_name, shape: DyingPlain { stored: stored } }
         }
       )
       Present { value: DyingLitPlan { struct_name: tn, fields: planned } }
@@ -16311,38 +16320,38 @@ fn dying_rb_temp(field_index: Int, inner_index: Int) -> String {
   concat("__rb_", to_string(value: field_index), "_", to_string(value: inner_index))
 }
 
-fn dying_inner_literal(fld: DyingLitField, field_index: Int) -> String {
-  let inits = fld.inner_names |> enumerate |> map(np => concat(emit_ident(name: np.second, target: Rust), ": ", dying_rb_temp(field_index: field_index, inner_index: np.first)))
-  rust_shared_wrap_ctor(inner_expr: concat(fld.inner_struct, " \{ ", inits |> join(separator: ", "), " \}"))
+fn dying_inner_literal(struct_name: String, inits: List<DyingLitInit>, field_index: Int) -> String {
+  let rendered = inits |> enumerate |> map(np => concat(emit_ident(name: np.second.name, target: Rust), ": ", dying_rb_temp(field_index: field_index, inner_index: np.first)))
+  rust_shared_wrap_ctor(inner_expr: concat(struct_name, " \{ ", rendered |> join(separator: ", "), " \}"))
 }
 
 fn emit_dying_base_literal(plan: DyingLitPlan, base_param: String) -> String {
   let indexed = plan.fields |> enumerate
   let temp_lets = indexed |> flat_map(pair =>
-    let fld = pair.second
-    if fld.inner_struct == "" {
-      [concat("let ", dying_rb_temp(field_index: pair.first, inner_index: 0), " = ", fld.stored, ";")]
-    } else {
-      fld.inner_stored |> enumerate |> map(ip => concat("let ", dying_rb_temp(field_index: pair.first, inner_index: ip.first), " = ", ip.second, ";"))
+    match pair.second.shape {
+      DyingPlain { stored: stored } =>
+        [concat("let ", dying_rb_temp(field_index: pair.first, inner_index: 0), " = ", stored, ";")]
+      DyingNested { struct_name: _, inits: inits } =>
+        inits |> enumerate |> map(ip => concat("let ", dying_rb_temp(field_index: pair.first, inner_index: ip.first), " = ", ip.second.stored, ";"))
     }
   )
   let fresh_fields = indexed |> map(pair =>
     let fld = pair.second
-    if fld.inner_struct == "" {
-      concat(emit_ident(name: fld.name, target: Rust), ": ", dying_rb_temp(field_index: pair.first, inner_index: 0))
-    } else {
-      concat(emit_ident(name: fld.name, target: Rust), ": ", dying_inner_literal(fld: fld, field_index: pair.first))
+    let value = match fld.shape {
+      DyingPlain { stored: _ } => dying_rb_temp(field_index: pair.first, inner_index: 0)
+      DyingNested { struct_name: sn, inits: inits } => dying_inner_literal(struct_name: sn, inits: inits, field_index: pair.first)
     }
+    concat(emit_ident(name: fld.name, target: Rust), ": ", value)
   )
   let fresh = rust_shared_wrap_ctor(inner_expr: concat(plan.struct_name, " \{ ", fresh_fields |> join(separator: ", "), " \}"))
   let in_place = indexed |> map(pair =>
     let fld = pair.second
     let slot = concat("__rb_r.", emit_ident(name: fld.name, target: Rust))
-    if fld.inner_struct == "" {
-      concat(slot, " = ", dying_rb_temp(field_index: pair.first, inner_index: 0), ";")
-    } else {
-      let inner_assign = fld.inner_names |> enumerate |> map(np => concat("__rb_c.", emit_ident(name: np.second, target: Rust), " = ", dying_rb_temp(field_index: pair.first, inner_index: np.first), ";"))
-      concat("match Rc::get_mut(&mut ", slot, ") \{ Some(__rb_c) => \{ ", inner_assign |> join(separator: " "), " \} None => \{ ", slot, " = ", dying_inner_literal(fld: fld, field_index: pair.first), "; \} \}")
+    match fld.shape {
+      DyingPlain { stored: _ } => concat(slot, " = ", dying_rb_temp(field_index: pair.first, inner_index: 0), ";")
+      DyingNested { struct_name: sn, inits: inits } =>
+        let inner_assign = inits |> enumerate |> map(np => concat("__rb_c.", emit_ident(name: np.second.name, target: Rust), " = ", dying_rb_temp(field_index: pair.first, inner_index: np.first), ";"))
+        concat("match Rc::get_mut(&mut ", slot, ") \{ Some(__rb_c) => \{ ", inner_assign |> join(separator: " "), " \} None => \{ ", slot, " = ", dying_inner_literal(struct_name: sn, inits: inits, field_index: pair.first), "; \} \}")
     }
   )
   concat("\{ ", temp_lets |> join(separator: " "), " let mut __rb_h = ", emit_ident(name: base_param, target: Rust), "; match Rc::get_mut(&mut __rb_h) \{ Some(__rb_r) => \{ ", in_place |> join(separator: " "), " \} None => \{ __rb_h = ", fresh, "; \} \} __rb_h \}")
