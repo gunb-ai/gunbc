@@ -1,0 +1,9 @@
+src/v2/test/claim/body_cast_node.dag
+src/v2/test/claim/cli/v2_native_cli.dag
+src/v2/test/claim/execution/dag_binding_denotation.dag
+src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness.dag
+src/v2/test/claim/manual/bootstrap_footprint_anchor.dag
+src/v2/test/claim/namespace_xl0/value_position_whole_read.dag
+src/v2/test/claim/parse/coproduct_variant_duplicate.dag
+src/v2/test/claim/parse/variant_field_lowering.dag
+src/v2/test/v2_native_route.dag

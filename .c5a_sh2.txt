@@ -1,0 +1,9 @@
+src/v2/compiler/emit_produced.dag
+src/v2/test/claim/callexec/synthetic_facts_key_collision.dag
+src/v2/test/claim/declared_parameter_order.dag
+src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness.dag
+src/v2/test/claim/long/accumulator_copy_fold_analysis.dag
+src/v2/test/claim/namespace_xl0/let_match_early_return.dag
+src/v2/test/claim/parameter_reference.dag
+src/v2/test/claim/parse/record_field_pun.dag
+src/v2/test/claim/tokenize/lex_eof_mode_check.dag

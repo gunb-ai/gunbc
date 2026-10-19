@@ -1,0 +1,9 @@
+src/v2/cli/repository_layout.dag
+src/v2/test/claim/body_lowering/map_literal.dag
+src/v2/test/claim/compiler/primitive_authority_resolve.dag
+src/v2/test/claim/execution/emit_on_demand_field_access_family_witness.dag
+src/v2/test/claim/execution/self_host_candidate_generation_stage_verdicts.dag
+src/v2/test/claim/named_argument_binding.dag
+src/v2/test/claim/normalize/operation_requires_edge.dag
+src/v2/test/claim/parse/newline_dual_role_operator_parse.dag
+src/v2/test/claim/self_host/native_routing_frontier.dag
