@@ -316,35 +316,75 @@ pub(crate) fn is_cargo_target_output_dir(
         && parent.join("Cargo.toml").is_file()
 }
 
-pub(crate) fn collect_dag_files_result(
+/// Why the `.dag` listing of a root cannot be taken. Typed so the module-index walk can name the
+/// cause (`ModuleIndexRefusal`); every other caller reads it as the located string it renders to.
+pub(crate) enum DagCollectError {
+    Unreadable(String),
+    /// A directory whose name ends in `.dag`: a source path that cannot be read as a source, and
+    /// that listing would otherwise recurse into, reading as an empty source (green).
+    DirectoryNamedDag(PathBuf),
+}
+
+impl DagCollectError {
+    fn rendered(&self) -> String {
+        match self {
+            Self::Unreadable(m) => m.clone(),
+            Self::DirectoryNamedDag(p) => format!(
+                "{}: a directory named like a .dag source; a source path is a file",
+                p.display()
+            ),
+        }
+    }
+}
+
+impl From<DagCollectError> for String {
+    fn from(e: DagCollectError) -> String {
+        e.rendered()
+    }
+}
+
+pub(crate) fn collect_dag_files_typed(
     dir: &std::path::Path,
     files: &mut Vec<derived_row_roster::AcquiredDag>,
-) -> Result<(), String> {
+) -> Result<(), DagCollectError> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
-        .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
-        .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
-        .collect::<Result<Vec<_>, String>>()?;
+        .map_err(|e| DagCollectError::Unreadable(format!("failed to read dir {:?}: {}", dir, e)))?
+        .map(|e| {
+            e.map_err(|e| {
+                DagCollectError::Unreadable(format!("failed to read dir entry in {:?}: {}", dir, e))
+            })
+        })
+        .collect::<Result<Vec<_>, DagCollectError>>()?;
     entries.sort_by_key(|e| e.file_name());
     // This directory's own `.dag` files are admitted as one listing, so a ledger row directory
     // contributes its derived roster from the same bytes (`derived_row_roster::acquire_dir_files`).
     let mut here = Vec::new();
     for entry in entries {
         let path = entry.path();
+        let named_dag = path.extension().map(|e| e == "dag").unwrap_or(false);
         if path.is_dir() {
+            if named_dag {
+                return Err(DagCollectError::DirectoryNamedDag(path));
+            }
             if is_cargo_target_output_dir(dir, &path) {
                 continue;
             }
-            collect_dag_files_result(&path, files)?;
-        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            collect_dag_files_typed(&path, files)?;
+        } else if named_dag {
             here.push(path);
         }
     }
-    files.extend(derived_row_roster::acquire_dir_files(dir, here)?);
+    files.extend(
+        derived_row_roster::acquire_dir_files(dir, here).map_err(DagCollectError::Unreadable)?,
+    );
     Ok(())
 }
 
-fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<derived_row_roster::AcquiredDag>) {
-    collect_dag_files_result(dir, files).unwrap_or_else(|e| panic!("{e}"));
+pub(crate) fn collect_dag_files_result(
+    dir: &std::path::Path,
+    files: &mut Vec<derived_row_roster::AcquiredDag>,
+) -> Result<(), String> {
+    collect_dag_files_typed(dir, files).map_err(String::from)
 }
 
 pub(crate) fn extract_module_path(content: &str) -> Option<String> {
@@ -3736,12 +3776,21 @@ fn for_each_parsed_module_binding(
         let anchored_root = anchor_source_root(root);
         let root_path = Path::new(&anchored_root);
         let mut dag_files = Vec::new();
-        if let Err(e) = collect_dag_files_result(root_path, &mut dag_files) {
-            refusals.push(ModuleIndexRefusal::RootUnreadable {
-                path: anchored_root.clone(),
-                reason: e,
-            });
-            continue;
+        match collect_dag_files_typed(root_path, &mut dag_files) {
+            Ok(()) => {}
+            Err(DagCollectError::DirectoryNamedDag(dir)) => {
+                refusals.push(ModuleIndexRefusal::DirectoryNamedDag {
+                    path: claim_source_location(&dir),
+                });
+                continue;
+            }
+            Err(DagCollectError::Unreadable(reason)) => {
+                refusals.push(ModuleIndexRefusal::RootUnreadable {
+                    path: anchored_root.clone(),
+                    reason,
+                });
+                continue;
+            }
         }
         for source in dag_files {
             let path = source.path();
@@ -3790,6 +3839,7 @@ pub(crate) enum ModuleIndexRefusal {
     HeaderAbsent { path: String },
     Unreadable { path: String, reason: String },
     RootUnreadable { path: String, reason: String },
+    DirectoryNamedDag { path: String },
 }
 
 impl ModuleIndexRefusal {
@@ -3810,6 +3860,9 @@ impl ModuleIndexRefusal {
                     reason: reason.clone(),
                 },
             ),
+            Self::DirectoryNamedDag { path } => {
+                claim_source_refusal_rendered(path, &ClaimSourceRefusalCause::DirectoryNamedDag)
+            }
             Self::RootUnreadable { path, reason } => claim_source_refusal_rendered(
                 path,
                 &ClaimSourceRefusalCause::RootUnreadable {
@@ -5179,7 +5232,7 @@ fn load_compile_clean_entry_sources(
     let mut entry_files = Vec::new();
     if first_root.is_dir() {
         let mut dag_paths = Vec::new();
-        collect_dag_files(first_root, &mut dag_paths);
+        collect_dag_files_result(first_root, &mut dag_paths)?;
         for source in dag_paths {
             let path = source.path();
             let rel = workspace_relative_repo_path(&path.to_string_lossy());
@@ -5647,7 +5700,7 @@ fn dag_module_index(
             return Err(format!("source root does not exist: {}", root.display()));
         }
         let mut dag_paths = Vec::new();
-        collect_dag_files(root, &mut dag_paths);
+        collect_dag_files_result(root, &mut dag_paths)?;
         for source in dag_paths {
             let content = source
                 .read()
@@ -20998,6 +21051,7 @@ pub enum ClaimSourceRefusalCause {
     ModuleHeaderAbsent,
     Unreadable { reason: String },
     RootUnreadable { reason: String },
+    DirectoryNamedDag,
 }
 
 /// `gunbc.target_invocation` `claim_source_refusal_rendered`, mirrored.
@@ -21010,6 +21064,9 @@ pub fn claim_source_refusal_rendered(path: &str, cause: &ClaimSourceRefusalCause
              module, so no claim label can name it (paths follow names)"
             .to_string(),
         ClaimSourceRefusalCause::Unreadable { reason } => format!(": unreadable: {reason}"),
+        ClaimSourceRefusalCause::DirectoryNamedDag => {
+            ": a directory named like a .dag source; a source path is a file".to_string()
+        }
         ClaimSourceRefusalCause::RootUnreadable { reason } => {
             format!(": unreadable source root: {reason}")
         }

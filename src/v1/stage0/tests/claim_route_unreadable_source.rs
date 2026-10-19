@@ -107,7 +107,45 @@ fn the_rust_renderer_matches_the_dag_carrier_for_every_cause() {
         "claim source refused: p: unreadable: r"
     );
     assert_eq!(
+        r("p", &C::DirectoryNamedDag),
+        "claim source refused: p: a directory named like a .dag source; a source path is a file"
+    );
+    assert_eq!(
         r("p", &C::RootUnreadable { reason: "r".into() }),
         "claim source refused: p: unreadable source root: r"
     );
+}
+
+#[test]
+fn a_directory_named_like_a_dag_source_refuses_naming_the_path() {
+    let root = scratch_claim_root("dirdag", "ok.dag", "module test.claim.zz_ok\n");
+    let dir = std::path::Path::new(&root).join("test/claim/zz_dir.dag");
+    std::fs::create_dir_all(&dir).expect("directory named .dag");
+    let err = route(root).expect_err("a directory named x.dag must refuse, not read as green");
+    assert!(err.contains("zz_dir.dag"), "must name the path: {err}");
+    assert!(
+        err.contains("a directory named like a .dag source"),
+        "{err}"
+    );
+}
+
+// Root bypasses file permissions, so as root a mode-000 file is genuinely readable and the RED
+// cannot discriminate. It is reported NOT OBSERVED (printed SKIPPED with the reason), never as a
+// pass of the refusal.
+#[test]
+fn an_unreadable_claim_source_refuses_naming_the_file() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = scratch_claim_root(
+        "chmod000",
+        "zz_scratch.dag",
+        "module test.claim.zz_scratch\n\ntest fn zz_claim() -> Bool {\n  true\n}\n",
+    );
+    let file = std::path::Path::new(&root).join("test/claim/zz_scratch.dag");
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0)).expect("chmod 000");
+    if std::fs::read(&file).is_ok() {
+        eprintln!("SKIPPED (not observed): this process can read a mode-000 file (root)");
+        return;
+    }
+    let err = route(root).expect_err("an unreadable claim source must refuse, not panic");
+    assert!(err.contains("zz_scratch.dag"), "must name the file: {err}");
 }

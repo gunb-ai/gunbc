@@ -84,7 +84,7 @@ import gunbc.target_invocation {
   TestOperandClaimRoute, ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold, ClaimUnobserved,
   claim_route_termination,
   ClaimSourceRefusalCause, ClaimSourceUnparseable, ClaimSourceModuleHeaderAbsent,
-  ClaimSourceUnreadable, ClaimSourceRootUnreadable,
+  ClaimSourceUnreadable, ClaimSourceRootUnreadable, ClaimSourceDirectoryNamedDag,
   claim_source_refusal_rendered,
 }
 // `TargetPattern` IS DELIBERATELY NOT IMPORTED HERE, and the omission is the point. This module
@@ -956,6 +956,7 @@ test fn a_claim_source_refusal_names_the_file_and_its_cause() -> Bool {
       == "claim source refused: dag/test/claim/y.dag: a .dag under the claim root declares no module, so no claim label can name it (paths follow names)"
     && claim_source_refusal_rendered(path: "p", cause: ClaimSourceUnreadable { reason: "r" }) == "claim source refused: p: unreadable: r"
     && claim_source_refusal_rendered(path: "p", cause: ClaimSourceRootUnreadable { reason: "r" }) == "claim source refused: p: unreadable source root: r"
+    && claim_source_refusal_rendered(path: "p", cause: ClaimSourceDirectoryNamedDag) == "claim source refused: p: a directory named like a .dag source; a source path is a file"
 }
 
 // THE CONTAINMENT DECIDES THE EXECUTOR, AND BOTH DIRECTIONS ARE PINNED.
