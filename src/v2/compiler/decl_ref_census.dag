@@ -1,6 +1,6 @@
 module v2.compiler.decl_ref_census
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional, list_head, list_reverse, list_snoc_item, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_head, list_append, list_reverse, list_snoc_item, map_lookup }
 import std.decl_ref { DeclField, DeclarationRef, NamedField, WholeDeclaration }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List, NonEmptyStr }
@@ -420,4 +420,52 @@ fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
       " not_a_symbol=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanNotASymbol) })),
       " unclassified=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanUnclassified) })))
   ]
+}
+
+// ---- assembly -----------------------------------------------------------------------------
+
+// One ingested file's tokens, and whether its string literals are in the prose scope.
+type CensusFile {
+  file: Symbol
+  tokens: List<Token>
+  prose_scoped: Bool
+}
+
+fn top_level_namespaces(all: List<String>) -> List<String> {
+  fold_list(
+    xs: all,
+    empty: [],
+    cons: fn(acc, n) { if string_any_char_in(s: n, alphabet: ".") { acc } else { list_snoc_item(xs: acc, item: n) } }
+  )
+}
+
+fn decl_ref_census_build(
+  files: List<CensusFile>,
+  namespaces: List<String>,
+  context: ResolutionContext
+) -> DeclRefCensus {
+  let cited = fold_list(
+    xs: files,
+    empty: [],
+    cons: fn(acc, f) { list_append(left: acc, right: declaration_ref_citations(file: f.file, tokens: f.tokens)) }
+  )
+  DeclRefCensus {
+    cited: cited,
+    resolutions: fold_list(
+      xs: cited,
+      empty: [],
+      cons: fn(acc, c) { list_snoc_item(xs: acc, item: resolve_declaration_ref(ref: c.ref, context: context)) }
+    ),
+    prose: fold_list(
+      xs: files,
+      empty: [],
+      cons: fn(acc, f) {
+        if f.prose_scoped {
+          list_append(left: acc, right: prose_spans_of(file: f.file, tokens: f.tokens, namespaces: namespaces, context: context))
+        } else {
+          acc
+        }
+      }
+    )
+  }
 }

@@ -269,6 +269,7 @@ import v2.compiler.dependency_demand {
   FunctionFact,
   OperationFact,
 }
+import v2.compiler.decl_ref_census { CensusFile, decl_ref_census_build, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
 import v2.compiler.dependency_demand_census {
   AuthoredRowReading,
   AuthoredTypeUnresolved,
@@ -346,6 +347,7 @@ import std.algebra {
   Empty,
   FreeMonoid,
   FreeSemigroup,
+  string_contains,
   trim,
   list_append,
   list_snoc_item,
@@ -1506,6 +1508,7 @@ type NativeDriverVerb
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
   | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
   | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
+  | NativeDriverDeclRefCensus { source_roots: FreeMonoid<String> }
   | NativeDriverCensusScoped { subject: String, subjects_rest: List<String>, against: Optional<String>, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
@@ -1524,6 +1527,8 @@ data native_driver_verb_census_infer: String = "census-infer"
 
 data native_driver_verb_demand_census: String = "demand-census"
 
+data native_driver_verb_decl_ref_census: String = "decl-ref-census"
+
 data native_driver_verb_census_scoped: String = "census-scoped"
 
 data native_driver_census_scoped_needs_subject: String = "REFUSED: census-scoped takes a subject package label before the source roots"
@@ -1538,7 +1543,7 @@ data native_driver_census_scoped_against_one_subject: String = "REFUSED: census-
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>... | decl-ref-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -1571,6 +1576,7 @@ type NativeDriverParseState
   | DriverCensusResolveRoots { roots: FreeMonoid<String> }
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
   | DriverDemandCensusRoots { roots: FreeMonoid<String> }
+  | DriverDeclRefCensusRoots { roots: FreeMonoid<String> }
   | DriverCensusScopedSeekSubject
   | DriverCensusScopedAfterSubject { subject: String, rest: List<String> }
   | DriverCensusScopedSeekAgainst { subject: String }
@@ -1584,7 +1590,7 @@ type NativeDriverParseState
 fn native_driver_unknown_verb_detail(word: String) -> String {
   concat(
     concat("REFUSED: unknown mode ", word),
-    " -- expected adjudicate, census, census-resolve, census-infer, census-scoped or demand-census"
+    " -- expected adjudicate, census, census-resolve, census-infer, census-scoped, demand-census or decl-ref-census"
   )
 }
 
@@ -1604,6 +1610,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusInferRoots { roots: [] }
       } else if word == native_driver_verb_demand_census {
         DriverDemandCensusRoots { roots: [] }
+      } else if word == native_driver_verb_decl_ref_census {
+        DriverDeclRefCensusRoots { roots: [] }
       } else if word == native_driver_verb_census_scoped {
         DriverCensusScopedSeekSubject
       } else if word == native_driver_verb_adjudicate {
@@ -1622,6 +1630,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusInferRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverDemandCensusRoots { roots: roots } =>
       DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverDeclRefCensusRoots { roots: roots } =>
+      DriverDeclRefCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusScopedSeekSubject =>
       match native_census_subject_module(label: word) {
         NativeCensusSubjectModuleUnavailable { reason: reason } =>
@@ -1707,6 +1717,8 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
     DriverDemandCensusRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
+    DriverDeclRefCensusRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverDeclRefCensus { source_roots: roots } }
     DriverCensusScopedSeekSubject =>
       NativeDriverPlanRefused {
         reason: ^native_driver_census_scoped_without_subject,
@@ -1760,6 +1772,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensusResolve { source_roots: roots } => roots
         NativeDriverCensusInfer { source_roots: roots } => roots
         NativeDriverDemandCensus { source_roots: roots } => roots
+        NativeDriverDeclRefCensus { source_roots: roots } => roots
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
@@ -3175,6 +3188,67 @@ fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOu
       NativeDemandCensusOutput {
         lines: demand_census_lines(r: report),
         exit: demand_census_exit(r: report)
+      }
+  }
+}
+
+// THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (`decl-ref-census`). The resolver's facts are the
+// native ingest's own ResolutionContext (native_test_context_from_ingest), the same one the compiler
+// resolves with; the tokens are the lexer's, read once per file. Every decision is
+// v2.compiler.decl_ref_census (exit 0 held, 1 a refused reference or stale symbol span, 2 no
+// observation); this function only reads the ingest. Prose is scoped to the two ledgers named below.
+data native_decl_ref_census_prose_scope_rfm: String = "gunbc/recurring_failure_mode"
+
+data native_decl_ref_census_prose_scope_rung_drop: String = "gunbc/rung_drop"
+
+fn native_decl_ref_census_file_in_prose_scope(path: String) -> Bool {
+  string_contains(s: path, pattern: native_decl_ref_census_prose_scope_rfm) || string_contains(s: path, pattern: native_decl_ref_census_prose_scope_rung_drop)
+}
+
+type NativeDeclRefCensusOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_decl_ref_census_files(ingest: SourceRootIngest, front: NativeTestFrontEnd) -> Outcome<List<CensusFile>> {
+  outcome_accepted(value: fold_list(
+    xs: ingest,
+    empty: Empty,
+    cons: fn(acc, read) {
+      match program_assembly_phase_tokenize(read: read, lex: front.lex) {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: tokens, diagnostics: _ } =>
+          list_snoc_item(xs: acc, item: CensusFile {
+            file: read.compilation_unit,
+            tokens: tokens,
+            prose_scoped: native_decl_ref_census_file_in_prose_scope(path: symbol_lexeme(sym: read.compilation_unit))
+          })
+      }
+    }
+  ))
+}
+
+fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensusOutput {
+  match native_test_front_end_prepare() {
+    Rejected { diagnostics: d } =>
+      NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: front, diagnostics: _ } =>
+      match native_test_context_from_ingest(ingest: ingest) {
+        Rejected { diagnostics: d } =>
+          NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+        Accepted { value: context, diagnostics: _ } =>
+          match context.resolution {
+            Rejected { diagnostics: d } =>
+              NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+            Accepted { value: resolution, diagnostics: _ } =>
+              match native_decl_ref_census_files(ingest: ingest, front: front) {
+                Rejected { diagnostics: d } =>
+                  NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+                Accepted { value: files, diagnostics: _ } =>
+                  let census = decl_ref_census_build(files: files, namespaces: top_level_namespaces(all: layout_namespaces()), context: resolution)
+                  NativeDeclRefCensusOutput { lines: decl_ref_census_lines(c: census), exit: decl_ref_census_exit(c: census) }
+              }
+          }
       }
   }
 }
