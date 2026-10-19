@@ -7,8 +7,9 @@ pub use crate::extdeps_external_authority::{
 };
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_content_hash::{sha256_hex_digest, sha512_hex_digest};
-pub use crate::std_content_hash::{Sha256Digest, Sha512Digest};
+pub use crate::std_content_hash::{
+    sha256_hex_digest, sha512_hex_digest, Sha256Digest, Sha512Digest,
+};
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_types::NonEmptyStr;

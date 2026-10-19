@@ -6,15 +6,16 @@ use self::SubjectBuild::*;
 pub use crate::std_types::{Bool, List};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
-pub use crate::v1_compiler_compile::compile_to_resolved;
-pub use crate::v1_compiler_compile::SourceFile;
+pub use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
 pub use crate::v1_compiler_emit_rust::maybe_mark_shared_type;
 pub use crate::v1_compiler_infer::build_emit_graph_info;
 use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{
     TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared,
 };
-pub use crate::v1_compiler_infer_emit_info::{type_decl_identities_of_leaf, type_summary_at_key};
-pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryLookup};
+pub use crate::v1_compiler_infer_emit_info::{
+    type_decl_identities_of_leaf, type_summary_at_key, EmitGraphInfo, TypeSummary,
+    TypeSummaryLookup,
+};
 pub use crate::v1_compiler_infer_items::ResolvedGraph;
 pub use crate::v1_compiler_languages::sharing_for_target;
 use crate::v1_rt;
@@ -226,7 +227,7 @@ pub fn collisions_of_graph(graph: Rc<ResolvedGraph>) -> Rc<Vec<Rc<LeafCollisionR
             .clone();
         Rc::new({
             let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(
-                &info.type_decl_items.clone().identities_by_leaf.clone(),
+                &info.type_decl_items.identities_by_leaf.clone(),
             ))
             .iter()
             .cloned()

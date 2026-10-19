@@ -12,6 +12,7 @@ import extdeps.systemd {
 }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  WorkerIsServiceUser,
   HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
   public_builtin_dashboard_instances, dashboard_instance_for_id,
   DashboardInstanceForId, DashboardInstanceIdUnknown,
@@ -185,7 +186,7 @@ test fn a_start_with_another_user_is_refused() -> Bool {
     instance: inst,
     facts: facts,
   ) {
-    AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "service user")
+    AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "worker user")
     AttemptSystemUnitAdmitted { unit: _, facts: _ } => false
   }
   }
@@ -823,6 +824,7 @@ fn live_with_instance_root(root: FilePath) -> HostDashboardInstance {
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
     directory_owner: live.directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: live.materialization_store_root,
     publication_base_branch: live.publication_base_branch,
   }

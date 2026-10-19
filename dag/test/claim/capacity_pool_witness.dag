@@ -5,7 +5,7 @@ import std.nat { Nat, nat_range_inclusive }
 import std.measure { Measure, Count, One }
 import extdeps.accounting.encumbrance { ExceedsAppropriation, DuplicateReference, Held, Released, Expended }
 import extdeps.accounting.appropriation_period { AppropriationPeriod }
-import product.capacity.lease { FencedResource }
+import std.resource_release_law { FencedResource }
 import product.capacity.pool {
   Pool, Replenishment, NoReplenishment, LapseAtPeriodEnd,
   PoolOutcome, PoolAdvanced, PoolRefused, PoolRefusal, LedgerRefusal, LeaseCrossesLapse, PoolInstantBeforeAnchor, LeaseAlreadyLapsed,

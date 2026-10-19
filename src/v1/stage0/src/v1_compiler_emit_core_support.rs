@@ -2,19 +2,20 @@
 // Source module: v1.compiler.emit_core_support
 
 pub use crate::gunbc_rust_emitted_crate::EmittedRustCrate;
-pub use crate::gunbc_rust_emitted_edge::module_to_filename;
-pub use crate::gunbc_rust_emitted_edge::EmittedEdge;
+pub use crate::gunbc_rust_emitted_edge::{module_to_filename, EmittedEdge};
 pub use crate::std_unicode_scalar::{ascii_lowercase, ascii_uppercase, ascii_uppercase_first};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_items::leaf_owner_modules_from_registry;
-pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
+pub use crate::v1_compiler_infer_items::{
+    leaf_owner_modules_from_registry, ResolvedGraph, TypedModule,
+};
 pub use crate::v1_compiler_infer_service::UniqueAccum;
 pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};
 use crate::v1_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
-pub use crate::v1_compiler_languages::{language_spec_for_target, test_conventions_for_target};
-pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
+pub use crate::v1_compiler_languages::{
+    language_spec_for_target, test_conventions_for_target, LanguageSpec, TestNameStyle,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::{EmittedSymbolCollision, ModuleFilenameCollision};
@@ -23,9 +24,9 @@ use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
 };
-pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at, make_error_node};
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node, ParsedModuleItemKind, TextFile,
+    authored_name_at, field_init_node_name_at, make_error_node, CompilerDiagnostic, Connective,
+    ErrorNode, NewlineIndex, Node, ParsedModuleItemKind, TextFile,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -239,7 +240,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
             }),
             |acc: Rc<ModuleFilenameOwners>, tm: Rc<TypedModule>| {
                 let module_name = crate::v1_std_core::authored_name_at(
-                    tm.type_env.clone().source_indices.clone(),
+                    tm.type_env.source_indices.clone(),
                     tm.module.clone(),
                 );
                 let filename =
@@ -260,7 +261,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                                                 owner.clone(),
                                                 module_name.clone(),
                                             ]),
-                                            span: tm.module.clone().span.clone(),
+                                            span: tm.module.span.clone(),
                                         }),
                                         module_name.clone(),
                                     ),
@@ -775,7 +776,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                                 if has_mock_prefix(
                                                     crate::v1_std_core::field_init_node_name_at(
                                                         p.clone(),
-                                                        tm.type_env.clone().source_indices.clone(),
+                                                        tm.type_env.source_indices.clone(),
                                                     ),
                                                 ) {
                                                     __found = true;
@@ -794,15 +795,15 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                 {
                                     __result.push(Rc::new(TestProjection {
                                         module_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
+                                            tm.type_env.source_indices.clone(),
                                             tm.module.clone(),
                                         ),
                                         service_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
+                                            tm.type_env.source_indices.clone(),
                                             item.clone(),
                                         ),
                                         operation_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
+                                            tm.type_env.source_indices.clone(),
                                             c.clone(),
                                         ),
                                         inferred: crate::v1_compiler_infer_types::resolved_type(
@@ -815,7 +816,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                                 if has_mock_prefix(
                                                     crate::v1_std_core::field_init_node_name_at(
                                                         p.clone(),
-                                                        tm.type_env.clone().source_indices.clone(),
+                                                        tm.type_env.source_indices.clone(),
                                                     ),
                                                 ) {
                                                     __result.push(p);
@@ -823,7 +824,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                             }
                                             __result
                                         }),
-                                        source_indices: tm.type_env.clone().source_indices.clone(),
+                                        source_indices: tm.type_env.source_indices.clone(),
                                         type_env: tm.type_env.clone(),
                                     }));
                                 }
@@ -933,7 +934,7 @@ pub fn emitted_symbol_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec<
         let mut __result = Vec::new();
         for tm in typed.modules.clone().iter().cloned() {
             __result.extend((*{
-        let source_indices = tm.type_env.clone().source_indices.clone();
+        let source_indices = tm.type_env.source_indices.clone();
 let module_name = crate::v1_std_core::authored_name_at(source_indices.clone(), tm.module.clone());
 let result = tm.items.clone().iter().cloned().fold(Rc::new(EmittedSymbolOwners {
     owners: v1_rt::rc_empty_map::<String, String>(),

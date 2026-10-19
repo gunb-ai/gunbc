@@ -8,17 +8,15 @@ use crate::std_source_annotation::AnnotationPlacement::{
     LeadingAfterLineIndent, TrailingAfterSemanticToken,
 };
 pub use crate::std_source_annotation::{
-    advance_line_prefix_indent_only_text, placement_from_line_prefix,
+    advance_line_prefix_indent_only_text, placement_from_line_prefix, AnnotationPlacement,
+    UnboundAnnotationCapture,
 };
-pub use crate::std_source_annotation::{AnnotationPlacement, UnboundAnnotationCapture};
 pub use crate::std_syntax::ParseEnvironment;
 pub use crate::std_types::SourceSpan;
 pub use crate::std_unicode_types::unicode_scalar;
-pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
-pub use crate::v1_compiler_languages::EmojiCharEscape;
+pub use crate::v1_compiler_languages::{canonical_emoji_char_escape, EmojiCharEscape};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::make_file_span;
 use crate::v1_std_core::TokenShape::{
     ShAnd, ShArrow, ShBang, ShCaret, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq,
     ShFatArrow, ShGe, ShGt, ShIdent, ShKeyword, ShLBrace, ShLBracket, ShLParen, ShLe, ShLitFloat,
@@ -26,14 +24,14 @@ use crate::v1_std_core::TokenShape::{
     ShPipeArrow, ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin,
     ShStrEnd, ShStrMid, ShUnknown,
 };
-pub use crate::v1_std_core::{Token, TokenShape};
+pub use crate::v1_std_core::{make_file_span, Token, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_keyword_text(text: String, env: Rc<ParseEnvironment>) -> bool {
-    match v1_rt::lookup(&env.syntax_spec.clone().keyword_set.clone(), text.clone()) {
+    match v1_rt::lookup(&env.syntax_spec.keyword_set.clone(), text.clone()) {
         Some(_) => true,
         std::option::Option::None => false,
     }

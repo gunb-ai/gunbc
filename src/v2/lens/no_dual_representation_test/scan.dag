@@ -11,7 +11,7 @@ import v2.std.data_index {
   literal_fingerprint_num_lexeme
 }
 import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   Atom,
   ComputationNode,
   Conj,
@@ -37,7 +37,6 @@ import v2.std.compilers.body_lowering {
   application_slots
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.node_query { node_positional_child_targets }
 import v2.std.text { Char, String }
 
 // This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
@@ -183,7 +182,7 @@ fn lookup_data_literal(data_inits: List<DualRepDataInit>, name: String) -> Strin
 fn eq_site_from_conj(node: Node) -> List<EqNodeSite> {
   match node.kind {
     TypeNode { connective: Conj } => {
-      let kids = node_positional_child_targets(node: node)
+      let kids = positional_child_target_nodes(node: node)
       match list_at_optional(xs: kids, index: 0) {
         Present { value: lhs } =>
           match list_at_optional(xs: kids, index: 1) {
@@ -248,7 +247,7 @@ fn argument_value_read(n: Node) -> FirstArgRead {
     TypeNode { connective: Atom { identity: _ } } => FirstArgName { name: node_atom_name(n: n) }
     TypeNode { connective: Conj } =>
       if count(n.children) == 1 {
-        let positional = node_positional_child_targets(node: n)
+        let positional = positional_child_target_nodes(node: n)
         if length(xs: positional) == 1 {
           match list_at_optional(xs: positional, index: 0) {
             Present { value: inner } => argument_value_read(n: inner)

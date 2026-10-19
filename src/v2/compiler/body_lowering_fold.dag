@@ -17,7 +17,7 @@ import v2.std.service_realization_labels {
 }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq, empty_map, list_at_optional, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape }
 import v2.compiler.fold_lowering {
   CallbackAllByAnd,
   CallbackAnyByOr,
@@ -91,7 +91,7 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_is
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
-import v2.std.node { content_hash }
+import v2.std.node { positional_child_target_nodes, content_hash }
 
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
@@ -146,7 +146,7 @@ import v2.std.compilers.lowered_shape {
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional, sugar_named_child_optional, sugar_type_node }
-import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class, parse_production_emitted_identity_optional }
+import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -239,29 +239,7 @@ import v2.std.node {
 import v2.std.type_binder { type_binder_set_children, cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.arrow_contract { effect_claim_label, hermetic_claim_label }
 import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
-import v2.std.node_query {
-  binder_edge,
-  construct_field_edges,
-  member_edge_type_node,
-  node_positional_child_targets,
-  construct_node,
-  construct_node_elided,
-  construct_tag_elided_reference,
-  construct_tag_reading,
-  construct_tag_reading_of_target,
-  ConstructTagAuthored,
-  ConstructTagElided,
-  NotAConstruct,
-  construct_tag_optional,
-  field_projection_node,
-  field_projection_optional,
-  find_named_child,
-  positional_payload_field_name,
-  pattern_wildcard_name,
-  wildcard_pattern_identity,
-  repeated_name_edges,
-  variant_declaration_node
-}
+import v2.std.node_query { binder_edge, construct_field_edges, member_edge_type_node, construct_node, construct_node_elided, construct_tag_elided_reference, construct_tag_reading, construct_tag_reading_of_target, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, field_projection_optional, find_named_child, positional_payload_field_name, pattern_wildcard_name, wildcard_pattern_identity, repeated_name_edges, variant_declaration_node }
 import std.roster_frontier { FrontierRow, PathSubject }
 
 data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into v2.compiler.body_producer_forward GrammarRelationRow forward fold (general-body-producer-design §3) once Slice 4 deletes this module; match/if/body_try hand-walker scaffolds dissolved into body_producer_forward + body_lower_fold. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → the fold encoding via fold_call_lowering and fold_recurrence_encoding); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_lowering — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained as the typed BodyWrapperRetained variant (general-body-producer-design Stage A frontier: lowered | wrapper-retained, refused at the retained shell by the normalized-tree door — never silent shell accept)."
@@ -5887,7 +5865,7 @@ fn body_lower_fresh_type_variable_renames(arrow: Node, path: List<Int>) -> Map<S
     key: fresh_return_type_variable(path: body_lower_unpositioned_path()),
     value: fresh_return_type_variable(path: path)
   )
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
     Present { value: domain } => body_lower_fresh_type_variable_domain_renames(edges: domain.children, path: path, init: with_return)
     Absent => with_return
   }
@@ -8863,7 +8841,7 @@ fn body_lower_let_match_exit_join(plan: BodyLowerLetMatchExit, lowered: Node, at
     outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_multi_binding_arm_early_return_needs_join_point, n: at))
   } else {
     if body_lower_is_match_node(node: lowered) {
-        match node_positional_child_targets(node: lowered) {
+        match positional_child_target_nodes(node: lowered) {
           Empty => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_match_arm_navigation_refused, n: at))
           Cons { head: scrutinee, tail: wires } =>
             if count(wires) != count(plan.arms) {
@@ -9525,18 +9503,9 @@ fn body_lower_match_arm_items_on_lbrace_token(id: Symbol, right: Node) -> Outcom
       match body_lower_match_arm_items_from_brace_interior(interior: right) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: arms, diagnostics: d } =>
-          if count(arms) > 0 {
-            Accepted {
-              value: optional_present(value: arms),
-              diagnostics: d
-            }
-          } else {
-            outcome_rejected(
-              d: body_lower_diagnostic(
-                reason: ^body_lowering_reason_match_arm_navigation_refused,
-                n: right
-              )
-            )
+          Accepted {
+            value: optional_present(value: arms),
+            diagnostics: d
           }
       }
     false => body_lower_match_arm_items_after_lbrace_optional(spine: right)
@@ -9599,18 +9568,9 @@ fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>>
         Accepted { value: arms_opt, diagnostics: d } =>
           match arms_opt {
             Present { value: arms } =>
-              if count(arms) > 0 {
-                Accepted {
-                  value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
-                  diagnostics: d
-                }
-              } else {
-                outcome_rejected(
-                  d: body_lower_diagnostic(
-                    reason: ^body_lowering_reason_match_arm_navigation_refused,
-                    n: captured
-                  )
-                )
+              Accepted {
+                value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
+                diagnostics: d
               }
             Absent =>
               outcome_rejected(

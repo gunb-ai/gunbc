@@ -2,14 +2,12 @@
 // Source module: v1.compiler.resolve
 
 pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
-pub use crate::std_literal_elaboration::kernel_named_import_standing;
-pub use crate::std_literal_elaboration::KernelNamedImportStanding;
 use crate::std_literal_elaboration::KernelNamedImportStanding::{
     KernelNamedImportAdmitted, KernelNamedImportCollides, KernelNamedImportMintAmbiguous,
 };
+pub use crate::std_literal_elaboration::{kernel_named_import_standing, KernelNamedImportStanding};
 pub use crate::std_occurrence_identity::{OccurrenceIndex, OccurrenceTransport};
-pub use crate::std_types::kernel_type_set;
-pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::{
@@ -21,10 +19,8 @@ use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration;
 pub use crate::v1_std_core::{
     authored_name_at, import_is_all, import_node, import_specific_names_at, make_error_node,
-    module_imports, module_items, module_node, no_span,
-};
-pub use crate::v1_std_core::{
-    CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node, ParsedModuleItemKind,
+    module_imports, module_items, module_node, no_span, CompilerDiagnostic, Connective, ErrorNode,
+    NewlineIndex, Node, ParsedModuleItemKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -347,7 +343,7 @@ pub fn resolve_module_imports(
             for r in Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    if ((r.resolved.clone().target_module.clone() != std::option::Option::None)
+                    if ((r.resolved.target_module.clone() != std::option::Option::None)
                         && ((r.diagnostics.clone().len() as i64) == 0))
                     {
                         __result.push(r);

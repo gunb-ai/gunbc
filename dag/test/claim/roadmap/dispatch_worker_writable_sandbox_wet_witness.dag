@@ -31,6 +31,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_commit_git, ExecOk, ExecFailed, ExecRefused,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  WorkerIsServiceUser,
   HostDashboardInstance,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
@@ -68,7 +69,7 @@ import extdeps.tools.util_linux_flock { flock_exclusive_wait_words, flock_absolu
 import extdeps.posix.sh_invocation { posix_sh_program_command }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.executor_privileged_operation { gunbc_entry_run_argv }
-import gunbc.live_deploy.release_locus { approval_broker_tree_subdirs }
+import gunbc.live_deploy.release_locus { release_locus_tree_subdirs }
 import extdeps.systemd.service_exec { ServiceResultSuccess }
 import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
 
@@ -715,7 +716,7 @@ fn wet_flocked_launch_cli_words(instance: HostDashboardInstance, spool_root: Str
             gunbc_entry_run_argv(
               workspace_root: instance.repo_root as NonEmptyStr,
               binary: instance.serve_binary as NonEmptyStr,
-              source_roots: map(approval_broker_tree_subdirs, sub => join([instance.repo_root as String, "/", sub], "") as NonEmptyStr),
+              source_roots: map(release_locus_tree_subdirs, sub => join([instance.repo_root as String, "/", sub], "") as NonEmptyStr),
               entry: join([instance.repo_root as String, "/", attempt_system_unit_launch_entry], "") as NonEmptyStr,
               function: attempt_system_unit_launch_function as NonEmptyStr,
             ),
@@ -867,6 +868,7 @@ fn lab_instance_at_repo(root: FilePath) -> HostDashboardInstance {
     toolchain: lab.toolchain,
     dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
     directory_owner: lab.directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: lab.materialization_store_root,
     publication_base_branch: lab.publication_base_branch,
   }

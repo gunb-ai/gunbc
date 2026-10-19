@@ -3,12 +3,10 @@
 
 use self::ForeignParameterReading::*;
 use self::ResultCarrierObservation::*;
-pub use crate::std_decl_ref::declaration_ref_display_key;
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
-pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+pub use crate::std_decl_ref::{declaration_ref_display_key, DeclField, DeclarationRef};
 pub use crate::std_types::{Bool, List, Map};
-pub use crate::v1_compiler_compile::compile_to_resolved;
-pub use crate::v1_compiler_compile::{ResolvedPipelineResult, SourceFile};
+pub use crate::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_infer::{
     param_is_generic_decl, substitute_generics_apply, type_node_label, unify_generics,
 };
@@ -22,8 +20,10 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::Arrow;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
-pub use crate::v1_std_core::{authored_name_at, param_node_name_at, param_node_type_expr};
-pub use crate::v1_std_core::{Connective, InferredNode, NewlineIndex, Node, ResolvedFormal};
+pub use crate::v1_std_core::{
+    authored_name_at, param_node_name_at, param_node_type_expr, Connective, InferredNode,
+    NewlineIndex, Node, ResolvedFormal,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -691,7 +691,7 @@ pub fn gi_module_rows(
         let module_file = crate::v1_std_core::authored_name_at(si.clone(), m.module.clone());
         let sig_rows = Rc::new({
             let mut __result = Vec::new();
-            for sig in Rc::new(v1_rt::map_values(&m.func_env.clone().local.clone()))
+            for sig in Rc::new(v1_rt::map_values(&m.func_env.local.clone()))
                 .iter()
                 .cloned()
             {
@@ -731,7 +731,7 @@ pub fn gi_all_sigs(
         v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
         |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, m: Rc<TypedModule>| {
             let module_file = crate::v1_std_core::authored_name_at(si.clone(), m.module.clone());
-            Rc::new(v1_rt::map_values(&m.func_env.clone().local.clone()))
+            Rc::new(v1_rt::map_values(&m.func_env.local.clone()))
                 .iter()
                 .cloned()
                 .fold(
@@ -1058,15 +1058,15 @@ pub fn gi_supplied_node_reading_lines(
                 v1_rt::concat(
                     v1_rt::concat(
                         if (gi_declaration_label(substituted.declaration.clone())
-                            == gi_declaration_label(xs.declared_type.clone().declaration.clone()))
+                            == gi_declaration_label(xs.declared_type.declaration.clone()))
                         {
                             "kept ".to_string()
                         } else {
                             "CHANGED from ".to_string()
                         },
-                        gi_declaration_label(xs.declared_type.clone().declaration.clone()),
+                        gi_declaration_label(xs.declared_type.declaration.clone()),
                     ),
-                    if (gi_declaration_label(xs.declared_type.clone().declaration.clone())
+                    if (gi_declaration_label(xs.declared_type.declaration.clone())
                         == "none".to_string())
                     {
                         " (vacuous: the input carried no declaration to lose)".to_string()
@@ -1373,7 +1373,7 @@ pub fn gi_result_carrier_observation(
                     why: v1_rt::concat("no item named ".to_string(), function_name.clone()),
                 })
             }
-            Some(hit) => match hit.item.clone().body.clone() {
+            Some(hit) => match hit.item.body.clone() {
                 std::option::Option::None => {
                     Rc::new(ResultCarrierObservation::ResultCarrierUnobserved {
                         why: v1_rt::concat(function_name.clone(), " has no body".to_string()),
@@ -1393,10 +1393,7 @@ pub fn gi_result_carrier_observation(
                         let ctx = Rc::new(GenericIdentityContext {
                             module_file: hit.module_file.clone(),
                             enclosing: function_name.clone(),
-                            generic_names: gi_generic_names(
-                                hit.item.clone().params.clone(),
-                                si.clone(),
-                            ),
+                            generic_names: gi_generic_names(hit.item.params.clone(), si.clone()),
                             si: si.clone(),
                             sigs: sigs.clone(),
                         });

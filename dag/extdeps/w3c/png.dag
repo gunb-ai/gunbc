@@ -3,12 +3,12 @@ module extdeps.w3c.png
 import std.types { Int, List }
 import std.logic { Bool }
 import std.optional { Absent, Present }
-import std.bitwise { word32_xor, word32_not, nibbles_xor, nibble_values }
+import std.machine_word { word32_xor, word32_not, machine_word_apply, OperatorXor, Width8 }
 import extdeps.color.srgb { Srgb8, srgb8_admissible }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.standards.rfc_1950 { rfc_1950_stored_stream, rfc_1950_push_word32_be }
-import extdeps.standards.rfc_1951 { rfc_1951_stored_block_capacity }
+import extdeps.standards.rfc_1950 { rfc_1950_fixed_stream, rfc_1950_push_word32_be }
+import extdeps.standards.rfc_1951 { rfc_1951_fixed_stream_bound }
 
 // W3C Portable Network Graphics (PNG) Specification (Third Edition), Recommendation. Cited
 // sections: §5.2 (the eight-octet signature), §5.3 (chunk layout: length, type, data, CRC; the CRC
@@ -18,10 +18,10 @@ import extdeps.standards.rfc_1951 { rfc_1951_stored_block_capacity }
 // reflected polynomial 0xEDB88320, register preset to all ones, result complemented).
 //
 // ONE ENCODING, CHOSEN FOR ITS CONSUMER: 8-bit indexed colour (colour type 3), sRGB-tagged, with a tRNS
-// alpha per palette entry, no interlace, every row unfiltered, the IDAT zlib stream of stored blocks. A logo
+// alpha per palette entry, no interlace, every row unfiltered, the IDAT zlib stream one fixed-Huffman block of runs. A logo
 // rasterized with anti-aliasing has a handful of distinct colours, so one octet per pixel holds it
-// exactly with per-entry transparency, and the stored stream needs no compressor. Other colour
-// types, filters and compressed IDAT are the specification's, unrealized here.
+// exactly with per-entry transparency, and its rows are runs of one index, which the run stream
+// compresses without a match search. Other colour types, filters and dynamic-Huffman IDAT are the specification's, unrealized here.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -44,8 +44,11 @@ fn png_crc_entry(n: Int) -> Int {
 }
 
 // Entry n is the register after shifting n through eight bits. Derived, never transcribed.
-data png_crc_table: List<Int> = fold(nibble_values(), init: [], f: (acc, hi) =>
-  fold(nibble_values(), init: acc, f: (row, lo) => row |> list_push(png_crc_entry(n: hi * 16 + lo))))
+data png_crc_table: List<Int> = png_crc_entries(n: 256, acc: [])
+
+fn png_crc_entries(n: Int, acc: List<Int>) -> List<Int> {
+  if n <= 0 { acc } else { png_crc_entries(n: n - 1, acc: acc |> list_push(png_crc_entry(n: 256 - n))) }
+}
 
 // The Absent arm is the definition itself and is unreachable for an index below 256.
 fn png_crc_lookup(i: Int) -> Int {
@@ -58,7 +61,7 @@ fn png_crc_lookup(i: Int) -> Int {
 // One octet into the register: the low octet of the register meets the input, the table entry it
 // selects meets the register's remaining three octets.
 fn png_crc_step(crc: Int, octet: Int) -> Int {
-  word32_xor(a: png_crc_lookup(i: nibbles_xor(a: crc % 256, b: octet, digits: 2)), b: crc / 256)
+  word32_xor(a: png_crc_lookup(i: machine_word_apply(op: OperatorXor, width: Width8, a: crc % 256, b: octet)), b: crc / 256)
 }
 
 // The register continued over more octets, before the final complement.
@@ -125,7 +128,7 @@ type PngAxis = PngWidth | PngHeight
 // read a different picture than the one described. Each carries where it is and what was found.
 type PngRefusal =
     PngDimensionOutOfRange { axis: PngAxis, observed: Int }
-  | PngIdatTooLarge { octets: Int }
+  | PngIdatUpperBoundExceedsLimit { upper_bound: Int }
   | PngPaletteSize { entries: Int }
   | PngPaletteColorInadmissible { entry: Int, color: Srgb8 }
   | PngPaletteAlphaOutOfRange { entry: Int, alpha: Int }
@@ -142,12 +145,11 @@ fn png_dimension_refusal(axis: PngAxis, v: Int) -> PngRefusal? {
   if v < 1 || v > png_four_byte_limit { Present { value: PngDimensionOutOfRange { axis: axis, observed: v } } } else { none }
 }
 
-// The IDAT data length, known before any octet is produced: zlib header, one stored-block header
-// per 65535 octets of scanlines (at least one block), the scanlines, and the Adler-32.
+// An upper bound on the IDAT data length, known before any octet is produced: zlib header, the
+// fixed stream's bound over the scanlines, and the Adler-32. It is a bound, not the length: an image
+// refused on it may compress below the limit, which is why its refusal names the bound.
 fn png_idat_length(width: Int, height: Int) -> Int {
-  let raw = height * (width + 1)
-  let blocks = if raw == 0 { 1 } else { (raw + rfc_1951_stored_block_capacity - 1) / rfc_1951_stored_block_capacity }
-  2 + 5 * blocks + raw + 4
+  2 + rfc_1951_fixed_stream_bound(raw: height * (width + 1)) + 4
 }
 
 type PngScan {
@@ -212,7 +214,7 @@ fn png_first_refusal(image: PngIndexedImage) -> PngRefusal? {
     Present { value: _ } => dimension
     Absent =>
       if png_idat_length(width: image.width, height: image.height) > png_four_byte_limit {
-        Present { value: PngIdatTooLarge { octets: png_idat_length(width: image.width, height: image.height) } }
+        Present { value: PngIdatUpperBoundExceedsLimit { upper_bound: png_idat_length(width: image.width, height: image.height) } }
       } else if entries == 0 || entries > 256 {
         Present { value: PngPaletteSize { entries: entries } }
       } else {
@@ -259,7 +261,7 @@ fn png_encode_admitted(image: PngIndexedImage) -> List<Int> {
   let gamma = png_push_chunk(out: space, chunk_type: png_chunk_gama, data: rfc_1950_push_word32_be(out: [], v: png_srgb_gama))
   let palette = png_push_chunk(out: gamma, chunk_type: png_chunk_plte, data: png_plte(palette: image.palette))
   let alpha = png_push_chunk(out: palette, chunk_type: png_chunk_trns, data: png_trns(palette: image.palette))
-  let pixels = png_push_chunk(out: alpha, chunk_type: png_chunk_idat, data: rfc_1950_stored_stream(octets: png_scanlines(rows: image.rows)))
+  let pixels = png_push_chunk(out: alpha, chunk_type: png_chunk_idat, data: rfc_1950_fixed_stream(octets: png_scanlines(rows: image.rows)))
   png_push_chunk(out: pixels, chunk_type: png_chunk_iend, data: [])
 }
 
