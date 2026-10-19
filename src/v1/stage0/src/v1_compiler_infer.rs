@@ -331,26 +331,27 @@ pub use crate::v1_std_core::{
     admit_callers_entry_coords, admit_callers_entry_uninterpretable_spans, arg_name_at, arg_value,
     arm_body, arm_guard, arm_pattern, authored_name_at, binop_left, binop_right, bool_type,
     build_newline_index, call_semantics_target, callable_identity, cast_expr, cast_target,
-    decl_ref_coords_label, declaration_carried_through_resolution, declaration_provenance_of,
-    default_ident_span, diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table,
-    error_type, expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call,
-    expr_is_any_literal, expr_literal_int_optional, expr_literal_string_optional,
-    expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
-    field_access_spine, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named,
-    find_property_string, float_type, fn_admit_callers, foreach_body, foreach_collection,
-    foreach_variable_at, generic_param_name_at, has_child_named, has_inferred, if_condition,
-    if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
-    index_expr, int_type, intern, intern_str, is_child_accessor_in_model, is_compiler_error,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, is_property_contraction,
-    is_shell_transport, is_tree_size_reducing, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
-    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
-    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node,
-    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
-    node_name_span, none_type, optional_of, optional_payload, param_node_default_value,
-    param_node_name_at, param_node_type_expr, preserve_outer_optional, qualified_last_segment,
+    decl_ref_coords_label, declaration_carried_through_resolution, declaration_is_optional,
+    declaration_provenance_of, default_ident_span, diagnostic_frontier_occurrence_key,
+    diagnostic_to_span, empty_intern_table, error_type, expr_call_func_at,
+    expr_has_non_tail_self_call, expr_has_self_call, expr_is_any_literal,
+    expr_literal_int_optional, expr_literal_string_optional, expr_method_name_at, expr_var_name_at,
+    field_access_base, field_access_field_at, field_access_spine, field_binding_name_at,
+    field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_name_at,
+    field_node_type_expr, find_child_named, find_property_string, float_type, fn_admit_callers,
+    foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named,
+    has_inferred, if_condition, if_else_branch, if_then_branch, import_is_all,
+    import_specific_names_at, index_base, index_expr, int_type, intern, intern_str,
+    is_child_accessor_in_model, is_compiler_error, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, is_property_contraction, is_shell_transport,
+    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_text_part_node,
+    make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
+    method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
+    optional_of, optional_payload, param_node_default_value, param_node_name_at,
+    param_node_type_expr, preserve_outer_optional, qualified_last_segment,
     record_lit_expr_optional, record_lit_named_field_value_optional, record_lit_type_name_at,
     resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
     return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
@@ -1296,7 +1297,7 @@ pub fn optional_nullary_arm_of(owner: Rc<Node>, name: String, scope: Rc<InferSco
             else {
                 unreachable!()
             };
-            (crate::v1_compiler_infer_types::declaration_is_std_optional(d.clone())
+            (crate::v1_std_core::declaration_is_optional(d.clone())
                 && match crate::v1_std_core::find_child_named(
                     owner.clone(),
                     name.clone(),
@@ -7615,9 +7616,7 @@ pub fn optional_marked_formal_takes_optional_literal(
             false
         } else {
             match structured_literal_owner_declaration(lit_name.clone(), scope.clone()) {
-                Some(owner) => {
-                    crate::v1_compiler_infer_types::declaration_is_std_optional(owner.clone())
-                }
+                Some(owner) => crate::v1_std_core::declaration_is_optional(owner.clone()),
                 std::option::Option::None => false,
             }
         }
@@ -18027,9 +18026,7 @@ pub fn optional_declaration_reading(
                 16,
             ) {
                 Some(settled) => {
-                    if crate::v1_compiler_infer_types::declaration_is_std_optional(
-                        settled.head.clone(),
-                    ) {
+                    if crate::v1_std_core::declaration_is_optional(settled.head.clone()) {
                         Rc::new(OptionalDeclarationReading::IsStdOptional)
                     } else {
                         Rc::new(OptionalDeclarationReading::IsOtherType)
@@ -18058,6 +18055,19 @@ pub fn optional_declaration_reading(
     }
 }
 
+pub fn spelling_is_container_carrier(spelling: String) -> bool {
+    (crate::std_types::is_container_type(spelling.clone())
+        || match crate::std_types::container_template_algebra(spelling.clone()) {
+            Some(_) => true,
+            std::option::Option::None => {
+                match crate::std_types::container_template_alias_algebra(spelling.clone()) {
+                    Some(_) => true,
+                    std::option::Option::None => false,
+                }
+            }
+        })
+}
+
 pub fn optional_reading_by_census(
     n: Rc<Node>,
     scope: Rc<InferScope>,
@@ -18073,37 +18083,29 @@ pub fn optional_reading_by_census(
         TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
             declaration: d, ..
         } => {
-            if crate::v1_compiler_infer_types::declaration_is_std_optional(d.clone()) {
+            if crate::v1_std_core::declaration_is_optional(d.clone()) {
                 Rc::new(OptionalDeclarationReading::IsStdOptional)
             } else {
                 Rc::new(OptionalDeclarationReading::IsOtherType)
             }
         }
-        TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: kernel, .. } => {
-            optional_reading_of_kernel_mint(kernel.clone())
+        TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: _, .. } => {
+            Rc::new(OptionalDeclarationReading::IsOtherType)
         }
         TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => {
             Rc::new(OptionalDeclarationReading::IsOtherType)
         }
         TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => {
-            if (spelling.clone() == "Optional".to_string()) {
+            if ((spelling.clone() == "".to_string())
+                || spelling_is_container_carrier(spelling.clone()))
+            {
+                Rc::new(OptionalDeclarationReading::IsOtherType)
+            } else {
                 Rc::new(OptionalDeclarationReading::OptionalUnrecovered {
                     spelling: spelling.clone(),
                 })
-            } else {
-                Rc::new(OptionalDeclarationReading::IsOtherType)
             }
         }
-    }
-}
-
-pub fn optional_reading_of_kernel_mint(kernel: String) -> Rc<OptionalDeclarationReading> {
-    if (crate::v1_std_core::qualified_last_segment(kernel.clone()) == "Optional".to_string()) {
-        Rc::new(OptionalDeclarationReading::OptionalUnrecovered {
-            spelling: kernel.clone(),
-        })
-    } else {
-        Rc::new(OptionalDeclarationReading::IsOtherType)
     }
 }
 
@@ -32596,6 +32598,7 @@ pub fn build_emit_graph_info(
                     qualified_names.clone(),
                 ),
             fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            fn_decl_identity_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
             structural_alias_fn_surface_names: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             structural_alias_direct_fn_names: v1_rt::rc_empty_set::<String>(),
         });
@@ -32635,6 +32638,7 @@ pub fn build_emit_graph_info(
             ),
             type_decl_items: built_raw.type_decl_items.clone(),
             fn_decl_items: built_raw.fn_decl_items.clone(),
+            fn_decl_identity_items: built_raw.fn_decl_identity_items.clone(),
             structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names.clone(),
             structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names.clone(),
         });
@@ -32673,6 +32677,7 @@ pub fn build_emit_graph_info(
             data_variant_wire_spellings: v1_rt::rc_empty_map::<String, Rc<DataVariantWireSpelling>>(
             ),
             fn_decl_items: built.fn_decl_items.clone(),
+            fn_decl_identity_items: built.fn_decl_identity_items.clone(),
             fn_map_key_bounds: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: variant_shapes.fielded.clone(),
@@ -32692,7 +32697,7 @@ pub fn build_emit_graph_info(
             fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
-            tco_cursor_param: "".to_string(),
+            tco_cursor_params: Rc::new(vec![]),
             tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
         })
     }

@@ -2888,11 +2888,17 @@ fn declaration_carried_through_resolution(n: Node, hops: Int) -> DeclarationRef?
   }
 }
 
+// THE ONE IDENTITY TEST: canonical DeclarationRef equality against the reference optional_declaration_ref
+// names; no module-path or name part is compared on its own.
+fn declaration_is_optional(d: DeclarationRef) -> Bool {
+  d == optional_declaration_ref
+}
+
 // WHETHER A TYPE NODE IS THE std.optional APPLICATION: asked of the declaration identity it carries,
 // never of a spelling or a cardinality flag.
 fn type_is_optional(n: Node) -> Bool {
   match declaration_carried_through_resolution(n: n, hops: 3) {
-    Present { value: d } => d == optional_declaration_ref
+    Present { value: d } => declaration_is_optional(d: d)
     Absent => false
   }
 }
@@ -2902,7 +2908,7 @@ fn type_is_optional(n: Node) -> Bool {
 fn optional_payload(n: Node) -> Node {
   match n.declaration {
     Present { value: d } =>
-      if (d == optional_declaration_ref) && (n.connective == NoConnective) {
+      if declaration_is_optional(d: d) && (n.connective == NoConnective) {
         match n.children |> first {
           Present { value: p } => p
           Absent => n

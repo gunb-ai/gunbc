@@ -2392,7 +2392,7 @@ pub fn fold_list<T: Clone, A: Clone>(
     mut __tco_loop_cons: impl Fn(A, T) -> A + Clone,
 ) -> A {
     {
-        let mut __tco_cursor: usize = 0;
+        let mut __tco_cursor_xs: usize = 0;
         loop {
             #[allow(unused_mut)]
             let mut empty = __tco_loop_empty;
@@ -2402,17 +2402,17 @@ pub fn fold_list<T: Clone, A: Clone>(
             let mut xs = __tco_loop_xs.clone();
             {
                 let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor) == 0 {
+                if (__fm.len() - __tco_cursor_xs) == 0 {
                     break empty.clone();
                 } else {
-                    let h = (*__fm)[__tco_cursor + 0].clone();
+                    let h = (*__fm)[__tco_cursor_xs + 0].clone();
                     {
-                        let __tco_0 = cons(empty, h.clone());
-                        let __tco_1 = cons;
-                        let __tco_2 = __tco_cursor + 1;
-                        __tco_loop_empty = __tco_0;
-                        __tco_loop_cons = __tco_1;
-                        __tco_cursor = __tco_2;
+                        let __tco_0 = __tco_cursor_xs + 1;
+                        let __tco_1 = cons(empty, h.clone());
+                        let __tco_2 = cons;
+                        __tco_cursor_xs = __tco_0;
+                        __tco_loop_empty = __tco_1;
+                        __tco_loop_cons = __tco_2;
                         continue;
                     }
                 }
@@ -2913,7 +2913,7 @@ pub fn list_find_first<T: Clone>(
     mut __tco_loop_predicate: impl Fn(T) -> bool + Clone,
 ) -> Option<T> {
     {
-        let mut __tco_cursor: usize = 0;
+        let mut __tco_cursor_xs: usize = 0;
         loop {
             #[allow(unused_mut)]
             let mut predicate = __tco_loop_predicate;
@@ -2921,18 +2921,18 @@ pub fn list_find_first<T: Clone>(
             let mut xs = __tco_loop_xs.clone();
             {
                 let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor) == 0 {
+                if (__fm.len() - __tco_cursor_xs) == 0 {
                     break crate::std_optional::optional_absent();
                 } else {
-                    let h = (*__fm)[__tco_cursor + 0].clone();
+                    let h = (*__fm)[__tco_cursor_xs + 0].clone();
                     if predicate(h.clone()) {
                         break crate::std_optional::optional_present(h.clone());
                     } else {
                         {
-                            let __tco_0 = predicate;
-                            let __tco_1 = __tco_cursor + 1;
-                            __tco_loop_predicate = __tco_0;
-                            __tco_cursor = __tco_1;
+                            let __tco_0 = __tco_cursor_xs + 1;
+                            let __tco_1 = predicate;
+                            __tco_cursor_xs = __tco_0;
+                            __tco_loop_predicate = __tco_1;
                             continue;
                         }
                     }

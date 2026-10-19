@@ -2484,10 +2484,6 @@ pub fn declaration_carried_through_resolution(
     }
 }
 
-pub fn declaration_is_std_optional(d: Rc<DeclarationRef>) -> bool {
-    (d.clone() == optional_declaration_ref())
-}
-
 pub fn applied_arguments_identical(
     left_args: Rc<Vec<Rc<Node>>>,
     right_args: Rc<Vec<Rc<Node>>>,

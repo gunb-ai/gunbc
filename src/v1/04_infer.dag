@@ -29,7 +29,7 @@ import v1.compiler.type_head_exposure {
   type_declaration_identity_key,
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
-import v1.std.core { type_is_optional, optional_of, optional_payload, preserve_outer_optional, declaration_carried_through_resolution, Unmarked, ModuleItemTypeDeclaration, declaration_provenance_of,
+import v1.std.core { type_is_optional, declaration_is_optional, optional_of, optional_payload, preserve_outer_optional, declaration_carried_through_resolution, Unmarked, ModuleItemTypeDeclaration, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
@@ -823,7 +823,7 @@ fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expe
 // compares that unbound payload against T?. variant_reference_inferred_node refuses an Optional
 // expectation on purpose -- `Mod` against `BinOp?` is a coercion the emitter owes a wrap for -- but
 // that hazard is an arm of ANOTHER coproduct (`Red` against `Color?`); the Optional's own nullary arm is
-// already the optional. The owner is identified by declaration (declaration_is_std_optional), never by
+// already the optional. The owner is identified by declaration (declaration_is_optional), never by
 // the arm's shape: a user coproduct's no-payload arm keeps the refusal.
 fn expected_decided_variant_type(name: String, decided: Node, decided_name: String, expected: Node?, scope: InferScope) -> Node {
   match expected {
@@ -840,7 +840,7 @@ fn expected_decided_variant_type(name: String, decided: Node, decided_name: Stri
 fn optional_nullary_arm_of(owner: Node, name: String, scope: InferScope) -> Bool {
   match variant_parent_identity_of(owner: Present { value: owner }, scope: scope) {
     VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } =>
-      declaration_is_std_optional(d: d)
+      declaration_is_optional(d: d)
         && match find_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
           Present { value: arm } => (arm.children |> count) == 0
           Absent => false
@@ -5560,7 +5560,7 @@ fn optional_marked_formal_takes_optional_literal(formal: Node, formal_peeled: No
   let marked = type_is_optional(n: formal) || type_is_optional(n: formal_peeled)
   if !marked { false } else {
     match structured_literal_owner_declaration(lit_name: lit_name, scope: scope) {
-      Present { value: owner } => declaration_is_std_optional(d: owner)
+      Present { value: owner } => declaration_is_optional(d: owner)
       Absent => false
     }
   }
@@ -11281,7 +11281,7 @@ fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarati
       // The declaration a reference carries is settled through any transparent alias (alias_settled_agree's own reading),
       // so an alias of std Optional reads as Optional by the one relation instead of by a leaf of its own.
       match settled_type(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env, fuel: 16) {
-        Present { value: settled } => if declaration_is_std_optional(d: settled.head) { IsStdOptional } else { IsOtherType }
+        Present { value: settled } => if declaration_is_optional(d: settled.head) { IsStdOptional } else { IsOtherType }
         // A chain ending at a kernel type names no declaration and is not Optional; a chain that settles to neither is unrecovered, typed.
         Absent =>
           match kernel_settled_name(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env, fuel: 16) {
@@ -11293,19 +11293,25 @@ fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarati
   }
 }
 
-fn optional_reading_by_census(n: Node, scope: InferScope, spelling: String) -> OptionalDeclarationReading {
-  match type_reference_declaration_reading(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env) {
-    TypeReferenceNamesDeclaration { declaration: d } =>
-      if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
-    TypeReferenceIsKernelType { name: kernel } => optional_reading_of_kernel_mint(kernel: kernel)
-    TypeReferenceIsTypeVariable { id: _ } => IsOtherType
-    TypeReferenceUnidentified { authored: _, resolved: _ } =>
-      if spelling == "Optional" { OptionalUnrecovered { spelling: spelling } } else { IsOtherType }
+// A std.algebra carrier spelling (List, Map, FreeMonoid...) is kernel-scope and names no declaration in the census: it is not Optional. An EMPTY spelling is a structural (anonymous record) type, which has no name to be std.optional.
+fn spelling_is_container_carrier(spelling: String) -> Bool {
+  is_container_type(name: spelling) || match container_template_algebra(name: spelling) {
+    Present { value: _ } => true
+    Absent => match container_template_alias_algebra(name: spelling) {
+      Present { value: _ } => true
+      Absent => false
+    }
   }
 }
 
-fn optional_reading_of_kernel_mint(kernel: String) -> OptionalDeclarationReading {
-  if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
+fn optional_reading_by_census(n: Node, scope: InferScope, spelling: String) -> OptionalDeclarationReading {
+  match type_reference_declaration_reading(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+    TypeReferenceNamesDeclaration { declaration: d } =>
+      if declaration_is_optional(d: d) { IsStdOptional } else { IsOtherType }
+    TypeReferenceIsKernelType { name: _ } => IsOtherType
+    TypeReferenceIsTypeVariable { id: _ } => IsOtherType
+    TypeReferenceUnidentified { authored: _, resolved: _ } => if spelling == "" || spelling_is_container_carrier(spelling: spelling) { IsOtherType } else { OptionalUnrecovered { spelling: spelling } }
+  }
 }
 
 // `Present { value: v }` UNDER AN EXPECTED OPTIONAL EXPECTS THE PAYLOAD FOR ITS VALUE. `T?`

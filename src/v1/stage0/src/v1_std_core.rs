@@ -5236,9 +5236,13 @@ pub fn declaration_carried_through_resolution(
     }
 }
 
+pub fn declaration_is_optional(d: Rc<DeclarationRef>) -> bool {
+    (d.clone() == optional_declaration_ref())
+}
+
 pub fn type_is_optional(n: Rc<Node>) -> bool {
     match declaration_carried_through_resolution(n.clone(), 3) {
-        Some(d) => (d.clone() == optional_declaration_ref()),
+        Some(d) => declaration_is_optional(d.clone()),
         std::option::Option::None => false,
     }
 }
@@ -5246,7 +5250,7 @@ pub fn type_is_optional(n: Rc<Node>) -> bool {
 pub fn optional_payload(n: Rc<Node>) -> Rc<Node> {
     match n.declaration.clone() {
         Some(d) => {
-            if ((d.clone() == optional_declaration_ref())
+            if (declaration_is_optional(d.clone())
                 && (n.connective.clone() == Connective::NoConnective))
             {
                 match n.children.clone().first().cloned() {
