@@ -1,0 +1,225 @@
+// Witness for the TYPED LIVE_DEPLOY APPLY LEGS (gunbc.live_deploy.apply_legs) and their runner,
+// verdict and orchestration (gunbc.host.host_effect_realize deploy_apply_run_legs,
+// live_deploy_apply_verdict, live_deploy_apply_orchestrate).
+//
+// The folds are pinned over SUPPLIED RunArgvTransportOutcome / OwnedDirectoryEnsureOutcome values (DESIGN
+// section 3: a witness discriminates at one interface). The transport has no mock arm (ruling
+// 2026-08-23): effectful ports enter as function values to the same runner production calls, and the
+// legs under test are the real plan's, not hand-built.
+module test.claim.live_deploy.live_deploy_apply_run_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.algebra { Cons, Empty }
+import std.optional { Optional, Present, Absent }
+import std.realization_reconcile { Reconciliation, Converged, NotConverged }
+import gunbc.host.host_effect { HostEffectEvidence, HostEffectIntent, HostOs, SshShell, LiveDeployRetract, host_effect_identity_evidence }
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.host.host_effect_realize {
+  RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved,
+  DeployApplyPorts, DeployApplyRun, ApplyRunOk, ApplyRunFailed,
+  deploy_apply_run_legs, live_deploy_apply_verdict, live_deploy_apply_orchestrate,
+  LiveDeployPreambleVerdict, PreambleConverged, PreambleRefused, ScratchAcquire,
+}
+import gunbc.owned_directory { OwnedDirectoryEnsureOutcome, OwnedDirectoryEnsureRefused }
+import gunbc.host.host_axis_caps { CapMember, CapConvergeAuthorized, CapConvergeWithheld }
+import gunbc.live_deploy.apply_legs {
+  DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
+  ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory,
+  deploy_apply_memory_cap_plan, deploy_apply_leg_step,
+}
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import product.host_identity { HostIdentity }
+
+fn observed(code: Int, err: String) -> RunArgvTransportOutcome {
+  RunArgvTransportObserved { observed: ShellExecObserved { exit_code: code, success: code == 0, stdout: "", stderr: err } }
+}
+
+fn the_intent() -> HostEffectIntent {
+  HostEffectIntent {
+    target: HostOs { node: srv1_host },
+    effect: LiveDeployRetract { spec: deployment_spec_srv1() },
+    evidence: host_effect_identity_evidence,
+    transport: SshShell { ssh_host: "srv-x" },
+    privilege_denial: none,
+  }
+}
+
+fn ports(command_code: Int, stdin_code: Int) -> DeployApplyPorts {
+  DeployApplyPorts {
+    command: fn(c) { observed(code: command_code, err: "cmd-boom") },
+    stdin: fn(c, p) { observed(code: stdin_code, err: "stdin-boom") },
+    ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
+  }
+}
+
+fn the_member() -> CapMember {
+  CapMember { dropin_path: "/etc/systemd/system/gunbc-a.service.d/20-cap.conf" as NonEmptyStr, content: "[Service]\nMemoryMax=1G\n" }
+}
+
+fn authorized_here() -> DeployApplyPlan {
+  let spec = deployment_spec_srv1()
+  deploy_apply_memory_cap_plan(
+    spec: spec,
+    authorization: CapConvergeAuthorized {
+      host: spec.target.host.identity,
+      authorized_retiring: [],
+      target_units: ["gunbc-a.service" as NonEmptyStr],
+      desired: [the_member()],
+    },
+  )
+}
+
+fn authorized_legs() -> List<DeployApplyLeg> {
+  match authorized_here() {
+    ApplyPlanReady { legs: ls } => ls
+    ApplyPlanRefused { step: _, reason: _ } => []
+  }
+}
+
+// ORDER IS CONSTRUCTED: install, then ONE reload, then the revert.
+test fn an_authorized_cap_plan_is_install_then_reload_then_revert() -> Bool {
+  match authorized_legs() {
+    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Empty } } } =>
+      deploy_apply_leg_step(leg: a) == "memory-cap-install"
+        && deploy_apply_leg_step(leg: b) == "memory-cap-reload"
+        && deploy_apply_leg_step(leg: c) == "memory-cap-revert"
+    Cons { head: _, tail: _ } => false
+    Empty => false
+  }
+}
+
+test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
+  match deploy_apply_memory_cap_plan(spec: deployment_spec_srv1(), authorization: CapConvergeWithheld { cause: "no census" }) {
+    ApplyPlanReady { legs: Cons { head: l, tail: Empty } } =>
+      match l {
+        ApplyLegReport { step: _, line: line } => string_contains(s: line, pattern: "__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: no census")
+        ApplyLegCommand { step: _, command: _ } => false
+        ApplyLegInstallFile { step: _, command: _, payload: _ } => false
+        ApplyLegEnsureDirectory { target: _ } => false
+      }
+    ApplyPlanReady { legs: _ } => false
+    ApplyPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// An authorization is evidence about ONE host: spent on another it refuses the plan.
+test fn an_authorization_for_another_host_refuses_the_plan() -> Bool {
+  match deploy_apply_memory_cap_plan(
+    spec: deployment_spec_srv1(),
+    authorization: CapConvergeAuthorized { host: "elsewhere" as HostIdentity, authorized_retiring: [], target_units: ["u.service" as NonEmptyStr], desired: [the_member()] },
+  ) {
+    ApplyPlanRefused { step: s, reason: _ } => s == "memory-cap"
+    ApplyPlanReady { legs: _ } => false
+  }
+}
+
+test fn an_authorization_with_no_units_refuses_rather_than_converging_nothing() -> Bool {
+  let spec = deployment_spec_srv1()
+  match deploy_apply_memory_cap_plan(
+    spec: spec,
+    authorization: CapConvergeAuthorized { host: spec.target.host.identity, authorized_retiring: [], target_units: [], desired: [the_member()] },
+  ) {
+    ApplyPlanRefused { step: s, reason: _ } => s == "memory-cap"
+    ApplyPlanReady { legs: _ } => false
+  }
+}
+
+test fn the_success_route_runs_every_leg_through_its_port() -> Bool {
+  match deploy_apply_run_legs(legs: authorized_legs(), ports: ports(command_code: 0, stdin_code: 0)) {
+    ApplyRunOk { legs_run: n, reports: _ } => n == 3
+    ApplyRunFailed { step: _, reason: _, legs_run: _ } => false
+  }
+}
+
+// The install leg reaches the STDIN port: a failing stdin port stops the run at the first leg, and a
+// runner that dispatched it through the command port would report success here.
+test fn the_install_leg_reaches_the_stdin_port_and_stops_the_run() -> Bool {
+  match deploy_apply_run_legs(legs: authorized_legs(), ports: ports(command_code: 0, stdin_code: 4)) {
+    ApplyRunFailed { step: s, reason: r, legs_run: n } => s == "memory-cap-install" && n == 0 && r == "exit 4: stdin-boom"
+    ApplyRunOk { legs_run: _, reports: _ } => false
+  }
+}
+
+// A reload failure dispatches no revert: legs_run counts only the install.
+test fn a_mid_run_refusal_dispatches_no_later_leg() -> Bool {
+  match deploy_apply_run_legs(legs: authorized_legs(), ports: ports(command_code: 5, stdin_code: 0)) {
+    ApplyRunFailed { step: s, reason: _, legs_run: n } => s == "memory-cap-reload" && n == 1
+    ApplyRunOk { legs_run: _, reports: _ } => false
+  }
+}
+
+test fn a_report_leg_dispatches_nothing_and_is_carried_to_the_verdict() -> Bool {
+  match deploy_apply_run_legs(
+    legs: [ApplyLegReport { step: "memory-cap", line: "withheld-line" }],
+    ports: ports(command_code: 9, stdin_code: 9),
+  ) {
+    ApplyRunOk { legs_run: n, reports: rs } => n == 1 && count(rs) == 1
+    ApplyRunFailed { step: _, reason: _, legs_run: _ } => false
+  }
+}
+
+test fn the_verdict_carries_reports_then_the_receipt_line() -> Bool {
+  match live_deploy_apply_verdict(run: ApplyRunOk { legs_run: 1, reports: ["w"] }, host: "srv1" as NonEmptyStr, intent: the_intent()) {
+    Converged { evidence: _, applied: _ } => true
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+test fn a_failed_run_is_not_converged_and_names_its_step() -> Bool {
+  match live_deploy_apply_verdict(run: ApplyRunFailed { step: "memory-cap-reload", reason: "exit 1", legs_run: 2 }, host: "srv1" as NonEmptyStr, intent: the_intent()) {
+    NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: "refused at step memory-cap-reload after 2 completed legs")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+fn preamble_converged(p: NonEmptyStr) -> LiveDeployPreambleVerdict {
+  PreambleConverged { principal: "p", dropin: "/d" as NonEmptyStr, legs_consumed: 1 }
+}
+
+fn preamble_refused(p: NonEmptyStr) -> LiveDeployPreambleVerdict {
+  PreambleRefused { step: ScratchAcquire, reason: "no scratch", legs_consumed: 0 }
+}
+
+fn orchestrate(preamble: fn(NonEmptyStr) -> LiveDeployPreambleVerdict, plan: DeployApplyPlan, p: DeployApplyPorts, locus: Optional<String>) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_apply_orchestrate(
+    locus_refusal: locus, plan: plan, principal: "gunbc-publication" as NonEmptyStr,
+    preamble: preamble, ports: p, host: "srv1" as NonEmptyStr, intent: the_intent(),
+  )
+}
+
+test fn the_orchestration_converges_over_all_ports_ok() -> Bool {
+  match orchestrate(preamble: preamble_converged, plan: authorized_here(), p: ports(command_code: 0, stdin_code: 0), locus: none) {
+    Converged { evidence: _, applied: _ } => true
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+// With every port succeeding a run that dispatched any leg would converge; NotConverged naming the
+// preamble step proves nothing ran after the preamble refused.
+test fn a_preamble_refusal_dispatches_no_leg() -> Bool {
+  match orchestrate(preamble: preamble_refused, plan: authorized_here(), p: ports(command_code: 0, stdin_code: 0), locus: none) {
+    NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: "refused at preamble step") && string_contains(s: r, pattern: "no scratch")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+test fn a_plan_refusal_precedes_the_preamble_and_every_leg() -> Bool {
+  match orchestrate(preamble: preamble_converged, plan: ApplyPlanRefused { step: "memory-cap", reason: "r" }, p: ports(command_code: 0, stdin_code: 0), locus: none) {
+    NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: "refused at step memory-cap: r")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+test fn a_locus_refusal_is_returned_before_the_plan() -> Bool {
+  match orchestrate(preamble: preamble_converged, plan: authorized_here(), p: ports(command_code: 0, stdin_code: 0), locus: Present { value: "locus-no" }) {
+    NotConverged { reason: r, applied: _ } => r == "locus-no"
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+test fn a_mid_run_refusal_through_the_orchestration_is_not_converged() -> Bool {
+  match orchestrate(preamble: preamble_converged, plan: authorized_here(), p: ports(command_code: 5, stdin_code: 0), locus: none) {
+    NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: "refused at step memory-cap-reload")
+    Converged { evidence: _, applied: _ } => false
+  }
+}

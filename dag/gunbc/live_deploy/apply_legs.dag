@@ -1,6 +1,6 @@
 module gunbc.live_deploy.apply_legs
 
-import std.types { String }
+import std.types { String, list_length }
 import std.algebra { Cons, Empty, list_append }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.findutils { find_owned_regular_files_exec_command }
@@ -18,6 +18,17 @@ import gunbc.live_deploy.lab_host_plan { LabPlanReady, LabPlanRefused, lab_plan_
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.live_deploy.emit { deployment_apply_plan, owned_directory_will_install }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
+import extdeps.sudo.elevation { sudo_elevate_command }
+import extdeps.tools.gnu_coreutils { coreutils_install_file_owned_argv }
+import gunbc.live_deploy.release_locus { approval_broker_helper_root_principal }
+import gunbc.live_deploy.emit { install_file_shared_mode }
+import gunbc.host.host_axis_caps {
+  CapConvergeDecision, CapAuthorizationWithheld, CapAuthorizationRefused, CapAuthorizedForThisHost, CapMember,
+  cap_authorization_for_host, slice_control_converge_argvs_for_unit,
+}
+import gunbc.host.host_converge { SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
+import extdeps.systemd.systemctl { systemctl_daemon_reload_argv, systemctl_revert_memory_caps_argv }
+import std.algebra { non_empty_to_list }
 
 // THE APPLY FOLD'S LEGS AS DATA, replacing the apply bash script the way gunbc.live_deploy.retract_legs
 // replaced the retract script. A leg is one typed operation on the host; the runner
@@ -30,6 +41,9 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
 type DeployApplyLeg
   = ApplyLegEnsureDirectory { target: OwnedDirectoryTarget }
   | ApplyLegRepairDirectoryEntries { command: ArgvCommand }
+  | ApplyLegCommand { step: String, command: ArgvCommand }
+  | ApplyLegInstallFile { step: String, command: ArgvCommand, payload: String }
+  | ApplyLegReport { step: String, line: String }
 
 type DeployApplyPlan
   = ApplyPlanReady { legs: List<DeployApplyLeg> }
@@ -39,6 +53,9 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
   match leg {
     ApplyLegEnsureDirectory { target: _ } => "ensure-owned-directory"
     ApplyLegRepairDirectoryEntries { command: _ } => "repair-directory-entries"
+    ApplyLegCommand { step: st, command: _ } => st
+    ApplyLegInstallFile { step: st, command: _, payload: _ } => st
+    ApplyLegReport { step: st, line: _ } => st
   }
 }
 
@@ -112,19 +129,89 @@ fn deploy_apply_directories_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan) 
   )
 }
 
+// ── MEMORY CAPS AND SLICE CONTROL ────────────────────────────────────────────────────────────────
+//
+// The cap authorization decides the family. Withheld is a REPORT leg (existing caps left exactly as
+// observed, nothing dispatched); refused refuses the plan; authorized is every drop-in install, then ONE
+// daemon reload, then each unit's shadow revert. That order is CONSTRUCTED here (installs, reload,
+// reverts), so the script-era ordering guard has no counterpart: a reverted-before-installed program has
+// no constructor.
+fn deploy_apply_cap_install_leg(m: CapMember) -> DeployApplyLeg {
+  ApplyLegInstallFile {
+    step: "memory-cap-install",
+    command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+      mode: install_file_shared_mode,
+      owner: approval_broker_helper_root_principal, group: approval_broker_helper_root_principal,
+      source: "/dev/stdin", dest: m.dropin_path as String)),
+    payload: m.content,
+  }
+}
+
+fn deploy_apply_memory_cap_plan(spec: DeploymentSpec, authorization: CapConvergeDecision) -> DeployApplyPlan {
+  let host = spec.target.host.identity
+  match cap_authorization_for_host(d: authorization, host: host) {
+    CapAuthorizationWithheld { cause: why } =>
+      ApplyPlanReady { legs: [ApplyLegReport {
+        step: "memory-cap",
+        line: join(["__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: ", why, "; existing caps left exactly as observed host=", host as String], ""),
+      }] }
+    CapAuthorizationRefused { cause: why } =>
+      ApplyPlanRefused { step: "memory-cap", reason: join(["memory-cap apply not authorized for this host: ", why, " host=", host as String], "") }
+    CapAuthorizedForThisHost { desired: members, authorized_retiring: _, target_units: units } =>
+      if list_length(items: units) > 0 && list_length(items: members) > 0 {
+        ApplyPlanReady { legs: concat(
+          concat(
+            list_map(xs: members, f: m => deploy_apply_cap_install_leg(m: m)),
+            [ApplyLegCommand { step: "memory-cap-reload", command: sudo_elevate_command(command: systemctl_daemon_reload_argv()) }],
+          ),
+          list_map(xs: units, f: u => ApplyLegCommand { step: "memory-cap-revert", command: sudo_elevate_command(command: systemctl_revert_memory_caps_argv(unit: u)) }),
+        ) }
+      } else {
+        ApplyPlanRefused { step: "memory-cap", reason: join(["memory-cap apply authorized with no members or no units; nothing to converge host=", host as String], "") }
+      }
+  }
+}
+
+fn deploy_apply_slice_control_plan(spec: DeploymentSpec) -> DeployApplyPlan {
+  let host = spec.target.host.identity
+  match slice_control_plan_for(host: host) {
+    SliceControlPlanNotOwed => ApplyPlanReady { legs: [] }
+    SliceControlPlanDerived { units } =>
+      ApplyPlanReady { legs: flat_map(non_empty_to_list(xs: units), u =>
+        list_map(xs: slice_control_converge_argvs_for_unit(u: u), f: argv =>
+          ApplyLegCommand { step: "slice-control", command: sudo_elevate_command(command: argv) })) }
+    SliceControlPlanRefused { cause } =>
+      ApplyPlanRefused { step: "slice-control", reason: join(["slice-control cannot be derived: ", cause, " host=", host as String], "") }
+  }
+}
+
 // ── THE FOLD ─────────────────────────────────────────────────────────────────────────────────────
 //
 // lab plan, then the tailscale client capability, then the wholesale membership refusal, then each
 // family's legs in the order the script ran them. A family appears here when its legs are typed; the
 // cutover to this plan happens when the last family does.
-fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, legs: List<DeployApplyLeg>) -> DeployApplyPlan {
-  match deploy_apply_directories_plan(spec: spec, plan: plan) {
+fn deploy_apply_chain(first: DeployApplyPlan, rest: DeployApplyPlan) -> DeployApplyPlan {
+  match first {
     ApplyPlanRefused { step: s, reason: r } => ApplyPlanRefused { step: s, reason: r }
-    ApplyPlanReady { legs: ds } => ApplyPlanReady { legs: list_append(left: legs, right: ds) }
+    ApplyPlanReady { legs: a } =>
+      match rest {
+        ApplyPlanRefused { step: s, reason: r } => ApplyPlanRefused { step: s, reason: r }
+        ApplyPlanReady { legs: b } => ApplyPlanReady { legs: list_append(left: a, right: b) }
+      }
   }
 }
 
-fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
+fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision) -> DeployApplyPlan {
+  deploy_apply_chain(
+    first: deploy_apply_directories_plan(spec: spec, plan: plan),
+    rest: deploy_apply_chain(
+      first: deploy_apply_memory_cap_plan(spec: spec, authorization: authorization),
+      rest: deploy_apply_slice_control_plan(spec: spec),
+    ),
+  )
+}
+
+fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision) -> DeployApplyPlan {
   match spec.target.lab_plan {
     LabPlanRefused { cause: c } =>
       ApplyPlanRefused {
@@ -138,19 +225,19 @@ fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> Depl
             step: "tailscale-client",
             reason: join(["live-deploy apply refused: this target's tailscale client version is UNOBSERVED (", r, "), so whether scoped serve exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)"], ""),
           }
-        ScopedRemovalUnsupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan)
-        ScopedRemovalSupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan)
+        ScopedRemovalUnsupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization)
+        ScopedRemovalSupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization)
       }
   }
 }
 
-fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
+fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision) -> DeployApplyPlan {
   match membership_effects(plan: deployment_apply_plan(spec: spec)) {
     ApplyRefused { refusals: rs } =>
       ApplyPlanRefused {
         step: "wholesale",
         reason: join(["live-deploy apply refused WHOLESALE: the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown); the entire fold is refused rather than partially applied. refused-member-count=", to_string(count(rs))], ""),
       }
-    EffectsReady { effects: _ } => deploy_apply_family_plans(spec: spec, plan: plan, legs: [])
+    EffectsReady { effects: _ } => deploy_apply_family_plans(spec: spec, plan: plan, authorization: authorization)
   }
 }
