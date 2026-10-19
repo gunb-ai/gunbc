@@ -5,6 +5,8 @@ import std.process { ExitSuccess, ExitFailure }
 import std.optional { Absent, Optional, Present }
 import std.logic { Bool }
 import std.algebra { Cons, Empty, contains, list_snoc_item, length, trim }
+import std.measure { byte_size, ByteSize }
+import std.shell_stream_capture { BoundedTail }
 import std.integer { int_to_decimal_string }
 import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -56,6 +58,12 @@ import v2.workflow.floor_terminal_ledger {
 }
 import v2.workflow.wet_evidence { WetScheduledClaim }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
+// THE NAME→PATH AUTHORITY, IMPORTED RATHER THAN RE-IMPLEMENTED. `module_file` is the rule,
+// `repository_storage_layout` binds it to this repository's storage policy (gunbc.source_layout), and
+// `repository_path_of_module_file` spells the repository-relative path. Re-deriving the dotted-name rule
+// here would put a second layout authority in an instrument (DESIGN 3).
+import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
+import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
 
 // THE KNOWN-RED LIST, DERIVED FROM RUNS THAT ACTUALLY RAN (Charter 4).
 //
@@ -133,9 +141,15 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // grows with the corpus. Raising the cap is a deliberate edit, priced against the receipt above.
 data known_red_max_claims_per_child: Int = 64
 
-// The child's retained stderr tail. Per-claim FAIL reasons ARE this instrument's payload, so the tail is
-// kept wider than the transport default; the cost is the bounded tail, not the corpus.
-data known_red_stderr_tail_bytes: Int = 65536
+// THE CHILD'S RETAINED STDERR, TYPED AND ACTUALLY PAID FOR. stderr carries only the harness's OWN
+// diagnostics here — its argv refusal, its death rattle — because the verdict payload (PASS/FAIL per
+// witness) arrives on stdout and is parsed from there; a claim's failure reason is never a stderr line. So
+// the tail is a bounded diagnostic window, wide enough to hold the harness's whole refusal message (its
+// entry-path refusal names every offending --entry) without retaining a corpus of noise: the transport's
+// 16 KiB default truncates the longest refusal I have observed, and an unbounded capture would let one
+// child's crash log hold its bytes resident in the instrument host. It is handed to the capture transport
+// as a `ByteSize`, so the carrier is what the transport consumes — the width is applied, not described.
+data known_red_stderr_tail: ByteSize = byte_size(count: 65536)
 
 fn known_red_pass_prefix() -> String {
   "PASS "
@@ -346,52 +360,34 @@ fn known_red_identity_of(q: String) -> WitnessIdentity {
   WitnessIdentity { module_path: known_red_module_of(q), function: known_red_function_of(q) }
 }
 
-fn known_red_slashed(module_path: String) -> String {
-  join(map(split(s: module_path, delimiter: "."), p => concat(p, "/")), "")
-}
-
-// THE ENTRY A ROSTER ROW POINTS AT, ASKED OF THE FILESYSTEM OVER THE WITNESS ROOTS. The roster records a
-// QUALIFIED NAME and nothing else — it carries no path, and this instrument does not invent one. The tree
-// already knows where a module lives: `test.claim.…` modules sit under dag/ and `v2.workflow.…`,
-// `std.…` and friends under src/, so guessing a single root would be a fabricated default that silently
-// mis-attributes most of the roster (measured: 61 of the 80 rows resolve under dag/, 19 under src/). The
-// entry is therefore the first candidate `<root>/<module_path>.dag` that the filesystem confirms, using
-// the same roots the children are told to resolve against. When no root holds it, the subject is left with
-// a path that does not exist and is carried as `WetEntryFileAbsent` — a stale enrolment is REPORTED, never
-// papered over with a plausible-looking path.
+// THE ENTRY A ROSTER ROW POINTS AT, DERIVED BY THE ONE AUTHORITY THAT OWNS THE NAME→PATH RULE.
+// `floor_expected_red` records a qualified NAME and no path (its own header: 'no file paths in the data').
+// An earlier draft of this instrument probed the witness roots for 'the first root that holds it', which is
+// a second, guessing authority: it can match a wrong file (a stale `test.claim.foo` left in the other tree
+// would be executed and reported as the roster's subject), and it made the answer depend on filesystem
+// accident rather than on the policy. The repository's storage policy is `gunbc.source_layout` (module
+// `a.b.c` lives at `<root(a)>/b/c.dag`, with the `v2` namespace bound to src/v2 and elided, everything else
+// to dag/), and the rule that reads those rows is `v2.compiler.source_authority` `module_file`, bound to
+// the tree directories by `v2.cli.repository_layout` — the adapter that exists for exactly this meeting of
+// the two vocabularies. This instrument therefore ASKS and never guesses: the derived path is what the
+// subject carries, and when the filesystem says that path does not exist the subject is carried as
+// `WetEntryFileAbsent`. Absence is a finding about the roster, not a licence to try a different path.
 fn known_red_roster_entry(module_path: String) -> String {
-  known_red_roster_entry_step(roots: witness_layer_roots(), module_path: module_path)
+  known_red_derived_entry(name: module_path)
 }
 
-fn known_red_roster_entry_step(roots: List<String>, module_path: String) -> String {
-  match roots {
-    Empty => known_red_module_file(root: "", module_path: module_path)
-    Cons { head: r, tail: t } =>
-      if known_red_entry_exists(entry: known_red_module_file(root: r, module_path: module_path)) {
-        known_red_module_file(root: r, module_path: module_path)
-      } else {
-        known_red_roster_entry_step(roots: t, module_path: module_path)
-      }
+fn known_red_derived_entry(name: String) -> String {
+  match module_file(layout: repository_storage_layout(), name: name) {
+    ModuleFileDerived { file: f } => repository_path_of_module_file(file: f)
+    ModuleNameUnderivable { name: n, cause: _ } => known_red_underivable_marker(name: n)
   }
 }
 
-fn known_red_module_file(root: String, module_path: String) -> String {
-  let relative = known_red_module_file_name(module_path: module_path)
-  if root == "" {
-    relative
-  } else {
-    concat(root, concat("/", relative))
-  }
-}
-
-// `a.b.c` -> `a/b/c.dag`: the module path IS the address, and the tree's own module index resolves it the
-// same way — split on the dot, rejoin on the separator, append the source extension.
-fn known_red_module_file_name(module_path: String) -> String {
-  concat(join(split(s: module_path, delimiter: "."), "/"), ".dag")
-}
-
-fn known_red_entry_of(q: String) -> String {
-  concat("src/", concat(known_red_slashed(known_red_module_of(q)), ".dag"))
+// A NAME THE RULE CANNOT PLACE is not given a plausible path either. It is marked, so the subject reaches
+// the children as a path that cannot exist and is reported as a defect with its name in it — 'underivable'
+// stays visible instead of becoming a guess that quietly resolves to the wrong file.
+fn known_red_underivable_marker(name: String) -> String {
+  concat("underivable:", name)
 }
 
 // THE POPULATION THE INSTRUMENT OWES: the union of what the executing lane schedules and what the roster
@@ -565,13 +561,28 @@ fn known_red_run_child(root: String, claims: List<ClaimRun>) -> KnownRedChildRun
     workdir: root,
     bin_path: witness_bin_release_path(root: root, bin_name: "claim_batch"),
     args: claim_batch_claims_argv(source_roots: witness_layer_roots(), claims: claims),
-    stderr_capture: Complete
+    stderr_capture: BoundedTail { bytes: known_red_stderr_tail }
   )
   Invoked {
     claims: claims,
     exit_code: result.exit_code,
     stdout: result.stdout,
-    stderr: result.stderr
+    // THE TRUNCATION FLAG IS SPOKEN, NOT DISCARDED. A cause text printed as if it were the harness's whole
+    // message would misrepresent the evidence when the tail was cut, so the fact travels with the text.
+    stderr: known_red_stderr_text(
+      text: result.stderr,
+      truncated: result.stderr_truncated,
+      total: result.stderr_total_bytes
+    )
+  }
+}
+
+fn known_red_stderr_text(text: String, truncated: Bool, total: Int) -> String {
+  if truncated {
+    concat(text, concat(" …[stderr truncated by the capture policy; ",
+      concat(known_red_int_text(n: total), " bytes total]")))
+  } else {
+    text
   }
 }
 

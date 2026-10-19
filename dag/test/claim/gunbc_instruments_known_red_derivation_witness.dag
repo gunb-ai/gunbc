@@ -6,9 +6,14 @@ import std.optional { Absent, Present }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity }
 import v2.workflow.wet_evidence { WetScheduledClaim }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
+// THE NAME→PATH AUTHORITY ITSELF. The delegation arms below ask it directly, so an instrument that
+// re-derived the rule here (it must not) would disagree with these arms rather than agree with itself.
+import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
+import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
 import gunbc.instruments.known_red_derivation {
   ClaimRun, KnownRedChildRun, KnownRedSubject, KnownRedSubjectPopulation,
   known_red_chunks, known_red_entries_owed, known_red_fold, known_red_int_text,
+  known_red_roster_entry, known_red_underivable_marker,
   known_red_is_green, known_red_held_rows, known_red_max_claims_per_child,
   known_red_refusal_name, known_red_stale_enrolments, known_red_unaccounted_reds,
   known_red_subjects, known_red_subject_qualified, known_red_report
@@ -435,4 +440,70 @@ test fn every_row_and_the_printed_report_carry_the_head_the_run_printed() -> Boo
   (d.rows |> length) == 1
     && (d.rows |> map(r => r.head) |> map(h => h == head)) == [true]
     && string_contains(s: known_red_report(d: d), pattern: head)
+}
+
+// ─────────────── the name→path rule is delegated, not re-derived here (DESIGN 3) ───────────────
+
+// THE INSTRUMENT HAS NO PATH OPINION OF ITS OWN. Two halves:
+//  (a) the WET half of the population keeps the entry column the wet lane itself publishes — the instrument
+//      may not resolve, rewrite, or re-derive what a scheduled subject points at;
+//  (b) every ROSTER subject's path equals what the repository's storage authority derives from its module
+//      name (gunbc.source_layout, read through v2.cli.repository_layout + v2.compiler.source_authority),
+//      asked here rather than through the instrument, so agreement is a join with the authority and not
+//      with the instrument's own arithmetic.
+test fn subjects_carry_the_paths_the_authorities_publish_and_the_instrument_invents_none() -> Bool {
+  let schedule = local_repo_wet_schedule()
+  let wet = filter(xs: known_red_subjects(), predicate: fn(s) { s.origin == WetLane })
+  let floor = filter(xs: known_red_subjects(), predicate: fn(s) { s.origin == RequiredFloor })
+  (schedule |> length) > 0
+    && (floor |> length) > 0
+    && join(map(wet, s => s.entry), "\n") == join(map(schedule, w => w.entry), "\n")
+    && all(xs: floor, predicate: fn(s) { s.entry == known_red_authority_path(name: s.identity.module_path) })
+}
+
+// THE RULE ITSELF, SPOT-CHECKED AGAINST TWO REAL FILES, BECAUSE A DELEGATION THAT NEVER EXERCISES EITHER
+// BRANCH CAN PASS WHILE BOTH BRANCHES ARE WRONG. A `v2.…` module lives under src/v2 WITH THE HEAD ELIDED
+// and everything else under dag/; the roster holds rows of both shapes at this commit (19 under src/v2, 61
+// under dag/), so both arms of the rule are on the live population as well as here.
+test fn the_derived_paths_follow_the_storage_policy_in_both_branches_and_only_in_the_policy() -> Bool {
+  known_red_authority_path(name: "v2.workflow.floor2_prepared_subject")
+    == "src/v2/workflow/floor2_prepared_subject.dag"
+    && known_red_authority_path(name: "test.claim.examples.blackjack_shuffle_wet_witness")
+      == "dag/test/claim/examples/blackjack_shuffle_wet_witness.dag"
+    && known_red_underivable_marker(name: "v2") == "underivable:v2"
+}
+
+// THE POPULATION EXERCISES BOTH BRANCHES, MEASURED RATHER THAN ASSERTED: the derived entries are printed by
+// the run, and here both prefixes must occur. If the authority ever collapsed every roster row into one
+// tree, the roster would silently stop pointing at 19 of its own 80 claims.
+test fn the_roster_population_derives_under_both_roots_rather_than_collapsing_into_one() -> Bool {
+  let floor = filter(xs: known_red_subjects(), predicate: fn(s) { s.origin == RequiredFloor })
+  any(xs: floor, predicate: fn(s) { known_red_under_src_v2(entry: s.entry) })
+    && any(xs: floor, predicate: fn(s) { known_red_under_dag(entry: s.entry) })
+}
+
+fn known_red_authority_path(name: String) -> String {
+  match module_file(layout: repository_storage_layout(), name: name) {
+    ModuleFileDerived { file: f } => repository_path_of_module_file(file: f)
+    ModuleNameUnderivable { name: n, cause: _ } => concat("underivable:", n)
+  }
+}
+
+// PATH PREFIXES, READ OFF THE SEGMENTS. `std` has no starts-with, and the root of a derived path is the
+// first one or two `/`-separated segments, so the segments are matched directly rather than a prefix helper
+// being minted for one test.
+fn known_red_under_src_v2(entry: String) -> Bool {
+  let segs = split(s: entry, delimiter: "/")
+  known_red_segment(segs: segs, at: 0) == "src" && known_red_segment(segs: segs, at: 1) == "v2"
+}
+
+fn known_red_under_dag(entry: String) -> Bool {
+  known_red_segment(segs: split(s: entry, delimiter: "/"), at: 0) == "dag"
+}
+
+fn known_red_segment(segs: List<String>, at: Int) -> String {
+  match segs {
+    Empty => ""
+    Cons { head: h, tail: t } => if at <= 0 { h } else { known_red_segment(segs: t, at: at - 1) }
+  }
 }
