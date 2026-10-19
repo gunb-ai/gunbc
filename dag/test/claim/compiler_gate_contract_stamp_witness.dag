@@ -242,14 +242,28 @@ test fn a_workflow_declaring_the_stamp_twice_is_unreadable_not_first_wins_holds(
       after_env: after_env_marker()
     )
   )
+  // THE DELIBERATE CHOICE, asserted as BEHAVIOUR and not as wording. Taking the first would resolve an
+  // ambiguity silently, and an ambiguity is exactly what this check exists to police: a workflow stamped
+  // twice does not have a stamp, it has a dispute. So the only arm that may hold is a refusal that quotes
+  // NEITHER member -- and StampAbsent is refused too, because "two declarations" reading as "no stamp"
+  // would be a second silent resolution of the same dispute.
+  //
+  // This asserts no particular sentence, on purpose. The first version required the phrase "more than
+  // once", which is the wording of compiler_gate_stamp_from_entry's n > 1 arm -- but the fold never gets
+  // there for a same-mapping pair: extdeps.languages.yaml.ingest refuses duplicate mapping keys itself
+  // (yaml_duplicate_key_refusal, "duplicate mapping key `K` (YAML requires the keys of a mapping to be
+  // unique)"), and read_from turns that into a StampUnreadable quoting the ingest's line and reason. The
+  // claim was certifying WHICH module refuses rather than THAT it refuses, so it went red on a behaviour
+  // that is correct, and -- worse -- it would have gone green again if someone reworded the ingest while
+  // quietly deleting the refusal. Pinning prose from a module this one does not own is a coupling that
+  // tests nothing. The invariant is: a disputed stamp is refused, and no member's value survives into the
+  // answer. Which layer noticed is not part of the contract.
   match tree {
-    // THE DELIBERATE CHOICE. Taking the first would resolve an ambiguity silently, and an ambiguity is
-    // exactly what this check exists to police: a workflow stamped twice does not have a stamp, it has a
-    // dispute.
+    StampPresent { stamp: _ } => false
+    StampAbsent => false
     StampUnreadable { detail: d } =>
-      string_contains(s: d, pattern: "more than once")
-      && !string_contains(s: d, pattern: stamp)
-    _ => false
+      !string_contains(s: d, pattern: stamp)
+      && !string_contains(s: d, pattern: stamp_other)
   }
 }
 
