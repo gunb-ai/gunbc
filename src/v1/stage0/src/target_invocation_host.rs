@@ -5674,10 +5674,11 @@ mod registry_rows_identity_tests {
     }
 
     fn read_rows() -> BTreeMap<String, RowReading> {
-        const READER: &str = "dag/gunbc/instrument_targets.dag";
+        let reader = cli_run::workspace_root().join("dag/gunbc/instrument_targets.dag");
         let roots = cli_run::default_source_roots();
         let (graph, source_indices) =
-            cli_run::resolve_entry_graph(&roots, READER).expect("resolve rows");
+            cli_run::resolve_entry_graph(&roots, reader.to_str().expect("utf8 path"))
+                .expect("resolve rows");
         let ctx = cli_run::make_eval_context(
             graph.as_ref(),
             source_indices,
