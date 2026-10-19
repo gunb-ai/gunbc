@@ -4,7 +4,9 @@ import std.types { Bool, String, NonEmptyStr }
 import std.algebra { is_empty, string_contains }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.uri { Uri, Https }
 import extdeps.version { VersionIdentity }
+import extdeps.external_authority { ExternalAuthority, CitedToAuthority, TranscribedUncited }
 import extdeps.swift_toolchain {
   SwiftToolchainArchive,
   SwiftToolchainArchiveSubject,
@@ -30,6 +32,8 @@ import extdeps.swift_toolchain {
   swift_toolchain_signature_authority_for,
   swift_toolchain_signature_url,
   swift_toolchain_signing_key_fingerprint,
+  swift_toolchain_signing_keyring_authority,
+  swift_toolchain_pinned_subject,
   swift_toolchain_verify,
   swift_toolchain_standing_cites_signature,
 }
@@ -315,4 +319,27 @@ test fn every_distribution_arm_projects_its_own_url() -> Bool {
     // One release, one layout: only the distribution varies.
     && string_contains(s: debian, pattern: "swift-6.4.1-release/")
     && string_contains(s: other, pattern: "swift-6.4.1-release/")
+}
+
+// THE STANDING PREDICATE REFUSES, NOT JUST ACCEPTS. It is what stops a pin from citing ANY authority and
+// calling it verification, so its refusal arm has to be driven: a standing that cites the keyring instead
+// of the signature's own file, and a standing that cites nothing at all, are both refused. The keyring is
+// the sharp case -- it is a real swift.org authority and a plausible-looking citation, and the archive was
+// verified against neither of them until the .sig said it was upstream's. This is also the arm the
+// fabricated pin sat in: a figure cited to fetches that never ran is a transcription, and a transcription
+// is not a citation no matter how confident the prose around it is.
+test fn a_standing_that_does_not_cite_the_signature_is_not_accepted() -> Bool {
+  let pin_subject = swift_toolchain_pinned_subject
+  let sig_locator = swift_toolchain_signature_url(subject: pin_subject).locator
+  !swift_toolchain_standing_cites_signature(standing: TranscribedUncited {
+    read_obligation: "two fetches of the archive agreed on this digest"
+  })
+    && !swift_toolchain_standing_cites_signature(standing: CitedToAuthority {
+         authority: swift_toolchain_signing_keyring_authority
+       })
+    // Discriminating the other way: citing the signature file of the pinned subject IS accepted, so the
+    // two refusals above are about the citation, not about the predicate always answering false.
+    && swift_toolchain_standing_cites_signature(standing: CitedToAuthority {
+         authority: ExternalAuthority { uri: Uri { scheme: Https, locator: sig_locator } }
+       })
 }
