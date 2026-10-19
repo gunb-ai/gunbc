@@ -640,6 +640,70 @@ data tap_from_another_request: GateRequestClaim = GateRequestClaim {
   attempt: "fleet-converge-99999999999" as AttemptIdentity,
 }
 
+// THE REASON TRAVELS, NOT JUST THE NAME. `broker_may_answer` threw `NotOwnedByGateApp { because: _ }`
+// away, so four operator situations — nothing enabled, no rule for this App, the readback empty, the
+// identity wrong — were one reported fact. Reading the field through the decision is the only way to
+// know it survived: a model that re-derives the reason in the test would pass with the reason dropped.
+test fn the_ownership_reason_the_readback_gave_is_the_reason_the_broker_reports() -> Bool {
+  (match broker_answer_decision(
+    wait: an_answerable_wait(),
+    run: an_in_flight_run(),
+    claim: gate_claim,
+    capability: gate_capability(decision: ProposeApprove),
+    ownership: observe_rule_ownership_for(rules: [], environment_name: gated_env)
+  ) {
+    BrokerRefused { because: RuleOwnershipNotEstablished { because: ReadbackCarriedNoRules } } => true
+    BrokerRefused { because: RuleOwnershipNotEstablished { because: _ } } => false
+    BrokerRefused { because: _ } => false
+    BrokerMayAnswer => false
+  })
+    // A non-empty list whose one rule is DISABLED is a different situation from an empty list, and the
+    // reason says so — the Bool could not.
+    && (match broker_answer_decision(
+          wait: an_answerable_wait(),
+          run: an_in_flight_run(),
+          claim: gate_claim,
+          capability: gate_capability(decision: ProposeApprove),
+          ownership: observe_rule_ownership_for(
+            rules: [
+              EnabledDeploymentProtectionRule {
+                id: 900000001,
+                node_id: "DPPR_1",
+                enabled: false,
+                app: RuleOwningApp { id: gate_app_id, slug: "gunbc-deployment-gate" },
+              }
+            ],
+            environment_name: gated_env,
+          )
+        ) {
+          BrokerRefused { because: RuleOwnershipNotEstablished { because: NoEnabledRule } } => true
+          BrokerRefused { because: _ } => false
+          BrokerMayAnswer => false
+        })
+    // And a rule that is enabled but belongs to another App is a third, distinct reason.
+    && (match broker_answer_decision(
+          wait: an_answerable_wait(),
+          run: an_in_flight_run(),
+          claim: gate_claim,
+          capability: gate_capability(decision: ProposeApprove),
+          ownership: observe_rule_ownership_for(
+            rules: [
+              EnabledDeploymentProtectionRule {
+                id: 900000001,
+                node_id: "DPPR_1",
+                enabled: true,
+                app: RuleOwningApp { id: 7777777, slug: "someone-else" },
+              }
+            ],
+            environment_name: gated_env,
+          )
+        ) {
+          BrokerRefused { because: RuleOwnershipNotEstablished { because: NoRuleBelongsToThisApp } } => true
+          BrokerRefused { because: _ } => false
+          BrokerMayAnswer => false
+        })
+}
+
 test fn a_capability_for_another_request_or_revision_is_refused() -> Bool {
   capability_binds_request(capability: gate_capability(decision: ProposeApprove), claim: gate_claim)
     && !capability_binds_request(

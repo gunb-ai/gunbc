@@ -498,13 +498,6 @@ fn broker_answer_decision(
   }
 }
 
-// A run GitHub reports as concluded is not answered — its deployment has settled, and a review posted
-// now changes nothing while looking like it did. The settlement is GitHub's own sum, so "we did not
-// look" is a value rather than a skipped call. Reached only through the record, which is why the fold
-// above cannot be satisfied by an id.
-// "We refused a run that had already concluded" and "we refused a run that had already FAILED" are
-// different facts to record, and a Bool cannot tell them apart — so the conclusion survives in the
-// refusal instead of being matched away.
 // EVERY WAY THE BROKER REFUSES, as the value it is. `broker_may_answer: -> Bool` composed five checks
 // that each produce a typed reason and then dropped every one of them: `Present { value: _ } => false`,
 // `NotOwnedByGateApp { because: _ } => false`. The module's own comments argued the refusals should be
