@@ -6,7 +6,7 @@ import gunbc.guarantee_rung {
 }
 import gunbc.rung_drop {
   RungDrop, TypedDeclaration, Enumerated, DerivedBy, DeletedWithoutReplacement, Standing,
-  rung_drop_is_readable, every_unreadable_standing_drop_is_declared_debt,
+  rung_drop_is_readable, every_unreadable_standing_drop_is_an_authored_empty_population,
   rung_drop_declaration_message, rung_drop_off_ladder_judgment,
   OffLadder, OnLadderAt, NotJudgeableFromProse,
 }
@@ -183,6 +183,6 @@ test fn an_empty_or_unlabelled_standing_population_is_refused_and_readable_ones_
     && rung_drop_is_readable(d: readable_derived_label)
 }
 
-test fn every_unreadable_standing_roster_drop_is_declared_debt() -> Bool {
-  every_unreadable_standing_drop_is_declared_debt(ds: rung_drop_roster)
+test fn unreadable_standing_roster_drops_are_only_authored_empty_populations() -> Bool {
+  every_unreadable_standing_drop_is_an_authored_empty_population(ds: rung_drop_roster)
 }

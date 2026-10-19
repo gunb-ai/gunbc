@@ -571,19 +571,26 @@ fn rung_drop_is_readable(d: RungDrop) -> Bool {
   }
 }
 
-// THE STANDING TYPED DROPS WHOSE POPULATION IS NOT READABLE, NAMED AT IDENTITY GRAIN, AND NOT
-// GROWABLE: `every_unreadable_standing_drop_is_declared_debt` refuses a new unreadable row and also
-// refuses a listed row that has become readable, so the list only shrinks. The one member declares an
-// empty population on purpose (its own comment says the empty list is the correct value); a live drop
-// with nothing to count is the Dissolved claim, which needs the removal-record carrier an operator
-// has not yet ruled on, so it is held here rather than given an invented member or a Dissolved
-// standing it has not earned.
-data unreadable_standing_typed_drop_debt: List<String> = [
-  "provider_path_jurisdiction_unread_admits",
-]
+// THE STANDING DROPS WHOSE POPULATION IS NOT READABLE, DERIVED FROM THE ROSTER RATHER THAN LISTED.
+// A genuine zero is an observation, so it is readable only as a `DerivedBy` label whose executed run
+// yields the empty population; an authored empty `Enumerated` stays unreadable. No such producer
+// exists for provider_path_jurisdiction_unread_admits, so it is counted here with that reason.
+fn unreadable_standing_drops(ds: List<RungDrop>) -> List<RungDrop> {
+  filter(ds, d => !rung_drop_is_readable(d: d))
+}
 
-fn every_unreadable_standing_drop_is_declared_debt(ds: List<RungDrop>) -> Bool {
-  let unreadable = map(filter(ds, d => !rung_drop_is_readable(d: d)), d => d.identity as String)
-  length(xs: filter(unreadable, i => length(xs: filter(unreadable_standing_typed_drop_debt, w => w == i)) == 0)) == 0
-    && length(xs: filter(unreadable_standing_typed_drop_debt, w => length(xs: filter(unreadable, i => i == w)) == 0)) == 0
+fn population_is_authored_empty(d: RungDrop) -> Bool {
+  match d.declaration {
+    TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => match p {
+      Enumerated { members: ms } => length(xs: ms) == 0
+      DerivedBy { label: _ } => false
+    }
+    AuthoredProse { legacy: _, authored: _ } => false
+  }
+}
+
+// THE ONLY ADMITTED CAUSE OF UNREADABILITY IS AN AUTHORED EMPTY ENUMERATION: an unknown DerivedBy
+// label or any other unreadable shape is a new defect and refuses.
+fn every_unreadable_standing_drop_is_an_authored_empty_population(ds: List<RungDrop>) -> Bool {
+  length(xs: filter(unreadable_standing_drops(ds: ds), d => !population_is_authored_empty(d: d))) == 0
 }
