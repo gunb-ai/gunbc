@@ -842,19 +842,6 @@ fn in_band_channel_admission(
   }
 }
 
-// THE BOOLEAN THE STEPS AND THE CLAIMS ASK FOR, AS ONE PROJECTION OF THE MATCH ABOVE -- not a second
-// implementation of the same question, which is the two things that eventually disagree about a boundary
-// case. Anything that needs WHY calls in_band_channel_admission directly.
-fn in_band_channel_admits(
-  observation: InBandChannelObservation,
-  reachability: RescueHostReachability,
-) -> Bool {
-  match in_band_channel_admission(observation: observation, reachability: reachability) {
-    ChannelAdmits => true
-    ChannelRefused { reason: _ } => false
-  }
-}
-
 // ── STEP 3: THE ACTUATION ──────────────────────────────────────────────────────────────────────
 //
 // Two writes, both privileged, both registered as rows in gunbc.auth.privileged_effect_census and
@@ -2131,7 +2118,7 @@ data recovery_reachable_host_step: DeclarationRef = decl_ref(
 
 data recovery_channel_observation_step: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake.bmc_recovery_route",
-  decl_name: "in_band_channel_admits",
+  decl_name: "in_band_channel_admission",
 )
 
 data recovery_in_band_password_write_step: DeclarationRef = decl_ref(
@@ -2202,6 +2189,10 @@ fn converge_in_band_recovery(
   in_band_admission: PasswordWriteAuthorization,
   reset_admission: ResetWriteAuthorization,
 ) -> InBandRecoveryStanding {
+  // COMPUTED ONCE FOR THE WHOLE FOLD. The standing below carries this verdict's own reason, so the
+  // refusal a reader sees is the one this fold computed -- a second call could answer differently about
+  // the same observation, and an invented arm would be a fabricated output (§5).
+  let channel = in_band_channel_admission(observation: route.in_band, reachability: route.rescue_host)
   match recovery_host_refusal(reachability: route.rescue_host) {
     Present { value: c } =>
       InBandRecoveryStanding { subject: route.subject, route: route, outcome: RecoveryHostUnreachable { cause: c } }
@@ -2210,143 +2201,140 @@ fn converge_in_band_recovery(
       // here, so a standing cannot describe an absence the fold did not find (§5: "no plausible output is
       // fabricated"), and the next action a reader is given derives from the arm in
       // recovery_route_unavailability rather than being guessed at print time.
-      if match in_band_channel_admission(observation: route.in_band, reachability: route.rescue_host) {
-        ChannelAdmits => false
-        ChannelRefused { reason: _ } => true
-      } {
-        InBandRecoveryStanding {
-          subject: route.subject,
-          route: route,
-          outcome: RecoveryChannelUnobserved {
-            refusal: match in_band_channel_admission(observation: route.in_band, reachability: route.rescue_host) {
-              ChannelAdmits => AbsenceNoRescueHost
-              ChannelRefused { reason: reason } => reason
-            },
-          },
-        }
-      } else if match recovery_policy_sighted_on_controller(route: route) {
-        RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
-        ControllerNeverMeasured { observed: _ } => true
-        CatalogAmbiguousForController { observed: _, matched: _ } => true
-        CatalogIndexesDisagree { firmware: _, observed: _ } => true
-        RowDisagreesWithItsOwnReading { row: _, observed: _ } => true
-      } {
-        // The reset's warrant has to be a measurement OF THIS CONTROLLER, so the outcome carries which
-        // of the two refusals it is: "never measured here" sends someone to measure, "the catalog's two
-        // indexes disagree" is a defect in this repository. Collapsing them would order a re-measurement
-        // of a board that is already filed.
-        InBandRecoveryStanding {
-          subject: route.subject,
-          route: route,
-          outcome: RecoveryControllerPolicyUnavailable { sighting: recovery_policy_sighted_on_controller(route: route) },
-        }
-      } else {
-        // EACH ADMISSION IS MATCHED EXACTLY ONCE, and the match is what routes the refusal: the refused
-        // arm's own cause is what the outcome carries, so there is no invented "unreachable" arm and no
-        // Bool asked first and then re-matched to build the answer. Which gate ISSUED an admission is a
-        // separate, legitimate question (a comparison of two declarations), asked after the arm is known.
-        //
-        // Ordering is deliberate: the password refusal is reported before the reset refusal, because the
-        // password write is the earlier actuation -- reporting the later failure first would send someone
-        // to fix the reset while the write that precedes it is still refused.
-        match in_band_admission {
-          PasswordWriteRefusedByLedger { site: site, cause: cause } =>
-            InBandRecoveryStanding {
-              subject: route.subject,
-              route: route,
-              outcome: RecoveryWriteRefusedByLedger {
-                kind: recovery_in_band_password_actuation(),
-                site: site,
-                cause: cause,
-              },
-            }
-          PasswordWriteRefused { cause: cause } =>
-            InBandRecoveryStanding {
-              subject: route.subject,
-              route: route,
-              outcome: RecoveryWriteNotAdmitted {
-                kind: recovery_in_band_password_actuation(),
-                cause: cause,
-              },
-            }
-          PasswordWriteAdmitted { ticket: ticket } =>
-            if declaration_ref_eq(a: ticket.authorized_by, b: recovery_in_band_password_write_site()) == false {
+      match channel {
+        // THE REFUSED ARM SPEAKS FOR ITSELF: the reason the match computed goes straight into the standing,
+        // and there is no arm here for the admitted case to leak a wrong reason into.
+        ChannelRefused { reason: reason } =>
+          InBandRecoveryStanding {
+            subject: route.subject,
+            route: route,
+            outcome: RecoveryChannelUnobserved { refusal: reason },
+          }
+        ChannelAdmits =>
+          if match recovery_policy_sighted_on_controller(route: route) {
+            RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
+            ControllerNeverMeasured { observed: _ } => true
+            CatalogAmbiguousForController { observed: _, matched: _ } => true
+            CatalogIndexesDisagree { firmware: _, observed: _ } => true
+            RowDisagreesWithItsOwnReading { row: _, observed: _ } => true
+          } {
+          // The reset's warrant has to be a measurement OF THIS CONTROLLER, so the outcome carries which
+          // of the two refusals it is: "never measured here" sends someone to measure, "the catalog's two
+          // indexes disagree" is a defect in this repository. Collapsing them would order a re-measurement
+          // of a board that is already filed.
+          InBandRecoveryStanding {
+            subject: route.subject,
+            route: route,
+            outcome: RecoveryControllerPolicyUnavailable { sighting: recovery_policy_sighted_on_controller(route: route) },
+          }
+        } else {
+          // EACH ADMISSION IS MATCHED EXACTLY ONCE, and the match is what routes the refusal: the refused
+          // arm's own cause is what the outcome carries, so there is no invented "unreachable" arm and no
+          // Bool asked first and then re-matched to build the answer. Which gate ISSUED an admission is a
+          // separate, legitimate question (a comparison of two declarations), asked after the arm is known.
+          //
+          // Ordering is deliberate: the password refusal is reported before the reset refusal, because the
+          // password write is the earlier actuation -- reporting the later failure first would send someone
+          // to fix the reset while the write that precedes it is still refused.
+          match in_band_admission {
+            PasswordWriteRefusedByLedger { site: site, cause: cause } =>
+              InBandRecoveryStanding {
+                subject: route.subject,
+                route: route,
+                outcome: RecoveryWriteRefusedByLedger {
+                  kind: recovery_in_band_password_actuation(),
+                  site: site,
+                  cause: cause,
+                },
+              }
+            PasswordWriteRefused { cause: cause } =>
               InBandRecoveryStanding {
                 subject: route.subject,
                 route: route,
                 outcome: RecoveryWriteNotAdmitted {
                   kind: recovery_in_band_password_actuation(),
-                  cause: "the password admission was issued by a declaration other than the gate its census row is filed at" as NonEmptyStr,
+                  cause: cause,
                 },
               }
-            } else if ticket.subject != route.subject
-              || ticket.operation != recovery_in_band_password_actuation() {
-              // THE ADMISSION IS NOT ABOUT THIS WRITE, OR NOT ABOUT THIS CHASSIS. The sealed ticket is what
-              // makes this check possible at all: it carries the subject the gate read and the actuation it
-              // verified, so a password admission minted for one unit cannot be spent on another, and one
-              // naming a different operation is refused here rather than re-derived downstream (side-chat
-              // HOLD blocker 1: authorization-bearing payloads bound to subject + operation).
-              InBandRecoveryStanding {
-                subject: route.subject,
-                route: route,
-                outcome: RecoveryWriteNotAdmitted {
-                  kind: recovery_in_band_password_actuation(),
-                  cause: "the password admission names a different subject or operation than this route and its in-band write" as NonEmptyStr,
-                },
-              }
-            } else {
-              match reset_admission {
-                ResetWriteRefusedByLedger { site: site, cause: cause } =>
-                  InBandRecoveryStanding {
-                    subject: route.subject,
-                    route: route,
-                    outcome: RecoveryWriteRefusedByLedger {
-                      kind: recovery_reset_actuation(),
-                      site: site,
-                      cause: cause,
-                    },
-                  }
-                ResetWriteRefused { cause: cause } =>
-                  InBandRecoveryStanding {
-                    subject: route.subject,
-                    route: route,
-                    outcome: RecoveryWriteNotAdmitted {
-                      kind: recovery_reset_actuation(),
-                      cause: cause,
-                    },
-                  }
-                ResetWriteAdmitted { ticket: reset_ticket } =>
-                  if declaration_ref_eq(a: reset_ticket.authorized_by, b: recovery_manager_reset_site()) == false {
+            PasswordWriteAdmitted { ticket: ticket } =>
+              if declaration_ref_eq(a: ticket.authorized_by, b: recovery_in_band_password_write_site()) == false {
+                InBandRecoveryStanding {
+                  subject: route.subject,
+                  route: route,
+                  outcome: RecoveryWriteNotAdmitted {
+                    kind: recovery_in_band_password_actuation(),
+                    cause: "the password admission was issued by a declaration other than the gate its census row is filed at" as NonEmptyStr,
+                  },
+                }
+              } else if ticket.subject != route.subject
+                || ticket.operation != recovery_in_band_password_actuation() {
+                // THE ADMISSION IS NOT ABOUT THIS WRITE, OR NOT ABOUT THIS CHASSIS. The sealed ticket is what
+                // makes this check possible at all: it carries the subject the gate read and the actuation it
+                // verified, so a password admission minted for one unit cannot be spent on another, and one
+                // naming a different operation is refused here rather than re-derived downstream (side-chat
+                // HOLD blocker 1: authorization-bearing payloads bound to subject + operation).
+                InBandRecoveryStanding {
+                  subject: route.subject,
+                  route: route,
+                  outcome: RecoveryWriteNotAdmitted {
+                    kind: recovery_in_band_password_actuation(),
+                    cause: "the password admission names a different subject or operation than this route and its in-band write" as NonEmptyStr,
+                  },
+                }
+              } else {
+                match reset_admission {
+                  ResetWriteRefusedByLedger { site: site, cause: cause } =>
+                    InBandRecoveryStanding {
+                      subject: route.subject,
+                      route: route,
+                      outcome: RecoveryWriteRefusedByLedger {
+                        kind: recovery_reset_actuation(),
+                        site: site,
+                        cause: cause,
+                      },
+                    }
+                  ResetWriteRefused { cause: cause } =>
                     InBandRecoveryStanding {
                       subject: route.subject,
                       route: route,
                       outcome: RecoveryWriteNotAdmitted {
                         kind: recovery_reset_actuation(),
-                        cause: "the reset admission was issued by a declaration other than the gate its census row is filed at" as NonEmptyStr,
+                        cause: cause,
                       },
                     }
-                  } else if reset_ticket.subject != route.subject
-                    || reset_ticket.operation != recovery_reset_actuation() {
-                    InBandRecoveryStanding {
-                      subject: route.subject,
-                      route: route,
-                      outcome: RecoveryWriteNotAdmitted {
-                        kind: recovery_reset_actuation(),
-                        cause: "the reset admission names a different subject or operation than this route and its ResetToDefaults write" as NonEmptyStr,
-                      },
+                  ResetWriteAdmitted { ticket: reset_ticket } =>
+                    if declaration_ref_eq(a: reset_ticket.authorized_by, b: recovery_manager_reset_site()) == false {
+                      InBandRecoveryStanding {
+                        subject: route.subject,
+                        route: route,
+                        outcome: RecoveryWriteNotAdmitted {
+                          kind: recovery_reset_actuation(),
+                          cause: "the reset admission was issued by a declaration other than the gate its census row is filed at" as NonEmptyStr,
+                        },
+                      }
+                    } else if reset_ticket.subject != route.subject
+                      || reset_ticket.operation != recovery_reset_actuation() {
+                      InBandRecoveryStanding {
+                        subject: route.subject,
+                        route: route,
+                        outcome: RecoveryWriteNotAdmitted {
+                          kind: recovery_reset_actuation(),
+                          cause: "the reset admission names a different subject or operation than this route and its ResetToDefaults write" as NonEmptyStr,
+                        },
+                      }
+                    } else {
+                      converge_after_admissions(
+                        route: route,
+                        in_band_write: in_band_write,
+                        reset_write: reset_write,
+                        readback: readback,
+                      )
                     }
-                  } else {
-                    converge_after_admissions(
-                      route: route,
-                      in_band_write: in_band_write,
-                      reset_write: reset_write,
-                      readback: readback,
-                    )
-                  }
+                }
               }
-            }
-        }
+          }
       }
+    }
     }
 }
 
@@ -2814,11 +2802,18 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     observed_at: recovery_inband_channel_instant(),
     device_node_created_at: recovery_device_node_creation_instant(),
   }
-  in_band_channel_admits(observation: observation, reachability: reached) == false
+  // WHY THE VERDICT IS MATCHED RATHER THAN ASKED FOR AS A BOOL. A Bool here could say "refused" without
+  // saying why, and then this claim would stay green for a channel refused over its modules, its account,
+  // or its timestamp -- which are four other facts, each with its own claim below. So the arm is named:
+  // the address mismatch has to be the reason, not merely a reason.
+  (match in_band_channel_admission(observation: observation, reachability: reached) {
+    ChannelAdmits => false
+    ChannelRefused { reason: reason } => reason == AbsenceHostAddressDisagrees
+  })
     // THE REFUSAL IS ABOUT THE ADDRESS AND NOTHING ELSE. Same observation, same reachability, only the
-    // address it names changed: if the matching case did not admit, this claim would be green for a
-    // channel that never admits anything, which is not the fact being pinned.
-    && in_band_channel_admits(
+    // address it names changed, and it lands on the ADMITTED arm: if the guard above refused for some
+    // reason the observation also has, this half goes red rather than agreeing with it.
+    && (match in_band_channel_admission(
       observation: InBandChannelObservation {
         subject: observation.subject,
         rescue_host_address: recovery_rescue_host_address(),
@@ -2831,7 +2826,10 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
         device_node_created_at: observation.device_node_created_at,
       },
       reachability: reached,
-    )
+    ) {
+      ChannelAdmits => true
+      ChannelRefused { reason: _ } => false
+    })
     // and the reachability this was checked against really is the reachable arm -- otherwise both halves
     // above are vacuous, since an unreachable host refuses every channel alike.
     && (match reached {
