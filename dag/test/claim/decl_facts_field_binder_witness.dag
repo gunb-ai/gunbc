@@ -59,6 +59,7 @@ fn render_default(d: Optional<Node>) -> String {
     Present { value: n } => match field_default_reading(d: n) {
       LiteralDefault { lexeme: l } => concat("=L:", symbol_lexeme(sym: l))
       SourceTextDefault { text: t } => concat("=S:", symbol_lexeme(sym: t))
+      MalformedDefault { reason: _ } => "=MALFORMED"
     }
     Absent => ""
   }
@@ -126,6 +127,14 @@ test fn defaults_with_one_spelling_are_distinct_readings() -> Bool {
   let quoted_false = render_default(d: optional_present(value: literal_node(lexeme: "\"false\"")))
   let source = render_default(d: optional_present(value: atom(name: "none")))
   quoted != source && bool_false != quoted_false && source == "=S:none" && bool_false == "=L:false"
+}
+
+// CONTROL: a default node that is neither contract is a refusal reading, never the other contract.
+// A Value computation with no child and a Conj node must not read as a literal or as source text.
+test fn a_malformed_default_is_neither_literal_nor_source_text() -> Bool {
+  let empty_value = Node { kind: ComputationNode { behavior: Value }, children: [], occurrence_id: OccurrenceSynthetic }
+  let conj = compiler_built_conj(fields: [])
+  render_default(d: optional_present(value: empty_value)) == "=MALFORMED" && render_default(d: optional_present(value: conj)) == "=MALFORMED"
 }
 
 // THE v1-RUNNABLE TWIN of v2.test.claim.concept_index_enumeration (an implicit-scope module that the
