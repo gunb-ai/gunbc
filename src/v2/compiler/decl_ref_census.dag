@@ -412,13 +412,13 @@ fn decl_ref_census_exit(c: DeclRefCensus) -> Int {
 
 fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
   [
-    concat("[decl-ref-census] refs=", int_to_string(n: length(xs: c.cited)), " refused=", int_to_string(n: count_where(xs: c.resolutions, predicate: resolution_is_refusal))),
-    concat("[decl-ref-census] prose spans=", int_to_string(n: length(xs: c.prose)),
-      " resolves=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanResolves) })),
-      " stale=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanStale) })),
-      " outside_index=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanOutsideIndex) })),
-      " not_a_symbol=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanNotASymbol) })),
-      " unclassified=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanUnclassified) })))
+    concat("[decl-ref-census] refs=", to_string(n: length(xs: c.cited)), " refused=", to_string(n: count_where(xs: c.resolutions, predicate: resolution_is_refusal))),
+    concat("[decl-ref-census] prose spans=", to_string(n: length(xs: c.prose)),
+      " resolves=", to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanResolves) })),
+      " stale=", to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanStale) })),
+      " outside_index=", to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanOutsideIndex) })),
+      " not_a_symbol=", to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanNotASymbol) })),
+      " unclassified=", to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanUnclassified) })))
   ]
 }
 
