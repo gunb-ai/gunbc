@@ -149,11 +149,17 @@ fn standing_is_admitted(s: RungStanding) -> Bool {
   }
 }
 
+fn admitted_row_count() -> Int {
+  recurring_failure_mode_roster |> filter(r => row_is_admitted(r: r)) |> count
+}
+
+fn roster_row_count() -> Int {
+  recurring_failure_mode_roster |> count
+}
+
 fn rfm_rung_cases() -> List<RfmRungCase> {
-  let admitted = recurring_failure_mode_roster |> filter(r => row_is_admitted(r: r)) |> count
-  let total = recurring_failure_mode_roster |> count
   [
-    RfmRungCase { identity: "live_roster_every_read_row_is_admitted", held: admitted == total, observed: concat(to_string(value: admitted), concat("/", to_string(value: total))) },
+    RfmRungCase { identity: "live_roster_every_read_row_is_admitted", held: admitted_row_count() == roster_row_count(), observed: concat(to_string(value: admitted_row_count()), concat("/", to_string(value: roster_row_count()))) },
     RfmRungCase { identity: "control_below_ceiling_with_a_trigger_is_admitted", held: standing_is_admitted(s: control_below_ceiling_with_a_trigger), observed: "positive control" },
     RfmRungCase { identity: "control_at_ceiling_is_admitted", held: standing_is_admitted(s: control_at_ceiling), observed: "positive control" },
     RfmRungCase { identity: "red_below_ceiling_with_a_blank_capability_is_refused", held: !standing_is_admitted(s: control_below_ceiling_blank_capability), observed: "discriminating red" },
