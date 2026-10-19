@@ -89,7 +89,17 @@ def rows_from(path):
             mm = re.search(r"\(([^()]+:\d+-\d+)\)\s*$", r["body"])
             if mm:
                 mod = mm.group(1)
-        parsed.append({"module": mod.split(":")[0], "span": mod, "bind": m.group("bind"),
+        # Strip only the trailing :ln-ln. A naive split(":")[0] mangles a kernel module --
+        # `<kernel:Unit>:0-4` would be reported as `<kernel`, which reads as a broken module name
+        # in the per-module table and silently splits kernel rows from their real identity.
+        span = mod
+        mm = re.match(r"^(?P<name>\S+?\.dag|<kernel:[^>]+>):\d+-\d+$", mod)
+        if mm:
+            span = mod[mm.end("name"):]
+            mod = mm.group("name")
+        else:
+            mod = mod.rsplit(":", 2)[0] if re.search(r":\d+-\d+$", mod) else mod
+        parsed.append({"module": mod, "span": span, "bind": m.group("bind"),
                        "expected": exp, "got": got})
     return parsed
 
