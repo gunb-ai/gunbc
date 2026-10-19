@@ -100,7 +100,7 @@ fn flex_key_from_custody(custody: CustodyStanding) -> FlexKeyStanding {
   }
 }
 
-data flex_run_pass_caller_frontier: DissolutionCondition = unbound_dissolution(description: "flex_run_pass has no production caller: the executing route is a srv1 fleet-converge entry that reads the custody standing, the Vast instance and charge pages and the sealed readings, feeds the previous pass's create standing through flex_reconcile_ours into flex_reconciled_allocation (no planner reads a reconcile verdict yet), loads the key through flex_vast_api_read_grant, and calls it with FlexPolicy.actuation. TRIGGER: that entry exists and executes a DRY pass on srv1. SUFFICIENT FOR deleting this row. NOT satisfied by test.claim.fabric.flex_vast_loop_witness, which exercises the pure planner and flex_created_outcome only.")
+data flex_run_pass_caller_frontier: DissolutionCondition = unbound_dissolution(description: "flex_run_pass has a production caller, gunbc.fleet.flex_pass_run pass (fleet-converge mode flex_pass), which reads the key from Secret Manager, walks the instance and charge pages, and runs the pass with no cards, no allocations and no prior create standing. TWO GAPS REMAIN. (1) It has not executed: TRIGGER a dispatched flex_pass on srv1 whose receipt shows complete instance and charge walks and the planned outcome; SUFFICIENT FOR narrowing this row to (2). (2) Nothing feeds a previous pass's create standing through flex_reconcile_ours into flex_reconciled_allocation, and the pass's cards and allocations are not yet built from the labelled instances it observes: TRIGGER the entry builds FlexOwnedCard and RentedServingAllocation from the observed labelled roster and reconciles a lost create from that observation (the A3 placement-after-create slice); SUFFICIENT FOR deleting this row once both triggers hold.")
 
 data flex_select_supply_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "No wet or dry pass quotes shadow-field offers through serving_card_hourly into product.fabric.selection select_supply with flex_objective and flex_delay_unvalued: flex_plan_pass takes its candidate offer and quote as supplied, so those two values and serving_cache_bytes have no production consumer. TRIGGER: the srv1 fleet-converge entry (flex_run_pass_caller_frontier) builds FlexPassInput's offer and quote through select_supply under flex_objective. SUFFICIENT FOR deleting this row.")
 
@@ -214,7 +214,7 @@ type FlexCreateRefusal
   | FlexRefusedTemplateUnresolved
   | FlexRefusedTemplateHashUnread
   | FlexRefusedChargesUnreadable
-  | FlexRefusedBudgetCeiling { spent: MoneyAmountMicro, reservation: MoneyAmountMicro, ceiling: MoneyAmountMicro }
+  | FlexRefusedBudgetCeiling { spent: MoneyAmountMicro, unattributed: MoneyAmountMicro, reservation: MoneyAmountMicro, ceiling: MoneyAmountMicro }
   | FlexRefusedKeyNotLive { custody: FlexKeyCustodyDeclaration, causes: List<String> }
   | FlexRefusedPlacementUnread { obligation: NonEmptyStr }
 
@@ -233,21 +233,29 @@ fn flex_quote_wall(quote: ServingSelectionQuote) -> List<FlexCreateRefusal> {
   }
 }
 
-// The money WE have spent, summed from a COMPLETE charge walk over the rows carrying our label. ctrl shares
-// the account, so its rows are not ours to count (the same isolation as the roster): a row is ours only
-// when its metadata names our label, and an unlabelled row is nobody's. An incomplete walk or a charge
-// of ours that does not convert refuses: the ceiling is never checked against a guess.
+// THE MONEY THE CEILING IS CHECKED AGAINST, from a COMPLETE charge walk, with every row's owner read three
+// ways (extdeps.cloud.vast_ai VastAiChargeMetadata: an absent label is an UNREAD owner, never a verdict):
+// a row labelled ours is OURS; a row labelled with another label is FOREIGN (ctrl shares the account) and is
+// not counted; a row with no metadata or no label is UNATTRIBUTED, and since it could be ours it counts
+// against the ceiling. So the ceiling can be over-counted, never under-counted, and the refusal names how
+// much of the total was unattributed. An incomplete walk or a counted row that does not convert refuses: the
+// ceiling is never checked against a guess.
+type FlexChargeOwner
+  = FlexChargeOurs
+  | FlexChargeForeign
+  | FlexChargeUnattributed
+
 type FlexSpentStanding
-  = FlexSpentRead { spent: MoneyAmountMicro }
+  = FlexSpentRead { ours: MoneyAmountMicro, unattributed: MoneyAmountMicro }
   | FlexSpentUnreadable
 
-fn flex_charge_ours(charge: VastAiCharge, ours: FlexOwnerLabel) -> Bool {
+fn flex_charge_owner(charge: VastAiCharge, ours: FlexOwnerLabel) -> FlexChargeOwner {
   match charge.metadata {
-    Absent => false
+    Absent => FlexChargeUnattributed
     Present { value: m } =>
       match m.label {
-        Absent => false
-        Present { value: l } => l == (ours as String)
+        Absent => FlexChargeUnattributed
+        Present { value: l } => if l == (ours as String) { FlexChargeOurs } else { FlexChargeForeign }
       }
   }
 }
@@ -256,15 +264,24 @@ fn flex_spent(charges: FlexChargesStanding, ours: FlexOwnerLabel) -> FlexSpentSt
   match charges {
     FlexChargesComplete { roster: complete } =>
       fold(
-        complete.results |> filter(c => flex_charge_ours(charge: c, ours: ours)),
-        init: FlexSpentRead { spent: money_amount_micro(count: 0) },
+        complete.results,
+        init: FlexSpentRead { ours: money_amount_micro(count: 0), unattributed: money_amount_micro(count: 0) },
         f: (acc, row) =>
           match acc {
             FlexSpentUnreadable => FlexSpentUnreadable
-            FlexSpentRead { spent: so_far } =>
-              match exact_decimal_to_money_amount_micro_ceil(d: row.amount) {
-                DecimalMoneyConverted { amount: a } => FlexSpentRead { spent: measure_add(a: so_far, b: a) }
-                _ => FlexSpentUnreadable
+            FlexSpentRead { ours: o, unattributed: u } =>
+              match flex_charge_owner(charge: row, ours: ours) {
+                FlexChargeForeign => acc
+                FlexChargeOurs =>
+                  match exact_decimal_to_money_amount_micro_ceil(d: row.amount) {
+                    DecimalMoneyConverted { amount: a } => FlexSpentRead { ours: measure_add(a: o, b: a), unattributed: u }
+                    _ => FlexSpentUnreadable
+                  }
+                FlexChargeUnattributed =>
+                  match exact_decimal_to_money_amount_micro_ceil(d: row.amount) {
+                    DecimalMoneyConverted { amount: a } => FlexSpentRead { ours: o, unattributed: measure_add(a: u, b: a) }
+                    _ => FlexSpentUnreadable
+                  }
               }
           },
       )
@@ -272,16 +289,17 @@ fn flex_spent(charges: FlexChargesStanding, ours: FlexOwnerLabel) -> FlexSpentSt
   }
 }
 
-// The reservation of one rental is the bid held for the acquisition horizon.
+// The reservation of one rental is the bid held for the acquisition horizon. The ceiling holds ours, the
+// unattributed rows and the reservation together.
 fn flex_budget_wall(policy: FlexPolicy, charges: FlexChargesStanding, bid: MoneyPerHour) -> List<FlexCreateRefusal> {
   match flex_spent(charges: charges, ours: policy.owner) {
     FlexSpentUnreadable => [FlexRefusedChargesUnreadable]
-    FlexSpentRead { spent: spent } =>
+    FlexSpentRead { ours: o, unattributed: u } =>
       let reservation = flex_liability_for_horizon(rate: bid, horizon: policy.acquisition_horizon)
-      if measure_le(a: measure_add(a: spent, b: reservation), b: flex_trial_total) {
+      if measure_le(a: measure_add(a: measure_add(a: o, b: u), b: reservation), b: flex_trial_total) {
         []
       } else {
-        [FlexRefusedBudgetCeiling { spent: spent, reservation: reservation, ceiling: flex_trial_total }]
+        [FlexRefusedBudgetCeiling { spent: o, unattributed: u, reservation: reservation, ceiling: flex_trial_total }]
       }
   }
 }
@@ -716,8 +734,8 @@ fn flex_create_refusal_wire(r: FlexCreateRefusal) -> String {
     FlexRefusedTemplateUnresolved => "template-unresolved"
     FlexRefusedTemplateHashUnread => "template-hash-unread"
     FlexRefusedChargesUnreadable => "charges-unreadable"
-    FlexRefusedBudgetCeiling { spent: s, reservation: r2, ceiling: c } =>
-      join(["budget-ceiling spent_micro=", int_to_decimal_string(value: money_amount_micro_count(m: s)), " reservation_micro=", int_to_decimal_string(value: money_amount_micro_count(m: r2)), " ceiling_micro=", int_to_decimal_string(value: money_amount_micro_count(m: c))], "")
+    FlexRefusedBudgetCeiling { spent: s, unattributed: u, reservation: r2, ceiling: c } =>
+      join(["budget-ceiling spent_micro=", int_to_decimal_string(value: money_amount_micro_count(m: s)), " unattributed_micro=", int_to_decimal_string(value: money_amount_micro_count(m: u)), " reservation_micro=", int_to_decimal_string(value: money_amount_micro_count(m: r2)), " ceiling_micro=", int_to_decimal_string(value: money_amount_micro_count(m: c))], "")
     FlexRefusedKeyNotLive { custody: _, causes: cs } => concat("key-not-live ", join(cs, "; "))
     FlexRefusedPlacementUnread { obligation: _ } => "placement-unread"
   }
