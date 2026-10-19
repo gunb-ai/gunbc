@@ -252,8 +252,8 @@ type KernelGroundingArm {
 }
 
 // WHETHER A SIGNED VIEW AGREES WITH THE DECLARATION IT IS ABOUT -- the one check, here beside the view,
-// that every consumer runs before it folds by the view. A consumer reads the declaration's constructors
-// into GroundedConstructorShape (its names, and for each field whether it is declared at a grounded
+// that every consumer runs before it folds by the view. A consumer reads the declaration into a
+// GroundedDeclaredForm -- for a coproduct, its constructors as GroundedConstructorShape (its names, and for each field whether it is declared at a grounded
 // natural carrier) and asks this; it never decides agreement itself. The view agrees exactly when the
 // declaration has two constructors, the two named arms are distinct constructors of it, and each has the
 // one named field, declared at one and the same grounded natural.
@@ -271,12 +271,20 @@ type GroundedFieldDeclaration
   = FieldAtGroundedNatural { natural: DeclarationRef }
   | FieldNotAtGroundedNatural
 
+// What the carrier declaration IS, as far as a signed view can ask: a coproduct with these
+// constructors, or anything else (an opaque, alias or product declaration). Only a coproduct can
+// implement two named constructors, so the second refuses -- it is never "nothing to fold".
+type GroundedDeclaredForm
+  = DeclaredCoproduct { constructors: List<GroundedConstructorShape> }
+  | DeclaredNotACoproduct
+
 type SignedViewReading
   = SignedViewAgrees { natural: DeclarationRef }
   | SignedViewDisagrees { reason: SignedViewDisagreement }
 
 type SignedViewDisagreement
-  = SignedArity { constructor_count: Int }
+  = SignedCarrierNotACoproduct
+  | SignedArity { constructor_count: Int }
   | SignedArmsCoincide { constructor: String }
   | SignedArmNotDeclared { constructor: String }
   | SignedArmPayloadNotSole { constructor: String, payload: String }
@@ -322,7 +330,14 @@ fn signed_arm_agreement(arm: KernelGroundingArm, constructors: List<GroundedCons
   }
 }
 
-fn signed_view_reading(nonnegative: KernelGroundingArm, negative: KernelGroundingArm, constructors: List<GroundedConstructorShape>) -> SignedViewReading {
+fn signed_view_reading(nonnegative: KernelGroundingArm, negative: KernelGroundingArm, declared: GroundedDeclaredForm) -> SignedViewReading {
+  match declared {
+    DeclaredNotACoproduct => SignedViewDisagrees { reason: SignedCarrierNotACoproduct }
+    DeclaredCoproduct { constructors: constructors } => signed_coproduct_reading(nonnegative: nonnegative, negative: negative, constructors: constructors)
+  }
+}
+
+fn signed_coproduct_reading(nonnegative: KernelGroundingArm, negative: KernelGroundingArm, constructors: List<GroundedConstructorShape>) -> SignedViewReading {
   if (constructors |> count) != 2 {
     SignedViewDisagrees { reason: SignedArity { constructor_count: constructors |> count } }
   } else if (nonnegative.constructor as String) == (negative.constructor as String) {
@@ -342,6 +357,7 @@ fn signed_view_reading(nonnegative: KernelGroundingArm, negative: KernelGroundin
 
 fn signed_view_disagreement_message(reason: SignedViewDisagreement) -> String {
   match reason {
+    SignedCarrierNotACoproduct => "its row declares a signed view, which names two constructors, and the declaration is not a coproduct (it is opaque, an alias or a product)"
     SignedArity { constructor_count: c } => concat("its row declares a signed view, which folds exactly two constructors, and the declaration has ", to_string(value: c))
     SignedArmsCoincide { constructor: c } => concat("its row names `", c, "` as both the non-negative and the negative constructor")
     SignedArmNotDeclared { constructor: c } => concat("its row names the constructor `", c, "`, which the declaration does not declare")

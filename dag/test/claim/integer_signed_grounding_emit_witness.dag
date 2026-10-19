@@ -34,12 +34,13 @@ test fn same_shaped_foreign_type_stays_structural() -> Bool {
   )
 }
 
-// THE MACHINE BOUNDARY IS A REFUSAL, NOT A WRAP. Int's meaning is unbounded; its realization is the
-// machine integer, admitted only where exact. Arithmetic over the grounded carrier routes through the
-// overflow-refusing helpers (extdeps.languages.rust.emit rust_refusing_int_operator_helper), so the
-// canonical pair of the most negative machine integer -- whose neg component pred + 1 is not a machine
-// natural -- refuses rather than producing a wrong pair.
-test fn group_completion_of_a_negative_int_refuses_on_overflow() -> Bool {
+// ROUTE, NOT EXECUTION. Arithmetic over the grounded carrier's payloads emits the overflow-refusing
+// helpers (extdeps.languages.rust.emit rust_refusing_int_operator_helper), never the wrapping infix
+// token. This reads emitted text and executes nothing: that group_completion_of_int(MIN) actually
+// refuses is a local execution receipt (PR #14490), because no enrolled witness can run a call and
+// observe its refusal -- the trigger gunbc.recurring_failure_mode
+// emitted_int_arithmetic_wraps_where_the_interpreter_refuses already names.
+test fn negative_payload_arithmetic_routes_through_refusing_helpers() -> Bool {
   compile_dag_rust_emit_check(
     "module isg_pair\n\nimport std.nat { Nat }\nimport std.integer { NonNegative, Negative }\n\nfn neg_component(i: std.integer.Int) -> Nat {\n  match i {\n    NonNegative { n: _ } => 0\n    Negative { pred: p } => p + 1\n  }\n}\n",
     "src/isg_pair.rs",

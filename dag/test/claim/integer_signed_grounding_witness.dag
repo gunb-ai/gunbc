@@ -9,7 +9,8 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.literal_elaboration {
   KernelGroundingArm, GroundedConstructorShape, GroundedFieldShape, FieldAtGroundedNatural, FieldNotAtGroundedNatural,
   SignedViewReading, SignedViewAgrees, SignedViewDisagrees, SignedArity, SignedArmsCoincide, SignedArmNotDeclared, SignedArmPayloadNotSole,
-  SignedPayloadNotNatural, SignedPayloadsDiffer, signed_view_reading, declaration_is_grounded_natural
+  SignedPayloadNotNatural, SignedPayloadsDiffer, SignedCarrierNotACoproduct, DeclaredCoproduct, DeclaredNotACoproduct,
+  signed_view_reading, declaration_is_grounded_natural
 }
 import gunbc.structural_realization_bindings { kernel_grounding_rows }
 
@@ -130,6 +131,15 @@ test fn order_is_by_denoted_value() -> Bool {
     && int_compare(a: negative_of(x: 4), b: 0 - 5) == Equal
 }
 
+// SUBTRACTION REFUSES ONLY WHERE ITS ANSWER IS NOT REPRESENTABLE. MIN - MIN and -1 - MIN have the
+// representable answers 0 and MAX; computing them as a + (-b) would negate MIN first and refuse.
+test fn subtraction_at_the_machine_endpoints_is_exact() -> Bool {
+  int_sub(a: machine_min, b: machine_min) == 0
+    && int_sub(a: 0 - 1, b: machine_min) == machine_max
+    && int_sub(a: 0, b: machine_max) == machine_min + 1
+    && int_sub(a: machine_max, b: machine_max) == 0
+}
+
 test fn ring_operations_cross_zero() -> Bool {
   int_add(a: negative_of(x: 2), b: nonnegative_of(x: 5)) == 2
     && int_sub(a: nonnegative_of(x: 1), b: nonnegative_of(x: 4)) == negative_of(x: 2)
@@ -176,7 +186,7 @@ fn agrees(r: SignedViewReading) -> Bool {
 }
 
 fn int_arms_over(constructors: List<GroundedConstructorShape>) -> SignedViewReading {
-  signed_view_reading(nonnegative: arm(constructor: "NonNegative", payload: "n"), negative: arm(constructor: "Negative", payload: "pred"), constructors: constructors)
+  signed_view_reading(nonnegative: arm(constructor: "NonNegative", payload: "n"), negative: arm(constructor: "Negative", payload: "pred"), declared: DeclaredCoproduct { constructors: constructors })
 }
 
 // The positive control, over std.integer Int's own shape -- in either declaration order: the check
@@ -190,7 +200,7 @@ test fn the_declared_view_agrees_with_int_in_either_order() -> Bool {
 }
 
 test fn a_view_naming_one_constructor_twice_refuses() -> Bool {
-  match signed_view_reading(nonnegative: arm(constructor: "NonNegative", payload: "n"), negative: arm(constructor: "NonNegative", payload: "n"), constructors: [ctor(name: "NonNegative", fields: [natural_field(name: "n")]), ctor(name: "Negative", fields: [natural_field(name: "pred")])]) {
+  match signed_view_reading(nonnegative: arm(constructor: "NonNegative", payload: "n"), negative: arm(constructor: "NonNegative", payload: "n"), declared: DeclaredCoproduct { constructors: [ctor(name: "NonNegative", fields: [natural_field(name: "n")]), ctor(name: "Negative", fields: [natural_field(name: "pred")])] }) {
     SignedViewDisagrees { reason: SignedArmsCoincide { constructor: c } } => c == "NonNegative"
     _ => false
   }
@@ -226,6 +236,16 @@ test fn payloads_at_different_naturals_refuse() -> Bool {
   let other = GroundedFieldShape { field: "pred", declared_at: FieldAtGroundedNatural { natural: decl_ref(module_path: "test.fixture.elsewhere", decl_name: "Nat") } }
   match int_arms_over(constructors: [ctor(name: "NonNegative", fields: [natural_field(name: "n")]), ctor(name: "Negative", fields: [other])]) {
     SignedViewDisagrees { reason: SignedPayloadsDiffer } => true
+    _ => false
+  }
+}
+
+// A declaration that is not a coproduct cannot implement two named constructors: it refuses, never
+// "nothing to fold". The real adapter's branch is driven through compilation in
+// test.claim.integer_signed_grounding_adapter_witness.
+test fn a_declaration_that_is_not_a_coproduct_refuses() -> Bool {
+  match signed_view_reading(nonnegative: arm(constructor: "NonNegative", payload: "n"), negative: arm(constructor: "Negative", payload: "pred"), declared: DeclaredNotACoproduct) {
+    SignedViewDisagrees { reason: SignedCarrierNotACoproduct } => true
     _ => false
   }
 }

@@ -310,7 +310,7 @@ pub fn int_negate(a: i64) -> i64 {
 }
 
 pub fn int_sub(a: i64, b: i64) -> i64 {
-    int_add(a.clone(), int_negate(b.clone()))
+    v1_rt::int_sub(a.clone(), b.clone())
 }
 
 pub fn int_mul(a: i64, b: i64) -> i64 {

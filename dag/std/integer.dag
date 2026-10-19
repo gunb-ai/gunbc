@@ -333,8 +333,11 @@ fn int_negate(a: Int) -> Int {
   0 - a
 }
 
+// DIRECT, NOT a + (-b): on the overflow-refusing realization, negating the most negative machine integer
+// refuses before any addition, so MIN - MIN and -1 - MIN -- whose answers 0 and MAX are representable --
+// would refuse. Subtraction is its own refusing operation and refuses only where its answer is not.
 fn int_sub(a: Int, b: Int) -> Int {
-  int_add(a: a, b: int_negate(a: b))
+  a - b
 }
 
 fn int_mul(a: Int, b: Int) -> Int {

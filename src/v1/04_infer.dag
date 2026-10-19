@@ -16,6 +16,7 @@ import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
   KernelGroundingView, PeanoGroundingView, SignedGroundingView, KernelGroundingArm,
   GroundedConstructorShape, GroundedFieldShape, FieldAtGroundedNatural, FieldNotAtGroundedNatural,
+  GroundedDeclaredForm, DeclaredCoproduct, DeclaredNotACoproduct,
   SignedViewDisagreement, SignedViewAgrees, SignedViewDisagrees, signed_view_reading, signed_view_disagreement_message,
   declaration_is_grounded_natural,
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
@@ -17234,22 +17235,29 @@ fn grounded_constructor_shapes(variants: List<Node>, env: TypeEnv) -> List<Groun
 // THE SIGNED VIEW TAKES ITS ROLES FROM THE ROW. Both arms carry one natural, so no shape can tell them
 // apart; the row names which constructor is non-negative and which is negative, and the shared check
 // (std.literal_elaboration signed_view_reading) decides whether the declaration agrees with it.
-fn signed_grounded_carrier_state(row: KernelGrounding, decl: Node, nonnegative: KernelGroundingArm, negative: KernelGroundingArm, env: TypeEnv) -> GroundedCarrierState {
-  if decl.connective != Disj {
-    GroundedCarrierDeclaresNoConstructors
+// NO "NOTHING TO FOLD" ARM. A signed row asks whether the declaration implements two named
+// constructors, and an opaque, alias or product declaration answers no -- the shared check refuses it
+// (SignedCarrierNotACoproduct). This adapter only reads the declaration into its form; it decides nothing.
+fn grounded_declared_form(decl: Node, env: TypeEnv) -> GroundedDeclaredForm {
+  if decl.connective == Disj {
+    DeclaredCoproduct { constructors: grounded_constructor_shapes(variants: decl.children, env: env) }
   } else {
-    match signed_view_reading(nonnegative: nonnegative, negative: negative, constructors: grounded_constructor_shapes(variants: decl.children, env: env)) {
-      SignedViewDisagrees { reason: r } => GroundedCarrierShapeRefused { carrier: row.carrier, span: decl.span, reason: SignedViewRefused { reason: r } }
-      SignedViewAgrees { natural: natural } =>
-        GroundedViewReadable {
-          view: GroundedView {
-            carrier: row.carrier,
-            carrier_name: row.carrier.decl_name as String,
-            shape: GroundedSigned { nonnegative: nonnegative.constructor as String, nonnegative_payload: nonnegative.payload as String, negative: negative.constructor as String, negative_payload: negative.payload as String, natural: natural },
-            operand: OperandDeclaration { declaration: row.carrier, provenance: declaration_provenance_of_ref(d: row.carrier, env: env) }
-          }
+    DeclaredNotACoproduct
+  }
+}
+
+fn signed_grounded_carrier_state(row: KernelGrounding, decl: Node, nonnegative: KernelGroundingArm, negative: KernelGroundingArm, env: TypeEnv) -> GroundedCarrierState {
+  match signed_view_reading(nonnegative: nonnegative, negative: negative, declared: grounded_declared_form(decl: decl, env: env)) {
+    SignedViewDisagrees { reason: r } => GroundedCarrierShapeRefused { carrier: row.carrier, span: decl.span, reason: SignedViewRefused { reason: r } }
+    SignedViewAgrees { natural: natural } =>
+      GroundedViewReadable {
+        view: GroundedView {
+          carrier: row.carrier,
+          carrier_name: row.carrier.decl_name as String,
+          shape: GroundedSigned { nonnegative: nonnegative.constructor as String, nonnegative_payload: nonnegative.payload as String, negative: negative.constructor as String, negative_payload: negative.payload as String, natural: natural },
+          operand: OperandDeclaration { declaration: row.carrier, provenance: declaration_provenance_of_ref(d: row.carrier, env: env) }
         }
-    }
+      }
   }
 }
 

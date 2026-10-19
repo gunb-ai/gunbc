@@ -77,6 +77,9 @@ use crate::std_kernel_type_name::KernelTypeNameAdmission::{
     KernelTypeNameAdmitted, NotAKernelTypeName,
 };
 pub use crate::std_kernel_type_name::{kernel_type_name, KernelTypeNameAdmission};
+use crate::std_literal_elaboration::GroundedDeclaredForm::{
+    DeclaredCoproduct, DeclaredNotACoproduct,
+};
 use crate::std_literal_elaboration::GroundedFieldDeclaration::{
     FieldAtGroundedNatural, FieldNotAtGroundedNatural,
 };
@@ -100,10 +103,10 @@ pub use crate::std_literal_elaboration::{
     declaration_is_grounded_natural, elaborate_literal_at, kernel_grounding_for,
     kernel_mint_declaration_for, literal_elaboration_refusal_message, literal_source_kind_of,
     signed_view_disagreement_message, signed_view_reading, GroundedConstructorShape,
-    GroundedFieldDeclaration, GroundedFieldShape, KernelGrounding, KernelGroundingArm,
-    KernelGroundingLookup, KernelGroundingView, KernelMintDeclarationLookup, LiteralElaboration,
-    LiteralElaborationOutcome, LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
-    SignedViewDisagreement, SignedViewReading,
+    GroundedDeclaredForm, GroundedFieldDeclaration, GroundedFieldShape, KernelGrounding,
+    KernelGroundingArm, KernelGroundingLookup, KernelGroundingView, KernelMintDeclarationLookup,
+    LiteralElaboration, LiteralElaborationOutcome, LiteralHomomorphism, LiteralSourceKind,
+    LiteralUnfolding, SignedViewDisagreement, SignedViewReading,
 };
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -30613,6 +30616,16 @@ pub fn grounded_constructor_shapes(
     }
 }
 
+pub fn grounded_declared_form(decl: Rc<Node>, env: Rc<TypeEnv>) -> Rc<GroundedDeclaredForm> {
+    if (decl.connective.clone() == Connective::Disj) {
+        Rc::new(GroundedDeclaredForm::DeclaredCoproduct {
+            constructors: grounded_constructor_shapes(decl.children.clone(), env.clone()),
+        })
+    } else {
+        Rc::new(GroundedDeclaredForm::DeclaredNotACoproduct)
+    }
+}
+
 pub fn signed_grounded_carrier_state(
     row: Rc<KernelGrounding>,
     decl: Rc<Node>,
@@ -30620,46 +30633,42 @@ pub fn signed_grounded_carrier_state(
     negative: Rc<KernelGroundingArm>,
     env: Rc<TypeEnv>,
 ) -> Rc<GroundedCarrierState> {
-    if (decl.connective.clone() != Connective::Disj) {
-        Rc::new(GroundedCarrierState::GroundedCarrierDeclaresNoConstructors)
-    } else {
-        match (*crate::std_literal_elaboration::signed_view_reading(
-            nonnegative.clone(),
-            negative.clone(),
-            grounded_constructor_shapes(decl.children.clone(), env.clone()),
-        ))
-        .clone()
-        {
-            SignedViewReading::SignedViewDisagrees { reason: r, .. } => {
-                Rc::new(GroundedCarrierState::GroundedCarrierShapeRefused {
-                    carrier: row.carrier.clone(),
-                    span: decl.span.clone(),
-                    reason: Rc::new(GroundedShapeRefusal::SignedViewRefused { reason: r.clone() }),
-                })
-            }
-            SignedViewReading::SignedViewAgrees {
-                natural: natural, ..
-            } => Rc::new(GroundedCarrierState::GroundedViewReadable {
-                view: Rc::new(GroundedView {
-                    carrier: row.carrier.clone(),
-                    carrier_name: row.carrier.decl_name.clone(),
-                    shape: Rc::new(GroundedViewShape::GroundedSigned {
-                        nonnegative: nonnegative.constructor.clone(),
-                        nonnegative_payload: nonnegative.payload.clone(),
-                        negative: negative.constructor.clone(),
-                        negative_payload: negative.payload.clone(),
-                        natural: natural.clone(),
-                    }),
-                    operand: Rc::new(OperandDeclaration {
-                        declaration: row.carrier.clone(),
-                        provenance: crate::v1_compiler_infer_env::declaration_provenance_of_ref(
-                            row.carrier.clone(),
-                            env.clone(),
-                        ),
-                    }),
+    match (*crate::std_literal_elaboration::signed_view_reading(
+        nonnegative.clone(),
+        negative.clone(),
+        grounded_declared_form(decl.clone(), env.clone()),
+    ))
+    .clone()
+    {
+        SignedViewReading::SignedViewDisagrees { reason: r, .. } => {
+            Rc::new(GroundedCarrierState::GroundedCarrierShapeRefused {
+                carrier: row.carrier.clone(),
+                span: decl.span.clone(),
+                reason: Rc::new(GroundedShapeRefusal::SignedViewRefused { reason: r.clone() }),
+            })
+        }
+        SignedViewReading::SignedViewAgrees {
+            natural: natural, ..
+        } => Rc::new(GroundedCarrierState::GroundedViewReadable {
+            view: Rc::new(GroundedView {
+                carrier: row.carrier.clone(),
+                carrier_name: row.carrier.decl_name.clone(),
+                shape: Rc::new(GroundedViewShape::GroundedSigned {
+                    nonnegative: nonnegative.constructor.clone(),
+                    nonnegative_payload: nonnegative.payload.clone(),
+                    negative: negative.constructor.clone(),
+                    negative_payload: negative.payload.clone(),
+                    natural: natural.clone(),
+                }),
+                operand: Rc::new(OperandDeclaration {
+                    declaration: row.carrier.clone(),
+                    provenance: crate::v1_compiler_infer_env::declaration_provenance_of_ref(
+                        row.carrier.clone(),
+                        env.clone(),
+                    ),
                 }),
             }),
-        }
+        }),
     }
 }
 
