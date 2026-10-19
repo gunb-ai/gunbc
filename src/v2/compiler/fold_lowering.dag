@@ -1252,10 +1252,12 @@ type FoldIterationDirection
   | IteratesRightToLeft
 
 // THE ONE SHAPE -> DIRECTION MATCH. Its correctness is exercised by execution, not by a fixture:
-// ccr_map_loop_iterates_right_to_left / ccr_filter_loop_iterates_right_to_left measure red when an arm
-// of this match is flipped, because the claim reads the direction back off a loop the REAL synthesis
-// lowered (the manager's evidence ruling of 2026-10-19; the flip runs are recorded on
-// gunbc.recurring_failure_mode fold_realized_loop_carries_no_iteration_direction).
+// ccr_map_direction_is_read_from_its_step_shape measures red when the cons arm of this match is
+// flipped and green at the unmutated sha, and ccr_filter_and_any_directions covers the keep and join
+// arms through the realized path (the manager's evidence ruling of 2026-10-19; the flip runs, with
+// shas, are recorded on gunbc.recurring_failure_mode fold_realized_loop_carries_no_iteration_direction).
+// The map-fixture claims (ccr_map_loop_iterates_right_to_left and siblings) are pre-existing red on the
+// collection-map binding frontier and cannot discriminate this match (review 82832 on the PR, 2026-10-19).
 fn callback_step_shape_iteration_direction(s: CallbackStepShape) -> FoldIterationDirection {
   match s {
     StepConsOfCallbackResult => IteratesRightToLeft

@@ -3,7 +3,9 @@
 // iteration direction its own synthesis obeys, and a contradicted direction must be refused on the
 // real acceptance path. Authority for the fact: v2.compiler.fold_lowering FoldIterationDirection
 // (fact side already on main: f314f5c986d, N7-1b, controls ccr_map_loop_iterates_right_to_left /
-// ccr_fold_list_and_fold_list_right_are_told_apart — both measured red when the row is flipped).
+// ccr_fold_list_and_fold_list_right_are_told_apart — both measured red when their row was flipped at
+// that rung; the map-fixture ones are pre-existing red on today's binding frontier, see the flip-run
+// note below).
 // Failure home: dag/gunbc/recurring_failure_mode/fold_realized_loop_carries_no_iteration_direction.
 
 // THE CONSUMERS (measured at HEAD 574991e6918, not assumed): call sites of
@@ -85,17 +87,24 @@
 // - THE CONTRADICTION CLASS IS RUNG 4 BY CONSTRUCTION: {cons-shape, Left} has no constructor (the
 //   direction is read from the shape by callback_step_shape_iteration_direction, never carried beside
 //   it), so NO RED of that class is authorable -- stated plainly in the failure-mode row.
-// - THE RESIDUAL CLASS (the one shape -> direction match being wrong) is discriminated by EXECUTION:
-//   flipping the cons arm (StepConsOfCallbackResult => IteratesLeftToRight) makes
-//   ccr_map_loop_iterates_right_to_left measure RED on the real route (the claim reads the direction
-//   back off a loop the real synthesis lowered); reverted, green. Both runs pinned to shas, reported
-//   to the manager; the mutation is never shipped (the runner keeps no target/ across dispatches, so
-//   each run is its own pinned build). Red BEFORE the wall exists: both step_loop
-//   handlers still refuse every Loop during the flip, so the RED does not read or wait on an executor.
-// - ACCEPTED CONTROLS: map, filter, any, all lower accepted with their directions read off their own
-//   rows (ccr_map_loop_iterates_right_to_left, ccr_filter_and_any_directions,
-//   ccr_fold_and_all_iterate_left_to_right), the shipped ccr_fold_list_and_fold_list_right_are_told_apart
-//   untouched. The row population itself needs no claim: the total match makes disagreement unwriteable.
+// - THE RESIDUAL CLASS (the one shape -> direction match being wrong) is discriminated by EXECUTION on
+//   the claim that DISCRIMINATES it: flipping the cons arm (StepConsOfCallbackResult =>
+//   IteratesLeftToRight) makes ccr_map_direction_is_read_from_its_step_shape measure RED and green at
+//   the unmutated sha (the claim reads map's direction back through the realized path). Both runs
+//   pinned to shas, reported to the manager; the mutation is never shipped (the runner keeps no
+//   target/ across dispatches, so each run is its own pinned build). Red BEFORE the wall exists: both
+//   step_loop handlers still refuse every Loop during the flip, so the RED does not read or wait on an
+//   executor. HONESTY NOTE (review 82832 on the PR): the map-fixture claims
+//   (ccr_map_loop_iterates_right_to_left and siblings) CANNOT be the flip evidence -- they are
+//   pre-existing red at the base sha (identical verdict lists at base and head) and their helper
+//   answers false on fixture refusal, not on a wrong direction; an earlier wording of this note and of
+//   the failure-mode row named them, and was corrected.
+// - ACCEPTED CONTROLS: the direction claims that are green at this head — ccr_map_direction_is_read_from_its_step_shape,
+//   ccr_filter_and_any_directions, ccr_fold_and_all_iterate_left_to_right — read each callback's
+//   direction off its own row, and the shipped ccr_fold_list_and_fold_list_right_are_told_apart is
+//   untouched. The map-fixture claims are PRE-EXISTING RED on the binding frontier and are reported as
+//   such, not as accepted controls. The row population itself needs no claim: the total match makes
+//   disagreement unwriteable.
 // - REFUSAL OF DEFAULT: ccr_a_non_fold_path_has_no_direction keeps the no-default direction reading
 //   (a path naming no fold derives Absent, never a default direction).
 // CEILING claim (what green will NOT say): this closes the callback-synthesis contradiction boundary
