@@ -7218,6 +7218,12 @@ pub fn run_self_host_frontier(source_roots: &[String]) -> Result<i32, String> {
         Ok(())
     }
     walk(&crate_dir.join("src"), &crate_dir, &mut observed)?;
+    // The roster also names the crate's cargo test harnesses and build script, which live outside
+    // src/; the observed universe is every .rs file of the crate, not only the src tree.
+    walk(&crate_dir.join("tests"), &crate_dir, &mut observed)?;
+    if crate_dir.join("build.rs").is_file() {
+        observed.push("build.rs".to_string());
+    }
     observed.sort();
     let scratch = emitted_dir.join("self_host_frontier_operands");
     std::fs::create_dir_all(&scratch).map_err(|e| {
