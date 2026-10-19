@@ -26,10 +26,11 @@ use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
     fields_get, sorted_fields, str_value, InterpContext, InterpError, InterpResult, Value,
 };
+use crate::v1_std_core::Cardinality;
 use crate::v1_std_core::{
-    authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    param_node_type_expr, source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex,
-    Node, VarBindingKind,
+    authored_name_at, expr_var_name_at, field_node_cardinality, field_node_default_value,
+    field_node_type_expr, inferred_to_node, param_node_name_at, param_node_type_expr,
+    source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -276,8 +277,104 @@ fn marshal_variant_arm_target(
             .as_ref()
             .and_then(|inf| inferred_to_node(inf.clone()))
             .unwrap_or_else(|| field_node_type_expr(field.clone()));
-        let target = marshal_type_expr_ref(ctx, si, &type_expr)?;
+        let target = marshal_field_binder(ctx, si, field, &field_name, &type_expr)?;
         edges.push(edge_named(ctx, &field_name, target));
+    }
+    Ok(node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        edges,
+    ))
+}
+
+fn core_edge_value(ctx: &InterpContext, marker: &str, target: Value) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Edge"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("label"),
+                Value::Variant {
+                    type_name: ctx.sym("EdgeLabel"),
+                    variant_name: ctx.sym("StructuralLabel"),
+                    fields: Rc::new(vec![(
+                        ctx.sym("label"),
+                        Value::Variant {
+                            type_name: ctx.sym("StructuralEdgeLabel"),
+                            variant_name: ctx.sym("CoreMarker"),
+                            fields: Rc::new(vec![(
+                                ctx.sym("marker"),
+                                Value::Variant {
+                                    type_name: ctx.sym("CoreEdgeLabel"),
+                                    variant_name: ctx.sym(marker),
+                                    fields: Rc::new(vec![]),
+                                },
+                            )]),
+                        },
+                    )]),
+                },
+            ),
+            (ctx.sym("target"), target),
+        ])),
+    }
+}
+
+// A DECLARED FIELD IS A BINDER NODE, the one shape v2.std.node_query binder_node builds and
+// declared_field_list reads: a Conj of a BinderTypeEdge to the field's type and, when the field
+// declares a default, a BinderDefaultEdge. An optional field (`f: T?`) targets an Occupancy over its
+// type, as declared_field_cardinality_of_target decodes. A default the host cannot marshal -- any
+// expression other than a literal -- is reflected as an atom of its source text, and only a default
+// with no readable source REFUSES; none comes out as no default, which would be a silent loss of a
+// declared fact.
+fn marshal_field_binder(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field: &Rc<Node>,
+    field_name: &str,
+    type_expr: &Rc<Node>,
+) -> InterpResult<Value> {
+    let mut type_target = marshal_type_expr_ref(ctx, si, type_expr)?;
+    if matches!(
+        field_node_cardinality(field.clone()),
+        Cardinality::CardOptional
+    ) {
+        type_target = node_record(
+            ctx,
+            node_kind_type_node(ctx, nullary_connective_variant(ctx, "Occupancy")),
+            vec![edge_positional(ctx, type_target)],
+        );
+    }
+    let mut edges = vec![core_edge_value(ctx, "BinderTypeEdge", type_target)];
+    // A parsed field keeps its default in `body`; a normalized one (make_field_node) as child 1.
+    if let Some(default) = field
+        .body
+        .clone()
+        .or_else(|| field_node_default_value(field.clone()))
+    {
+        let lexeme = match default.expr_data.as_ref() {
+            ExprData::ExprLiteral { value, .. } => match value.as_ref() {
+                crate::std_syntax::LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
+                crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(n.to_string()),
+                crate::std_syntax::LiteralValue::LitBool { value: b, .. } => Some(b.to_string()),
+                crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        // A default that is not a literal is reflected as the atom of its SOURCE TEXT: present and
+        // visible to a consumer, never dropped. Only a default with no readable source refuses.
+        let lexeme = lexeme.or_else(|| literal_source_lexeme(&default, si));
+        let Some(lexeme) = lexeme else {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "marshal_field_binder: field `{field_name}` declares a default with no readable source; refusing rather than reflecting it as no default"
+                ),
+            });
+        };
+        edges.push(core_edge_value(
+            ctx,
+            "BinderDefaultEdge",
+            atom_identity_node(ctx, &lexeme),
+        ));
     }
     Ok(node_record(
         ctx,

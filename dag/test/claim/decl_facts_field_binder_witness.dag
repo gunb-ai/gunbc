@@ -1,0 +1,104 @@
+module test.claim.decl_facts_field_binder_witness
+
+import std.types { String, List, Bool, Int }
+import std.optional { Optional, Present, Absent, optional_absent, optional_present }
+import v2.std.decl_index { decl_facts, DeclFact }
+import v2.std.node { Node, Edge, Authored, OccurrenceSynthetic, TypeNode, Atom, Conj, Symbol, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node_query { DeclaredField, declared_field_list, binder_node, edge_field_type_name }
+
+// THE ONE INHABITANCE CLAIM for the host reflection of a record's fields: the node decl_facts yields
+// for a declared record reads, through v2.std.node_query declared_field_list, as the same field list
+// as the node the compiler builds (binder_node). Names, order, type, cardinality and default
+// PRESENCE plus the literal's lexeme are compared; the host cannot reproduce a lowered default
+// expression, so a non-literal default refuses at the marshal (coproduct_reflection marshal_field_binder).
+// The route is asserted: the expected side is built by node_query's own constructor and the derived
+// side comes only from the real batched decl_facts pass.
+
+fn atom(name: String) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: symbol_of(text: name) } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn symbol_of(text: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: text)
+}
+
+fn field_edge(name: String, ty: String, default: Optional<String>) -> Edge {
+  Edge {
+    label: Authored { name: symbol_of(text: name) }
+    target: binder_node(type_node: atom(name: ty), default: default_node(default: default))
+  }
+}
+
+fn default_node(default: Optional<String>) -> Optional<Node> {
+  match default {
+    Present { value: d } => optional_present(value: atom(name: d))
+    Absent => optional_absent()
+  }
+}
+
+fn compiler_built_conj(fields: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: fields, occurrence_id: OccurrenceSynthetic }
+}
+
+fn render_field(f: DeclaredField) -> String {
+  concat(concat(concat(symbol_lexeme(sym: f.name), ":"), symbol_lexeme(sym: edge_field_type_name(target: f.type_node))), render_default(d: f.default))
+}
+
+fn render_default(d: Optional<Node>) -> String {
+  match d {
+    Present { value: n } => concat("=", symbol_lexeme(sym: edge_field_type_name(target: n)))
+    Absent => ""
+  }
+}
+
+fn render_fields(payload: Node) -> List<String> {
+  map(declared_field_list(payload: payload), f => render_field(f: f))
+}
+
+fn hits_named(qn: String) -> List<DeclFact> {
+  decl_facts(pool_roots: ["dag", "src/v2"]) |> filter(f => f.qualified_name == qn)
+}
+
+fn browser_expected() -> Node {
+  compiler_built_conj(fields: [
+    field_edge(name: "headless", ty: "Bool", default: optional_present(value: "false")),
+    field_edge(name: "profile_path", ty: "FilePath", default: optional_absent()),
+    field_edge(name: "viewport_width", ty: "Int", default: optional_present(value: "1280")),
+    field_edge(name: "viewport_height", ty: "Int", default: optional_present(value: "900"))
+  ])
+}
+
+test fn decl_facts_record_with_defaults_reads_as_the_compiler_built_fields() -> Bool {
+  let hits = hits_named(qn: "extdeps.browser.BrowserConfig")
+  count(hits) == 1 && all(hits, f => render_fields(payload: f.node) == render_fields(payload: browser_expected()))
+}
+
+test fn decl_facts_record_without_defaults_reads_with_its_names_in_order() -> Bool {
+  let hits = hits_named(qn: "gunbc.auth.approval_device_wire.ReadAuthentication")
+  count(hits) == 1 && all(hits, f => render_fields(payload: f.node) == ["enrollment_id:NonEmptyStr", "requested_at:Timestamp", "assertion_b64:NonEmptyStr"])
+}
+
+// RED: the derived list is not the compiler-built one when a default is dropped, so the comparison
+// discriminates defaults and is not satisfied by names alone.
+test fn a_dropped_default_is_not_the_derived_list() -> Bool {
+  let dropped = compiler_built_conj(fields: [
+    field_edge(name: "headless", ty: "Bool", default: optional_absent()),
+    field_edge(name: "profile_path", ty: "FilePath", default: optional_absent()),
+    field_edge(name: "viewport_width", ty: "Int", default: optional_present(value: "1280")),
+    field_edge(name: "viewport_height", ty: "Int", default: optional_present(value: "900"))
+  ])
+  let hits = hits_named(qn: "extdeps.browser.BrowserConfig")
+  count(hits) == 1 && all(hits, f => render_fields(payload: f.node) != render_fields(payload: dropped))
+}
+
+// CONTROL: a NON-LITERAL default (`none`) is reflected as present, with its source text, not as no default.
+test fn a_non_literal_default_is_reflected_as_present() -> Bool {
+  let hits = hits_named(qn: "extdeps.google.issue_tracker.Issue")
+  count(hits) == 1 && all(hits, f => first_default(payload: f.node) == "=none")
+}
+
+fn first_default(payload: Node) -> String {
+  fold(declared_field_list(payload: payload), init: "", f: fn(acc, fld) {
+    if acc == "" { render_default(d: fld.default) } else { acc }
+  })
+}

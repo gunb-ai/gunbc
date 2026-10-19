@@ -1,0 +1,41 @@
+module gunbc.decl_facts_field_binder_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added so that the decl_facts reflection marshals a
+// declared field as the binder node v2.std.node_query already constructs and reads. Authored
+// because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes unenumerated
+// hand growth in src/v1 a stop-line, and this change adds two hand items to
+// v1_compiler.coproduct_reflection.
+//
+// WHAT THE CHANGE IS. It REPLACES one encoding with the one the corpus already owns. The host
+// marshalled a declared field as `name -> bare type Atom`; v2.std.node_query binder_node (one
+// constructor) and declared_field_list (one reader, eight consumers) speak `name -> binder Conj`
+// carrying a BinderTypeEdge and an optional BinderDefaultEdge. The two were never reconciled, so
+// declared_field_list read every decl_facts record as the empty list and the host form could not
+// carry a field default at all. The bare form, and the node_query fallback arm that read it
+// (member_edge_type_name, recorded there as stage0 HOLD #13388), are deleted in the same change;
+// nothing reads the bare form after it.
+//
+// WHY IT SERVES v2. decl_facts is the reflection route v2 witnesses and generators read (the
+// derived Swift wire reader among them); the change removes a divergence between that route and the
+// compiler's own constructor, and adds no capability to the seed (gunbc.v1.v1_maintenance_standing
+// v1_seed_standing PURPOSE test).
+//
+// DEFAULTS FAIL CLOSED. A literal default is reflected as the BinderDefaultEdge target atom; a
+// non-literal default is reflected as its authored source text, so it is visibly present and never
+// read as no default; a default with no readable source refuses at the marshal.
+//
+// HAND-ITEM DELTA: +2 citable declarations, both in v1_compiler.coproduct_reflection.
+data decl_facts_field_binder_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "core_edge_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "marshal_field_binder", field: WholeDeclaration }
+  ],
+  reason: "The host reflection is a host walk over the seed's own parsed nodes, so the shape it hands the substrate can only be produced where those nodes are readable. marshal_field_binder is the one place a declared field becomes a node, and core_edge_value mints the core-marker edge label the binder shape needs; both exist to make the host emit v2.std.node_query binder_node's shape rather than a second encoding of the same fact (DESIGN section 3).",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete both when the declaration census is a MODELED operation over a modeled prepared inventory rather than a host walk, at which point the field binder is built by v2.std.node_query binder_node from the parsed declaration and the host marshals no declared field.",
+  current_boundary: "Confined to the type-declaration arm of the reflection: marshal_variant_arm_target calls marshal_field_binder once per field, and the only other change in the module is the import list. The Optional cardinality wrapper is the Occupancy connective node_query declared_field_cardinality_of_target decodes; generic instantiations are still reflected as their head atom (marshal_type_expr_ref, unchanged)."
+}
