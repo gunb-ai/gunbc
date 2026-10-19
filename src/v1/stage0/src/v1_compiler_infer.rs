@@ -9135,6 +9135,12 @@ pub fn borrowed_callable_call_type(
                     }
                     __result
                 });
+                let unsettled_slot_variables = tp_names.iter().cloned().fold(
+                    v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                    |acc: Rc<HashMap<String, Rc<Node>>>, slot: String| {
+                        v1_rt::rc_map_insert(acc, slot.clone(), type_variable_node(slot.clone()))
+                    },
+                );
                 let unified = Rc::new(
                     value_params
                         .clone()
@@ -9148,7 +9154,7 @@ pub fn borrowed_callable_call_type(
                 .cloned()
                 .fold(
                     Rc::new(UnifyGenericsAcc {
-                        subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                        subst: unsettled_slot_variables.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                     |acc: Rc<UnifyGenericsAcc>, pair: (i64, Rc<Node>)| {
