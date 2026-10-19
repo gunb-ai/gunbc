@@ -13,7 +13,11 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // field concept on type QualifiedConcept"); with roots dag + src/v2 the implicit-scope modules
 // refuse "unresolved type Symbol". No required job evaluates a witness (DESIGN, Building & checks).
 // Current is Mitigatable and not a dropped rung: the migrated readers were never executed, so no
-// held rung is recorded as lost. v1-runnable twins of concept_index_enumeration live in
+// held rung is recorded as lost for the migrated readers. grounding_lens and concept_index_enumeration
+// DID run in July on a lane since withdrawn; that lost lane is already covered by `gunbc.rung_drop`
+// `v1_required_lanes_withdrawn`. FINDING at main 7c8300f438e6 (the base of gunbc#14431, seed built from it): both
+// refuse on the native claim route there (candidates_over_decls callee identity; QualifiedConcept
+// field concept), so they are broken on main independently of this change. v1-runnable twins of concept_index_enumeration live in
 // test.claim.decl_facts_field_binder_witness and cover the record, defaulted-record and
 // coproduct-arm reads.
 data v2_lens_witnesses_unreachable_stall: GuaranteeStall = GuaranteeStall {
