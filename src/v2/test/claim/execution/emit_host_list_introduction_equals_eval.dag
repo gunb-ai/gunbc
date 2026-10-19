@@ -1,6 +1,8 @@
 module v2.test.claim.execution.emit_host_list_introduction_equals_eval
 
 import std.types { List, Map }
+import v2.compiler.emit { emit }
+import v2.compiler.eval { eval, inputs_root_only }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -39,6 +41,7 @@ import std.optional {
   optional_present,
   optional_absent
 }
+import extdeps.communication.medium { Medium }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -464,4 +467,25 @@ test fn emit_host_list_introduction_unwired_refuses_holds() -> Bool {
       target: rust_list_fold_target_model_staging_with(projection: rust_list_fold_unwired_projection())
     ).verdict
   )
+}
+
+fn probe_emit() -> Outcome<Medium<String>> {
+  emit(tree: emit_fold_eval_tree_for(root: emit_fold_eval_list_arrow()), target: rust_list_fold_target_model_staging())
+}
+
+test fn probe_emit_ok() -> Bool {
+  match probe_emit() { Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false }
+}
+
+test fn probe_emit_has_vec() -> Bool {
+  match probe_emit() { Accepted { value: m, diagnostics: _ } => string_contains(s: m.carried, pattern: "fold_call_callee(vec![1, 2, 3], 0")
+    Rejected { diagnostics: _ } => false }
+}
+
+test fn probe_eval_ok() -> Bool {
+  match eval(tree: emit_fold_eval_tree_for(root: emit_fold_eval_list_arrow()), interpretation: emit_fold_eval_interpretation(), inputs: inputs_root_only(root: emit_fold_eval_call_node())) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
