@@ -3693,7 +3693,7 @@ fn body_lower_callback_init(row: CallbackStepRow, source: Node) -> Node {
 // what the step does and the direction callback_step_shape_iteration_direction reads off the same shape.
 // The old match was one arm per realization, a second hand-written sibling to the direction reader over
 // the same sum; the contradiction had no constructor, because the direction is now read from the shape
-// and never spelled beside it (N7 manager ruling 2026-10-19). A realization with no row never reaches
+// and never spelled beside it (manager ruling, clever-crane-830, 2026-10-19). A realization with no row never reaches
 // here: the assembly refuses it first (no silent default, DESIGN section 5).
 fn body_lower_callback_step_body(row: CallbackStepRow, accumulator: Symbol, member: Symbol, body: Node, source: Node) -> Node {
   let acc_ref = body_lower_param_ref_atom(source: source, identity: accumulator)
@@ -3745,7 +3745,7 @@ fn body_lower_callback_encoding_from(operands: CallbackCallOperands, collection:
                         // (v2.compiler.fold_lowering callback_step_row: a realization without a row is
                         // refused at compile time by infer_match_non_exhaustive), so there is no absent
                         // row to refuse at the assembly and no default to fall through to
-                        // (DESIGN section 5; N7 manager ruling 2026-10-19).
+                        // (DESIGN section 5; manager ruling, clever-crane-830, 2026-10-19).
                         let row = callback_step_row(r: operands.realization)
                         match body_lower_function_value_arrow(
                           shell: callback_node,
