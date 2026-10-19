@@ -35,8 +35,8 @@ use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 pub use crate::std_coercion::{
-    dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type, SubtractionRefinement,
-    TextRepresentation, TypeDeclarationProvenance,
+    dag_can_cast, dag_cast_requires_proof, dag_refinement_upcast, is_dag_cast_domain_type,
+    SubtractionRefinement, TextRepresentation, TypeDeclarationProvenance,
 };
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
@@ -4700,6 +4700,62 @@ pub fn kernel_value_declared_type_mismatch(
     )
 }
 
+pub fn actual_is_unjudged_by_formal(
+    actual: Rc<Node>,
+    actual_name: String,
+    formal_name: String,
+    formal_base: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if crate::std_types::is_kernel_type(actual_name.clone()) {
+        false
+    } else {
+        if (crate::std_types::is_kernel_type(formal_name.clone()) == false) {
+            true
+        } else {
+            match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+                actual.clone(),
+                source_indices.clone(),
+                type_env.clone(),
+            ))
+            .clone()
+            {
+                TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                    declaration: _,
+                    ..
+                } => brand_grounds_transparently_to(
+                    actual_name.clone(),
+                    formal_base.clone(),
+                    type_env.clone(),
+                    source_indices.clone(),
+                ),
+                TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: _, .. } => false,
+                TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => true,
+                TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => true,
+            }
+        }
+    }
+}
+
+pub fn refinement_upcast_admits(
+    actual: Rc<Node>,
+    formal_name: String,
+    type_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+        actual.clone(),
+        source_indices.clone(),
+        type_env.clone(),
+    ) {
+        Some(operand) => {
+            crate::std_coercion::dag_refinement_upcast(operand.clone(), formal_name.clone())
+        }
+        std::option::Option::None => false,
+    }
+}
+
 pub fn kernel_value_declared_type_mismatch_bounded(
     mut __tco_loop_formal: Rc<Node>,
     mut __tco_loop_actual: Rc<Node>,
@@ -4739,23 +4795,33 @@ pub fn kernel_value_declared_type_mismatch_bounded(
             let formal_base = peel_where_refinement_base(formal.clone(), type_env.clone());
             let actual_name =
                 crate::v1_std_core::authored_name_at(source_indices.clone(), actual_base.clone());
-            if ((crate::std_types::is_kernel_type(actual_name.clone()) == false)
-                || (actual_name.clone() == "Unit".to_string()))
+            let formal_name = if (formal_name_override.clone() == "".to_string()) {
+                crate::v1_std_core::authored_name_at(source_indices.clone(), formal_base.clone())
+            } else {
+                formal_name_override.clone()
+            };
+            if (((actual_name.clone() == "".to_string())
+                || (formal_name.clone() == "".to_string()))
+                || actual_is_unjudged_by_formal(
+                    actual_base.clone(),
+                    actual_name.clone(),
+                    formal_name.clone(),
+                    formal_base.clone(),
+                    type_env.clone(),
+                    source_indices.clone(),
+                ))
             {
                 break false;
             } else {
-                let formal_name = if (formal_name_override.clone() == "".to_string()) {
-                    crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        formal_base.clone(),
-                    )
-                } else {
-                    formal_name_override.clone()
-                };
-                if (((formal_name.clone() == "".to_string())
-                    || (crate::v1_std_core::qualified_last_segment(formal_name.clone())
-                        == crate::v1_std_core::qualified_last_segment(actual_name.clone())))
+                if (((crate::v1_std_core::qualified_last_segment(formal_name.clone())
+                    == crate::v1_std_core::qualified_last_segment(actual_name.clone()))
                     || crate::std_coercion::dag_can_cast(actual_name.clone(), formal_name.clone()))
+                    || refinement_upcast_admits(
+                        actual_base.clone(),
+                        formal_name.clone(),
+                        type_env.clone(),
+                        source_indices.clone(),
+                    ))
                 {
                     break false;
                 } else {
@@ -20411,10 +20477,13 @@ pub fn classify_call_via_provenance(
                 }
             },
         );
+        let no_relation_yet = std::option::Option::None;
         Rc::new(v1_rt::map_keys(&param_map)).iter().cloned().fold(
-            std::option::Option::None,
-            |result: _, callee_pname: String| match v1_rt::map_get(&param_map, callee_pname.clone())
-            {
+            no_relation_yet.clone(),
+            |result: Option<Rc<SubValueRelation>>, callee_pname: String| match v1_rt::map_get(
+                &param_map,
+                callee_pname.clone(),
+            ) {
                 Some(callee_rel) => match v1_rt::map_get(&arg_by_name, callee_pname.clone()) {
                     Some(arg_expr) => {
                         let arg_rel = classify_call_arg_provenance(arg_expr.clone(), ctx.clone());
@@ -31074,50 +31143,29 @@ pub fn grounded_arm_chain(
     view: Rc<GroundedView>,
     ctx: Rc<GroundCtx>,
 ) -> Option<Rc<Node>> {
-    v1_rt::reverse(arms.clone()).iter().cloned().fold(
-        std::option::Option::None,
-        |rest: _, a: Rc<GroundedArm>| {
-            let body = grounded_arm_body(
-                a.arm.clone(),
-                a.reading.clone(),
-                subject.clone(),
-                carrier_type.clone(),
-                view.clone(),
-                ctx.clone(),
-            );
-            match rest.clone() {
-                std::option::Option::None => Some(body.clone()),
-                Some(tail) => match (*a.reading.clone()).clone() {
-                    PeanoPatternReading::PeanoExact { k: k, .. } => {
-                        Some(crate::v1_std_core::make_expr_node(
-                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            Rc::new(ExprData::ExprIf),
-                            Rc::new(vec![
-                                grounded_comparison(
-                                    BinOp::Eq,
-                                    subject.clone(),
-                                    k.clone(),
-                                    a.arm.span.clone(),
-                                    view.clone(),
-                                    ctx.clone(),
-                                ),
-                                body.clone(),
-                                tail.clone(),
-                            ]),
-                            result.clone(),
-                            span.clone(),
-                        ))
-                    }
-                    PeanoPatternReading::PeanoAtLeast { k, .. } => {
-                        if (k.clone() == 0) {
-                            Some(body.clone())
-                        } else {
+    {
+        let no_chain_yet = std::option::Option::None;
+        v1_rt::reverse(arms.clone()).iter().cloned().fold(
+            no_chain_yet.clone(),
+            |rest: Option<Rc<Node>>, a: Rc<GroundedArm>| {
+                let body = grounded_arm_body(
+                    a.arm.clone(),
+                    a.reading.clone(),
+                    subject.clone(),
+                    carrier_type.clone(),
+                    view.clone(),
+                    ctx.clone(),
+                );
+                match rest.clone() {
+                    std::option::Option::None => Some(body.clone()),
+                    Some(tail) => match (*a.reading.clone()).clone() {
+                        PeanoPatternReading::PeanoExact { k: k, .. } => {
                             Some(crate::v1_std_core::make_expr_node(
                                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                 Rc::new(ExprData::ExprIf),
                                 Rc::new(vec![
                                     grounded_comparison(
-                                        BinOp::Ge,
+                                        BinOp::Eq,
                                         subject.clone(),
                                         k.clone(),
                                         a.arm.span.clone(),
@@ -31131,12 +31179,36 @@ pub fn grounded_arm_chain(
                                 span.clone(),
                             ))
                         }
-                    }
-                    PeanoPatternReading::PeanoPatternUnreadable => Some(tail.clone()),
-                },
-            }
-        },
-    )
+                        PeanoPatternReading::PeanoAtLeast { k, .. } => {
+                            if (k.clone() == 0) {
+                                Some(body.clone())
+                            } else {
+                                Some(crate::v1_std_core::make_expr_node(
+                                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                    Rc::new(ExprData::ExprIf),
+                                    Rc::new(vec![
+                                        grounded_comparison(
+                                            BinOp::Ge,
+                                            subject.clone(),
+                                            k.clone(),
+                                            a.arm.span.clone(),
+                                            view.clone(),
+                                            ctx.clone(),
+                                        ),
+                                        body.clone(),
+                                        tail.clone(),
+                                    ]),
+                                    result.clone(),
+                                    span.clone(),
+                                ))
+                            }
+                        }
+                        PeanoPatternReading::PeanoPatternUnreadable => Some(tail.clone()),
+                    },
+                }
+            },
+        )
+    }
 }
 
 pub fn grounded_scrutinee_binder() -> String {

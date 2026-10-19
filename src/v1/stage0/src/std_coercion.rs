@@ -259,6 +259,24 @@ pub fn dag_subtraction_refinement(operand: Rc<DeclarationRef>) -> Rc<Subtraction
     }
 }
 
+pub fn dag_refinement_upcast(operand: Rc<DeclarationRef>, target_type: String) -> bool {
+    {
+        let mut __found = false;
+        for r in refinement_cast_rules().iter().cloned() {
+            if ((r.from_type.clone() == target_type.clone())
+                && crate::std_decl_ref::declaration_ref_eq(
+                    r.to_declaration.clone(),
+                    operand.clone(),
+                ))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
     ({
         let mut __found = false;
