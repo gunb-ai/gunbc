@@ -98,6 +98,11 @@ echo "MERGE_COMMIT $(git rev-parse HEAD)"
 echo "TREE_DIRTY_AFTER_MERGE $(git status --porcelain | grep -c . )"
 
 # ---- regenerate to a fixed point -------------------------------------------------------------
+# The set to regenerate, from git's own list of what it could not resolve. Basenames only; see the
+# install loop for why this is restricted rather than "everything the emitter wrote".
+REGEN_TARGETS=$(sed -E 's#.*/##' "$LOGS/unmerged.txt" | tr '\n' ' ')
+echo "REGEN_TARGETS $REGEN_TARGETS"
+[ -n "$(echo "$REGEN_TARGETS" | tr -d ' ')" ] || { echo "VOID: nothing was unmerged, so there is nothing for this script to regenerate"; exit 6; }
 CE_BIN="$CARGO_TARGET_DIR/release/claim_executor"
 round=0
 while :; do
@@ -126,7 +131,18 @@ while :; do
   [ -d target/stage0-regen-candidate/src ] \
     || { echo "FATAL no candidate tree emitted at target/stage0-regen-candidate/src"; exit 6; }
   installed=0
+  # INSTALL ONLY THE MIRGES THAT WERE UNMERGED. parent's ruling was "regenerate the stage0 mirrors
+  # from the merged tree", and the unmerged set IS that set -- the files git could not resolve.
+  # Installing whatever the emitter happens to produce, for any file, is wrong twice over:
+  #   - a mirror can carry a DECLARED divergence (main's own --required-regen reports one), in which
+  #     candidate != tree is EXPECTED and installing the candidate destroys the exemption;
+  #   - any file outside the merge is not this change's to rewrite, so an unrelated candidate would
+  #     smuggle someone else's regeneration into my head.
+  # Measured here: std_decimal.rs was installed even though ours and main are byte-identical for it
+  # (0 diff lines against both), i.e. the emitter's candidate simply disagrees with a committed
+  # mirror -- exactly the declared-divergence case the guard above must not treat as drift.
   for f in $(ls target/stage0-regen-candidate/src 2>/dev/null); do
+    case " $REGEN_TARGETS " in *" $f "*) ;; *) continue;; esac
     if [ -f "src/v1/stage0/src/$f" ]; then
       if ! cmp -s "target/stage0-regen-candidate/src/$f" "src/v1/stage0/src/$f"; then
         cp "target/stage0-regen-candidate/src/$f" "src/v1/stage0/src/$f"
