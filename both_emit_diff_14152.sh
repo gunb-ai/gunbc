@@ -10,15 +10,15 @@ find_emitted() { find /tmp -maxdepth 7 -path '*gunbc-emit-compile*' -name std_re
 pre=$(find_emitted | wc -l)
 CARGO_TARGET_DIR=/root/gunbc_target_gate_head bash gate_emit_build_14152.sh "$H" bdd_head repair > /tmp/bdd_head.txt 2>&1
 rc_h=$?
-after_h=$(find_emitted); fa=$(comm -13 <(find_emitted | head -0) /dev/null >/dev/null 2>&1; find_emitted | head -1)
-# The head ran first, so its file is the first under /tmp/gunbc-emit-compile*; record it now.
-fa=$(find_emitted | head -1)
+# Read the path the gate itself reported; do NOT sort find(1) output -- two sides coexist under
+# /tmp/gunbc-emit-compile-* and path order is not creation order.
+fa=$(grep -aoE "EMITTED_FOUND=.*" /tmp/bdd_head.txt | head -1 | cut -d= -f2-)
 echo "HEAD_SIDE rc=$rc_h EMITTED=$fa"
 grep -aE "SELF_HOST_RC=|EMITTED_BUILD_FAILED_LINES=|error\[E0277\]|GUARD" /tmp/bdd_head.txt | head -5
 cp -f "$fa" /tmp/emitted_head.rs 2>/dev/null && echo "SAVED_HEAD bytes=$(wc -c < /tmp/emitted_head.rs) sha=$(sha256sum /tmp/emitted_head.rs | cut -c1-16)"
 CARGO_TARGET_DIR=/root/gunbc_target_gate_main bash gate_emit_build_14152.sh "$M" bdd_main main > /tmp/bdd_main.txt 2>&1
 rc_m=$?
-fb=$(find_emitted | grep -v "^$fa$" | head -1)
+fb=$(grep -aoE "EMITTED_FOUND=.*" /tmp/bdd_main.txt | head -1 | cut -d= -f2-)
 echo "MAIN_SIDE rc=$rc_m EMITTED=$fb"
 grep -aE "SELF_HOST_RC=|EMITTED_BUILD_FAILED_LINES=|error\[E0277\]|GUARD" /tmp/bdd_main.txt | head -5
 cp -f "$fb" /tmp/emitted_main.rs 2>/dev/null && echo "SAVED_MAIN bytes=$(wc -c < /tmp/emitted_main.rs) sha=$(sha256sum /tmp/emitted_main.rs | cut -c1-16)"
