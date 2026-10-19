@@ -2225,14 +2225,11 @@ fn run_base_ambient_name_census(
 fn instrument_revision(source_roots: &[String], head: &str) -> Result<String, String> {
     let mut closure: Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
-    for entry in [
-        "dag/gunbc/instruments/namespace_wave_binding_diff.dag",
-        "dag/gunbc/instruments/ambient_name_census_reading.dag",
-    ] {
-        for source in cli_run::load_sources_for_entry_with_pool_index(source_roots, entry, false)? {
-            if seen.insert(source.path.clone()) {
-                closure.push(source);
-            }
+    // The label's own entry; its closure (the census reader included) is what the compiler acquires from it.
+    const ENTRY: &str = "dag/gunbc/instruments/namespace_wave_binding_diff.dag";
+    for source in cli_run::load_sources_for_entry_with_pool_index(source_roots, ENTRY, false)? {
+        if seen.insert(source.path.clone()) {
+            closure.push(source);
         }
     }
     let digest = crate::closure_identity::closure_content_digest(&closure);
@@ -2278,14 +2275,11 @@ fn base_population(
             return Err(format!("git grep exited {:?}", out.status.code()));
         }
         for line in String::from_utf8_lossy(&out.stdout).lines() {
+            // The module is named by its own `module` declaration (the compiler's reading), never by a path rule.
             let path = line.strip_prefix(&format!("{merge_base}:")).unwrap_or(line);
-            let module = if let Some(rest) = path.strip_prefix("src/v2/") {
-                format!("v2.{}", rest.trim_end_matches(".dag").replace('/', "."))
-            } else if let Some(rest) = path.strip_prefix("dag/") {
-                rest.trim_end_matches(".dag").replace('/', ".")
-            } else {
-                continue;
-            };
+            let content = git_text(&["show", &format!("{merge_base}:{path}")])?;
+            let module = crate::closure_identity::extract_module_path(&content)
+                .ok_or_else(|| format!("{path} declares no module"))?;
             modules.insert(module);
         }
     }
