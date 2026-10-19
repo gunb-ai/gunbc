@@ -1,0 +1,60 @@
+module gunbc.rung_drop.floor_single_claim_fill_debt
+
+import std.types { String, List, NonEmptyStr }
+import std.algebra { list_map }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_pure_producer_share { SingleClaimFillDebtModule, fill_debt_active_claims, floor_single_claim_fill_debt }
+
+// DECLARED 4b(3) DROP (charter 4 leaf D, 2026-10-19). The debt contract already existed as a monotone set
+// in `v2.workflow.floor_pure_producer_share` `floor_single_claim_fill_debt`, with its trigger in comments
+// beside the data; prose beside a data list is not a declared drop, so the DECLARATION lives here and the
+// POPULATION's authority stays there. The population below is DERIVED from that list by identity: a claim
+// joins the drop by being an ACTIVE member and leaves it by a typed disposition on the member, so there is
+// no second list to drift and no count anywhere.
+//
+// WHAT IS LOST. Each member claim is planned, executed and measured, and its semantic verdict still
+// blocks. What is lowered is the per-claim cost wall: the claim's own fixture fill is netted from its
+// budget instead of fitting it, and every such admission is reported with basis SingleClaimFillDebt
+// naming the claim. The cost transfer is exposed, not absorbed (DESIGN section 5).
+//
+// WHY THE LOSS IS NOT THE CLAIMS' SHAPE, AND THE ORDER OF THE CLIMB. Per DESIGN section 2 a per-claim
+// re-derived precondition is first a question of authored duplication, and DESIGN section 3 (a witness
+// discriminates at one interface) answers it by supplying the value at the judged boundary and keeping ONE
+// inhabitance claim per boundary on the real path. So the climb is supplied-input restructure per module
+// family, highest row yield first; a portable served InferredTree is admitted only for recurrence that
+// remains after that, and only with serving measured cheaper than recompute.
+//
+// A NAMED IRREDUCIBLE, so the gap is not read as empty: the v2.test.claim.namespace_xl2_rehearsal_census
+// members. Each claim's subject IS a rehearsal run (a front end plus resolves), so supplying the run's
+// output would leave the claim asserting nothing. They leave the drop only when the native evaluator runs
+// that rehearsal under the per-claim budget, or the operator rules a rehearsal-grain budget.
+data floor_single_claim_fill_debt_population: List<String> = fill_debt_drop_population(debt: floor_single_claim_fill_debt)
+
+// One population row per ACTIVE member, led by the claim identity so the join is a prefix match at
+// identity grain. Taking the debt as a parameter lets a witness hand it a list with a member removed.
+fn fill_debt_drop_population(debt: List<SingleClaimFillDebtModule>) -> List<String> {
+  list_map(xs: fill_debt_active_claims(debt: debt), f: fn(c) {
+    concat(c, ": ACTIVE single-claim fill debt, rostered in v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt; its own fixture fill is netted from its budget")
+  })
+}
+
+data floor_single_claim_fill_debt_drop: RungDrop = RungDrop {
+  identity: "floor_single_claim_fill_debt" as NonEmptyStr,
+
+  subject: "per-claim cost wall for the active members of floor_single_claim_fill_debt: the claims still run and a semantic red still blocks; only the claim's own fixture fill is netted from its budget rather than fitting it",
+
+  declared: "2026-10-19",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "each member module supplies its claims' judged subject at the interface the claim inspects and keeps one inhabitance claim on the real path (DESIGN section 3), so the claim fits its per-claim budget unaided"
+    },
+    population: floor_single_claim_fill_debt_population,
+    restoration_trigger: "THE CAPABILITY: the required floor judges every member's claim within the per-claim new-witness budget with no fill netted, because the claim's subject is supplied at its interface and exactly one claim per boundary executes the real front-end or assemble-and-infer path. Member by member a claim leaves the population by RestructuredPerWitnessRule, BecameSharedByDemand or ClaimDeleted on its debt row, never by deleting the row while the claim is over budget. WHAT THAT MUST BE SUFFICIENT FOR: no member can exceed its budget with the floor green. THE NAMED IRREDUCIBLE is the namespace_xl2_rehearsal_census members, whose subject is the rehearsal run itself; their trigger is the native evaluator running that rehearsal under the per-claim budget. WHAT DOES NOT RETIRE THIS ROW: raising the budget, a portable served value that nets the fill more cheaply while the duplication stands, a count of members standing where the identity join belongs."
+  }
+}

@@ -1,0 +1,69 @@
+module v2.test.claim.floor.fill_debt_rung_drop_population
+
+import gunbc.rung_drop.floor_single_claim_fill_debt { fill_debt_drop_population }
+import v2.workflow.floor_pure_producer_share {
+  SingleClaimFillDebtModule, SingleClaimFillDebtClaim, ActiveFillDebt, RetiredFillDebt, RestructuredPerWitnessRule,
+  CallSiteDemandObservation, ClosedCallSiteDemand, ClaimConsumerRead, WholeValue,
+  derive_cross_claim_share
+}
+import std.computation_identity { ComputationIdentity, NormalizedIdentical }
+import std.types { List }
+
+// THE DECISION UNDER TEST: gunbc.rung_drop floor_single_claim_fill_debt derives its population from
+// floor_single_claim_fill_debt by claim identity. The forbidden state is a member leaving the data list
+// while its claim is still over budget: the drop would stop naming it AND the fold would stop netting its
+// fixture, so the floor refuses the claim. Both halves are asserted against one authored debt set, with the
+// member present as the positive control.
+
+data member_claim: String = "v2.test.debt.owes_its_fixture"
+
+fn debt_with(member: Bool) -> List<SingleClaimFillDebtModule> {
+  [SingleClaimFillDebtModule {
+    module: "v2.test.debt",
+    claims: if member {
+      [
+        SingleClaimFillDebtClaim { claim: "owes_its_fixture", standing: ActiveFillDebt },
+        SingleClaimFillDebtClaim { claim: "was_restructured", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } }
+      ]
+    } else {
+      [SingleClaimFillDebtClaim { claim: "was_restructured", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } }]
+    }
+  }]
+}
+
+fn one_claim_fixture() -> CallSiteDemandObservation {
+  ClosedCallSiteDemand {
+    producer: "v2.test.debt.fixture_a",
+    argument_preimage: "()",
+    identity: NormalizedIdentical { normalizer: "authored fixture" },
+    claims: [member_claim],
+    planned_claims: 1,
+    sites: ["v2/test/debt.dag:1-2"],
+    reads: [ClaimConsumerRead { claim: member_claim, read: WholeValue }]
+  }
+}
+
+fn admitted_count(debt: List<SingleClaimFillDebtModule>) -> Int {
+  length(xs: derive_cross_claim_share(observations: [one_claim_fixture()], refused: [], carried: [], debt: debt).admitted)
+}
+
+fn population_names_member(debt: List<SingleClaimFillDebtModule>) -> Bool {
+  any(xs: fill_debt_drop_population(debt: debt), predicate: fn(row) { row.starts_with(concat(member_claim, ": ")) })
+}
+
+// POSITIVE CONTROL: the member is in the drop's population and its fixture is netted.
+test fn an_active_member_is_in_the_population_and_its_fixture_is_netted() -> Bool {
+  population_names_member(debt: debt_with(member: true)) && admitted_count(debt: debt_with(member: true)) == 1
+}
+
+// RED: removed while its claim still demands the fixture, the member leaves the population and the
+// fixture is no longer netted, so the claim fits its budget unaided or the floor refuses it. A drop that
+// kept naming the member, or a fold that kept netting it, reds this.
+test fn a_member_removed_from_the_list_leaves_the_population_and_is_no_longer_netted() -> Bool {
+  (population_names_member(debt: debt_with(member: false)) == false) && admitted_count(debt: debt_with(member: false)) == 0
+}
+
+// The retired sibling is never a population row: retirement is a typed disposition, not a silent drop.
+test fn a_retired_member_is_not_in_the_population() -> Bool {
+  length(xs: fill_debt_drop_population(debt: debt_with(member: true))) == 1
+}
