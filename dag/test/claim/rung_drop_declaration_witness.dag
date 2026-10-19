@@ -1,14 +1,14 @@
 module test.claim.rung_drop_declaration_witness
 
 import std.types { String, Bool, NonEmptyStr }
-import std.algebra { FreeSemigroup }
+import std.algebra { FreeSemigroup, list_append }
 import gunbc.guarantee_rung {
   OutsideTheLadder, Mitigatable, MechanicallyPreventable, guarantee_rung_label,
 }
 import gunbc.rung_drop {
   RungDrop, TypedDeclaration, Enumerated, NotYetCounted, NoInstrumentObservesTheZero, DerivedBy, DeletedWithoutReplacement, Standing,
   rung_drop_is_readable, every_unreadable_standing_drop_is_not_yet_counted,
-  rung_drop_declaration_message, rung_drop_off_ladder_judgment, authored_prose_rung_drops,
+  rung_drop_declaration_message, rung_drop_off_ladder_judgment, authored_prose_rung_drops, every_legacy_arm_is_claimed_exactly_once,
   OffLadder, OnLadderAt, NotJudgeableFromProse,
 }
 import extdeps.bazel.label { Label, TargetName }
@@ -216,4 +216,27 @@ test fn the_converted_rows_leave_prose_debt_and_the_multi_population_rows_stay()
     && length(xs: filter(ids, i => i == floor_cut_regen_second_generation_agreement.identity)) == 0
     && length(xs: filter(ids, i => i == floor_cost_high_cpu_withheld.identity)) == 0
     && length(xs: filter(ids, i => i == emitted_bytes_witness_required_lane.identity)) == 0
+}
+
+// RED: A PROSE ROW CONVERTED TO TYPED WITHOUT DELETING ITS LEGACY ARM IS REFUSED. The converted four have no arm left to re-list
+// (the constructor is gone, which is the stronger rung); the same mechanism is exercised on a row that still has one: replace
+// text_boundary_identity_wall by a typed row of the same identity and its arm goes unclaimed. Positive control: the real roster.
+data typed_text_boundary_conversion: RungDrop = RungDrop {
+  identity: "text_boundary_identity_wall" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: NotYetCounted { cause: NoInstrumentObservesTheZero },
+    restoration_trigger: "control restoration trigger"
+  }
+}
+
+test fn a_converted_row_left_in_the_legacy_roster_is_refused_and_the_real_roster_is_accepted() -> Bool {
+  let converted = list_append(left: filter(rung_drop_roster, d => d.identity != "text_boundary_identity_wall"), right: [typed_text_boundary_conversion])
+  every_legacy_arm_is_claimed_exactly_once(ds: rung_drop_roster)
+    && !every_legacy_arm_is_claimed_exactly_once(ds: converted)
 }
