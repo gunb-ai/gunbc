@@ -56,7 +56,7 @@ run_side () {
   # d is named for the SHA, not the side: if a previous run left a clone under this name with a
   # different SHA, its binary and logs would be read as this side's. A stale count is worse
   # than a missing one, because it looks like a measurement.
-  d=$LOGS/clone_$side_$sha
+  d=$LOGS/clone_${side}_${sha}
   if [ -d $LOGS/clone_$side ] && [ ! -d $d ]; then rm -rf $LOGS/clone_$side; fi
   [ "$SIDE_FILTER" = "both" ] || [ "$SIDE_FILTER" = "$side" ] || { echo "[$side] SKIPPED by SIDE_FILTER=$SIDE_FILTER (its counts must not be read)"; return 7; }
   rm -rf $d
