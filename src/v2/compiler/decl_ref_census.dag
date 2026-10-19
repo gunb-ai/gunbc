@@ -464,7 +464,7 @@ fn decl_ref_refusal_lines(c: DeclRefCensus) -> List<String> {
       empty: [],
       cons: fn(acc, s) {
         if span_is_refusal(s: s) {
-          list_snoc_item(xs: acc, item: concat("[decl-ref-census] span stale ", symbol_lexeme(s: s.file), " `", s.span, "`"))
+          list_snoc_item(xs: acc, item: concat("[decl-ref-census] span stale ", symbol_lexeme(sym: s.file), " `", s.span, "`"))
         } else { acc }
       }
     )
