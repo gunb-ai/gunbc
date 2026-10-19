@@ -4,6 +4,7 @@ import std.measure { nanosecond_count }
 import std.types { Int, List, String, Bool }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
+import std.machine_word { machine_word_apply, machine_word_native_operate, OperatorAnd, OperatorOr, OperatorXor, OperatorNot, OperatorShiftRight, OperatorShiftLeft, OperatorRotateRight, OperatorAddWrapping, Width8, Width32 }
 import std.bignat { BigNat, bignat_zero_limbs, bignat_one, bignat_sub, bignat_add }
 import extdeps.numeric.base16 { base16_encode_lower }
 import extdeps.crypto.sha2 { sha256_hex, sha384 }
@@ -214,6 +215,35 @@ fn curve_parameter_cases() -> List<NativeCryptoCase> {
   ]
 }
 
+// ── std.machine_word: the EMIT-TIME LOWERING of a literal-operator call is checked by EXECUTION against
+// the label-keyed seam it replaces. Each machine_word_apply below names its operator and width as
+// constructor literals, so the emitted program runs the lowered row; machine_word_native_operate with
+// the label spelled out is the seam call, which no literal lowers. Same inputs, so a lowering that
+// picked the wrong row, width or refusal answers differently here (the FIPS vectors above check the
+// answers; this checks the route and the answer for every operator and a second width).
+fn machine_word_lowering_agrees() -> Bool {
+  let a = 3405691582
+  let b = 305419896
+  let n = 13
+  let c = 181
+  let d = 102
+  machine_word_apply(op: OperatorAnd, width: Width32, a: a, b: b) == machine_word_native_operate(op: "and", bits: 32, a: a, b: b)
+    && machine_word_apply(op: OperatorOr, width: Width32, a: a, b: b) == machine_word_native_operate(op: "or", bits: 32, a: a, b: b)
+    && machine_word_apply(op: OperatorXor, width: Width32, a: a, b: b) == machine_word_native_operate(op: "xor", bits: 32, a: a, b: b)
+    && machine_word_apply(op: OperatorNot, width: Width32, a: a, b: 0) == machine_word_native_operate(op: "not", bits: 32, a: a, b: 0)
+    && machine_word_apply(op: OperatorShiftRight, width: Width32, a: a, b: n) == machine_word_native_operate(op: "shift_right", bits: 32, a: a, b: n)
+    && machine_word_apply(op: OperatorShiftLeft, width: Width32, a: a, b: n) == machine_word_native_operate(op: "shift_left", bits: 32, a: a, b: n)
+    && machine_word_apply(op: OperatorRotateRight, width: Width32, a: a, b: n) == machine_word_native_operate(op: "rotate_right", bits: 32, a: a, b: n)
+    && machine_word_apply(op: OperatorAddWrapping, width: Width32, a: a, b: b) == machine_word_native_operate(op: "add_wrapping", bits: 32, a: a, b: b)
+    && machine_word_apply(op: OperatorRotateRight, width: Width8, a: c, b: 3) == machine_word_native_operate(op: "rotate_right", bits: 8, a: c, b: 3)
+    && machine_word_apply(op: OperatorAddWrapping, width: Width8, a: c, b: d) == machine_word_native_operate(op: "add_wrapping", bits: 8, a: c, b: d)
+    && machine_word_apply(op: OperatorNot, width: Width8, a: c, b: 0) == machine_word_native_operate(op: "not", bits: 8, a: c, b: 0)
+}
+
+fn machine_word_lowering_case() -> NativeCryptoCase {
+  NativeCryptoCase { identity: "machine_word_literal_lowering_agrees_with_the_seam", held: machine_word_lowering_agrees(), observed: bool_text(b: machine_word_lowering_agrees()) }
+}
+
 fn cost_case(r: CostRow) -> NativeCryptoCase {
   NativeCryptoCase { identity: r.identity, held: r.held, observed: concat("nanos:", to_string(nanosecond_count(n: r.nanos))) }
 }
@@ -221,7 +251,7 @@ fn cost_case(r: CostRow) -> NativeCryptoCase {
 fn native_crypto_cases() -> List<NativeCryptoCase> {
   concat(
     concat(fips180_sha256_vectors |> flat_map(v => sha256_cases(v: v)), fips180_sha384_vectors |> flat_map(v => sha384_cases(v: v))),
-    concat(concat(concat(p256_cases(), order_n_cases()), curve_parameter_cases()), native_crypto_cost_rows() |> map(r => cost_case(r: r)))
+    concat(concat(concat(concat(p256_cases(), order_n_cases()), curve_parameter_cases()), native_crypto_cost_rows() |> map(r => cost_case(r: r))), [machine_word_lowering_case()])
   )
 }
 
@@ -269,7 +299,8 @@ data native_crypto_vector_identities: List<String> = [
   "p384_red_a_point_with_a_coordinate_at_p_is_not_admitted",
   "p384_doubling_and_adding_the_base_point_stay_on_the_curve",
   "p384_red_doubling_an_off_curve_point_stays_off_the_curve",
-  "p384_apples_ca_and_root_keys_are_on_the_curve"
+  "p384_apples_ca_and_root_keys_are_on_the_curve",
+  "machine_word_literal_lowering_agrees_with_the_seam"
 ]
 
 fn native_crypto_expected_identities() -> List<String> {

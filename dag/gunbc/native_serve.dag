@@ -416,6 +416,33 @@ fn native_serve_route(contract: NativeServeContract, head: NativeServeRequestHea
 
 // The name the rendered main calls; one name for every NativeServeDriver entry, so the liveness
 // document's entry_function member is this literal rather than whatever the main was told.
+// THE OPTIONAL STARTUP FOLD (a driver that declares none is unchanged). An entry MAY declare
+// `fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup` beside its handler;
+// the rendered main then runs it ONCE, after argv is judged and BEFORE any listener is bound, with
+// the octets of the running executable's own file -- the host's only job is to read those bytes
+// (it computes nothing about them). The fold decides everything: a NativeServeStartupRefused makes
+// the main print native_serve_startup_refusal_line on stderr and exit native_serve_startup_refused_exit_code
+// without binding, so a process whose self-check refused never becomes reachable and never serves.
+// The first consumer is gunbc.auth.approval_device_crypto_serve, whose receipt is minted over the
+// binary identity this carries. Instrument: //gunbc/instruments:native-serve-device-crypto.
+data native_serve_startup_entry_function: String = "native_serve_startup"
+
+type NativeServeStartup
+  = NativeServeStartupPassed { note: String }
+  | NativeServeStartupRefused { reason: String }
+
+// Distinct from 2 (a refused start) so a supervisor and the instruments can tell a failed
+// self-check from a bad argv; nonzero, so nothing treats the process as having started.
+data native_serve_startup_refused_exit_code: Int = 3
+
+fn native_serve_startup_refusal_line(reason: String) -> String {
+  concat("REFUSED: startup self-check: ", reason)
+}
+
+fn native_serve_startup_passed_line(note: String) -> String {
+  concat("native-serve startup self-check passed: ", note)
+}
+
 data native_serve_handler_name: String = "native_serve_handle"
 
 // ── WHAT LEAVES THE PROCESS ─────────────────────────────────────────────────────────────────
