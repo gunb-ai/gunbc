@@ -212,11 +212,15 @@ pub fn file_scope_holds_the_banner_and_the_epilogue_holds() -> bool {
                 std::option::Option::None => false,
                 Some(epilogue) => {
                     ((((((banner.scope_key.clone() == "/".to_string())
-                        && (banner.before_key.clone() == std::option::Option::None))
-                        && (banner.after_key.clone() != std::option::Option::None))
+                        && (banner.before_key.clone().as_deref()
+                            == std::option::Option::None.as_deref()))
+                        && (banner.after_key.clone().as_deref()
+                            != std::option::Option::None.as_deref()))
                         && (epilogue.scope_key.clone() == "/".to_string()))
-                        && (epilogue.after_key.clone() == std::option::Option::None))
-                        && (epilogue.before_key.clone() != std::option::Option::None))
+                        && (epilogue.after_key.clone().as_deref()
+                            == std::option::Option::None.as_deref()))
+                        && (epilogue.before_key.clone().as_deref()
+                            != std::option::Option::None.as_deref()))
                 }
             },
         }

@@ -200,7 +200,7 @@ fn occurrence_id_for_authored_name(
   transport: OccurrenceTransport,
   name: String
 ) -> OccurrenceId? {
-  match fold(
+  let found_occurrence: OccurrenceId? = fold(
     transport.index.entries,
     init: none,
     f: (found, entry) =>
@@ -212,7 +212,8 @@ fn occurrence_id_for_authored_name(
             false => Absent
           }
       },
-  ) {
+  )
+  match found_occurrence {
     Present { value: occurrence } => Present { value: occurrence }
     Absent => none
   }

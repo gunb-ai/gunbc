@@ -2293,7 +2293,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
         _ => false
       }
 
-      let arms_ev = match_arm_nodes(texpr: body) |> fold(init: none, f: (acc, arm_node) =>
+      let arms_ev: DescentEvidence? = match_arm_nodes(texpr: body) |> fold(init: none, f: (acc, arm_node) =>
         let is_base_case = if branching_only {
           max_path_self_calls(body: arm_body(n: arm_node), func_name: func_name, si: si) == 0
         } else { false }
@@ -2345,7 +2345,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
         )
         Present { value: arg_evidence }
       } else { none }
-      let child_evidence = body.children |> fold(init: none, f: (acc, child) =>
+      let child_evidence: DescentEvidence? = body.children |> fold(init: none, f: (acc, child) =>
         let ce = collect_evidence_incremental(body: child, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
         merge_optional_evidence(a: acc, b: ce)
       )
@@ -2364,7 +2364,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
       let is_struct = is_structural_children(expr: receiver, param_name: param_name, vars: vars, si: si)
       if is_iter && is_struct {
         let recv_ev = collect_evidence_incremental(body: receiver, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
-        let args_ev = method_arg_nodes(texpr: body) |> fold(init: none, f: (acc, arg_node) =>
+        let args_ev: DescentEvidence? = method_arg_nodes(texpr: body) |> fold(init: none, f: (acc, arg_node) =>
           let arg_val = arg_value(n: arg_node)
           let ev = match arg_val.expr_data {
             ExprLambda =>
@@ -2414,7 +2414,7 @@ fn try_type_directed_dimension(body: Node, func_name: String, param_name: String
 }
 
 fn construct_termination_proof(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>, si: Map<String, NewlineIndex>) -> TerminationProof? {
-  let structural_proof = params |> fold(init: none, f: (best, p) =>
+  let structural_proof: TerminationProof? = params |> fold(init: none, f: (best, p) =>
     match best {
       Present { value: _ } => best
       Absent =>

@@ -462,7 +462,7 @@ fn module_paths_validate_transport(
   module_by_occurrence: Map<Int, NonEmptyStr>,
   exposure_by_occurrence: Map<Int, DeclarationExposure>
 ) -> OccurrenceModulePathIndexRefusal? {
-  let declaration_refusal = fold(
+  let declaration_refusal: OccurrenceModulePathIndexRefusal? = fold(
     transport.declarations,
     init: none,
     f: (refusal, declaration) =>
@@ -545,7 +545,7 @@ fn authored_order_validate_transport(
   transport: ValidatedOccurrenceTransport,
   order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
 ) -> AuthoredOrderIndexRefusal? {
-  let declaration_refusal = fold(
+  let declaration_refusal: AuthoredOrderIndexRefusal? = fold(
     transport.declarations,
     init: none,
     f: (refusal, declaration) =>

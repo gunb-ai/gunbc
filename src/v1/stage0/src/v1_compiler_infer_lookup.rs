@@ -430,7 +430,9 @@ pub fn func_env_declared_func_sig(
         if (crate::v1_compiler_infer_env::declared_module_owner(
             type_env.symbol_index.clone(),
             name.clone(),
-        ) != std::option::Option::None)
+        )
+        .as_deref()
+            != std::option::Option::None.as_deref())
         {
             crate::v1_compiler_infer_sigs::decide_callable_candidates(
                 crate::v1_compiler_infer_sigs::owner_module_leaf_callable_candidates(
@@ -522,7 +524,9 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedC
     if (crate::v1_compiler_infer_env::declared_module_owner(
         type_env.symbol_index.clone(),
         name.clone(),
-    ) != std::option::Option::None)
+    )
+    .as_deref()
+        != std::option::Option::None.as_deref())
     {
         match crate::v1_compiler_infer_env::symbol_index_lookup(
             type_env.symbol_index.clone(),

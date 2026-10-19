@@ -638,6 +638,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
         caller_decl_name: "".to_string(),
         in_flight_lambda_param_names: Rc::new(vec![]),
         enclosing_declared_type_param_names: Rc::new(vec![]),
+        fn_return_expected: std::option::Option::None,
     })
 }
 
@@ -658,6 +659,7 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         caller_decl_name: "".to_string(),
         in_flight_lambda_param_names: Rc::new(vec![]),
         enclosing_declared_type_param_names: Rc::new(vec![]),
+        fn_return_expected: std::option::Option::None,
     })
 }
 
@@ -724,7 +726,9 @@ pub fn order_typed_call_args(
                 if (crate::v1_std_core::arg_name_at(
                     arg.clone(),
                     scope.type_env.source_indices.clone(),
-                ) == std::option::Option::None)
+                )
+                .as_deref()
+                    == std::option::Option::None.as_deref())
                 {
                     __found = true;
                     break;
@@ -745,7 +749,7 @@ pub fn order_typed_call_args(
                                 arg.clone(),
                                 scope.type_env.source_indices.clone(),
                             );
-                            if (n.clone() != std::option::Option::None) {
+                            if (n.clone().as_deref() != std::option::Option::None.as_deref()) {
                                 v1_rt::rc_map_insert(acc.clone(), n.clone().unwrap(), arg.clone())
                             } else {
                                 acc.clone()
@@ -819,7 +823,7 @@ pub fn order_typed_call_args(
                                     arg.clone(),
                                     scope.type_env.source_indices.clone(),
                                 );
-                                if (n.clone() == std::option::Option::None) {
+                                if (n.clone().as_deref() == std::option::Option::None.as_deref()) {
                                     true
                                 } else {
                                     (crate::v1_compiler_infer_types::emit_map_has(
