@@ -6,6 +6,10 @@ import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
 import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push, github_event_name_pull_request }
 import gunbc.action_use_admission { cache_save_action }
 import v2.cli.population_verb_names { cli_verb_parse_population }
+import v2.cli.parse_verdict_invocation {
+  ParseVerdictInvocationArg, cli_option_compiler, cli_option_write_identity, cli_option_receipts,
+  parse_verdict_invocation_command
+}
 import gunbc.instrument_targets { v2_native_cli_source_roots }
 import gunbc.emitted_subject_build_gate {
   native_step_memory_inputs,
@@ -134,22 +138,23 @@ fn source_root_argv() -> String {
   )
 }
 
+// THE INVOCATION IS RENDERED BY THE DECLARATION. See parse_verdict_reuse_command for why the option
+// tokens are no longer typed where the command is built.
+fn parse_verdict_publish_args() -> List<ParseVerdictInvocationArg> {
+  [
+    ParseVerdictInvocationArg { option: cli_option_compiler, value: parse_verdict_compiler_expr() },
+    ParseVerdictInvocationArg { option: cli_option_write_identity, value: parse_verdict_identity_blob_file() },
+    ParseVerdictInvocationArg { option: cli_option_receipts, value: parse_verdict_receipts_file() }
+  ]
+}
+
 fn parse_verdict_publish_command() -> String {
-  join(
-    [
-      parse_verdict_generation_one_bin(),
-      " ",
-      cli_verb_parse_population,
-      " --compiler ",
-      parse_verdict_compiler_expr(),
-      " --write-identity ",
-      parse_verdict_identity_blob_file(),
-      " --receipts ",
-      parse_verdict_receipts_file(),
-      source_root_argv()
-    ],
-    ""
-  )
+  parse_verdict_invocation_command(
+    bin: parse_verdict_generation_one_bin(),
+    verb: cli_verb_parse_population,
+    args: parse_verdict_publish_args(),
+    tail: source_root_argv()
+  )}
 }
 
 fn parse_verdict_publish_memory_env() -> List<YamlKeyValue> {

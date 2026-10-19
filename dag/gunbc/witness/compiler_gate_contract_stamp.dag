@@ -15,6 +15,9 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_label_text
 }
 import v2.cli.population_verb_names { cli_verb_parse_population }
+import v2.cli.parse_verdict_invocation {
+  parse_verdict_reuse_invocation_options, parse_verdict_publish_invocation_options
+}
 import extdeps.github.actions { Step, RunStep }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlMapping, YamlString }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
@@ -110,17 +113,28 @@ data compiler_gate_contract_stamp_provenance: String = "gunbc.witness.compiler_g
 // flag or a read-back field means adding its atom; omitting one leaves the stamp silent about a promise,
 // which is precisely the gap that let four stale-verb runs pass.
 
-// THE VERBS AND THE FLAGS THEY ARE HANDED. Four argv shapes, one per generated step that invokes the
-// subject's binary: the reuse walk, the plain walk, the identity/receipts publisher, and the two
-// instrument builds. `--reuse-from` is the flag whose ABSENCE was the loud form of this class (unknown
-// option --reuse-from, exit 127 with an empty --compiler) and whose silent form is the four greens
-// above: a head predating it still accepted the command.
+// THE VERBS AND THE FLAGS THEY ARE HANDED, DERIVED FROM THE ONE DECLARATION. These used to be three
+// hand-typed argv shapes, and they had already drifted from what the gate emits: one of them described a
+// "plain walk" -- verb plus --compiler and nothing else -- that no generated step anywhere performs. A
+// hand-written description of an invocation is exactly as trustworthy as its author's attention, and the
+// attention went elsewhere. Each row below is rendered from a walk's declared argument list, so an
+// option that exists is in the hash and an option that does not exist is not.
+//
+// `--reuse-from` is the flag whose ABSENCE was the loud form of this class (unknown option --reuse-from,
+// exit 127 with an empty --compiler) and whose silent form is the four greens above: a head predating it
+// still accepted the command. That is what a stamp over the invocation is for, and it only works if the
+// stamp's own copy of the invocation is not a fourth hand copy.
 fn compiler_gate_invocation_argv_rows() -> List<String> {
   list_append(
     left: [
-      join(["argv:", cli_verb_parse_population, " --compiler ", " --reuse-from "], ""),
-      join(["argv:", cli_verb_parse_population, " --compiler ", " --write-identity ", " --receipts "], ""),
-      join(["argv:", cli_verb_parse_population, " --compiler "], "")
+      join(
+        concat(["argv:", cli_verb_parse_population], parse_verdict_reuse_invocation_options),
+        " "
+      ),
+      join(
+        concat(["argv:", cli_verb_parse_population], parse_verdict_publish_invocation_options),
+        " "
+      )
     ],
     right: list_map(
       xs: emitted_subject_build_rows(),

@@ -1,0 +1,90 @@
+module v2.cli.parse_verdict_invocation
+
+import std.types { String, List }
+import std.algebra { list_map }
+
+// THE ONE DECLARATION OF HOW THE WHOLE-POPULATION WALKS ARE INVOKED.
+//
+// WHY A LEAF MODULE, EXACTLY LIKE v2.cli.population_verb_names: the verb spellings once lived in
+// v2.cli.compile_cli, and every other consumer had to choose between importing that whole closure or
+// minting a second copy. These spellings had the same problem in a worse form. `--compiler`,
+// `--reuse-from`, `--write-identity` and `--receipts` were spelled in v2.cli.compile_cli (where they are
+// PARSED), re-spelled by hand in gunbc.parse_verdict_restore and gunbc.parse_verdict_publish (where the
+// commands are EMITTED), and re-spelled a THIRD time by gunbc.witness.compiler_gate_contract_stamp,
+// whose content hash CERTIFIES the invocation. Three copies is a silent divergence waiting to happen:
+// rename an option in the parser and the emitted command and the certifying hash would go on agreeing
+// with each other and both be wrong, and the guard would pass the stale subject -- the exact failure
+// this module exists to close, reproduced inside the mitigation.
+//
+// WHAT IS DECLARED AND WHAT IS NOT. The declaration is the SHAPE of each invocation: the verb, the
+// options, and their order. The VALUES of those options (working directory, identity blob path, receipts
+// path, source roots) stay with the modules that own them. Hashing a path literal into a contract about
+// option names would widen the preimage into data that moves for unrelated reasons, and the point of the
+// stamp is that a main change touching no invoked contract does not move it.
+
+data cli_option_compiler: String = "--compiler"
+
+data cli_option_reuse_from: String = "--reuse-from"
+
+data cli_option_write_identity: String = "--write-identity"
+
+data cli_option_receipts: String = "--receipts"
+
+data cli_option_source_root: String = "--source-root"
+
+// ONE POSITION IN A WALK INVOCATION: an option from THIS module bound to a value from its owner. Built
+// by the producers, rendered by this module, so the option spelling has exactly one source and the
+// rendering has exactly one implementation.
+type ParseVerdictInvocationArg {
+  option: String
+  value: String
+}
+
+// THE WALK THAT READS RECEIPTS BACK (PR side), in the order the emitted command passes them. The
+// producers must pass EXACTLY these options in this order; a claim compares their args against these
+// rows, so dropping, renaming or reordering one reddens the witness instead of silently splitting the
+// emitted command away from the hash that certifies it.
+data parse_verdict_reuse_invocation_options: List<String> = [
+  cli_option_compiler,
+  cli_option_reuse_from
+]
+
+// THE WALK THAT PUBLISHES THEM (default-branch side).
+data parse_verdict_publish_invocation_options: List<String> = [
+  cli_option_compiler,
+  cli_option_write_identity,
+  cli_option_receipts
+]
+
+// THE RENDERING, once: " --opt value" per argument, in order. Both the emitted command and the contract
+// material go through this, which is what makes them two renderings of one fact rather than two facts
+// kept in agreement by attention.
+fn parse_verdict_invocation_args_text(args: List<ParseVerdictInvocationArg>) -> String {
+  join(list_map(xs: args, f: fn(a) { join([" ", a.option, " ", a.value], "") }), "")
+}
+
+// A WHOLE WALK INVOCATION: bin, verb, the declared arguments in order, then whatever tail the caller
+// owns. For both walks today the tail is the repeated --source-root, whose VALUES come from the source
+// authority and are deliberately outside the declaration.
+fn parse_verdict_invocation_command(
+  bin: String,
+  verb: String,
+  args: List<ParseVerdictInvocationArg>,
+  tail: String
+) -> String {
+  join([bin, " ", verb, parse_verdict_invocation_args_text(args: args), tail], "")
+}
+
+// THE OPTION SEQUENCE A PRODUCER ACTUALLY PASSED, for the witness that holds it against the rows above.
+fn parse_verdict_invocation_arg_options(args: List<ParseVerdictInvocationArg>) -> List<String> {
+  list_map(xs: args, f: fn(a) { a.option })
+}
+
+// THE INVOCATION'S CONTRACT IDENTITY: verb plus option sequence, as one canonical row. This is what the
+// stamp hashes -- never the rendered values, and never any workflow text.
+fn parse_verdict_invocation_contract_row(
+  verb: String,
+  args: List<ParseVerdictInvocationArg>
+) -> String {
+  join([verb, " ", join(parse_verdict_invocation_arg_options(args: args), " ")], "")
+}

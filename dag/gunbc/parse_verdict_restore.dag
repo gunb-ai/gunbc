@@ -16,6 +16,10 @@ import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import gunbc.action_use_admission { cache_restore_action }
 import v2.cli.population_verb_names { cli_verb_parse_population }
+import v2.cli.parse_verdict_invocation {
+  ParseVerdictInvocationArg, cli_option_compiler, cli_option_reuse_from,
+  parse_verdict_invocation_command
+}
 import extdeps.cache.github_actions { GhaCachePullRequestMergeRefScope }
 import extdeps.github.expressions {
   Expression,
@@ -308,19 +312,23 @@ fn parse_verdict_record_step() -> Step {
   }
 }
 
+// THE INVOCATION IS RENDERED BY THE DECLARATION, not spelled here. The option tokens used to be typed
+// into this join, which meant the string that EMITS the walk and the content hash that CERTIFIES it were
+// two separate acts of typing that could agree by habit rather than by construction -- and one of them
+// (the hash) is what the guard trusts. Renaming an option in the parser would have moved neither.
+fn parse_verdict_reuse_args() -> List<ParseVerdictInvocationArg> {
+  [
+    ParseVerdictInvocationArg { option: cli_option_compiler, value: parse_verdict_compiler_expr() },
+    ParseVerdictInvocationArg { option: cli_option_reuse_from, value: parse_verdict_cache_working_directory }
+  ]
+}
+
 fn parse_verdict_reuse_command() -> String {
-  join(
-    [
-      parse_verdict_generation_one_bin(),
-      " ",
-      cli_verb_parse_population,
-      " --compiler ",
-      parse_verdict_compiler_expr(),
-      " --reuse-from ",
-      parse_verdict_cache_working_directory,
-      source_root_argv()
-    ],
-    ""
+  parse_verdict_invocation_command(
+    bin: parse_verdict_generation_one_bin(),
+    verb: cli_verb_parse_population,
+    args: parse_verdict_reuse_args(),
+    tail: source_root_argv()
   )
 }
 
