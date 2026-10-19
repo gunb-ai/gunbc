@@ -58,7 +58,6 @@ import extdeps.github.deployment_protection_rule {
   EnabledDeploymentProtectionRule,
   review_call_succeeded,
   custom_rule_response_timeout,
-  custom_rule_timeout_run_conclusion,
   rule_gate_approval_ceiling,
   wait_minutes_as_seconds,
   wait_timer_maximum,
@@ -972,15 +971,24 @@ fn documented_example_is_not_the_gated_environment() -> Bool {
 // CONFIGURED wait_timer is not that quantity — it is a configured delay in minutes, capped by upstream
 // at exactly this ceiling, so comparing the two could never fire. The elapsed-wait seam is owed by
 // stage 2: a real clock observation, a parse of GitHub's ISO-8601, and a subtraction in Second.
-// The ceiling itself: 30 days, CARRIER TO CARRIER. Both quantities start life as `std.measure`
-// `Second` values, and the comparison stays in that carrier — unwrapping them to `Int` to compare would
-// leave the unit living only in the function name, which is exactly what this file's own comment above
-// rules out. Two independent upstream statements of one magnitude: a divergence between them fails in
-// one direction or the other, which is what the two `measure_le` calls are for.
+// THE CEILINGS AGREE, WHICH IS A FACT THAT CAN FAIL. Two upstream pages state the wait independently —
+// the limits reference's general "Gate approval time | 30 days" row and the custom-rule page's own
+// "wait for up to 30 days for a webhook event response" — and each is transcribed at its own row under
+// its own citation. Because they are separate transcriptions rather than one value read twice, a
+// divergence is expressible, and these two `measure_le` calls catch it in whichever direction it goes:
+// edit either page's number alone and this goes red. Comparison stays in the `Second` carrier
+// throughout; unwrapping to `Int` would leave the unit living only in the function name.
+//
+// WHAT THIS DOES NOT CHECK, AND WHY. It used to carry a third conjunct,
+// `custom_rule_timeout_run_conclusion == RunFailure`. That was a decoration in a function about
+// durations: the row is a constant, so the clause restated the model instead of testing anything, and
+// the timeout's OUTCOME has nothing to do with whether two ceilings agree. It is asserted where it is an
+// upstream fact — test.claim.github_deployment_protection_rule_witness's
+// a_rule_timeout_concludes_the_run_as_a_failure, whose force is that the value is typed in GitHub's own
+// RunConclusion sum and no "approved" arm of that name exists to write (DESIGN §5, make it unwritable).
 fn gate_ceilings_agree() -> Bool {
   measure_le(a: custom_rule_response_timeout(), b: rule_gate_approval_ceiling())
     && measure_le(a: rule_gate_approval_ceiling(), b: custom_rule_response_timeout())
-    && custom_rule_timeout_run_conclusion == RunFailure
 }
 
 // The documented maximum configured wait, as the carrier it is documented in: MINUTES, converted by
