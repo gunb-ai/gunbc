@@ -1,5 +1,22 @@
 module test.claim.markdown_markup_xss_witness
-import std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.markdown {
+  MarkdownDocument, MarkdownInline, MarkdownBlock, MarkdownListItem, MarkdownTaskItem,
+  MarkdownTableCell, MarkdownTableRow, HeadingLevel,
+  H1, H2, H3, H4, H5, H6,
+  HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock, TaskListBlock,
+  CodeBlock, BlockquoteBlock, TableBlock,
+  TextInline, EmphasisInline, StrongInline, CodeInline, LinkInline, ImageInline,
+  CheckboxState, Checked, Unchecked,
+  MarkdownAlignment, AlignNone, AlignLeft, AlignCenter, AlignRight,
+}
+import extdeps.languages.markdown {
+  MarkdownSpellings, commonmark_gfm_spellings, serialize_markdown_document, try_serialize_markdown_document,
+}
+import std.markdown { markdown_document_to_fragment }
+import extdeps.languages.html_fragment { serialize_fragment }
+import std.markup { Fragment, escape_url, Serialized, Rejected }
+import extdeps.uri_validation { validate_href }
 import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
