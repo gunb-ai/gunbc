@@ -52,7 +52,12 @@ grep -q 'usage: hard_diag_by_identity.py HEAD.log MAIN.log' $LOGS/hard_diag_by_i
 echo "comparator bytes: $(wc -c < $LOGS/hard_diag_by_identity.py)"
 
 run_side () {
-  side=$1; sha=$2; d=$LOGS/clone_$side
+  side=$1; sha=$2
+  # d is named for the SHA, not the side: if a previous run left a clone under this name with a
+  # different SHA, its binary and logs would be read as this side's. A stale count is worse
+  # than a missing one, because it looks like a measurement.
+  d=$LOGS/clone_$side_$sha
+  if [ -d $LOGS/clone_$side ] && [ ! -d $d ]; then rm -rf $LOGS/clone_$side; fi
   [ "$SIDE_FILTER" = "both" ] || [ "$SIDE_FILTER" = "$side" ] || { echo "[$side] SKIPPED by SIDE_FILTER=$SIDE_FILTER (its counts must not be read)"; return 7; }
   rm -rf $d
   git clone -q $REPO $d >> $LOGS/clone_$side.log 2>&1 || { echo "VOID: clone failed for $side"; return 5; }
