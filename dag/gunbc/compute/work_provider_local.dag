@@ -1116,9 +1116,7 @@ fn compute_capture_readings_of_output(instance: HostDashboardInstance, layout: C
 // the hermetic claim run itself -- `gunbc run --claim-run --dry-run --function <row>` refuses a row
 // whose route reaches a host effect the hermetic route has no arm for, naming the operation -- and
 // what it names for these rows is recorded, row by row, in v2.workflow.floor_route_gap beside the
-// identities of test.claim.compute.output_capture_absence_witness's wet twin. No mock arm is added to
-// that transport to make this reachable hermetically: see
-// `gunbc.design_ruling capture_witness_never_adds_a_transport_mock_arm`. The hermetic rows in
+// identities of test.claim.compute.output_capture_absence_witness's wet twin. No mock arm is added to that transport to change that -- the standing ruling against it is RELAYED IN THE TASK BRIEF, 2026-08-23, and NO CARRIER WAS FOUND FOR IT: gunbc.design_ruling holds dated operator rulings and no row carries this one, and minting a row here would assert operator text nobody has verified (DESIGN.md 4d). Named as a follow-up for the lander: give the ruling a carrier, or have the operator restate it. The hermetic rows in
 // test.claim.compute.output_capture_absence_witness therefore drive the SAME continuation and step --
 // production's own decision sites -- with readings supplied as data.
 fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> OutputsReturn {
