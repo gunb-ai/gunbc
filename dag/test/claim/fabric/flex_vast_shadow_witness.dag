@@ -1025,7 +1025,8 @@ test fn the_driver_floor_standing_alone_decides_estimated_against_established() 
 }
 
 test fn the_flash_next_driver_floor_is_cited_and_derives_from_the_cuda_requirement() -> Bool {
-  serving_recipe_flash_next_lab_vllm.driver_floor.major == cuda_13_0_driver_requirement.min_driver_major
+  serving_recipe_flash_next_lab_vllm.published_tcp_port == 18000
+    && serving_recipe_flash_next_lab_vllm.driver_floor.major == cuda_13_0_driver_requirement.min_driver_major
     && flex_flash_next_vast_filters.cuda_max_good_min == cuda_13_0_driver_requirement.toolkit_major
     && (match serving_recipe_flash_next_lab_vllm.driver_floor.standing {
       CitedToAuthority { authority: _ } => true
