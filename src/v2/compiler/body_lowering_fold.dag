@@ -3689,7 +3689,7 @@ fn body_lower_callback_init(row: CallbackStepRow, source: Node) -> Node {
 // filter's step names the MEMBER as well as the accumulator: the member is the callback's own authored
 // binder, so a reference to it is the same lexical reference the callback body already makes.
 // THE BODY IS CONSTRUCTED FROM THE ROW'S SHAPE, one arm per shape (v2.compiler.fold_lowering
-// callback_step_rows): each arm builds the body its shape is, so there is no free choice left between
+// callback_step_row): each arm builds the body its shape is, so there is no free choice left between
 // what the step does and the direction callback_step_shape_iteration_direction reads off the same shape.
 // The old match was one arm per realization, a second hand-written sibling to the direction reader over
 // the same sum; the contradiction had no constructor, because the direction is now read from the shape
@@ -3741,36 +3741,30 @@ fn body_lower_callback_encoding_from(operands: CallbackCallOperands, collection:
                           at: node_synthetic(kind: TypeNode { connective: Atom { identity: accumulator } }, children: [])
                         }
                         // THE STEP ROW IS RESOLVED ONCE AND EVERYTHING IS BUILT FROM IT -- the init, the
-                        // step body, and (through it) the direction the encoding carries. A realization
-                        // with no row is a synthesis bug, never a pass: the assembly refuses rather than
-                        // defaulting an init or a step shape (DESIGN section 5).
-                        match callback_step_row(r: operands.realization) {
-                          Absent => outcome_rejected(
-                            d: body_lower_diagnostic(
-                              reason: ^body_lowering_reason_function_value_shape_unread,
-                              n: callback_node
+                        // step body, and (through it) the direction the encoding carries. The row is TOTAL
+                        // (v2.compiler.fold_lowering callback_step_row: a realization without a row is
+                        // refused at compile time by infer_match_non_exhaustive), so there is no absent
+                        // row to refuse at the assembly and no default to fall through to
+                        // (DESIGN section 5; N7 manager ruling 2026-10-19).
+                        let row = callback_step_row(r: operands.realization)
+                        match body_lower_function_value_arrow(
+                          shell: callback_node,
+                          binders: [accumulator_binder, member],
+                          codomain: CodomainElided,
+                          body: body_lower_callback_step_body(row: row, accumulator: accumulator, member: member.name, body: body, source: callback_node)
+                        ) {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: step, diagnostics: ad } =>
+                            outcome_with_diagnostics(
+                              value: fold_recurrence_encoding(operands: FoldCallOperands {
+                                head: operands.head,
+                                collection: lowered_collection,
+                                init: body_lower_callback_init(row: row, source: synthetic),
+                                step: step,
+                                carrier: accumulator
+                              }),
+                              diagnostics: diagnostics_merge(outer: d, inner: ad)
                             )
-                          )
-                          Present { value: row } =>
-                            match body_lower_function_value_arrow(
-                              shell: callback_node,
-                              binders: [accumulator_binder, member],
-                              codomain: CodomainElided,
-                              body: body_lower_callback_step_body(row: row, accumulator: accumulator, member: member.name, body: body, source: callback_node)
-                            ) {
-                              Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                              Accepted { value: step, diagnostics: ad } =>
-                                outcome_with_diagnostics(
-                                  value: fold_recurrence_encoding(operands: FoldCallOperands {
-                                    head: operands.head,
-                                    collection: lowered_collection,
-                                    init: body_lower_callback_init(row: row, source: synthetic),
-                                    step: step,
-                                    carrier: accumulator
-                                  }),
-                                  diagnostics: diagnostics_merge(outer: d, inner: ad)
-                                )
-                            }
                         }
                     }
                   Present { value: CodomainAuthored { type_node: _ } } => unread

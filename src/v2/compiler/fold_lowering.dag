@@ -239,7 +239,7 @@ fn collection_step_slot_name(form: CollectionRosterForm) -> Symbol {
 //
 // THE STEP SHAPE PER OPERATION WAS A DECLARED FRONTIER -- one arm per row, authored in the builder and a
 // second, unlinked arm in the direction reader -- and its trigger was "a realization body readable off
-// the row." THAT TRIGGER IS MET: the step shape is now ONE ROW PER REALIZATION (callback_step_rows), and
+// the row." THAT TRIGGER IS MET: the step shape is now ONE ROW PER REALIZATION, read by a TOTAL match (callback_step_row), and
 // both the builder (v2.compiler.body_lowering_fold body_lower_callback_step_body, which constructs the
 // step body FROM the shape arm) and the direction (callback_step_shape_iteration_direction, the one
 // total match over CallbackStepShape) READ that row. The contradiction class -- a cons-shaped step
@@ -279,88 +279,27 @@ type CallbackInitShape
   | InitBoolLiteral { value: Symbol }
 
 // THE ONE ROW PER CALLBACK REALIZATION, keyed on the realization identity (a sum member, never a string),
-// carrying the init slot and the synthesized step's shape. v2.compiler.body_lowering_fold
-// body_lower_callback_step_body CONSTRUCTS the step body from step_shape -- each shape arm builds its
-// body, so there is no free choice left between what a step is and what order it claims to visit in --
-// and callback_step_shape_iteration_direction is the one total match reading the direction off the shape.
-// A realization without a row is refused upstream by collection_roster_row_at (no roster row, no
-// callback lowering), so callback_step_row's Absent arm refuses the same way the unreadable step shape
-// does at the assembly: a synthesis with no row is a bug, never a pass.
+// carrying the init slot and the synthesized step's shape. THE MATCH IS TOTAL AND THAT IS THE WALL: a
+// realization the sum declares but this function has no row for does not COMPILE (v2.compiler.infer
+// infer_match_non_exhaustive refuses the non-exhaustive arm set), so a rowless realization is not a
+// runtime refusal to remember -- it is unwritable, and no coverage claim over a population is needed to
+// keep the two sides in step (DESIGN section 5, construction over validation; the N7 manager's ruling of
+// 2026-10-19). v2.compiler.body_lowering_fold body_lower_callback_step_body CONSTRUCTS the step body
+// from step_shape -- each shape arm builds its body, so there is no free choice left between what a step
+// is and what order it claims to visit in -- and callback_step_shape_iteration_direction is the one
+// total match reading the direction off the shape.
 type CallbackStepRow {
-  realization: CallbackRealization
   init: CallbackInitShape
   step_shape: CallbackStepShape
 }
 
-data callback_step_rows: List<CallbackStepRow> = [
-  CallbackStepRow { realization: CallbackMapsToCons, init: InitEmptyCarrier, step_shape: StepConsOfCallbackResult },
-  CallbackStepRow { realization: CallbackFiltersByCondition, init: InitEmptyCarrier, step_shape: StepKeepsMemberUnderCondition },
-  CallbackStepRow { realization: CallbackAllByAnd, init: InitBoolLiteral { value: ^dag_token_kw_true }, step_shape: StepAccBoolJoined { operator: ^dag_token_and_and } },
-  CallbackStepRow { realization: CallbackAnyByOr, init: InitBoolLiteral { value: ^dag_token_kw_false }, step_shape: StepAccBoolJoined { operator: ^dag_token_or_or } }
-]
-
-fn callback_step_row(r: CallbackRealization) -> Optional<CallbackStepRow> {
-  fold_list(xs: callback_step_rows, empty: optional_absent(), cons: fn(acc, row) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match row.realization {
-          CallbackMapsToCons => if r == CallbackMapsToCons { optional_present(value: row) } else { acc }
-          CallbackAllByAnd => if r == CallbackAllByAnd { optional_present(value: row) } else { acc }
-          CallbackFiltersByCondition => if r == CallbackFiltersByCondition { optional_present(value: row) } else { acc }
-          CallbackAnyByOr => if r == CallbackAnyByOr { optional_present(value: row) } else { acc }
-        }
-    }
-  })
-}
-
-// THE ROSTER WALK IS THE COMPLETENESS SURFACE: v2.test.claim.compiler.collection_callback_realization
-// walks v2.compiler.fold_lowering collection_roster_rows' callback rows and refuses if any has no step
-// row, if any step row is not named by exactly one roster row, or if the four populations ever disagree --
-// a realization added without its step row is a defect the claim catches on the acceptance path.
-
-// THE COMPLETENESS SURFACE, exported so v2.test.claim.compiler.collection_callback_realization can walk
-// it without re-deriving a roster by hand: the callback realizations the roster declares and the callback
-// realizations the step rows cover. The claim refuses if any roster callback row has no step row, if a
-// step row covers a realization the roster does not name, or if the counts disagree -- a realization
-// added without its step row is a defect caught on the acceptance path.
-fn callback_roster_callback_realizations() -> List<CallbackRealization> {
-  fold_list(xs: collection_roster_rows, empty: [], cons: fn(acc, row) {
-    match row.form {
-      RosterCallbackStep { realization: r } => list_snoc_item(xs: acc, item: r)
-      _ => acc
-    }
-  })
-}
-fn callback_step_row_realizations() -> List<CallbackRealization> {
-  fold_list(xs: callback_step_rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.realization) })
-}
-
-// THE COMPLETENESS JUDGMENT, in the authority the populations live in (§3): covering is decided where
-// the rows are, by comparison of the realization identities, so the claim below is a boolean over this
-// judgment and not a second spelling of it. Cover from each side, and agree on the count.
-fn callback_step_rows_cover_realization(r: CallbackRealization) -> Bool {
-  fold_list(xs: callback_step_rows, empty: false, cons: fn(acc, row) {
-    if acc { true } else { row.realization == r }
-  })
-}
-
-fn callback_roster_realizations_covered_by_step_rows() -> Bool {
-  fold_list(xs: callback_roster_callback_realizations(), empty: true, cons: fn(acc, r) {
-    if acc { callback_step_rows_cover_realization(r: r) } else { false }
-  })
-}
-
-fn callback_roster_names_realization(r: CallbackRealization) -> Bool {
-  fold_list(xs: callback_roster_callback_realizations(), empty: false, cons: fn(acc, x) {
-    if acc { true } else { x == r }
-  })
-}
-
-fn callback_step_rows_all_named_by_roster() -> Bool {
-  fold_list(xs: callback_step_rows, empty: true, cons: fn(acc, row) {
-    if acc { callback_roster_names_realization(r: row.realization) } else { false }
-  })
+fn callback_step_row(r: CallbackRealization) -> CallbackStepRow {
+  match r {
+    CallbackMapsToCons => CallbackStepRow { init: InitEmptyCarrier, step_shape: StepConsOfCallbackResult }
+    CallbackAllByAnd => CallbackStepRow { init: InitBoolLiteral { value: ^dag_token_kw_true }, step_shape: StepAccBoolJoined { operator: ^dag_token_and_and } }
+    CallbackFiltersByCondition => CallbackStepRow { init: InitEmptyCarrier, step_shape: StepKeepsMemberUnderCondition }
+    CallbackAnyByOr => CallbackStepRow { init: InitBoolLiteral { value: ^dag_token_kw_false }, step_shape: StepAccBoolJoined { operator: ^dag_token_or_or } }
+  }
 }
 
 // A ROSTER ROW IS EITHER REALIZED AS A FOLD (an authored or synthesized step over the one Loop encoding)
@@ -1303,7 +1242,7 @@ fn fold_roster_row_is_at(path: String) -> Bool {
 // already carries (^loop_realized_declaration_edge), through this one derivation, and an executor of a
 // fold-realized Loop must ask it. An authored fold step is a left fold, and fold_list is too;
 // fold_list_right is the right fold. A synthesized step's order is READ FROM THE SHAPE the synthesis
-// builds (callback_step_rows): a cons-shaped step preserves order only when the members are visited
+// builds (callback_step_row): a cons-shaped step preserves order only when the members are visited
 // right to left; a join's result is the same in either order and is declared left to right with the fold
 // it is written beside. This ONE total match over CallbackStepShape is the only place a callback
 // direction is spelled -- the shape and the direction are not two facts a later reader must be told to
@@ -1325,23 +1264,20 @@ fn callback_step_shape_iteration_direction(s: CallbackStepShape) -> FoldIteratio
   }
 }
 
-// The realization's direction is read through its step row; no row, no direction — the assembly has
-// already refused the call upstream (callback_step_row), and an absent row is a bug-shaped absence,
-// never a pass-through default (DESIGN section 5: no silent Absent, and no default direction).
-fn callback_realization_iteration_direction(r: CallbackRealization) -> Optional<FoldIterationDirection> {
-  match callback_step_row(r: r) {
-    Present { value: row } => optional_present(value: callback_step_shape_iteration_direction(s: row.step_shape))
-    Absent => optional_absent()
-  }
+// The realization's direction is read through its step row. The reading is TOTAL because the row is
+// total: callback_step_row has no missing arm to write (infer_match_non_exhaustive refuses one), so there
+// is no absent row to default (DESIGN section 5; the N7 manager's ruling of 2026-10-19).
+fn callback_realization_iteration_direction(r: CallbackRealization) -> FoldIterationDirection {
+  callback_step_shape_iteration_direction(s: callback_step_row(r: r).step_shape)
 }
 
-// Absent for a primitive-call row: it is no Loop, so it has no visiting order. For a callback row,
-// Absent means the step row is missing -- a bug-shaped absence the assembly refuses upstream, propagated
-// here rather than defaulted (a roster form with no direction never reads as one).
+// Absent for a primitive-call row: it is no Loop, so it has no visiting order. The callback arm is
+// always Present -- the row and its direction are total (callback_step_row) -- and an authored step is a
+// left fold; Absent means a bug-shaped absence (a roster form with no direction never reads as one).
 fn fold_roster_form_iteration_direction(f: CollectionRosterForm) -> Optional<FoldIterationDirection> {
   match f {
     RosterAuthoredStep => optional_present(value: IteratesLeftToRight)
-    RosterCallbackStep { realization: r } => callback_realization_iteration_direction(r: r)
+    RosterCallbackStep { realization: r } => optional_present(value: callback_realization_iteration_direction(r: r))
     RosterFreeMonoidPrimitiveCall => optional_absent()
   }
 }

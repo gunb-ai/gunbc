@@ -61,24 +61,25 @@
 // steps. The executor-side enforcement is NOT faked or pre-empted here.
 
 // THE FIX, by construction (§5: construction over proof over validation; manager no-go 2026-10-19
-// rejected the two-reader cross-check version as validation-with-two-authorities and required a
-// test-only seam-free route): ONE row per CallbackRealization keyed on the realization identity,
-// carrying the synthesized step's canonical SHAPE and its init (new closed sums, CallbackStepShape:
-// StepConsOfCallbackResult | StepKeepsMemberUnderCondition | StepAccBoolJoined{operator}, and
-// CallbackInitShape: InitEmptyCarrier | InitBoolLiteral{value}; the init joins the row for the same
-// reason -- it is the other half of what the synthesis hand-writes).
-// The direction is NOT an independent field — it is read by exactly one total match over
-// CallbackStepShape (cons-shapes => Right, joins => Left), so the contradiction "cons step paired
-// with Left" has NO CONSTRUCTOR. callback_realization_iteration_direction reads the row via that one
-// match; body_lower_callback_step_body matches the SAME row's shape (its builder match is over the
-// descriptor, not a free sibling over CallbackRealization); the free sibling arm is deleted; there
-// is no seam: no caller-supplied direction parameter exists anywhere. The row lives in
-// v2.compiler.fold_lowering (the direction authority; body_lowering_fold already imports from it —
-// direction, no cycle). If the direction were kept as a second field cross-checked by construction,
-// the wrong pair would be writable as a data literal and the row's typing could not refuse it —
-// that variant is rung 2 with a lens, not rung 4; the derived-direction shape is what makes rung 4
-// honest for the contradiction class, and it is the one deviation from the manager's illustrative
-// row ({step, direction}) sent for approval before building.
+// rejected the two-reader cross-check version as validation-with-two-authorities; the manager's row
+// ruling of 2026-10-19 (variant B, then the total-match correction the same day)): ONE ROW PER
+// CALLBACK REALIZATION, read by a TOTAL match -- callback_step_row(r: CallbackRealization) ->
+// CallbackStepRow {init: CallbackInitShape, step_shape: CallbackStepShape} -- keyed on the realization
+// identity (a sum member, never a string). The direction is NOT an independent field: it is read by
+// exactly one total match over CallbackStepShape (callback_step_shape_iteration_direction:
+// cons-shapes => Right, joins => Left), so the contradiction "cons step paired with Left" has NO
+// CONSTRUCTOR, and a realization with no row does not COMPILE (v2.compiler.infer
+// infer_match_non_exhaustive refuses the non-exhaustive arm set) -- so neither a coverage claim over a
+// row population nor a runtime refusal for a rowless realization is needed; both were written, both
+// were deleted on the manager's correction. callback_realization_iteration_direction reads the row
+// through that one match; body_lower_callback_step_body matches the SAME row's init and step_shape
+// (each shape arm BUILDS its body, so there is no free choice left), and the free sibling arms over
+// CallbackRealization are deleted; there is no seam: no caller-supplied direction parameter exists
+// anywhere. The row lives in v2.compiler.fold_lowering (the direction authority; body_lowering_fold
+// already imports from it -- direction, no cycle). If the direction were kept as a second field
+// cross-checked by construction, the wrong pair would be writable as a data literal -- that variant is
+// rung 2 with a lens, not rung 4; the derived-direction total match is what makes rung 4 honest for
+// the contradiction class (the manager's ruling).
 
 // CONTROLS (manager evidence ruling of 2026-10-19, variant B; joined on one leaf per §3b):
 // - THE CONTRADICTION CLASS IS RUNG 4 BY CONSTRUCTION: {cons-shape, Left} has no constructor (the
@@ -88,16 +89,15 @@
 //   flipping the cons arm (StepConsOfCallbackResult => IteratesLeftToRight) makes
 //   ccr_map_loop_iterates_right_to_left measure RED on the real route (the claim reads the direction
 //   back off a loop the real synthesis lowered); reverted, green. Both runs pinned to shas, reported
-//   to the manager; the mutation is never shipped. Red BEFORE the wall exists: both step_loop
+//   to the manager; the mutation is never shipped (the runner keeps no target/ across dispatches, so
+//   each run is its own pinned build). Red BEFORE the wall exists: both step_loop
 //   handlers still refuse every Loop during the flip, so the RED does not read or wait on an executor.
 // - ACCEPTED CONTROLS: map, filter, any, all lower accepted with their directions read off their own
 //   rows (ccr_map_loop_iterates_right_to_left, ccr_filter_and_any_directions,
 //   ccr_fold_and_all_iterate_left_to_right), the shipped ccr_fold_list_and_fold_list_right_are_told_apart
-//   untouched, and ccr_step_rows_cover_the_callback_roster refuses a roster/step-row population
-//   disagreement (a realization added without its row).
-// - REFUSAL OF DEFAULT: a realization with no step row is refused at the assembly
-//   (^body_lowering_reason_function_value_shape_unread) rather than defaulted, and
-//   ccr_a_non_fold_path_has_no_direction keeps the no-default direction reading.
+//   untouched. The row population itself needs no claim: the total match makes disagreement unwriteable.
+// - REFUSAL OF DEFAULT: ccr_a_non_fold_path_has_no_direction keeps the no-default direction reading
+//   (a path naming no fold derives Absent, never a default direction).
 // CEILING claim (what green will NOT say): this closes the callback-synthesis contradiction boundary
 // only. It does NOT execute fold-realized Loops, does not enforce an authored fold's declared order
 // against user step bodies, and does not touch the executor boundary. The failure-mode row's RUNG text
