@@ -18,7 +18,22 @@ import extdeps.tools.make { make_makeflags_env_name }
 import gunbc.host.ctrl_jobserver_residue { ctrl_jobserver_unit, ctrl_jobserver_residue_files, ctrl_jobserver_residue_directories }
 import std.measure { HardwareThreadCount, hardware_thread_count_value }
 import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path }
-import gunbc.host.host_axis_caps { cap_dropin_content }
+import gunbc.host.host_axis_caps {
+  cap_dropin_content,
+  CapMember,
+  derived_runner_slot_cap_members,
+  cap_raise_standing,
+  CapRaiseStanding,
+  CapRaiseAdmitted,
+  CapRaiseBlockedPendingRetirement,
+  CapRaiseBlockedIncompleteEvidence,
+  CapRaiseBlockedUnobserved,
+  SurplusSlotObservation,
+  SurplusSlotsObserved,
+  SurplusSlotsUnobserved,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsKeptOldShape, SlotCapsRefused, converge_runner_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
   HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
@@ -1838,6 +1853,7 @@ type RunnerHostFileRun {
   residue: RetiredResidueResult
   reload: RunnerHostManagerReload
   slots: RunnerSlotPopulation
+  cap_phase: RunnerHostCapPhase
 }
 
 fn plan_runner_host_file(
@@ -1930,6 +1946,116 @@ fn runner_host_cpu_dropin_gate(
         cause: join(["the slot population is not yet at the committed width (", if skipped { "actuations skipped" } else { concat(to_string(length(unsettled)), " actuations unsettled") }, "), so the per-slot quota sized for that width is not written"], "") as NonEmptyStr,
       }]),
     }
+  }
+}
+
+// ── The slot memory-cap phase ────────────────────────────────────────────────────────────────────
+
+// THE CAP DROP-INS ARE RUNNER-HOST FILES, SIBLINGS OF THE CPU DROP-IN, AND THEIR CONTENT HAS ONE
+// AUTHORITY: gunbc.host.host_axis_caps derived_runner_slot_cap_members, the same member list
+// gunbc.live_deploy renders for srv1 (its memory members are the unchanged prefix of this list). They are
+// written only after the retirement gate (cap_raise_standing) admits, exactly as the srv1 route is
+// gated, and a written file is not convergence: each slot is then converged on its LIVE cgroup
+// (gunbc.runner.runner_slot_cap_converge), because the drop-in is template-level and a running slot keeps
+// the caps it started with.
+fn runner_host_cap_files() -> List<RunnerHostFileDesired> {
+  map(derived_runner_slot_cap_members(), m => RunnerHostFileDesired {
+    subject: concat("runner-cap-dropin ", m.dropin_path as String) as NonEmptyStr,
+    path: m.dropin_path as FilePath,
+    content: m.content,
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  })
+}
+
+fn runner_host_cap_retirement_gate(retired_units: List<NonEmptyStr>, population: RunnerSlotPopulation) -> CapRaiseStanding {
+  cap_raise_standing(
+    required_retiring: retired_units,
+    observation: match population {
+      SlotPopulationUnobservable { reason: r } => SurplusSlotsUnobserved { cause: r }
+      SlotPopulationObserved { units: us } => {
+        let done = map(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => false SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotUnitUnread => false }), r => r.unit)
+        SurplusSlotsObserved {
+          retired: done,
+          still_present: filter(retired_units, u => !any(done, d => (d as String) == (u as String))),
+        }
+      }
+    },
+  )
+}
+
+fn runner_host_cap_gate_cause(standing: CapRaiseStanding) -> String? {
+  match standing {
+    CapRaiseAdmitted => none
+    CapRaiseBlockedPendingRetirement { still_present: sp } => Present { value: concat("surplus slots have not retired: ", join(map(sp, u => u as String), " ")) }
+    CapRaiseBlockedIncompleteEvidence { missing: ms } => Present { value: concat("retirement evidence is missing for: ", join(map(ms, u => u as String), " ")) }
+    CapRaiseBlockedUnobserved { cause: c } => Present { value: concat("the slot population was not observed: ", c) }
+  }
+}
+
+type RunnerHostCapPhase
+  = CapPhaseNotOwed
+  | CapPhaseWithheld { cause: String }
+  | CapPhaseRan { files: List<RunnerHostFileResult>, reload: RunnerHostManagerReload, slots: List<SlotCapOutcome> }
+
+data runner_host_cap_phase_not_owed: RunnerHostCapPhase = CapPhaseNotOwed
+
+fn runner_host_cap_phase_settled(phase: RunnerHostCapPhase) -> Bool {
+  match phase {
+    CapPhaseNotOwed => true
+    CapPhaseWithheld { cause: _ } => false
+    CapPhaseRan { files: fs, reload: rl, slots: ss } =>
+      all(fs, r => runner_host_file_outcome_settled(outcome: r.outcome))
+        && runner_host_manager_reload_settled(r: rl)
+        && all(ss, o => slot_cap_outcome_settled(o: o))
+  }
+}
+
+fn runner_host_cap_phase_text(phase: RunnerHostCapPhase) -> String {
+  match phase {
+    CapPhaseNotOwed => ""
+    CapPhaseWithheld { cause: c } => join(["caps WITHHELD ", c, "\n"], "")
+    CapPhaseRan { files: fs, reload: rl, slots: ss } =>
+      join([
+        join(map(fs, r => runner_host_file_result_line(r: r)), ""),
+        "caps-reload=", runner_host_manager_reload_wire(reload: rl), "\n",
+        join(map(ss, o => concat(slot_cap_outcome_wire(o: o), "\n")), ""),
+        "caps-slots-on-old-shape=", join(map(filter(ss, o => !slot_cap_outcome_settled(o: o)), o => match o { SlotCapsLeftInPlace { unit: u } => u as String SlotCapsRestartedAndRead { unit: u } => u as String SlotCapsKeptOldShape { unit: u, cause: _ } => u as String SlotCapsRefused { unit: u, step: _, reason: _ } => u as String }), " "), "\n",
+      ], "")
+  }
+}
+
+// ORDER: the gate reads the slot population, the cap files are written (and the manager reloaded when one
+// was), then EACH slot is converged on its own live cgroup. A slot that is busy or refuses stays on the
+// old shape and is named; the other slots still converge.
+fn run_runner_host_cap_phase(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+  population: RunnerSlotPopulation,
+) -> RunnerHostCapPhase
+{
+  match mode {
+    RunnerHostFilesObserveOnly => CapPhaseNotOwed
+    RunnerHostFilesApply =>
+      match runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: subject.retired_units, population: population)) {
+        Present { value: why } => CapPhaseWithheld { cause: why }
+        Absent => {
+          let files = map(runner_host_cap_files(), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
+          let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
+          let written = all(files, r => runner_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
+          CapPhaseRan {
+            files: files,
+            reload: reload,
+            slots: if written {
+              map(subject.desired_units, u => converge_runner_slot_caps_over(target: subject.target, context: context, unit: u, desired: gunbc_runner_slot_desired()))
+            } else {
+              map(subject.desired_units, u => SlotCapsRefused { unit: u, step: "write", reason: "the cap drop-ins did not converge or the manager reload did not settle, so no slot was restarted" })
+            },
+          }
+        }
+      }
   }
 }
 
@@ -2052,6 +2178,10 @@ fn run_runner_host_files(
     ResiduePresent { unit_known: _, present: _ } => false
     ResidueUnobservable { cause: _ } => false
   })
+  let cap_phase = match mode {
+    RunnerHostFilesObserveOnly => CapPhaseNotOwed
+    RunnerHostFilesApply => run_runner_host_cap_phase(subject: subject, context: context, mode: mode, privilege: privilege, population: observe_runner_slot_population(subject: subject, context: context, expect: expect))
+  }
   let before = observe_runner_slot_population(subject: subject, context: context, expect: expect)
   let reload = runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before)
   let slots = match reload {
@@ -2077,6 +2207,7 @@ fn run_runner_host_files(
     residue: converge_retired_residue(subject: subject, context: context, mode: mode, privilege: privilege, residue: ctrl_jobserver_retired_residue, observed: residue_observed, gate: gate),
     reload: reload,
     slots: slots,
+    cap_phase: cap_phase,
   }
 }
 
@@ -2131,6 +2262,7 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
           ManagerReloadOwedNotAttempted { reason: _ } => false
         })
         && runner_slot_population_effective(population: run.slots)
+        && runner_host_cap_phase_settled(phase: run.cap_phase)
   }
 }
 
@@ -2173,6 +2305,7 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     "pre-actuation-reload=", runner_host_manager_reload_wire(reload: run.pre_actuation_reload), "\n",
     match run.actuation_admission { ActuationAdmitted => "" ActuationSkipped { cause: c } => join(["actuations SKIPPED ", c, "\n"], "") },
     join(map(run.actuations, a => concat(slot_actuation_outcome_wire(o: a), "\n")), ""),
+    runner_host_cap_phase_text(phase: run.cap_phase),
     retired_residue_result_line(result: run.residue),
     "manager-reload=", runner_host_manager_reload_wire(reload: run.reload), "\n",
     runner_slot_population_text(population: run.slots),

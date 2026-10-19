@@ -1,0 +1,152 @@
+module test.claim.runner.runner_slot_cap_converge_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.measure { byte_size_count }
+import gunbc.runner.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired }
+import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
+import gunbc.runner.runner_slot_actuation { DrainPendingJobRunning }
+import gunbc.runner.runner_slot_cap_converge {
+  SlotCapLive,
+  SlotCapStanding,
+  SlotCapsAtDesired,
+  SlotCapsNeedRestart,
+  SlotCapsReadingsDisagree,
+  SlotCapsUnread,
+  SlotCapPlan,
+  CapsLeaveInPlace,
+  CapsRestart,
+  CapsKeepOldShape,
+  CapsRefuse,
+  SlotCapOutcome,
+  SlotCapsLeftInPlace,
+  SlotCapsRestartedAndRead,
+  SlotCapsKeptOldShape,
+  SlotCapsRefused,
+  slot_cap_standing,
+  slot_cap_plan,
+  slot_cap_live_of_show,
+  slot_cap_outcome_settled,
+}
+import gunbc.runner.runner_host_file_converge {
+  runner_host_cap_files,
+  runner_host_cap_retirement_gate,
+  runner_host_cap_gate_cause,
+  RunnerSlotPopulation,
+  SlotPopulationObserved,
+  SlotPopulationUnobservable,
+  RunnerSlotUnitResult,
+  SlotRetiredAsDeclared,
+  SlotRetirementIncomplete,
+  SlotTeardownEffective,
+}
+import gunbc.host.host_axis_caps { derived_runner_slot_cap_members, derived_runner_memory_cap_members }
+
+// THE CONTROLS FOR THE SLOT MEMORY-CAP CONVERGE. The decisions are pure over supplied readings (the
+// boundary these claims discriminate at): the live reading of a slot, whether its worker is running, and
+// the retirement standings. The pairing obligation -- the effect really drains before it restarts and
+// really reads the cgroup -- is the remote-claim_batch run against a host (gunbc.runner.runner_slot_cap_converge
+// restart_slot_for_caps_over refuses without activating when the drain does not settle, by construction:
+// activate is only reachable on a settled drain).
+
+fn desired() -> RunnerSlotDesired { gunbc_runner_slot_desired() }
+
+fn at_desired_live() -> SlotCapLive {
+  SlotCapLive {
+    unit_memory_max: to_string(byte_size_count(b: desired().memory_max)),
+    unit_swap_max: to_string(byte_size_count(b: desired().memory_swap_max)),
+    unit_memory_high: to_string(byte_size_count(b: desired().memory_high)),
+    unit_tasks_max: to_string(desired().tasks_max),
+    control_group: "/system.slice/actions-runner@srv3-01.service",
+    cgroup_memory_max: Present { value: concat(to_string(byte_size_count(b: desired().memory_max)), "\n") },
+    cgroup_swap_max: Present { value: "0\n" },
+  }
+}
+
+fn old_shape_live() -> SlotCapLive {
+  SlotCapLive {
+    unit_memory_max: to_string(byte_size_count(b: desired().memory_max)),
+    unit_swap_max: to_string(byte_size_count(b: desired().memory_swap_max)),
+    unit_memory_high: to_string(byte_size_count(b: desired().memory_high)),
+    unit_tasks_max: to_string(desired().tasks_max),
+    control_group: "/system.slice/actions-runner@srv3-01.service",
+    cgroup_memory_max: Present { value: "27917287424\n" },
+    cgroup_swap_max: Present { value: "34359738368\n" },
+  }
+}
+
+fn plan_restarts(p: SlotCapPlan) -> Bool { match p { CapsRestart => true CapsLeaveInPlace => false CapsKeepOldShape { cause: _ } => false CapsRefuse { step: _, reason: _ } => false } }
+fn plan_keeps_old(p: SlotCapPlan) -> Bool { match p { CapsKeepOldShape { cause: _ } => true CapsRestart => false CapsLeaveInPlace => false CapsRefuse { step: _, reason: _ } => false } }
+fn plan_leaves(p: SlotCapPlan) -> Bool { match p { CapsLeaveInPlace => true CapsRestart => false CapsKeepOldShape { cause: _ } => false CapsRefuse { step: _, reason: _ } => false } }
+fn plan_refuses(p: SlotCapPlan) -> Bool { match p { CapsRefuse { step: _, reason: _ } => true CapsRestart => false CapsKeepOldShape { cause: _ } => false CapsLeaveInPlace => false } }
+
+// RED: a differing cgroup on an idle slot restarts (the effect drains first); the same slot busy does not.
+test fn a_differing_cap_row_on_an_idle_slot_restarts() -> Bool {
+  plan_restarts(p: slot_cap_plan(standing: slot_cap_standing(live: old_shape_live(), desired: desired()), activity: SlotIdle))
+}
+
+// RED: a busy slot does not restart, and the refusal is typed (KeptOldShape naming the cause), and it
+// leaves the run unsettled so the terminal refuses.
+test fn a_busy_slot_is_not_restarted_and_the_refusal_is_typed() -> Bool {
+  plan_keeps_old(p: slot_cap_plan(standing: slot_cap_standing(live: old_shape_live(), desired: desired()), activity: SlotHasLiveWorker))
+    && !slot_cap_outcome_settled(o: SlotCapsKeptOldShape { unit: "actions-runner@srv3-01.service" as NonEmptyStr, cause: DrainPendingJobRunning })
+}
+
+// Positive: identical caps are left in place whatever the activity, so no restart is ever issued.
+test fn identical_caps_are_left_in_place() -> Bool {
+  plan_leaves(p: slot_cap_plan(standing: slot_cap_standing(live: at_desired_live(), desired: desired()), activity: SlotHasLiveWorker))
+    && plan_leaves(p: slot_cap_plan(standing: slot_cap_standing(live: at_desired_live(), desired: desired()), activity: SlotIdle))
+    && slot_cap_outcome_settled(o: SlotCapsLeftInPlace { unit: "actions-runner@srv3-01.service" as NonEmptyStr })
+}
+
+// Positive: a live-cgroup readback that disagrees with the unit's view refuses, and so does a restarted
+// slot whose cgroup is still old; unproven idleness refuses rather than restarts.
+test fn a_readback_mismatch_refuses() -> Bool {
+  let disagree = SlotCapLive {
+    unit_memory_max: "27917287424",
+    unit_swap_max: "34359738368",
+    unit_memory_high: to_string(byte_size_count(b: desired().memory_high)),
+    unit_tasks_max: to_string(desired().tasks_max),
+    control_group: "/system.slice/actions-runner@srv3-01.service",
+    cgroup_memory_max: Present { value: concat(to_string(byte_size_count(b: desired().memory_max)), "\n") },
+    cgroup_swap_max: Present { value: "0\n" },
+  }
+  plan_refuses(p: slot_cap_plan(standing: slot_cap_standing(live: disagree, desired: desired()), activity: SlotIdle))
+    && plan_refuses(p: slot_cap_plan(standing: slot_cap_standing(live: old_shape_live(), desired: desired()), activity: SlotActivityUnobserved { cause: "no attribution" as NonEmptyStr }))
+    && !slot_cap_outcome_settled(o: SlotCapsRefused { unit: "actions-runner@srv3-01.service" as NonEmptyStr, step: "live-readback", reason: "x" })
+}
+
+// The cgroup row is the slot's own file: a job's descendant cgroup line can never answer for the slot.
+test fn the_cgroup_row_is_keyed_by_the_slots_own_path() -> Bool {
+  let show = "MemoryMax=100\nMemorySwapMax=0\nMemoryHigh=90\nTasksMax=16384\nControlGroup=/system.slice/a.slice/s.service\n"
+  let out = "/sys/fs/cgroup/system.slice/a.slice/s.service/job/memory.max:5\n/sys/fs/cgroup/system.slice/a.slice/s.service/memory.max:100\n/sys/fs/cgroup/system.slice/a.slice/s.service/memory.swap.max:0\n"
+  match slot_cap_live_of_show(show_stdout: show, cgroup_stdout: out) {
+    Absent => false
+    Present { value: l } =>
+      (match l.cgroup_memory_max { Present { value: v } => v == "100" Absent => false })
+        && (match l.cgroup_swap_max { Present { value: v } => v == "0" Absent => false })
+  }
+}
+
+// The cap files this route writes ARE the one member list (live_deploy's memory members are its prefix),
+// so srv1's rendered bytes do not move.
+test fn the_cap_files_are_the_one_member_list_and_srv1_memory_members_are_its_prefix() -> Bool {
+  let files = runner_host_cap_files()
+  let members = derived_runner_slot_cap_members()
+  let memory = derived_runner_memory_cap_members()
+  length(files) == length(members)
+    && all(files, f => any(members, m => (m.dropin_path as String) == (f.path as String) && m.content == f.content))
+    && length(members) == length(memory) + 1
+    && all(memory, m => any(members, n => (n.dropin_path as String) == (m.dropin_path as String) && n.content == m.content))
+}
+
+fn retired_unit() -> NonEmptyStr { "actions-runner@srv3-06.service" as NonEmptyStr }
+
+// The retirement gate: caps are written only once every required retiree reads retired.
+test fn caps_wait_for_the_retirees() -> Bool {
+  let done = SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: retired_unit(), standing: SlotRetiredAsDeclared }] }
+  let pending = SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: retired_unit(), standing: SlotRetirementIncomplete { cause: "job" } }] }
+  (match runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: [retired_unit()], population: done)) { Absent => true Present { value: _ } => false })
+    && (match runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: [retired_unit()], population: pending)) { Absent => false Present { value: _ } => true })
+    && (match runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: [retired_unit()], population: SlotPopulationUnobservable { reason: "ssh" })) { Absent => false Present { value: _ } => true })
+}

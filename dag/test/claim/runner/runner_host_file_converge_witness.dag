@@ -66,6 +66,7 @@ import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent }
 import gunbc.runner.runner_host_file_converge {
+  runner_host_cap_phase_not_owed,
   RunnerHostFileDesired,
   RunnerHostFilesDesired,
   RunnerHostFilesDesiredRefused,
@@ -774,6 +775,7 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
             residue: ResidueAlreadyAbsent,
             reload: reload,
             slots: slots,
+            cap_phase: runner_host_cap_phase_not_owed,
           })
       }
   }
@@ -1375,6 +1377,7 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         residue: ResidueAlreadyAbsent,
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
       })
   }
 }
@@ -1532,6 +1535,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         residue: ResidueAlreadyAbsent,
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
       })
       && runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
@@ -1545,6 +1549,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         residue: ResidueAlreadyAbsent,
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
       })
   }
 }
