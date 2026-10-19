@@ -193,9 +193,9 @@ import gunbc.live_deploy.emit {
   approval_broker_helper_sudoers_readback_stage_name,
 }
 import gunbc.live_deploy.release_locus {
-  approval_broker_tree_receipt_path_for,
-  approval_broker_release_dir,
-  approval_broker_release_binary_path,
+  release_locus_tree_receipt_path,
+  release_locus_dir,
+  release_locus_binary_path,
   RevisionBoundAtEmission,
 }
 import gunbc.host.host_effect { HostEffectIntent, HostOs, LocalShell, LiveDeployRetract, host_effect_identity_evidence }
@@ -2185,7 +2185,7 @@ test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   ))
-  let release_dir = approval_broker_release_dir(
+  let release_dir = release_locus_dir(
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
@@ -2218,7 +2218,7 @@ test fn the_dark_install_populates_the_broker_tree() -> Bool {
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   ))
-  let release_dir = approval_broker_release_dir(
+  let release_dir = release_locus_dir(
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
@@ -2226,7 +2226,7 @@ test fn the_dark_install_populates_the_broker_tree() -> Bool {
   string_contains(s: script, pattern: release_dir)
     && string_contains(s: script, pattern: join([" -o ", owner, " -g ", owner, " \"$PWD\"/{} ", release_dir, "/{}"], ""))
     && !string_contains(s: script, pattern: "rsync")
-    && string_contains(s: script, pattern: approval_broker_tree_receipt_path_for(
+    && string_contains(s: script, pattern: release_locus_tree_receipt_path(
       root: srv1_gunbc_approval_broker_root as String,
       revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
     ))
@@ -2266,7 +2266,7 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   ))
-  let binary = approval_broker_release_binary_path(
+  let binary = release_locus_binary_path(
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )

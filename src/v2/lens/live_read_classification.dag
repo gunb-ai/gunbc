@@ -2,7 +2,7 @@ module v2.lens.live_read_classification
 import std.optional { Absent, Optional, Present }
 
 
-import v2.std.node { Authored, StructuralLabel }
+import v2.std.node { positional_child_target_nodes }
 
 // THE IMPORT THIS MODULE'S BARE REFERENCES WERE RELYING ON THE POOL TO SUPPLY. Every call to
 // witness_import_closure here resolved only when some unrelated module elsewhere in the assembled
@@ -175,16 +175,6 @@ fn carrier_for_callee_text(
   }
 }
 
-fn positional_child_targets(node: Node) -> List<Node> {
-  fold(node.children, init: empty_node_list, f: fn(acc, e) {
-    match e.label {
-      StructuralLabel { label: _ } => acc
-      Positional => list_snoc_item(xs: acc, item: e.target)
-      Authored { name: _ } => acc
-    }
-  })
-}
-
 fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
   fold_list(xs: nodes, empty: empty_symbol_list, cons: fn(acc, n) {
     match node_atom_identity_optional(node: n) {
@@ -195,7 +185,7 @@ fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
 }
 
 fn carriers_from_call_node(node: Node, param_names: List<String>) -> List<LiveReadCarrier> {
-  let targets = positional_child_targets(node: node)
+  let targets = positional_child_target_nodes(node: node)
   match list_head(xs: targets) {
     Present { value: callee_node } =>
       match node_atom_identity_optional(node: callee_node) {

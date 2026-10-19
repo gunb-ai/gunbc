@@ -30,11 +30,8 @@ import v2.std.diagnostic {
   Rejected,
   bind_outcome
 }
-import v2.std.node { Node }
-import v2.std.node_query {
-  find_arrow_body_child,
-  node_positional_child_targets
-}
+import v2.std.node { positional_child_target_nodes, Node }
+import v2.std.node_query { find_arrow_body_child }
 import v2.std.compilers.target_model {
   TargetModel,
   target_value_expr_bind_let_gate

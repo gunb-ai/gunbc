@@ -795,3 +795,69 @@ test fn the_encoder_input_route_refuses_an_out_of_range_octet_holds() -> Bool {
     QualifiedOctetsReady { value: _ } => false
   }
 }
+
+// ── THE NATIVE OPERATOR ROWS AGREE WITH THE DEFINITION (std.machine_word machine_word_apply) ────────
+// machine_word_apply is the fast realization (the host's own operator, selected by a declared row);
+// bitwise_fold and the checked word_* operations above are the DEFINITION. These claims run each row
+// against the definition on operands chosen so that a wrong row cannot agree: 0xF0F0F0F0 and
+// 0x0FF00FF0 differ in every nibble pair (and, or and xor all take different values), the rotation
+// amount 7 is not a multiple of 4 or 8, and the addition wraps. Each is its own claim so a red names
+// its row.
+fn operand_a() -> Int { 4042322160 }
+
+fn operand_b() -> Int { 267390960 }
+
+test fn native_and_row_agrees_with_the_definition_holds() -> Bool {
+  machine_word_apply(op: OperatorAnd, width: Width32, a: operand_a(), b: operand_b())
+    == word32_value_or(result: word_and(a: word32_or_zero(value: operand_a()), b: word32_or_zero(value: operand_b())), fallback: 0 - 1)
+}
+
+test fn native_or_row_agrees_with_the_definition_holds() -> Bool {
+  machine_word_apply(op: OperatorOr, width: Width32, a: operand_a(), b: operand_b())
+    == word32_value_or(result: word_or(a: word32_or_zero(value: operand_a()), b: word32_or_zero(value: operand_b())), fallback: 0 - 1)
+}
+
+test fn native_xor_row_agrees_with_the_definition_holds() -> Bool {
+  machine_word_apply(op: OperatorXor, width: Width32, a: operand_a(), b: operand_b())
+    == word32_value_or(result: word_xor(a: word32_or_zero(value: operand_a()), b: word32_or_zero(value: operand_b())), fallback: 0 - 1)
+}
+
+test fn native_not_row_agrees_with_the_definition_holds() -> Bool {
+  machine_word_apply(op: OperatorNot, width: Width32, a: operand_a(), b: 0)
+    == word32_value_or(result: word_not(a: word32_or_zero(value: operand_a())), fallback: 0 - 1)
+}
+
+test fn native_shift_right_row_agrees_with_the_definition_holds() -> Bool {
+  machine_word_apply(op: OperatorShiftRight, width: Width32, a: operand_a(), b: 7)
+    == word32_value_or(result: word_shift_right(a: word32_or_zero(value: operand_a()), amount: 7), fallback: 0 - 1)
+}
+
+test fn native_shift_left_row_agrees_with_the_definition_holds() -> Bool {
+  machine_word_apply(op: OperatorShiftLeft, width: Width32, a: operand_a(), b: 7)
+    == word32_value_or(result: word_shift_left(a: word32_or_zero(value: operand_a()), amount: 7), fallback: 0 - 1)
+}
+
+test fn native_rotate_right_row_agrees_with_the_definition_holds() -> Bool {
+  machine_word_apply(op: OperatorRotateRight, width: Width32, a: operand_a(), b: 7)
+    == word32_value_or(result: word_rotate_right(a: word32_or_zero(value: operand_a()), amount: 7), fallback: 0 - 1)
+}
+
+test fn native_add_wrapping_row_agrees_with_the_definition_holds() -> Bool {
+  machine_word_apply(op: OperatorAddWrapping, width: Width32, a: operand_a(), b: operand_b())
+    == word32_value_or(result: word_wrapping_add(a: word32_or_zero(value: operand_a()), b: word32_or_zero(value: operand_b())), fallback: 0 - 1)
+}
+
+// THE WRONG-ROW CONTROL. A row that computed another operator's answer must read as a disagreement,
+// not pass: the same operands through the LABEL of a neighbouring row differ from the definition on
+// every pair below, so a table whose `xor` row held the `or` function (or any rotation row the
+// shift) would red the agreement claim above that names it. The SHA-256 FIPS 180 vectors
+// (test.claim.sha256_fips_witness) are the end-to-end form: sigma and Ch/Maj mix and, xor, not,
+// rotate and shift, so a wrong row anywhere turns a published digest red.
+test fn a_wrong_row_would_disagree_with_the_definition_holds() -> Bool {
+  machine_word_apply(op: OperatorOr, width: Width32, a: operand_a(), b: operand_b())
+    != word32_value_or(result: word_xor(a: word32_or_zero(value: operand_a()), b: word32_or_zero(value: operand_b())), fallback: 0 - 1)
+    && machine_word_apply(op: OperatorShiftRight, width: Width32, a: operand_a(), b: 7)
+      != word32_value_or(result: word_rotate_right(a: word32_or_zero(value: operand_a()), amount: 7), fallback: 0 - 1)
+    && machine_word_apply(op: OperatorAnd, width: Width32, a: operand_a(), b: operand_b())
+      != word32_value_or(result: word_or(a: word32_or_zero(value: operand_a()), b: word32_or_zero(value: operand_b())), fallback: 0 - 1)
+}

@@ -13,7 +13,7 @@ import std.occurrence_binding_resolve { OccurrenceCategoryBindingAdmissible, Occ
 import v2.extdeps.languages.dag { dag_kernel_string_type_spelling, dag_string_literal_value_optional, dag_kernel_type_binding_optional, dag_kernel_type_declaration_binding_optional, dag_kernel_type_foreign_declaration, ForeignDeclarationBinds, ForeignDeclarationRefuses, dag_node_is_float_literal_atom, dag_node_is_int_literal_atom, dag_symbol_literal_name_optional, dag_string_literal_value_symbol_optional, dag_node_is_module_root_conj, dag_resolve_preserve_module_metadata_subtree, dag_surface_module_header_metadata_edge, dag_surface_operator_canonicalization_lookup, namespace_graft_spine_body_optional, qualified_name_from_module_node }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape }
 import v2.std.witness { map_get_checked }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.optional_layers { wrap_type_node_occupancy_at }
@@ -22,13 +22,13 @@ import v2.std.compilers.target_model { target_model_canonical_operation_wire_nod
 import v2.std.diagnostic { Correction, CorrectionNotModeled, Diagnostic, Diagnostics, NonEmptyDiagnostics, declaration_locus, node_locus, Outcome, UserInputBoundary, Unavailable, Accepted, None, Some, diagnostics_merge, diagnostics_fatal_reason, diagnostics_singleton, bind_outcome, rejected_with_pending, ExternalContractUnknown, Rejected, outcome_with_diagnostics }
 import v2.compiler.primitive_authority { primitive_authority_path, primitive_authority_row_names_head }
 import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, collection_roster_primitive_call_row_optional, fold_family_realization }
-import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string, qualified_name_snoc, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node, qualified_name_spine_segment_nodes, lexical_reference_node }
+import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string, qualified_name_snoc, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node, qualified_name_spine_segment_nodes, lexical_reference_node, declaration_denotation_of_type }
 import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY, default_name_resolution_policy }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
 import v2.std.symbol_index { ExcludedCandidate, symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of, EligibleLookup, ExcludedByCategory, LexicalEligibility, symbol_index_lexical_eligibility }
-import v2.std.node { BinderTypeEdge, core_edge, Occupancy, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge }
+import v2.std.node { positional_child_target_nodes, BinderTypeEdge, core_edge, Occupancy, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names }
-import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, node_positional_child_targets, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
+import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.map_introduction { MapIntroductionEntryNodes, MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, MapLiteralEntriesMalformed, MapLiteralEntriesNone, MapLiteralEntriesPresent, map_literal_entries, lower_map_introduction, map_introduction_duplicate_key, map_introduction_expected_head_is_map }
 import std.types { List, Map }
@@ -975,7 +975,7 @@ fn bind_frame_binders(n: Node) -> FrameBinders {
         name: b.name,
         binding: LexicalBinding {
           binder_site: b.atom.occurrence_id,
-          standing: match list_at_optional(xs: node_positional_child_targets(node: n), index: 1) {
+          standing: match list_at_optional(xs: positional_child_target_nodes(node: n), index: 1) {
             Present { value: v } => LexicalValued { node: v }
             Absent => LexicalUntyped
           }
@@ -2745,10 +2745,15 @@ type ResolveNodeWalk
       first: NonEmptyDiagnostics
       rest: List<NonEmptyDiagnostics>
       observation: ObservationCompleteness
+      // THE PARTIAL RECORD: the binding entries the walk's ACCEPTED sites recorded before and beside
+      // the refusals. A refused tree is never returned, and this does not make it accepted: it is read
+      // only by the binding census as binding_partial rows (v2.compiler.occurrence_binding_census),
+      // so a wave that moves one name of a still-refused module is judged at occurrence grain.
+      partial: List<OccurrenceBindingEntry>
     }
 
 fn resolve_walk_refused_one(chain: NonEmptyDiagnostics) -> ResolveNodeWalk {
-  ResolveWalkRefused { first: chain, rest: [], observation: ObservationComplete }
+  ResolveWalkRefused { first: chain, rest: [], observation: ObservationComplete, partial: [] }
 }
 
 fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
@@ -2765,7 +2770,7 @@ fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
 fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, bindings: _ } => Accepted { value: v, diagnostics: d }
-    ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
+    ResolveWalkRefused { first: f, rest: _, observation: _, partial: _ } => Rejected { diagnostics: f }
   }
 }
 
@@ -2785,7 +2790,7 @@ fn resolved_tree_outcome(
         value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, module_outcomes: module_outcomes, outcome_index: outcome_index, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, bindings: l),
         diagnostics: d
       }
-    ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
+    ResolveWalkRefused { first: f, rest: _, observation: _, partial: _ } => Rejected { diagnostics: f }
   }
 }
 
@@ -2798,11 +2803,12 @@ fn resolve_walk_prefix_pending(pending: Diagnostics, w: ResolveNodeWalk) -> Reso
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, bindings: l } =>
       ResolveWalkAccepted { value: v, diagnostics: diagnostics_merge(outer: pending, inner: d), bindings: l }
-    ResolveWalkRefused { first: f, rest: r, observation: o } =>
+    ResolveWalkRefused { first: f, rest: r, observation: o, partial: p } =>
       ResolveWalkRefused {
         first: rejected_with_pending(pending: pending, rejected: f),
         rest: r,
-        observation: o
+        observation: o,
+        partial: p
       }
   }
 }
@@ -2837,7 +2843,8 @@ fn child_walk_refused(
   w: ChildWalk,
   first: NonEmptyDiagnostics,
   rest: List<NonEmptyDiagnostics>,
-  observation: ObservationCompleteness
+  observation: ObservationCompleteness,
+  partial: List<OccurrenceBindingEntry>
 ) -> ChildWalk {
   ChildWalk {
     ordinal: w.ordinal + 1,
@@ -2849,7 +2856,7 @@ fn child_walk_refused(
     ),
     observation: observation_meet(a: w.observation, b: observation),
     scope_prerequisite_refused: w.scope_prerequisite_refused,
-    bindings: w.bindings
+    bindings: list_append(left: w.bindings, right: partial)
   }
 }
 
@@ -2882,8 +2889,8 @@ fn child_walk_unobservable(w: ChildWalk, reason: Symbol) -> ChildWalk {
 
 fn child_walk_step(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> ChildWalk {
   match r {
-    ResolveWalkRefused { first: f, rest: rs, observation: o } =>
-      child_walk_refused(w: w, first: f, rest: rs, observation: o)
+    ResolveWalkRefused { first: f, rest: rs, observation: o, partial: p } =>
+      child_walk_refused(w: w, first: f, rest: rs, observation: o, partial: p)
     ResolveWalkAccepted { value: t, diagnostics: ed, bindings: l } =>
       child_walk_accepted(w: w, edge: Edge { label: e.label, target: t }, d: ed, bindings: l)
   }
@@ -2900,7 +2907,7 @@ fn child_walk_step_prerequisite(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> Ch
     failures: stepped.failures,
     observation: stepped.observation,
     scope_prerequisite_refused: match r {
-      ResolveWalkRefused { first: _, rest: _, observation: _ } => true
+      ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => true
       ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => false
     },
     bindings: stepped.bindings
@@ -2930,7 +2937,7 @@ fn child_walk_node(w: ChildWalk, n: Node) -> ResolveNodeWalk {
           }))
       }
     Cons { head: first, tail: rest } =>
-      ResolveWalkRefused { first: first, rest: rest, observation: w.observation }
+      ResolveWalkRefused { first: first, rest: rest, observation: w.observation, partial: w.bindings }
   }
 }
 
@@ -3144,12 +3151,12 @@ fn resolve_type_node_mentions_any_name(t: Node, names: List<Symbol>) -> Bool {
       any(xs: names, predicate: fn(n) { n == id })
     TypeNode { connective: _ } =>
       any(
-        xs: node_positional_child_targets(node: t),
+        xs: positional_child_target_nodes(node: t),
         predicate: fn(c) { resolve_type_node_mentions_any_name(t: c, names: names) }
       )
     ComputationNode { behavior: _ } =>
       any(
-        xs: node_positional_child_targets(node: t),
+        xs: positional_child_target_nodes(node: t),
         predicate: fn(c) { resolve_type_node_mentions_any_name(t: c, names: names) }
       )
   }
@@ -3341,7 +3348,7 @@ fn resolve_construct_walk_with_tag(
 ) -> ResolveNodeWalk {
   let tag_path = match tag {
     ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: _ } => declaration_reference_path_optional(node: resolved)
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => Absent
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => Absent
   }
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     if edge_is_core(e: e, marker: ConstructTagEdge) {
@@ -3380,7 +3387,7 @@ fn resolve_expected_head_node_optional(t: Node) -> Optional<Node> {
   match t.kind {
     TypeNode { connective: Atom { identity: _ } } => optional_present(value: t)
     TypeNode { connective: Instantiation } =>
-      match list_at_optional(xs: node_positional_child_targets(node: t), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: t), index: 0) {
         Present { value: head } =>
           match head.kind {
             TypeNode { connective: Atom { identity: _ } } => optional_present(value: head)
@@ -3564,7 +3571,7 @@ fn resolve_elided_construct_is_map_literal(n: Node) -> Bool {
 }
 
 fn resolve_map_literal_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
-  let type_args = node_positional_child_targets(node: x.expected)
+  let type_args = positional_child_target_nodes(node: x.expected)
   match list_at_optional(xs: type_args, index: 1) {
     Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_expected_type_not_closed)
     Present { value: key_type } =>
@@ -3716,7 +3723,7 @@ fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, entries: List<MapIn
           })
           let carrier = node_with_occurrence_id(kind: ComputationNode { behavior: Transform }, children: [], occurrence_id: n.occurrence_id)
           match child_walk_node(w: walked, n: carrier) {
-            ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
+            ResolveWalkRefused { first: f, rest: r, observation: o, partial: p } => ResolveWalkRefused { first: f, rest: r, observation: o, partial: p }
             ResolveWalkAccepted { value: resolved, diagnostics: d, bindings: l } =>
               match resolve_map_pairs(pairs: resolve_map_pair_targets(items: resolved.children)) {
                 ResolveMapPairMalformed { at: p } => resolve_anonymous_record_refused(n: p, reason: ^resolve_anonymous_map_entry_malformed)
@@ -3815,7 +3822,7 @@ fn resolve_list_literal_expected(ctx: ResolveContext, n: Node, x: ResolveExpecta
     ExpectedHeadAbsent => resolve_node_walk(ctx: ctx, n: n)
     ExpectedHeadAt { path: path } =>
       if path == list_introduction_head_path() {
-        resolve_list_elements_expected(ctx: ctx, n: n, x: x, element_type: list_at_optional(xs: node_positional_child_targets(node: x.expected), index: 1))
+        resolve_list_elements_expected(ctx: ctx, n: n, x: x, element_type: list_at_optional(xs: positional_child_target_nodes(node: x.expected), index: 1))
       } else {
         resolve_node_walk(ctx: ctx, n: n)
       }
@@ -4200,7 +4207,7 @@ fn resolve_instantiation_children(ctx: ResolveContext, n: Node) -> ResolveNodeWa
 fn resolve_instantiation_walk_from_head(ctx: ResolveContext, n: Node, head_walk: ResolveNodeWalk) -> ResolveNodeWalk {
   match resolve_instantiation_head_kinds(ctx: ctx, head_walk: head_walk) {
     InstantiationKindsDeclared { admitted: declared } =>
-      if count(declared) != count(node_positional_child_targets(node: n)) - 1 {
+      if count(declared) != count(positional_child_target_nodes(node: n)) - 1 {
         resolve_walk_refused_one(chain: diagnostics_singleton(d: resolve_type_application_diagnostic(reason: ^resolve_reason_type_application_arity_mismatch, at: n)))
       } else {
         resolve_instantiation_walk_arguments(ctx: ctx, n: n, head_walk: head_walk, kinds: declared)
@@ -4217,7 +4224,7 @@ fn resolve_no_admitted_kinds() -> List<InstantiationPosition> {
 fn resolve_instantiation_head_kinds(ctx: ResolveContext, head_walk: ResolveNodeWalk) -> InstantiationKinds {
   match head_walk {
     ResolveWalkAccepted { value: head, diagnostics: _, bindings: _ } => resolve_instantiation_argument_kinds(ctx: ctx, head: head)
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => InstantiationKindsOutsideCheck
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => InstantiationKindsOutsideCheck
   }
 }
 
@@ -4271,19 +4278,19 @@ fn resolve_argument_kernel_type_optional(n: Node) -> Optional<Node> {
 // is InstantiationKindsOutsideCheck for a head the index does not hold -- outside the check, as resolve_type_application_
 // refusal_optional states -- and Declared(empty) for an indexed declaration that binds none.
 fn resolve_instantiation_argument_kinds(ctx: ResolveContext, head: Node) -> InstantiationKinds {
-  match declaration_reference_path_optional(node: head) {
+  match declaration_denotation_of_type(t: head) {
     Absent => InstantiationKindsOutsideCheck
-    Present { value: path } =>
-      match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+    Present { value: denotation } =>
+      match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: denotation.declaration) {
         Absent => InstantiationKindsOutsideCheck
         Present { value: _ } =>
-          match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: path) {
+          match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: denotation.declaration) {
             Absent => InstantiationKindsDeclared { admitted: resolve_no_admitted_kinds() }
             Present { value: binders } =>
               match type_param_order(binders: binders) {
                 TypeParamOrderMalformed => InstantiationKindsOutsideCheck
                 TypeParamOrderDeclared { labels: labels } =>
-                  InstantiationKindsDeclared { admitted: resolve_instantiation_admitted_kinds(ctx: ctx, path: path, binders: binders, labels: labels) }
+                  InstantiationKindsDeclared { admitted: resolve_instantiation_admitted_kinds(ctx: ctx, path: denotation.declaration, binders: binders, labels: labels) }
               }
           }
       }
@@ -4345,17 +4352,18 @@ fn resolve_type_application(ctx: ResolveContext, walked: ResolveNodeWalk) -> Res
           }
         Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
       }
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => walked
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => walked
   }
 }
 
 fn resolve_type_application_refusal_optional(ctx: ResolveContext, n: Node) -> Optional<Diagnostic> {
-  match node_positional_child_targets(node: n) {
+  match positional_child_target_nodes(node: n) {
     Empty => optional_absent()
     Cons { head: head, tail: arguments } =>
-      match declaration_reference_path_optional(node: head) {
+      match declaration_denotation_of_type(t: head) {
         Absent => optional_absent()
-        Present { value: path } =>
+        Present { value: denotation } =>
+          let path = denotation.declaration
           match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
             Absent => optional_absent()
             Present { value: _ } =>
@@ -4418,10 +4426,10 @@ fn resolve_kind_inhabitance(ctx: ResolveContext, declaration: QualifiedName, arg
     match resolve_kind_variant_paths_optional(ctx: ctx, declaration: declaration, kind: kind) {
       Absent => KindUnresolved
       Present { value: variants } =>
-        match declaration_reference_path_optional(node: argument) {
+        match declaration_denotation_of_type(t: argument) {
           Absent => ArgumentOutsideKind
-          Present { value: arg_path } =>
-            match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: arg_path) {
+          Present { value: denotation } =>
+            match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: denotation.declaration) {
               Absent => ArgumentOutsideKind
               Present { value: arg_decl } =>
                 if any(xs: variants, predicate: fn(v) { resolve_path_declares_node(ctx: ctx, path: v, declared: arg_decl) }) { ArgumentInhabitsKind } else { ArgumentOutsideKind }
@@ -4960,7 +4968,7 @@ fn resolve_type_param_binder_kind(ctx: ResolveContext, binder: Node, identity: S
             diagnostics: d,
             bindings: l
           }
-        ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
+        ResolveWalkRefused { first: f, rest: r, observation: o, partial: p } => ResolveWalkRefused { first: f, rest: r, observation: o, partial: p }
       }
   }
 }
@@ -4997,7 +5005,7 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
 // the expectation; every other body walks exactly as it did.
 fn resolve_arrow_body_or_named_edge(ctx: ResolveContext, arrow: Node, e: Edge) -> ResolveNodeWalk {
   if resolve_edge_is_arrow_body(e: e) && resolve_node_consumes_expectation(n: e.target) {
-    match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+    match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
       Present { value: declared } =>
         resolve_expected_edge(
           ctx: ctx,
@@ -5211,7 +5219,7 @@ fn resolve_arrow_resource_requirements(ctx: ResolveContext, requirements: Node) 
 // names declarations.
 fn resolve_arrow_resource_requirement_members(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
   match resolve_node_walk(ctx: ctx, n: requirements) {
-    ResolveWalkRefused { first: f, rest: rs, observation: o } => ResolveWalkRefused { first: f, rest: rs, observation: o }
+    ResolveWalkRefused { first: f, rest: rs, observation: o, partial: p } => ResolveWalkRefused { first: f, rest: rs, observation: o, partial: p }
     ResolveWalkAccepted { value: resolved, diagnostics: d, bindings: l } =>
       match resolve_requirement_member_refusal_optional(index: ctx.namespace.symbol_index, members: resolved.children) {
         Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
@@ -5459,17 +5467,17 @@ fn resolve_occupancy(ctx: ResolveContext, walked: ResolveNodeWalk) -> ResolveNod
         Absent => walked
         Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
       }
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => walked
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => walked
   }
 }
 
 // An explicit application whose head resolves to the canonical Optional is rewritten to Occupancy, so it owes the same contract.
 fn resolve_optional_application_contract_refusal_optional(ctx: ResolveContext, n: Node) -> Optional<Diagnostic> {
-  match node_positional_child_targets(node: n) {
-    Cons { head: head, tail: Cons { head: _, tail: Empty } } =>
-      match declaration_reference_path_optional(node: head) {
-        Present { value: path } =>
-          if path == optional_declaration_identity() {
+  match positional_child_target_nodes(node: n) {
+    Cons { head: _, tail: Cons { head: _, tail: Empty } } =>
+      match declaration_denotation_of_type(t: n) {
+        Present { value: denotation } =>
+          if denotation.declaration == optional_declaration_identity() {
             resolve_optional_declaration_refusal_optional(ctx: ctx, at: n)
           } else {
             optional_absent()
@@ -5557,7 +5565,7 @@ fn optional_arm_carries_the_parameter(payload: Node, param: Symbol) -> Bool {
 }
 
 fn resolve_type_application_normalized(n: Node) -> Node {
-  match node_positional_child_targets(node: n) {
+  match positional_child_target_nodes(node: n) {
     Cons { head: head, tail: Cons { head: argument, tail: Empty } } =>
       match declaration_reference_path_optional(node: head) {
         Present { value: path } =>
@@ -5588,8 +5596,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "resolve_realized_declaration" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "resolve_record_field_type_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "resolve_transform_operator_child" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "arrow_domain_frame_binders" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "bind_frame_binders" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "resolve_loop_carrier_binder" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "resolve_where_predicate_operator" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
 ]

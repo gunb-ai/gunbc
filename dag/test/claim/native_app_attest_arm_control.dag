@@ -1,6 +1,6 @@
 module test.claim.native_app_attest_arm_control
 
-import gunbc.instruments.native_app_attest { same_attestation_arm, AttestationValidationCategoryAbsent, AttestationNonceMismatch }
+import gunbc.instruments.app_attest_sample_rows { same_attestation_arm, AttestationValidationCategoryAbsent, AttestationNonceMismatch }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
