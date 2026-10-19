@@ -213,5 +213,4 @@ fn cargo_default_release_dir(build_root: String) -> String {
 
 // The relative face of the release layout, for sites bound to a working directory they do not name
 // (a CI job's cwd, a bash word whose root is a shell var).
-data cargo_default_release_dir_rel: String =
-  join([cargo_default_target_relative_segment, "/", cargo_default_release_profile], "")
+data cargo_default_release_dir_rel: String = join([cargo_default_target_relative_segment, "/", cargo_default_release_profile], "")
