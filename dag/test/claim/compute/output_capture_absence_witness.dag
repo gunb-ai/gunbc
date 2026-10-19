@@ -88,7 +88,7 @@ data unreadable_output_readings: ComputeOutputCaptureReadings = NotHashed {
 data staged_output_readings: ComputeOutputCaptureReadings = Stored { blob: "  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n" }
 data install_refused_readings: ComputeOutputCaptureReadings = NotStored { exit_code: 1, stderr: "cannot create '/store/.staged/plan.json': Read-only file system" }
 
-const returned_blob_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+data returned_blob_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 fn plan_output() -> DeclaredOutput {
   DeclaredOutput { path: "target/out/plan.json", root: TargetRoot }
