@@ -10889,43 +10889,43 @@ fn record_lit_expansion_declares_union(decl: Node, scope: InferScope) -> Node? {
   if expanded.connective == Disj { Present { value: expanded } } else { none }
 }
 
-fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
-  match lookup_type_by_name(env: scope.type_env, name: type_name) {
-    Present { value: decl } => decl.properties |> any(p => p.name == "sole_constructor")
-    Absent => false
-  }
-}
-
 // sole_constructor is a property of the TYPE, so every construction form producing an inhabitant
-// consults ONE authority here rather than each arm re-deriving the same definer-file comparison.
-// Two forms reach it: the record literal (infer_record_lit) and the CAST (`x as Sealed`).
+// consults ONE judgment here: "the declaration this spelling resolves to is sealed, and the
+// constructing module is not the module that declares it". Two forms reach it: the record literal
+// (infer_record_lit, which also reaches a coproduct ARM literal) and the CAST (`x as Sealed`).
+//
+// THE DEFINING MODULE IS THE KEY, NOT THE FILE. The previous test compared `decl.span.file` with
+// the use's file: a second authority for the module fact (DESIGN section 3: the path follows the
+// name, never the reverse), and wrong exactly where the two come apart -- two modules sharing a path
+// accepted each other's construction. The declaring module is read off the symbol index, whose
+// qualified name `<module>.<Name>` IS the declaration's identity.
+//
+// THE SEAL IS READ OFF THE OWNER. An arm's binding resolves to its owner coproduct, so a field-bearing
+// arm and a unit arm both answer the owner's `sole_constructor`; lookup_type_by_name projects a unit
+// arm to its own node, which carries no property, so it is not the seal's source here.
 //
 // WHY THE CAST NEEDED ITS OWN WIRING. validate_cast judges a cast only when source AND target are
 // both inside std.coercion's dag_cast_rules primitive domain, so `String as SomeRecord` fell through
-// its `!is_dag_cast_domain_type` arm unjudged — a cast into a sealed type re-typed the value with no
-// diagnostic at all. A cast IS construction: it is the one expression form that produces a value of
-// the target type from a value that is not one, which is exactly what a sole_constructor type says
-// only its definer may do. This is the gap the capability audit names by example (casts like
-// `as TransportScript`).
+// its `!is_dag_cast_domain_type` arm unjudged. A cast IS construction: it is the one expression form
+// that produces a value of the target type from a value that is not one.
 //
-// The refusal grain matches the record-literal arm exactly (the definer's FILE, decl.span.file), so a
-// sealed type's own module keeps every construction form and no other module gets any of them.
+// CONSTRUCTION ONLY. Matching an arm is consumption, not construction, and stays legal everywhere:
+// the sealed coproducts in the corpus are matched by their consumers by design.
 fn sole_constructor_construction_diags(
   type_name: String,
   span: SourceSpan,
   scope: InferScope
 ) -> List<ErrorNode> {
-  if type_has_sole_constructor(type_name: type_name, scope: scope) {
-    match lookup_type_by_name(env: scope.type_env, name: type_name) {
-      Present { value: decl } =>
-        if decl.span.file == span.file {
-          []
-        } else {
-          [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name, span: span }, module_name: scope.module_name)]
+  match lookup_binding_by_name(env: scope.type_env, name: type_name) {
+    Present { value: binding } =>
+      if binding.resolved.properties |> any(p => p.name == "sole_constructor") {
+        match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: concat(scope.module_name, ".", authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved))) {
+          Present { value: _ } => []
+          Absent => [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name, span: span }, module_name: scope.module_name)]
         }
-      Absent => []
-    }
-  } else { [] }
+      } else { [] }
+    Absent => []
+  }
 }
 
 data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the seam is deleted and the sites migrate to the carrier."
