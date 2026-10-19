@@ -1,0 +1,75 @@
+module test.claim.emitter_dying_base_reuse_witness
+
+// The dying-base fact (v1.compiler.ownership analyze_dying_base_sites) licenses an emitted
+// record literal to try Rc::get_mut on the parameter it is built from. This file is the discriminating
+// pair for it, handed to the compiler as fixture source because the forbidden claim -- the fact true
+// where the parameter is still alive after the literal -- is unwritable in an accepted corpus.
+// POSITIVE: a parameter read only through field projections, a terminal literal of its own type.
+// REDS, each a state where claiming the fact would make a reader of the old value see a new one:
+// the parameter is used whole (returned, passed on, kept in a binding), is captured by a lambda, or
+// the literal is not terminal or is of another type. Each must emit no Rc::get_mut.
+
+fn w_projected_param_terminal_literal_reuses() -> Bool {
+  compile_dag_rust_emit_check(
+    "module dyb_pos\n\nimport std.types { Int, List }\n\ntype Box3 {\n  a: Int\n  b: Int\n  c: Int\n  xs: List<Int>\n}\n\nfn bump(x: Box3) -> Box3 {\n  Box3 { a: x.a + 1, b: x.b, c: x.c, xs: x.xs }\n}\n",
+    "src/dyb_pos.rs",
+    ["Rc::get_mut"],
+    []
+  )
+}
+
+fn w_param_used_whole_after_projection_keeps_new() -> Bool {
+  compile_dag_rust_emit_check(
+    "module dyb_whole\n\nimport std.types { Int, List }\n\ntype Box3 {\n  a: Int\n  b: Int\n  c: Int\n  xs: List<Int>\n}\n\nfn keep(x: Box3) -> Int {\n  x.a\n}\n\nfn bump(x: Box3) -> Box3 {\n  let k = keep(x: x)\n  Box3 { a: k + 1, b: x.b, c: x.c, xs: x.xs }\n}\n",
+    "src/dyb_whole.rs",
+    [],
+    ["Rc::get_mut"]
+  )
+}
+
+fn w_param_returned_on_one_path_keeps_new() -> Bool {
+  compile_dag_rust_emit_check(
+    "module dyb_ret\n\nimport std.types { Int, List }\n\ntype Box3 {\n  a: Int\n  b: Int\n  c: Int\n  xs: List<Int>\n}\n\nfn bump(x: Box3) -> Box3 {\n  if x.a > 3 {\n    x\n  } else {\n    Box3 { a: x.a + 1, b: x.b, c: x.c, xs: x.xs }\n  }\n}\n",
+    "src/dyb_ret.rs",
+    [],
+    ["Rc::get_mut"]
+  )
+}
+
+fn w_param_captured_by_lambda_keeps_new() -> Bool {
+  compile_dag_rust_emit_check(
+    "module dyb_cap\n\nimport std.types { Int, List }\n\ntype Box3 {\n  a: Int\n  b: Int\n  c: Int\n  xs: List<Int>\n}\n\nfn bump(x: Box3, xs: List<Int>) -> Box3 {\n  let s = xs |> fold(init: 0, f: (acc, e) => acc + e + x.a)\n  Box3 { a: s, b: x.b, c: x.c, xs: x.xs }\n}\n",
+    "src/dyb_cap.rs",
+    [],
+    ["Rc::get_mut"]
+  )
+}
+
+fn w_literal_of_another_type_keeps_new() -> Bool {
+  compile_dag_rust_emit_check(
+    "module dyb_other\n\nimport std.types { Int, List }\n\ntype Box3 {\n  a: Int\n  b: Int\n  c: Int\n  xs: List<Int>\n}\n\ntype Pair {\n  p: Int\n  q: Int\n  r: Int\n  ys: List<Int>\n}\n\nfn conv(x: Box3) -> Pair {\n  Pair { p: x.a, q: x.b, r: x.c, ys: x.xs }\n}\n",
+    "src/dyb_other.rs",
+    [],
+    ["Rc::get_mut"]
+  )
+}
+
+test fn projected_param_with_terminal_literal_reuses_its_box() -> Bool {
+  w_projected_param_terminal_literal_reuses()
+}
+
+test fn param_used_whole_before_the_literal_does_not_reuse() -> Bool {
+  w_param_used_whole_after_projection_keeps_new()
+}
+
+test fn param_returned_on_one_path_does_not_reuse() -> Bool {
+  w_param_returned_on_one_path_keeps_new()
+}
+
+test fn param_captured_by_a_lambda_does_not_reuse() -> Bool {
+  w_param_captured_by_lambda_keeps_new()
+}
+
+test fn literal_of_another_type_does_not_reuse() -> Bool {
+  w_literal_of_another_type_keeps_new()
+}

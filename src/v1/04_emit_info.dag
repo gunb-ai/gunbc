@@ -610,6 +610,11 @@ type EmitGraphInfo {
   tco_cursor_params: List<String>
   tco_cursor_tails: Map<String, Int>
 
+  // Terminal record literals (keyed by span start) whose same-typed base parameter dies at the
+  // literal, mapped to that parameter. Derived once per fn by v1.compiler.ownership
+  // analyze_dying_base_sites; empty for a fn that is TCO-lowered.
+  dying_base_sites: Map<String, String>
+
   item_leaf_owner_modules: Map<String, LeafOwner>
 }
 
@@ -651,7 +656,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     fn_return_type: none,
     expected_type: none,
     tco_cursor_params: [],
-    tco_cursor_tails: empty_map()
+    tco_cursor_tails: empty_map(),
+    dying_base_sites: empty_map()
   }
 }
 
@@ -683,7 +689,8 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     fn_return_type: emit_info.fn_return_type,
     expected_type: emit_info.expected_type,
     tco_cursor_params: emit_info.tco_cursor_params,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 
@@ -715,7 +722,8 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     fn_return_type: fn_return_type,
     expected_type: fn_return_type,
     tco_cursor_params: emit_info.tco_cursor_params,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 
@@ -752,7 +760,8 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     fn_return_type: emit_info.fn_return_type,
     expected_type: expected_type,
     tco_cursor_params: emit_info.tco_cursor_params,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 

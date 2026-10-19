@@ -252,7 +252,7 @@ import v1.compiler.resolve { get_exported_names }
 import v1.compiler.infer_resolve {
   resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position,
 }
-import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
+import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs, analyze_dying_base_sites }
 import std.induction { SubValueUnknown, InductiveField }
 
 import v1.compiler.emit {
@@ -3661,7 +3661,8 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     fn_return_type: none,
     expected_type: none,
     tco_cursor_params: [],
-    tco_cursor_tails: empty_map()
+    tco_cursor_tails: empty_map(),
+    dying_base_sites: empty_map()
   }
   let registry = typed.item_registry
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
@@ -4366,7 +4367,8 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     fn_return_type: none,
     expected_type: none,
     tco_cursor_params: [],
-    tco_cursor_tails: empty_map()
+    tco_cursor_tails: empty_map(),
+    dying_base_sites: empty_map()
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
@@ -5828,7 +5830,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     fn_return_type: emit_info.fn_return_type,
     expected_type: emit_info.expected_type,
     tco_cursor_params: emit_info.tco_cursor_params,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    dying_base_sites: emit_info.dying_base_sites
   }
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
     scoped: build_scoped_data_item_index(typed_module: typed_module, data_items: data_items),
@@ -7870,6 +7873,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
               Absent => empty_set()
             }
           }
+          let fn_dying_base_sites = if item_is_tco { empty_map() } else {
+            analyze_dying_base_sites(params: item.params, body: fn_body, si: env.source_indices)
+          }
           let fn_emit_info = EmitGraphInfo {
             item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
             type_summaries: emit_info.type_summaries,
@@ -7897,7 +7903,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             fn_return_type: emit_info.fn_return_type,
             expected_type: emit_info.expected_type,
             tco_cursor_params: emit_info.tco_cursor_params,
-            tco_cursor_tails: emit_info.tco_cursor_tails
+            tco_cursor_tails: emit_info.tco_cursor_tails,
+            dying_base_sites: fn_dying_base_sites
           }
 
           let is_effectful = match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name(env: env, node: item) }) {
@@ -12657,6 +12664,14 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
         let concrete = authored_name_at(source_indices: si, node: expanded_rt)
         if concrete != "" && concrete != variant_name { Present { value: concrete } } else { tn }
       } else { tn }
+      match map_get(emit_info.dying_base_sites, to_string(value: expr.span.start)) {
+        Present { value: base_param } =>
+          match dying_literal_plan(lit: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) {
+            Present { value: plan } => return emit_dying_base_literal(plan: plan, base_param: base_param)
+            Absent => ()
+          }
+        Absent => ()
+      }
       let raw = emit_typed_record_lit(type_name: peeled_type_name, fields: fs, parent_enum: parent_enum, resolved_type: expanded_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       let rc_name = match parent_enum {
         Present { value: en } => en
@@ -14012,7 +14027,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_return_type: emit_info.fn_return_type,
               expected_type: emit_info.expected_type,
               tco_cursor_params: emit_info.tco_cursor_params,
-              tco_cursor_tails: emit_info.tco_cursor_tails
+              tco_cursor_tails: emit_info.tco_cursor_tails,
+              dying_base_sites: emit_info.dying_base_sites
             }
           Absent => emit_info
         }
@@ -14051,7 +14067,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_return_type: emit_info.fn_return_type,
               expected_type: emit_info.expected_type,
               tco_cursor_params: emit_info.tco_cursor_params,
-              tco_cursor_tails: emit_info.tco_cursor_tails
+              tco_cursor_tails: emit_info.tco_cursor_tails,
+              dying_base_sites: emit_info.dying_base_sites
             }
           Absent => emit_info
         }
@@ -16130,14 +16147,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         } else {
         let field_strs = fields |> map(f =>
           let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
-          let f_value = field_init_node_value(n: f)
-          let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: bare_qualified_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-          let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: f_name)
-            && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
-          let field_val = if needs_wrap {
-            concat("Some(", val_str, ")")
-          } else { val_str }
-          let stored_val = wrap_rust_record_field_value(raw: field_val, value_node: Present { value: f_value }, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: f_name)
+          let stored_val = emit_stored_record_field(f: f, resolved_type: resolved_type, outer_type_name: bare_qualified_name, summary_name: variant_summary_name, ctor_name: ctor_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           concat("    ", emit_ident(name: f_name, target: Rust), ": ", stored_val, ",")
         )
         let provided_names = fields |> map(f => field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices))
@@ -16195,6 +16205,147 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
       }
   }
+}
+
+// The stored representation of one record-literal field: the value rendered in its field context,
+// wrapped Some(..) when the field is optional and the value is not already, then wrapped for the
+// field's storage (callable Rc, Box). The struct literal and the dying-base reuse form both read it,
+// so the two cannot disagree on what a field holds.
+fn emit_stored_record_field(f: Node, resolved_type: Node, outer_type_name: String?, summary_name: String, ctor_name: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
+  let f_value = field_init_node_value(n: f)
+  let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: outer_type_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: summary_name, field_name: f_name)
+    && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
+  let field_val = if needs_wrap {
+    concat("Some(", val_str, ")")
+  } else { val_str }
+  wrap_rust_record_field_value(raw: field_val, value_node: Present { value: f_value }, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: f_name)
+}
+
+// A DYING-BASE RECORD LITERAL (v1.compiler.ownership analyze_dying_base_sites). The literal is the
+// terminal expression of a fn whose same-typed parameter is dead once it is built, so the result is
+// built in the parameter's own Rc box when that box is uniquely held: every field value is evaluated
+// into a temporary first (they read the parameter, which is still whole), then Rc::get_mut decides.
+// Held uniquely, the fields are overwritten in place and no allocation happens; held by anyone else,
+// the same literal is built behind a fresh Rc, which is the arm the emitter took before the fact, so
+// the fact can only remove an allocation, never change a value or add one. A field that is itself a
+// plain literal of a shared, unboxed struct is reused the same way, because the slot it fills is
+// overwritten and so its old box is dead too. No field's type changes: every slot stays Rc<T>, so
+// no container element widens (recurring_failure_mode by_value_record_widens_container_slots).
+type DyingLitField {
+  name: String
+  stored: String
+  inner_struct: String
+  inner_names: List<String>
+  inner_stored: List<String>
+}
+
+type DyingLitPlan {
+  struct_name: String
+  fields: List<DyingLitField>
+}
+
+fn plain_shared_struct_literal_name(lit: Node, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String? {
+  let si = scope.type_env.source_indices
+  match lit.expr_data {
+    ExprRecordLit { parent_enum: parent } =>
+      match parent {
+        Present { value: _ } => none
+        Absent =>
+          match record_lit_type_name_at(texpr: lit, source_indices: si) {
+            Present { value: tn } =>
+              let rt = expand_type_for_field_access(n: resolved_type(n: lit), env: scope.type_env, module_name: scope.module_name).resolved
+              let no_generics = match lookup_type_by_name(env: scope.type_env, name: tn) {
+                Present { value: d } => d.connective == Conj && (d.params |> count) == 0
+                Absent => false
+              }
+              let covers_all_fields = match lookup_emit_type_summary(emit_info: emit_info, type_name: tn) {
+                Present { value: ts } => (sorted_map_keys(ts.field_summaries) |> count) == (lit.children |> count)
+                Absent => false
+              }
+              if set_contains(shared_types, tn) && no_generics && covers_all_fields
+                && authored_name_at(source_indices: si, node: rt) == tn
+                && !set_contains(emit_info.recursive_type_set, tn)
+                && !is_optional_variant_name(name: tn) {
+                Present { value: tn }
+              } else { none }
+            Absent => none
+          }
+      }
+    _ => none
+  }
+}
+
+fn dying_literal_plan(lit: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> DyingLitPlan? {
+  let si = scope.type_env.source_indices
+  match plain_shared_struct_literal_name(lit: lit, scope: scope, shared_types: shared_types, emit_info: emit_info) {
+    Absent => none
+    Present { value: tn } =>
+      let rt = expand_type_for_field_access(n: resolved_type(n: lit), env: scope.type_env, module_name: scope.module_name).resolved
+      let planned = lit.children |> map(f =>
+        let f_name = field_init_node_name_at(n: f, source_indices: si)
+        let f_value = field_init_node_value(n: f)
+        let stored = emit_stored_record_field(f: f, resolved_type: rt, outer_type_name: Present { value: tn }, summary_name: tn, ctor_name: tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+        let slot_unwrapped = wrap_rust_record_field_value(raw: "__slot", value_node: none, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: tn, field_name: f_name) == "__slot"
+        let inner_name = if slot_unwrapped { plain_shared_struct_literal_name(lit: f_value, scope: scope, shared_types: shared_types, emit_info: emit_info) } else { none }
+        match inner_name {
+          Present { value: inner_tn } =>
+            let inner_rt = expand_type_for_field_access(n: resolved_type(n: f_value), env: scope.type_env, module_name: scope.module_name).resolved
+            let inner_fields = f_value.children
+            DyingLitField {
+              name: f_name,
+              stored: stored,
+              inner_struct: inner_tn,
+              inner_names: inner_fields |> map(g => field_init_node_name_at(n: g, source_indices: si)),
+              inner_stored: inner_fields |> map(g => emit_stored_record_field(f: g, resolved_type: inner_rt, outer_type_name: Present { value: inner_tn }, summary_name: inner_tn, ctor_name: inner_tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+            }
+          Absent => DyingLitField { name: f_name, stored: stored, inner_struct: "", inner_names: [], inner_stored: [] }
+        }
+      )
+      Present { value: DyingLitPlan { struct_name: tn, fields: planned } }
+  }
+}
+
+fn dying_rb_temp(field_index: Int, inner_index: Int) -> String {
+  concat("__rb_", to_string(value: field_index), "_", to_string(value: inner_index))
+}
+
+fn dying_inner_literal(fld: DyingLitField, field_index: Int) -> String {
+  let inits = fld.inner_names |> enumerate |> map(np => concat(emit_ident(name: np.second, target: Rust), ": ", dying_rb_temp(field_index: field_index, inner_index: np.first)))
+  rust_shared_wrap_ctor(inner_expr: concat(fld.inner_struct, " \{ ", inits |> join(separator: ", "), " \}"))
+}
+
+fn emit_dying_base_literal(plan: DyingLitPlan, base_param: String) -> String {
+  let indexed = plan.fields |> enumerate
+  let temp_lets = indexed |> flat_map(pair =>
+    let fld = pair.second
+    if fld.inner_struct == "" {
+      [concat("let ", dying_rb_temp(field_index: pair.first, inner_index: 0), " = ", fld.stored, ";")]
+    } else {
+      fld.inner_stored |> enumerate |> map(ip => concat("let ", dying_rb_temp(field_index: pair.first, inner_index: ip.first), " = ", ip.second, ";"))
+    }
+  )
+  let fresh_fields = indexed |> map(pair =>
+    let fld = pair.second
+    if fld.inner_struct == "" {
+      concat(emit_ident(name: fld.name, target: Rust), ": ", dying_rb_temp(field_index: pair.first, inner_index: 0))
+    } else {
+      concat(emit_ident(name: fld.name, target: Rust), ": ", dying_inner_literal(fld: fld, field_index: pair.first))
+    }
+  )
+  let fresh = rust_shared_wrap_ctor(inner_expr: concat(plan.struct_name, " \{ ", fresh_fields |> join(separator: ", "), " \}"))
+  let in_place = indexed |> map(pair =>
+    let fld = pair.second
+    let slot = concat("__rb_r.", emit_ident(name: fld.name, target: Rust))
+    if fld.inner_struct == "" {
+      concat(slot, " = ", dying_rb_temp(field_index: pair.first, inner_index: 0), ";")
+    } else {
+      let inner_assign = fld.inner_names |> enumerate |> map(np => concat("__rb_c.", emit_ident(name: np.second, target: Rust), " = ", dying_rb_temp(field_index: pair.first, inner_index: np.first), ";"))
+      concat("match Rc::get_mut(&mut ", slot, ") \{ Some(__rb_c) => \{ ", inner_assign |> join(separator: " "), " \} None => \{ ", slot, " = ", dying_inner_literal(fld: fld, field_index: pair.first), "; \} \}")
+    }
+  )
+  concat("\{ ", temp_lets |> join(separator: " "), " let mut __rb_h = ", emit_ident(name: base_param, target: Rust), "; match Rc::get_mut(&mut __rb_h) \{ Some(__rb_r) => \{ ", in_place |> join(separator: " "), " \} None => \{ __rb_h = ", fresh, "; \} \} __rb_h \}")
 }
 
 fn rust_zero_value(type_name: String) -> String? {
