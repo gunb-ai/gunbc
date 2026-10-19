@@ -231,4 +231,3 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /docs/plans/durable-work-handoff.md
 /docs/plans/source-layout-authority.md
 /docs/plans/census-scoped-run.md
-dag/test/claim/live_deploy/w2_row_head_red_probe.dag
