@@ -48,6 +48,16 @@ import v2.std.fn_index { FnArrowDecl, CallReach, call_reachable_decls_from_root,
 // command's own stderr. This is a SUPPLIED INPUT to the real fold -- the shape the capture route
 // hands the step when compute_exec reports the failure (work_provider_local.dag
 // compute_capture_exec_pairs) -- and nothing below relabels it.
+// Built from the path so a refusal row can assert WHICH output the fold refused and that no OTHER
+// output's name leaked into the detail -- the reading is the host's, and it names only what failed.
+fn absent_hash_reading_for(rel: String) -> ComputeOutputCaptureReading {
+  CaptureReadingFailed {
+    exit_code: 128,
+    stdout: "",
+    stderr: join(["fatal: could not read '", rel, "': No such file or directory"], "")
+  }
+}
+
 data absent_hash_reading: ComputeOutputCaptureReading = CaptureReadingFailed {
   exit_code: 128,
   stdout: "",
@@ -171,8 +181,8 @@ test fn the_fold_returns_every_present_output_in_declaration_order() -> Bool {
 test fn the_fold_refuses_at_the_first_absent_output_and_keeps_nothing_after_it() -> Bool {
   let verdict = compute_return_outputs_over_readings(pairs: [
     ComputeOutputCapturePair { declared: plan_output(), hash: present_hash_reading, install: install_ok_reading },
-    ComputeOutputCapturePair { declared: model_output(), hash: absent_hash_reading, install: never_taken },
-    ComputeOutputCapturePair { declared: plan_output(), hash: present_hash_reading, install: install_ok_reading }
+    ComputeOutputCapturePair { declared: model_output(), hash: absent_hash_reading_for(rel: "target/out/model.bin"), install: never_taken },
+    ComputeOutputCapturePair { declared: model_output(), hash: present_hash_reading, install: install_ok_reading }
   ])
   match verdict {
     OutputsMismatch { detail } =>
