@@ -6,7 +6,7 @@ SwiftUI (iOS 17+) realizing `gunbc.auth.approval_device_wire` (the byte contract
 trees (`gunbc.approve_ios_swift_protocol`, `gunbc.approve_ios_swift_wire`,
 `gunbc.approve_ios_swift_protocol_vector_tests`) and drift-gated, so edit the tree, never the file; the rest
 is still hand-authored. Both standings are recorded in `gunbc.approve_ios_app`
-(`approve_ios_transcribed_swift_frontier`, `approve_ios_hand_authored_swift_frontier`). The app invents no wire fact:
+(`approve_ios_transcribed_swift_frontier`, `approve_ios_retained_swift_rows`). The app invents no wire fact:
 every constant, field order and route is a transcription of the `.dag`, and the two byte builders are
 held to the `.dag` folds by `dag/test/fixture/approval_device_redemption/vectors.json`, which the
 `.dag` witness emits and `ApproveTests` reads.
