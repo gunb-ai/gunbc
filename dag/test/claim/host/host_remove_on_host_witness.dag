@@ -381,14 +381,14 @@ test fn a_genuinely_absent_entry_is_absent() -> Bool {
 // lstat success and stat failure: -L 0, -e 1, parent searchable. That vector is a PRESENT entry; the
 // follow-only reading classified it Absent.
 test fn a_symlink_whose_referent_does_not_resolve_is_present() -> Bool {
-  host_remove_state_present(st: entry_state(link: 0, follow: 1, parent: 0))
-    && host_remove_state_present(st: entry_state(link: 0, follow: 2, parent: 0))
+  host_remove_state_present(state: entry_state(link: 0, follow: 1, parent: 0))
+    && host_remove_state_present(state: entry_state(link: 0, follow: 2, parent: 0))
 }
 
 // An entry that resolves is present however the link probe answered, and an unreadable lookup stays
 // distinct from absence in each position.
 test fn a_resolving_entry_is_present_and_unreadable_lookups_stay_unreadable() -> Bool {
-  host_remove_state_present(st: entry_state(link: 1, follow: 0, parent: 0))
+  host_remove_state_present(state: entry_state(link: 1, follow: 0, parent: 0))
     && state_is_unreadable(st: entry_state(link: 2, follow: 1, parent: 0))
     && state_is_unreadable(st: entry_state(link: 1, follow: 2, parent: 0))
     && state_is_unreadable(st: entry_state(link: 1, follow: 1, parent: 1))
