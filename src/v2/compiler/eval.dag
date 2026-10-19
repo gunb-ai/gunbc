@@ -1733,7 +1733,7 @@ fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
 fn eval_transform_node(
   node: Node,
   args: List<RuntimeValue>,
-  _facts: InferredFacts,
+  facts: InferredFacts,
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
   interpreter: RuntimeBehaviorInterpreter,
@@ -1754,7 +1754,7 @@ fn eval_transform_node(
             )
         }
       } else if eval_node_is_list_introduction(node: node) {
-        eval_list_introduction_value(node: node, facts: _facts, args: args)
+        eval_list_introduction_value(node: node, facts: facts, args: args)
       } else if eval_transform_has_callee_reference(node: node) {
         bind_outcome(
           o: eval_transform_callee_edge(node: node),
