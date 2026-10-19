@@ -3,6 +3,7 @@ module v2.test.claim.emit.swift_produced_decl_emit
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_produced { emit_produced_decl }
 import v2.extdeps.languages.dag {
+  dag_arrow_domain_conj_node,
   dag_arrow_with_body_node,
   dag_int_literal_fixture_node,
   dag_int_type_binding
@@ -90,4 +91,40 @@ test fn swift_produced_decl_unwired_refuses_holds() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+// A PARAMETERIZED declaration is the shape the call rows must agree with. callable_apply_form prints
+// an UNLABELED positional call (`identity(606060)`), and Swift requires an argument label unless the
+// parameter declares `_`, so the swift param_layout prints `_ NAME: TYPE`. Restoring the bare
+// `NAME: TYPE` layout prints `func f(NAME: Int32, ...)`, which a positional call cannot reach.
+data swift_produced_decl_params_golden: String = "func swift_params(_ dag_binding_param_x: Int32, _ dag_binding_param_y: Int32) -> Int32 { return 606060; }"
+
+fn swift_produced_decl_params_text(target: TargetModel) -> String {
+  match dag_int_literal_fixture_node(lexeme: "606060") {
+    Accepted { value: literal, diagnostics: _ } =>
+      match emit_produced_decl(
+        decl: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Authored { name: ^swift_params },
+              target: dag_arrow_with_body_node(
+                domain: dag_arrow_domain_conj_node(),
+                return_type_binding: dag_int_type_binding(),
+                body: literal
+              )
+            }
+          ]
+        ),
+        target: target
+      ) {
+        Accepted { value: medium, diagnostics: _ } => medium.carried
+        Rejected { diagnostics: _ } => "SWIFT_PRODUCED_DECL_REJECTED"
+      }
+    Rejected { diagnostics: _ } => "SWIFT_PRODUCED_DECL_FIXTURE_REJECTED"
+  }
+}
+
+test fn swift_produced_decl_params_print_underscore_labels_holds() -> Bool {
+  swift_produced_decl_params_text(target: swift_target_model()) == swift_produced_decl_params_golden
 }
