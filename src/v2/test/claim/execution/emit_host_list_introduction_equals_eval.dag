@@ -573,3 +573,23 @@ test fn probe_exit_holds() -> Bool {
         Rejected { diagnostics: _ } => false }
     Rejected { diagnostics: _ } => false }
 }
+test fn probe_sig() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fn fold_demo(e1: i32, e2: i32, e3: i32, z: i32) -> i32")
+    Rejected { diagnostics: _ } => false }
+}
+test fn probe_sig2() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fn fold_demo(e1: i32, e2: i32, e3: i32, z: i32)")
+    Rejected { diagnostics: _ } => false }
+}
+test fn probe_body() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_call_callee(vec![e1, e2, e3], z, |acc, h| acc + h)")
+    Rejected { diagnostics: _ } => false }
+}
+test fn probe_noderef() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_demo(")
+    Rejected { diagnostics: _ } => false }
+}
+test fn probe_main() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_demo(1, 2, 3, 0)")
+    Rejected { diagnostics: _ } => false }
+}
