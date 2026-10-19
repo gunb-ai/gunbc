@@ -6,7 +6,7 @@ import std.optional { Present }
 // The carrier reads the artifact row that names its own emitted file, so it declares that dependency
 // rather than relying on whichever closure the entry file happens to pull in.
 import gunbc.generated_artifact { ApprovalDeviceVectorsArtifact, artifact_location }
-import gunbc.auth.approval_device_redemption_fixtures { surface_vectors, SurfaceVector, envelope_vectors_fixed, EnvelopeVector }
+import gunbc.auth.approval_device_redemption_fixtures { surface_vectors, SurfaceVector, envelope_vectors_fixed, EnvelopeVector, escape_specimens }
 import v2.extdeps.languages.swift.syntax {
   SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftType, SwiftArgument, SwiftDeclarationModifier,
   SwiftCommentedDecl, SwiftDocLineComment, SwiftLineComment,
@@ -91,6 +91,7 @@ fn at_vectors() -> SwiftDecl {
     at_decodable(n: "Envelope", m: at_string_fields(names: ["name", "body"])),
     at_decodable(n: "Refusal", m: at_string_fields(names: ["name", "body", "at", "cause"])),
     at_decodable(n: "PathSegment", m: at_string_fields(names: ["input", "encoded"])),
+    at_decodable(n: "Escape", m: at_string_fields(names: ["input", "string_json", "object_json"])),
     at_decodable(n: "Surface", m: at_string_fields(names: ["name", "value"])),
     at_decodable(n: "StoredRequest", m: [
       at_decodable(n: "Input", m: [sw_field(n: "requester", t: at_s()), sw_field(n: "purpose", t: at_s()), sw_field(n: "destructive", t: sw_t(n: "Bool")), sw_field(n: "expires_at", t: at_s())]),
@@ -106,6 +107,15 @@ fn at_vectors() -> SwiftDecl {
     sw_doc(c: ["refusal: malformed push-update bodies with the location and cause the server's decoder gives them."], d: sw_field(n: "refusal", t: sw_tarr(e: sw_t(n: "Refusal")))),
     sw_doc(c: ["path_segment: input -> encoded, emitted by the .dag path_segment fold."], d: sw_field(n: "path_segment", t: sw_tarr(e: sw_t(n: "PathSegment")))),
     sw_doc(c: ["surface: the one method, and the route paths, by name."], d: sw_field(n: "surface", t: sw_tarr(e: sw_t(n: "Surface")))),
+    sw_doc(
+      c: [
+        "escape: characters the emitter has to escape, with the bytes serialize_json gives them.",
+        "Optional in the Codable so that a fixture predating the section (it is emitted by",
+        "gunbc.auth.approval_device_redemption_fixtures escape_specimens) fails ONLY the test that",
+        "reads it, never the whole suite; that test refuses nil loudly.",
+      ],
+      d: sw_field(n: "escape", t: sw_topt(w: sw_tarr(e: sw_t(n: "Escape"))))
+    ),
     sw_doc(
       c: [
         "stored_request: the store's own rendering, so the detail screen's reader is joined to it.",
@@ -447,11 +457,28 @@ fn at_tests() -> List<SwiftDecl> {
         )]),
       ]
     ),
-    at_test(doc: ["The emitter's escaping is serialize_json's: controls as \\u00XX upper-case, \"/\" literal."], n: "testEmitterEscapesLikeSerializeJson", th: false, b: [
-      at_assert(n: "XCTAssertEqual", a: [sw_mem(b: sw_call(f: sw_path(b: "WireJson", m: "string"), a: [sw_pos(v: sw_str(s: "a\u{1F}b/\"c\\"))]), m: "serialized"), sw_raw(s: "\"a\\u001Fb/\\\"c\\\\\"")]),
-      at_assert(n: "XCTAssertEqual", a: [
-        sw_mem(b: sw_call(f: sw_path(b: "WireJson", m: "object"), a: [sw_pos(v: sw_arr(e: [sw_tuple(e: [sw_pos(v: sw_str(s: "k")), sw_pos(v: sw_call(f: sw_dot(n: "array"), a: [sw_pos(v: sw_arr(e: [sw_call(f: sw_dot(n: "string"), a: [sw_pos(v: sw_str(s: "x"))])]))]))])]))]), m: "serialized"),
-        sw_raw(s: "\{\"k\": [\"x\"]\}"),
+    // The escaping contract, driven by the fixture. Both the character and the bytes it must become
+    // come out of vectors.json's escape section, whose expectations the .dag serializer itself produced
+    // (see escape_vector_json in the fixture). Nothing here spells a character or an expected escape:
+    // the old version hand-typed one input and hand-typed its expected "\u00XX", so it proved nothing
+    // about the escape table and survived any change to it.
+    at_test(doc: ["The emitter's escaping is serialize_json's, over every specimen the fixture carries."], n: "testEmitterEscapesLikeSerializeJson", th: true, b: [
+      sw_let(n: "vectors", e: sw_try(e: sw_calln(f: "XCTUnwrap", a: [
+        sw_pos(v: sw_mem(b: at_load(), m: "escape")),
+        sw_pos(v: sw_str(s: "vectors.json has no escape section — it is emitted by gunbc.auth.approval_device_redemption_fixtures escape_specimens")),
+      ]))),
+      at_assert(n: "XCTAssertFalse", a: [sw_path(b: "vectors", m: "isEmpty"), sw_str(s: "no escape specimens")]),
+      sw_for(n: "v", e: sw_id(n: "vectors"), s: [
+        at_assert(n: "XCTAssertEqual", a: [
+          sw_mem(b: sw_call(f: sw_path(b: "WireJson", m: "string"), a: [sw_pos(v: sw_path(b: "v", m: "input"))]), m: "serialized"),
+          sw_path(b: "v", m: "string_json"),
+          sw_path(b: "v", m: "input"),
+        ]),
+        at_assert(n: "XCTAssertEqual", a: [
+          sw_mem(b: sw_call(f: sw_path(b: "WireJson", m: "object"), a: [sw_pos(v: sw_arr(e: [sw_tuple(e: [sw_pos(v: sw_str(s: "k")), sw_pos(v: sw_call(f: sw_dot(n: "array"), a: [sw_pos(v: sw_arr(e: [sw_call(f: sw_dot(n: "string"), a: [sw_pos(v: sw_path(b: "v", m: "input"))])]))]))])]))]), m: "serialized"),
+          sw_path(b: "v", m: "object_json"),
+          sw_path(b: "v", m: "input"),
+        ]),
       ]),
     ]),
   ]
@@ -555,11 +582,23 @@ fn approve_ios_protocol_vector_tests_swift_text() -> String {
 
 data approve_ios_vectors_envelope_refusal_reason: Symbol = "approve-ios-vectors-envelope-name-not-a-fixture-row"
 
+// An empty escape section would make the escaping test loop over nothing and pass. That is the failure
+// this file already refuses for load() ("a green run with no vectors would establish nothing"), and it is
+// reachable here from one direction load() has not: the specimens are assembled from other rows, so a
+// row set emptied at the source leaves the test green and vacuous. Refuse the emission instead.
+fn approve_ios_vectors_escape_specimens_present() -> Bool {
+  count(escape_specimens) > 0
+}
+
+data approve_ios_vectors_escape_refusal_reason: Symbol = "approve-ios-vectors-escape-section-has-no-specimens"
+
 fn expected_approve_ios_protocol_vector_tests_swift() -> SwiftRowEmission {
   if !approve_ios_vectors_resource_join_ok() {
     SwiftRowEmissionRefused { reason: approve_ios_vectors_resource_refusal_reason }
   } else if !approve_ios_vectors_envelope_keys_resolve() {
     SwiftRowEmissionRefused { reason: approve_ios_vectors_envelope_refusal_reason }
+  } else if !approve_ios_vectors_escape_specimens_present() {
+    SwiftRowEmissionRefused { reason: approve_ios_vectors_escape_refusal_reason }
   } else {
     swift_rows_emit_source_file(f: approve_ios_protocol_vector_tests_swift_file())
   }

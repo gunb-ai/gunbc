@@ -1,0 +1,156 @@
+// L6-ii: the escape test's CHARACTERS and its EXPECTED BYTES both come out of the fixture.
+//
+// Before this, testEmitterEscapesLikeSerializeJson spelled its own input ("a\u{1F}b/\"c\") and hand-typed
+// its own expected bytes ("\"a\\u001Fb/\\\"c\\\\\""). That is a second authority twice over: the character
+// nobody else named, and an escape table copied by hand from extdeps.languages.json.emit. A change to
+// the .dag escape rows — add \\u007F, drop \\b — moved nothing here, and the test kept asserting the OLD
+// bytes against the Swift and stayed green. No lane runs the Swift to notice (approve_ios_app's
+// approve_ios_vector_check_unenrolled_frontier: ApproveTests is executed by no lane).
+//
+// Now: data escape_specimens (the fixture) assembles the characters from rows the fixture already
+// declares — signing_field_separator, every segment_specimens row, every stored_request purpose — and
+// escape_vector_json asks serialize_json for the bytes. The carrier reads v.input / v.string_json /
+// v.object_json. Nothing in either .dag module spells an expected escape.
+//
+// THE CLAIM THAT DISCRIMINATES is textual and runs at both heads: at the old head the emitted Swift
+// contains WireJson.string("<literal>"), at this head it contains none and asserts against the row's
+// fields. So it is RED before and positive after, at the exact heads, not by argument.
+//
+// Second discriminator: emptied specimens. The guard turns an empty escape section into a named refusal
+// rather than a green loop over nothing; bypassing the guard makes the refusal claim pass at head, which
+// is why it is never read alone.
+//
+// Run each evidence_* at the head under review; a Bool false under `gunbc run --function` exits 2, which
+// means "did not return a ProcessExit" and is NOT a verdict, so every evidence_* returns one explicitly.
+module test.claim.approve.ios.vectors.escape.derivation.witness
+
+import std.types { Bool, String, List }
+import std.optional { Present }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.approve_ios_swift_protocol_vector_tests {
+  approve_ios_protocol_vector_tests_swift_text,
+  approve_ios_vectors_escape_refusal_reason,
+  approve_ios_vectors_escape_specimens_present,
+  expected_approve_ios_protocol_vector_tests_swift,
+}
+import gunbc.auth.approval_device_redemption_fixtures { escape_specimens, approval_device_vectors_json }
+import gunbc.generated_artifact { ApprovalDeviceVectorsArtifact, artifact_location }
+import extdeps.languages.json.emit { JsonValue, serialize_json, json_string }
+import v2.extdeps.languages.swift.rows { SwiftRowEmission, SwiftRowEmitted, SwiftRowEmissionRefused }
+
+// ---------------------------------------------------------------- helpers (not claims)
+
+fn emitted_helper() -> String {
+  approve_ios_protocol_vector_tests_swift_text()
+}
+
+// The old shape's signature: a string literal handed straight to WireJson.string. Its presence means an
+// input was typed into the carrier instead of read from a row.
+fn has_hand_typed_string_input_helper() -> Bool {
+  emitted_helper().contains("WireJson.string(\"")
+}
+
+// The new shape's signature: the assertions are driven by the row's fields.
+fn asserts_against_row_fields_helper() -> Bool {
+  emitted_helper().contains("WireJson.string(v.input)")
+    && emitted_helper().contains("v.string_json")
+    && emitted_helper().contains("v.object_json")
+}
+
+// A specimen counts as exercising the escaper only if serialize_json changes it — "needs escaping" is
+// decided by the serializer itself, never by a character list kept in this file.
+fn needs_escaping_helper(s: String) -> Bool {
+  serialize_json(v: json_string(s: s)) != concat(concat("\"", s), "\"")
+}
+
+fn escaping_specimen_count_helper() -> Nat {
+  count(filter(escape_specimens, s => needs_escaping_helper(s)))
+}
+
+// The fixture's escape section, counted by the fixture's own row count rather than a number typed here.
+fn fixture_escape_row_count_helper() -> Nat {
+  count(filter(escape_specimens, s => approval_device_vectors_json().contains(concat("\"input\": ", serialize_json(v: json_string(s: s))))))
+}
+
+fn refused_for_escape_reason_helper() -> Bool {
+  match expected_approve_ios_protocol_vector_tests_swift() {
+    SwiftRowEmitted { source: _ } => false
+    SwiftRowEmissionRefused { reason: r } => r == approve_ios_vectors_escape_refusal_reason
+  }
+}
+
+// ---------------------------------------------------------------- test fn (Bool claims)
+
+// POSITIVE at this head, RED at the previous one: no escape input is typed into the carrier, and the
+// assertions read the row's fields. Both halves are required, so a test that dropped the literals but
+// asserted nothing would not pass.
+test fn no_escape_input_or_expectation_is_typed_in_the_carrier() -> Bool {
+  !has_hand_typed_string_input_helper() && asserts_against_row_fields_helper()
+}
+
+// RED at the head: the pre-change shape, where an input was spelled as a literal. Read with the claim
+// above as the two heads of one discriminator.
+test fn emitted_text_still_carries_a_hand_typed_escape_literal() -> Bool {
+  has_hand_typed_string_input_helper()
+}
+
+// POSITIVE at the head: at least one specimen actually needs escaping, as decided by serialize_json.
+// Zero would mean the loop asserts trivial identities and could never fail.
+test fn at_least_one_specimen_exercises_the_escaper() -> Bool {
+  escaping_specimen_count_helper() > 0
+}
+
+// POSITIVE at the head: every specimen reaches the emitted vectors.json, counted against the fixture's
+// own rows — the section is the rows, not a copy.
+test fn every_specimen_reaches_the_emitted_section() -> Bool {
+  count(escape_specimens) > 0 && fixture_escape_row_count_helper() == count(escape_specimens)
+}
+
+// POSITIVE at the head: the guard resolves and bytes are really produced.
+test fn escape_guard_resolves_and_bytes_are_emitted() -> Bool {
+  approve_ios_vectors_escape_specimens_present() && emitted_helper() != ""
+}
+
+// INVERSE at the head: false while specimens exist. Evaluated with the specimens emptied it is the
+// direction that must pass, so it is never read alone.
+test fn emission_is_refused_for_the_escape_reason() -> Bool {
+  refused_for_escape_reason_helper()
+}
+
+// ---------------------------------------------------------------- evidence wrappers (ProcessExit)
+
+fn evidence_no_escape_input_or_expectation_is_typed_in_the_carrier() -> ProcessExit {
+  if no_escape_input_or_expectation_is_typed_in_the_carrier() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "the emitted escape test still spells an input, or does not assert against row fields" }
+  }
+}
+
+fn evidence_emitted_text_still_carries_a_hand_typed_escape_literal() -> ProcessExit {
+  if emitted_text_still_carries_a_hand_typed_escape_literal() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "no hand-typed escape literal present (expected only at the pre-change head)" }
+  }
+}
+
+fn evidence_at_least_one_specimen_exercises_the_escaper() -> ProcessExit {
+  if at_least_one_specimen_exercises_the_escaper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "no specimen changes under serialize_json; the escaping loop would be vacuous" }
+  }
+}
+
+fn evidence_every_specimen_reaches_the_emitted_section() -> ProcessExit {
+  if every_specimen_reaches_the_emitted_section() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "a specimen does not appear in the emitted escape section" }
+  }
+}
+
+fn evidence_escape_guard_resolves_and_bytes_are_emitted() -> ProcessExit {
+  if escape_guard_resolves_and_bytes_are_emitted() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "the escape guard did not resolve, or no bytes were emitted" }
+  }
+}
+
+fn evidence_emission_is_refused_for_the_escape_reason() -> ProcessExit {
+  if emission_is_refused_for_the_escape_reason() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "emission was not refused for the escape reason" }
+  }
+}
