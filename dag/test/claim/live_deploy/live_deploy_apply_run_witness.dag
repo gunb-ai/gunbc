@@ -46,12 +46,16 @@ fn the_intent() -> HostEffectIntent {
   }
 }
 
+fn grant_boom() -> Optional<String> {
+  Present { value: "grant-boom" }
+}
+
 fn ports(command_code: Int, stdin_code: Int) -> DeployApplyPorts {
   DeployApplyPorts {
     command: fn(c) { observed(code: command_code, err: "cmd-boom") },
     stdin: fn(c, p) { observed(code: stdin_code, err: "stdin-boom") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
-    helper_grant: fn(r) { Present { value: "grant-boom" } },
+    helper_grant: fn(r) { grant_boom() },
   }
 }
 
