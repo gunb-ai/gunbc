@@ -96,6 +96,7 @@ test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
         ApplyLegCommand { step: _, command: _ } => false
         ApplyLegInstallFile { step: _, command: _, payload: _ } => false
         ApplyLegEnsureDirectory { target: _ } => false
+        ApplyLegRepairDirectoryEntries { command: _ } => false
       }
     ApplyPlanReady { legs: _ } => false
     ApplyPlanRefused { step: _, reason: _ } => false
