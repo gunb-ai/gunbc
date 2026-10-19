@@ -8279,7 +8279,11 @@ mod boundary_population_tests {
 
     #[test]
     fn declared_bound_row_feeds_progress_and_termination_alike() {
-        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let roots = vec![
+            repo.join("dag").to_string_lossy().to_string(),
+            repo.join("src/v2").to_string_lossy().to_string(),
+        ];
         let bound = regen_convergence_generation_bound(&roots).expect("bound row reads");
         assert!(bound > 0);
         assert!(!regen_convergence_bound_exceeded(&roots, (bound - 1) as usize).unwrap());
