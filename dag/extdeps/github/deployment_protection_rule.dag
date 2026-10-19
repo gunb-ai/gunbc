@@ -1094,6 +1094,36 @@ fn deployment_protection_rule_citation_count() -> Int {
 // one this module publishes. A rename that leaves a citation pointing at a retired name reddens this
 // rather than quietly dropping the citation — the failure mode where a model keeps its authority rows
 // while the facts they covered have moved on. The list below is the live-name census; adding a cited
+// Every cited fact points at a declaration that EXISTS in this module, and every authority cited is
+// one this module publishes. A rename that leaves a citation pointing at a retired name reddens this
+// rather than quietly dropping the citation — the failure mode where a model keeps its authority rows
+// while the facts they covered have moved on. The list below is the live-name census; adding a cited
+// fact without adding it here fails, which is the point.
+data deployment_protection_rule_live_fact_names: List<NonEmptyStr> = [
+  "review_endpoint_path",
+  "review_state_wire",
+  "pending_deployments_endpoint_path",
+  "human_review_endpoint_path",
+  "rule_webhook_field_environment",
+  "environment_protection_rule_type_values",
+  "custom_rule_response_timeout",
+  "rule_gate_approval_ceiling",
+  "wait_timer_maximum",
+  "pending_deployment_reviewer_type_wire",
+  "spec_pinned_commit",
+  "installation_readback_endpoint_path",
+]
+
+fn every_citation_names_a_live_declaration() -> Bool {
+  (deployment_protection_rule_fact_citations |> count)
+    == (deployment_protection_rule_live_fact_names |> count)
+    && (deployment_protection_rule_fact_citations
+        |> all(c => c.fact.module_path == "extdeps.github.deployment_protection_rule"))
+    && (deployment_protection_rule_fact_citations
+        |> all(c => deployment_protection_rule_live_fact_names
+             |> any(n => n == c.fact.decl_name)))
+}
+
 // The scope rows, each pointing at a declaration by name. Kept as DeclarationRef values because the
 // citation table above is what reads them; a ref with no citation is dangling and gets deleted.
 fn gate_ref(decl_name: NonEmptyStr) -> DeclarationRef {
