@@ -27,11 +27,7 @@ import gunbc.githooks.githooks_pre_commit_emit { expected_githooks_pre_commit_sh
 import gunbc.fabric.fci1_bounded_execution_context_emit {
   expected_fci1_bounded_execution_context_env, Fci1BoundedExecutionContextEmitted, Fci1BoundedExecutionContextEmissionRefused
 }
-import gunbc.runner.runner_host_grants { runner_host_refused_sudoers_content, runner_host_sudoers_content }
-import gunbc.runner.runner_host_deploy {
-  runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent,
-  RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused
-}
+import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
 import gunbc.generated_workflow_provenance {
   generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable
 }
@@ -123,18 +119,9 @@ fn tier_o_unadorned_body(a: GeneratedArtifact) -> TierOArtifactBody {
       Fci1BoundedExecutionContextEmitted { content } => TierOArtifactProduced { content: content }
       Fci1BoundedExecutionContextEmissionRefused { reason } => TierOArtifactRefused { reason: reason }
     }
-    RunnerHostSudoersArtifact { host } => match runner_host_deploy_for(host: host) {
-      RunnerHostDeployFound { deploy } =>
-        TierOArtifactProduced { content: runner_host_sudoers_content(deploy: deploy, artifact_path: artifact_path(a: a)) }
-      RunnerHostDeployUnmodeled { host: unmodeled } =>
-        TierOArtifactRefused { reason: concat("no runner host deploy row for enrolled host ", unmodeled as String) }
-      RunnerHostDeployRefused { host: refused, cause: why } =>
-        match runner_host_spec_for(host: refused) {
-          RunnerHostSpecFound { spec: spec } =>
-            TierOArtifactProduced { content: runner_host_refused_sudoers_content(spec: spec, cause: why, artifact_path: artifact_path(a: a)) }
-          RunnerHostSpecAbsent { host: h } =>
-            TierOArtifactRefused { reason: concat("runner host refused with no spec: ", h as String) }
-        }
+    RunnerHostSudoersArtifact { host } => match runner_host_sudoers_body(host: host, artifact_path: artifact_path(a: a)) {
+      RunnerHostSudoersBodyProduced { content } => TierOArtifactProduced { content: content }
+      RunnerHostSudoersBodyRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     _ => TierOArtifactNotTierO
   }

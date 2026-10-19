@@ -39,7 +39,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.typed_remote_file_write {
+import gunbc.typed_remote_file_write { NoValidation,
   RemoteFileModeOwnerReadWriteWorldRead,
   RemoteFileViaNonInteractiveSudo,
   TypedRemoteFileWriteAdmission,
@@ -723,6 +723,7 @@ fn write_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext
     admission: site_pxe_edge_file_admission(file: file),
     mode: RemoteFileModeOwnerReadWriteWorldRead,
     privilege: RemoteFileViaNonInteractiveSudo,
+    validation: NoValidation,
   ) {
     TypedRemoteFileConvergenceRefused { step: st, reason: why } => EdgeFileWriteRefused { step: st, reason: why }
     TypedRemoteFileConverged { converged: _ } => EdgeFileWrittenAndReadBack
