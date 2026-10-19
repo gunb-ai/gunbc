@@ -2313,10 +2313,10 @@ test fn every_reserved_character_the_shelf_claims_is_actually_refused_in_both_po
   let digest = "8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj."
   let spliced_digest = fold(reserved, init: 0, f: (n, r) =>
     if (r as String) == "$" then n
-    else if cause_of(crypt_digest: concat(concat("$6$saltsalt$", r as String), digest)) is Present { value: _ } then n + 1 else n)
+    else if refuses(crypt_digest: concat(concat("$6$saltsalt$", r as String), digest)) then n + 1 else n)
   let spliced_salt = fold(reserved, init: 0, f: (n, r) =>
     if (r as String) == "$" then n
-    else if cause_of(crypt_digest: concat(concat(concat("$6$salt", r as String), "salt$"), digest)) is Present { value: _ } then n + 1 else n)
+    else if refuses(crypt_digest: concat(concat(concat("$6$salt", r as String), "salt$"), digest)) then n + 1 else n)
   let testable = fold(reserved, init: 0, f: (n, r) =>
     if (r as String) == "$" then n else n + 1)
   testable > 0 && spliced_digest == testable && spliced_salt == testable
