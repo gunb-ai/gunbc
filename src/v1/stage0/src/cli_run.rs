@@ -15280,7 +15280,13 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                         // The index is keyed by the span's OWN file, not by the path being swept:
                         // a diagnostic may point at the file it was parsed from, and pinning the
                         // key here would silently locate it against the wrong text.
-                        let mut source_indices = std::collections::HashMap::new();
+                        // The map is the SEED'S map type (`im::HashMap`), which is what the
+                        // generated signature takes -- see cli_run/pool_acquire.rs for the same
+                        // hand-off elsewhere in the host.
+                        let mut source_indices: im::HashMap<
+                            String,
+                            std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                        > = im::HashMap::new();
                         source_indices.insert(span.file.clone(), index.clone());
                         lock.push(format!(
                             "{}: {}",

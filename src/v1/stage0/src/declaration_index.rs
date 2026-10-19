@@ -3219,10 +3219,15 @@ pub fn render_finding(
                 // keyed by the SAME path the span carries, which is what the authority looks up.
                 let index =
                     crate::v1_std_core::build_newline_index(finding.rel_path.clone(), content);
-                let mut source_indices: std::collections::HashMap<
+                // THE AUTHORITY TAKES THE SEED'S OWN MAP TYPE: the generated
+                // `render_span_location` signature is `Rc<HashMap<..>>` where `HashMap` is
+                // `im::HashMap` (v1_std_core.rs `use im::{... HashMap ...}`), not
+                // `std::collections::HashMap` -- the host precedent for handing an index map to a
+                // seed function is `im::HashMap::new()` (cli_run/pool_acquire.rs).
+                let mut source_indices: im::HashMap<
                     String,
                     std::rc::Rc<crate::v1_std_core::NewlineIndex>,
-                > = std::collections::HashMap::new();
+                > = im::HashMap::new();
                 // `build_newline_index` already RETURNS `Rc<NewlineIndex>` -- the map's value type
                 // is `Rc<NewlineIndex>`, so the index goes in as built. Wrapping it again is a
                 // second pointer to the same fact, and the compiler says so.

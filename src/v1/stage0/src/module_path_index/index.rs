@@ -62,10 +62,11 @@ impl ModuleBindingRefusal {
         let span = self.span();
         let index =
             crate::v1_std_core::build_newline_index(self.source_path.clone(), self.source.clone());
-        let mut source_indices: std::collections::HashMap<
-            String,
-            std::rc::Rc<crate::v1_std_core::NewlineIndex>,
-        > = std::collections::HashMap::new();
+        // THE AUTHORITY TAKES THE SEED'S OWN MAP TYPE: the generated signature says
+        // `Rc<HashMap<..>>` with `HashMap` = `im::HashMap`, the same map the rest of the host hands
+        // to seed functions (cli_run/pool_acquire.rs `im::HashMap::new()`).
+        let mut source_indices: im::HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>> =
+            im::HashMap::new();
         // `build_newline_index` already RETURNS `Rc<NewlineIndex>`; the map's value type is
         // `Rc<NewlineIndex>`, so the index goes in exactly as built.
         source_indices.insert(self.source_path.clone(), index);
