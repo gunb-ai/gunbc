@@ -1453,7 +1453,7 @@ fn authored_ident_at(source_indices: Map<String, NewlineIndex>, span: SourceSpan
 
 fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> String {
   match node.ident_span {
-    Present { value: ident } => authored_text_at(source_indices: source_indices, span: ident.span, fallback: node.name)
+    Present { value: ident } => ident.text
     Absent => ""
   }
 }
