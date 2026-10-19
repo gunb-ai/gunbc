@@ -6206,16 +6206,70 @@ fn target_value_expr_callable_apply_is_resolved_primitive(wire: Node) -> Bool {
   )
 }
 
-// WHETHER A RESOLVED CALLEE NODE IS THE std.primitives CONTRACT DECLARATION OF ITS OWN LEAF: its resolved qualified path
-// equals the contract path derived from the leaf. A same-leaf declaration elsewhere resolves to another path.
-fn target_transform_callee_is_resolved_primitive(body: Node, callee: Symbol) -> Bool {
+// THE ONE READER OF A CALLEE'S RESOLVED DECLARATION IDENTITY. A resolved call's operator is a marked
+// declaration-reference node (v2.std.qualified_name declaration_reference_path_optional), and its qualified
+// path is the callee's identity. That identity decides BOTH facts a call needs, so neither is read twice:
+// a path equal to the std.primitives contract path of its own leaf takes the primitive row (leaf spelling);
+// any other declaration takes the target's declaration-reference spelling
+// (v2.std.compilers.target_model DeclarationReferenceForm, the row a type-position reference already uses),
+// which refuses typed when the target models no module-scoped form, never the bare leaf, because two
+// imports can share a leaf. A callee that is not a declaration reference (a surface atom, a local) keeps the
+// atom reading.
+type TargetResolvedCallee {
+  callee: Symbol
+  primitive: Bool
+}
+
+fn target_transform_resolved_callee(body: Node, target: TargetModel) -> Outcome<TargetResolvedCallee> {
   match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
-    Absent => false
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: body)
+      )
     Present { value: child } =>
       match declaration_reference_path_optional(node: child) {
-        Absent => false
+        Absent =>
+          bind_outcome(
+            o: target_transform_surface_op_atom(node: body),
+            f: fn(leaf) { outcome_accepted(TargetResolvedCallee { callee: leaf, primitive: false }) }
+          )
         Present { value: path } =>
-          path == primitive_contract_qualified_name(head: callee)
+          match qualified_name_last_segment(qn: path) {
+            Absent =>
+              outcome_rejected(
+                target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: child)
+              )
+            Present { value: leaf } =>
+              if path == primitive_contract_qualified_name(head: leaf) {
+                outcome_accepted(TargetResolvedCallee { callee: leaf, primitive: true })
+              } else {
+                bind_outcome(
+                  o: type_expression_projection_from_target(target: target),
+                  f: fn(projection) {
+                    bind_outcome(
+                      o: target_type_expr_declaration_reference_emitted(
+                        projection: projection,
+                        path: path,
+                        reference: child
+                      ),
+                      f: fn(emitted) {
+                        match list_at_optional(xs: positional_child_target_nodes(node: emitted), index: 0) {
+                          Present { value: spelled } =>
+                            bind_outcome(
+                              o: target_node_atom_identity(node: spelled),
+                              f: fn(spelling) {
+                                outcome_accepted(TargetResolvedCallee { callee: spelling, primitive: false })
+                              }
+                            )
+                          Absent =>
+                            outcome_rejected(target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: child))
+                        }
+                      }
+                    )
+                  }
+                )
+              }
+          }
       }
   }
 }
@@ -15849,8 +15903,8 @@ fn target_project_transform_callable_apply_in_arrow_scope(
     )
   } else {
   bind_outcome(
-    o: target_transform_surface_op_atom(node: body),
-    f: fn(callee) {
+    o: target_transform_resolved_callee(body: body, target: target),
+    f: fn(resolved) {
       match list_tail(xs: positional_child_target_nodes(node: body)) {
         Absent =>
           outcome_rejected(
@@ -15886,10 +15940,10 @@ fn target_project_transform_callable_apply_in_arrow_scope(
             ),
             f: fn(args) {
               outcome_accepted(
-                if target_transform_callee_is_resolved_primitive(body: body, callee: callee) {
-                  target_value_expression_resolved_primitive_call(callee: callee, args: args)
+                if resolved.primitive {
+                  target_value_expression_resolved_primitive_call(callee: resolved.callee, args: args)
                 } else {
-                  target_value_expression_callable_apply(callee: callee, args: args)
+                  target_value_expression_callable_apply(callee: resolved.callee, args: args)
                 }
               )
             }
