@@ -1212,8 +1212,8 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       }
     }
     else if left_opt && right_opt {
-      let left_inner = optional_payload(n: left)
-      let right_inner = optional_payload(n: right)
+      let left_inner = optional_application_payload(n: left)
+      let right_inner = optional_application_payload(n: right)
       let left_inner_is_unit = is_unit_like(n: left_inner)
       let right_inner_is_unit = is_unit_like(n: right_inner)
       if left_inner_is_unit || right_inner_is_unit { true }

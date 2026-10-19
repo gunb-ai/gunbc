@@ -15,9 +15,8 @@ module test.claim.emitter_bare_variant_expected_adoption_witness
 //
 // WHAT THIS FILE GUARDS, AND WHY IT IS THE CARDINALITY HALF RATHER THAN THE HEADLINE DEFECT.
 // Adoption must be refused when the variant is reached through an OPTIONAL COERCION rather than
-// owned at the expected type's own level. Optionality is not a wrapper type in this model --
-// `BinOp?` is a BinOp node whose return_cardinality is CardOptional (v1.compiler.core
-// with_optional_cardinality) -- so a head-name comparison cannot see it. For a record field `binop:
+// owned at the expected type's own level. `BinOp?` is the std.optional application
+// (a compiler-generated reference to std.optional Optional) over BinOp, whose head is Optional, not BinOp. For a record field `binop:
 // BinOp?` initialised with the bare arm `Mod`, the head IS BinOp and the arm IS found, but the
 // constructor's own type is BinOp and the optionality is a coercion the emitter performs by
 // wrapping. Adopting the expected node there makes the value look already-optional, the wrap is

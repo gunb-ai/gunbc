@@ -6,8 +6,8 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// ONE TYPE, TWO REPRESENTATIONS: `T?` (the payload type carrying CardOptional) and the std.optional
-// coproduct `Optional<P>` are the same type exactly when P is identical to T. The relation lives in
+// ONE TYPE, TWO REPRESENTATIONS: `T?` and the std.optional coproduct `Optional<P>` are ONE type (T? is the
+// compiler-generated std.optional application), identical exactly when P is identical to T. The relation lives in
 // v1.compiler.infer_types node_type_compatible, the one compatibility authority, so every consumer
 // of it (the if-join, a let against a declared `T?`) answers alike -- gunbc.recurring_failure_mode
 // optional_equality_answers_by_representation.

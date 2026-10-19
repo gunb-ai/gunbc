@@ -171,7 +171,7 @@ fn mode_input_has_choice_options(v: YamlValue, expected: List<String>) -> Bool {
 
 // THE FIRST TRIGGER IS AN OPTIONAL, AND THE GUARD IS THE MATCH. List indexing and `.first()` are
 // total operations declared `T?` (`v1.compiler.access` `check_index_access_node` types `xs[i]` as
-// `with_optional_cardinality(elem)`, and the interpreter answers `Null` past the end), so passing
+// the std.optional application over the element, and the interpreter answers `Null` past the end), so passing
 // `on[0]` where `workflow_trigger_entry` declares a required `WorkflowTrigger` was the witness
 // asserting a cardinality the language never granted. gunbc#11720's wall refuses that site
 // (`RefusedOptionalAtRequired`), which is correct; the witness is the earliest unjustified boundary

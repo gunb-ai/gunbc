@@ -5,7 +5,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // Seed-route acquisition of gunbc.structural_realization_bindings optional_declaration_ref: T? is
-// a parse fact (raw type node return_cardinality CardOptional), consumed by the closure walk.
+// a parse fact (a compiler-generated reference to std.optional Optional), consumed by the closure walk.
 // No ambient prelude. Rust because the collector runs inside the seed resolve path, before any
 // v2 carrier that would itself need this closure to evaluate.
 data optional_declaration_acquisition_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {

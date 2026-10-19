@@ -83,8 +83,8 @@ fn cli_dispatch_rung_classes() -> List<CliDispatchRungClass> {
 //
 // `std.constructors.Cardinality` is the right authority and was consumed by an earlier revision of
 // this module, widened from `Required | Optional` to carry a `Many` arm. It does not work, and the
-// failure is not this module's: `v1.compiler.core` declares a SECOND `Cardinality`
-// (`Required | CardOptional`), so the two share the variant name `Required` and any module the v1
+// failure is not this module's: `v1.compiler.core` DECLARED a SECOND `Cardinality`
+// (`Required | CardOptional`, since retired with CardOptional), so the two share the variant name `Required` and any module the v1
 // seed imports that also reaches `std.constructors` puts both in one closure. Measured by
 // execution on the required-regen path: `variant 'Required' appears in both 'Cardinality' and
 // 'Cardinality'`, one hard diagnostic, and the emitter is exactly such a module.
@@ -92,9 +92,7 @@ fn cli_dispatch_rung_classes() -> List<CliDispatchRungClass> {
 // The fork is KNOWN and predates this work -- `gunbc.emit_summary_map_consumer_partition` carries
 // it as a named specimen, recording that the two are "two DIFFERENT unit-only enums under one
 // key" and that the emitter's variant map answers from whichever module its fold reached last.
-// Consolidating them is a v1-seed migration across dozens of `CardOptional` sites in `00_core`,
-// `04_lookup`, `04_types`, `04_patterns` and the three emitters; it is not this change's to make,
-// and doing it badly under cover of a CLI model would be worse than naming it.
+// The consolidation was the CardOptional retirement (v1 seed), which deleted the second `Cardinality`.
 //
 // So this is a THIRD name for multiplicity and it is debt, not a design. It is preferred to the
 // alternatives only because the other two are worse: consuming `std.constructors` does not

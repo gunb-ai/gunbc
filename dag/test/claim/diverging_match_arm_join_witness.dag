@@ -237,8 +237,8 @@ test fn both_orderings_of_a_two_arm_join_carry_the_element_type() -> Bool {
 // where at terminal position nothing consults it.
 //
 // The scrutinee must NOT be Optional: `declared_type_inhabitance` bails to
-// `InhabitanceUndecidable { UndecidableOptionalCarrier }` when either side carries
-// CardOptional, which would swallow the comparison before it happens. A plain
+// `InhabitanceUndecidable { UndecidableOptionalCarrier }` when either side is an
+// std.optional application, which would swallow the comparison before it happens. A plain
 // coproduct scrutinee walks past that bail.
 fn probe_consume(r: ProbeResult) -> Int {
   match r {

@@ -2841,11 +2841,11 @@ pub fn node_type_compatible(
                                                 if (left_opt.clone() && right_opt.clone()) {
                                                     {
                                                         let left_inner =
-                                                            crate::v1_std_core::optional_payload(
+                                                            optional_application_payload(
                                                                 left.clone(),
                                                             );
                                                         let right_inner =
-                                                            crate::v1_std_core::optional_payload(
+                                                            optional_application_payload(
                                                                 right.clone(),
                                                             );
                                                         let left_inner_is_unit =

@@ -82,8 +82,8 @@ data retained_decl_facts_dimensionless_projection: RetainedLegacyRustTestModule 
 // must NAME the expected diagnostic.
 data retained_none_undetermined_carrier_refuse: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "none_undetermined_carrier_refuse_test.rs",
-  purpose: "Discriminating RED for the Phase C Value::Null-split emitter fail-open: calls emit_none_keyword_for_resolved_type on the seed emitter surface across three arms — an undetermined carrier refuses, CardOptional emits None, and a non-optional resolved carrier refuses. No floor witness pins the refusing arms today." as NonEmptyStr,
-  dissolution: UnboundDissolution { description: "A floor witness pins all three arms through compile_dag_diagnostic_census, identifying the EXPECTED diagnostic for each refusing arm plus the accepted CardOptional emission as positive control. A generic compile_dag_rust_emit_check false is explicitly insufficient: it cannot separate the expected refusal from a malformed fixture or an unrelated earlier failure." as NonEmptyStr },
+  purpose: "Discriminating RED for the Phase C Value::Null-split emitter fail-open: calls emit_none_keyword_for_resolved_type on the seed emitter surface across three arms — an undetermined carrier refuses, an Optional-declared carrier emits None, and a non-optional resolved carrier refuses. No floor witness pins the refusing arms today." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A floor witness pins all three arms through compile_dag_diagnostic_census, identifying the EXPECTED diagnostic for each refusing arm plus the accepted Optional-declared emission as positive control. A generic compile_dag_rust_emit_check false is explicitly insufficient: it cannot separate the expected refusal from a malformed fixture or an unrelated earlier failure." as NonEmptyStr },
 }
 
 // RE-OBSERVED 2026-08-11, reason REWRITTEN. The prior row claimed the corpus

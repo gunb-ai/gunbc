@@ -1,6 +1,6 @@
 //! Discriminating RED for Phase C (sharp-bee-290 msg_6317aebe):
 //! undetermined-carrier `none`/`None` must REFUSE, never emit the fail-open
-//! Rust `None` default. CardOptional resolves type-directed to `None`.
+//! Rust `None` default. A type carrying the std.optional declaration identity resolves type-directed to `None`.
 //!
 //! SCAFFOLD (DESIGN §7 HAND-RUST GATE — explicit deferral / RetainedNonMigratable):
 //! Lane: Value::Null split (`gunbc.plans.value_null_split`; ROADMAP fail-closed
@@ -14,14 +14,16 @@
 //! Checkable receipt: `dag/test/retirement/none_undetermined_carrier_refuse_retained.dag`.
 
 use std::rc::Rc;
+use v1_compiler::gunbc_structural_realization_bindings::optional_declaration_ref;
+use v1_compiler::std_decl_ref::DeclarationRef;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_emit::emit_keyword;
 use v1_compiler::v1_compiler_emit_rust::emit_none_keyword_for_resolved_type;
 use v1_compiler::v1_std_core::{
-    no_span, Cardinality, Connective, ExprData, InferredNode, Node, NodeOccurrenceIdentity,
+    no_span, Connective, ExprData, InferredNode, Node, NodeOccurrenceIdentity,
 };
 
-fn node_with_cardinality(cardinality: Cardinality) -> Rc<Node> {
+fn node_with_declaration(declaration: Option<Rc<DeclarationRef>>) -> Rc<Node> {
     let span = no_span();
     Rc::new(Node {
         name: "T".to_string(),
@@ -32,7 +34,6 @@ fn node_with_cardinality(cardinality: Cardinality) -> Rc<Node> {
         connective: Connective::NoConnective,
         params: Rc::new(im::Vector::new()),
         inferred: None,
-        return_cardinality: cardinality,
         uses: Rc::new(im::Vector::new()),
         body: None,
         transport: None,
@@ -43,7 +44,7 @@ fn node_with_cardinality(cardinality: Cardinality) -> Rc<Node> {
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
-        declaration: None,
+        declaration,
         expr_data: Rc::new(ExprData::NoExprData),
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     })
@@ -67,8 +68,8 @@ fn undetermined_carrier_refuses_not_null_default() {
 }
 
 #[test]
-fn card_optional_emits_none() {
-    let rt = node_with_cardinality(Cardinality::CardOptional);
+fn optional_declaration_emits_none() {
+    let rt = node_with_declaration(Some(optional_declaration_ref()));
     let resolved = Some(Rc::new(InferredNode::Resolved { node: rt }));
     let out = emit_none_keyword_for_resolved_type(resolved);
     // The spelling is the Rust keyword row's (`extdeps.languages.rust.emit`, key `null`), read
@@ -76,13 +77,13 @@ fn card_optional_emits_none() {
     assert_eq!(
         out,
         emit_keyword("null".to_string(), RenderTarget::Rust),
-        "CardOptional must type-direct to the Rust null keyword row, got: {out}"
+        "an Optional-declared carrier must type-direct to the Rust null keyword row, got: {out}"
     );
 }
 
 #[test]
 fn non_optional_resolved_carrier_refuses() {
-    let rt = node_with_cardinality(Cardinality::Required);
+    let rt = node_with_declaration(None);
     let resolved = Some(Rc::new(InferredNode::Resolved { node: rt }));
     let out = emit_none_keyword_for_resolved_type(resolved);
     assert!(
