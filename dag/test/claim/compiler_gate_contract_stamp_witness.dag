@@ -43,9 +43,7 @@ import gunbc.witness.compiler_gate_contract_stamp {
   compiler_gate_contract_stamp_fixture_other_stamp,
   compiler_gate_contract_stamp_fixture_stamp,
   compiler_gate_contract_stamp_stamped_env,
-  compiler_gate_contract_stamp_workflow_with_env,
-
-}
+  compiler_gate_contract_stamp_workflow_with_env
 }
 import gunbc.parse_verdict_schema {
   parse_verdict_restore_ancestor_ordinals

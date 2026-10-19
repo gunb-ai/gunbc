@@ -576,25 +576,6 @@ fn compiler_gate_stamp_env_entries(entries: List<YamlKeyValue>) -> List<YamlKeyV
   )
 }
 
-// WHETHER THIS ENTRY IS THE STAMP MEMBER, decided WITHOUT REGARD TO SPELLING.
-//
-// WHY IT IS NOT A BARE COMPARISON. The previous arm was `kv.key == compiler_gate_contract_stamp_env_key`,
-// which compared the RAW text the ingest handed over -- and the ingest preserves the quotes it was given,
-// so a member written `"GUNBC_COMPILER_GATE_CONTRACT_STAMP": deadbeefcafe0123` carries the key
-// `"GUNBC_COMPILER_GATE_CONTRACT_STAMP"` with two quote characters IN IT and did not equal the key. The
-// second member was therefore invisible not only to the emitted awk but to THIS model too, and a
-// workflow whose first member is well spelled was read as declaring the stamp exactly once.
-//
-// That is the general shape of this module's own defect class: a refusal that is conditional on its own
-// trigger being spelled the way the recogniser expects. `KEY: <valid>` plus `KEY:` with an empty value
-// was missed the same way, for the same reason (the awk requires `": "`, which an empty member does not
-// have). So recognition strips one layer of surrounding quotes -- matching, or nothing is stripped --
-// and the CLASSIFICATION of what it found stays strict: an empty value, an expression, or anything that
-// is not the one supported scalar form is Unreadable, never a member to be skipped. Over-recognising is
-// the safe direction, because every extra member recognised is a refusal, and a false refusal is loud.
-fn compiler_gate_contract_stamp_key_is_the_member(key: String) -> Bool {
-  compiler_gate_contract_stamp_bare_key(key: trim(s: key)) == compiler_gate_contract_stamp_env_key
-}
 
 // THE THREE SPELLINGS A MAPPING KEY CAN ARRIVE IN, BUILT FROM THE KEY RATHER THAN SLICED APART.
 //
@@ -857,18 +838,37 @@ fn compiler_gate_contract_stamp_awk_program() -> String {
       "function is_member(l,  t) {\n",
       "  t = lstrip(l)\n",
       "  if (index(t, key \":\") == 1) { return 1 }\n",
-      "  if (index(t, dq key \":\") == 1) { return 1 }\n",
-      "  if (index(t, sq key \":\") == 1) { return 1 }\n",
+      // THE CLOSING QUOTE IS PART OF THE NEEDLE. A quoted key is written `\"KEY\":`, so the quote sits
+      // BETWEEN the key and the colon; the first version of this function searched for `"KEY:` and matched
+      // NOTHING, which is how a quoted-key second member got past it a second time -- the fix was written,
+      // looked right, and was executed against a real awk to find it did not fire at all. Three needles:
+      // bare, double-quoted (both quotes present), single-quoted (both quotes present).
+      "  if (index(t, dq key dq \":\") == 1) { return 1 }\n",
+      "  if (index(t, sq key sq \":\") == 1) { return 1 }\n",
       "  return 0\n",
       "}\n",
-      "$0 ~ /^env:[[:space:]]*$/ { if (in_env) { bad = \"duplicate\" }; in_env = 1; next }\n",
+      // FIRST DEFECT WINS, which is why every assignment below is guarded on bad being empty. Without the
+      // guard the order INSIDE the member rule decides the reported reason: a second member with an empty
+      // value is simultaneously a duplicate and a malformed value, the duplicate assignment runs first and
+      // the form assignment then overwrites it -- so the guard would blame the VALUE while the model says
+      // the member was declared twice. A refusal that names the wrong defect is the failure this module
+      // refuses everywhere else, and the two have different remedies: delete a member, or regenerate.
+      "$0 ~ /^env:[[:space:]]*$/ { if (in_env && bad == \"\") { bad = \"duplicate\" }; in_env = 1; next }\n",
       "in_env && $0 ~ /^[^[:space:]]/ { in_env = 0 }\n",
       "in_env && is_member($0) {\n",
-      "  if (seen) { bad = \"duplicate\" }\n",
+      "  if (seen && bad == \"\") { bad = \"duplicate\" }\n",
       "  v = substr($0, index($0, \":\") + 1)\n",
       "  gsub(/^[ \\t]+/, \"\", v)\n",
       "  gsub(/[ \\t]+$/, \"\", v)\n",
-      "  if (v !~ /^[0-9a-f]+$/ || length(v) != " + to_string(compiler_gate_contract_stamp_literal_length) + ") { bad = \"form\" }\n",
+      // ONE MATCHING QUOTE PAIR AROUND THE VALUE IS NOT PART OF THE SCALAR. This is what the YAML reader
+      // this module folds over does (extdeps.languages.yaml.ingest yaml_quoted_scalar -> single/double
+      // quoted), so `KEY: '0acdbc124e13bfec'` declares the SAME stamp as `KEY: 0acdbc124e13bfec`. The
+      // first version refused the quoted spelling, which is a FALSE REFUSAL -- and the case table had
+      // baked that refusal in as a passing RED, which is how a wrong reader survives review: nobody asks
+      // whether the document it refused was actually illegal. An unbalanced quote is not a quote pair and
+      // is left alone, so it still fails the strict form below; `${{ 'x' }}` is not a matched pair either.
+      "  if (length(v) >= 2 && ((substr(v, 1, 1) == dq && substr(v, length(v), 1) == dq) || (substr(v, 1, 1) == sq && substr(v, length(v), 1) == sq))) { v = substr(v, 2, length(v) - 2) }\n",
+      "  if ((v !~ /^[0-9a-f]+$/ || length(v) != " + to_string(compiler_gate_contract_stamp_literal_length) + ") && bad == \"\") { bad = \"form\" }\n",
       "  seen = 1\n",
       "}\n",
       // TWO SENTINELS, BECAUSE THE TWO REFUSALS BLAME DIFFERENT THINGS. The model already separates them
@@ -1417,7 +1417,6 @@ fn compiler_gate_contract_stamp_guard_step() -> Step {
 type CompilerGateContractStampForgedForm
   = ForgedWrapped             // the valid stamp with characters added around it (the original escape)
   | ForgedExpression          // the valid stamp inside a GitHub expression (the second escape)
-  | ForgedQuoted              // the valid stamp in single quotes -- a legal YAML scalar, not the form
   | ForgedTruncated           // the valid stamp with its last digit dropped (15)
   | ForgedExtended            // the valid stamp with one extra digit (17)
   | ForgedUppercased          // the valid stamp uppercased -- hex, but not the renderer's output
@@ -1436,6 +1435,17 @@ type CompilerGateContractStampEvidenceSubject
   | SubjectCommitted          // the committed artifact, unchanged
   | SubjectRewritten          // its stamp member moved, as a contract-changing PR would
   | SubjectDemoted            // the member demoted into a step-level env, structurally absent
+  // THE SAME VALID STAMP WRITTEN AS A QUOTED SCALAR, which is LEGAL. The YAML reader this module
+  // folds over unquotes a quoted scalar (extdeps.languages.yaml.ingest yaml_quoted_scalar), so
+  // `KEY: 0acdbc...` declares exactly the same stamp as `KEY: 0acdbc...` -- one matching quote
+  // pair is not part of the scalar. This is a CONTROL, and it exists because the emitted reader
+  // was once wrong in the OVER-REFUSING direction: it required the sixteen characters to sit bare
+  // after the colon, refused the quoted spelling, and this table had baked that refusal in as a
+  // PASSING RED named "forged quoted scalar". Refusing a legal document is not a safe error -- it
+  // is the guard refusing PRs whose workflow is fine, and naming a defect that does not exist --
+  // and it survived because a red-looking case is never questioned. Calling a quote "forged" was
+  // the tell.
+  | SubjectQuotedScalar
   | SubjectForged { form: CompilerGateContractStampForgedForm }   // member forged in exactly this way
 
 type CompilerGateContractStampEvidenceCase {
@@ -1515,11 +1525,11 @@ fn compiler_gate_contract_stamp_evidence_cases() -> List<CompilerGateContractSta
       expected_finding: "StampUnreadable"
     },
     CompilerGateContractStampEvidenceCase {
-      label: "RED forged quoted scalar",
-      subject: SubjectForged { form: ForgedQuoted },
+      label: "CONTROL quoted scalar is the same stamp (no false refusal)",
+      subject: SubjectQuotedScalar,
       running: compiler_gate_contract_stamp_running_probe,
-      expected_exit: "1",
-      expected_finding: "StampUnreadable"
+      expected_exit: "0",
+      expected_finding: "paired"
     },
     CompilerGateContractStampEvidenceCase {
       label: "RED forged truncated (15 digits)",
@@ -1945,6 +1955,7 @@ fn compiler_gate_contract_stamp_evidence_subject_text(s: CompilerGateContractSta
     SubjectCommitted => "committed"
     SubjectRewritten => "rewritten"
     SubjectDemoted => "demoted"
+    SubjectQuotedScalar => "quoted-scalar"
     SubjectForged { form: f } => "forged:" + compiler_gate_contract_stamp_forged_form_text(f: f)
   }
 }
@@ -1955,7 +1966,6 @@ fn compiler_gate_contract_stamp_forged_form_text(f: CompilerGateContractStampFor
   match f {
     ForgedWrapped => "wrapped"
     ForgedExpression => "expression"
-    ForgedQuoted => "quoted"
     ForgedTruncated => "truncated"
     ForgedExtended => "extended"
     ForgedUppercased => "uppercased"

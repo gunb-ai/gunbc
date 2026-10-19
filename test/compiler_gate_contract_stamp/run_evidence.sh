@@ -340,6 +340,27 @@ emit_guard() {
 # legitimately changes the invoked contract would. Refuses rather than silently emitting a copy in
 # which the member is missing, which would make the "contract-changing PR proceeds" control green
 # for the wrong reason.
+# THE SAME VALID STAMP, WRITTEN AS A QUOTED SCALAR. A subject rather than a form, because quoting is
+# NOT A FORGERY: the YAML reader the guard folds over unquotes a quoted scalar, so the quoted spelling
+# declares exactly the same stamp and the guard must PAIR with it. It is here as its own subject so the
+# case reads as a control -- a document that is legal must come out green -- rather than as another
+# "forged X, expect refusal" row, which is how the over-refusing reader hid: the table asked for a
+# refusal of a legal document and got one, and everybody read that as a pass.
+#
+# The quote is built with sprintf("%c", 39) because this program is itself single-quoted, and an
+# apostrophe inside would close the quoting.
+quote_stamp() {
+  awk -v new="$1" '
+    function die(m) { printf "FAIL: %s\n", m > "/dev/stderr"; exit 1 }
+    BEGIN { sq = sprintf("%c", 39) }
+    /^[ \t]*GUNBC_COMPILER_GATE_CONTRACT_STAMP:[ \t]*[0-9a-f]+[ \t]*$/ {
+      sub(/:.*/, ": " sq new sq); moved++
+    }
+    { print }
+    END { if (moved != 1) die("expected exactly one workflow-level stamp member to quote, quoted " moved) }
+  ' "$2" > "$3"
+}
+
 rewrite_stamp() {
   awk -v new="$1" '
     function die(m) { printf "FAIL: %s\n", m > "/dev/stderr"; exit 1 }
@@ -576,10 +597,13 @@ if [ "${1:-}" = "--case" ]; then
     demoted)   demote_stamp "$running" "$committed" "$tmpdir/demoted.yml" \
                  || bail "cannot build subject 'demoted'"
                tree="$tmpdir/demoted.yml" ;;
+    quoted-scalar) quote_stamp "$running" "$committed" "$tmpdir/quoted.yml" \
+                 || bail "cannot build subject 'quoted-scalar'"
+               tree="$tmpdir/quoted.yml" ;;
     forged:*)  forge_stamp "${subject#forged:}" "$running" "$committed" "$tmpdir/forged.yml" \
                  || bail "cannot build subject '$subject'"
                tree="$tmpdir/forged.yml" ;;
-    *) bail "unknown subject '$subject' (modelled: fixture, committed, rewritten, demoted)" ;;
+    *) bail "unknown subject '$subject' (modelled: fixture, committed, rewritten, demoted, quoted-scalar)" ;;
   esac
 
   d="$tmpdir/single_$(printf '%s' "$label" | tr -c '[:alnum:]' '_')"
