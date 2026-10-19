@@ -465,18 +465,18 @@ test fn emit_host_list_introduction_unwired_refuses_holds() -> Bool {
   )
 }
 
-fn probe_arm(n: Int) -> Bool {
+fn probe_reason(r: Symbol) -> Bool {
   match emit_fold_eval_run_with(target: rust_list_fold_target_model_staging()).verdict {
-    Pass => n == 0
-    SemanticMismatch { actual: _, falsification: _ } => n == 1
-    BuildFailed { actual: _, diagnostic: _ } => n == 2
-    RunFailed { actual: _, diagnostic: _ } => n == 3
-    Deferred { actual: _, diagnostic: _ } => n == 4
+    BuildFailed { actual: _, diagnostic: d } => d.reason == r
+    _ => false
   }
 }
 
-test fn probe_pass() -> Bool { probe_arm(n: 0) }
-test fn probe_mismatch() -> Bool { probe_arm(n: 1) }
-test fn probe_build_failed() -> Bool { probe_arm(n: 2) }
-test fn probe_run_failed() -> Bool { probe_arm(n: 3) }
-test fn probe_deferred() -> Bool { probe_arm(n: 4) }
+test fn probe_r_field_miss() -> Bool { probe_reason(r: ^emit_fold_eval_list_field_miss) }
+test fn probe_r_not_agg() -> Bool { probe_reason(r: ^emit_fold_eval_list_not_aggregate) }
+test fn probe_r_arg_absent() -> Bool { probe_reason(r: ^emit_fold_eval_arg_absent) }
+test fn probe_r_literal() -> Bool { probe_reason(r: ^emit_fold_eval_literal_miss) }
+test fn probe_r_closure() -> Bool { probe_reason(r: ^emit_fold_eval_closure_arg_not_closure) }
+test fn probe_r_closure_absent() -> Bool { probe_reason(r: ^emit_fold_eval_closure_arg_absent) }
+test fn probe_r_grounding() -> Bool { probe_reason(r: ^eval_rejected_grounding_not_derived) }
+test fn probe_r_pending() -> Bool { probe_reason(r: ^eval_rejected_pending_children) }
