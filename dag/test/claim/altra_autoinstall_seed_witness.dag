@@ -86,6 +86,7 @@ import gunbc.provisioning.altra_autoinstall_seed {
   BootedThisSeed,
   BindingIsForeign,
   BoundDisk,
+  BoundDiskUnread,
   CandidateIdentityUnobserved,
   ConsoleEntryAuthorisation,
   ConsoleEntryLocked,
@@ -131,6 +132,8 @@ import gunbc.provisioning.altra_autoinstall_seed {
   ConsoleEntryLocked,
   ConsoleEntryUnlocked,
   QuestionAnswered,
+  PackageVerifiedSilent,
+  altra_required_late_package_rows,
   QuestionUnanswered,
   UnclassifiedPackage,
   OpenSshServerPackage,
@@ -280,6 +283,14 @@ data bmc_virtual_media_device: StorageDevice = BareDevice {
 }
 
 data bay_population: List<StorageDevice> = [unique_disk, twin_disk_one, twin_disk_two]
+
+// THE SAME MODEL, SAME CAPACITY, DIFFERENT SERIAL: two physically distinct drives the catalog rule cannot tell
+// apart, which is what makes "same rule, different drive" expressible without the rule itself being the variable.
+data sibling_disk: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Present { value: "SIBLING-SERIAL-0009" },
+  persistence: Persistent,
+}
 
 data serial_selector: TargetDiskSelector = ByObservedSerial { serial: "UNIQUE-SERIAL-0007" }
 data twin_selector: TargetDiskSelector = ByObservedSerial { serial: "TWIN-SERIAL-0001" }
@@ -987,11 +998,19 @@ test fn a_plaintext_password_is_refused_by_the_receipt() -> Bool {
     && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnjXX")
     && refuses(crypt_digest: "$5$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && accepts(crypt_digest: "$6$saltsaltX$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
-    // A SALT MAY HOLD PUNCTUATION. libxcrypt's salt class is a FORBIDDEN set (any character except '", ':',
-    // CR, LF), so "sa!tsalt" is a legal salt and refusing it would deny a real credential to a board whose only
-    // console is the BMC. This line used to be a `refuses`, which is the defect the spec reading caught.
-    && accepts(crypt_digest: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
-    // ...and the class really is a forbidden set rather than a preference: a COLON is what must be refused.
+    // A SALT MAY HOLD PUNCTUATION, BUT NOT ANY PUNCTUATION, AND THIS IS THE LINE THAT WAS WRONG TWICE. An
+    // earlier revision refused "sa!tsalt" because it read the accepted set as an allowed-alphabet; the spec
+    // reading then flipped it to accept, because the .hash grammar's salt class [^$:\r\n] admits '!'. Both
+    // readings were asking the wrong question. The grammar describes the SHAPE of a salt token; the ACCEPTANCE
+    // CONTRACT is the shared scan over the whole setting, which refuses '!' (and : ; * \ and every non-printable
+    // byte) before the sha512crypt parser is ever reached. Measured against the shipped library, four candidates
+    // differing only in this one respect: "$6$saltsalt$..." hashes, "$6$sa!tsalt$..." and "$6$sa:lt$..." are both
+    // refused. So '!' is a refusal, the punctuation that is genuinely permitted is the class below, and the
+    // difference between a grammar and a contract is the whole reason this shelf cites the source it cites.
+    && refuses(crypt_digest: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // A COLON is refused too, and by the SAME rule — the shared scan, not the salt class. Pinning which rule
+    // refused it is the point: an operator told "your salt holds a forbidden character" goes looking at their
+    // credential generator, when the thing to fix is that the setting carries a delimiter at all.
     && refuses(crypt_digest: "$6$sa:tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
     && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6d!9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
@@ -1068,7 +1087,8 @@ fn accepts(crypt_digest: String) -> Bool {
 // reads upstream. Together they are two-sided — widen the row and the spec pins below go red; hard-code the door
 // and the comparison to the row goes red. Either edit alone leaves one witness standing.
 //
-// The literals are the sha512crypt `.hash` line of crypt(5) at libcrypt1 1:4.4.38-1: salt {1,16}, digest
+// The literals are the sha512crypt `.hash` line of crypt(5) at libcrypt1 1:4.4.36-4build1 (Noble arm64), whose
+// sha512crypt row is byte-identical to the CI image’s 4.4.38: salt {1,16}, digest
 // [./0-9A-Za-z]{86}, cost [1-9][0-9]+ within 1000..999,999,999 (which, both bounds being powers of ten, is the
 // digit-count pair 4..9).
 test fn the_crypt_figures_are_cited_and_the_door_reads_them() -> Bool {
@@ -1140,9 +1160,18 @@ test fn each_refusal_arm_names_the_part_that_failed() -> Bool {
           seen == chars(85) && wanted == chars(86)
           && match cause_of(crypt_digest: "$5$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
             Present { value: SchemeUnsupported } =>
+              // ':' IN THE SALT IS REFUSED, AND BY THE SHARED SCAN — the arm that runs first, exactly as
+              // libxcrypt runs it (crypt.c scans the whole setting before dispatching to the scheme parser). It
+              // used to be pinned as SaltHoldsForbiddenCharacter, which was true only because the scan did not
+              // exist yet; keeping the old pin would have meant the witness was describing a rule order the code
+              // no longer has. The salt class is not therefore untested: it is provably SUBSUMED by this scan,
+              // and the_salt_character_class_is_subsumed_by_the_shared_scan pins that (including the space and
+              // backslash cases the class does not even cover), so if the order ever moves the subsumption
+              // witness goes red rather than this one quietly crediting the wrong rule.
               match cause_of(crypt_digest: "$6$sa:tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
-                Present { value: SaltHoldsForbiddenCharacter } =>
-                  match cause_of(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                Present { value: SettingHoldsReservedCharacter { reserved: delimiter } } =>
+                  (delimiter as String) == ":"
+                  && match cause_of(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
                     Present { value: RoundsMalformed } =>
                       match cause_of(crypt_digest: "$6$12345678901234567$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
                         Present { value: SaltTooLong { length: seen_salt, ceiling: allowed } } =>
@@ -1194,7 +1223,16 @@ fn cause_of(crypt_digest: String) -> Optional<AdminPasswordRefusalCause> {
 // is what makes each check load-bearing (DESIGN §4b: an obligation nobody can falsify is not a test).
 test fn a_single_defect_candidate_is_blamed_on_the_part_that_is_broken() -> Bool {
   // 86 characters and otherwise well formed, so ONLY the digest-alphabet check can reject it.
-  match cause_of(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6d!9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+  //
+  // WHY '#' AND NOT '!', WHICH IS WHAT THIS CANDIDATE USED TO CARRY. A candidate defective in several ways makes
+  // every rule but the first untestable, and '!' is defective in two: it is outside the digest alphabet AND it is
+  // one of the five characters the shared scan refuses before the parser is ever reached. Pinning the
+  // digest-alphabet arm with '!' therefore left that arm unobservable — the scan answered first, and the arm
+  // could be deleted with this witness still green. '#' is printable, is not reserved, and is outside the digest
+  // alphabet: it passes every earlier check and reaches exactly one. (The shipping library is more lenient here
+  // and would take '#' silently; that leniency is filed in the shelf as receipt-only, and refusing it here is the
+  // shadow-entry contract crypt.5 states rather than the library's behaviour.)
+  match cause_of(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6d#9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
     Present { value: DigestNotInCryptAlphabet } =>
       // four well-formed segments; fails only because the leading segment is not empty.
       match cause_of(crypt_digest: "x$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
@@ -1470,7 +1508,19 @@ fn build_seed_fixture_with_modules(
   }
 }
 
-fn build_seed_fixture(
+// THE FIXTURE SEED, BUILT UNDER A NAMED RULE. The disk rule is a parameter rather than a constant because the
+// binding's "same rule, different drive" witness has to hold the RULE fixed and vary the DRIVE; a builder that
+// hardwired a selector can only produce fixtures whose rule moves, which is exactly the case the seed/target join
+// now (correctly) refuses — so the witness would have compared a bound binding against a refused one and called
+// that two addresses. The unparameterised name below is this builder under the rule every existing caller already
+// used, so those call sites keep their meaning unchanged.
+//
+// THE LATE SET IS THE REAL ONE. It used to be `late_packages: []`, which is what made the "the produced seed
+// installs the Altra late package set" witness a witness about an empty list: a nonempty claim can only be
+// falsified if the fixture is nonempty, and it was not. It now carries the four cited-silent rows the board
+// actually needs, which only the fourth PackageIntent arm made expressible.
+fn build_seed_fixture_under_rule(
+  rule: TargetDiskSelector,
   network: SeedNetworkPosture,
   packages: List<PackageIntent>,
   entry_keys: List<SshPublicKey>,
@@ -1488,8 +1538,8 @@ fn build_seed_fixture(
         loadable_modules: [AhciPlatformModule, NvmeBlockModule],
         late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
         install_packages: packages,
-        late_packages: [],
-        disk: serial_selector,
+        late_packages: altra_required_late_package_rows(),
+        disk: rule,
         entry: entry,
         credential: credential,
         locale: EnUsUtf8,
@@ -1499,6 +1549,28 @@ fn build_seed_fixture(
     Absent => Absent
   }
 }
+
+// THE SAME BUILDER UNDER THE RULE EVERY FIXTURE HAS ALWAYS USED, stated once so a future caller that needs a
+// different rule says so at the call site instead of silently installing onto whatever a helper decided for it.
+fn build_seed_fixture(
+  network: SeedNetworkPosture,
+  packages: List<PackageIntent>,
+  entry_keys: List<SshPublicKey>,
+  console: ConsoleEntryAuthorisation,
+  credential: AdminCredentialPosture,
+  delivery: SeedDeliveryStrategy,
+  target: AltraAutoinstallTarget,
+) -> Optional<AltraAutoinstallSeed> {
+  build_seed_fixture_under_rule(
+    rule: serial_selector,
+    network: network,
+    packages: packages,
+    entry_keys: entry_keys,
+    console: console,
+    credential: credential,
+    delivery: delivery,
+    target: target,
+  )}
 
 // THE TWO REFUSALS AN OPERATOR HAS TO TELL APART, held apart deliberately. "No disk matched your rule" and
 // "we could not read the serials" send the operator to different remedies — the first says tighten the rule,
@@ -1942,7 +2014,13 @@ test fn a_disk_selected_under_a_different_rule_cannot_be_bound() -> Bool {
         selection: select_target_disk(selector: twin_selector, observed: [twin_disk_one]),
       ) {
         Bound { binding: _ } => false
-        BindRefused { blocker: DiskSelectorDisagreesWithSeed { target: rule } } => rule == twin_selector
+        // WHICH SIDE THE REFUSAL BLAMES IS PART OF THE CLAIM. `run` is the rule that was executed against the
+        // probe; `seed` is the rule the seed commanded. An earlier revision put the EXECUTED rule under `seed:`,
+        // and a witness that pinned only `rule == twin_selector` stayed green through that — while every operator
+        // reading a real refusal was told their seed asked for the wrong disk when it was their selection that had
+        // moved. Both halves are pinned now, so the naming is a tested property rather than a cosmetic one.
+        BindRefused { blocker: DiskSelectorDisagreesWithSeed { seed: commanded, run: executed } } =>
+          executed.selector == twin_selector && commanded == serial_selector
         BindRefused { blocker: _ } => false
       }
   }
@@ -1968,7 +2046,14 @@ test fn the_same_selection_under_the_seed_s_own_rule_binds() -> Bool {
 // overwritten by a second attempt onto another bay and nobody could tell. This is the "the machine booted
 // seed X, onto drive Y" guarantee, and it is worth nothing if Y is not in the address.
 test fn two_different_disks_under_one_seed_are_two_binding_addresses() -> Bool {
-  match build_seed_fixture(
+  // ONE RULE, TWO DRIVES. catalog_selector names part number and capacity; unique_disk and sibling_disk carry
+  // that same catalog row and differ only in serial, so the SAME rule run against a population holding one of
+  // them legally selects that one. Holding the rule fixed is what makes this the disk test and not the join test:
+  // an earlier revision varied the SELECTOR between the two bindings, which after the seed/target join is a
+  // refusal — so the witness was comparing a bound binding against a refused one and reporting "two addresses"
+  // for a case in which the second binding never happened at all.
+  match build_seed_fixture_under_rule(
+    rule: catalog_selector,
     network: network_posture,
     packages: clean_packages,
     entry_keys: one_key,
@@ -1984,7 +2069,7 @@ test fn two_different_disks_under_one_seed_are_two_binding_addresses() -> Bool {
         target: target_altra,
         unit_key: unit_a_key,
         attempt: attempt_one,
-        selection: select_target_disk(selector: serial_selector, observed: bay_population),
+        selection: select_target_disk(selector: catalog_selector, observed: [unique_disk]),
       ) {
         BindRefused { blocker: _ } => false
         Bound { binding: first } =>
@@ -1993,7 +2078,7 @@ test fn two_different_disks_under_one_seed_are_two_binding_addresses() -> Bool {
             target: target_altra,
             unit_key: unit_a_key,
             attempt: attempt_one,
-            selection: select_target_disk(selector: twin_selector, observed: [twin_disk_two]),
+            selection: select_target_disk(selector: catalog_selector, observed: [sibling_disk]),
           ) {
             // The second selection must itself be legal, or the comparison below would be vacuous.
             BindRefused { blocker: _ } => false
@@ -2006,6 +2091,19 @@ test fn two_different_disks_under_one_seed_are_two_binding_addresses() -> Bool {
                 left: first.seed_digest,
                 right: second.seed_digest,
               )
+              // AND THE DIGEST MOVED BECAUSE THE DRIVE MOVED, not for some unrelated reason: a digest that
+              // drifted for an incidental reason would satisfy the inequality above without ever having named a
+              // disk. Each side records the serial it selected.
+              && match first.disk_selection {
+                BoundDisk { serial: a, matched: _, observed: _ } =>
+                  a == ("UNIQUE-SERIAL-0007" as NonEmptyStr)
+                BoundDiskUnread { part_number: _ } => false
+              }
+              && match second.disk_selection {
+                BoundDisk { serial: b, matched: _, observed: _ } =>
+                  b == ("SIBLING-SERIAL-0009" as NonEmptyStr)
+                BoundDiskUnread { part_number: _ } => false
+              }
           }
       }
   }
@@ -2026,8 +2124,14 @@ test fn the_storage_projection_carries_the_selected_device() -> Bool {
                 && m == 1
                 && o == 3
                 && provenance.selector == serial_selector
+            // spelled, not omitted: the projected policy is the closed union from the autoinstall shelf, so the
+            // witness must say what it would mean for the projection to hand back no layout at all -- a device
+            // with no layout to install onto is not a carried device, so this arm is false by definition.
+            StoragePolicyAbsent => false
           }
-        _ => false
+        // Spelled for the same reason: an unreadable selected disk is exactly the case this witness is about,
+        // so it must be named and rejected rather than swept.
+        BoundDiskUnread { part_number: _ } => false
       }
     ProjectionUnresolved { cause: _ } => false
   }
@@ -2182,6 +2286,46 @@ test fn permitted_punctuation_in_the_salt_is_still_accepted() -> Bool {
 // dispatching to the scheme, so a candidate that breaks BOTH rules must be reported as the shared failure —
 // the alphabet verdict would be true about the alphabet and wrong about what to do. The candidate below has a
 // '!' in a digest that is otherwise the right length, so only the shared scan can be the first diagnosis.
+// THE SALT CHARACTER CLASS IS SUBSUMED BY THE SHARED SCAN, AND THE PIN SAYS SO. The class forbids four
+// characters; three of them (':', CR, LF) also violate the shared printable/no-delimiter rule, and the fourth
+// ('$') cannot appear inside a segment because '$' is the split character. So while the walk runs in upstream
+// order, the class can never be the thing that refuses a candidate — the shared scan always gets there first.
+//
+// THAT IS A PROPERTY, NOT AN OBSERVATION, AND IT HAS TO BE FALSIFIABLE. Delete the shared scan, or move it after
+// the scheme walk, and the causes below change from SettingHoldsReservedCharacter to
+// SaltHoldsForbiddenCharacter: same refusal, different remedy named for the operator, and this witness is what
+// notices. It is also the reason the class is kept rather than deleted as dead code — it is the backstop if the
+// ordering ever moves, and "unreachable today" is a statement about an ordering, not about the rule's worth.
+test fn the_salt_character_class_is_subsumed_by_the_shared_scan() -> Bool {
+  // ':' in the salt: refused, and by the SCAN, naming the reserved character rather than the salt class.
+  match cause_of(crypt_digest: "$6$sa:tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+    Present { value: SettingHoldsReservedCharacter { reserved: seen } } => (seen as String) == ":"
+    _ => false
+  }
+  // A SPACE, WHICH IS NEITHER RESERVED NOR IN THE SALT CLASS. This is the case that separates the two rules
+  // rather than showing them agree: the class forbids four characters and space is not one of them, and the
+  // reserved list names five and space is not among them — the shared predicate refuses space through its
+  // PRINTABLE-RANGE clause (below 0x21). So a shelf carrying the class and the reserved list and nothing else
+  // would have accepted "$6$sa ltsalt$...", and a hash with a space in it is exactly the kind of thing that
+  // arrives from a copy-paste through a terminal.
+  && match cause_of(crypt_digest: "$6$sa ltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+    Present { value: SettingHoldsReservedCharacter { reserved: _ } } => true
+    _ => false
+  }
+  && refuses(crypt_digest: "$6$sa ltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+  // THE BACKSLASH CASE, WHICH THE SALT CLASS DOES NOT EVEN MENTION. The class forbids four characters and
+  // backslash is not one of them, yet a setting carrying it is refused — because the shared scan refuses it. A
+  // shelf holding only the class would have accepted this candidate, and that is the difference between the two
+  // rules stated as one sentence: the class is narrower than the contract, so the contract has to run.
+  && match cause_of(crypt_digest: "$6$sa\\lt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+    Present { value: SettingHoldsReservedCharacter { reserved: _ } } => true
+    _ => false
+  }
+  // ...AND IT IS A REFUSAL AND NOT AN ACCEPTANCE, stated separately because the two arms above would also be
+  // satisfied by a candidate that failed for a different reason. This is the line that pins the direction.
+  && refuses(crypt_digest: "$6$sa\\lt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+}
+
 test fn the_shared_scan_is_answered_before_the_scheme_grammar() -> Bool {
   match cause_of(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfn!") {
     Present { value: SettingHoldsReservedCharacter { reserved: _ } } => true
@@ -2470,7 +2614,11 @@ test fn the_prompting_package_table_is_the_verified_set_exactly() -> Bool {
 // is the fixture that makes the key hash load-bearing rather than decorative: nothing else can move the digest
 // here, so if the digest does not move, the render is not covering the key.
 data one_other_key: List<SshPublicKey> = [
-  Ed25519Key { blob: "AAAAC3NzaC1lZDI1NTE5AAAAIOr9k0pQz0W7sPqTgk3l0M1sXqz2nS7bHm0KQxK4Y1pZ8oQ2m7VnJ0lP6yT3rW9uX1sD4fG7hJkL0mN3pQ5rS7tU9vW1xY3zA5bC7dE9fG1h" as NonEmptyStr },
+  SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIOr9k0pQz0W7sPqTgk3l0M1sXqz2nS7bHm0KQxK4Y1pZ8oQ2m7VnJ0lP6yT3rW9uX1sD4fG7hJkL0mN3pQ5rS7tU9vW1xY3zA5bC7dE9fG1h" as NonEmptyStr,
+    comment: "gunbc-second-operator",
+  },
 ]
 
 test fn different_key_material_at_equal_count_moves_the_digest() -> Bool {
@@ -2496,8 +2644,8 @@ test fn different_key_material_at_equal_count_moves_the_digest() -> Bool {
       ) {
         Absent => false
         Present { value: with_other } =>
-          list_length(items: with_first.entrypoint.authorised_keys)
-            == list_length(items: with_other.entrypoint.authorised_keys)
+          list_length(items: with_first.entry.authorised_keys)
+            == list_length(items: with_other.entry.authorised_keys)
             && !content_hash_eq_structural(
               left: altra_autoinstall_seed_digest(seed: with_first),
               right: altra_autoinstall_seed_digest(seed: with_other),

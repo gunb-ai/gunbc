@@ -16,7 +16,8 @@ module extdeps.libxcrypt.crypt_scheme
 // would be a wrong shelf rather than a tidy one.
 //
 // TWO RULES RUN, AND A SEED MUST ENFORCE BOTH. libxcrypt validates the whole setting string with a SHARED check
-// (lib/crypt.c, check_badsalt_chars at v4.4.38) BEFORE it dispatches to the sha512crypt parser, and the shared
+// (lib/crypt.c, check_badsalt_chars at v4.4.36, the release Noble ships) BEFORE it dispatches to the sha512crypt
+// parser, and the shared
 // check is stricter about characters than the scheme's own salt class is: it refuses any byte at or below
 // 0x20, at or above 0x7f, and the five characters ! * : ; \ — anywhere in the setting, digest field included.
 // Checking a candidate against the scheme row ALONE is unsound in the direction that hurts a headless board:
@@ -256,11 +257,16 @@ type CryptSharedRestriction = PrintableAsciiMinusReserved {
 }
 
 data crypt_shared_restriction: CryptSharedRestriction = PrintableAsciiMinusReserved {
-  // printable ASCII 0x21..0x7e (95), less the five reserved characters (94, 89): derived once here so a reviewer
-  // can reproduce it against crypt.5 and crypt.c, and it is swept for consistency by the witness.
+  // printable ASCII 0x21..0x7e (94), less the five reserved characters, giving 89. The count is stated in the
+  // comment so a reader can check the row by counting, and the witness sweeps the equation
+  // allowed == printable minus reserved rather than trusting it: an earlier transcription of this row admitted
+  // "*", ":" and ";" — three characters that are in the reserved half below — which made the two halves of one
+  // rule contradict each other, and a candidate carrying any of the three was admitted by this field while being
+  // refused by the list beside it. That drift is what the sweep exists to catch, and it is also why the scan
+  // below consults the reserved half for refusals and this half only for admissions.
   allowed_characters: [
-    "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/",
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@",
+    "\"", "#", "$", "%", "&", "'", "(", ")", "+", ",", "-", ".", "/",
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "<", "=", ">", "?", "@",
     "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V",
     "W", "X", "Y", "Z", "[", "]", "^", "_", "`",
     "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v",
@@ -271,10 +277,19 @@ data crypt_shared_restriction: CryptSharedRestriction = PrintableAsciiMinusReser
   ordering_authority: extdeps_libxcrypt_crypt_c_anchor,
 }
 
-// THE SHARED SCAN, written the way the source is written: one pass over the whole candidate, every character must
-// be in the allowed alphabet. Deliberately NOT a fold over reserved_characters — a scan over the candidate is the
-// shape of the upstream check, and it is what makes a byte outside the printable range a refusal rather than a
-// no-op that a forbidden-set fold over five characters would silently skip.
+// THE SHARED SCAN, written the way the source is written: ONE PASS OVER THE WHOLE CANDIDATE, and every character
+// in it has to satisfy the shared predicate. The predicate has exactly the two clauses the source has — the
+// character is in the printable range, and the character is not one of the five reserved — and it is applied per
+// CHARACTER, by iterating the candidate, which is upstream's shape (crypt.c walks the setting with strcspn and an
+// explicit range test). The clause pair, not the census list, is what decides: a fold over a stored alphabet is
+// only as honest as the transcription of that alphabet, and the row below was caught carrying "*" ":" ";" in its
+// allowed half while listing them as reserved. The census remains as the checkable derivation of the same rule,
+// swept against this predicate by the witness, rather than as the thing that does the deciding.
+//
+// WHY A CANDIDATE-DRIVEN SCAN MATTERS MORE THAN AN ALPHABET-DRIVEN ONE: a fold over a forbidden set asks "did the
+// candidate contain any of these five?" — which is silent about the byte nobody transcribed, including every byte
+// outside printable ASCII. That is how a setting carrying a space, a newline, or 0x80 can be admitted by a shelf
+// that believes it refuses them. A pass over the candidate asks the only question that has no such blind spot.
 //
 // THIS IS A PRIMITIVE AND NOT A PARSER. It asks one character question about one field, which is upstream's
 // question and therefore belongs on this shelf. Deciding WHICH field a candidate's bytes are — where a cost ends
@@ -285,14 +300,21 @@ data crypt_shared_restriction: CryptSharedRestriction = PrintableAsciiMinusReser
 fn shared_restriction_rejects(candidate: String) -> Bool {
   match crypt_shared_restriction {
     PrintableAsciiMinusReserved {
-      allowed_characters: allowed, reserved_characters: _, rule_standing: _, ordering_authority: _,
-    } =>
-      fold(
-        allowed,
-        init: true,
-        f: (rejected, character) => rejected && !candidate.contains(needle: character as String),
-      )
+      allowed_characters: _, reserved_characters: reserved, rule_standing: _, ordering_authority: _,
+    } => !(
+      candidate |> chars |> all(c => shared_restriction_character_is_printable(code: c))
+    )
+      || reserved.any(r => candidate.contains(needle: r as String))
   }
+}
+
+// THE PRINTABLE CLAUSE, spelled as the range the source tests rather than as membership in a transcription. 33 is
+// '!' (the lowest printable byte that is not space) and 126 is '~'; space (32), tab, newline, DEL (127) and every
+// high byte fail here, which is upstream's "no whitespace, no high bytes" in one arithmetic statement. Written in
+// decimal because this language has no hex integer literal — the values are named here so a reader can check them
+// against the byte range in crypt.5 rather than against a bare number.
+fn shared_restriction_character_is_printable(code: Int) -> Bool {
+  code >= 33 && code <= 126
 }
 
 // THE FIVE RESERVED CHARACTERS, exposed so the consuming module can name them in a refusal and so the witness can

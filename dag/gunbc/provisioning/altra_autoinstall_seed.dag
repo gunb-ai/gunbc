@@ -36,7 +36,8 @@ module gunbc.provisioning.altra_autoinstall_seed
 // scheme token, the salt's width and forbidden characters, the digest's alphabet and its exact 86-character
 // width, and the cost field's class and range — belongs to libxcrypt, not to this repository or to Canonical.
 // It is therefore NOT stated here: it is one row in extdeps.libxcrypt.crypt_scheme, cited to the crypt(5)
-// mdoc source at the release this distro ships (libcrypt1 1:4.4.38-1), and consumed below by name. What stays
+// mdoc source at the release this distro ships (libcrypt1 1:4.4.36-4build1 on Noble arm64), and consumed
+// below by name. What stays
 // in this module is only what is ours: the segment grammar we walk, the order the refusals are reported in,
 // and which credential we will accept for a headless board. If a future edit re-types 86 or 16 here instead
 // of reading them from that row, the figures and their citation have come apart, which is the §4d failure the
@@ -65,7 +66,7 @@ import std.content_hash {
   content_hash_eq_structural,
   content_hash_tagged_structural,
 }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.libxcrypt.crypt_scheme {
   CryptSchemeFormat,
   Sha512CryptFormat,
@@ -323,6 +324,91 @@ fn altra_install_driver_package(driver: AltraInstallDriver) -> NonEmptyStr {
   }
 }
 
+// THE SILENT HALF OF THE LATE SET, AS ROWS RATHER THAN AS A CLAIM ABOUT ROWS. These are the packages a headless
+// Altra board needs present before anyone can log in: nvme-cli to read the SMART of the disk it just installed
+// onto, ipmitool to talk to the BMC that is its only console, dmidecode to read the board's own identity back so
+// the S2 probe can be checked against something other than itself, and rasdaemon so a memory or PCIe failure on
+// a board nobody is standing in front of is recorded rather than silent. Each of the four was admitted the same
+// way, and each row says so with the artifact it was read from: it is published for arm64 in the Noble archive at
+// the version named in its receipt, and the shipped .deb FOR THAT VERSION contains no config script in its
+// control tarball and no debconf templates in its data tarball — so nothing inside it can reach db_input at the
+// version the board will actually install.
+//
+// WHY A ROW AND NOT A BOOLEAN `prompts: Bool` BESIDE THE NAME, AND WHY NOT Unclassified. A silence claim without
+// an evidence arm is a guess with a confident type; and before this arm existed the only honest way to name a
+// package that asks nothing was UnclassifiedPackage, which the audit refuses — so a headless board's diagnostic
+// tooling could not be installed at all, and every "produced seed" fixture quietly passed `late_packages: []`
+// while a witness claimed the seed installs it. That witness was asserting properties of an empty list. Loosening
+// Unclassified into a pass would have fixed the witness by making it lie. A future checked-silent package adds a
+// row here with its own version and standing; a package nobody has checked still enters through
+// UnclassifiedPackage and is still refused.
+fn altra_required_late_package_rows() -> List<PackageIntent> {
+  [
+    PackageVerifiedSilent { name: "nvme-cli" as NonEmptyStr, silence: nvme_cli_silence_receipt },
+    PackageVerifiedSilent { name: "ipmitool" as NonEmptyStr, silence: ipmitool_silence_receipt },
+    PackageVerifiedSilent { name: "dmidecode" as NonEmptyStr, silence: dmidecode_silence_receipt },
+    PackageVerifiedSilent { name: "rasdaemon" as NonEmptyStr, silence: rasdaemon_silence_receipt },
+  ]
+}
+
+// ONE RECEIPT PER PACKAGE, EACH CARRYING THE BUILD ITS CLAIM IS ABOUT. Silence is a property of a BUILD, not of a
+// name: the point release that grows a config script invalidates the row while leaving every name-based check
+// intact, which is exactly why the version is a field of the receipt rather than a comment above it. The four
+// standings are identical today because all four were measured the same way; they are separate rows so that when
+// one of them is only transcribed, or is found to prompt, it can change its standing without touching the others.
+data nvme_cli_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  observed_version: "2.8-1build2" as NonEmptyStr,
+  standing: CitedToAuthority { authority: nvme_cli_deb_authority },
+}
+
+data ipmitool_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  observed_version: "1.8.19-7build2" as NonEmptyStr,
+  standing: CitedToAuthority { authority: ipmitool_deb_authority },
+}
+
+data dmidecode_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  observed_version: "3.5-3build1" as NonEmptyStr,
+  standing: CitedToAuthority { authority: dmidecode_deb_authority },
+}
+
+data rasdaemon_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  observed_version: "0.8.0-2" as NonEmptyStr,
+  standing: CitedToAuthority { authority: rasdaemon_deb_authority },
+}
+
+// THE ARTIFACTS THE SILENCE CLAIMS WERE READ FROM: the exact .deb in the arm64 archive, not the package's
+// documentation and not a wiki. A reviewer re-derives a row by downloading this path and opening its control
+// tarball, which is the whole test of whether a citation is worth its bytes — and note that the archive index is
+// NOT sufficient evidence here: the HTML package pages answer 200 for names that do not exist at all, so a claim
+// checked against them can look verified while nothing was checked.
+data nvme_cli_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ports.ubuntu.com/ubuntu-ports/pool/main/n/nvme-cli/nvme-cli_2.8-1build2_arm64.deb"
+  }
+}
+
+data ipmitool_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ports.ubuntu.com/ubuntu-ports/pool/universe/i/ipmitool/ipmitool_1.8.19-7build2_arm64.deb"
+  }
+}
+
+data dmidecode_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ports.ubuntu.com/ubuntu-ports/pool/main/d/dmidecode/dmidecode_3.5-3build1_arm64.deb"
+  }
+}
+
+data rasdaemon_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ports.ubuntu.com/ubuntu-ports/pool/universe/r/rasdaemon/rasdaemon_0.8.0-2_arm64.deb"
+  }
+}
+
 // THE KERNEL-MODULE AXIS, KEPT APART BECAUSE IT IS NOT CHECKABLE AGAINST APT. What the board must have loaded
 // inside the installer environment is not something the installer can apt-install: the installer's kernel is
 // already running, so a `.ko` is a claim about which kernel package carries it, verified against the source
@@ -452,22 +538,59 @@ data package_axis_authority: ExternalAuthority = ExternalAuthority {
 //     first-class verdict here rather than an error.
 // The name lives in exactly one place for the known arms (known_prompting_package_name, below), which is also
 // what makes a drift between the table and the audit impossible: there is no second spelling to drift.
-// A future requirement (a package whose prompting has been checked and found silent) adds a FOURTH arm —
-// PackageVerifiedSilent { name, checked_against } — with its own citation, rather than loosening Unclassified
-// into a pass.
+// THE FOURTH ARM, WHICH THIS TYPE ALWAYS SAID IT WOULD ONE DAY HAVE. A package whose prompting has been
+// checked and found SILENT is a fourth state of knowledge, not a fifth spelling of the third: it is neither
+// "answered" (nothing was asked, so nothing was answered) nor "unclassified" (someone looked). Its absence was
+// the reason a headless board's late package set could not be stated at all — nvme-cli, ipmitool and dmidecode
+// ask nothing, so under three arms the only honest way to name them was Unclassified, which the audit refuses,
+// which meant every "produced seed" fixture had to pass `late_packages: []` and the witness that claimed the
+// seed installs the BMC/diagnostic tooling was asserting properties of an empty list. Loosening Unclassified into
+// a pass would have fixed that witness by making it lie; this arm fixes it by making the claim checkable.
+//
+// WHAT MAKES A ROW LEGAL IS THE EVIDENCE IN THE ARM, NOT THE NAME. A silence claim means: the package exists in
+// THIS archive at THIS version, and the shipped control tarball for that version contains no config script and
+// its data tarball ships no debconf templates — i.e. nothing in the package can call db_input or db_fget at the
+// version the board will install. That is why the version travels with the claim: silence is a property of a
+// build, not of a name, and an upstream that adds a config script in the next point release has invalidated the
+// row while leaving the name intact. A future package adds a row to the set below (or a caller mints a receipt
+// of its own); nothing about the audit changes.
 type PackageIntent =
     QuestionAnswered { package: KnownPromptingPackage, debconf_seed: NonEmptyStr }
   | QuestionUnanswered { package: KnownPromptingPackage }
   | UnclassifiedPackage { name: NonEmptyStr, debconf_seed: Optional<NonEmptyStr> }
+  | PackageVerifiedSilent { name: NonEmptyStr, silence: PackageSilenceReceipt }
+
+// THE WARRANT BEHIND A SILENCE CLAIM, AND HOW FAR IT REACHES. `observed_version` is the build the claim was made
+// against, and it travels with the claim because silence is a property of a BUILD, not of a name: an upstream
+// that grows a config script in the next point release has invalidated the row while leaving the name — and any
+// check that looks only at the name — intact.
+//
+// THE STANDING IS THE SHARED ONE, NOT A LOCAL INVENTION. extdeps.external_authority carries
+// CitedFigureStanding precisely so that a second "cited / transcribed / observed" coproduct cannot be minted per
+// domain; a local twin would have let a silence row claim a rung the corpus does not recognise. Its third arm
+// (ObservedByReceipt) is sealed upstream, which is the right strictness: a receipt of our own observation is
+// minted only by a fold that reads committed data, never by hand.
+type PackageSilenceReceipt = SilentReceipt {
+  observed_version: NonEmptyStr
+  standing: CitedFigureStanding
+}
 
 // THE AUDIT'S VERDICT ON ONE INTENT, IN THE SAME THREE PARTS THE INTENT IS STATED IN. Derived, never stored:
 // an intent that carried its own classification could disagree with the table it was checked against. The
 // question text travels with the unanswered arm so a refusal names the debconf key to seed rather than
 // pointing at a package and leaving the operator to look it up.
+// THREE ANSWERS TO "DID IT ASK?", BECAUSE THEY SEND THE OPERATOR TO THREE DIFFERENT PLACES: closed needs
+// nothing, open means go answer the named question in the seed, unclassified means nobody knows and the install
+// is not authorised until somebody does. A fourth is now needed because the intent gained a fourth state:
 type PackagePromptingVerdict =
     ClosedQuestion { name: NonEmptyStr, question: NonEmptyStr }
   | OpenQuestion { name: NonEmptyStr, question: NonEmptyStr }
   | UnclassifiedPrompting { name: NonEmptyStr }
+  // SILENT IS NOT CLOSED. "Closed" would fold it into the same answer as "answered", and the tally's whole
+  // meaning is the number of questions the seed CLOSED — a package that never asked one closed nothing. Naming
+  // the receipt in the arm keeps the evidence attached to the verdict, so a consumer can refuse a silent row
+  // whose standing is still transcribed instead of having to go and find the row again.
+  | NothingToAsk { name: NonEmptyStr, silence: PackageSilenceReceipt }
 
 // THE KEYS A ROW REQUIRES, WHICH IS NOT ALWAYS ONE (review: merry-fox-82). The shipped tzdata asks two:
 // debian/tzdata.postinst does `db_get tzdata/Areas` and then `db_get "tzdata/Zones/$AREA"` — the zone key is
@@ -513,6 +636,7 @@ fn package_prompting_verdict(intent: PackageIntent) -> PackagePromptingVerdict {
     }
     UnclassifiedPackage { name: un, debconf_seed: _ } =>
       UnclassifiedPrompting { name: un }
+    PackageVerifiedSilent { name: nm, silence: receipt } => NothingToAsk { name: nm, silence: receipt }
   }
 }
 
@@ -828,25 +952,34 @@ type DiskSelectionRefusalCause
 // refused as not-persistent, not selected-and-then-regretted: the failure mode is writing a root
 // filesystem onto a cache device. Ephemeral and CachedMirror are therefore excluded by rule, not by
 // convention.
-fn selector_admits_observed(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
-  match storage_device_persistence(d: device) {
-    Persistent =>
-      match selector {
-        ByObservedSerial { serial: wanted } =>
-          match storage_device_serial(d: device) {
-            Present { value: observed } => observed == wanted
-            Absent => false
-          }
-        ByCatalogIdentity { part_number: wanted_part, capacity_bytes: wanted_capacity } =>
-          match device {
-            NvmeDevice { catalog: c, serial: _, persistence: _ } =>
-              c.part_number == wanted_part && measure_le(a: c.capacity_bytes, b: wanted_capacity) && measure_le(a: wanted_capacity, b: c.capacity_bytes)
-            BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } => false
-          }
+// THE RULE AND THE ARDNESS OF THE DISK ARE TWO QUESTIONS, ANSWERED SEPARATELY. The rule answers "does the
+// selector reach this device at all"; persistence answers "is the device it reached something you may erase". They
+// were once one function, and the conflation was a live defect: one ephemeral disk that the selector reaches
+// was counted as NOTHING MATCHING, sending the operator to re-admit a unit whose disks are fine instead of
+// telling them the one disk they reached is a cache. Each refusal names a different remedy, so each needs its
+// own count. A future selector variant enters through the closed match below; it cannot skip the persistence
+// gate, because the gate lives in the caller, not in the arms.
+fn selector_matches_rule(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
+  match selector {
+    ByObservedSerial { serial: wanted } =>
+      match storage_device_serial(d: device) {
+        Present { value: observed } => observed == wanted
+        Absent => false
       }
-    Ephemeral => false
-    CachedMirror => false
+    ByCatalogIdentity { part_number: wanted_part, capacity_bytes: wanted_capacity } =>
+      match device {
+        NvmeDevice { catalog: c, serial: _, persistence: _ } =>
+          c.part_number == wanted_part && measure_le(a: c.capacity_bytes, b: wanted_capacity) && measure_le(a: wanted_capacity, b: c.capacity_bytes)
+        BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } => false
+      }
   }
+}
+
+// WHAT THE RULE REACHES *AND* WHAT MAY BE ERASED. A device the rule reaches but which is not persistent is
+// still not admissible, so the split above cannot widen what may be installed onto -- it only changes which
+// refusal you get, and the witness pins exactly that.
+fn selector_admits_observed(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
+  selector_matches_rule(selector: selector, device: device) && device_is_persistent(device: device)
 }
 
 // WHY THE EMPTY AND MULTIPLE ARMS CANNOT BE SKIPPED BY A CALLER. This is the only function that turns a
@@ -927,14 +1060,14 @@ fn device_is_persistent(device: StorageDevice) -> Bool {
 // Filtering on the MATCH predicate (identity, medium, model — never a device name), so that a match count
 // answers "how many disks does this rule pick out" and nothing else.
 fn candidate_count(selector: TargetDiskSelector, observed: List<StorageDevice>) -> Int {
-  observed.filter(device => selector_matches_observed(selector: selector, device: device)).length()
+  observed.filter(device => selector_matches_rule(selector: selector, device: device)).length()
 }
 
 fn matched_candidate(
   selector: TargetDiskSelector,
   observed: List<StorageDevice>,
 ) -> Optional<StorageDevice> {
-  observed.filter(device => selector_matches_observed(selector: selector, device: device)).first()
+  observed.filter(device => selector_matches_rule(selector: selector, device: device)).first()
 }
 
 // THE ADMISSIBLE FILTERS: the same rule, then the persistence test that keeps a cache mirror or volatile
@@ -943,7 +1076,7 @@ fn matched_candidate(
 // to say "the rule matched, and it was refused for persistence" instead of "the rule matched nothing".
 fn admissible_count(selector: TargetDiskSelector, observed: List<StorageDevice>) -> Int {
   observed
-    .filter(device => selector_matches_observed(selector: selector, device: device))
+    .filter(device => selector_matches_rule(selector: selector, device: device))
     .filter(device => device_is_persistent(device: device))
     .length()
 }
@@ -953,7 +1086,7 @@ fn admissible_candidate(
   observed: List<StorageDevice>,
 ) -> Optional<StorageDevice> {
   observed
-    .filter(device => selector_matches_observed(selector: selector, device: device))
+    .filter(device => selector_matches_rule(selector: selector, device: device))
     .filter(device => device_is_persistent(device: device))
     .first()
 }
@@ -963,7 +1096,7 @@ fn admissible_candidate_labels(
   observed: List<StorageDevice>,
 ) -> List<NonEmptyStr> {
   observed
-    .filter(device => selector_matches_observed(selector: selector, device: device))
+    .filter(device => selector_matches_rule(selector: selector, device: device))
     .filter(device => device_is_persistent(device: device))
     .map(device => candidate_identity_label(device: device))
 }
@@ -977,7 +1110,7 @@ fn matched_candidate_serials(
   observed: List<StorageDevice>,
 ) -> List<NonEmptyStr> {
   observed
-    .filter(device => selector_matches_observed(selector: selector, device: device))
+    .filter(device => selector_matches_rule(selector: selector, device: device))
     .map(device => candidate_identity_label(device: device))
 }
 
@@ -1232,17 +1365,29 @@ fn first_blocking_refusal(intents: List<PackageIntent>) -> Optional<SeedInteract
 // OpenQuestion names the debconf key to seed; the unclassified arm deliberately carries NO question field,
 // because this module has not observed a question from that package and printing one would be fabricating the
 // very evidence the refusal is complaining about.
+// AN ANSWER COUNTS AS AN ANSWER ONLY IF IT ANSWERS EVERY KEY THE PACKAGE WILL ASK. This is the arm the audit
+// actually reaches, and this is what was wrong: the key-by-key check existed (all_required_keys_present) but was
+// reachable only through package_prompting_verdict, which nothing in the module called — so the audit credited a
+// package whose seed text supplied one of its two keys as fully answered. tzdata is exactly that case: its
+// postinst reads tzdata/Areas and then tzdata/Zones/$AREA, so a half-seeded tzdata closed the non-interactivity
+// audit and the installer would still have stopped on the zone at a console nobody is standing at. The check was
+// never missing; the wiring was. The audit now CLASSIFIES ONCE, through package_prompting_verdict, and maps that
+// one verdict onto its cause — so there is no second, weaker reading of the same intent for a future caller (or a
+// future witness) to reach by mistake, which is what the comment above this function has always claimed and the
+// code never did.
 fn blocking_refusal(intent: PackageIntent) -> Optional<SeedInteractiveCause> {
-  match intent {
-    QuestionAnswered { package: _, debconf_seed: _ } => Absent
-    QuestionUnanswered { package: named } => Present {
-      value: PackagePrompts {
-        name: known_prompting_package_name(package: named),
-        question: known_prompting_package_question(package: named),
-      },
+  match package_prompting_verdict(intent: intent) {
+    ClosedQuestion { name: _, question: _ } => Absent
+    // THE CAUSE IS THE VERDICT'S OWN, NOT A FRESH READING OF THE INTENT. name/question come from the closed
+    // vocabulary function (known_prompting_package_*), so a refusal an operator reads is spelled the way the
+    // archive spells it and no second copy of that spelling can drift.
+    OpenQuestion { name: prompted, question: asked } => Present {
+      value: PackagePrompts { name: prompted, question: asked },
     }
-    UnclassifiedPackage { name: un, debconf_seed: _ } =>
-      Present { value: PackagePromptingUnclassified { name: un } }
+    UnclassifiedPrompting { name: un } => Present { value: PackagePromptingUnclassified { name: un } }
+    // SILENT BLOCKS NOTHING. This arm is the whole point of the fourth state: the audit's green path becomes
+    // reachable for a board that installs BMC and diagnostic tooling, which under three arms it never was.
+    NothingToAsk { name: _, silence: _ } => Absent
   }
 }
 
@@ -1259,6 +1404,10 @@ fn intent_answered_its_question(intent: PackageIntent) -> Bool {
     QuestionAnswered { package: _, debconf_seed: _ } => true
     QuestionUnanswered { package: _ } => false
     UnclassifiedPackage { name: _, debconf_seed: _ } => false
+    // SILENT IS NOT ANSWERED. The tally counts questions the seed CLOSED; a package that never asked one closed
+    // nothing, so crediting it would let a seed pad its own proof of non-interactivity by installing packages.
+    // This arm and the blocking arm below are deliberately different answers about the same value.
+    PackageVerifiedSilent { name: _, silence: _ } => false
   }
 }
 
@@ -1665,6 +1814,17 @@ fn reject_salt(segments: List<String>, count: Int) -> Optional<AdminPasswordRefu
               match measure_le(a: measured_salt, b: greatest) {
                 False => Present { value: SaltTooLong { length: measured_salt, ceiling: greatest } }
                 True =>
+                  // THE SALT CLASS, WHICH THE SHARED SCAN ALREADY ENFORCES — AND WHY IT IS STILL HERE. Every
+                  // character this class forbids is refused before this line can be reached: '$' cannot occur in
+                  // the segment at all, because '$' is what the segmentation splits on, and ':', CR and LF are
+                  // refused by the shared scan that runs first. So the refusal below is unreachable while the
+                  // ordering holds, which is exactly why the ordering is a PINNED PROPERTY rather than an
+                  // assumption (witness: the_salt_character_class_is_subsumed_by_the_shared_scan) — if a future
+                  // edit reorders the walk or weakens the scan, this class is what still refuses a delimiter in
+                  // a salt, and the witness that pins the subsumption goes red at the same moment. It is NOT a
+                  // substitute for the scan: the class alone misses '!', ';', '*', backslash and every
+                  // non-printable byte, and a shelf that had only the class is what accepted "$6$sa!tsalt$..."
+                  // on the strength of the .hash grammar.
                   match salt_holds_only_admitted_characters(salt: salt) {
                     True => Absent
                     False => Present { value: SaltHoldsForbiddenCharacter }
@@ -2145,6 +2305,43 @@ fn package_intent_diagnostic(intent: PackageIntent) -> NonEmptyStr {
         Present { value: given } =>
           concat(concat(un, "+unclassified,"), content_coverage(label: "answer", content: given as String)) as NonEmptyStr
       }
+    // THE SILENCE TRAVELS INTO THE DIGEST AS ITS OWN EVIDENCE: name, the version the silence was established at,
+    // and how it was established. A seed that carried a silent row at one version and another at a second
+    // version are two different installs — the second may prompt where the first could not — so they must not
+    // hash alike, and a transcribed claim must not hash the same as a measured one.
+    PackageVerifiedSilent { name: nm, silence: receipt } =>
+      concat(
+        concat(concat(nm, "+silent,"), silence_receipt_diagnostic(receipt: receipt)),
+        ",count=0",
+      ) as NonEmptyStr
+  }
+}
+
+// THE RECEIPT'S OWN DIAGNOSTIC, SHARED BY THE RENDER AND THE BINDING. Version and standing both appear: a
+// silent-at-4.4.36 row and a silent-according-to-somebody row are different risks, and a binding digest that
+// could not tell them apart could not later answer "what did this board actually get".
+fn silence_receipt_diagnostic(receipt: PackageSilenceReceipt) -> NonEmptyStr {
+  match receipt {
+    SilentReceipt { observed_version: version, standing: how } =>
+      concat(
+        concat("silent@", version),
+        match cited_figure_read_obligation(standing: how) {
+          // Nothing owed: the claim points at an artifact anyone can re-open. The arm does NOT record which
+          // artifact, because the artifact is in the standing and a second copy of it here could drift from it.
+          Absent => ",cited"
+          // Owed: name what has to be read. The obligation text is the standing's own, so it cannot be edited
+          // into silence here while the value keeps claiming to be a transcription.
+          Present { value: owed } => concat(",owed=", owed) as NonEmptyStr
+        },
+      ) as NonEmptyStr
+  }
+}
+
+// THE SILENCE CLAIM'S OUTSTANDING OBLIGATION, exposed so a consumer can refuse to believe a silent row that is
+// still transcribed rather than having to re-derive that it is. Absent means nothing is owed.
+fn silence_read_obligation(receipt: PackageSilenceReceipt) -> Optional<NonEmptyStr> {
+  match receipt {
+    SilentReceipt { observed_version: _, standing: how } => cited_figure_read_obligation(standing: how)
   }
 }
 
@@ -2218,7 +2415,11 @@ type BindingBlocker
   // because the operator's action is different: that one says "your rule cannot pick a disk", this one says
   // "someone handed this seed a disk picked by some other rule", which is a wiring defect in whatever produced
   // the call and not a fact about the bay.
-  | DiskSelectorDisagreesWithSeed { seed: DiskSelectionProvenance, target: TargetDiskSelector }
+  // BOTH SIDES OF THE DISAGREEMENT, IN THE ORDER THE READER NEEDS THEM: what the seed commanded, then what
+  // was actually run. A one-sided payload (only the run provenance) forces the reader to go and find the seed
+  // to know which of the two is wrong; naming them `seed`/`run` rather than two `TargetDiskSelector`s keeps the
+  // executed side's evidence — the counts it matched — attached to the refusal.
+  | DiskSelectorDisagreesWithSeed { seed: TargetDiskSelector, run: DiskSelectionProvenance }
 
 // THE TWO OUTCOMES OF A BINDING ATTEMPT, as arms rather than Optional, for the reason above: the green arm
 // carries the record, the red arm carries why there is no record.
@@ -2250,7 +2451,12 @@ fn bind_altra_autoinstall_seed(
         // recorded a selector that had never been run against the probe.
         DiskSelected { device: chosen, provenance: provenance } =>
           match selectors_are_the_same(a: seed.disk, b: provenance.selector) {
-            False => BindRefused { blocker: DiskSelectorDisagreesWithSeed { seed: provenance, target: seed.disk } }
+            // THE PAYLOAD NAMES BOTH RULES AND SAYS WHICH IS WHICH. "seed" is the rule the seed commanded;
+            // "run" is the rule that was actually executed against the probe and whose provenance is being
+            // presented. Naming them the other way round — as an earlier revision did, by putting the run
+            // provenance under `seed:` — tells an operator reading a refusal that their seed asked for the
+            // wrong disk, and sends them to edit a seed that was correct.
+            False => BindRefused { blocker: DiskSelectorDisagreesWithSeed { seed: seed.disk, run: provenance } }
             True =>
               Bound {
                 binding: AltraAutoinstallSeedBinding {
@@ -2295,7 +2501,7 @@ fn bound_disk_evidence(device: StorageDevice, provenance: DiskSelectionProvenanc
     // The probe could not read an identity for the very device it picked. That is not a disk to install onto
     // and it is not recorded as one: an unread identity is kept as its own verdict so the receipt cannot read
     // as "installed on the drive whose serial is the empty string".
-    Absent => BoundDiskUnread { part_number: candidate_part_number(device: device) }
+    Absent => BoundDiskUnread { part_number: candidate_identity_label(device: device) }
   }
 }
 
