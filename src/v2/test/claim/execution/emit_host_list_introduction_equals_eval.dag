@@ -85,7 +85,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.verdict { verdict_establishes_divergence, verdict_establishes_equivalence }
+import v2.std.verdict { Pass, SemanticMismatch, BuildFailed, RunFailed, Deferred, verdict_establishes_divergence, verdict_establishes_equivalence }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -464,3 +464,19 @@ test fn emit_host_list_introduction_unwired_refuses_holds() -> Bool {
     ).verdict
   )
 }
+
+fn probe_arm(n: Int) -> Bool {
+  match emit_fold_eval_run_with(target: rust_list_fold_target_model_staging()).verdict {
+    Pass => n == 0
+    SemanticMismatch { actual: _, falsification: _ } => n == 1
+    BuildFailed { actual: _, diagnostic: _ } => n == 2
+    RunFailed { actual: _, diagnostic: _ } => n == 3
+    Deferred { actual: _, diagnostic: _ } => n == 4
+  }
+}
+
+test fn probe_pass() -> Bool { probe_arm(n: 0) }
+test fn probe_mismatch() -> Bool { probe_arm(n: 1) }
+test fn probe_build_failed() -> Bool { probe_arm(n: 2) }
+test fn probe_run_failed() -> Bool { probe_arm(n: 3) }
+test fn probe_deferred() -> Bool { probe_arm(n: 4) }
