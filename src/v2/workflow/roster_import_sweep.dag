@@ -721,7 +721,7 @@ fn roster_render_outcome(path: String, outcome: RosterOutcome) -> String {
     RosterClean => ""
     RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
       "EDIT " + path + " " + int_to_decimal_string(value: start) + " " + int_to_decimal_string(value: end) + " "
-        + (if own_line { "\\n" } else { "" }) + text + "\n"
+        + roster_escape_replacement(text: roster_edit_replacement(text: text, own_line: own_line)) + "\n"
     RosterEditWithLabels { start: start, end: end, text: text, own_line: own_line, labels: labels } =>
       roster_render_outcome(path: path, outcome: RosterEdit { start: start, end: end, text: text, own_line: own_line })
         + roster_render_outcome(path: path, outcome: RosterLabelEdits { edits: labels })
