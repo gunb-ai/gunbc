@@ -1,29 +1,50 @@
 module instruments.fixtures.alias_red
 
-import std.types { Char }
-import std.algebra { FreeMonoid, is_empty }
+// (b) RED for stern-bat-401 msg_db49ee15 (3): reproduce an alias against its OWN right-hand side,
+// on main, with NO change to the fold, and name the refusal site from the diagnostic itself.
+//
+// Written with NO imports on purpose. The first run imported std.types/std.algebra and a standalone
+// `gunbc compile --source-dir .` could not resolve them, so two of the three rows were never
+// evaluated -- only the row whose types were local produced a diagnostic. A RED that depends on an
+// unresolved import is not a RED. These declarations reproduce the shape of
+// `type String = FreeMonoid<Char>` (src/v2/std/text.dag:7): a NON-parameterized alias whose right
+// hand side is an APPLICATION of a generic data type to a concrete argument.
+data Box<T> = Box { value: T }
+data CharLike = CharLike { code: Int }
 
-// (b) RED for stern-bat-401 msg_db49ee15 (3): reproduce `String` against its OWN right-hand side
-// `FreeMonoid<Char>` on main, with no change to the fold, and name the refusal site.
-// `type String = FreeMonoid<Char>` is verbatim src/v2/std/text.dag:7.
-type String = FreeMonoid<Char>
+type BoxOfChar = Box<CharLike>
 
-fn takes_int_list(xs: FreeMonoid<Int>) -> Bool {
-  is_empty(xs: xs)
+// ROW 1 -- THE RED. The alias against a parameter of its own right-hand side. Expected to REFUSE on
+// main, because transparent_alias_rhs (src/v1/04_env.dag:2159) returns none when the alias's
+// declaration carries parameters, so the alias head is compared as an opaque head.
+fn accepts_box_of_char(x: Box<CharLike>) -> Bool {
+  match x {
+    Box { value: v } => v.code == 0
+  }
 }
 
-// ROW 1, the RED: today this is expected to REFUSE (the alias is compared as an opaque head,
-// transparent_alias_rhs returning none because the alias declares no params of its own).
-fn alias_against_its_own_rhs(s: String) -> Bool {
-  is_empty(xs: s)
+fn alias_against_its_own_rhs(a: BoxOfChar) -> Bool {
+  accepts_box_of_char(x: a)
 }
 
-// ROW 2, the refusal twin: a genuinely different instance must still refuse.
-fn alias_against_a_different_instance(s: String) -> Bool {
-  takes_int_list(xs: s)
+// ROW 2 -- THE REFUSAL TWIN. A genuinely different instance must still refuse, whatever (b) does.
+fn accepts_box_of_int(x: Box<Int>) -> Bool {
+  match x {
+    Box { value: v } => v == 0
+  }
 }
 
-// ROW 3, the accept control: the right-hand side against itself, no alias involved.
-fn rhs_against_itself(xs: FreeMonoid<Char>) -> Bool {
-  is_empty(xs: xs)
+fn alias_against_a_different_instance(a: BoxOfChar) -> Bool {
+  accepts_box_of_int(x: a)
+}
+
+// ROW 3 -- THE ACCEPT CONTROL. The right-hand side against itself, no alias anywhere. Must accept.
+fn rhs_against_itself(x: Box<CharLike>) -> Bool {
+  accepts_box_of_char(x: x)
+}
+
+// ROW 4 -- THE ASYMMETRY CONTROL. A value of the ALIAS passed where the alias itself is expected.
+// Must accept: this direction is the alias against itself, not against its right-hand side.
+fn takes_alias_directly(a: BoxOfChar) -> Bool {
+  alias_against_its_own_rhs(a: a)
 }

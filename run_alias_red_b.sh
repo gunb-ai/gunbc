@@ -21,6 +21,11 @@ mkdir -p "$WORK/src" && cp fixtures_alias_b/alias_red.dag "$WORK/src/alias_red.d
 ( cd "$WORK/src" && "$bin" compile --source-dir . --output-dir "$WORK/emit" --target rust ) > "$WORK/compile.log" 2>&1
 crc=$?
 echo "COMPILE_RC=$crc"
+echo "=== HARD DIAGNOSTIC COUNT ==="
+grep -aoE "produced [0-9]+ hard diagnostic" "$WORK/compile.log" | head -2
+echo "=== UNRESOLVED-IMPORT GUARD (an unresolved import invalidates the row) ==="
+grep -ac "unresolved import" "$WORK/compile.log" | sed 's/^/UNRESOLVED_IMPORTS=/'
+grep -ac "unresolved type" "$WORK/compile.log" | sed 's/^/UNRESOLVED_TYPES=/'
 echo "=== diagnostics verbatim ==="
 grep -anE "error|refus|mismatch|expected|got|unresolved|no field" "$WORK/compile.log" | head -40
 echo "=== full log (first 120 lines) ==="
