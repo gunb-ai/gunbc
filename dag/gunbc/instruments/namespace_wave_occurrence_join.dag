@@ -315,6 +315,13 @@ fn row_counts(rows: List<String>) -> Map<String, Int> {
 // THE CENSUS PRINTS A MODULE'S ROWS IN A DIFFERENT ORDER FROM RUN TO RUN (measured: 1070 of 1331 modules differ between
 // two runs of the same tree only by row order), so "the same rows" is multiset equality, never print-order equality.
 // Equal lengths and no head row without a base row left to take it are together equality.
+fn row_count_of(counts: Map<String, Int>, row: String) -> Int {
+  match map_get(counts, row) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
 fn rows_multiset_equal(base_rows: List<String>, head_rows: List<String>) -> Bool {
   if length(xs: base_rows) != length(xs: head_rows) {
     false
@@ -493,9 +500,11 @@ fn join_generated_key(e: JoinEntry) -> String {
 
 fn join_generated_multiset(base: List<JoinEntry>, head: List<JoinEntry>) -> List<JoinDelta> {
   let keys = map_keys(fold(base + head, init: empty_map(), f: fn(m, e) { map_insert(m, join_generated_key(e: e), true) }))
+  let base_counts = row_counts(rows: base |> map(e => join_generated_key(e: e)))
+  let head_counts = row_counts(rows: head |> map(e => join_generated_key(e: e)))
   keys |> fold(init: [], f: fn(acc, k) {
-    let b = count(base |> filter(e => join_generated_key(e: e) == k))
-    let h = count(head |> filter(e => join_generated_key(e: e) == k))
+    let b = row_count_of(counts: base_counts, row: k)
+    let h = row_count_of(counts: head_counts, row: k)
     if b == h { acc } else { list_snoc_item(xs: acc, item: JoinRefused { cause: "GeneratedChanged", coordinate: k, detail: "base " + to_string(b) + " head " + to_string(h) }) }
   })
 }
