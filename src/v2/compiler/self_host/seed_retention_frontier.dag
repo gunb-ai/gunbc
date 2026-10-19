@@ -636,13 +636,13 @@ fn self_host_frontier_holds(frontier: SelfHostFrontier) -> Bool {
     && (length(xs: frontier.stale_rows) == 0)
 }
 
-fn frontier_retained_rows(frontier: SelfHostFrontier) -> List<SeedRetentionFrontierRow> {
+fn frontier_retained_count_where(frontier: SelfHostFrontier, predicate: fn(SeedRetentionFrontierRow) -> Bool) -> Int {
   fold(
     frontier.standings,
-    init: [],
+    init: 0,
     f: fn(acc, standing) {
       match standing {
-        SeedRetained { row: row } => concat(acc, [row])
+        SeedRetained { row: row } => if predicate(row) { acc + 1 } else { acc }
         SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => acc
         EmittedUnexecuted { crate_relative_path: _, source_module: _ } => acc
         Unclassified { crate_relative_path: _ } => acc
@@ -652,7 +652,7 @@ fn frontier_retained_rows(frontier: SelfHostFrontier) -> List<SeedRetentionFront
 }
 
 fn frontier_undeclared_reason_count(frontier: SelfHostFrontier) -> Int {
-  length(xs: filter(xs: frontier_retained_rows(frontier: frontier), predicate: fn(row) { row_reason_is_undeclared(row: row) }))
+  frontier_retained_count_where(frontier: frontier, predicate: fn(row) { row_reason_is_undeclared(row: row) })
 }
 
 fn row_dissolution_is_unbound(row: SeedRetentionFrontierRow) -> Bool {
@@ -664,7 +664,7 @@ fn row_dissolution_is_unbound(row: SeedRetentionFrontierRow) -> Bool {
 }
 
 fn frontier_unbound_dissolution_count(frontier: SelfHostFrontier) -> Int {
-  length(xs: filter(xs: frontier_retained_rows(frontier: frontier), predicate: fn(row) { row_dissolution_is_unbound(row: row) }))
+  frontier_retained_count_where(frontier: frontier, predicate: fn(row) { row_dissolution_is_unbound(row: row) })
 }
 
 // THE VERB'S WHOLE ANSWER IS THIS FOLD (v2.compiler.source_root_eval native_self_host_frontier_output
