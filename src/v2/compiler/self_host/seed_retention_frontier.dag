@@ -839,7 +839,7 @@ fn frontier_summary_line(frontier: SelfHostFrontier) -> String {
   )
 }
 
-fn frontier_standing_refusal_lines(frontier: SelfHostFrontier) -> List<String> {
+fn frontier_standing_lines(frontier: SelfHostFrontier) -> List<String> {
   concat(
     fold(
       frontier.standings,
@@ -847,7 +847,7 @@ fn frontier_standing_refusal_lines(frontier: SelfHostFrontier) -> List<String> {
       f: fn(acc, standing) {
         match standing {
           Unclassified { crate_relative_path: path } => concat(acc, [concat("[self-host-frontier] REFUSED unclassified: ", path)])
-          SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => acc
+          SelfEmitted { crate_relative_path: path, source_module: module, receipt: _ } => concat(acc, [concat("[self-host-frontier] self-emitted: ", concat(path, concat(" <- ", module)))])
           EmittedUnexecuted { crate_relative_path: _, source_module: _ } => acc
           SeedRetained { row: _ } => acc
         }
@@ -897,7 +897,7 @@ fn self_host_frontier_report_over(roster: List<SeedRetentionFrontierRow>, manife
           controls: if word == self_host_frontier_verdict_passed_word { ControlsPassed } else { ControlsNotPassed }
         )
         SelfHostFrontierReport {
-          lines: concat([frontier_summary_line(frontier: frontier)], frontier_standing_refusal_lines(frontier: frontier)),
+          lines: concat([frontier_summary_line(frontier: frontier)], frontier_standing_lines(frontier: frontier)),
           exit: if self_host_frontier_holds(frontier: frontier) { 0 } else { 1 }
         }
       }
