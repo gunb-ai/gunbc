@@ -5243,7 +5243,7 @@ fn load_compile_clean_entry_sources(
             }
             let content = source
                 .read()
-                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+                .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
             entry_files.push((path.to_string_lossy().to_string(), content));
         }
     }
