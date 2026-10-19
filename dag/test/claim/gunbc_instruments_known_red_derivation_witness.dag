@@ -13,7 +13,9 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 import gunbc.instruments.known_red_derivation {
   ClaimRun, KnownRedChildRun, KnownRedSubject, KnownRedSubjectPopulation,
   known_red_chunks, known_red_entries_owed, known_red_fold, known_red_int_text,
-  known_red_roster_entry, known_red_underivable_marker,
+  known_red_roster_entry, KnownRedEntryPlacement, Placed, Underivable,
+  known_red_defect_of, known_red_dispatchable, known_red_entry_path, known_red_entry_print,
+  known_red_subject_defect_text,
   known_red_is_green, known_red_held_rows, known_red_max_claims_per_child,
   known_red_refusal_name, known_red_stale_enrolments, known_red_unaccounted_reds,
   known_red_subjects, known_red_subject_qualified, known_red_report
@@ -36,7 +38,7 @@ fn fixture_entry() -> String {
 fn wet_subject(module_path: String, function: String) -> KnownRedSubject {
   KnownRedSubject {
     identity: WitnessIdentity { module_path: module_path, function: function },
-    entry: fixture_entry(),
+    entry: Placed { path: fixture_entry() },
     function: function,
     origin: WetLane
   }
@@ -62,7 +64,7 @@ fn first_or_fail(subjects: List<KnownRedSubject>) -> KnownRedSubject {
   } else {
     KnownRedSubject {
       identity: WitnessIdentity { module_path: "no.enrolment.authority", function: "roster_is_empty" },
-      entry: "src/no/enrolment/authority.dag",
+      entry: Placed { path: "src/no/enrolment/authority.dag" },
       function: "roster_is_empty",
       origin: RequiredFloor
     }
@@ -84,7 +86,7 @@ fn known_red_is_placeholder(s: KnownRedSubject) -> Bool {
 fn known_red_no_subject() -> KnownRedSubject {
   KnownRedSubject {
     identity: WitnessIdentity { module_path: "no.enrolment.placeholder", function: "none" },
-    entry: "src/no/enrolment/placeholder.dag",
+    entry: Placed { path: "src/no/enrolment/placeholder.dag" },
     function: "none",
     origin: RequiredFloor
   }
@@ -92,7 +94,7 @@ fn known_red_no_subject() -> KnownRedSubject {
 
 // THE CLAIM THE CHILD WAS HANDED, built from the subject itself so the arm cannot drift from its subject.
 fn claim_of(subject: KnownRedSubject) -> ClaimRun {
-  ClaimRun { entry: subject.entry, function: subject.function }
+  ClaimRun { entry: known_red_entry_path(entry: subject.entry), function: subject.function }
 }
 
 fn fail_verdict(subject: KnownRedSubject) -> String {
@@ -342,7 +344,7 @@ fn subjects_for_entry(entry: String, per_entry: Int) -> List<KnownRedSubject> {
         [
           KnownRedSubject {
             identity: WitnessIdentity { module_path: entry, function: concat("f", known_red_int_text(n: i)) },
-            entry: concat("dag/test/claim/examples/", concat(entry, ".dag")),
+            entry: Placed { path: concat("dag/test/claim/examples/", concat(entry, ".dag")) },
             function: concat("f", known_red_int_text(n: i)),
             origin: WetLane
           }
@@ -457,8 +459,8 @@ test fn subjects_carry_the_paths_the_authorities_publish_and_the_instrument_inve
   let floor = filter(xs: known_red_subjects(), predicate: fn(s) { s.origin == RequiredFloor })
   (schedule |> length) > 0
     && (floor |> length) > 0
-    && join(map(wet, s => s.entry), "\n") == join(map(schedule, w => w.entry), "\n")
-    && all(xs: floor, predicate: fn(s) { s.entry == known_red_authority_path(name: s.identity.module_path) })
+    && join(map(wet, s => known_red_entry_path(entry: s.entry)), "\n") == join(map(schedule, w => w.entry), "\n")
+    && all(xs: floor, predicate: fn(s) { known_red_entry_path(entry: s.entry) == known_red_authority_path(name: s.identity.module_path) })
 }
 
 // THE RULE ITSELF, SPOT-CHECKED AGAINST TWO REAL FILES, BECAUSE A DELEGATION THAT NEVER EXERCISES EITHER
@@ -470,7 +472,54 @@ test fn the_derived_paths_follow_the_storage_policy_in_both_branches_and_only_in
     == "src/v2/workflow/floor2_prepared_subject.dag"
     && known_red_authority_path(name: "test.claim.examples.blackjack_shuffle_wet_witness")
       == "dag/test/claim/examples/blackjack_shuffle_wet_witness.dag"
-    && known_red_underivable_marker(name: "v2") == "underivable:v2"
+    && known_red_is_underivable(name: "v2")
+    && known_red_underivable_carries_its_cause(name: "v2")
+}
+
+// THE UNPLACEABLE CASE, TYPED RATHER THAN ENCODED. Two halves, because the defect this replaced was in the
+// print and not in the type: it is not enough that an unplaceable name comes back as something other than a
+// path, the authority's OWN cause text has to survive to the row a human reads. A draft here turned the
+// typed cause into the string "underivable:<name>", so the next consumer saw a path, the file check failed
+// on it, and the run printed `WetEntryFileAbsent` — the wrong name for the wrong cause, with the cause
+// already thrown away.
+fn known_red_is_underivable(name: String) -> Bool {
+  match known_red_roster_entry(module_path: name) {
+    Underivable { name: n, cause: _ } => n == name
+    Placed { path: _ } => false
+  }
+}
+
+fn known_red_underivable_carries_its_cause(name: String) -> Bool {
+  let defect = known_red_defect_of(subject: unplaceable_subject(name: name))
+  match defect {
+    Present { value: v } =>
+      string_contains(s: known_red_subject_defect_text(d: v), pattern: "RosterNameUnderivable")
+        && string_contains(s: known_red_subject_defect_text(d: v), pattern: name)
+        && string_contains(s: known_red_entry_print(entry: unplaceable_subject(name: name).entry), pattern: name)
+    Absent => false
+  }
+}
+
+// A SUBJECT WHOSE ENTRY IS WHAT THE AUTHORITY ACTUALLY RETURNED for a name it cannot place -- built by the
+// same call the instrument makes, so this arm cannot drift into testing a fixture nobody produces.
+fn unplaceable_subject(name: String) -> KnownRedSubject {
+  KnownRedSubject {
+    identity: WitnessIdentity { module_path: name, function: "unplaceable" },
+    entry: known_red_roster_entry(module_path: name),
+    function: "unplaceable",
+    origin: RequiredFloor
+  }
+}
+
+// THE UNPLACEABLE SUBJECT IS NEVER DISPATCHED, and never silently dropped either: it is defective (so no
+// child is handed its empty path as argv) while remaining OWED, which is what makes the reconciliation
+// refuse instead of printing a population that is one claim short.
+test fn an_unplaceable_roster_name_is_never_handed_a_path_and_is_never_dropped() -> Bool {
+  let ghost = unplaceable_subject(name: "v2")
+  let real = enrolled_fixture()
+  length(xs: known_red_dispatchable(subjects: [ghost])) == 0
+    && known_red_entries_owed(subjects: [ghost, real]) == 2
+    && known_red_entry_path(entry: ghost.entry) == ""
 }
 
 // THE POPULATION EXERCISES BOTH BRANCHES, MEASURED RATHER THAN ASSERTED: the derived entries are printed by
@@ -478,8 +527,8 @@ test fn the_derived_paths_follow_the_storage_policy_in_both_branches_and_only_in
 // tree, the roster would silently stop pointing at 19 of its own 80 claims.
 test fn the_roster_population_derives_under_both_roots_rather_than_collapsing_into_one() -> Bool {
   let floor = filter(xs: known_red_subjects(), predicate: fn(s) { s.origin == RequiredFloor })
-  any(xs: floor, predicate: fn(s) { known_red_under_src_v2(entry: s.entry) })
-    && any(xs: floor, predicate: fn(s) { known_red_under_dag(entry: s.entry) })
+  any(xs: floor, predicate: fn(s) { known_red_under_src_v2(entry: known_red_entry_path(entry: s.entry)) })
+    && any(xs: floor, predicate: fn(s) { known_red_under_dag(entry: known_red_entry_path(entry: s.entry)) })
 }
 
 fn known_red_authority_path(name: String) -> String {

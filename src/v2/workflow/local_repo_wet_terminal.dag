@@ -329,10 +329,10 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     },
     WetScheduledClaim {
       identity: WitnessIdentity {
-        module_path: "test.claim.examples.blackjack_shuffle_wet_witness_test",
+        module_path: "test.claim.examples.blackjack_shuffle_wet_witness",
         function: "wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution",
       },
-      entry: "dag/test/claim/examples/blackjack_shuffle_wet_witness_test.dag",
+      entry: "dag/test/claim/examples/blackjack_shuffle_wet_witness.dag",
       function: "wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution",
       expectation: ExpectedToHold {},
     },
