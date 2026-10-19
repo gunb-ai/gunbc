@@ -1,6 +1,9 @@
 module gunbc.auth.wire_strict_reader
 
 import std.types { String, List, Bool }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
 import std.logic { Bool }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonArray, JsonObject, JsonString, JsonKeyValue }
 import extdeps.languages.json.parse { json_field, FieldRead, FieldAbsent, FieldMalformed }
@@ -169,3 +172,24 @@ fn first_arm(arms: List<WireSumArm>, tag: String) -> WireSumArm? {
     }
   })
 }
+
+// The consumers this fold does not yet have, each a typed row with the capability that retires it
+// (DESIGN 3c: a declared frontier with its trigger, not prose). Today read_shape is read by its
+// differential witnesses only.
+data wire_strict_reader_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "read_shape"),
+    reason: "no generated artifact reads this fold yet: the Swift decoders in apps/approve-ios/Approve/Wire.swift are a transcribed tree beside it",
+    dissolution: unbound_dissolution(description: "feature:wire-swift-generator-switch -- rows.dag retirement step 4: the Wire.swift generator emits its decoders from this fold's shapes and the transcribed tree deletes; the server decode_* chains stay until the option-2 step"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "bind_record"),
+    reason: "the policy rows (admitted spellings, admitted values, per-sum causes: rulings B3 and B4) are authored in the witness, not beside the protocol in gunbc.auth.approval_device_wire",
+    dissolution: unbound_dissolution(description: "feature:wire-policy-rows-in-approval-device-wire -- B3/B4 policy rows are declared in approval_device_wire and the witness consumes them instead of authoring them"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "WireSumArm"),
+    reason: "a sum arm's wire spelling is a literal on the arm, not a row of one per-arm spelling table in VariantNaming (ruling B2, L6 absorbs EnrolmentRefusalKind and OutcomeName.all)",
+    dissolution: unbound_dissolution(description: "feature:variant-naming-spelling-table -- std.serialization VariantNaming carries a total, injective per-arm spelling table and WireSumArm.wire_tag is read from it"),
+  ),
+]

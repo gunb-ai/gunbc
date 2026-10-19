@@ -1,5 +1,7 @@
 module test.claim.wire_strict_reader_witness
 
+import std.roster_frontier { frontier_rows_well_formed }
+import gunbc.auth.wire_strict_reader { wire_strict_reader_frontier_rows }
 import std.types { String, List, Bool, NonEmptyStr }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
 import extdeps.languages.json.emit { JsonValue, JsonNull }
@@ -126,4 +128,9 @@ test fn a_policy_that_is_the_declared_fields_binds() -> Bool {
     ShapeBound { shape: _ } => true
     ShapeRefused { cause: _ } => false
   }
+}
+
+// The three declared consumers carry a reason and a bound-or-described dissolution trigger.
+test fn the_declared_frontier_rows_are_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: wire_strict_reader_frontier_rows) && count(wire_strict_reader_frontier_rows) == 3
 }
