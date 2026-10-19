@@ -34,9 +34,9 @@ import gunbc.auth.heal_publisher_provision {
 import gunbc.auth.gcp_iam_bootstrap_delta { BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused, bootstrap_delta_over, observe_bootstrap_subject, roster_subjects, subject_not_bootstrapped_text }
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ceremony_trust_root_cells, trust_root_ceremony_entry }
 import extdeps.cloud.gcp.storage
-import gunbc.auth.gcp_iam_bootstrap_journal { JournalSubject, JournalPoolFirstPublication, JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, JournalListing, JournalListed, JournalListingUnreadable, journal_list, journal_mark, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused, journal_listed_consents, journal_has, journal_object_name }
+import gunbc.auth.gcp_iam_bootstrap_journal { JournalSubject, JournalPoolFirstPublication, JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, JournalListing, JournalListed, JournalListingUnreadable, journal_list, journal_mark, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused, journal_listed_consents, journal_has, journal_object_name, journal_mark_in_slot }
 import gunbc.auth.gcp_iam_bootstrap_model {
-  iam_bootstrap_journal_bucket, iam_bootstrap_journal_bucket_location,
+  iam_bootstrap_journal_bucket, iam_bootstrap_journal_bucket_location, iam_bootstrap_journal_bucket_uniform_access, iam_bootstrap_journal_bucket_public_access_prevention,
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_trust_bindings, iam_bootstrap_capability_bindings_over, iam_bootstrap_root_ceremony_bindings_over,
@@ -501,13 +501,24 @@ fn iam_bootstrap_write_policy(resource: IamBootstrapResource, policy: GcpPolicy,
 
 // THE JOURNAL BUCKET EXISTS BEFORE ITS CELLS ARE BOUND: created by the ceremony when absent (409 means
 // present), with uniform bucket-level access and public access prevented.
+// A create (or a 409 meaning a retried or concurrent create got there first) is not its evidence: the
+// bucket is read back before its cells are bound, which is what makes InsertBucket's idempotent
+// annotation true for this caller.
+fn iam_bootstrap_journal_bucket_readback(bucket: NonEmptyStr, token: Secret) -> String {
+  match gcp.Storage.GetBucket(access_token: token, bucket: bucket) {
+    RestAnswered { answer: b } => if b.name == (bucket as String) { "" } else { "journal bucket readback names another bucket" }
+    RestRefused { refusal } => concat("journal bucket created or present but its readback refused: ", rest_refusal_text(o: refusal))
+  }
+}
+
 fn iam_bootstrap_ensure_journal_bucket(bucket: NonEmptyStr, token: Secret) -> String {
   match gcp.Storage.GetBucket(access_token: token, bucket: bucket) {
     RestAnswered { answer: _ } => ""
     RestRefused { refusal } => if !outcome_is_not_found(o: refusal) { concat("journal bucket unreadable: ", rest_refusal_text(o: refusal)) }
-      else { match gcp.Storage.InsertBucket(access_token: token, project_id: fleet_secrets_project_id, bucket: bucket, location: iam_bootstrap_journal_bucket_location) {
-        RestAnswered { answer: _ } => ""
-        RestRefused { refusal: c } => match c { RestStatusRefused { status, body: _ } => if (status as Int) == 409 { "" } else { concat("journal bucket create refused: ", rest_refusal_text(o: c)) }  _ => concat("journal bucket create refused: ", rest_refusal_text(o: c)) }
+      else { match gcp.Storage.InsertBucket(access_token: token, project_id: fleet_secrets_project_id, bucket: bucket, location: iam_bootstrap_journal_bucket_location,
+          uniform_bucket_level_access: iam_bootstrap_journal_bucket_uniform_access, public_access_prevention: iam_bootstrap_journal_bucket_public_access_prevention) {
+        RestAnswered { answer: _ } => iam_bootstrap_journal_bucket_readback(bucket: bucket, token: token)
+        RestRefused { refusal: c } => match c { RestStatusRefused { status, body: _ } => if (status as Int) == 409 { iam_bootstrap_journal_bucket_readback(bucket: bucket, token: token) } else { concat("journal bucket create refused: ", rest_refusal_text(o: c)) }  _ => concat("journal bucket create refused: ", rest_refusal_text(o: c)) }
       } }
   }
 }
@@ -838,6 +849,11 @@ fn iam_authority_pin(name: String, wire: String) -> Bool {
 
 // The fixed subject comes from the operator's explicit authorization; only operation identity
 // and absolute deadline are inputs. They are pinned before publication and cannot drift on retry.
+// THESE AUTHORITY RECORDS STAY IN target/ (ruling by warm-crane-219, 2026-10-19): the temporary-authority
+// intents precede the bootstrap journal's bucket, which this very ceremony creates, and the ceremony runs
+// on the operator workstation, whose checkout persists between its runs. Trigger: if the ceremony ever
+// runs in CI (an ephemeral workspace), these records move to the journal
+// (gunbc.auth.gcp_iam_bootstrap_journal) like the pool and bare-create records did.
 fn iam_bootstrap_authority_converge(token: Secret, withdrawing: Bool) -> String {
   let operation = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID")
   let expiry = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT")
@@ -1159,13 +1175,19 @@ fn iam_bootstrap_initialize_pool_policy(pool: NonEmptyStr, token: Secret) -> Str
   }
 }
 
-// THE POOL'S ELECTION OBJECT. RED STUB: today it is keyed (resource, consent), like the closure.
+// A POOL'S FIRST PUBLICATION IS ELECTED ONCE PER RESOURCE LIFETIME: its election and closure occupy one
+// slot whatever the consent, which rides in the record's body. Two concurrent applies under different
+// digests therefore contend for one create-once object; the second meets the store's 412 and refuses, so
+// the journal itself is the exclusion (the gcp-iam-converge concurrency group is a second, not the only,
+// guard). Bare creates keep a slot per operation: the upstream create is itself 409-exclusive.
+data pool_first_publication_slot: String = "once"
+
 fn pool_election_object(pool: NonEmptyStr, consent: String) -> NonEmptyStr {
-  journal_object_name(subject: JournalPoolFirstPublication, resource_key: iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), consent: consent, mark: JournalElection)
+  journal_object_name(subject: JournalPoolFirstPublication, resource_key: iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), consent: pool_first_publication_slot, mark: JournalElection)
 }
 
 fn pool_journal_mark(pool: NonEmptyStr, consent: String, mark: JournalMark, token: Secret) -> Bool {
-  match journal_mark_outcome(o: journal_mark(bucket: iam_bootstrap_journal_bucket, subject: JournalPoolFirstPublication, resource_key: iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), consent: consent, mark: mark, token: token)) {
+  match journal_mark_outcome(o: journal_mark_in_slot(bucket: iam_bootstrap_journal_bucket, subject: JournalPoolFirstPublication, resource_key: iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), slot: pool_first_publication_slot, consent: consent, mark: mark, token: token)) {
     JournalMarkRecorded => true  JournalMarkAlreadyPresent => true  JournalMarkRefused { cause: _ } => false
   }
 }
@@ -1209,9 +1231,9 @@ fn iam_bootstrap_publish_initial_pool_policy(pool: NonEmptyStr, cells: List<GcpI
       PoolInitCloseJournal => if all(unresolved, c => pool_journal_mark(pool: pool, consent: c, mark: JournalClosure, token: token)) { PoolPublicationSettled } else { pool_publication_refused(reason: "pool initialized but completion journal failed; recover before continuing") }
       PoolInitPublish => match pool_init_admission(admission: admission, token: token) {
         PoolInitAdmissionRefused { reason } => pool_publication_refused(reason: reason)
-        PoolInitAdmitted => match journal_mark_outcome(o: journal_mark(bucket: iam_bootstrap_journal_bucket, subject: JournalPoolFirstPublication, resource_key: pool_key, consent: consent, mark: JournalElection, token: token)) {
+        PoolInitAdmitted => match journal_mark_outcome(o: journal_mark_in_slot(bucket: iam_bootstrap_journal_bucket, subject: JournalPoolFirstPublication, resource_key: pool_key, slot: pool_first_publication_slot, consent: consent, mark: JournalElection, token: token)) {
           JournalMarkRefused { cause } => pool_publication_refused(reason: concat("pool initialization election could not be recorded; no write: ", cause as String))
-          JournalMarkAlreadyPresent => pool_publication_refused(reason: "pool initialization election already taken under this consent; recover without another write")
+          JournalMarkAlreadyPresent => pool_publication_refused(reason: "pool initialization election already taken (once per pool, any consent); a concurrent or earlier publication holds it; recover without another write")
           JournalMarkRecorded => {
             match gcp.IamAdmin.SetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool,
               policy: GcpPolicy { bindings: gcp_cells_bindings(cs: cells), etag: "", version: 3 }) {

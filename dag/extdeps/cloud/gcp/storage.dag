@@ -2,7 +2,7 @@ module extdeps.cloud.gcp.storage
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Int, List, String, NonEmptyStr, Secret }
+import std.types { Bool, Int, List, String, NonEmptyStr, Secret }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { GET, POST, PUT }
 import extdeps.cloud.gcp.errors { GcpErrorShape }
@@ -187,10 +187,10 @@ service gcp.Storage {
 
   operation InsertBucket {
     requires Network
-    input { access_token: Secret, project_id: GcpProjectId, bucket: NonEmptyStr, location: NonEmptyStr }
+    input { access_token: Secret, project_id: GcpProjectId, bucket: NonEmptyStr, location: NonEmptyStr, uniform_bucket_level_access: Bool, public_access_prevention: NonEmptyStr }
     output { name: String }
     idempotent
-    transport rest { method: POST, path: "/storage/v1/b", query: { project: project_id }, body: { name: bucket, location: location, iamConfiguration: { uniformBucketLevelAccess: { enabled: true }, publicAccessPrevention: "enforced" } } }
+    transport rest { method: POST, path: "/storage/v1/b", query: { project: project_id }, body: { name: bucket, location: location, iamConfiguration: { uniformBucketLevelAccess: { enabled: uniform_bucket_level_access }, publicAccessPrevention: public_access_prevention } } }
     response {
       200 => GcsBucketWire
       400 => GcpErrorShape

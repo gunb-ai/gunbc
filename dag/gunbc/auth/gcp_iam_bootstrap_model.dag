@@ -267,6 +267,8 @@ fn secret_iam_root_cells() -> List<TrustRootCell> {
 // are in neither role, and create-once is the store's ifGenerationMatch=0.
 data iam_bootstrap_journal_bucket: NonEmptyStr = "gunbai-secrets-bootstrap-journal"
 data iam_bootstrap_journal_bucket_location: NonEmptyStr = "us-central1"
+data iam_bootstrap_journal_bucket_uniform_access: Bool = true
+data iam_bootstrap_journal_bucket_public_access_prevention: NonEmptyStr = "enforced"
 
 // create and get, as ruled, plus list: a reader finds an unresolved election under ANY earlier consent by
 // listing the resource's marks (gunbc.auth.gcp_iam_bootstrap_journal journal_list), and list is read-only.
