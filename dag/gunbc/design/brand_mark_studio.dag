@@ -249,7 +249,11 @@ fn studio_costume_parts(c: StudioCostume, a: StudioAnchors) -> List<StudioPart> 
 
 // ═══ EXPRESSIONS (eyes and mouth inside their anchors) ═══
 
-type StudioExpression = ExprNeutral | ExprHappy | ExprWink | ExprSurprised
+// The register is a tired machine, not a cheerful mascot. Every mood is an open eye with a LID: a
+// piece of the body laid over the eye along a line set by how far it drops at the inner and outer
+// corner (percent of the eye's radius), so one rule moods round eyes and the robot's square ones,
+// and the lid takes the body's material and relief like the rest of the shell.
+type StudioExpression = ExprNeutral | ExprLethargic | ExprMoody | ExprSad | ExprAngry | ExprDepressed
 
 type StudioExpressionOption {
   key: String
@@ -259,9 +263,11 @@ type StudioExpressionOption {
 
 data studio_expressions: List<StudioExpressionOption> = [
   StudioExpressionOption { key: "neutral", title: "Neutral", expression: ExprNeutral },
-  StudioExpressionOption { key: "happy", title: "Happy", expression: ExprHappy },
-  StudioExpressionOption { key: "wink", title: "Wink", expression: ExprWink },
-  StudioExpressionOption { key: "surprised", title: "Surprised", expression: ExprSurprised },
+  StudioExpressionOption { key: "lethargic", title: "Lethargic", expression: ExprLethargic },
+  StudioExpressionOption { key: "moody", title: "Moody", expression: ExprMoody },
+  StudioExpressionOption { key: "sad", title: "Sad", expression: ExprSad },
+  StudioExpressionOption { key: "angry", title: "Angry", expression: ExprAngry },
+  StudioExpressionOption { key: "depressed", title: "Depressed", expression: ExprDepressed },
 ]
 
 fn studio_open_eye(shape: StudioEyeShape, cx: Int, cy: Int, r: Int) -> StudioPart {
@@ -271,22 +277,48 @@ fn studio_open_eye(shape: StudioEyeShape, cx: Int, cy: Int, r: Int) -> StudioPar
   }
 }
 
-fn studio_closed_eye(cx: Int, cy: Int, r: Int) -> StudioPart {
-  studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(cx - r), ",", n(cy + r / 3), " Q", n(cx), ",", n(cy - r), " ", n(cx + r), ",", n(cy + r / 3)], ""), w: r * 2 / 5)
+// The lid line runs from the inner corner to the outer one; `inner_right` says which side is inner
+// (the left eye's inner corner is on its right).
+fn studio_lid(cx: Int, cy: Int, r: Int, inner: Int, outer: Int, inner_right: Bool) -> StudioPart {
+  let pad = r / 3
+  let left_drop = if inner_right { outer } else { inner }
+  let right_drop = if inner_right { inner } else { outer }
+  studio_fill(role: RoleBody, depth: DepthFront, d: studio_poly_d(points: [
+    cx - r - pad, cy - r - pad,
+    cx + r + pad, cy - r - pad,
+    cx + r + pad, cy + r * right_drop / 100,
+    cx - r - pad, cy + r * left_drop / 100,
+  ]))
+}
+
+fn studio_lidded_eyes(shape: StudioEyeShape, a: StudioAnchors, look: Int, inner: Int, outer: Int) -> List<StudioPart> {
+  let cy = a.eye_y + a.eye_r * look / 100
+  [
+    studio_open_eye(shape: shape, cx: a.eye_left_x, cy: cy, r: a.eye_r),
+    studio_lid(cx: a.eye_left_x, cy: cy, r: a.eye_r, inner: inner, outer: outer, inner_right: true),
+    studio_open_eye(shape: shape, cx: a.eye_right_x, cy: cy, r: a.eye_r),
+    studio_lid(cx: a.eye_right_x, cy: cy, r: a.eye_r, inner: inner, outer: outer, inner_right: false),
+  ]
 }
 
 fn studio_face_parts(e: StudioExpression, shape: StudioEyeShape, a: StudioAnchors) -> List<StudioPart> {
-  let mouth_box = studio_fill(role: RoleFeature, depth: DepthFront, d: brand_mark_box_path(b: a.mouth))
-  let smile = studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(a.mouth.x), ",", n(a.mouth.y), " Q", n(a.mouth.x + a.mouth.w / 2), ",", n(a.mouth.y + a.mouth.h * 2), " ", n(a.mouth.x + a.mouth.w), ",", n(a.mouth.y)], ""), w: a.mouth.h * 2 / 3)
+  let x0 = a.mouth.x
+  let x1 = a.mouth.x + a.mouth.w
+  let y = a.mouth.y + a.mouth.h / 2
+  let h = a.mouth.h
+  let w = a.mouth.h * 2 / 3
+  let frown = studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(x0), ",", n(y + h), " Q", n((x0 + x1) / 2), ",", n(y - h), " ", n(x1), ",", n(y + h)], ""), w: w)
+  let tight = studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(x0 + h / 2), ",", n(y + h / 2), " Q", n((x0 + x1) / 2), ",", n(y - h / 2), " ", n(x1 - h / 2), ",", n(y + h / 2)], ""), w: w * 5 / 4)
+  let sag = studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(x0), ",", n(y - h / 3), " L", n(x1), ",", n(y + h * 2 / 3)], ""), w: w)
+  let wave = studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(x0), ",", n(y), " Q", n(x0 + (x1 - x0) / 4), ",", n(y - h * 2 / 3), " ", n((x0 + x1) / 2), ",", n(y), " T", n(x1), ",", n(y)], ""), w: w)
+  let small_frown = studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(x0 + (x1 - x0) / 4), ",", n(y + h * 3 / 2), " Q", n((x0 + x1) / 2), ",", n(y + h / 3), " ", n(x1 - (x1 - x0) / 4), ",", n(y + h * 3 / 2)], ""), w: w)
   match e {
-    ExprNeutral => [studio_open_eye(shape: shape, cx: a.eye_left_x, cy: a.eye_y, r: a.eye_r), studio_open_eye(shape: shape, cx: a.eye_right_x, cy: a.eye_y, r: a.eye_r), mouth_box]
-    ExprHappy => [studio_closed_eye(cx: a.eye_left_x, cy: a.eye_y, r: a.eye_r), studio_closed_eye(cx: a.eye_right_x, cy: a.eye_y, r: a.eye_r), smile]
-    ExprWink => [studio_open_eye(shape: shape, cx: a.eye_left_x, cy: a.eye_y, r: a.eye_r), studio_closed_eye(cx: a.eye_right_x, cy: a.eye_y, r: a.eye_r), smile]
-    ExprSurprised => [
-      studio_open_eye(shape: shape, cx: a.eye_left_x, cy: a.eye_y, r: a.eye_r * 6 / 5),
-      studio_open_eye(shape: shape, cx: a.eye_right_x, cy: a.eye_y, r: a.eye_r * 6 / 5),
-      studio_fill(role: RoleFeature, depth: DepthFront, d: studio_circle_d(cx: a.mouth.x + a.mouth.w / 2, cy: a.mouth.y + a.mouth.h / 2 + 10, r: a.mouth.h * 3 / 4)),
-    ]
+    ExprNeutral => [studio_open_eye(shape: shape, cx: a.eye_left_x, cy: a.eye_y, r: a.eye_r), studio_open_eye(shape: shape, cx: a.eye_right_x, cy: a.eye_y, r: a.eye_r), studio_fill(role: RoleFeature, depth: DepthFront, d: brand_mark_box_path(b: a.mouth))]
+    ExprLethargic => concat(studio_lidded_eyes(shape: shape, a: a, look: 0, inner: 10, outer: 10), [sag])
+    ExprMoody => concat(studio_lidded_eyes(shape: shape, a: a, look: 0, inner: -25, outer: -15), [wave])
+    ExprSad => concat(studio_lidded_eyes(shape: shape, a: a, look: 10, inner: -70, outer: 15), [frown])
+    ExprAngry => concat(studio_lidded_eyes(shape: shape, a: a, look: 0, inner: 25, outer: -60), [tight])
+    ExprDepressed => concat(studio_lidded_eyes(shape: shape, a: a, look: 30, inner: 20, outer: 35), [small_frown])
   }
 }
 
@@ -666,7 +698,7 @@ fn studio_page_costume() -> String {
 
 fn studio_page_expression() -> String {
   let b = studio_base()
-  studio_page(title: "Expression", lead: "Eyes and mouth reshaped inside their anchors; works with round and square (robot) eyes.", body: studio_cards(cards: flat_map(studio_expressions, e => [
+  studio_page(title: "Expression", lead: "A tired machine, not a cheerful mascot: each mood is an open eye under a lid set by its inner and outer drop, plus a mouth. Works with round and square (robot) eyes.", body: studio_cards(cards: flat_map(studio_expressions, e => [
     studio_card(title: e.title, note: "face", pick: StudioPick { silhouette: b.silhouette, relief: b.relief, costume: CostumePlain, expression: e.expression, material: b.material, palette: b.palette }, id: join(["exp", e.key, "f"], "-")),
     studio_card(title: e.title, note: "robot", pick: StudioPick { silhouette: b.silhouette, relief: b.relief, costume: CostumeRobot, expression: e.expression, material: b.material, palette: b.palette }, id: join(["exp", e.key, "r"], "-")),
   ])))
@@ -708,8 +740,8 @@ fn studio_page_grid() -> String {
   let b = studio_base()
   let head = el_attrs("tr", [], concat([el_attrs("th", [], [])], map(studio_materials, m => studio_text(tag: "th", s: m.title))))
   let rows = map(studio_costumes, c => el_attrs("tr", [], concat([studio_text(tag: "th", s: c.title)], map(studio_materials, m =>
-    studio_tile(pick: StudioPick { silhouette: b.silhouette, relief: b.relief, costume: c.costume, expression: ExprHappy, material: m.material, palette: b.palette }, id: join(["grid", c.key, m.key], "-"))))))
-  studio_page(title: "Costume x material", lead: "Every costume in every material, happy expression, ink palette: none of these is drawn by hand.", body: [el_attrs("table", [attr(name: "class", value: "grid")], concat([head], rows))])
+    studio_tile(pick: StudioPick { silhouette: b.silhouette, relief: b.relief, costume: c.costume, expression: ExprLethargic, material: m.material, palette: b.palette }, id: join(["grid", c.key, m.key], "-"))))))
+  studio_page(title: "Costume x material", lead: "Every costume in every material, lethargic expression, ink palette: none of these is drawn by hand.", body: [el_attrs("table", [attr(name: "class", value: "grid")], concat([head], rows))])
 }
 
 type StudioPreset {
@@ -731,11 +763,13 @@ fn studio_page_presets() -> String {
   let presets = [
     StudioPreset { key: "bot", title: "gunbai[bot] avatar", note: "robot, flat, ink (today's)", pick: StudioPick { silhouette: s, relief: ReliefFlat, costume: CostumeRobot, expression: ExprNeutral, material: MaterialFlat, palette: studio_palette_named(key: "ink") } },
     StudioPreset { key: "ci", title: "gunbai-ci avatar", note: "plain, flat, CI green (today's)", pick: StudioPick { silhouette: s, relief: ReliefFlat, costume: CostumePlain, expression: ExprNeutral, material: MaterialFlat, palette: studio_palette_named(key: "ci") } },
-    StudioPreset { key: "halloween-devil", title: "Halloween: devil", note: "devil, wink, coin, Cuphead, Halloween", pick: StudioPick { silhouette: s, relief: ReliefCoin, costume: CostumeDevil, expression: ExprWink, material: MaterialCuphead, palette: studio_palette_named(key: "halloween") } },
-    StudioPreset { key: "halloween-witch", title: "Halloween: trick-or-treater", note: "witch, happy, pillow, wool, Halloween", pick: StudioPick { silhouette: s, relief: ReliefPillow, costume: CostumeWitch, expression: ExprHappy, material: MaterialWool, palette: studio_palette_named(key: "halloween") } },
-    StudioPreset { key: "xmas", title: "Christmas: Santa", note: "santa, happy, carved, lit, Christmas", pick: StudioPick { silhouette: s, relief: ReliefCarved, costume: CostumeSanta, expression: ExprHappy, material: MaterialLit, palette: studio_palette_named(key: "christmas") } },
-    StudioPreset { key: "manga", title: "Manga", note: "plain, happy, cel, manga, manga ink", pick: StudioPick { silhouette: s, relief: ReliefCel, costume: CostumePlain, expression: ExprHappy, material: MaterialManga, palette: studio_palette_named(key: "manga") } },
-    StudioPreset { key: "manga-cat", title: "Manga cat", note: "cat, wink, cel, manga, manga ink", pick: StudioPick { silhouette: s, relief: ReliefCel, costume: CostumeCat, expression: ExprWink, material: MaterialManga, palette: studio_palette_named(key: "manga") } },
+    StudioPreset { key: "tired-bot", title: "Tired bot", note: "robot, lethargic, coin, ink", pick: StudioPick { silhouette: s, relief: ReliefCoin, costume: CostumeRobot, expression: ExprLethargic, material: MaterialFlat, palette: studio_palette_named(key: "ink") } },
+    StudioPreset { key: "depressed-bot", title: "Depressed bot", note: "robot, depressed, pillow, ink", pick: StudioPick { silhouette: s, relief: ReliefPillow, costume: CostumeRobot, expression: ExprDepressed, material: MaterialFlat, palette: studio_palette_named(key: "ink") } },
+    StudioPreset { key: "halloween-devil", title: "Halloween: devil", note: "devil, angry, coin, Cuphead, Halloween", pick: StudioPick { silhouette: s, relief: ReliefCoin, costume: CostumeDevil, expression: ExprAngry, material: MaterialCuphead, palette: studio_palette_named(key: "halloween") } },
+    StudioPreset { key: "halloween-witch", title: "Halloween: trick-or-treater", note: "witch, moody, pillow, wool, Halloween", pick: StudioPick { silhouette: s, relief: ReliefPillow, costume: CostumeWitch, expression: ExprMoody, material: MaterialWool, palette: studio_palette_named(key: "halloween") } },
+    StudioPreset { key: "xmas", title: "Christmas: Santa", note: "santa, lethargic, carved, lit, Christmas", pick: StudioPick { silhouette: s, relief: ReliefCarved, costume: CostumeSanta, expression: ExprLethargic, material: MaterialLit, palette: studio_palette_named(key: "christmas") } },
+    StudioPreset { key: "manga", title: "Manga", note: "plain, depressed, cel, manga, manga ink", pick: StudioPick { silhouette: s, relief: ReliefCel, costume: CostumePlain, expression: ExprDepressed, material: MaterialManga, palette: studio_palette_named(key: "manga") } },
+    StudioPreset { key: "manga-cat", title: "Manga cat", note: "cat, sad, cel, manga, manga ink", pick: StudioPick { silhouette: s, relief: ReliefCel, costume: CostumeCat, expression: ExprSad, material: MaterialManga, palette: studio_palette_named(key: "manga") } },
     StudioPreset { key: "cat", title: "Cat", note: "cat, neutral, pillow, wool, ink", pick: StudioPick { silhouette: s, relief: ReliefPillow, costume: CostumeCat, expression: ExprNeutral, material: MaterialWool, palette: studio_palette_named(key: "ink") } },
   ]
   studio_page(title: "Presets", lead: "Named combinations: one pick per axis. The GitHub Apps and seasonal looks are presets.", body: studio_cards(cards: map(presets, p => studio_card(title: p.title, note: p.note, pick: p.pick, id: concat("pre-", p.key)))))
