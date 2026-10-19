@@ -8,7 +8,7 @@ module test.claim.compute.output_capture_absence_witness
 // through production: the capture runs inside compute_spawn_and_collect, whose neighbours reach the
 // host transport, and the hermetic claim run refuses a route that reaches an effect the hermetic
 // route has no arm for (it names the operation; the ground it reports for the wet twin's identities
-// is recorded row by row in v2.workflow.floor_route_gap). No mock arm is added to that transport to change that -- the standing ruling against it is RELAYED IN THE TASK BRIEF, 2026-08-23, and NO CARRIER WAS FOUND FOR IT: gunbc.design_ruling holds dated operator rulings and no row carries this one, and minting a row here would assert operator text nobody has verified (DESIGN.md 4d). Named as a follow-up for the lander: give the ruling a carrier, or have the operator restate it. The
+// is recorded row by row in v2.workflow.floor_route_gap). No mock arm is added to that transport to change it: gunbc.hermetic_mock_fidelity `fabricated_fact_next_trigger` requires an arm to answer as a function of the operation's declared inputs, `eval_mock_response` binds no inputs, and the unconditional alternative is the arm class that module filed as a defect and had deleted on 2026-08-23. The
 // population this witness was written against is read from the instrument, not transcribed here: the
 // inhabittance rows below walk the static call graph from production's own roots.
 //

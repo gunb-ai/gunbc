@@ -13,8 +13,15 @@ module test.claim.compute.output_capture_absence_wet_witness
 // -- no wrapper, no re-fold, no supplied pair, no new transport mock arm -- against a real
 // temporary checkout and the real /usr/bin/git, on the runner's own host. The effects are the ones
 // the self-host runs: compute_exec -> gunbc.WitnessBin.Run for `git hash-object` and for the
-// staging install. Wet is what `gunbc run --claim-run` gets without --dry-run
-// (src/v1/stage0/src/main.rs:1308-1313: "absence means Wet").
+// staging install. Wet is what `gunbc run --claim-run` gets without --dry-run: `run_verb` in
+// src/v1/stage0/src/main.rs selects ExecutionMode::Hermetic when --dry-run is given and
+// ExecutionMode::Wet when it is not, and the comment beside that choice reads "--dry-run means
+// Hermetic, which REFUSES host operations rather than mocking them silently, and absence means
+// Wet". No mock arm is added to the transport to make these rows hermetic:
+// gunbc.hermetic_mock_fidelity `fabricated_fact_next_trigger` requires an arm to answer as a
+// function of the operation's declared inputs, `eval_mock_response` binds no inputs today, and the
+// unconditional alternative is the arm class that module filed as a defect and had deleted on
+// 2026-08-23 (`mock_arm_is_fabricating`, `hermetic_mock_fidelity_rows`).
 //
 // THE TWO CLAIMS THE RULING ASKED FOR.
 //  (1) PRESENT. One declared output exists on disk. The route must return it with a blob that
