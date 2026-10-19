@@ -154,7 +154,7 @@ fn parse_verdict_publish_command() -> String {
     verb: cli_verb_parse_population,
     args: parse_verdict_publish_args(),
     tail: source_root_argv()
-  )}
+  )
 }
 
 fn parse_verdict_publish_memory_env() -> List<YamlKeyValue> {

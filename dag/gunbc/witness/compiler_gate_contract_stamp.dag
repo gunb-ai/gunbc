@@ -1005,7 +1005,7 @@ fn compiler_gate_contract_stamp_evidence_cases() -> List<CompilerGateContractSta
       expected_finding: "StampUnreadable"
     },
     CompilerGateContractStampEvidenceCase {
-      label: "RED forged expression (\${{ ... }})",
+      label: "RED forged expression (a GitHub expression member)",
       subject: SubjectForged { form: ForgedExpression },
       running: compiler_gate_contract_stamp_running_probe,
       expected_exit: "1",

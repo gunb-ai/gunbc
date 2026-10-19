@@ -417,7 +417,7 @@ test fn the_stamp_moves_when_an_invoked_field_is_added_holds() -> Bool {
   // rather than hashed so an unresolvable value can never be certified.
   let reordered = compiler_gate_contract_stamp_value_from_rows(rows: sort_by(compiler_gate_invocation_contract_rows(), f => f))
   let polluted = compiler_gate_contract_stamp_value_from_rows(
-    rows: list_append(left: rows, right: ["argv:\${{ secrets.X }}"])
+    rows: list_append(left: rows, right: ["argv:${{ secrets.X }}"])
   )
   before != "refused"
     && before != added
