@@ -35,9 +35,11 @@ GOT=$(git -C $D rev-parse HEAD)
 echo "tree=$GOT tracked_clean=$(git -C $D status --porcelain | wc -l) (want 0)"
 # the repair must be IN the tree that regenerates, and it must be the only thing that changed
 # in this function since 8d8d8aac0e1
-[ "$(grep -ac 'let unsettled_slot_variables' $D/src/v1/04_infer.dag)" = "2" ] \
-  || void_out "the repair seed is not in the cloned src/v1/04_infer.dag -- wrong tree"
-echo "repair present in .dag: seed=$(grep -ac 'let unsettled_slot_variables' $D/src/v1/04_infer.dag) (want 2: definition + use)"
+# definition AND use, counted on the BARE name: 'let unsettled_slot_variables' matches only the
+# definition (count 1); expecting 2 there VOIDs a perfectly good tree, which it did once.
+SEED_HITS=$(grep -ac 'unsettled_slot_variables' $D/src/v1/04_infer.dag)
+[ "$SEED_HITS" = "2" ] || void_out "repair seed hits=$SEED_HITS (want 2: definition + use) -- wrong tree"
+echo "repair present in .dag: seed=$SEED_HITS/2"
 
 cd $D
 SEED_BEFORE=$(sha256sum src/v1/stage0/src/v1_compiler_infer.rs | cut -c1-16)
