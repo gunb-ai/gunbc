@@ -15,6 +15,7 @@ import extdeps.languages.json.emit {
 }
 
 import v2.compiler.name_resolve {
+  ValidatedModuleRoots,
   resolution_context_of_validated,
   resolve_walk_in_context,
   validate_module_roots
@@ -261,20 +262,17 @@ fn closure_normalize_loop(
 // carrying this produced index, not widening Uncovered into not-sealed.
 fn closure_resolve_member(
   lm: LanguageModel,
-  tree: NormalizedTree,
+  roots: ValidatedModuleRoots,
   member_module: QualifiedName,
   symbol_index: SymbolIndex,
   index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>,
   type_declaration_modifiers: TypeDeclarationModifierChannel
 ) -> Outcome<ResolvedTree> {
-  bind_outcome(
-    o: validate_module_roots(roots: Cons { head: tree, tail: Empty }),
-    f: fn(validated) {
-      resolved_tree_outcome(w: resolve_walk_in_context(
+  resolved_tree_outcome(w: resolve_walk_in_context(
         context: outcome_accepted(value: resolution_context_of_validated(
           lm: lm,
-          roots: validated,
+          roots: roots,
           symbol_index: symbol_index,
           index: index,
           active_roots: active_roots,
@@ -282,8 +280,6 @@ fn closure_resolve_member(
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
       ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
-    }
-  )
 }
 
 // PHASE FOUR FOR ONE MEMBER. The member is resolved, every module its resolved references and import
@@ -291,6 +287,7 @@ fn closure_resolve_member(
 fn closure_member_emission(
   lm: LanguageModel,
   member: ClosureMember,
+  roots: ValidatedModuleRoots,
   roster: Map<String, Bool>,
   symbol_index: SymbolIndex,
   index: SourceRootIndex,
@@ -301,7 +298,7 @@ fn closure_member_emission(
   let emitted = bind_outcome(
     o: closure_resolve_member(
       lm: lm,
-      tree: member.tree,
+      roots: roots,
       member_module: member.module,
       symbol_index: symbol_index,
       index: index,
@@ -361,6 +358,9 @@ fn closure_emission_of_members(
     })
     let owned = text_set_of(names: list_map(xs: roster, f: fn(m) { qualified_name_to_dotted_string(qn: m) }))
     let type_declaration_modifiers = type_declaration_modifier_channel_of_trees(trees: list_map(xs: members, f: fn(m) { m.tree }))
+    bind_outcome(
+      o: validate_module_roots(roots: list_map(xs: members, f: fn(m) { m.tree })),
+      f: fn(validated) {
     outcome_accepted(value: ClosureEmission {
       entry: entry,
       members: roster,
@@ -368,6 +368,7 @@ fn closure_emission_of_members(
         closure_member_emission(
           lm: lm,
           member: m,
+          roots: validated,
           roster: owned,
           symbol_index: symbol_index,
           index: index,
@@ -377,6 +378,8 @@ fn closure_emission_of_members(
         )
       })
     })
+      }
+    )
   } else {
     outcome_rejected(d: closure_emission_diagnostic(reason: ^closure_emission_entry_not_acquired, at: entry_locus))
   }
