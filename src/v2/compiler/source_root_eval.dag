@@ -753,9 +753,12 @@ fn native_census_position_table_empty() -> NativeCensusPositionTable {
 }
 
 // THE TABLE EXISTS ONLY IN THE ARM THAT BUILT IT. A fold opened with NativeNeverLocates holds
-// NativeCensusPositionsNotBuilt, so there is no empty table for a caller to locate against and read the
-// miss as an ordinary answer: native_census_locate on this arm refuses with its own typed site
-// (FileRefusalAtPositionsNotBuilt), never FileRefusalAtUnresolvedNode.
+// NativeCensusPositionsNotBuilt, so no empty table exists to locate against. RUNG: only
+// native_census_locate refuses on this arm (FileRefusalAtPositionsNotBuilt). The three readers that
+// return Optional/Map -- native_census_owner_of, native_node_authored_locus, native_census_binding_loci --
+// answer Absent/empty on it, indistinguishable from "this file recorded no such id"; no census-verb path
+// reaches them (run_census reads file_refusals only). Next rung: their results carry a typed
+// not-built arm, or locating verbs hold a context type that cannot be NotBuilt.
 type NativeCensusPositions
   = NativeCensusPositionsBuilt { table: NativeCensusPositionTable }
   | NativeCensusPositionsNotBuilt
