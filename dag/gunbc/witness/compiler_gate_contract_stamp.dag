@@ -1,12 +1,9 @@
 module gunbc.witness.compiler_gate_contract_stamp
 
-import std.types { Bool, Char, FilePath, List, String }
+import std.types { Bool, FilePath, List, String }
 import std.optional { Absent, Optional, Present }
-import std.algebra {
-  Empty, FreeSemigroup, length, list_append, list_map, string_contains, trim
-}
+import std.algebra { length, list_append, list_map, string_contains, trim }
 import std.content_hash { ContentHash, content_hash_of_value, lower_hex_16, serialize_content_hash }
-import v2.std.text { string_split }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
 import gunbc.parse_verdict_schema {
   parse_verdict_reuse_counts_prefix,
@@ -435,13 +432,42 @@ fn compiler_gate_contract_stamp_field_names_with_renamed_reused() -> List<String
   )
 }
 
-// THE OUTPUT CONTRACT IS A POPULATION, NOT A SUBSET: one stdout row per declared counts field, exactly,
-// plus the one attribution row the walk's own step asserts. A missing label is the silent run itself
-// (six printed where seven are specified); an unexplained row is the mirror image, a promise about a
-// field nobody specified. A subset check passes when rows quietly drop out, so this is a bijection.
+// THE OUTPUT CONTRACT IS A POPULATION, NOT A SUBSET, AND THE TWO SIDES ARE TWO PRODUCTIONS.
+//
+// WHY IT IS NOT A LIST COMPARED WITH ITSELF. An earlier version built `expected` from
+// parse_verdict_reuse_counts_field_names() and then asked whether the stamped rows matched it -- but the
+// stamped rows are built from that same list, so the question could not be answered falsely and the
+// predicate proved nothing while its name promised a bijection. Here the sides are different: the stamped
+// rows come from the field DECLARATIONS, and the line comes from the verb's RENDERER over a probe value.
+// What is asked is "does what the verb prints contain exactly what the contract says it prints", which
+// either side can answer falsely -- and when it does, witnesses.yml cannot be emitted.
+//
+// THE CONJUNCTS:
+//   - every declared field appears in the printed line in `name=` form, the form the guard's readers key
+//     on. A field dropped from the print reddens this, and that is the recorded silent-green itself: four
+//     runs printed the six-field shape (no ancestor=) under a seven-field contract and exited green.
+//   - the printed line EQUALS the field rows joined by the renderer's own separator. If
+//     v2.cli.parse_verdict_reuse_counts_text were re-hardcoded to print six fields while seven are
+//     declared, the rows and the line differ here. (An earlier draft counted `=` characters with
+//     v2.std.text.string_split instead; that could not even typecheck -- that function consumes
+//     FreeMonoid<Char>, not the host String this module reads -- and it was dropped rather than made to
+//     compile by inventing a conversion.)
+//   - the stdout rows the stamp hashes stand in bijection with the declared fields plus the attribution
+//     row, so the preimage covers the whole shape and not a subset someone chose. A subset check passes
+//     when rows quietly drop out, which is how a contract field stops being certified without any red.
 fn compiler_gate_contract_stamp_output_population_is_exact() -> Bool {
+  let names = parse_verdict_reuse_counts_field_names()
+  let printed = parse_verdict_reuse_counts_probe_text()
+  let all_declared_are_printed = all(
+    names,
+    n => string_contains(s: printed, pattern: concat(n, "="))
+  )
+  let rendered_from_rows = join(
+    [parse_verdict_reuse_counts_prefix, " ", join(parse_verdict_reuse_counts_probe_field_texts(), " ")],
+    ""
+  )
   let declared = list_map(
-    xs: parse_verdict_reuse_counts_field_names(),
+    xs: names,
     f: fn(label) { join(["stdout:", parse_verdict_reuse_counts_prefix, " ", label], "") }
   )
   let expected = list_append(left: declared, right: ["stdout:ancestor-attribution-required"])
@@ -449,7 +475,9 @@ fn compiler_gate_contract_stamp_output_population_is_exact() -> Bool {
     compiler_gate_invocation_contract_canonical_rows(),
     row => string_contains(s: row, pattern: "stdout:")
   )
-  all(expected, e => any(stdout_rows, r => r == e))
+  all_declared_are_printed
+    && printed == rendered_from_rows
+    && all(expected, e => any(stdout_rows, r => r == e))
     && all(stdout_rows, r => any(expected, e => e == r))
     && length(stdout_rows) == length(expected)
 }
@@ -568,19 +596,22 @@ fn compiler_gate_contract_stamp_key_is_the_member(key: String) -> Bool {
   compiler_gate_contract_stamp_bare_key(key: trim(s: key)) == compiler_gate_contract_stamp_env_key
 }
 
-// ONE LAYER, BOTH QUOTE STYLES, AND ONLY A PAIR. An unbalanced quote is left alone: it is not a quoted
-// key, and mangling it here would be the same decoder-invents-data move this module refuses on the value
-// side. No loop -- a doubled quote is not a quoted key either, it is malformed.
-fn compiler_gate_contract_stamp_bare_key(key: String) -> String {
-  let n = string_length(s: key)
-  let open = substring(s: key, start: 0, end: 1)
-  let close = substring(s: key, start: n - 1, end: n)
-  if n >= 2 && ((open == "\"" && close == "\"") || (open == "'" && close == "'")) {
-    substring(s: key, start: 1, end: n - 1)
-  } else {
-    key
-  }
+// THE THREE SPELLINGS A MAPPING KEY CAN ARRIVE IN, BUILT FROM THE KEY RATHER THAN SLICED APART.
+//
+// WHY COMPARISON INSTEAD OF STRIPPING. The first version peeled a quote layer off with substring() and
+// then compared, which is the decoder-invents-data move this module refuses on the value side, and it
+// also depends on a slicing primitive this dialect only exposes as a method call. Building the accepted
+// spellings -- bare, double-quoted, single-quoted -- and comparing makes the set of things recognised
+// explicit and closed: anything else, including a doubled quote or an unbalanced one, is simply not the
+// member. Over-recognising stays the safe direction (an extra recognised member is a refusal), but the
+// set is now written down instead of inferred by a peeling loop.
+fn compiler_gate_contract_stamp_key_is_the_member(key: String) -> Bool {
+  let bare = trim(s: key)
+  bare == compiler_gate_contract_stamp_env_key
+    || bare == concat(concat("\"", compiler_gate_contract_stamp_env_key), "\"")
+    || bare == concat(concat("'", compiler_gate_contract_stamp_env_key), "'")
 }
+
 
 fn compiler_gate_stamp_matching_entries(entries: List<YamlKeyValue>) -> List<YamlKeyValue> {
   filter(entries, kv => compiler_gate_contract_stamp_key_is_the_member(key: kv.key))
