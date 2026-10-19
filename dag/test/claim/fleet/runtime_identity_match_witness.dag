@@ -1538,8 +1538,8 @@ test fn test_identical_octets_differing_only_in_provenance_bind_nothing() -> Boo
 }
 
 // AN ADDRESS WITH NO RECORDED SOURCE IS ITS OWN EVIDENCE STATE, not current-only and not "nobody answered".
-// What separates them is what was supplied: current-only arrives with the words describing what was read,
-// unestablished arrives with no source statement at all. Both are Unprovable, so nothing else in the verdict
+// What separates them is the cause payload: `AddressIsCurrentOnly` has a `detail` field holding the words
+// describing what was read, `AddressSourceUnestablished` has no such field. Both are Unprovable, so nothing else in the verdict
 // would tell them apart -- which is exactly why the causes must survive the fold intact.
 test fn test_an_unsourced_address_reports_its_own_cause() -> Bool {
   let pre = PreBootIdentityStanding {
@@ -1610,7 +1610,7 @@ test fn test_two_current_only_addresses_keep_two_sets_of_the_probe_s_words() -> 
 }
 
 // THE TWO UNESTABLISHED CAUSES ASK FOR TWO DIFFERENT THINGS, AND BOTH SURVIVE ONE GAP. One address the probe
-// says it read from live state, and one that arrived with no recorded source at all, on the same side: this is
+// says it read from live state, and one whose supplied cause records no source detail at all, on the same side: this is
 // the control that makes the carried causes OBSERVABLE rather than merely present. Under the count-only gap
 // merry-fox-82 named, this input, a gap of two current-only causes, and a gap of two unsourced causes all
 // answered `unestablished_count == 2` -- so a module that threw the causes away entirely would have passed

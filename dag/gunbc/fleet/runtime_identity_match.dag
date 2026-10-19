@@ -148,9 +148,10 @@ type RuntimeIdentityAxisRow {
 //   self-attestation, the same scope defect DESIGN section 3b refuses in other people's citations; and no
 //   home in this corpus publishes a permanent-address reading (a Linux `addr_assign_type`/`perm_addr`
 //   pair) that could be cited in its place. So the claim is made where it can actually be discharged: in
-//   the observation, by a probe handing over `PermanenceEstablished` together with the statement of where
-//   it read. A probe holding only current address state hands over `PermanenceNotEstablished`, and the
-//   axis reports a located gap instead of a verdict. Both grounds must hold for an address to reach the
+//   the observation, by whoever supplies the standing handing over `PermanenceEstablished` -- an arm that
+//   ASSERTS a permanent source and carries none (see `AddressProvenance`); this module reads the arm, it does
+//   not authenticate it. A reporter holding only current address state hands over `PermanenceNotEstablished`,
+//   and the axis reports a located gap instead of a verdict. Both grounds must hold for an address to reach the
 //   comparison, and `usable_addresses` is the only place that decides it. A future home that DOES publish
 //   a permanent-address reading becomes a constructor of `AddressProvenance` plus a probe that uses it; if
 //   it ever becomes the thing that licenses binding, its name goes in this row's `binding_authority`, and
@@ -361,10 +362,12 @@ fn unanswered<T>(row: RuntimeIdentityAxisRow, report: AxisReport<T>) -> AxisExam
 // THE FOURTH AND FIFTH ARMS ARE NOT SYNONYMS FOR `Unread`. `Unread` means the side gave no answer at all;
 // these two mean the side ANSWERED and the answer was not evidence. They split on WHICH EVIDENCE IS MISSING,
 // which is the only thing this model is entitled to distinguish:
-//  - `NoEligibleEvidence` -- no handed-over address can name an interface at all (all-null, locally
-//    administered, group, or simply an empty list). The octets themselves are what disqualifies them.
-//  - `ProvenanceUnestablished` -- the octets may be unobjectionable and the SUPPLIED PROVENANCE does not
-//    establish permanence. Nothing about the octets is in question; what is missing is a source standing.
+//  - `NoEligibleEvidence` -- after BOTH screens ran, this side has no usable address left. It does NOT say
+//    each entry failed the address tests: an entry can be missing because its supplied provenance did not
+//    establish permanence, which is the other arm's business, and when both arms fire the same list is counted
+//    by both. The arms are not a partition of the list; they are two questions asked of the same list.
+//  - `ProvenanceUnestablished` -- an entry's octets may be unobjectionable and the SUPPLIED PROVENANCE does not
+//    establish permanence. Nothing about those octets is in question; what is missing is a source standing.
 // Neither arm says which component is at fault, and the model has no evidence to say it: a gap records what
 // was not established, not who to tell. Conflating the two would report the same missing evidence either way
 // and lose the one distinction an operator can act on -- re-check what was reported, or supply a source
@@ -380,10 +383,14 @@ fn unanswered<T>(row: RuntimeIdentityAxisRow, report: AxisReport<T>) -> AxisExam
 type RuntimeIdentityAbsence
   = Unread { reason: NonEmptyStr }
   | ControllerRefused { refusal: RuntimeIdentityRefusal }
-  // THIS SIDE HANDED OVER ADDRESSES AND NONE OF THEM CAN NAME AN INTERFACE: each was null, locally
-  // administered, or group. The count is how many it handed over, so `reported 0` (nothing handed over) and
-  // `reported 5` (a list of addresses that all fail the address tests) are distinguishable -- different
-  // missing evidence, and an operator acts on them differently.
+  // THIS SIDE HANDED OVER ADDRESSES AND NONE OF THEM SURVIVED BOTH SCREENS. NOT "each one failed the address
+  // tests": an entry can be what is missing because its supplied provenance did not establish permanence, and
+  // when that happens the sibling `ProvenanceUnestablished` arm says so -- the two arms ask different questions
+  // of the same list rather than splitting it. `reported_count` is the length of the whole supplied list, so it
+  // counts entries excluded by either screen: the mixed-evidence control carries `reported_count: 2` where one
+  // entry fails the octet screen and the other fails on provenance. What the count is for is the ends of that
+  // range -- `reported 0` (nothing handed over at all) and `reported 5` (a list handed over, none of it usable)
+  // are different missing evidence and an operator acts on them differently.
   | NoEligibleEvidence { reported_count: Int }
   // THIS SIDE HANDED OVER ADDRESSES WHOSE SUPPLIED PROVENANCE DOES NOT ESTABLISH PERMANENCE -- a current
   // address, or an address whose source was never recorded. DISTINCT from `NoEligibleEvidence` because the
