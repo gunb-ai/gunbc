@@ -621,3 +621,14 @@ Give a disposition to the seed build, the emitted cargo builds and the controls,
 - Write one profiling recipe.
 - Move unfinished items to the maintained backlog.
 - Delete this file.
+
+## 5b. Constraints from the parent lane (sleek-owl-397, v2 native work). Applies to every lane.
+
+1. **`src/v1/04_infer.dag` and `v1_compiler_infer.rs` are being edited concurrently.** The concurrent edits come from:
+   - Rule A (crisp-otter-44, for #14087);
+   - the operator's Int carrier (`n3/int-carrier`);
+   - #14185.
+
+   Any lane touching `04_infer` or its mirrors (J's `collect_parent_envs`/rewire part, M1, R) must **sequence through tidy-ant-251** before editing, and must not race. Note that the parent tree also has an "M1" lane, unrelated to this doc's M1.
+2. **Measured negatives, do not retry.** The second generic-argument round in `infer_call_arguments_generic_pass` cannot be cut under frozen verdicts: quiet-hawk-370's closed v1-reconcile lane recorded 4 negatives. Its open lead is **~29 s of reconcile outside both argument folds, unattributed**. Lane D should attribute that, and read quiet-hawk-370's findings first. §5a D item 4 is narrowed to "do not attempt reuse".
+3. **PURPOSE test** (`gunbc.v1.v1_maintenance_standing v1_seed_standing`). v1 is semantics-frozen. Every lane's PR must state how it serves the v2 self-host program. For this plan the statement is: seed self-host time and memory on the required job, plus less seed surface for v2 to carry. A lane that cannot say this does not land.
