@@ -219,78 +219,69 @@ fn enrolled_device(state: EnrolmentState) -> Optional<EnrolledDevicePayload> {
 // discipline approval_device_wire uses for every wire render (its frame() carries that rule).
 data enrolment_record_frame: NonEmptyStr = "\u{1f}gunbc.approve.ios.enrolment.record.v1"
 
+// THE FIELD LIST OF ONE PAYLOAD, WRITTEN ONCE. The render below hashes these lists, so a field added
+// to a payload has to enter the digest exactly once — and if each payload-carrying phase spelled its
+// own copy, forgetting one would silently make that phase's digest stop covering the field, the same
+// class of divergence this whole module exists to prevent. DESIGN §2: model a concept once and derive
+// every use; §6b names this trigger — the second local implementation of one rule.
+//
+// The renderer is a parameter rather than a bare `to_string`, because the optionals carry branded
+// carriers (NonEmptyStr-backed attestations, ApnsDeviceToken) and each carrier's authority says how it
+// is shown; the helper stays the single place the present/absent SHAPE is decided.
+fn enrolment_optional_field<T>(value: Optional<T>, render: fn(T) -> String) -> String {
+  match value {
+    Present { value: v } => render(v)
+    Absent => ""
+  }
+}
+
+fn prepared_enrolment_payload_fields(payload: PreparedEnrolmentPayload) -> List<String> {
+  [
+    payload.code as String,
+    payload.decision_key_blob as String,
+    payload.decision_key_pub.point_b64url as String,
+    payload.attest_key_id as String,
+    payload.transcript as String,
+    enrolment_optional_field(value: payload.attestation, render: fn(a) { a as String }),
+  ]
+}
+
+fn enrolled_device_payload_fields(device: EnrolledDevicePayload) -> List<String> {
+  [
+    device.enrollment_id as String,
+    device.decision_key_blob as String,
+    device.attest_key_id as String,
+    enrolment_optional_field(value: device.forwarded_apns_token, render: fn(t) { t as String }),
+  ]
+}
+
+// EVERY PHASE RENDERS THE SAME WAY: the phase name, the record frame, that phase's payload fields from
+// the helper above, and a reason where the phase carries one. No arm lists a payload field itself, so
+// no arm can fall behind its payload's declaration.
 fn enrolment_record_render(state: EnrolmentState) -> NonEmptyStr {
   match state {
     StateUnenrolled =>
       framed(fields: [phase_name(p: PhaseUnenrolled) as String, enrolment_record_frame as String])
     StatePrepared { payload: p } =>
-      framed(fields: [
-        phase_name(p: PhasePrepared) as String,
-        enrolment_record_frame as String,
-        p.code as String,
-        p.decision_key_blob as String,
-        p.decision_key_pub.point_b64url as String,
-        p.attest_key_id as String,
-        p.transcript as String,
-        match p.attestation {
-          Present { value: a } => a as String
-          Absent => ""
-        },
-      ])
+      framed(fields: [phase_name(p: PhasePrepared) as String, enrolment_record_frame as String]
+        |> concat(prepared_enrolment_payload_fields(payload: p)))
     StateSubmissionUnknown { payload: p } =>
-      framed(fields: [
-        phase_name(p: PhaseSubmissionUnknown) as String,
-        enrolment_record_frame as String,
-        p.code as String,
-        p.decision_key_blob as String,
-        p.decision_key_pub.point_b64url as String,
-        p.attest_key_id as String,
-        p.transcript as String,
-        match p.attestation {
-          Present { value: a } => a as String
-          Absent => ""
-        },
-      ])
+      framed(fields: [phase_name(p: PhaseSubmissionUnknown) as String, enrolment_record_frame as String]
+        |> concat(prepared_enrolment_payload_fields(payload: p)))
     StateEnrolled { device: d } =>
-      framed(fields: [
-        phase_name(p: PhaseEnrolled) as String,
-        enrolment_record_frame as String,
-        d.enrollment_id as String,
-        d.decision_key_blob as String,
-        d.attest_key_id as String,
-        match d.forwarded_apns_token {
-          Present { value: t } => t as String
-          Absent => ""
-        },
-      ])
+      framed(fields: [phase_name(p: PhaseEnrolled) as String, enrolment_record_frame as String]
+        |> concat(enrolled_device_payload_fields(device: d)))
     StateKeyInvalidated { device: d, reason: r } =>
-      framed(fields: [
-        phase_name(p: PhaseKeyInvalidated) as String,
-        enrolment_record_frame as String,
-        d.enrollment_id as String,
-        d.decision_key_blob as String,
-        d.attest_key_id as String,
-        match d.forwarded_apns_token {
-          Present { value: t } => t as String
-          Absent => ""
-        },
-        r as String,
-      ])
+      framed(fields: [phase_name(p: PhaseKeyInvalidated) as String, enrolment_record_frame as String]
+        |> concat(enrolled_device_payload_fields(device: d))
+        |> concat([r as String]))
     StateRevoked { device: d, reason: r } =>
-      framed(fields: [
-        phase_name(p: PhaseRevoked) as String,
-        enrolment_record_frame as String,
-        d.enrollment_id as String,
-        d.decision_key_blob as String,
-        d.attest_key_id as String,
-        match d.forwarded_apns_token {
-          Present { value: t } => t as String
-          Absent => ""
-        },
-        r as String,
-      ])
+      framed(fields: [phase_name(p: PhaseRevoked) as String, enrolment_record_frame as String]
+        |> concat(enrolled_device_payload_fields(device: d))
+        |> concat([r as String]))
   }
 }
+
 
 fn enrolment_record_digest(state: EnrolmentState) -> ContentHash {
   content_hash_of_value(value: enrolment_record_render(state: state))
