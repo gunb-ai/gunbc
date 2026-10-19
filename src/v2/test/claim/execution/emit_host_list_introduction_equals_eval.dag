@@ -593,3 +593,43 @@ test fn probe_main() -> Bool {
   match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_demo(1, 2, 3, 0)")
     Rejected { diagnostics: _ } => false }
 }
+test fn pq1() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fn fold_demo(")
+    Rejected { diagnostics: _ } => false }
+}
+test fn pq2() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fn fold_demo(e1")
+    Rejected { diagnostics: _ } => false }
+}
+test fn pq3() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fn fold_demo(e1: i32")
+    Rejected { diagnostics: _ } => false }
+}
+test fn pq4() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "e3: i32, z: i32) -> i32")
+    Rejected { diagnostics: _ } => false }
+}
+test fn pq5() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "e3: i32, z: i32)")
+    Rejected { diagnostics: _ } => false }
+}
+test fn pq6() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "-> i32 {")
+    Rejected { diagnostics: _ } => false }
+}
+test fn pq7() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_demo(e1")
+    Rejected { diagnostics: _ } => false }
+}
+test fn pq8() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "|acc, h| acc + h)")
+    Rejected { diagnostics: _ } => false }
+}
+test fn pq9() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "z, |acc")
+    Rejected { diagnostics: _ } => false }
+}
+test fn pq10() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_call_callee(vec![e1, e2, e3], z, |acc, h| ")
+    Rejected { diagnostics: _ } => false }
+}
