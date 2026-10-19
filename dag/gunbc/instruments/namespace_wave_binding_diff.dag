@@ -13,7 +13,7 @@ import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { PreparedLexRules }
 import v2.std.diagnostic { Accepted, Rejected }
 import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, ModuleEvidence, occurrence_join_module, recompute_wave_text, rows_proof_scope, rows_by_module, module_rows, rows_multiset_equal, join_delta_line, join_delta_admitted, join_delta_unobserved, occurrence_join_controls_failure }
-import gunbc.instruments.namespace_wave_binding_shard { ShardFull, ShardBase, ShardOf, ShardMerge, ShardMalformed, ModuleResult, ShardRun, Merged, MergeRefused, HeadMerged, HeadMergeRefused, parse_shard_mode, shard_modules, evidence_identity, evidence_at_ranks, shard_receipt_text, receipt_name, base_receipt_file, indices_below, base_receipt_text, base_receipt_refusal, base_receipt_rows, base_receipt_status, merge_head_rows, merge_results, rewritten_names, shard_owned_rewritten, wave_plan }
+import gunbc.instruments.namespace_wave_binding_shard { ShardFull, ShardBase, ShardOf, ShardMerge, ShardMalformed, ModuleResult, ShardRun, Merged, MergeRefused, HeadMerged, HeadMergeRefused, parse_shard_mode, shard_modules, evidence_identity, evidence_at_ranks, shard_receipt_text, receipt_name, base_receipt_file, indices_below, base_receipt_text, base_receipt_refusal, base_receipt_rows, base_receipt_status, merge_head_rows, merge_results, rewritten_names, shard_owned_rewritten, wave_runs_base_worktree, wave_runs_base_census, wave_runs_head_census }
 
 // THE NAMESPACE-WAVE BINDING DIFF: `gunbc test //gunbc/instruments:namespace-wave-binding-diff`, run by
 // a wave's author on the wave's own PR (no bystander is billed; the namespace-wave admission wall that
@@ -957,11 +957,17 @@ fn binding_diff_standing_prepared(
   }
 }
 
-// WHICH CENSUSES THIS MODE RUNS, read by the host (which only runs what this says): `full` runs base's and head's whole
-// census; `base` runs base's alone; `shard` runs a scoped head census and needs base's tree only for its module texts;
-// `merge` runs no census. A malformed mode runs nothing and the standing refuses it.
-fn binding_diff_wave_plan(shard_mode: String) -> String {
-  wave_plan(shard_mode: shard_mode)
+// WHICH CENSUSES THIS MODE RUNS, read by the host (which only carries them out); the decisions are the shard module's.
+fn binding_diff_runs_base_worktree(shard_mode: String) -> Bool {
+  wave_runs_base_worktree(shard_mode: shard_mode)
+}
+
+fn binding_diff_runs_base_census(shard_mode: String) -> Bool {
+  wave_runs_base_census(shard_mode: shard_mode)
+}
+
+fn binding_diff_runs_head_census(shard_mode: String) -> Bool {
+  wave_runs_head_census(shard_mode: shard_mode)
 }
 
 // THE BASE A WAVE IS DIFFED AGAINST: the merge base of HEAD and this ref. A policy fact, so it lives here

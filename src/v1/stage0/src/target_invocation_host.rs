@@ -1978,20 +1978,28 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
     if let Err(e) = std::fs::create_dir_all(scratch.join("shards")) {
         return unreached(format!("could not create the receipt directory: {e}"));
     }
-    let plan = match crate::v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "binding_diff_wave_plan",
-        &[(
-            Some("shard_mode".to_string()),
-            crate::v1_interpreter::Value::Str(shard_mode.clone().into()),
-        )],
-        true,
+    let mut reader_decision = |function: &str| -> Result<bool, String> {
+        match crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            function,
+            &[(
+                Some("shard_mode".to_string()),
+                crate::v1_interpreter::Value::Str(shard_mode.clone().into()),
+            )],
+            true,
+        ) {
+            Ok(crate::v1_interpreter::Value::Bool(decision)) => Ok(decision),
+            Ok(_) => Err(format!("{function} did not return a Bool")),
+            Err(cause) => Err(format!("{function} failed: {cause}")),
+        }
+    };
+    let (use_base, base_census, use_head) = match (
+        reader_decision("binding_diff_runs_base_worktree"),
+        reader_decision("binding_diff_runs_base_census"),
+        reader_decision("binding_diff_runs_head_census"),
     ) {
-        Ok(value) => match &value {
-            crate::v1_interpreter::Value::Str(plan) => plan.to_string(),
-            _ => return unreached("binding_diff_wave_plan did not return a string".to_string()),
-        },
-        Err(cause) => return unreached(format!("binding_diff_wave_plan failed: {cause}")),
+        (Ok(a), Ok(b), Ok(c)) => (a, b, c),
+        (Err(cause), _, _) | (_, Err(cause), _) | (_, _, Err(cause)) => return unreached(cause),
     };
     let merge_base = match census_merge_base(&head, &base_ref) {
         Ok(merge_base) => merge_base,
@@ -2004,20 +2012,6 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
             .collect(),
         Err(cause) => {
             return unreached(format!("the rewritten modules could not be read: {cause}"))
-        }
-    };
-    // (base worktree, base census, head census) per plan arm; an arm the reader adds and this
-    // match does not name refuses rather than falling through to a default.
-    let (use_base, base_census, use_head) = match plan.as_str() {
-        "full" => (true, true, true),
-        "base" => (true, true, false),
-        "shard" => (true, false, true),
-        "merge" => (false, false, false),
-        malformed if malformed.starts_with("malformed") => (false, false, false),
-        other => {
-            return unreached(format!(
-                "binding_diff_wave_plan returned an unknown plan: {other}"
-            ))
         }
     };
     let (base, base_tree) = if !use_base {

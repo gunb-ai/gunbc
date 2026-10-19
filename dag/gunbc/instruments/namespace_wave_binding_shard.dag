@@ -370,13 +370,35 @@ fn rewritten_names(text: String) -> List<String> {
   split(s: text, delimiter: "\n") |> filter(l => l != "") |> map(l => join_field(line: l, index: 0))
 }
 
-fn wave_plan(shard_mode: String) -> String {
+// WHICH WORK A MODE RUNS, decided here and only carried out by the host: the base worktree (for its module texts),
+// the base census, the head census. A malformed mode runs nothing and the standing refuses it.
+fn wave_runs_base_worktree(shard_mode: String) -> Bool {
   match parse_shard_mode(text: shard_mode) {
-    ShardFull => "full"
-    ShardBase => "base"
-    ShardOf { index: _, count: _ } => "shard"
-    ShardMerge { count: _ } => "merge"
-    ShardMalformed { why: why } => "malformed: " + why
+    ShardFull => true
+    ShardBase => true
+    ShardOf { index: _, count: _ } => true
+    ShardMerge { count: _ } => false
+    ShardMalformed { why: _ } => false
+  }
+}
+
+fn wave_runs_base_census(shard_mode: String) -> Bool {
+  match parse_shard_mode(text: shard_mode) {
+    ShardFull => true
+    ShardBase => true
+    ShardOf { index: _, count: _ } => false
+    ShardMerge { count: _ } => false
+    ShardMalformed { why: _ } => false
+  }
+}
+
+fn wave_runs_head_census(shard_mode: String) -> Bool {
+  match parse_shard_mode(text: shard_mode) {
+    ShardFull => true
+    ShardBase => false
+    ShardOf { index: _, count: _ } => true
+    ShardMerge { count: _ } => false
+    ShardMalformed { why: _ } => false
   }
 }
 
