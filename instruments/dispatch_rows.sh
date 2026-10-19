@@ -6,6 +6,7 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 SHA="$1"; shift; LABEL="$1"; shift; ROWTO="$1"; shift
+PROF="${ROW_PROFILE:-dev}"
 ARGS=""; for a in "$@"; do ARGS="$ARGS $a"; done
-nohup ctrl-build --remote -- bash -lc "ROW_TIMEOUT=$ROWTO bash repair_tests_14152.sh $SHA $LABEL$ARGS" > "/tmp/rows_${LABEL}_dispatch.log" 2>&1 &
+nohup ctrl-build --remote -- bash -lc "ROW_TIMEOUT=$ROWTO ROW_PROFILE=$PROF CARGO_TARGET_DIR=/root/gunbc_target_rows bash repair_tests_14152.sh $SHA $LABEL$ARGS" > "/tmp/rows_${LABEL}_dispatch.log" 2>&1 &
 echo "dispatched label=$LABEL rows=$* pid=$!"

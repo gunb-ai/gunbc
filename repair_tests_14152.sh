@@ -49,7 +49,9 @@ grep -c "fresh_call_variables" src/v1/stage0/src/v1_compiler_infer.rs | sed 's/^
 grep -c "^#\[test\]" src/v1/tests/src/cross_coproduct_generic_locate_test.rs | sed 's/^/TESTS_IN_FILE /'
 
 stamp "compile gate (--no-run: catches a broken row in minutes, not after the whole run)"
-timeout -k 30 "$CARGO_TIMEOUT" cargo test -p v1-compiler-tests --lib cross_coproduct --no-run >"$D/syntax.log" 2>&1
+RELN=""
+if [ "${ROW_PROFILE:-dev}" = release ]; then RELN="--release"; fi
+timeout -k 30 "$CARGO_TIMEOUT" cargo test ${RELN} -p v1-compiler-tests --lib cross_coproduct --no-run >"$D/syntax.log" 2>&1
 SYN_RC=$?
 echo "SYNTAX_RC=$SYN_RC"
 grep -E "^error(\[|:)" "$D/syntax.log" | head -12 | sed 's/^/SYNTAX_ERROR /'
@@ -80,7 +82,15 @@ for r in "${SELECT[@]}"; do
   [ -n "${SEED_DELAY:-}" ] && sleep "$SEED_DELAY"
   rowlog="$D/row.$r.log"
   t0=$(date +%s)
-  timeout -k 15 "${ROW_TIMEOUT}" cargo test -p v1-compiler-tests --lib cross_coproduct \
+  # WHY --release IS WORTH ITS BUILD COST. The rows that call compile_to_resolved run the
+  # COMPILER UNDER TEST inside an unoptimised binary: the collision row alone did not finish in
+  # 1200s of dev profile, on a crate whose dependencies were already built (the --no-run gate
+  # excludes compile time). The same work in a release binary is the same work the self-host
+  # gate does with a release gunbc in ~10 minutes total. ROW_PROFILE=release costs one extra
+  # dependency build once, into its own persisted target dir, and buys minutes per row.
+  REL=""
+  if [ "${ROW_PROFILE:-dev}" = release ]; then REL="--release"; fi
+  timeout -k 15 "${ROW_TIMEOUT}" cargo test ${REL} -p v1-compiler-tests --lib cross_coproduct \
     -- --exact "${MOD}${r}" --nocapture --test-threads=1 >"$rowlog" 2>&1
   rrc=$?
   t1=$(date +%s)
