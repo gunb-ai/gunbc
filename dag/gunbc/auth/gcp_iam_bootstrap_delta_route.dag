@@ -25,7 +25,7 @@ import gunbc.auth.gcp_iam_converge {
   PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable,
 }
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
-import gunbc.auth.gcp_iam_trust_roots { ceremony_trust_root_secret }
+import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ceremony_trust_root_secret }
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_identity_federations,
@@ -65,6 +65,11 @@ data bootstrap_delta_privileged_effect: PrivilegedEffect = PrivilegedEffect {
 // THE TRUST ROOTS ARE NEVER A DELTA SUBJECT: the trust-root secrets (gunbc.auth.gcp_iam_trust_roots), the three accounts (also walled by the tag-conditioned
 // deny, gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_delta_deny_rules) and the two pools whose
 // principal sets reach them (walled only here: pools take no tags). The ceremony writes them once.
+// RED STUB: today every root-cell refusal names the bootstrap ceremony as the repair.
+fn root_cell_repair_ceremony(b: IamBootstrapBinding) -> TrustRootCeremony {
+  IamBootstrapApply
+}
+
 fn trust_root_subject(s: IamBootstrapResource) -> Bool {
   match s {
     BootstrapAccount { account } => any([iam_converge_service_account, iam_observe_service_account, iam_bootstrap_service_account], a => (a as String) == (account as String))

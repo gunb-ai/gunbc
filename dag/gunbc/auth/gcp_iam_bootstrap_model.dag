@@ -157,6 +157,16 @@ fn iam_bootstrap_capability_bindings_over(targets: List<DedicatedFederation>, gr
   distinct_by_key(xs: apply + observe + custody + submission, key: b => concat(iam_bootstrap_resource_key(resource: b.resource), cell_preimage(c: b.cell)))
 }
 
+// RED STUBS (replaced by the split): today the root ceremony folds the whole population and the delta
+// classifies the whole population.
+fn iam_bootstrap_root_ceremony_bindings_over(targets: List<DedicatedFederation>, grant_set_secrets: List<NonEmptyStr>) -> List<IamBootstrapBinding> {
+  iam_bootstrap_capability_bindings_over(targets: targets, grant_set_secrets: grant_set_secrets)
+}
+
+fn iam_bootstrap_delta_bindings_over(targets: List<DedicatedFederation>, grant_set_secrets: List<NonEmptyStr>) -> List<IamBootstrapBinding> {
+  iam_bootstrap_capability_bindings_over(targets: targets, grant_set_secrets: grant_set_secrets)
+}
+
 // Every secret the capabilities stage binds a role on: grant-set custody secrets, every target's
 // granted secrets and the job's own. The identities stage creates each one bare when absent, so a
 // binding never meets an absent subject because one roster omitted it.
