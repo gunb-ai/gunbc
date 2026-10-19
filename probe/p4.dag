@@ -1,0 +1,25 @@
+module probe.p4
+
+import std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import v2.std.node { Int, Edge, Authored }
+
+fn dt(wire: Int, edge: Edge) -> Optional<Int> {
+  match edge.label {
+    Authored { name: field } => optional_present(value: wire)
+    _ => optional_absent()
+  }
+}
+
+fn m3(acc: Optional<Int>, wire: Int, ce: Edge, n: Int) -> Optional<Int> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if ce.target == n {
+        dt(wire: wire, edge: ce)
+      } else {
+        acc
+      }
+  }
+}
+
+fn t() -> Bool { true }

@@ -1,0 +1,16 @@
+module probe.p11
+import std.optional { Absent, Present }
+import std.types { Bool, Int }
+
+fn q(n: Int) -> std.optional.Optional<Int> {
+  if n == 0 { Absent } else { Present { value: n } }
+}
+
+fn use_q(n: Int) -> Bool {
+  match q(n: n) {
+    Absent => false
+    Present { value: id } => id == 3
+  }
+}
+
+fn t() -> Bool { true }

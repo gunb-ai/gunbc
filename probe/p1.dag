@@ -1,0 +1,52 @@
+module probe.p1
+
+import std.optional { Optional, Absent, Present }
+import std.types { Int }
+
+test fn a1() -> Bool {
+  let b = 0
+  let r: Int? = ab1(b: b)
+  true
+}
+
+fn ab1(b: Int) -> Int? {
+  if b == 0 { Absent } else { Present { value: 1 } }
+}
+
+test fn a2() -> Bool {
+  let b = 0
+  let r: Int? = ab2(b: b)
+  true
+}
+
+fn ab2(b: Int) -> Int? {
+  if b == 0 {
+    Absent
+  } else {
+    let c = 1
+    Present { value: b + c }
+  }
+}
+
+test fn a3() -> Bool {
+  let b = 0
+  let r: Optional<Int> = ab3(b: b)
+  true
+}
+
+fn ab3(b: Int) -> Optional<Int> {
+  if b == 0 { Absent } else { Present { value: 1 } }
+}
+
+test fn a4() -> Bool {
+  let b = 0
+  let r: Int? = ab4(b: b)
+  true
+}
+
+fn ab4(b: Int) -> Int? {
+  match b {
+    0 => Absent
+    _ => Present { value: 1 }
+  }
+}

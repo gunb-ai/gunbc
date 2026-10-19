@@ -645,20 +645,24 @@ pub fn generic_declaration_application(
     env: Rc<TypeEnv>,
 ) -> Rc<Node> {
     {
+        let declared_name =
+            crate::v1_std_core::authored_name_at(env.source_indices.clone(), decl.clone());
         let substituted_children = Rc::new({
             let mut __result = Vec::new();
             for child in decl.children.clone().iter().cloned() {
                 __result.push(substitute_type_slots(
                     child.clone(),
                     slot_bindings.clone(),
-                    type_name.clone(),
+                    declared_name.clone(),
                     env.source_indices.clone(),
                 ));
             }
             __result
         });
-        let is_recursive =
-            crate::v1_compiler_infer_env::is_recursive_type_by_name(env.clone(), type_name.clone());
+        let is_recursive = crate::v1_compiler_infer_env::is_recursive_type_by_name(
+            env.clone(),
+            declared_name.clone(),
+        );
         let applied_declaration = match n.declaration.clone() {
             Some(d) => Some(d.clone()),
             std::option::Option::None => {
@@ -671,7 +675,7 @@ pub fn generic_declaration_application(
         };
         let expanded_node = Rc::new(Node {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: type_name.clone(),
+            name: declared_name.clone(),
             span: n.span.clone(),
             ident_span: n.ident_span.clone(),
             children: substituted_children.clone(),
@@ -694,7 +698,7 @@ pub fn generic_declaration_application(
         });
         Rc::new(Node {
             occurrence_identity: n.occurrence_identity.clone(),
-            name: type_name.clone(),
+            name: declared_name.clone(),
             span: n.span.clone(),
             ident_span: n.ident_span.clone(),
             children: resolved_args.clone(),
@@ -2499,7 +2503,10 @@ pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node
             match_pattern: authored.match_pattern.clone(),
             module_item_kind: authored.module_item_kind.clone(),
             declaration_marker: authored.declaration_marker.clone(),
-            declaration: authored.declaration.clone(),
+            declaration: match authored.declaration.clone() {
+                Some(d) => Some(d.clone()),
+                std::option::Option::None => resolved.declaration.clone(),
+            },
             expr_data: authored.expr_data.clone(),
             ident: None,
         })

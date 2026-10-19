@@ -1,0 +1,20 @@
+module probe.p8
+
+import std.optional { Optional, Absent, Present, optional_absent }
+import std.types { Int, List }
+
+type Rc { a: Int }
+
+fn m5(acc: Optional<Rc>, n: Int) -> Optional<Rc> {
+  if n == 0 { optional_absent() } else { acc }
+}
+
+fn m6(acc: Optional<List<Int>>, n: Int) -> Optional<List<Int>> {
+  if n == 0 { optional_absent() } else { acc }
+}
+
+fn m7(acc: Optional<Optional<Int>>, n: Int) -> Optional<Optional<Int>> {
+  if n == 0 { optional_absent() } else { acc }
+}
+
+fn t() -> Bool { true }
