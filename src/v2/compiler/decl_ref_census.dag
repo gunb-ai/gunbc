@@ -437,30 +437,19 @@ fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
 // ---- assembly -----------------------------------------------------------------------------
 
 // One ingested file's tokens, and whether its string literals are in the prose scope.
-type CensusFile {
-  file: Symbol
-  tokens: List<Token>
-  prose_scoped: Bool
-}
+data empty_decl_ref_census: DeclRefCensus = DeclRefCensus { cited: [], resolutions: [], prose: [] }
 
-fn top_level_namespaces(all: List<String>) -> List<String> {
-  fold_list(
-    xs: all,
-    empty: [],
-    cons: fn(acc, n) { if string_any_char_in(s: n, alphabet: ".") { acc } else { list_snoc_item(xs: acc, item: n) } }
-  )
-}
-
-fn decl_ref_census_build(
-  files: List<CensusFile>,
+// ONE FILE'S CONTRIBUTION, reduced at once: the driver tokenizes a file, calls this and drops the
+// tokens, so the census never holds the corpus's token lists (the whole-tree variant exhausted a
+// 28 GiB cgroup). Prose is read only from the files the caller scopes in (the ledgers).
+fn decl_ref_census_of_file(
+  file: Symbol,
+  tokens: List<Token>,
+  prose_scoped: Bool,
   namespaces: List<String>,
   context: ResolutionContext
 ) -> DeclRefCensus {
-  let cited = fold_list(
-    xs: files,
-    empty: [],
-    cons: fn(acc, f) { list_append(left: acc, right: declaration_ref_citations(file: f.file, tokens: f.tokens)) }
-  )
+  let cited = declaration_ref_citations(file: file, tokens: tokens)
   DeclRefCensus {
     cited: cited,
     resolutions: fold_list(
@@ -468,16 +457,18 @@ fn decl_ref_census_build(
       empty: [],
       cons: fn(acc, c) { list_snoc_item(xs: acc, item: resolve_declaration_ref(ref: c.ref, context: context)) }
     ),
-    prose: fold_list(
-      xs: files,
-      empty: [],
-      cons: fn(acc, f) {
-        if f.prose_scoped {
-          list_append(left: acc, right: prose_spans_of(file: f.file, tokens: f.tokens, namespaces: namespaces, context: context))
-        } else {
-          acc
-        }
-      }
-    )
+    prose: if prose_scoped {
+      prose_spans_of(file: file, tokens: tokens, namespaces: namespaces, context: context)
+    } else {
+      []
+    }
+  }
+}
+
+fn decl_ref_census_merge(left: DeclRefCensus, right: DeclRefCensus) -> DeclRefCensus {
+  DeclRefCensus {
+    cited: list_append(left: left.cited, right: right.cited),
+    resolutions: list_append(left: left.resolutions, right: right.resolutions),
+    prose: list_append(left: left.prose, right: right.prose)
   }
 }

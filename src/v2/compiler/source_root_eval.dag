@@ -269,7 +269,7 @@ import v2.compiler.dependency_demand {
   FunctionFact,
   OperationFact,
 }
-import v2.compiler.decl_ref_census { CensusFile, decl_ref_census_build, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
+import v2.compiler.decl_ref_census { empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_file, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
 import v2.compiler.dependency_demand_census {
   AuthoredRowReading,
   AuthoredTypeUnresolved,
@@ -3210,22 +3210,32 @@ type NativeDeclRefCensusOutput {
   exit: Int
 }
 
-fn native_decl_ref_census_files(ingest: SourceRootIngest, front: NativeTestFrontEnd) -> Outcome<List<CensusFile>> {
-  outcome_accepted(value: fold_list(
+fn native_decl_ref_census_over(
+  ingest: SourceRootIngest,
+  front: NativeTestFrontEnd,
+  context: ResolutionContext
+) -> DeclRefCensus {
+  let namespaces = top_level_namespaces(all: layout_namespaces())
+  fold_list(
     xs: ingest,
-    empty: Empty,
+    empty: empty_decl_ref_census,
     cons: fn(acc, read) {
       match program_assembly_phase_tokenize(read: read, lex: front.lex) {
         Rejected { diagnostics: _ } => acc
         Accepted { value: tokens, diagnostics: _ } =>
-          list_snoc_item(xs: acc, item: CensusFile {
-            file: read.compilation_unit,
-            tokens: tokens.all,
-            prose_scoped: native_decl_ref_census_file_in_prose_scope(path: symbol_lexeme(sym: read.compilation_unit))
-          })
+          decl_ref_census_merge(
+            left: acc,
+            right: decl_ref_census_of_file(
+              file: read.compilation_unit,
+              tokens: tokens.all,
+              prose_scoped: native_decl_ref_census_file_in_prose_scope(path: symbol_lexeme(sym: read.compilation_unit)),
+              namespaces: namespaces,
+              context: context
+            )
+          )
       }
     }
-  ))
+  )
 }
 
 fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensusOutput {
@@ -3241,13 +3251,8 @@ fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensu
             Rejected { diagnostics: d } =>
               NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
             Accepted { value: resolution, diagnostics: _ } =>
-              match native_decl_ref_census_files(ingest: ingest, front: front) {
-                Rejected { diagnostics: d } =>
-                  NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
-                Accepted { value: files, diagnostics: _ } =>
-                  let census = decl_ref_census_build(files: files, namespaces: top_level_namespaces(all: layout_namespaces()), context: resolution)
-                  NativeDeclRefCensusOutput { lines: decl_ref_census_lines(c: census), exit: decl_ref_census_exit(c: census) }
-              }
+              let census = native_decl_ref_census_over(ingest: ingest, front: front, context: resolution)
+              NativeDeclRefCensusOutput { lines: decl_ref_census_lines(c: census), exit: decl_ref_census_exit(c: census) }
           }
       }
   }
