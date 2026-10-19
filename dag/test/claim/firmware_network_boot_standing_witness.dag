@@ -2331,6 +2331,14 @@ data lawful_call_source: String = verdict_probe_hdr + "\nfn where_to_redirect() 
 //      the bugs merry-fox-82 found in the first version), the delta would be 2 and this test would go
 //      red. That is what 'otherwise valid call, refused solely by admission' means mechanically; a
 //      bare `>= 1` on one class could never say it.
+// WHAT THE DELTA DOES NOT PROVE, MEASURED RATHER THAN ASSUMED. A mutation that dropped
+// `network_option_existence` from the shared import list -- so the probe's own call to it became an
+// UNBOUND NAME -- left every count unchanged: the census reports a refusal for the mint and nothing
+// for the unbound name, so the delta stayed 1 and a row keyed on it alone would read GREEN. So the
+// delta establishes that nothing ELSE the census can see refuses the call; it does not by itself
+// establish that the arguments resolve, and the claim here is stated to that scope. The names the
+// probe depends on are pinned separately and mechanically, by the test below, rather than trusted to
+// a reader checking a header string by eye.
 test fn the_direct_mint_probe_has_a_clean_control_over_the_same_arguments() -> Bool {
   let control = total_blocking_count_for(source: lawful_call_source)
   let probe = total_blocking_count_for(source: direct_mint_source)
@@ -2367,6 +2375,37 @@ test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
       wanted_class: "ConstructorCallAdmissionRefused",
       wanted_subject: "prepare",
     ) == 0
+}
+
+// THE CENSUS DOES NOT SEE UNBOUND NAMES, so the probe's own vocabulary is pinned by text instead.
+// MEASURED, not assumed: deleting `network_option_existence` from the shared import list (R2G) left
+// total_blocking_count_for and every class-and-subject count EXACTLY as they were -- the probe stayed
+// at control+1 and every row here stayed green -- because the ephemeral compile reports the mint's
+// admission refusal and is silent about a call whose name is no longer in scope. A fixture can
+// therefore LOSE an argument builder and still look like a fixture. Nothing about the two rows above
+// can catch that, so it is caught here, against the same strings the sources are built from: if the
+// import list stops carrying one of the builders, or a source stops APPLYING one, this test goes red.
+// The pair (imported, applied) matters: a name can sit in the import list while a mutation quietly
+// removes its call, and the reverse -- a call with no import -- is the R2G case.
+test fn the_probe_and_its_control_still_exercise_every_argument_builder() -> Bool {
+  // EVERY builder named below must be imported by the shared header AND appear as a call in the
+  // probe source; the control must carry its four without ever reaching for the mint.
+  string_contains(verdict_probe_hdr, "boot_option,")
+    && string_contains(verdict_probe_hdr, "boot_order_entry,")
+    && string_contains(verdict_probe_hdr, "join_head_to_options,")
+    && string_contains(verdict_probe_hdr, "available_network_options,")
+    && string_contains(verdict_probe_hdr, "network_option_existence,")
+    && string_contains(direct_mint_source, "boot_option(reference:")
+    && string_contains(direct_mint_source, "boot_order_entry(reference:")
+    && string_contains(direct_mint_source, "join_head_to_options(")
+    && string_contains(direct_mint_source, "available_network_options(")
+    && string_contains(direct_mint_source, "network_option_existence(")
+    // The control really does build the same arguments and really does not call the mint.
+    && string_contains(lawful_call_source, "boot_option(reference:")
+    && string_contains(lawful_call_source, "boot_order_entry(reference:")
+    && string_contains(lawful_call_source, "join_head_to_options(")
+    && string_contains(lawful_call_source, "available_network_options(")
+    && !string_contains(lawful_call_source, "prepare(")
 }
 
 // THE JOIN, TESTED DIRECTLY, ALL FIVE ARMS. This is the seam's most load-bearing function after
