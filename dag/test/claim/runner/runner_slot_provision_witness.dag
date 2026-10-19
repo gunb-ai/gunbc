@@ -867,10 +867,11 @@ fn emits_mask(lines: List<String>) -> Bool {
 // THE SURPLUS SUBJECTS ARE PICKED THE WAY THE MODEL PICKS THEM, NOT TRANSCRIBED. These rows were authored on
 // srv4 with srv4-18 as the first surplus slot, then re-pointed at literal srv1 indices -- both go stale at
 // the next width or authorization change (srv4's width returned to 21 with its only open transition at
-// prior 21, which silently emptied every srv4 row). A retiree subject is the rank-th element of
-// gunbc.runner.runner_width_transition required_retirees_for_host that the host's interruption
-// authorization covers (the join host_maskable_units uses); the outside subject is the first slot that
-// is neither committed, required, nor covered. A model that offers no such subject makes the row RED
+// prior 21, which silently emptied every srv4 row). The plan fold is driven through
+// runner_slot_provision_plan_over with a SUPPLIED world: a retiree subject is the rank-th member of the
+// fixture's required retirees (srv4_transition_interruption_authorization's scope, the one consumable
+// authorization); the outside subject is the fixed fixture unit wfix-90, which that scope does not name.
+// A fixture that offers no such subject makes the row RED
 // (FixtureSubjectAbsent), never vacuous.
 //
 // 1. AN ACTIVE SURPLUS SLOT PRODUCES NO TREE REMOVAL. Ownership still refuses the incarnation, so
