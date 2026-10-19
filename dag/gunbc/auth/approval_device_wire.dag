@@ -11,7 +11,8 @@ import extdeps.apple.app_attest { AttestKeyId }
 import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
 import extdeps.ietf.http_semantics { HttpMethod, POST }
-import extdeps.http.server { MediaType, application_json }
+import extdeps.http.server { MediaType, application_json, HttpRequestBodyKind, JsonRequestBody }
+import extdeps.uri_path { PathTemplate, PathParamBinding, LiteralToken, ParamToken, render_path_template }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
@@ -941,14 +942,30 @@ data approval_device_push_protocol: NonEmptyStr = "gunbc.approval-device-push.v1
 // method token, the Content-Type field name and the media type are IETF/IANA facts owned by
 // extdeps.ietf.http_semantics and extdeps.http.server; a row only SELECTS among them. Authentication
 // rides in the body (never a header), so every device operation is a POST of JSON.
-// A prefix route (path_is_prefix) names the fixed part of a path whose last segment is an
+// A prefix route (a PathTemplate ending in one ParamToken) names the fixed part of a path whose last segment is an
 // encoded identity (path_segment).
 type ApprovalDeviceRoute {
-  path: NonEmptyStr
-  path_is_prefix: Bool
+  path_template: PathTemplate
   method: HttpMethod
-  request_body: DeclarationRef
+  request_body: HttpRequestBodyKind
+  request_body_type: DeclarationRef
   request_media_type: MediaType
+}
+
+data approval_device_path_segment: String = "segment"
+
+// A fixed route is one literal; a prefix route is its literal then ONE ParamToken (the encoded
+// identity, path_segment). The two shapes are PathTemplate's own, not a flag on the row.
+fn approval_device_fixed_template(path: NonEmptyStr) -> PathTemplate {
+  PathTemplate { tokens: [LiteralToken { text: path as String }] }
+}
+
+fn approval_device_prefix_template(prefix: NonEmptyStr) -> PathTemplate {
+  PathTemplate { tokens: [LiteralToken { text: prefix as String }, ParamToken { name: approval_device_path_segment }] }
+}
+
+fn approval_device_json_route(path_template: PathTemplate, body: NonEmptyStr) -> ApprovalDeviceRoute {
+  ApprovalDeviceRoute { path_template: path_template, method: POST, request_body: JsonRequestBody, request_body_type: approval_device_body_type(decl_name: body), request_media_type: application_json }
 }
 
 fn approval_device_body_type(decl_name: NonEmptyStr) -> DeclarationRef {
@@ -956,18 +973,24 @@ fn approval_device_body_type(decl_name: NonEmptyStr) -> DeclarationRef {
 }
 
 data approval_device_routes: List<ApprovalDeviceRoute> = [
-  ApprovalDeviceRoute { path: approval_device_enrol_path, path_is_prefix: false, method: POST, request_body: approval_device_body_type(decl_name: "EnrolmentRequest"), request_media_type: application_json },
-  ApprovalDeviceRoute { path: approval_device_pending_path, path_is_prefix: false, method: POST, request_body: approval_device_body_type(decl_name: "ReadAuthentication"), request_media_type: application_json },
-  ApprovalDeviceRoute { path: approval_device_request_path_prefix, path_is_prefix: true, method: POST, request_body: approval_device_body_type(decl_name: "ReadAuthentication"), request_media_type: application_json },
-  ApprovalDeviceRoute { path: approval_device_redeem_path, path_is_prefix: false, method: POST, request_body: approval_device_body_type(decl_name: "SignedRedemption"), request_media_type: application_json },
-  ApprovalDeviceRoute { path: approval_device_enrollment_path_prefix, path_is_prefix: true, method: POST, request_body: approval_device_body_type(decl_name: "ReadAuthentication"), request_media_type: application_json },
-  ApprovalDeviceRoute { path: approval_device_push_path, path_is_prefix: false, method: POST, request_body: approval_device_body_type(decl_name: "PushUpdateRequest"), request_media_type: application_json },
+  approval_device_json_route(path_template: approval_device_fixed_template(path: approval_device_enrol_path), body: "EnrolmentRequest"),
+  approval_device_json_route(path_template: approval_device_fixed_template(path: approval_device_pending_path), body: "ReadAuthentication"),
+  approval_device_json_route(path_template: approval_device_prefix_template(prefix: approval_device_request_path_prefix), body: "ReadAuthentication"),
+  approval_device_json_route(path_template: approval_device_fixed_template(path: approval_device_redeem_path), body: "SignedRedemption"),
+  approval_device_json_route(path_template: approval_device_prefix_template(prefix: approval_device_enrollment_path_prefix), body: "ReadAuthentication"),
+  approval_device_json_route(path_template: approval_device_fixed_template(path: approval_device_push_path), body: "PushUpdateRequest"),
 ]
 
 // The served path template of a route: a prefix route takes one ParamToken segment, a fixed route
 // is its literal. The one spelling, read by the server's route table and by its witness.
 fn approval_device_route_template(r: ApprovalDeviceRoute) -> String {
-  if r.path_is_prefix { join([r.path as String, "\{segment\}"], "") } else { r.path as String }
+  render_path_template(template: r.path_template, params: [PathParamBinding { name: approval_device_path_segment, value: "\{segment\}" }])
+}
+
+// The route's identity: its template with the identity segment left empty, which is the path
+// constant the table covers.
+fn approval_device_route_path(r: ApprovalDeviceRoute) -> String {
+  render_path_template(template: r.path_template, params: [PathParamBinding { name: approval_device_path_segment, value: "" }])
 }
 
 // The route constants the table must cover, as an identity join target.

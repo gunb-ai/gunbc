@@ -51,7 +51,7 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_listen_host,
   approval_broker_serving_base_url,
 }
-import gunbc.auth.approval_device_wire { approval_device_enrol_path, approval_device_redeem_path, approval_device_pending_path, approval_device_push_path, approval_device_request_path_prefix, approval_device_enrollment_path_prefix, approval_device_routes, ApprovalDeviceRoute, approval_device_route_template }
+import gunbc.auth.approval_device_wire { approval_device_enrol_path, approval_device_redeem_path, approval_device_pending_path, approval_device_push_path, approval_device_request_path_prefix, approval_device_enrollment_path_prefix, approval_device_routes, ApprovalDeviceRoute, approval_device_route_template, approval_device_route_path, approval_device_route_path }
 import std.list { first_where }
 import gunbc.auth.approval_device_routes {
   DeviceRouteResponse,
@@ -167,7 +167,7 @@ fn device_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
 
 fn device_route_specs_over(rows: List<ApprovalDeviceRoute>) -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
   flat_map(device_route_handlers, b =>
-    match first_where(rows, r => r.path == b.path) {
+    match first_where(rows, r => approval_device_route_path(r: r) == (b.path as String)) {
       Present { value: r } => [ServedRouteSpec { method: r.method, raw: approval_device_route_template(r: r), handler: b.handler }]
       Absent => []
     })

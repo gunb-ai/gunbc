@@ -496,7 +496,7 @@ test fn device_served_methods_are_the_route_table_methods() -> Bool {
 }
 
 test fn device_served_method_follows_a_changed_table_row() -> Bool {
-  count(device_route_specs_over(rows: approval_device_routes |> map(r => ApprovalDeviceRoute { path: r.path, path_is_prefix: r.path_is_prefix, method: PUT, request_body: r.request_body, request_media_type: r.request_media_type }))
+  count(device_route_specs_over(rows: approval_device_routes |> map(r => ApprovalDeviceRoute { path_template: r.path_template, method: PUT, request_body: r.request_body, request_body_type: r.request_body_type, request_media_type: r.request_media_type }))
     |> filter(s => s.method == PUT)) == 6
 }
 
