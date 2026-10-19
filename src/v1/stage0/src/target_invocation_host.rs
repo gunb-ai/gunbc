@@ -601,6 +601,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("claim-coverage-census"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/claim_coverage_census_live.dag",
+                function: "claim_coverage_census_exit",
+            },
+        ),
+        (
             instrument_label("compute-run-unit-cold"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
