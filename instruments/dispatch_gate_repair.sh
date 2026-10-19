@@ -5,5 +5,5 @@
 # the only form that survives the arg join. (gate3 ran plainly and worked.)
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-nohup ctrl-build --remote -- bash -lc 'bash instruments/gate_two_closures_14152.sh' > /tmp/gate_repair_dispatch.log 2>&1 &
+nohup ctrl-build --remote -- bash -lc 'bash gate_two_closures_14152.sh' > /tmp/gate_repair_dispatch.log 2>&1 &
 echo "dispatched pid=$!"
