@@ -64,7 +64,8 @@ stamp "deleted-symbol grep (the #14287 class: main deletes a symbol my tree stil
 MB=$(git merge-base "$CAND" "$MAIN")
 git diff -U0 "$MB" "$MAIN" -- src/v1 src/v2 dag \
   | grep -E '^-[^-].*(fn|record|type|enum) [a-z_]' \
-  | sed -E 's/^-[^A-Za-z]*//; s/\(.*//' | awk '{print $NF}' | tr -d ' ;' | sort -u \
+  | sed -E 's/^-[^A-Za-z]*//; s/\(.*//' | awk '{print $NF}' | tr -d ' ;' \
+  | grep -E '^[a-z_][a-z0-9_]{2,}$' | sort -u \
   > "$LOGS/deleted_symbols.txt" 2>&1
 echo "deleted-symbol candidates: $(grep -c . "$LOGS/deleted_symbols.txt")"
 : > "$LOGS/dangling.txt"
@@ -109,23 +110,30 @@ while :; do
   if [ $brc -ne 0 ]; then
     echo "FATAL emitter build rc=$brc round=$round"; grep -aE "^error" "$LOGS/emitter_build_$round.log" | head -8; exit 6
   fi
-  stamp "regen round $round: --required-regen (drift is expected; it exits non-zero on drift)"
+  # THE PROVEN INSTALL LOOP (instruments/regen_write.sh). Two rules that a recursive find does NOT
+  # satisfy, and which a recursive find here violated -- it dropped 27 files in the repo ROOT:
+  #   - the candidate tree is emitted FLAT into src/, so a find over it descends into subdirectories
+  #     (module_path_index/, bin/, ...) that have no counterpart in the mirror dir;
+  #   - only a file that ALREADY EXISTS in src/v1/stage0/src/ may be installed. The candidate carries
+  #     generated files that live elsewhere in the repo; copying one to the mirror path -- or, with a
+  #     path-stripping bug, to the root -- invents a file the tree never had.
+  # The candidate dir is also removed first, so a stale candidate from a previous round can never be
+  # installed as if it were this round's output.
+  rm -rf target/stage0-regen-candidate
   timeout -k 60 "${REGEN_TIMEOUT:-1800}" "$CE_BIN" --required-regen \
       --source-root dag --source-root src/v2 > "$LOGS/regen_$round.log" 2>&1
-  stamp "regen round $round rc=$? (1 = drift found = the normal case while installing)"
-  cand_dir=target/stage0-regen-candidate/src
-  if [ ! -d "$cand_dir" ]; then
-    echo "FATAL no candidate tree at $cand_dir -- nothing was written, so nothing can be installed"
-    exit 6
-  fi
+  stamp "regen round $round emit rc=$? (1 = drift found = the normal case while installing)"
+  [ -d target/stage0-regen-candidate/src ] \
+    || { echo "FATAL no candidate tree emitted at target/stage0-regen-candidate/src"; exit 6; }
   installed=0
-  while IFS= read -r f; do
-    rel="${f#$cand_dir/}"
-    if ! cmp -s "$f" "$rel" 2>/dev/null; then
-      mkdir -p "$(dirname "$rel")"; cp "$f" "$rel"; installed=$((installed+1))
-      echo "  INSTALLED $rel"
+  for f in $(ls target/stage0-regen-candidate/src 2>/dev/null); do
+    if [ -f "src/v1/stage0/src/$f" ]; then
+      if ! cmp -s "target/stage0-regen-candidate/src/$f" "src/v1/stage0/src/$f"; then
+        cp "target/stage0-regen-candidate/src/$f" "src/v1/stage0/src/$f"
+        installed=$((installed+1)); echo "  INSTALLED $f"
+      fi
     fi
-  done < <(find "$cand_dir" -name '*.rs' -type f 2>/dev/null)
+  done
   stamp "regen round $round installed=$installed"
   [ "$installed" -eq 0 ] && { echo "CONVERGED after $round round(s)"; break; }
   [ $round -ge 4 ] && { echo "FATAL not converged after $round rounds -- do not ship a half-regenerated tree"; exit 6; }
