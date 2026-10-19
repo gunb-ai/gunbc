@@ -166,3 +166,7 @@ test fn dbg_c_reason_is_unwired() -> Bool {
 test fn dbg_c_locus_has_cu() -> Bool {
   match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "list_introduction_probe_cu") _ => false }
 }
+
+test fn dbg_c_no_declaration() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionProbeUnreached { reason: r } => r == ^list_introduction_probe_no_declaration _ => false }
+}
