@@ -8957,6 +8957,7 @@ fn infer_bind_schedules_key_and_value_first(parent: Node, edge: Edge) -> Bool {
       if positional_child_count(children: parent.children) == 3 {
         match positional_edges(children: parent.children) {
           Cons { head: key, tail: Cons { head: value, tail: _ } } => edge == key || edge == value
+          Cons { head: _, tail: Empty } => false
           Empty => false
         }
       } else {
