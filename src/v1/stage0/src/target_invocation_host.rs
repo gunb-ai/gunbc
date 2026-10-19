@@ -1974,6 +1974,10 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
     // GUNBC_WAVE_SHARD is policy the reader parses; the host hands it over verbatim (unset: the empty string)
     // and runs only what the reader's plan names.
     let shard_mode = std::env::var("GUNBC_WAVE_SHARD").unwrap_or_default();
+    // The receipt directory the reader writes under (`shard_dir`): the write effect creates no parent.
+    if let Err(e) = std::fs::create_dir_all(scratch.join("shards")) {
+        return unreached(format!("could not create the receipt directory: {e}"));
+    }
     let plan = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
         "binding_diff_wave_plan",
