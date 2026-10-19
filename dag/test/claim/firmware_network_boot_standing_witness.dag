@@ -121,6 +121,12 @@ import gunbc.firmware_network_boot_standing {
   BindingRefused,
   RouteBound,
   RouteBindingUnresolvedRoute,
+  // THE ENTRY-VISIBLE REFUSAL CAUSES, needed because a fail-closed binding reports itself through
+  // Refused rather than through a NeedsPreparation -- a witness that only knows the NeedsPreparation
+  // arms cannot tell 'the seam refused' from 'the seam answered', which is the difference between a
+  // fail-closed model and a broken one.
+  RouteBindingUnresolved,
+  RouteBindingStaleForUnit,
   RouteBindingStaleGrounding,
   RedirectTargetStanding,
   RedirectTargetFromHead,
@@ -2721,4 +2727,343 @@ test fn the_inhabitation_claim_reports_uninhabited_until_a_producer_emits_it() -
              && length(xs: falsifier) > 40
          _ => false
        }
+}
+
+// ================== merry-fox-82 HOLD 2a/2b/3a: PRODUCTION-ROUTE WITNESSES ==================
+// These go through THE PUBLIC ENTRY (`standing_of` -> `firmware_network_boot_standing`) rather than
+// the helper that produced the defect. Every pre-existing witness for the decision path called a
+// helper directly, which is why the mutation rows that touch the fold cannot be credited as
+// production-route proof: they exercise the fold, not the seam a consumer calls, and a helper-level
+// test can stay green while the entry it feeds refuses the whole unit (merry-fox-82 HOLD, 2026-10-18).
+
+// HOLD 2a, THE PRODUCTION CASE. A board that boots normally: the boot order's head is a DISABLED DISK
+// and no network boot option is enumerated. The pre-repair arm sent EVERY disabled head to
+// prepare(NotSelected) without asking its kind, so this unit was offered a redirect or a one-shot --
+// 'arm a one-shot to PXE' on a board with no PXE option to boot, a NeedsPreparation whose route could
+// not have worked. The right answer is the authoring route, because the problem is that nothing
+// exists, not that something exists and is unselected.
+test fn a_disabled_non_network_head_with_no_network_option_authors_rather_than_redirects() -> Bool {
+  let normal_board = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [entry(reference: ref_disk(), label: "NVMe0")] },
+    boot_options: BootOptionsObserved {
+      options: [boot_option(reference: ref_disk(), kind: BootTargetHdd, label: "NVMe0", enabled: false)],
+    },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  // MY FIRST EXPECTATION HERE WAS WRONG, AND THE MEASURE SAID WHY. I asserted NeedsPreparation with
+  // the authoring route; the seam answers Refused, because the authoring row's BIOS attribute name is
+  // an UNBOUND typed slot and the fail-closed binding merry approved refuses to drive an attribute
+  // nobody transcribed. That is the better answer and the one worth pinning: the refusal carries the
+  // MECHANISM NAME, which is derived from the route the fold selected -- so asserting
+  // `redfish-bios-network-stack` proves the routing chose the AUTHORING row without the verdict having
+  // to be a NeedsPreparation. The defect this replaces answered NeedsPreparation with a one-shot route,
+  // whose mechanism names are `redfish-one-shot-override` / `ipmi-one-shot-override`; either of those
+  // arriving here IS the failure, so the test discriminates on the field that carries the decision.
+  match standing_of(observation: normal_board) {
+    // THE AUTHORING MECHANISM, named. The owed_read is deliberately not asserted verbatim: it is prose
+    // whose job is to tell an operator what to go read, and pinning it word-for-word would turn every
+    // rewording into a test failure while proving nothing the mechanism name does not already prove.
+    Refused { cause: RouteBindingUnresolved { mechanism: mechanism, owed_read: _ }, gaps: _ } =>
+      mechanism == "redfish-bios-network-stack"
+        // THE ONE-SHOT NAMES MUST NOT APPEAR. Stated as the negative as well as the positive: the
+        // original defect was a one-shot route arriving for this exact unit, and a check that only
+        // looked for the authoring name would also pass if a future change routed this board to some
+        // third mechanism nobody has thought to forbid.
+        && mechanism != "redfish-one-shot-override"
+        && mechanism != "ipmi-one-shot-override"
+        && mechanism != "redfish-uefi-boot-next"
+    // EVERY OTHER OUTCOME NAMED, EACH FOR A DIFFERENT REASON. The three redirect/one-shot rows are
+    // the defect itself and must be named rather than swept into a catch-all: a `_ => false` would
+    // make this test blind to WHICH wrong route came back, and the four wrong routes mean four
+    // different wrong instructions to an operator.
+    NeedsPreparation {
+      admitted: AdmittedPreparation {
+        route: PointUefiBootNext { service_root: _, boot_option: _, authority: _ },
+        blocking: _,
+      },
+    } => false
+    NeedsPreparation {
+      admitted: AdmittedPreparation {
+        route: RedfishOneShotOverride { service_root: _, authority: _ },
+        blocking: _,
+      },
+    } => false
+    NeedsPreparation {
+      admitted: AdmittedPreparation {
+        route: IpmiOneShotOverride { channel: _, authority: _ },
+        blocking: _,
+      },
+    } => false
+    // EVERY OTHER OUTCOME NAMED, each for a different reason. The three redirect/one-shot rows ARE the
+    // defect: a `_ => false` would leave this test blind to WHICH wrong route came back, and the wrong
+    // routes are four different wrong instructions to an operator.
+    NeedsPreparation {
+      admitted: AdmittedPreparation {
+        route: PointUefiBootNext { service_root: _, boot_option: _, authority: _ },
+        blocking: _,
+      },
+    } => false
+    NeedsPreparation {
+      admitted: AdmittedPreparation {
+        route: RedfishOneShotOverride { service_root: _, authority: _ },
+        blocking: _,
+      },
+    } => false
+    NeedsPreparation {
+      admitted: AdmittedPreparation {
+        route: IpmiOneShotOverride { channel: _, authority: _ },
+        blocking: _,
+      },
+    } => false
+    // A NeedsPreparation from any other row means the routing went somewhere else entirely.
+    NeedsPreparation { admitted: _ } => false
+    // A refusal for a DIFFERENT cause is not this answer. A neighbouring arm passing here is the
+    // specific failure mode: the seam would be refusing, for a reason that misdescribes the board.
+    Refused { cause: _, gaps: _ } => false
+    // Not Ready: that would be the original false Ready arriving by a new route.
+    Ready { conclusion: _ } => false
+    Unobserved { unanswered: _ } => false
+  }
+}
+
+// THE CONTROL FOR THE TEST ABOVE, and the only thing that stops it being satisfiable by a seam that
+// refuses or authorises everything. Same head, same disabled-disk shape, ONE fact changed: a network
+// boot option now exists and is enabled. The seam must still answer NeedsPreparation and must NOT
+// refuse -- which is what proves the test above distinguishes 'nothing exists' from 'something exists
+// and the firmware is not pointing at it'.
+test fn the_same_head_with_an_enabled_network_option_is_not_refused() -> Bool {
+  let authored_board = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [entry(reference: ref_disk(), label: "NVMe0")] },
+    boot_options: BootOptionsObserved {
+      options: [
+        boot_option(reference: ref_disk(), kind: BootTargetHdd, label: "NVMe0", enabled: false),
+        opt_http(ref_http()),
+      ],
+    },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  // ASSERTED AS A FAMILY, NOT A SINGLE OUTCOME, and that is deliberate rather than loose. The
+  // discriminator against the test above is WHICH MECHANISM the seam names: this unit gets an
+  // existing-option mechanism (a redirect or a one-shot), the unit above gets the authoring mechanism.
+  // Pinning one specific row here would make the control brittle to a legitimate change of preferred
+  // row, while still proving the thing that matters -- that the seam does NOT answer 'nothing exists,
+  // go author one' for a board that has one.
+  match mechanism_named_by(observation: authored_board) {
+    Present { value: mechanism } =>
+      mechanism != "redfish-bios-network-stack"
+        && (
+          mechanism == "redfish-one-shot-override"
+            || mechanism == "ipmi-one-shot-override"
+            || mechanism == "redfish-uefi-boot-next"
+        )
+    Absent => false
+  }
+}
+
+// THE MECHANISM A VERDICT NAMES, from either arm, so a pair of tests can be compared on ONE field.
+// Both verdict arms carry a mechanism -- NeedsPreparation through the route, the binding refusals
+// through the refusal -- and comparing verdicts on that field compares them on the decision rather
+// than on which arm the decision happens to be reported in.
+fn mechanism_named_by(observation: FirmwareBootObservation) -> Optional<NonEmptyStr> {
+  match standing_of(observation: observation) {
+    NeedsPreparation { admitted: AdmittedPreparation { route: route, blocking: _ } } =>
+      Present { value: mechanism_name(route: route) }
+    Refused { cause: RouteBindingUnresolved { mechanism: mechanism, owed_read: _ }, gaps: _ } =>
+      Present { value: mechanism }
+    Refused { cause: RouteBindingStaleForUnit { mechanism: mechanism, grounded_for_bios_version: _, observed_bios_version: _ }, gaps: _ } =>
+      Present { value: mechanism }
+    Refused { cause: _, gaps: _ } => Absent
+    Ready { conclusion: _ } => Absent
+    Unobserved { unanswered: _ } => Absent
+  }
+}
+
+// HOLD 2b, BOTH ORDERINGS. One physical unit, the same references, the enumeration written in the
+// opposite order: 0001 claimed as PXE AND as HDD. First-wins made this answer Ready with a boot_target
+// chosen by enumeration order -- a receipt that changes when nobody touched the board, and there is no
+// defensible tie-break: preferring the network reading is a heuristic that picks the answer the fleet
+// wants, and first-vs-last is the same arbitrariness with the sign flipped.
+test fn one_reference_read_two_ways_refuses_whichever_way_the_bmc_lists_it() -> Bool {
+  let pxe_first = [
+    boot_option(reference: ref_http(), kind: BootTargetPxe, label: "PXE", enabled: true),
+    boot_option(reference: ref_http(), kind: BootTargetHdd, label: "NVMe0", enabled: true),
+  ]
+  let hdd_first = [
+    boot_option(reference: ref_http(), kind: BootTargetHdd, label: "NVMe0", enabled: true),
+    boot_option(reference: ref_http(), kind: BootTargetPxe, label: "PXE", enabled: true),
+  ]
+  let head_names_it = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [entry(reference: ref_http(), label: "Head")] },
+    boot_options: BootOptionsObserved { options: pxe_first },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  let head_names_it_flipped = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [entry(reference: ref_http(), label: "Head")] },
+    boot_options: BootOptionsObserved { options: hdd_first },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  // BOTH DIRECTIONS, asserted on the SAME cause. One ordering alone would pass on a check that
+  // happened to notice only when the network row came first -- which is the defect renamed.
+  refused_by_reference_conflict(observation: head_names_it)
+    && refused_by_reference_conflict(observation: head_names_it_flipped)
+}
+
+// THE CONFLICT IS ASSERTED BY CAUSE AND BY PAYLOAD, not as 'any refusal': reusing the
+// not-enumerated arm would send the operator the OPPOSITE instruction ('the BMC omitted it -- ask for
+// more' vs 'the BMC said it twice, differently -- ask for less'), and a refusal that names only the
+// reference leaves nothing to show the vendor.
+fn refused_by_reference_conflict(observation: FirmwareBootObservation) -> Bool {
+  match standing_of(observation: observation) {
+    Refused { cause: BootOptionReferencesConflict { conflict: conflict }, gaps: _ } =>
+      conflict.option_reference == ref_http()
+    // EVERY OTHER OUTCOME NAMED. A neighbouring Refused arm passing here is the specific failure:
+    // the seam would be refusing, just for a reason that misdescribes the firmware.
+    Refused { cause: _, gaps: _ } => false
+    NeedsPreparation { admitted: _ } => false
+    Ready { conclusion: _ } => false
+    Unobserved { unanswered: _ } => false
+  }
+}
+
+// A DUPLICATE THAT AGREES IS NOT A CONFLICT. Without this the conflict check could be free to refuse
+// every repeated reference, and the fleet would lose the boards whose BMC reports one option twice --
+// vendor redundancy, not disagreement. This is the pass-through control for the fold: it proves the
+// check fires on DISAGREEMENT rather than on repetition.
+test fn a_reference_listed_twice_with_identical_readings_is_not_a_conflict() -> Bool {
+  let observation = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: [entry(reference: ref_http(), label: "Head")] },
+    boot_options: BootOptionsObserved { options: [opt_http(ref_http()), opt_http(ref_http())] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  match standing_of(observation: observation) {
+    Refused { cause: BootOptionReferencesConflict { conflict: _ }, gaps: _ } => false
+    // Ready or NeedsPreparation are both acceptable answers for a coherent unit; what is not
+    // acceptable is a conflict refusal over two identical rows.
+    NeedsPreparation { admitted: _ } => true
+    Ready { conclusion: _ } => true
+    Unobserved { unanswered: _ } => false
+    Refused { cause: _, gaps: _ } => false
+  }
+}
+
+// HOLD 3a, THE VERSION THAT WAS ALREADY READ IS NOT THROWN AWAY. The SecureBootEnabled arm used to
+// pass `observed_bios_version: Absent` on the reasoning that Secure Boot is evaluated ABOVE the BIOS
+// axis so 'this fold has no version'. The axis is a field of the same observation, in scope at that
+// line, and discarding it was fail-open in disguise: a SecureBoot attribute transcription grounded to
+// BIOS 1.08 on a unit now reporting 2.00 was never compared, because the comparison's right-hand side
+// had been deleted, so every stale attribute name read as merely unverifiable instead of wrong.
+//
+// WITNESSED AT THE BINDER, AND THAT IS THE HONEST RUNG, not a dodge: today every BIOS-attribute slot
+// in the catalog is an unbound typed slot, so the public entry fails closed with RouteBindingUnresolved
+// BEFORE any version comparison is reached -- the entry cannot observe the carrying, because nothing
+// reaches the comparison. Asking for a public-entry witness here would mean inventing a firmware
+// attribute name to bind, which is the fabrication the fail-closed design exists to prevent. So the
+// claim is asserted where the version is decision-bearing, and the two arms below are what make it
+// discriminating: a module that dropped the version would answer ROUTE EXECUTABLE for the mismatched
+// pair, because with no right-hand side a stale transcription cannot be shown to be stale.
+test fn a_bios_attribute_route_is_refused_for_the_version_and_not_for_the_lack_of_one() -> Bool {
+  // (1) BOUND and CURRENT: the transcription was read against 1.08 and the unit says 1.08 -- the row
+  // binds. Without this arm, (2) could be satisfied by a binder that refuses every attribute row.
+  let current_case = route_readiness_of(
+    route: SetSecureBootAttribute {
+      service_root: "redfish/v1/Systems/1/Bios",
+      attribute: MechanismNameBound {
+        value: "PxeBootProtocol",
+        grounded_by: GroundedByBiosAttributeRead { bios_version: "1.08" },
+      },
+      authority: witness_authority,
+    },
+    redirect_to: RedirectTargetAbsent { why: "not a redirect blocker" },
+    existence: network_option_existence(options: good_options()),
+    observed_bios_version: present(version: "1.08"),
+  )
+  // (2) BOUND but STALE: same transcription, the unit now reports 2.00. NOT EXECUTABLE, and the
+  // refusal must be the STALE one rather than the unresolved one -- 'this name is wrong for this
+  // firmware version' and 'nobody ever read this name' send the operator to different remedies.
+  let stale_case = route_readiness_of(
+    route: SetSecureBootAttribute {
+      service_root: "redfish/v1/Systems/1/Bios",
+      attribute: MechanismNameBound {
+        value: "PxeBootProtocol",
+        grounded_by: GroundedByBiosAttributeRead { bios_version: "1.08" },
+      },
+      authority: witness_authority,
+    },
+    redirect_to: RedirectTargetAbsent { why: "not a redirect blocker" },
+    existence: network_option_existence(options: good_options()),
+    observed_bios_version: present(version: "2.00"),
+  )
+  match current_case {
+    RouteExecutable { route: _, requires: _ } =>
+      match stale_case {
+        RouteNotExecutable { mechanism: _, refusal: RouteBindingStaleGrounding { grounded_for_bios_version: grounded, observed_bios_version: seen } } =>
+          grounded == "1.08" && seen == "2.00"
+        // THE SILENT-FALL-THROUGH SHAPE: a binder that discarded the observed version cannot tell
+        // stale from unresolved, so it answers unresolved here and this arm reddens.
+        RouteNotExecutable { mechanism: _, refusal: _ } => false
+        RouteExecutable { route: _, requires: _ } => false
+      }
+    RouteNotExecutable { mechanism: _, refusal: _ } => false
+    RouteExecutable { route: _, requires: _ } => false
+  }
+}
+
+// THE PUBLIC-ENTRY HALF OF 3a, and it is deliberately narrow: what the entry CAN prove today is that
+// a Secure Boot enabled unit is answered with a NAMED, version-aware refusal rather than a Ready or a
+// bare 'not ready'. This pins the fail-closed behaviour so that when a cited catalog edit binds the
+// SecureBoot attribute name -- the only route by which the stale comparison becomes reachable from the
+// entry -- a change that quietly stops carrying the version has to move this arm too.
+test fn a_secure_boot_enabled_unit_is_answered_by_name_rather_than_left_unanswered() -> Bool {
+  let enabled = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: disk_then_network() },
+    boot_options: BootOptionsObserved { options: good_options() },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootEnabled,
+    bios_version: BiosVersionObserved { version: "2.00" },
+  )
+  match standing_of(observation: enabled) {
+    // A refusal that names the mechanism and what is owed. Unobserved would be the lie: every axis
+    // of this unit was read.
+    Refused { cause: _, gaps: _ } => true
+    NeedsPreparation { admitted: _ } => true
+    Ready { conclusion: _ } => false
+    Unobserved { unanswered: _ } => false
+  }
+}
+
+// HOLD 3b: THE WRAPPER IS THE TYPE. attribute_slot_refusal answers Optional<RouteBindingStanding> and
+// the not-executable arm of that type is BindingRefused { refusal }; the GroundedByBootOptionEnumeration
+// arm shipped returning the bare RouteBindingUnresolvedRoute, so 'this row cannot be driven' was
+// answered with a reason where the caller expected a refusal. The control is the route_readiness_of
+// answer for a redirect-shaped row carrying an enumeration-grounded name: NOT EXECUTABLE, named.
+test fn an_enumeration_grounding_on_an_attribute_slot_refuses_rather_than_binds() -> Bool {
+  match route_readiness_of(
+    route: EnableNetworkStack {
+      service_root: "redfish/v1/Systems/1/Bios",
+      attribute: MechanismNameBound {
+        value: "NetworkStack",
+        grounded_by: GroundedByBootOptionEnumeration,
+      },
+      authority: witness_authority,
+    },
+    redirect_to: RedirectTargetAbsent { why: "not an authoring blocker" },
+    existence: network_option_existence(options: good_options()),
+    observed_bios_version: present(version: "1.08"),
+  ) {
+    // A BootOptions enumeration enumerates boot options, not BIOS attribute keys, so a name taken from
+    // one cannot drive an attribute write.
+    RouteNotExecutable { mechanism: _, refusal: RouteBindingUnresolvedRoute { mechanism: _, owed_read: _ } } => true
+    RouteExecutable { route: _, requires: _ } => false
+    RouteNotExecutable { mechanism: _, refusal: _ } => false
+  }
 }
