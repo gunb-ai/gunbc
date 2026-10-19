@@ -150,3 +150,19 @@ test fn typescript_refuses_a_list_introduction_at_the_authored_literal_holds() -
 test fn dag_refuses_a_list_introduction_at_the_authored_literal_holds() -> Bool {
   list_introduction_refused_unwired_at_the_literal(v: list_introduction_probe_table().dag)
 }
+
+test fn dbg_c_is_refused() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: _ } => true _ => false }
+}
+
+test fn dbg_c_is_unreached() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionProbeUnreached { reason: _ } => true _ => false }
+}
+
+test fn dbg_c_reason_is_unwired() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: r, locus: _ } => r == ^target_value_expr_list_introduction_form_unwired _ => false }
+}
+
+test fn dbg_c_locus_has_cu() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "list_introduction_probe_cu") _ => false }
+}
