@@ -231,6 +231,20 @@ data mtcollins1_ci_runner_enrolment_approved: DesignRuling = DesignRuling {
   provenance: "Operator, to session merry-fox-82, asked whether to approve enrolling mtcollins1 as a CI runner host: 'regarding mtcollins, yes, we need stateless runner registration'. The operator approves enrolling mtcollins1 for CI runner participation through gunbc.ci.ci_fleet and gunbc.fleet.fleet_enrollment, served by the diskless runner host route (gunbc.runner.runner_host_medium; the 2026-10-03 ephemeral diskless ruling in gunbc.session_residency). Runner registration must be stateless: slots are re-registered by each boot from modeled state, with no registration state surviving on the host between boots. The slot count is derived from the measured capture, never authored.",
 }
 
+data mtcollins1_in_memory_app_credential_per_boot: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_in_memory_app_credential_per_boot"),
+  decided: "2026-10-17",
+  section: "3",
+  provenance: "Operator, relayed by session merry-fox-82 to session snappy-koi-83, answering question Q1 of the mtcollins1 stateless runner registration design (whether the diskless runner host may hold a GitHub App installation credential so its slots mint their own JIT registrations, the srv1 microVM slot controller precedent): 'Q1. yes'. Approved: a GitHub App credential pushed to mtcollins1 after each boot over the controlled-host route, held in memory only, so the on-host slot loop can mint, deliver and deregister one ephemeral JIT runner per job through gunbc.runner.runner_jit_perform and gunbc.runner.runner_jit_deregistration. The credential is never written to the host's disk and never committed; a powered-off host holds none. Whether a new fleet-converge mode counts toward job_roster_closed_to_growth (Q3) is a separate ruling, fleet_converge_modes_are_outside_the_job_roster.",
+}
+
+data fleet_converge_modes_are_outside_the_job_roster: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fleet_converge_modes_are_outside_the_job_roster"),
+  decided: "2026-10-17",
+  section: "Building & checks",
+  provenance: "Operator, relayed by session merry-fox-82 to session snappy-koi-83, answering question Q3 of the mtcollins1 stateless runner registration design. merry-fox-82 asked: '(b) No, modes are operations inside the existing workflow, and your rule is only about the list of jobs CI runs on pull requests'. The operator answered: 'b is preferred', and clarified: 'for this stuff i really don't care about github workflows - its just a convenience for us for WIF i believe'. For fleet operations the GitHub workflow is only the realization that obtains workload-identity-federation credentials (transport), never the authority: what a mode does is decided by the .dag model and the ruling it cites, so adding or changing a mode needs no roster sign-off. SCOPE: a new mode of gunbc.fleet.fleet_converge_workflow is an operation inside the existing dispatch-only fleet-converge workflow and does not count toward job_roster_closed_to_growth. That ruling still governs the jobs CI runs on pull requests and merge groups, and adding one of those still needs operator sign-off. This ruling does not exempt a mode from authorization: a mode that writes to a machine or to GitHub still cites the ruling or authorization pattern that admits its effect.",
+}
+
 data operator_delegates_fan_control_to_the_fleet_policy: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_delegates_fan_control_to_the_fleet_policy"),
   decided: "2026-10-17",
@@ -266,9 +280,25 @@ data flex_operator_template_v2: DesignRuling = DesignRuling {
   provenance: "Operator, via deep-otter-797 on gunbc#14150: both flex serving templates are operator policy, not empirical readings. The Qwen3.8-27B NVFP4 ninfer template ('qwen oct 11'): the vastai/vllm:v0.30.0-cuda-13.0 host image, 32 GiB disk, no cache tier, published port 8000. The Qwen3.8-Flash-Next template: 400 GiB disk, host RAM and disk session-cache tiers at one half of the host each, published port 8000, and an object-store (R2) start with no Hugging Face fallback. They are choices, so they carry this ruling as their standing. This does NOT cover empirical figures: the 580 driver floor, the 1 GiB name/VRAM tolerance and throughput stay TranscribedUncited, and anything computed from them is Estimated, never established.",
 }
 
+data flex_first_recipe_is_flash_next: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next"),
+  decided: "2026-10-18",
+  section: "3d",
+  provenance: "Operator, via deep-otter-797 (Flex L1): the first flex recipe is Flash-Next on the RTX PRO 6000 Blackwell class (Workstation, Max-Q and Server editions); 27B-on-ninfer stays modelled and is not selected. The Vast template filters read from the operator's Vast account on 2026-10-18 (cuda_max_good >= 13, cpu_ram >= 128000 MB, gpu_ram >= 90000 MB, inet_down >= 1000, verified) are operator policy under flex_market_policy_is_operator_decided; the gpu_ram floor replaces the 1 GiB name/VRAM tolerance as the VRAM screen. The driver floor is not policy: it derives from the CUDA 13 the filter requires and is cited to NVIDIA's CUDA toolkit release notes. Throughput and price stay operator readings.",
+}
+
+data runner_host_sudoers_is_installed: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_host_sudoers_is_installed"),
+  decided: "2026-10-18",
+  section: "3b",
+  provenance: "Operator decision, default (dashboard msg_b6241e41, relayed by sleek-owl-397), reversing the 2026-09-22 decision that the rendered gunbc-ghrunner.sudoers stays modeled and uninstalled: the RENDERED rule alone is installed on the runner hosts at /etc/sudoers.d/gunbc-ghrunner through gunbc.runner.runner_host_file_converge, validated by visudo on the staging path before the rename, 0440 root-owned, read back and compared, refusing typed on any mismatch, with no catch-all and no widening beyond the rendered lines. Cause: srv3 apply 39127216304 and srv4 apply 39128728092 failed at the first host-wide grant (sudo: a password is required) because nothing installed the file.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     job_roster_closed_to_growth,
+    runner_host_sudoers_is_installed,
+    flex_first_recipe_is_flash_next,
     conformance_needs_attention,
     consumption_interrogated_separately,
     epistemic_humility_is_symmetric,
@@ -296,6 +326,8 @@ fn design_rulings() -> List<DesignRuling> {
     fan_policy_is_one_fleet_management_workflow,
     dimm_population_is_admitted_permissively,
     mtcollins1_ci_runner_enrolment_approved,
+    mtcollins1_in_memory_app_credential_per_boot,
+    fleet_converge_modes_are_outside_the_job_roster,
     operator_delegates_fan_control_to_the_fleet_policy,
     v1_seed_emitted_byte_write_exception,
     production_is_main_only_lab_admits_integration,

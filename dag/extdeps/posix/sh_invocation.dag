@@ -203,27 +203,51 @@ fn posix_sh_export_remove_statements(disposition: PosixShFileDisposition) -> Lis
   }
 }
 
-fn posix_sh_export_from_file_then_exec_program(name: PosixShellName, disposition: PosixShFileDisposition) -> Outcome<String> {
+// THE ONE EXPORT-THEN-EXEC BODY, over where the value is read from. The source word list is the only
+// difference between a value held in a file and one arriving on stdin; the exit-on-unreadable arm,
+// the export and the exec of the remaining argv are the same statements either way.
+fn posix_sh_export_then_exec_program(name: PosixShellName, read_words: List<Node>, middle: List<Node>) -> Outcome<String> {
   let spelling = name.spelling as String
   bash_emit_stmts(
     statements: concat(concat([
       bash_build_or_else(
         left: bash_build_assign(
           name: spelling,
-          value: bash_build_word_cmdsubst(
-            body: bash_build_command_with_words(
-              words: [bash_build_word_lit(text: "cat"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")],
-            ),
-          ),
+          value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: read_words)),
         ),
         right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unreadable_exit)),
       ),
-    ], posix_sh_export_remove_statements(disposition: disposition)), [
+    ], middle), [
       bash_build_command_from_lits(lits: ["export", spelling]),
       bash_build_command_with_words(words: [bash_build_word_lit(text: "exec"), bash_build_word_var(name: "@")]),
     ]),
     set_e: false,
   )
+}
+
+fn posix_sh_export_from_file_then_exec_program(name: PosixShellName, disposition: PosixShFileDisposition) -> Outcome<String> {
+  posix_sh_export_then_exec_program(
+    name: name,
+    read_words: [bash_build_word_lit(text: "cat"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")],
+    middle: posix_sh_export_remove_statements(disposition: disposition),
+  )
+}
+
+// THE VALUE ARRIVES ON STDIN AND TOUCHES NO FILE. The caller pipes the value in over a stdin-carrying
+// exec (gunbc.host.host_effect_realize run_argv_stdin_over_host_effect_transport), so it is in neither
+// the argv (gunbc.credential_argv_exposure) nor any path on disk; the child holds it only in its
+// environment. Nothing is removed because nothing was written.
+fn posix_sh_export_from_stdin_then_exec_command(name: PosixShellName, command: List<String>) -> PosixShExportExecCommand {
+  match posix_sh_export_then_exec_program(name: name, read_words: [bash_build_word_lit(text: "cat")], middle: []) {
+    Accepted { value: program, diagnostics: _ } =>
+      PosixShExportExecReady {
+        command: argv_command(
+          program: posix_sh_program(),
+          arguments: concat(["-c", program, "sh"], command),
+        ),
+      }
+    Rejected { diagnostics: _ } => PosixShExportExecEmitRefused { name: name.spelling }
+  }
 }
 
 type PosixShExportExecCommand

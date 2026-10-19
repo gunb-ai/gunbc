@@ -5,16 +5,13 @@ import std.optional { Absent, Present }
 import std.markup { Fragment, Element, attr }
 import std.list { distinct_by_key }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
-import extdeps.languages.css.values {
-  css_ch, CssLength, CssLengthUnit, Px, Percent, css_length_wire,
-  CssFontStack, GenericFamily, GenericSystemUi, GenericSansSerif,
-}
+import extdeps.languages.css.values { css_ch, CssLength, CssLengthUnit, Px, Percent, css_length_wire,   CssFontStack, GenericFamily, GenericSystemUi, GenericSansSerif, CssVarRef, css_var_ref_wire }
 import extdeps.languages.css.properties {
   Background, Border, BorderBottom, BorderCollapse,
   Color, Display, FontFamily, FontSize, Height, LetterSpacing, MarginBottom, MarginLeft,
   MarginRight, MarginTop, MaxWidth, Padding, VerticalAlign, Width, CustomProperty,
 }
-import extdeps.languages.css.selectors { ElementSelector, ClassSelector, PseudoSuffix }
+import extdeps.languages.css.selectors { ElementSelector, ClassSelector, root_selector }
 import extdeps.accessibility.wcag_contrast {
   srgb8_contrast_ratio_x100, wcag_aa_normal_text_hundredths,
   wcag_aa_large_text_and_graphics_hundredths,
@@ -26,9 +23,12 @@ import gunbc.design.gunb_ai_hues {
   gunb_ai_hues, near_black, soot, graphite, sand, taupe, umber, warm_white, off_white,
   moss, moss_deep, clay, clay_deep, brass, brass_deep,
 }
+import gunbc.design.gunb_ai_live_scale {
+  live_scale_token, live_scale_font_token, live_font_sans, live_measure_page, live_measure_wide, live_measure_title, live_measure_prose, live_gap_xs, live_gap_sm, live_gap_md, live_gap_lg, live_gap_xl,
+}
 import gunbc.design.scale {
   ScaleToken, LengthValue, FontStackValue, scale_decl, scale_value_wire, scale_var,
-  scale_border, named_length_token, border_1, measure_prose,
+  scale_border, named_length_token, border_1,
 }
 import gunbc.site.markup { txt, el, el_class }
 
@@ -128,15 +128,16 @@ fn token_binding_complete() -> Bool {
 // containers are gunb.ai's own widths, so they carry the site prefix in both the
 // Rust name and the custom property — distinct facts, distinct names. The parity
 // audit compares the rendered result.
-data gunb_measure_page: ScaleToken = named_length_token(name: "gunb-measure-page", px: 896)
-data gunb_measure_wide: ScaleToken = named_length_token(name: "gunb-measure-wide", px: 992)
-data measure_title: ScaleToken = ScaleToken { name: "measure-title", value: LengthValue { length: css_ch(n: 16) } }
+data gunb_measure_page: ScaleToken = live_scale_token(name: "gunb-measure-page", m: live_measure_page)
+data gunb_measure_wide: ScaleToken = live_scale_token(name: "gunb-measure-wide", m: live_measure_wide)
+data site_measure_prose: ScaleToken = live_scale_token(name: "measure-prose", m: live_measure_prose)
+data measure_title: ScaleToken = live_scale_token(name: "measure-title", m: live_measure_title)
 
-data gap_xs: ScaleToken = named_length_token(name: "gap-xs", px: 6)
-data gap_sm: ScaleToken = named_length_token(name: "gap-sm", px: 14)
-data gap_md: ScaleToken = named_length_token(name: "gap-md", px: 20)
-data gap_lg: ScaleToken = named_length_token(name: "gap-lg", px: 40)
-data gap_xl: ScaleToken = named_length_token(name: "gap-xl", px: 64)
+data gap_xs: ScaleToken = live_scale_token(name: "gap-xs", m: live_gap_xs)
+data gap_sm: ScaleToken = live_scale_token(name: "gap-sm", m: live_gap_sm)
+data gap_md: ScaleToken = live_scale_token(name: "gap-md", m: live_gap_md)
+data gap_lg: ScaleToken = live_scale_token(name: "gap-lg", m: live_gap_lg)
+data gap_xl: ScaleToken = live_scale_token(name: "gap-xl", m: live_gap_xl)
 
 // The operator's pick (option B — compact), relayed 2026-10-17; the review site
 // rendered options A editorial (52/24/17/14/12) and B compact before the pick, and
@@ -154,16 +155,10 @@ data scale_label: ScaleToken = named_length_token(name: "label", px: 11)
 // string in assets/site.css with no .dag home (the inventory's gap row). Modelled as
 // a font-stack ScaleToken over extdeps.languages.css.values' family rows so the
 // review surface reads a token reference and the stack has one home.
-data font_body: ScaleToken = ScaleToken {
-  name: "font-body",
-  value: FontStackValue { stack: CssFontStack { families: [
-    GenericFamily { kind: GenericSystemUi },
-    GenericFamily { kind: GenericSansSerif },
-  ] } },
-}
+data font_body: ScaleToken = live_scale_font_token(name: "font-body", live_name: "font-sans", live_stack: live_font_sans)
 
 data gap_tokens: List<ScaleToken> = [gap_xs, gap_sm, gap_md, gap_lg, gap_xl]
-data measure_tokens: List<ScaleToken> = [gunb_measure_page, gunb_measure_wide, measure_prose, measure_title]
+data measure_tokens: List<ScaleToken> = [gunb_measure_page, gunb_measure_wide, site_measure_prose, measure_title]
 data type_scale_tokens: List<ScaleToken> = [scale_display, scale_heading, scale_body, scale_small, scale_label]
 data font_tokens: List<ScaleToken> = [font_body]
 // The 28px chip face: the review surface needs a measure the live page never carried
@@ -245,23 +240,22 @@ fn role_row(t: TokenSwatch) -> Fragment {
   ])
 }
 
-// `var(--role)` is the read side of the CustomProperty declarations token_root_decls
-// emits; extdeps.languages.css.properties models the declaration (CustomProperty) but
-// not yet the reference. SCAFFOLD, narrowly: the STRING SHAPE of a var reference is
-// this function's residue, and it dissolves the moment extdeps.languages.css.properties
-// grows a var-reference wire (same grammar, one home).
+// `var(--role)` is the read side of the CustomProperty declarations token_root_decls emits.
+// The SHAPE of a var reference is no longer this function's residue: it lives in
+// extdeps.languages.css.values (css_var_ref_wire, css-values-4 §3.10), which is the dissolution
+// trigger this scaffold named — so the scaffold is gone, not left beside the grammar (§6: no
+// second path beside a modelled route). What remains here is only the choice of WHICH field of
+// the row becomes the name.
 //
 // WHICH ERROR CLASS THIS LEAVES UNWRITABLE (review 81528; DESIGN §5 "correctness by
 // construction, not validation"): it takes the TOKEN ROW, not a role string — the same
 // shape scale_var(t: …) already uses. A call site cannot name a role that is not a
 // declared row: role_var(t: token_text_dimm) does not resolve. Reading a role is
-// therefore not validated after the fact, it is unavailable to type wrongly. The
-// string that comes out is still built here (the scaffold), so a mis-shaped var()
-// would still be a shape bug in one place instead of 24 — and witness_all_var_references_resolve
-// checks the rendered artifact for exactly that, across EVERY reference rather than a
-// hand-pinned pair.
+// therefore not validated after the fact, it is unavailable to type wrongly. And
+// witness_all_var_references_resolve still checks the rendered artifact across EVERY
+// reference rather than a hand-pinned pair.
 fn role_var(t: TokenSwatch) -> String {
-  join(["var(--", t.role, ")"], "")
+  css_var_ref_wire(v: CssVarRef { name: t.role })
 }
 
 // The review surface's CSS as TYPED RULES through gunbc.design.material
@@ -297,7 +291,7 @@ fn review_rules() -> List<BuildRule> {
     // The token layer itself, as the :root rule material emits it — the bug this
     // rewrite catches: an earlier draft emitted these declarations BARE inside
     // <style>, with no selector, so every browser dropped them.
-    [StaticRule { selector: PseudoSuffix { base: "", pseudo: "root" }, decls: token_root_decls() }],
+    [StaticRule { selector: root_selector, decls: token_root_decls() }],
     concat(
       // Per-swatch chip paints, generated from the hue set (one home: palette).
       map(swatches_of(s: gunb_ai_hues), sw => StaticRule {
@@ -360,7 +354,7 @@ fn review_rules() -> List<BuildRule> {
         StaticRule { selector: ClassSelector { name: "body-sample" }, decls: [
           decl(prop: FontSize, value: scale_var(t: scale_body)),
           decl(prop: Color, value: role_var(t: token_text_dim)),
-          decl(prop: MaxWidth, value: scale_var(t: measure_prose)),
+          decl(prop: MaxWidth, value: scale_var(t: site_measure_prose)),
         ] },
         StaticRule { selector: ClassSelector { name: "label-sample" }, decls: [
           decl(prop: FontSize, value: scale_var(t: scale_label)),
@@ -387,7 +381,7 @@ fn review_rules() -> List<BuildRule> {
         ] },
         StaticRule { selector: ClassSelector { name: "dim" }, decls: [
           decl(prop: Color, value: role_var(t: token_text_dim)),
-          decl(prop: MaxWidth, value: scale_var(t: measure_prose)),
+          decl(prop: MaxWidth, value: scale_var(t: site_measure_prose)),
         ] },
       ],
     ),

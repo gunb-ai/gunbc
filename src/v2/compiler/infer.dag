@@ -7,7 +7,7 @@ import std.primitive_projection { never_type_declaration }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic, occurrence_id_eq }
 import v2.std.provenance { node_occurrence_id_optional }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup, map_support_keys }
+import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup, map_support_keys, collection_concat_shape, collection_count_shape }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -51,12 +51,12 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, declaration_denotation_of_type }
 import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
-import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, Occupancy, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
+import v2.std.node { positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, Occupancy, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -866,7 +866,7 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
 }
 
 // A LEXICAL BINDER'S REFERENCE IS GROUNDED BY THE BINDING RESOLVE RECORDED FOR IT. v2.compiler.resolve
-// mints it from a Lexical frame and records which binder answered it in ResolvedTree.lexical_bindings,
+// mints it from a Lexical frame and records which binder answered it in ResolvedTree.occurrence_bindings,
 // keyed by the reference's occurrence, so infer reads that binding and never searches scope. A binder
 // whose type a sibling fixes -- a `let` (infer_let_body_frame) or a match-arm payload binder -- is typed by
 // the frame's InferBinderType row at its site; a binder that declares a type (a lambda parameter's domain
@@ -1195,23 +1195,23 @@ fn infer_projection_receiver(
 // in declared order. Separate from the facts lookup above so the type-to-payload step is judged on its
 // own inputs.
 fn infer_projection_receiver_of_type(receiver_type: Node, declarations: SymbolIndex) -> ProjectionReceiver {
-  let head_args = infer_type_head_and_args(t: receiver_type)
-  match declaration_reference_path_optional(node: head_args.head) {
+  let denotation = declaration_denotation_of_type(t: receiver_type)
+  match denotation {
     Absent => ReceiverTypeNotADeclaration
-    Present { value: path } =>
-      match symbol_index_lookup(index: declarations, qualified_path: path) {
-        Absent => ReceiverDeclarationUnavailable { path: path }
+    Present { value: d } =>
+      match symbol_index_lookup(index: declarations, qualified_path: d.declaration) {
+        Absent => ReceiverDeclarationUnavailable { path: d.declaration }
         Present { value: payload } =>
-          if length(xs: head_args.args) == 0 {
+          if length(xs: d.type_arguments) == 0 {
             ReceiverPayload { payload: payload, instances: infer_no_type_variable_instances() }
           } else {
-            let params = symbol_index_declared_type_params_at(index: declarations, qualified_path: path)
-            if length(xs: params) != length(xs: head_args.args) {
+            let params = symbol_index_declared_type_params_at(index: declarations, qualified_path: d.declaration)
+            if length(xs: params) != length(xs: d.type_arguments) {
               ReceiverArityMismatch
             } else {
               ReceiverPayload {
                 payload: payload,
-                instances: zip_map(a: params, b: head_args.args, f: fn(p, arg) {
+                instances: zip_map(a: params, b: d.type_arguments, f: fn(p, arg) {
                   TypeVariableInstance { binder: p, instance: arg }
                 })
               }
@@ -1272,7 +1272,7 @@ fn infer_receiver_declares_no_fields_diagnostic(node: Node) -> Diagnostic {
 // no types.
 //
 // THE PATH, NEVER THE LEAF. The deleted scope walk (infer_parameter_scope_search, superseded by
-// resolve's recorded lexical bindings, ResolvedTree.lexical_bindings) recorded what a leaf-name answer
+// resolve's recorded lexical bindings, ResolvedTree.occurrence_bindings) recorded what a leaf-name answer
 // costs: `fn positive(x: Int)` beside `fn f(x: Pos)` grounded every `x` in `f` as `Int`, a type
 // fabricated from an unrelated declaration. symbol_index_lookup is asked for the whole declaring
 // path, and it is the GUARDED read: a path with more than one bound declaring answers Absent, so a
@@ -1305,7 +1305,7 @@ fn infer_declaration_callable_evidence(declared: Node) -> Optional<Node> {
   match infer_operator_arrow(operator: declared) {
     Absent => Absent
     Present { value: arrow } =>
-      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
         Absent => Absent
         Present { value: domain } =>
           match infer_formals_from_domain(domain: domain) {
@@ -1892,7 +1892,7 @@ fn infer_established_value_type_optional(ret: Node) -> Optional<Node> {
 }
 
 fn infer_arrow_declared_return_type(arrow: Node) -> Optional<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
     Absent => Absent
     Present { value: ret } =>
       match infer_atom_binding_sym(node: ret) {
@@ -1926,7 +1926,7 @@ fn infer_application_result_type(
   match infer_arrow_declared_return_type(arrow: arrow) {
     Present { value: kernel } => Present { value: kernel }
     Absent =>
-      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+      match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
         Absent => Absent
         Present { value: ret } =>
           match ret.kind {
@@ -2147,13 +2147,13 @@ fn infer_operand_declared_type_instantiated(declared: Node, instances: List<Type
           }
       }
     TypeNode { connective: _ } =>
-      if node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }) {
+      if positional_child_target_nodes(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }) {
         optional_absent()
       } else {
         optional_present(value: declared)
       }
     ComputationNode { behavior: _ } =>
-      if node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }) {
+      if positional_child_target_nodes(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }) {
         optional_absent()
       } else {
         optional_present(value: declared)
@@ -2176,9 +2176,9 @@ fn infer_declared_type_mentions_free_formal(declared: Node, instances: List<Type
           }
       }
     TypeNode { connective: _ } =>
-      node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) })
+      positional_child_target_nodes(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) })
     ComputationNode { behavior: _ } =>
-      node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) })
+      positional_child_target_nodes(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) })
   }
 }
 
@@ -2499,7 +2499,7 @@ fn infer_branch_bool_if_else(
   partials: List<Node>,
   entries: Map<Node, List<InferredFacts>>,
 ) -> Outcome<InferredFacts> {
-  let positional_targets = node_positional_child_targets(node: node)
+  let positional_targets = positional_child_target_nodes(node: node)
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
     outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
   } else {
@@ -2725,7 +2725,7 @@ fn infer_match_bool(
   entries: Map<Node, List<InferredFacts>>,
   resolved: ResolvedTree,
 ) -> Outcome<InferredFacts> {
-  let positional_targets = node_positional_child_targets(node: node)
+  let positional_targets = positional_child_target_nodes(node: node)
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
   } else {
@@ -2821,7 +2821,7 @@ fn infer_match(
   resolved: ResolvedTree,
   expected: Optional<Node>
 ) -> Outcome<InferredFacts> {
-  let positional_targets = node_positional_child_targets(node: node)
+  let positional_targets = positional_child_target_nodes(node: node)
   match list_tail(xs: positional_targets) {
     Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
     Present { value: arms } =>
@@ -2870,7 +2870,7 @@ type InferTypeHeadArgs {
 fn infer_type_head_and_args(t: Node) -> InferTypeHeadArgs {
   match t.kind {
     TypeNode { connective: Instantiation } =>
-      let targets = node_positional_child_targets(node: t)
+      let targets = positional_child_target_nodes(node: t)
       match list_at_optional(xs: targets, index: 0) {
         Absent => InferTypeHeadArgs { head: t, args: Empty }
         Present { value: head } =>
@@ -2907,11 +2907,15 @@ fn infer_match_path_is_never_type(path: QualifiedName, constructing_module: Opti
 }
 
 fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -> InferMatchCoproductRead {
-  let head_args = infer_type_head_and_args(t: infer_type_alias_normalized_at(t: scrutinee_type, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index))
-  match declaration_reference_path_optional(node: head_args.head) {
+  // THE SCRUTINEE IS READ THROUGH THE ONE DECLARATION-KEYED READER (ruling gunbc.design_ruling
+  // optional_sugar_is_declaration_bound): the reader already answers for a bare reference, an applied
+  // reference, and the `T?`/`Optional<T>` wrapper (which DENOTES the std.optional.Optional declaration), so
+  // this checker has no arm for any type-node shape and none is wanted -- an Occupancy arm here would be a
+  // second place the sugar's meaning is stated.
+  match declaration_denotation_of_type(t: infer_type_alias_normalized_at(t: scrutinee_type, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)) {
     Absent => CoproductNotDeclared
-    Present { value: path } =>
-      match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
+    Present { value: denotation } =>
+      match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: denotation.declaration) {
         Absent => CoproductNotDeclared
         Present { value: declared } =>
           match declared.kind {
@@ -2919,15 +2923,18 @@ fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -
               if is_empty(xs: declared.children) {
                 UninhabitedScrutinee
               } else {
-                let params = symbol_index_declared_type_params_at(index: resolved.resolved_declarations, qualified_path: path)
-                if length(xs: params) != length(xs: head_args.args) {
+                let params = symbol_index_declared_type_params_at(
+                  index: resolved.resolved_declarations,
+                  qualified_path: denotation.declaration
+                )
+                if length(xs: params) != length(xs: denotation.type_arguments) {
                   CoproductArityMismatch
                 } else {
                   CoproductRead {
                     coproduct: InferMatchCoproduct {
-                      path: path,
+                      path: denotation.declaration,
                       variants: declared,
-                      instances: zip_map(a: params, b: head_args.args, f: fn(p, arg) {
+                      instances: zip_map(a: params, b: denotation.type_arguments, f: fn(p, arg) {
                         TypeVariableInstance { binder: p, instance: arg }
                       })
                     }
@@ -2935,7 +2942,10 @@ fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -
                 }
               }
             TypeNode { connective: Atom { identity: _ } } =>
-              if infer_match_path_is_never_type(path: path, constructing_module: resolved.constructing_module) {
+              if infer_match_path_is_never_type(
+                path: denotation.declaration,
+                constructing_module: resolved.constructing_module
+              ) {
                 UninhabitedScrutinee
               } else {
                 CoproductNotDeclared
@@ -3345,7 +3355,7 @@ fn infer_match_coproduct(
   resolved: ResolvedTree,
   expected: Optional<Node>
 ) -> Outcome<InferredFacts> {
-  let positional_targets = node_positional_child_targets(node: node)
+  let positional_targets = positional_child_target_nodes(node: node)
   if !all_edges_positional(children: node.children) {
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
   } else {
@@ -3625,7 +3635,7 @@ fn infer_algebra_field_codomain_result(field_type: Node, carrier: Node, operand_
       match infer_operator_arrow(operator: op) {
         Absent => AlgebraFieldRowMalformed { cause: ^algebra_field_type_not_an_arrow }
         Present { value: arrow } =>
-          match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+          match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
             Absent => AlgebraFieldRowMalformed { cause: ^algebra_field_type_not_an_arrow }
             Present { value: codomain } =>
               if infer_branch_type_atoms_equal(a: codomain, b: carrier) {
@@ -3639,7 +3649,7 @@ fn infer_algebra_field_codomain_result(field_type: Node, carrier: Node, operand_
 }
 
 fn infer_transform_is_binary_infix_algebra_shape(node: Node) -> Bool {
-  let positional_targets = node_positional_child_targets(node: node)
+  let positional_targets = positional_child_target_nodes(node: node)
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
     false
   } else {
@@ -3720,7 +3730,7 @@ fn infer_equality_not_derived(node: Node, od: Diagnostics) -> Outcome<InferredFa
 }
 
 fn infer_transform_argument_targets(node: Node) -> List<Node> {
-  skip(xs: node_positional_child_targets(node: node), n: 1)
+  skip(xs: positional_child_target_nodes(node: node), n: 1)
 }
 
 fn infer_operator_arrow(operator: Node) -> Optional<Node> {
@@ -3773,14 +3783,14 @@ fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> 
 // make this path read them; this is where it reads them. The use keeps its own node and occurrence:
 // only the TYPE is taken from its facts entry, never the declaration's body or identity.
 fn infer_application_callee_use(node: Node) -> Optional<Node> {
-  list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
+  list_at_optional(xs: positional_child_target_nodes(node: node), index: 0)
 }
 
 fn infer_application_callee_arrow_with_facts(
   node: Node,
   entries: Map<Node, List<InferredFacts>>
 ) -> Optional<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
     Absent => Absent
     Present { value: operator } =>
       match infer_operator_arrow(operator: operator) {
@@ -3813,7 +3823,7 @@ fn infer_application_formals(node: Node, entries: Map<Node, List<InferredFacts>>
   match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
     Absent => FormalsUnresolved
     Present { value: arrow } =>
-      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
         Absent => FormalsUnresolved
         Present { value: domain } =>
           match infer_formals_from_domain(domain: domain) {
@@ -4304,10 +4314,10 @@ fn infer_type_alias_rhs(declared: Node, aliased: Node, args: List<Node>) -> Opti
 }
 
 fn infer_node_mention_contested(t: Node, bindings: SymbolIndex) -> Optional<FreeMonoid<QualifiedName>> {
-  match declaration_reference_path_optional(node: infer_type_head_and_args(t: t).head) {
+  match declaration_denotation_of_type(t: t) {
     Absent => optional_absent()
-    Present { value: path } =>
-      match symbol_index_declaring_path_of(index: bindings, target: path) {
+    Present { value: denotation } =>
+      match symbol_index_declaring_path_of(index: bindings, target: denotation.declaration) {
         MentionDeclaringContested { claimants: claimants } => optional_present(value: claimants)
         MentionDeclaringUnique { declaring: _ } => optional_absent()
         MentionDeclaringUnavailable => optional_absent()
@@ -4316,20 +4326,19 @@ fn infer_node_mention_contested(t: Node, bindings: SymbolIndex) -> Optional<Free
 }
 
 fn infer_type_alias_unfolded_at(t: Node, bodies: SymbolIndex, bindings: SymbolIndex) -> Optional<Node> {
-  let ha = infer_type_head_and_args(t: t)
-  match declaration_reference_path_optional(node: ha.head) {
+  match declaration_denotation_of_type(t: t) {
     Absent => optional_absent()
-    Present { value: path } =>
-      match symbol_index_declaring_path_of(index: bindings, target: path) {
+    Present { value: denotation } =>
+      match symbol_index_declaring_path_of(index: bindings, target: denotation.declaration) {
         MentionDeclaringUnavailable => optional_absent()
         MentionDeclaringContested { claimants: _ } => optional_absent()
         MentionDeclaringUnique { declaring: identity } =>
-          match infer_type_alias_stored_at(bindings: bindings, bodies: bodies, path: path) {
+          match infer_type_alias_stored_at(bindings: bindings, bodies: bodies, path: denotation.declaration) {
             Absent => optional_absent()
             Present { value: stored } =>
               let declared = infer_type_decl_identity_node(declared: stored, identity: identity)
               match type_decl_view(target: declared) {
-                TypeAlias { binders: _, aliased: aliased } => infer_type_alias_rhs(declared: declared, aliased: aliased, args: ha.args)
+                TypeAlias { binders: _, aliased: aliased } => infer_type_alias_rhs(declared: declared, aliased: aliased, args: denotation.type_arguments)
                 GenericTypeDecl { binders: _, member: _ } => optional_absent()
                 OpaqueTypeDecl { binders: _ } => optional_absent()
                 NotATypeDecl => optional_absent()
@@ -4405,9 +4414,9 @@ fn infer_kernel_value_type_optional(t: Node) -> Optional<Node> {
   } else if infer_type_equal_ignoring_provenance(a: t, b: bool_node()) {
     optional_present(value: bool_node())
   } else {
-    match declaration_reference_path_optional(node: t) {
-      Present { value: path } =>
-        match dag_kernel_type_declaration_binding_optional(path: path) {
+    match declaration_denotation_of_type(t: t) {
+      Present { value: denotation } =>
+        match dag_kernel_type_declaration_binding_optional(path: denotation.declaration) {
           Present { value: binding } => dag_binding_denotation(sym: binding)
           Absent => optional_absent()
         }
@@ -4476,13 +4485,13 @@ type InferLiteralElaboration
   | InferLiteralElaborationRefused { cause: Symbol }
 
 fn infer_type_declaration_ref(t: Node) -> Optional<DeclarationRef> {
-  match declaration_reference_path_optional(node: infer_type_head_and_args(t: t).head) {
+  match declaration_denotation_of_type(t: t) {
     Absent => optional_absent()
-    Present { value: path } =>
-      match qualified_name_last_segment(qn: path) {
+    Present { value: denotation } =>
+      match qualified_name_last_segment(qn: denotation.declaration) {
         Absent => optional_absent()
         Present { value: leaf } =>
-          optional_present(value: decl_ref(module_path: qualified_name_to_dotted_string(qn: qualified_name_init(qn: path)), decl_name: symbol_lexeme(sym: leaf)))
+          optional_present(value: decl_ref(module_path: qualified_name_to_dotted_string(qn: qualified_name_init(qn: denotation.declaration)), decl_name: symbol_lexeme(sym: leaf)))
       }
   }
 }
@@ -4495,7 +4504,7 @@ fn infer_type_declaration_ref(t: Node) -> Optional<DeclarationRef> {
 fn infer_negated_int_literal_value(node: Node) -> Optional<Int> {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      let targets = node_positional_child_targets(node: node)
+      let targets = positional_child_target_nodes(node: node)
       if length(xs: targets) != 2 {
         optional_absent()
       } else {
@@ -4566,19 +4575,23 @@ fn infer_string_literal_at(expected: Node, declarations: SymbolIndex, bindings: 
   match infer_type_declaration_ref(t: wanted) {
     Absent => InferLiteralNotElaborated
     Present { value: destination } =>
-      match infer_type_head_and_args(t: wanted).args {
-        Cons { head: element_type, tail: Empty } =>
-          match infer_type_declaration_ref(t: element_type) {
-            Absent => InferLiteralNotElaborated
-            Present { value: element } =>
-              match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelStringLiteral, destination: destination, element: optional_present(value: element), destination_realizes_natively: false) {
-                ViaHomomorphism { homomorphism: _ } => InferLiteralElaboratesTo { destination_type: wanted }
-                DirectLiteral => InferLiteralNotElaborated
-                LiteralElaborationRefused { cause: c } => InferLiteralElaborationRefused { cause: infer_literal_elaboration_refusal_reason(cause: c) }
+      match declaration_denotation_of_type(t: wanted) {
+        Absent => InferLiteralNotElaborated
+        Present { value: denotation } =>
+          match denotation.type_arguments {
+            Cons { head: element_type, tail: Empty } =>
+              match infer_type_declaration_ref(t: element_type) {
+                Absent => InferLiteralNotElaborated
+                Present { value: element } =>
+                  match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelStringLiteral, destination: destination, element: optional_present(value: element), destination_realizes_natively: false) {
+                    ViaHomomorphism { homomorphism: _ } => InferLiteralElaboratesTo { destination_type: wanted }
+                    DirectLiteral => InferLiteralNotElaborated
+                    LiteralElaborationRefused { cause: c } => InferLiteralElaborationRefused { cause: infer_literal_elaboration_refusal_reason(cause: c) }
+                  }
               }
+            Cons { head: _, tail: _ } => InferLiteralNotElaborated
+            Empty => InferLiteralNotElaborated
           }
-        Cons { head: _, tail: _ } => InferLiteralNotElaborated
-        Empty => InferLiteralNotElaborated
       }
   }
 }
@@ -4641,12 +4654,11 @@ type InferTypePair {
 // infer_match_generic_formal used for generic formals -- produced as the formal, declared as
 // the instance source. Not a second solver.
 fn infer_produced_open_type_params(produced: Node, declarations: SymbolIndex) -> List<Symbol> {
-  let ha = infer_type_head_and_args(t: produced)
-  match declaration_reference_path_optional(node: ha.head) {
+  match declaration_denotation_of_type(t: produced) {
     Absent => Empty
-    Present { value: path } =>
+    Present { value: denotation } =>
       fold(
-        symbol_index_declared_type_params_at(index: declarations, qualified_path: path),
+        symbol_index_declared_type_params_at(index: declarations, qualified_path: denotation.declaration),
         init: Empty,
         f: fn(acc, p) {
           if inhabitance_node_mentions_type_variable(n: produced, type_variables: [p]) {
@@ -5252,7 +5264,7 @@ fn infer_transform_binary_infix(
   entries: Map<Node, List<InferredFacts>>,
   resolved: ResolvedTree,
 ) -> Outcome<InferredFacts> {
-  let positional_targets = node_positional_child_targets(node: node)
+  let positional_targets = positional_child_target_nodes(node: node)
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
     outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
   } else {
@@ -5901,7 +5913,7 @@ fn infer_bind_annotation_check(node: Node, entries: Map<Node, List<InferredFacts
   match type_annotation_optional(n: node) {
     Absent => outcome_accepted(entries)
     Present { value: annotation } =>
-      match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
+      match list_at_optional(xs: positional_child_target_nodes(node: node), index: 1) {
         Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
         Present { value: bound } =>
           infer_judge_declared_position_closing(
@@ -6053,7 +6065,7 @@ fn infer_transform_application_optional(
 // not derived leaves the cast on the counted frontier -- the crossing is not judged, and it is not
 // admitted either.
 fn infer_transform_is_cast(node: Node) -> Bool {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
     Present { value: op } =>
       canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_coerce())
     Absent => false
@@ -6067,7 +6079,7 @@ fn infer_transform_cast_optional(node: Node, entries: Map<Node, List<InferredFac
     match cast_target_optional(n: node) {
       Absent => optional_present(value: outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node)))
       Present { value: target } =>
-        match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
+        match list_at_optional(xs: positional_child_target_nodes(node: node), index: 1) {
           Absent => optional_present(value: outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node)))
           Present { value: operand } =>
             match lookup_inferred_facts_in_entries(entries: entries, key: operand) {
@@ -7734,7 +7746,7 @@ fn infer_generic_default_refusal(node: Node) -> Outcome<Bool> {
 fn infer_declared_binder_scope(node: Node) -> List<Node> {
   match node.kind {
     TypeNode { connective: Arrow } =>
-      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
         Present { value: domain } => [domain]
         Absent => []
       }
@@ -7823,7 +7835,7 @@ fn infer_arrow_declared_return_check(node: Node, entries: Map<Node, List<Inferre
       match arrow_body_target_lookup(children: node.children) {
         Ambiguous => outcome_rejected(infer_arrow_declared_return_shape_diagnostic(node: node))
         Found { target: body } =>
-          match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
+          match list_at_optional(xs: positional_child_target_nodes(node: node), index: 1) {
             Absent => outcome_rejected(infer_arrow_declared_return_shape_diagnostic(node: node))
             Present { value: declared } =>
               infer_judge_declared_position_closing(
@@ -8016,7 +8028,7 @@ fn infer_arrow_body_child_frame(parent: Node, frame: InferFrame, edge: Edge) -> 
               instances: frame.instances,
               binder_types: frame.binder_types,
               entering: InferFrameEnteredPlain,
-              uninhabited_match_expected: list_at_optional(xs: node_positional_child_targets(node: parent), index: 1)
+              uninhabited_match_expected: list_at_optional(xs: positional_child_target_nodes(node: parent), index: 1)
             }
           } else {
             infer_frame_inherited(frame: frame)
@@ -8439,7 +8451,7 @@ fn infer_callback_signature_of_other_arity(expectation: InferCallbackExpectation
       match infer_callback_return_type(callback: callback, entries: entries) {
         Present { value: codomain } => optional_present(value: anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: callback))
         Absent =>
-          match list_at_optional(xs: node_positional_child_targets(node: callback), index: 1) {
+          match list_at_optional(xs: positional_child_target_nodes(node: callback), index: 1) {
             Absent => optional_absent()
             Present { value: own_codomain } => optional_present(value: anonymous_signature_arrow(domain_types: domain_types, codomain: own_codomain, source: callback))
           }
@@ -8460,7 +8472,7 @@ fn infer_callback_input_type(expectation: InferCallbackExpectation, callback: No
 }
 
 fn infer_callback_return_type(callback: Node, entries: Map<Node, List<InferredFacts>>) -> Optional<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: callback), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: callback), index: 1) {
     Absent => optional_absent()
     Present { value: codomain } =>
       if infer_callback_type_is_fresh(t: codomain, callback: callback) {
@@ -8538,8 +8550,14 @@ fn infer_append_binder_types(xs: List<InferBinderType>, ys: List<InferBinderType
 // facts are in. So the arm's frame carries one InferBinderType row per payload binder, and a binder whose
 // field is a free formal the scrutinee's arguments do not instantiate REFUSES the arm (located), never
 // types as the bare formal and never stays untyped to be accepted on the advisory frontier (section 5).
+// A Match's scrutinee: its first positional child, the slot v2.std.compilers.body_lowering lower_match
+// writes ahead of the arms.
+fn infer_match_scrutinee(match_node: Node) -> Optional<Node> {
+  list_at_optional(xs: positional_child_target_nodes(node: match_node), index: 0)
+}
+
 fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, edge: Edge, resolved: ResolvedTree) -> InferFrame {
-  match list_at_optional(xs: node_positional_child_targets(node: parent), index: 0) {
+  match infer_match_scrutinee(match_node: parent) {
     Absent => infer_frame_inherited(frame: frame)
     Present { value: scrutinee } =>
       if scrutinee == edge.target {
@@ -8698,7 +8716,7 @@ fn infer_match_arm_field_binder(acc: InferMatchArmBinders, rows: List<InferBinde
 fn infer_bind_encodes_collection_fold(bind: Node) -> Bool {
   match bind.kind {
     ComputationNode { behavior: Bind } =>
-      match list_at_optional(xs: node_positional_child_targets(node: bind), index: 2) {
+      match list_at_optional(xs: positional_child_target_nodes(node: bind), index: 2) {
         Present { value: body } => infer_loop_takes_collection_member(loop_node: body)
         Absent => false
       }
@@ -8712,7 +8730,7 @@ fn infer_bind_encodes_collection_fold(bind: Node) -> Bool {
 }
 
 fn infer_bind_value(bind: Node) -> Optional<Node> {
-  list_at_optional(xs: node_positional_child_targets(node: bind), index: 1)
+  list_at_optional(xs: positional_child_target_nodes(node: bind), index: 1)
 }
 
 // AN ORDINARY `let`: a Bind whose binder key v2.compiler.lexical_scope bind_binder reads -- the one reader
@@ -8728,7 +8746,7 @@ fn infer_is_let_bind(bind: Node) -> Bool {
 }
 
 fn infer_bind_body(bind: Node) -> Optional<Node> {
-  list_at_optional(xs: node_positional_child_targets(node: bind), index: 2)
+  list_at_optional(xs: positional_child_target_nodes(node: bind), index: 2)
 }
 
 fn infer_let_body_edge(parent: Node, edge: Edge) -> Bool {
@@ -8851,7 +8869,7 @@ fn infer_fold_bind_check(node: Node, entries: Map<Node, List<InferredFacts>>, re
       match infer_settled_type_at(target: init, entries: entries) {
         Absent => Accepted { value: true, diagnostics: Some { diagnostics: infer_fold_member_advisory(reason: ^infer_reason_fold_carrier_type_not_derived, at: init) } }
         Present { value: carrier } =>
-          match list_at_optional(xs: node_positional_child_targets(node: node), index: 2) {
+          match list_at_optional(xs: positional_child_target_nodes(node: node), index: 2) {
             Absent => Accepted { value: true, diagnostics: Some { diagnostics: infer_fold_member_advisory(reason: ^infer_reason_fold_member_formal_unread, at: node) } }
             Present { value: loop_node } =>
               match fold_loop_step(loop_node: loop_node) {
@@ -8923,7 +8941,50 @@ fn infer_gather_fold_bind_row_on_entries(
 }
 
 fn infer_gather_schedules_first(parent: Node, edge: Edge) -> Bool {
-  infer_loop_schedules_first(parent: parent, edge: edge) || infer_application_schedules_before_callbacks(parent: parent, edge: edge)
+  infer_loop_schedules_first(parent: parent, edge: edge)
+    || infer_application_schedules_before_callbacks(parent: parent, edge: edge)
+    || infer_bind_schedules_key_and_value_first(parent: parent, edge: edge)
+    || infer_match_schedules_scrutinee_first(parent: parent, edge: edge)
+}
+
+// A BIND SCHEDULES ITS KEY AND ITS VALUE BEFORE ITS BODY. The two are what the body's frame reads from the
+// parent's accumulator -- infer_let_body_frame takes the unannotated binder's type from the VALUE's settled
+// facts (infer_settled_type_at over acc.entries) and an annotated one from the annotation edge, never from a
+// sibling -- so their position in the schedule is a dependency, and textual/child position establishes none
+// (gunbc.plans.demand_engine_program 2.4, specimen "Inference's own sibling dependencies"). Which child is
+// the key and which the value is not re-derived here: the key is the binder v2.compiler.lexical_scope
+// bind_binder reads (the reader resolve sites the binder with, and infer_is_let_bind gates on), the value
+// is infer_bind_value, and the body stays in the rest group, where infer_let_body_edge enters it. The
+// first group is taken by SLOT INDEX, so on every conforming Bind it is the stored prefix
+// (v2.std.compilers.body_lowering lower_bind writes key, value, body in that order) and the schedule is
+// stored order, not a permutation of it.
+fn infer_bind_schedules_key_and_value_first(parent: Node, edge: Edge) -> Bool {
+  match bind_binder(n: parent) {
+    Present { value: binder } =>
+      edge.target == binder.atom
+        || match infer_bind_value(bind: parent) {
+          Present { value: value } => edge.target == value
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+// A MATCH SCHEDULES ITS SCRUTINEE BEFORE ITS ARMS. Each arm's frame -- infer_match_arm_child_frame -- reads
+// the scrutinee's settled facts from the parent's accumulator, for the arm's coverage obligation and for
+// the type a pattern binder is typed with, and both this predicate and that frame take the scrutinee from
+// infer_match_scrutinee. Arms stay in the rest group, in stored order. As above the group is taken by slot
+// index, so the schedule is the stored order.
+fn infer_match_schedules_scrutinee_first(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Match } =>
+      match infer_match_scrutinee(match_node: parent) {
+        Present { value: scrutinee } => edge.target == scrutinee
+        Absent => false
+      }
+    ComputationNode { behavior: _ } => false
+    TypeNode { connective: _ } => false
+  }
 }
 
 // An application with no callback actual keeps its authored order: every edge is in the first group.
@@ -9386,7 +9447,7 @@ fn infer_caller_admission_callee_diags(
 ) -> Diagnostics {
   match infer_application_callee_arrow_with_facts(node: application, entries: entries) {
     Absent =>
-      match list_at_optional(xs: node_positional_child_targets(node: application), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: application), index: 0) {
         Absent => None
         Present { value: child0 } =>
           match resolved_reference_body_kind(target: child0) {
@@ -9515,7 +9576,7 @@ fn infer_caller_admission_judged_diags(
             Diagnostic {
               reason: ^infer_reason_caller_admission_callee_unreadable,
               at: node_locus(node: application),
-              correction: match list_at_optional(xs: node_positional_child_targets(node: application), index: 0) {
+              correction: match list_at_optional(xs: positional_child_target_nodes(node: application), index: 0) {
                 Absent => Unavailable { reason: ExternalContractUnknown }
                 Present { value: callee_ref } => Suggested { node: callee_ref }
               }
@@ -9526,7 +9587,7 @@ fn infer_caller_admission_judged_diags(
             Diagnostic {
               reason: ^infer_reason_caller_admission_callee_unresolved,
               at: node_locus(node: application),
-              correction: match list_at_optional(xs: node_positional_child_targets(node: application), index: 0) {
+              correction: match list_at_optional(xs: positional_child_target_nodes(node: application), index: 0) {
                 Absent => Unavailable { reason: ExternalContractUnknown }
                 Present { value: callee_ref } => Suggested { node: callee_ref }
               }
@@ -9567,7 +9628,7 @@ fn infer_caller_admission_roster_from_declarations(
   application: Node,
   declarations: SymbolIndex
 ) -> InferAdmitRosterLookup {
-  match list_at_optional(xs: node_positional_child_targets(node: application), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: application), index: 0) {
     Absent => RosterLookupAbsent
     Present { value: child0 } =>
       match resolved_reference_body_kind(target: child0) {
@@ -9773,7 +9834,7 @@ fn infer_sole_constructor_is_cast(node: Node) -> Bool {
   if infer_transform_is_cast(node: node) {
     true
   } else {
-    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
       Absent => false
       Present { value: op } =>
         match node_atom_identity_optional(node: op) {
@@ -9897,7 +9958,7 @@ fn infer_sole_constructor_head_path(n: Node) -> InferSealedPathRead {
         NotMarkedReference =>
           match n.kind {
             TypeNode { connective: Instantiation } =>
-              match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+              match list_at_optional(xs: positional_child_target_nodes(node: n), index: 0) {
                 Absent => SealedPathUnreadable
                 Present { value: head } => infer_sole_constructor_head_path(n: head)
               }

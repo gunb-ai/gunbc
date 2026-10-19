@@ -83,7 +83,8 @@ import v2.std.node {
 import v2.std.node_query { declared_field_from_edge, find_named_child }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, fold_list_right, is_empty, empty_map, map_insert }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, fold_list_right, is_empty, empty_map, map_insert, collection_concat_shape }
+import std.host_text { chars }
 
 type TargetSemanticDeclDecorationLine {
   surface_binding: Symbol
@@ -163,7 +164,7 @@ fn semantic_decl_char_identity(c: Char) -> Symbol {
 // is a missing conversion at one site.
 fn semantic_decl_string_to_bundle_node(s: String) -> Node {
   fold_list(
-    xs: chars(s: s),
+    xs: chars(text: s),
     empty: target_model_type_atom_node(identity: ^free_monoid_variant_empty),
     cons: fn(tail, c) {
       target_model_type_conj_node(
@@ -328,7 +329,7 @@ fn decode_semantic_decl_lex_rule_row(row: Node) -> Outcome<LexRule> {
                     outcome_accepted(
                       value: TokenRule {
                         token_class: token_class,
-                        pattern: LiteralPattern { text: chars(s: text) }
+                        pattern: LiteralPattern { text: chars(text: text) }
                       }
                     )
                   }

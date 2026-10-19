@@ -5,8 +5,8 @@ use self::AnnotationLineShape::*;
 use self::AnnotationPlacement::*;
 use self::AnnotationScope::*;
 pub use crate::std_algebra::{
-    empty_map, int_total_order, length, list_at_optional, list_snoc_item, list_sort_by_key,
-    map_insert, map_lookup, map_support_keys,
+    collection_concat_shape, empty_map, int_total_order, length, list_at_optional, list_snoc_item,
+    list_sort_by_key, map_insert, map_lookup, map_support_keys,
 };
 pub use crate::std_coercion::unicode_scalar_unfold;
 pub use crate::std_occurrence_identity::OccurrenceId;
@@ -206,7 +206,7 @@ pub struct AnnotationRegionIndex {
 }
 
 pub fn region_extent_start(r: Rc<AnnotationRegion>) -> i64 {
-    r.extent.clone().start.clone()
+    r.extent.start.clone()
 }
 
 pub fn annotation_region_index(
@@ -290,7 +290,7 @@ pub fn siblings_starting_at_or_before(
             let item = v1_rt::list_get_optional(&siblings, mid.clone());
             match item.clone() {
                 Some(r) => {
-                    if (r.extent.clone().start.clone() <= at.clone()) {
+                    if (r.extent.start.clone() <= at.clone()) {
                         {
                             let __tco_0 = siblings;
                             let __tco_1 = at;
@@ -446,9 +446,9 @@ pub fn annotation_attach_step(
                                 v1_rt::concat("\n".to_string(), capture.text.clone()),
                             ),
                             origin: Rc::new(SourceSpan {
-                                file: open.origin.clone().file.clone(),
-                                start: open.origin.clone().start.clone(),
-                                end: capture.origin.clone().end.clone(),
+                                file: open.origin.file.clone(),
+                                start: open.origin.start.clone(),
+                                end: capture.origin.end.clone(),
                             }),
                             placement: open.placement.clone(),
                         })),

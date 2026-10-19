@@ -1,0 +1,236 @@
+module gunbc.runner.runner_revision_job_image
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.resources { Filesystem }
+import std.measure { Mebibyte, mebibyte }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import extdeps.tools.gnu_coreutils { rm_force_command, rm_recursive_force_command, ln_symbolic_force_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.squashfs_tools { unsquashfs_extract_command }
+import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
+import extdeps.posix.test_utility { test_executable_command }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.rust.standalone_installer { rust_standalone_install_command }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.rust.rustc { rustc_version_command }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import gunbc.runner.microvm_guest_artifacts {
+  runner_guest_base_rootfs_artifact, revision_job_rust_dist_artifact, runner_guest_base_artifact_path,
+  guest_artifact_verdict, ArtifactMatchesPin, ArtifactUnpinnedFirstContact, ArtifactBuildReceipt,
+  ArtifactContradictsPin, ArtifactNotMeasured,
+}
+import gunbc.runner.runner_revision_job_toolchain {
+  RevisionJobToolchainClosure, toolchain_tree_commands, toolchain_receipt_lines,
+  prepare_toolchain_closure, ToolchainClosurePrepared, PinnedRowsUnproven, ToolchainClosureRefused,
+}
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.runner.runner_guest_image { runner_guest_agent_target }
+import gunbc.runner.runner_revision_job_guest {
+  RevisionJobGuestUnit, RevisionJobGuestUnitRendered, RevisionJobGuestUnitRefused, revision_job_guest_unit,
+  revision_job_vendor_dir, revision_job_image_cargo_config,
+}
+import gunbc.runner.workspace_guest_image { workspace_image_file_protected }
+
+// THE REVISION-JOB GUEST IMAGE: a sibling of gunbc.runner.workspace_guest_image, built the same way
+// and from the same pinned base. The tree is the pinned Ubuntu base rootfs unsquashed, plus:
+//   - the Rust toolchain, the pinned standalone dist (gunbc.runner.microvm_guest_artifacts
+//     revision_job_rust_dist_artifact) installed by its own install.sh into /usr/local;
+//   - /etc/fstab mounting the job's work disk (/dev/vdf, ext2) at /work;
+//   - the cargo source replacement pointing crates-io at the vendored set the job stages
+//     (gunbc.runner.runner_revision_job_guest revision_job_vendor_dir), written at
+//     revision_job_image_cargo_config and copied onto the mounted /work by the guest's first steps
+//     (the fresh work disk is mounted over the image's /work, so nothing baked there survives);
+//   - the job's unit (revision_job_guest_unit) enabled at boot by a .wants symlink.
+// The build refuses unless the base rootfs and the Rust dist both match their pins, and unless git,
+// tar and cargo are executable in the finished tree. Its receipt names the image's SHA-256 and the
+// toolchain the tree actually carries (`rustc --version` run against the installed tree), which the
+// job reads as the image's toolchain; rust-toolchain.toml stays the only channel authority.
+//
+// DECLARED FRONTIER (DESIGN 3c): built by the revision-job image build entry and installed under the
+// controller release by an operator-approved deploy (bright-moth-475's srv1 ask); TRIGGER: S4b-3b's
+// stand-in inhabitance claim on srv1.
+
+data revision_job_image_size: Mebibyte = mebibyte(count: 8192)
+data revision_job_unit_name: String = "gunbc-revision-job.service"
+
+fn revision_job_tree_path(root: String) -> String { concat(root, "/revision-job-tree") }
+fn revision_job_image_path(root: String) -> String { concat(root, "/revision-job.ext4") }
+fn revision_job_toolchain_receipt_path(root: String) -> String { concat(root, "/toolchain") }
+
+fn revision_job_fstab() -> String {
+  "/dev/vdf /work ext2 defaults 0 2\n"
+}
+
+fn revision_job_cargo_config() -> String {
+  join([
+    "[source.crates-io]\n",
+    "replace-with = \"vendored\"\n",
+    "\n",
+    "[source.vendored]\n",
+    "directory = \"", revision_job_vendor_dir, "\"\n",
+  ], "")
+}
+
+// `toolchain` is the closure's extraction and effect steps; the build passes exactly
+// toolchain_tree_commands of a minted closure, so the steps run after the base is unpacked (they
+// replace its libc6) and before the tools are checked.
+fn revision_job_image_tree_commands(root: String, rust_dist_dir: String, toolchain: List<ArgvCommand>) -> List<ArgvCommand> {
+  let tree = revision_job_tree_path(root: root)
+  let unit_wants = join([tree, "/etc/systemd/system/", runner_guest_agent_target as String, ".wants"], "")
+  [
+    rm_recursive_force_command(path: tree),
+    mkdir_parents_command(path: tree),
+    unsquashfs_extract_command(archive: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact), into_directory: tree),
+  ] + toolchain + [
+    tar_extract_command(archive: runner_guest_base_artifact_path(root: root, artifact: revision_job_rust_dist_artifact), into_directory: rust_dist_dir, strip_components: 0),
+    rust_standalone_install_command(unpacked_dir: join([rust_dist_dir, "/", revision_job_rust_dist_unpacked_dir()], ""), prefix: concat(tree, "/usr/local")),
+    mkdir_parents_command(path: concat(tree, "/work")),
+    mkdir_parents_command(path: unit_wants),
+    ln_symbolic_force_command(target: "/proc/net/pnp", link_name: concat(tree, "/etc/resolv.conf")),
+    ln_symbolic_force_command(target: concat("../", revision_job_unit_name), link_name: join([unit_wants, "/", revision_job_unit_name], "")),
+    rm_force_command(path: concat(tree, "/etc/systemd/system/sysinit.target.wants/fcnet.service")),
+    test_executable_command(path: concat(tree, "/usr/bin/git")),
+    test_executable_command(path: concat(tree, "/usr/bin/tar")),
+    test_executable_command(path: concat(tree, "/usr/local/bin/cargo")),
+    test_executable_command(path: concat(tree, "/usr/local/bin/rustc")),
+    test_executable_command(path: concat(tree, "/usr/bin/cc")),
+    test_executable_command(path: concat(tree, "/usr/bin/ld")),
+  ]
+}
+
+// The dist unpacks to its archive name without ".tar.xz": derived from the pinned row, so the version
+// and target are stated once (gunbc.runner.microvm_guest_artifacts revision_job_rust_dist_artifact).
+fn revision_job_rust_dist_unpacked_dir() -> String {
+  let name = revision_job_rust_dist_artifact.filename as String
+  substring(s: name, start: 0, end: length(name) - length(".tar.xz"))
+}
+
+// THE TOOLCHAIN RECEIPT: what `rustc --version` says the installed tree carries, written beside the
+// image. The job compares its version against the tree's rust-toolchain.toml channel.
+fn revision_job_write_toolchain_receipt(root: String, closure: RevisionJobToolchainClosure) -> Bool {
+  match run_shell_command_capture(command: rustc_version_command(rustc: concat(revision_job_tree_path(root: root), "/usr/local/bin/rustc")), transport: LocalExec) {
+    ProcessOutputPresent { text: t } => {
+      let words: List<String> = trim(s: t).split(delimiter: " ")
+      match skip(words, 1).first() {
+        Present { value: version } => Filesystem.Write(path: revision_job_toolchain_receipt_path(root: root), content: concat(concat(version, "\n"), toolchain_receipt_lines(closure: closure))).success
+        Absent => false
+      }
+    }
+    ProcessOutputAbsent => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+fn revision_job_run_commands(commands: List<ArgvCommand>) -> Bool {
+  fold(commands, init: true, f: (ok, command) => if ok {
+    process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+  } else { false })
+}
+
+type RevisionJobImageBuild
+  = RevisionJobImageBuilt { image: String, sha256: NonEmptyStr }
+  | RevisionJobImageRefused { reason: String }
+  // The pinned base carries tar but not git and no C toolchain (bright-moth-475's read of the pinned
+  // squashfs on srv1, 2026-10-15: no git, cc, gcc, ld, libc6-dev, xz or make, and a stripped dpkg
+  // database), while rustc on aarch64-unknown-linux-gnu links through cc and three locked crates
+  // (psm, stacker, ring) compile C in their build scripts. An image without that closure would pass a
+  // git/tar/cargo check and fail at the first guest build, so the build refuses here, naming the
+  // inputs, until the closure is supplied by S4b-3c -- never an interim hand-picked list.
+  | RevisionJobImageToolchainClosureMissing { missing: List<String> }
+
+data revision_job_toolchain_closure_inputs: List<String> = ["git", "cc", "ld", "libc6-dev"]
+
+fn pinned(artifact_path: String, artifact: gunbc.runner.microvm_guest_artifacts.GuestBaseArtifact) -> Bool {
+  match guest_artifact_verdict(artifact: artifact, observed: sha256sum_file_digest_via_shell(path: artifact_path as NonEmptyStr)) {
+    ArtifactMatchesPin => true
+    ArtifactUnpinnedFirstContact { digest_hex: _ } => false
+    ArtifactBuildReceipt { digest_hex: _ } => false
+    ArtifactContradictsPin { expected_hex: _, observed_hex: _ } => false
+    ArtifactNotMeasured { reason: _ } => false
+  }
+}
+
+fn revision_job_image_build(root: String, rust_dist_dir: String, closure: RevisionJobToolchainClosure?) -> RevisionJobImageBuild {
+  let tree = revision_job_tree_path(root: root)
+  match closure {
+  Absent => RevisionJobImageToolchainClosureMissing { missing: revision_job_toolchain_closure_inputs }
+  Present { value: c } =>
+  if !pinned(artifact_path: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact), artifact: runner_guest_base_rootfs_artifact) {
+    RevisionJobImageRefused { reason: "the base rootfs does not match its pin" }
+  } else if !pinned(artifact_path: runner_guest_base_artifact_path(root: root, artifact: revision_job_rust_dist_artifact), artifact: revision_job_rust_dist_artifact) {
+    RevisionJobImageRefused { reason: "the Rust standalone dist does not match its upstream-published pin" }
+  } else if !revision_job_run_commands(commands: revision_job_image_tree_commands(root: root, rust_dist_dir: rust_dist_dir, toolchain: toolchain_tree_commands(tree: tree, closure: c))) {
+    RevisionJobImageRefused { reason: "a tree step failed: the base, the toolchain install, or a required tool (git, tar, cargo, rustc) is missing" }
+  } else { match revision_job_guest_unit() {
+    RevisionJobGuestUnitRefused { reason: r } => RevisionJobImageRefused { reason: concat("the guest unit refused to render: ", r as String) }
+    RevisionJobGuestUnitRendered { unit: u } =>
+      if !Filesystem.Write(path: concat(tree, "/etc/fstab"), content: revision_job_fstab()).success
+        || !Filesystem.Write(path: join([tree, "/etc/systemd/system/", revision_job_unit_name], ""), content: serialize_systemd_unit_file(file: u)).success
+        || !Filesystem.Write(path: concat(tree, revision_job_image_cargo_config), content: revision_job_cargo_config()).success
+        || !revision_job_write_toolchain_receipt(root: root, closure: c) {
+        RevisionJobImageRefused { reason: "writing the image's files failed" }
+      } else if !revision_job_run_commands(commands: [rm_force_command(path: revision_job_image_path(root: root)),
+          mke2fs_populate_command(fs: Ext4, image_path: revision_job_image_path(root: root), from_directory: tree, size: revision_job_image_size)]) {
+        RevisionJobImageRefused { reason: "packing the image failed" }
+      } else { match sha256sum_file_digest_via_shell(path: revision_job_image_path(root: root) as NonEmptyStr) {
+        Sha256FileDigestUnavailable { path: _, reason: r } => RevisionJobImageRefused { reason: r }
+        Sha256FileDigest { digest: d } => RevisionJobImageBuilt { image: revision_job_image_path(root: root), sha256: d.hex as NonEmptyStr }
+      } }
+  } }
+  }
+}
+
+// THE BUILD CORE, run by the CI delivery (gunbc.revision_job_image_delivery revision_job_image_build_wet):
+// prepare the closure (receipt gate, per-deb digest and control fields) before the build touches the
+// tree, then build. Exit 0 only when the image was built and its SHA-256 written to <image>.sha256.
+fn revision_job_image_build_core(root: String, rust_dist_dir: String, store: String, debs: String) -> ProcessExit {
+  match prepare_toolchain_closure(store: store, debs_dir: debs) {
+    PinnedRowsUnproven { rows_digest: d, expected_receipt: r } =>
+      exit_failure(reason: join(["revision_job_image: the pinned toolchain rows ", d, " are unproven; no receipt at ", r, " (prove_toolchain_rows writes it; revision_job_image_build_wet runs it first)"], ""))
+    ToolchainClosureRefused { reasons: rs } => exit_failure(reason: concat("revision_job_image: the toolchain closure refused:\n", join(rs, "\n")))
+    ToolchainClosurePrepared { closure: c } => match revision_job_image_build(root: root, rust_dist_dir: rust_dist_dir, closure: Present { value: c }) {
+      // The digest install verification is handed (verify_revision_job_image expected_sha256), beside
+      // the image it names.
+      RevisionJobImageBuilt { image: i, sha256: d } =>
+        if Filesystem.Write(path: concat(i, ".sha256"), content: concat(d as String, "\n")).success { ExitSuccess }
+        else { exit_failure(reason: concat("revision_job_image: built, but the digest could not be written beside ", i)) }
+      RevisionJobImageRefused { reason: r } => exit_failure(reason: concat("revision_job_image: ", r))
+      RevisionJobImageToolchainClosureMissing { missing: m } => exit_failure(reason: concat("revision_job_image: closure missing ", join(m, ",")))
+    }
+  }
+}
+
+// ── installation, verified like the workspace image ────────────────────────────────────────────
+
+type VerifiedRevisionJobImage sole_constructor {
+  identity: NonEmptyStr
+  kernel: String
+  rootfs: String
+  toolchain: NonEmptyStr
+}
+
+type RevisionJobImageAdmission
+  = RevisionJobImageVerified { image: VerifiedRevisionJobImage }
+  | RevisionJobImageNotAdmitted { reason: String }
+
+fn verify_revision_job_image(image_dir: String, expected_sha256: NonEmptyStr) -> RevisionJobImageAdmission {
+  let kernel = concat(image_dir, "/vmlinux")
+  let rootfs = concat(image_dir, "/rootfs.ext4")
+  let toolchain_path = concat(image_dir, "/toolchain")
+  if !workspace_image_file_protected(path: kernel) || !workspace_image_file_protected(path: rootfs) || !workspace_image_file_protected(path: toolchain_path) {
+    RevisionJobImageNotAdmitted { reason: "revision-job image files must be installed root-owned and protected" }
+  } else { match sha256sum_file_digest_via_shell(path: rootfs as NonEmptyStr) {
+    Sha256FileDigestUnavailable { path: _, reason: r } => RevisionJobImageNotAdmitted { reason: r }
+    Sha256FileDigest { digest: d } =>
+      if (d.hex as String) != (expected_sha256 as String) { RevisionJobImageNotAdmitted { reason: "the installed rootfs contradicts the admitted image identity" } }
+      else {
+        let t = trim(s: Filesystem.Read(path: toolchain_path).content)
+        if t == "" { RevisionJobImageNotAdmitted { reason: "the image's toolchain receipt is empty" } }
+        else { RevisionJobImageVerified { image: VerifiedRevisionJobImage { identity: expected_sha256, kernel: kernel, rootfs: rootfs, toolchain: t as NonEmptyStr } } }
+      }
+  } }
+}

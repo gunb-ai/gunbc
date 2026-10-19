@@ -214,10 +214,7 @@ fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
       Present { value: pair } =>
         match sugar_pipe_sequence_variant_optional(node: pair.left) {
           Present { value: variant } =>
-            list_snoc_item(
-              xs: sugar_collect_pipe_chain_variants(spine: pair.right),
-              item: variant
-            )
+            Cons { head: variant, tail: sugar_collect_pipe_chain_variants(spine: pair.right) }
           Absent => sugar_collect_pipe_chain_variants(spine: pair.right)
         }
       Absent => std.algebra.Empty

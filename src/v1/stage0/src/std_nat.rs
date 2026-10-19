@@ -6,7 +6,9 @@ use self::DecimalDigitSuccessor::*;
 use self::NatDivision::*;
 use self::NatSubtraction::*;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
-pub use crate::std_algebra::{CommutativeMonoid, CommutativeSemiring, Ordering};
+pub use crate::std_algebra::{
+    collection_concat_shape, CommutativeMonoid, CommutativeSemiring, Ordering,
+};
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List};
 use crate::v1_rt;
@@ -378,14 +380,42 @@ pub fn nat_decimal_split(value: Nat) -> Rc<NatDecimalSplit> {
 
 pub fn nat_decimal_split_advance(s: Rc<NatDecimalSplit>) -> Rc<NatDecimalSplit> {
     match (*decimal_digit_successor(s.units.clone())).clone() {
-        DecimalDigitSuccessor::DecimalDigitNext { digit: d, .. } => Rc::new(NatDecimalSplit {
-            quotient: s.quotient.clone(),
-            units: d.clone(),
-        }),
-        DecimalDigitSuccessor::DecimalDigitCarry => Rc::new(NatDecimalSplit {
-            quotient: v1_rt::int_add(s.quotient.clone(), 1),
-            units: DecimalDigit::D0,
-        }),
+        DecimalDigitSuccessor::DecimalDigitNext { digit: d, .. } => {
+            let __rb_0_0 = s.quotient.clone();
+            let __rb_1_0 = d.clone();
+            let mut __rb_h = s;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.quotient = __rb_0_0;
+                    __rb_r.units = __rb_1_0;
+                }
+                None => {
+                    __rb_h = Rc::new(NatDecimalSplit {
+                        quotient: __rb_0_0,
+                        units: __rb_1_0,
+                    });
+                }
+            }
+            __rb_h
+        }
+        DecimalDigitSuccessor::DecimalDigitCarry => {
+            let __rb_0_0 = v1_rt::int_add(s.quotient.clone(), 1);
+            let __rb_1_0 = DecimalDigit::D0;
+            let mut __rb_h = s;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.quotient = __rb_0_0;
+                    __rb_r.units = __rb_1_0;
+                }
+                None => {
+                    __rb_h = Rc::new(NatDecimalSplit {
+                        quotient: __rb_0_0,
+                        units: __rb_1_0,
+                    });
+                }
+            }
+            __rb_h
+        }
     }
 }
 

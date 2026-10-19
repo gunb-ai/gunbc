@@ -20,6 +20,7 @@ fn expected_revision_fixture_binding() -> ActionsRunBinding {
     workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
     run_id: "1",
     run_revision: expected_revision_fixture_sha,
+    execution_revision: expected_revision_fixture_sha,
   }
 }
 
