@@ -9123,7 +9123,7 @@ fn target_value_expression_ordinary_apply_to_concrete_tokens(
   callee: Symbol,
   args: List<TargetValueExpression>,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_tokenize_intersperse(
