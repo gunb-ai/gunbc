@@ -1969,7 +1969,7 @@ fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
   let spelled = render_rust_fn_sig_type_spelled(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
   let sigleaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-  let sigdbg = if sigleaf == "Witness" { concat("/*SIG kids=", to_string(value: n.children |> count), " applied=", if find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) == none { "F" } else { "T" }, " gp=", to_string(value: generic_param_names |> count), "*/") } else { "" }
+  let sigdbg = if starts_with(s: spelled, prefix: "Witness") || starts_with(s: spelled, prefix: "Rc<Witness") { concat("/*SIG leaf=", sigleaf, " kids=", to_string(value: n.children |> count), " applied=", if find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) == none { "F" } else { "T" }, " gp=", to_string(value: generic_param_names |> count), "*/") } else { "" }
   concat(sigdbg, render_rust_declaration_position(n: n, spelled: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names))
 }
 
