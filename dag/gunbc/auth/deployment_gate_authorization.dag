@@ -462,6 +462,12 @@ type ObservedGateInstallation sole_constructor {
 type InstallationObservationRefusal =
   | WireIncomplete { missing_field: NonEmptyStr }
   | NoInstallationForThisRepository
+  // A STATUS THAT IS NOT THE READ'S 200 AND IS NOT A 404. Earlier this branch collapsed every non-200
+  // into NoInstallationForThisRepository, which told the operator to go INSTALL the App when GitHub had
+  // actually answered 500 — the wrong operator action, and one they might act on by re-installing a
+  // working App. A read that did not answer is its own reason; the next arm's "GitHub says no
+  // installation for this repository" is the only reading that justifies an install.
+  | ReadbackDidNotAnswer { status: HttpStatus }
   | ClaimDisagreesWithObservation { claimed_installation_id: Int, observed_installation_id: Int }
 
 type InstallationObservation
@@ -501,13 +507,21 @@ fn observe_gate_installation(
       decl_name: "fx_claim"
     ),
     decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "fx_observation_probe"
+    ),
+    decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "observed_identity"
     ),
   ]
 {
-  if status != installation_readback_success_status {
+  if status == 404 {
+    // GitHub answering "no installation for this repository" — the one refusal that means the App is
+    // genuinely not installed here, which is the operator action the reason names.
     InstallationObservationRefused { because: NoInstallationForThisRepository }
+  } else if status != installation_readback_success_status {
+    InstallationObservationRefused { because: ReadbackDidNotAnswer { status: status } }
   } else {
     match installation_identity_from_wire(wire: wire) {
       InstallationRefused { failure: f } => InstallationObservationRefused {

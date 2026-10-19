@@ -110,6 +110,7 @@ import gunbc.auth.deployment_gate_authorization {
   InstallationObserved,
   WireIncomplete,
   NoInstallationForThisRepository,
+  ReadbackDidNotAnswer,
   ClaimDisagreesWithObservation,
   GateInstallationClaim,
   mint_accepted_rule_review,
@@ -202,6 +203,98 @@ fn fx_observed_installation() -> ObservedGateInstallation? {
     InstallationObserved { observed: o } => Present { value: o }
     InstallationObservationRefused { because: _ } => none
   }
+}
+
+// THE OBSERVATION PROBE: the only admitted call to the identity route besides fx_observed_installation.
+// Every argument passes through untouched, so a test can hand the route a body with a field missing, a
+// 404, a 500, or a claim that disagrees with what GitHub read — and read the route's OWN refusal back.
+fn fx_observation_probe(
+  status: HttpStatus,
+  wire: InstallationWireFields,
+  claim: GateInstallationClaim
+) -> InstallationObservation {
+  observe_gate_installation(
+    owner: "gunb-ai",
+    repo: "gunbc",
+    status: status,
+    wire: wire,
+    claim: claim,
+  )
+}
+
+// THE IDENTITY ROUTE REFUSES THE THREE WAYS THAT ARE DIFFERENT OPERATOR ACTIONS, which is the whole
+// point of having a reason sum here instead of a Bool. A malformed body, a repository with no
+// installation, and a read that did not answer are three different problems; collapsing them (an earlier
+// revision sent every non-200 to NoInstallationForThisRepository, so a GitHub 500 told the operator to
+// re-install a working App) is what these tests keep apart.
+test fn the_identity_readback_refuses_by_name_and_by_status() -> Bool {
+  // 1. A 200 whose body is missing app_slug refuses with the FIELD NAME — no default is filled in for a
+  // required upstream field (§5, loud typed refusal), and the pin makes it required.
+  (match fx_observation_probe(
+         status: installation_readback_success_status,
+         wire: InstallationWireFields {
+           id: Present { value: 888800001 },
+           app_id: Present { value: gate_app_id },
+           app_slug: Absent,
+         },
+         claim: fx_claim,
+       ) {
+         InstallationObservationRefused {
+           because: WireIncomplete { missing_field: f },
+         } => f == installation_field_app_slug
+         _ => false
+       })
+    // 2. A 404 is GitHub saying this repository has no installation. That is the ONLY refusal whose
+    // remedy is an install, which is why the 500 below may not share its name.
+    && (match fx_observation_probe(
+          status: 404,
+          wire: fx_wire(),
+          claim: fx_claim,
+        ) {
+          InstallationObservationRefused { because: NoInstallationForThisRepository } => true
+          _ => false
+        })
+    // 3. A 500 is a read that did not answer, carrying the status GitHub actually sent.
+    && (match fx_observation_probe(
+          status: 500,
+          wire: fx_wire(),
+          claim: fx_claim,
+        ) {
+          InstallationObservationRefused { because: ReadbackDidNotAnswer { status: got } } =>
+            got == 500
+          _ => false
+        })
+    // 4. THE CLAIM DISAGREES WITH THE READ. GitHub named a different installation than the operator
+    // recorded: the token would be minted from an identity nobody approved, so the read wins and the
+    // refusal carries BOTH ids for the operator to compare.
+    && (match fx_observation_probe(
+          status: installation_readback_success_status,
+          wire: fx_wire(),
+          claim: GateInstallationClaim { installation_id: 777, app_id: gate_app_id },
+        ) {
+          InstallationObservationRefused {
+            because: ClaimDisagreesWithObservation {
+              claimed_installation_id: claimed_id,
+              observed_installation_id: seen_id,
+            },
+          } => claimed_id == 777 && seen_id == 888800001
+          _ => false
+        })
+    // 5. The honest read still succeeds — the control that keeps the four refusals above from passing
+    // because the route stopped answering altogether.
+    && (match fx_observation_probe(
+          status: installation_readback_success_status,
+          wire: fx_wire(),
+          claim: fx_claim,
+        ) {
+          InstallationObserved { observed: o } =>
+            o.installation_id == 888800001
+              && o.app_id == gate_app_id
+              && (o.app_slug as String) == "gunbc-deployment-gate"
+              && (o.owner as String) == "gunb-ai"
+              && (o.repo as String) == "gunbc"
+          _ => false
+        })
 }
 
 // THE RULE READBACK, passed straight to the join so the tests can vary the rows. This is the ONLY way
