@@ -279,6 +279,38 @@ fn compiler_gate_stamp_matching_entries(entries: List<YamlKeyValue>) -> List<Yam
   filter(entries, kv => kv.key == compiler_gate_contract_stamp_env_key)
 }
 
+// THE ONE SUPPORTED SCALAR FORM. The stamp is the rendering of a content hash, which the renderer emits
+// as exactly sixteen LOWERCASE hex digits and nothing else. Anything else -- a longer run, a shorter run,
+// uppercase, a quote, whitespace, a GitHub expression, or a valid hash with characters added around it --
+// is refused rather than decoded. This is the strict form of the same rule the emitted awk reader
+// enforces; the two are checked against each other by the modelled parity cases, because a reader that
+// accepts a value the OTHER reader rejects is a gate that pairs a subject it should refuse.
+//
+// WHY STRICTNESS IS THE POINT AND NOT POLISH. The first version deleted every non-hex character and took
+// the first member, so `XYZ0acdbc124e13bfecXYZ` returned 0acdbc124e13bfec with exit 0 and so did
+// `${{ '0acdbc124e13bfec' }}`. A subject could therefore PASS the guard while its committed workflow
+// carried no contract stamp at all -- which is precisely the class this module exists to close, reopened
+// by the reader meant to close it. Deleting characters is a decoder that invents data; this one does not.
+data compiler_gate_contract_stamp_literal_length: Int = 16
+
+// Codepoints, compared as NUMBERS: no substring arithmetic, no character deletion, and uppercase fails
+// closed rather than being folded into the accepted set.
+fn compiler_gate_contract_stamp_is_hex_codepoint(c: Int) -> Bool {
+  (c >= 48 && c <= 57) || (c >= 97 && c <= 102)
+}
+
+fn compiler_gate_contract_stamp_is_valid_literal(s: String) -> Bool {
+  if string_length(s: s) != compiler_gate_contract_stamp_literal_length {
+    false
+  } else {
+    fold(
+      chars(s: s),
+      init: true,
+      f: fn(all_ok, c) { all_ok && compiler_gate_contract_stamp_is_hex_codepoint(c: c) }
+    )
+  }
+}
+
 // A SECOND STAMP MEMBER IS UNREADABLE, NOT "THE FIRST ONE WINS". A workflow that declares the stamp
 // twice is not a workflow whose stamp can be trusted, and picking one by position would be a silent
 // resolution of an ambiguity the check exists to police.
@@ -294,8 +326,10 @@ fn compiler_gate_stamp_from_entry(kvs: List<YamlKeyValue>) -> CompilerGateContra
                 StampUnreadable { detail: "the stamp member is the empty string" }
               } else if string_contains(s: s, pattern: "${{") {
                 StampUnreadable { detail: "the stamp member is a GitHub expression, not a literal" }
-              } else {
+              } else if compiler_gate_contract_stamp_is_valid_literal(s: trim(s)) {
                 StampPresent { stamp: trim(s) }
+              } else {
+                StampUnreadable { detail: "the stamp member is not the one supported scalar form: sixteen lowercase hex digits" }
               }
             YamlNull => StampUnreadable { detail: "the stamp member is not a string" }
             YamlBool { value: _ } => StampUnreadable { detail: "the stamp member is not a string" }
@@ -455,21 +489,37 @@ fn compiler_gate_contract_stamp_awk_program() -> String {
   // test.claim.witness.compiler_gate_contract_stamp, not only modelled.
   //
   // IT CARRIES NO SINGLE QUOTE, because the shell assigns it in single quotes; a quote inside would
-  // close the quoting and let the remainder of the line be re-parsed. Trimming is done by DELETING
-  // non-hex characters rather than by matching quote characters, which both keeps it quote-free and is
-  // strictly stronger for a value that must be a content hash.
+  // close the quoting and let the remainder of the line be re-parsed.
+  //
+  // IT DELETES NOTHING. The first version did `gsub(/[^0-9a-f]/, "", v)` and accepted any non-empty
+  // result, which is a DECODER THAT INVENTS DATA: `XYZ0acdbc124e13bfecXYZ` decoded to the real stamp and
+  // exited 0, and so did a GitHub expression wrapped around it. A PR whose committed workflow carried no
+  // contract stamp at all could therefore pass the guard -- the silent arm of this very failure mode,
+  // reopened by the reader built to close it. The value must match the one supported scalar form
+  // (compiler_gate_contract_stamp_literal_length) with every character in place, or it is refused.
+  //
+  // WHY IT PRINTS A SENTINEL INSTEAD OF JUST EXITING NON-ZERO. The step captures stdout and tests `-z`,
+  // because the node serializer has no `if !` form. If a refused form printed nothing, it would fall into
+  // the SAME arm as a genuinely absent member and refuse with StampAbsent -- "your tree predates the
+  // instruction", blamed on the branch when the truth is that its stamp member is malformed. The sentinel
+  // makes the two distinguishable, and it cannot collide with a real stamp: it contains uppercase and
+  // non-hex letters, so the strict rule above can never accept it as one.
   join(
     [
-      "\nBEGIN { in_env = 0 }\n",
-      "$0 ~ /^env:[[:space:]]*$/ { in_env = 1; next }\n",
+      "\nBEGIN { in_env = 0; seen = 0; bad = \"\" }\n",
+      "$0 ~ /^env:[[:space:]]*$/ { if (in_env) { bad = \"duplicate\" }; in_env = 1; next }\n",
       "in_env && $0 ~ /^[^[:space:]]/ { in_env = 0 }\n",
       "in_env && index($0, \"  \" key \": \") == 1 {\n",
+      "  if (seen) { bad = \"duplicate\" }\n",
       "  v = substr($0, index($0, \": \") + 2)\n",
-      "  gsub(/[^0-9a-f]/, \"\", v)\n",
-      "  if (length(v) > 0) { print v; found = 1; exit }\n",
-      "  exit 3\n",
+      "  if (v !~ /^[0-9a-f]+$/ || length(v) != " + to_string(compiler_gate_contract_stamp_literal_length) + ") { bad = \"form\" }\n",
+      "  seen = 1\n",
       "}\n",
-      "END { if (!found) exit 3 }\n"
+      "END {\n",
+      "  if (bad != \"\") { print \"UNREADABLE\"; exit 4 }\n",
+      "  if (!seen) { exit 3 }\n",
+      "  print v\n",
+      "}\n"
     ],
     ""
   )
@@ -569,6 +619,24 @@ fn compiler_gate_contract_stamp_guard_statements() -> List<Node> {
         bash_build_exit(code: "1")
       ]
     ),
+    // A MALFORMED MEMBER IS NOT AN ABSENT ONE. The reader prints a sentinel rather than nothing when the
+    // member exists but is not the supported scalar form, so STAMP_TREE is non-empty here and this arm
+    // fires BEFORE the `!=` comparison below can mislabel a forged value as an ordinary mismatch. Each
+    // refusal names the arm it actually took: a gate that blames the branch for a fault in the gate is a
+    // gate nobody trusts the next time it fires, which is the lesson the fused `-v key=` defect taught.
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(
+        words: [
+          bash_build_word_var(name: "STAMP_TREE"),
+          bash_build_word_lit(text: "=="),
+          bash_build_word_lit(text: compiler_gate_contract_stamp_unreadable_sentinel)
+        ]
+      ),
+      then_stmts: [
+        compiler_gate_contract_stamp_print_line(compiler_gate_contract_stamp_refusal_parts_unreadable_tree()),
+        bash_build_exit(code: "1")
+      ]
+    ),
     bash_build_if_from_stmts(
       cond: bash_build_test_bracket(
         words: [
@@ -640,6 +708,26 @@ fn compiler_gate_contract_stamp_refusal_parts_absent() -> List<Node> {
     bash_build_word_lit(text: ", so its workflow predates the instruction this job is executing. "),
     bash_build_word_lit(text: compiler_gate_contract_stamp_provenance),
     bash_build_word_lit(text: ". Remedy: merge origin/main into this branch.")
+  ]
+}
+
+// THE SENTINEL THE READER PRINTS FOR A MEMBER THAT EXISTS BUT IS NOT THE SUPPORTED FORM. Uppercase and
+// non-hex letters, so the strict rule above can never accept it as a stamp and it cannot be forged into
+// one: to make the guard skip this arm you would have to write a member that IS sixteen lowercase hex
+// digits, which is the thing the arm is there to distinguish from.
+data compiler_gate_contract_stamp_unreadable_sentinel: String = "UNREADABLE"
+
+fn compiler_gate_contract_stamp_refusal_parts_unreadable_tree() -> List<Node> {
+  [
+    bash_build_word_lit(text: "REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_env_key),
+    bash_build_word_lit(text: " at "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_tree_file()),
+    bash_build_word_lit(text: " but its value is not the one supported scalar form -- "),
+    bash_build_word_lit(text: to_string(compiler_gate_contract_stamp_literal_length)),
+    bash_build_word_lit(text: " lowercase hex digits, nothing added around it. A workflow text is not an instruction you can edit into agreement. "),
+    bash_build_word_lit(text: compiler_gate_contract_stamp_provenance),
+    bash_build_word_lit(text: ". Remedy: regenerate it through gunbc.witness.compiler_gate_workflow.")
   ]
 }
 
@@ -789,11 +877,32 @@ fn compiler_gate_contract_stamp_guard_step() -> Step {
 // a second spelling of the same fact and could disagree with the runner in silence.
 // ================================================================================================
 
+// A VALUE, NOT A CHARACTER DELETION. The reader used to strip every non-hex character and take what was
+// left, so a member that was never a stamp decoded into one and exited 0: `XYZ0acdbc124e13bfecXYZ`, and
+// `${{ '0acdbc124e13bfec' }}` with it. A PR whose committed workflow carried no valid stamp could pass
+// the gate built to catch it -- this module's own silent arm, reopened by the reader meant to close it.
+//
+// THESE ARE FORMS, NOT LITERAL VALUES, AND THAT IS DELIBERATE. Each is derived by the harness from the
+// RESOLVED running stamp, exactly as SubjectRewritten is, so "the tree carries a stamp-shaped lie about
+// the value the instruction actually runs" is a fact the harness enforces rather than a constant pair the
+// model happens to agree on. They are enumerated here because the MODEL owns which forms exist and what
+// each must prove. They cannot be passed as bytes: two of them contain a single quote, and the shell
+// serializer single-quotes literal words, so an argv byte string would be re-parsed rather than quoted.
+type CompilerGateContractStampForgedForm
+  = ForgedWrapped             // the valid stamp with characters added around it (the original escape)
+  | ForgedExpression          // the valid stamp inside a GitHub expression (the second escape)
+  | ForgedQuoted              // the valid stamp in single quotes -- a legal YAML scalar, not the form
+  | ForgedTruncated           // the valid stamp with its last digit dropped (15)
+  | ForgedExtended            // the valid stamp with one extra digit (17)
+  | ForgedUppercased          // the valid stamp uppercased -- hex, but not the renderer's output
+  | ForgedDuplicate           // the member declared twice with the same value
+
 type CompilerGateContractStampEvidenceSubject
   = SubjectFixture            // the committed silent-green head's own witnesses.yml
   | SubjectCommitted          // the committed artifact, unchanged
   | SubjectRewritten          // its stamp member moved, as a contract-changing PR would
   | SubjectDemoted            // the member demoted into a step-level env, structurally absent
+  | SubjectForged(CompilerGateContractStampForgedForm)   // its member forged in exactly this way
 
 type CompilerGateContractStampEvidenceCase {
   label: String
