@@ -26,7 +26,8 @@ import gunbc.fleet.fleet_host_grant_coverage {
   InstalledSudoersText,
   InstalledSudoersUnreadable,
 }
-import extdeps.sudo.nopasswd_decision { SudoDecisionQuery, sudo_decision_command, sudo_decision_from_run, sudo_decision_binary_absent }
+import extdeps.sudo.nopasswd_decision { SudoDecisionQuery, SudoVersionRead, sudo_decision_command, sudo_decision_from_run, sudo_decision_binary_absent, sudo_version_from_run }
+import extdeps.sudo.elevation { sudo_version_command }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_install_path }
 import std.types { CommitSha }
 
@@ -569,14 +570,14 @@ fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
 }
 
 // THE HOST-GRANT HALF OF THE OBSERVATION TRANSACTION. Each rule is asked of sudo itself
-// (`sudo -n -l -u RUNAS ARGV`, extdeps.sudo.nopasswd_decision), which lists and never runs the
+// (`sudo -n -ll -u RUNAS ARGV`, extdeps.sudo.nopasswd_decision), which lists and never runs the
 // command, as the account running this CLI, whose name is recorded beside the decisions. An
 // unreadable principal, a missing binary, a sudo that did not spawn or any status other than the
 // documented 0/1 is typed Unobserved, never covered. The installed drop-in is read separately: it is
 // normally root:root 0440, so an unreadable file is its own typed outcome.
 // THE ONE WET EXEC here (sudo's real exit codes and text) is the unpaired gap; the witnesses
 // run the pure mapping over recorded outputs.
-fn observe_host_grant_decision_wet(query: SudoDecisionQuery) -> HostGrantDecisionRead
+fn observe_host_grant_decision_wet(query: SudoDecisionQuery, version: SudoVersionRead) -> HostGrantDecisionRead
 {
   let program = match query.argv.first() {
     Present { value: w } => w as String
@@ -590,7 +591,7 @@ fn observe_host_grant_decision_wet(query: SudoDecisionQuery) -> HostGrantDecisio
   HostGrantDecisionRead {
     query: query,
     decision: if present {
-      sudo_decision_from_run(query: query, outcome: run_shell_command_observe_outcome(command: sudo_decision_command(query: query), transport: LocalExec))
+      sudo_decision_from_run(query: query, version: version, outcome: run_shell_command_observe_outcome(command: sudo_decision_command(query: query), transport: LocalExec))
     } else {
       sudo_decision_binary_absent(query: query)
     },
@@ -600,12 +601,14 @@ fn observe_host_grant_decision_wet(query: SudoDecisionQuery) -> HostGrantDecisio
 fn observe_host_grants_wet(host: NonEmptyStr) -> HostGrantObservation
 {
   let installed = Filesystem.Read(path: runner_host_sudoers_install_path)
+  let version = sudo_version_from_run(outcome: run_shell_command_observe_outcome(command: sudo_version_command(), transport: LocalExec))
   HostGrantObservation {
     principal: match observe_effective_user_wet() {
       Present { value: login } => HostGrantPrincipalObserved { login: login }
       Absent => HostGrantPrincipalUnobserved { cause: "the effective user could not be read (whoami)" as NonEmptyStr }
     },
-    decisions: map(fleet_converge_host_grant_queries(host: host), q => observe_host_grant_decision_wet(query: q)),
+    sudo_version: version,
+    decisions: map(fleet_converge_host_grant_queries(host: host), q => observe_host_grant_decision_wet(query: q, version: version)),
     installed: if installed.success {
       InstalledSudoersText { text: installed.content }
     } else {

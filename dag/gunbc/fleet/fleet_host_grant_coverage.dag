@@ -19,7 +19,11 @@ import extdeps.sudo.nopasswd_decision {
   SudoDecisionQuery,
   SudoDecision,
   SudoDecisionAdmits,
+  SudoDecisionNeedsPassword,
   SudoDecisionDenied,
+  SudoVersionRead,
+  SudoVersionObserved,
+  SudoVersionUnobserved,
   SudoDecisionUnobserved,
 }
 
@@ -31,8 +35,10 @@ import extdeps.sudo.nopasswd_decision {
 // THE EVIDENCE IS SUDO'S OWN DECISION, PER RULE, FOR THE PRINCIPAL THAT RUNS IT. A listing parsed line
 // by line cannot see a rule's run-as (`(nobody) NOPASSWD: cmd` is no grant to run cmd as root) or
 // sudoers' last-match order (a later entry that denies or needs a password overrides an earlier
-// NOPASSWD), so each rule is asked as `sudo -n -l -u <run-as> <argv>`
-// (extdeps.sudo.nopasswd_decision), which evaluates both and never executes the command. The decision
+// NOPASSWD), so each rule is asked as `sudo -n -ll -u <run-as> <argv>`
+// (extdeps.sudo.nopasswd_decision), which evaluates both and never executes the command. A listing proves
+// permission, not passwordlessness (`Defaults listpw` governs the listing), so the decision also reads the
+// selected entry's effective authentication; the sudo version it was read under is part of the observation. The decision
 // says WHETHER the principal may run the rule, never WHICH FILE granted it, so a second read of the
 // installed drop-in separates a rendered grant from a hand-installed one.
 //
@@ -61,6 +67,7 @@ type InstalledSudoersRead
 
 type HostGrantObservation {
   principal: HostGrantPrincipalRead
+  sudo_version: SudoVersionRead
   decisions: List<HostGrantDecisionRead>
   installed: InstalledSudoersRead
 }
@@ -80,6 +87,7 @@ type GrantCoveredSource
 
 type GrantBlockReason
   = GrantMissing
+  | GrantNeedsPassword
   | GrantUnobserved { cause: NonEmptyStr }
 
 type HostGrantStanding
@@ -94,6 +102,7 @@ type HostGrantRow {
 
 data host_grant_observation_unobserved_no_transaction: HostGrantObservation = HostGrantObservation {
   principal: HostGrantPrincipalUnobserved { cause: "no principal was observed for this host's sudo grants" as NonEmptyStr },
+  sudo_version: SudoVersionUnobserved { cause: "no sudo version was read for this host" as NonEmptyStr },
   decisions: [],
   installed: InstalledSudoersUnreadable { cause: "no installed sudoers read was taken for this host" as NonEmptyStr },
 }
@@ -179,6 +188,7 @@ fn host_grant_standing(observation: HostGrantObservation, g: GrantedOperation, r
     Absent =>
       match host_grant_decision_for(observation: observation, query: host_grant_query(op: g.op)) {
         SudoDecisionAdmits => GrantCovered { source: host_grant_source(observation: observation, rendered_line: rendered_line) }
+        SudoDecisionNeedsPassword => GrantBlocking { reason: GrantNeedsPassword }
         SudoDecisionDenied { reason: _ } => GrantBlocking { reason: GrantMissing }
         SudoDecisionUnobserved { cause: why } => GrantBlocking { reason: GrantUnobserved { cause: why } }
       }
@@ -214,6 +224,7 @@ fn host_grant_standing_tag(standing: HostGrantStanding) -> String {
     GrantCovered { source: GrantCoveredOutsideTheModel } => "covered-outside-the-model"
     GrantCovered { source: GrantCoveredSourceUnobserved { cause: _ } } => "covered-source-unobserved"
     GrantBlocking { reason: GrantMissing } => "missing"
+    GrantBlocking { reason: GrantNeedsPassword } => "needs-password"
     GrantBlocking { reason: GrantUnobserved { cause: _ } } => "unobserved"
   }
 }
@@ -234,6 +245,10 @@ fn host_grant_baseline_rows(observation: HostGrantObservation, rows: List<HostGr
     [match observation.principal {
       HostGrantPrincipalObserved { login: l } => concat("host-grant-observed-as:", l as String)
       HostGrantPrincipalUnobserved { cause: _ } => "host-grant-observed-as:unobserved"
+    },
+    match observation.sudo_version {
+      SudoVersionObserved { banner: b } => concat("host-grant-sudo-version:", b as String)
+      SudoVersionUnobserved { cause: _ } => "host-grant-sudo-version:unobserved"
     }],
     map(rows, r => join(["host-grant:", host_grant_principal_tag(principal: r.principal), ":", r.rule as String, "=", host_grant_standing_tag(standing: r.standing)], "")),
   )
@@ -242,6 +257,7 @@ fn host_grant_baseline_rows(observation: HostGrantObservation, rows: List<HostGr
 fn host_grant_blocking_text(rule: NonEmptyStr, principal: GrantPrincipal, reason: GrantBlockReason) -> String {
   match reason {
     GrantMissing => join(["missing sudoers rule (as ", host_grant_principal_tag(principal: principal), "): ", rule as String], "")
+    GrantNeedsPassword => join(["sudoers rule requires a password (as ", host_grant_principal_tag(principal: principal), "): ", rule as String], "")
     GrantUnobserved { cause: why } => join(["unobserved sudoers rule (as ", host_grant_principal_tag(principal: principal), "; ", why as String, "): ", rule as String], "")
   }
 }
@@ -294,12 +310,20 @@ fn host_grant_plan_lines(rows: List<HostGrantRow>) -> List<String> {
     })),
     host_grant_rules_line(label: "missing", rules: flat_map(rows, r => match r.standing {
       GrantBlocking { reason: GrantMissing } => [r.rule as String]
+      GrantBlocking { reason: GrantNeedsPassword } => []
+      GrantBlocking { reason: GrantUnobserved { cause: _ } } => []
+      GrantCovered { source: _ } => []
+    })),
+    host_grant_rules_line(label: "needs-password", rules: flat_map(rows, r => match r.standing {
+      GrantBlocking { reason: GrantNeedsPassword } => [r.rule as String]
+      GrantBlocking { reason: GrantMissing } => []
       GrantBlocking { reason: GrantUnobserved { cause: _ } } => []
       GrantCovered { source: _ } => []
     })),
     host_grant_rules_line(label: "unobserved", rules: flat_map(rows, r => match r.standing {
       GrantBlocking { reason: GrantUnobserved { cause: _ } } => [r.rule as String]
       GrantBlocking { reason: GrantMissing } => []
+      GrantBlocking { reason: GrantNeedsPassword } => []
       GrantCovered { source: _ } => []
     })),
   ]

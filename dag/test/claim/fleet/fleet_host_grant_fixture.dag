@@ -18,7 +18,7 @@ import gunbc.fleet.fleet_host_grant_coverage {
   InstalledSudoersUnreadable,
 }
 import gunbc.fleet.fleet_converge_plan { fleet_converge_host_grant_queries, fleet_converge_lease_owner }
-import extdeps.sudo.nopasswd_decision { SudoDecision, SudoDecisionAdmits, SudoDecisionDenied, SudoDecisionUnobserved }
+import extdeps.sudo.nopasswd_decision { SudoDecision, SudoDecisionAdmits, SudoDecisionNeedsPassword, SudoDecisionDenied, SudoDecisionUnobserved, SudoVersionObserved }
 
 // SUPPLIED OBSERVATIONS (§3): each fixture is the text a host would return for the host's own
 // host-wide operations, so the witnesses decide the classifier over values and never run `sudo`.
@@ -51,6 +51,7 @@ fn witness_grant_owner() -> NonEmptyStr {
 fn witness_grants_as(host: NonEmptyStr, login: NonEmptyStr, decision: SudoDecision, installed: InstalledSudoersRead) -> HostGrantObservation {
   HostGrantObservation {
     principal: HostGrantPrincipalObserved { login: login },
+    sudo_version: SudoVersionObserved { banner: "Sudo version 1.9.16p2" as NonEmptyStr },
     decisions: witness_grant_decisions(host: host, decision: decision),
     installed: installed,
   }
@@ -78,4 +79,10 @@ fn witness_grants_decision_unobserved() -> HostGrantObservation {
 
 fn witness_grants_other_principal(host: NonEmptyStr) -> HostGrantObservation {
   witness_grants_as(host: host, login: "someone-else" as NonEmptyStr, decision: SudoDecisionAdmits, installed: InstalledSudoersText { text: join(witness_grant_rendered_lines(host: host), "\n") })
+}
+
+// A host whose sudo lists the rule but requires a password to run it (the recorded listpw=any
+// counterexample): permission without passwordlessness is no coverage, over a drop-in that names the rule.
+fn witness_grants_needs_password(host: NonEmptyStr) -> HostGrantObservation {
+  witness_grants_as(host: host, login: witness_grant_owner(), decision: SudoDecisionNeedsPassword, installed: InstalledSudoersText { text: join(witness_grant_rendered_lines(host: host), "\n") })
 }

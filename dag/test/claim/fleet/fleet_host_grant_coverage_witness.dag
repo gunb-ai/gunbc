@@ -10,10 +10,15 @@ import std.algebra { trim }
 import extdeps.sudo.nopasswd_decision {
   SudoDecision,
   SudoDecisionAdmits,
+  SudoDecisionNeedsPassword,
   SudoDecisionDenied,
   SudoDecisionUnobserved,
   SudoDecisionQuery,
+  SudoVersionRead,
+  SudoVersionObserved,
+  SudoVersionUnobserved,
   sudo_decision_from_run,
+  sudo_version_from_run,
   sudo_decision_binary_absent,
 }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, process_observation }
@@ -221,13 +226,30 @@ test fn a_denied_decision_is_missing_even_when_the_drop_in_names_the_rule() -> B
 
 data witness_query: SudoDecisionQuery = SudoDecisionQuery { runas: "root" as NonEmptyStr, argv: ["/usr/bin/install" as NonEmptyStr, "-d" as NonEmptyStr] }
 
-fn witness_run(code: Int, out: String, err: String) -> SudoDecision {
-  sudo_decision_from_run(query: witness_query, outcome: ProcessRan { observation: process_observation(exit_code: code, stdout: out, stderr: err) })
+data witness_supported_version: SudoVersionRead = SudoVersionObserved { banner: "Sudo version 1.9.16p2" as NonEmptyStr }
+
+fn witness_run_under(version: SudoVersionRead, code: Int, out: String, err: String) -> SudoDecision {
+  sudo_decision_from_run(query: witness_query, version: version, outcome: ProcessRan { observation: process_observation(exit_code: code, stdout: out, stderr: err) })
 }
 
-// THE PURE MAPPING over RECORDED sudo outputs (the one wet exec, sudo's real exit codes and text, is
-// the unpaired gap named in the PR). Non-root-only and overridden-rule both reach sudo as a refusal
-// for `-u root` (exit 1), password-requiring under -n likewise; none of them is read as covered.
+fn witness_run(code: Int, out: String, err: String) -> SudoDecision {
+  witness_run_under(version: witness_supported_version, code: code, out: out, err: err)
+}
+
+// THE -ll TEXT FIXTURES. FORMAT PENDING RECORDED BYTES: these are shaped after the entry layout the
+// design reads (Sudoers entry / RunAsUsers / Options / Commands) and are REPLACED by the side chat's
+// verbatim recorded outputs when they arrive; until then the controls below establish the MAPPING from
+// that shape, not the shape itself (§4d), and the wet exec stays the unpaired gap.
+fn witness_listing(runas: String, options: String, command: String) -> String {
+  join(["User probe may run the following commands on host:", "", "Sudoers entry:", concat("    RunAsUsers: ", runas), concat("    Options: ", options), "    Commands:", concat("\t", command), ""], "\n")
+}
+
+fn witness_listing_decision(options: String) -> SudoDecision {
+  witness_run(code: 0, out: witness_listing(runas: "root", options: options, command: "/usr/bin/install -d"), err: "")
+}
+
+// THE PURE MAPPING over sudo outputs. Exit 1 (non-root-only, overridden rule, explicit denial) is a refusal
+// for `-u root`; none of them is read as covered.
 test fn sudo_exit_one_is_denied_for_the_non_root_only_and_overridden_rule() -> Bool {
   match witness_run(code: 1, out: "", err: "Sorry, user brian is not allowed to execute '/usr/bin/install -d' as root") {
     SudoDecisionDenied { reason: _ } => true
@@ -235,16 +257,73 @@ test fn sudo_exit_one_is_denied_for_the_non_root_only_and_overridden_rule() -> B
   }
 }
 
-test fn sudo_exit_zero_naming_the_exact_argv_admits() -> Bool {
-  match witness_run(code: 0, out: "/usr/bin/install -d\n", err: "") {
+test fn a_long_listing_with_authentication_waived_admits() -> Bool {
+  match witness_listing_decision(options: "!authenticate") {
     SudoDecisionAdmits => true
     _ => false
   }
 }
 
-test fn sudo_exit_zero_not_naming_the_argv_is_unobserved_never_admitted() -> Bool {
-  match witness_run(code: 0, out: "/usr/bin/install -d -m 0777\n", err: "") {
+// THE COUNTEREXAMPLE (review 5566380875): the command LISTS (exit 0, argv named) yet needs a password.
+test fn a_listed_command_that_requires_authentication_needs_a_password_not_admits() -> Bool {
+  match witness_listing_decision(options: "authenticate") {
+    SudoDecisionNeedsPassword => true
+    _ => false
+  }
+}
+
+test fn a_listing_that_states_no_authentication_requirement_is_unobserved() -> Bool {
+  match witness_listing_decision(options: "setenv") {
     SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_exit_zero_listing_not_naming_the_argv_is_unobserved_never_admitted() -> Bool {
+  match witness_run(code: 0, out: witness_listing(runas: "root", options: "!authenticate", command: "/usr/bin/install -d -m 0777"), err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn two_listed_entries_leave_precedence_unestablished_and_are_unobserved() -> Bool {
+  let two = concat(witness_listing(runas: "root", options: "!authenticate", command: "/usr/bin/install -d"), witness_listing(runas: "root", options: "authenticate", command: "/usr/bin/install -d"))
+  match witness_run(code: 0, out: two, err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_entry_for_another_run_as_is_unobserved() -> Bool {
+  match witness_run(code: 0, out: witness_listing(runas: "nobody", options: "!authenticate", command: "/usr/bin/install -d"), err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unparseable_listing_is_unobserved() -> Bool {
+  match witness_run(code: 0, out: "/usr/bin/install -d\n", err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unsupported_or_unread_sudo_version_never_admits() -> Bool {
+  let listing = witness_listing(runas: "root", options: "!authenticate", command: "/usr/bin/install -d")
+  let newer = match witness_run_under(version: SudoVersionObserved { banner: "Sudo version 9.9.9" as NonEmptyStr }, code: 0, out: listing, err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+  let unread = match witness_run_under(version: SudoVersionUnobserved { cause: "sudo -V exited 1" as NonEmptyStr }, code: 0, out: listing, err: "") {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+  newer && unread
+}
+
+test fn the_version_banner_is_the_first_line_of_sudo_dash_v() -> Bool {
+  match sudo_version_from_run(outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: "Sudo version 1.9.16p2\nSudoers policy plugin version 1.9.16p2\n", stderr: "") }) {
+    SudoVersionObserved { banner: b } => (b as String) == "Sudo version 1.9.16p2"
     _ => false
   }
 }
@@ -254,7 +333,7 @@ test fn an_unexpected_status_and_an_unspawned_sudo_are_unobserved() -> Bool {
     SudoDecisionUnobserved { cause: _ } => true
     _ => false
   }
-  let unspawned = match sudo_decision_from_run(query: witness_query, outcome: ProcessNotSpawned { program: "/usr/bin/sudo" as NonEmptyStr, cause: "no such file" as NonEmptyStr }) {
+  let unspawned = match sudo_decision_from_run(query: witness_query, version: witness_supported_version, outcome: ProcessNotSpawned { program: "/usr/bin/sudo" as NonEmptyStr, cause: "no such file" as NonEmptyStr }) {
     SudoDecisionUnobserved { cause: _ } => true
     _ => false
   }
@@ -266,4 +345,20 @@ test fn an_absent_binary_is_unobserved_with_its_own_cause_not_a_missing_grant() 
     SudoDecisionUnobserved { cause: c } => string_contains(s: c as String, pattern: "is not present")
     _ => false
   }
+}
+
+// END TO END: a listed-but-password-requiring rule refuses at admission naming the rule, moves the
+// fingerprint, and leaves an artifact with no sudo line and an AwaitingCapability terminal, even though
+// the installed drop-in names the rule.
+test fn a_rule_that_needs_a_password_refuses_and_leaves_no_sudo_line() -> Bool {
+  let blocked = witness_grants_needs_password(host: grant_host)
+  let refused = match grant_admission(grants: blocked) {
+    ApplyAwaitingCapability { capability: c } =>
+      string_contains(s: c, pattern: "requires a password (as ") && string_contains(s: c, pattern: specimen_rule)
+    _ => false
+  }
+  let moved = fleet_converge_member_set_fingerprint(request: grant_request(grants: blocked))
+    != fleet_converge_member_set_fingerprint(request: grant_request(grants: witness_grants_rendered(host: grant_host)))
+  let shell = witness_blocked_shell(grants: blocked)
+  refused && moved && !witness_effect_lines(shell: shell) && string_contains(s: shell, pattern: "AwaitingCapability")
 }
