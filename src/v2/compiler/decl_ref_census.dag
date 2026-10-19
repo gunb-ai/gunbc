@@ -402,8 +402,20 @@ fn resolution_is_refusal(r: DeclarationRefResolution) -> Bool {
   }
 }
 
+fn count_refused_resolutions(xs: List<DeclarationRefResolution>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, r) { if resolution_is_refusal(r: r) { acc + 1 } else { acc } })
+}
+
+fn count_refused_spans(xs: List<ProseSpan>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, s) { if span_is_refusal(s: s) { acc + 1 } else { acc } })
+}
+
+fn count_spans_with(xs: List<ProseSpan>, wanted: SpanStanding) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, s) { if span_has_standing(s: s, wanted: wanted) { acc + 1 } else { acc } })
+}
+
 fn decl_ref_census_exit(c: DeclRefCensus) -> Int {
-  if count_where(xs: c.resolutions, predicate: resolution_is_refusal) + count_where(xs: c.prose, predicate: span_is_refusal) == 0 {
+  if count_refused_resolutions(xs: c.resolutions) + count_refused_spans(xs: c.prose) == 0 {
     0
   } else {
     1
@@ -412,13 +424,13 @@ fn decl_ref_census_exit(c: DeclRefCensus) -> Int {
 
 fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
   [
-    concat("[decl-ref-census] refs=", to_string(n: length(xs: c.cited)), " refused=", to_string(n: count_where(xs: c.resolutions, predicate: resolution_is_refusal))),
+    concat("[decl-ref-census] refs=", to_string(n: length(xs: c.cited)), " refused=", to_string(n: count_refused_resolutions(xs: c.resolutions))),
     concat("[decl-ref-census] prose spans=", to_string(n: length(xs: c.prose)),
-      " resolves=", to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanResolves) })),
-      " stale=", to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanStale) })),
-      " outside_index=", to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanOutsideIndex) })),
-      " not_a_symbol=", to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanNotASymbol) })),
-      " unclassified=", to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanUnclassified) })))
+      " resolves=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanResolves)),
+      " stale=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanStale)),
+      " outside_index=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanOutsideIndex)),
+      " not_a_symbol=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanNotASymbol)),
+      " unclassified=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanUnclassified)))
   ]
 }
 

@@ -5,7 +5,8 @@ import std.types { List }
 import std.decl_ref { CitationIndexCoverage, OutsideDeclIndexTestWitnessModule, DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import v2.compiler.name_resolve { ResolutionContext }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.algebra { map_lookup }
+import std.algebra { fold_list, map_lookup }
+import v2.std.integer { Int }
 import v2.std.node { Node, named_edge_sort_key, symbol_intern_lexeme }
 import v2.std.node_query { node_labeled_child_edges }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
@@ -149,7 +150,11 @@ fn declaration_ref_resolves(ref: DeclarationRef, context: ResolutionContext) -> 
 }
 
 fn cited_declaration_ref_refusal_count(refs: List<DeclarationRef>, context: ResolutionContext) -> Int {
-  count_where(xs: refs, predicate: fn(r) { !declaration_ref_resolves(ref: r, context: context) })
+  fold_list(
+    xs: refs,
+    empty: 0,
+    cons: fn(acc, r) { if declaration_ref_resolves(ref: r, context: context) { acc } else { acc + 1 } }
+  )
 }
 
 type DeclarationRefResolutionCensus {
