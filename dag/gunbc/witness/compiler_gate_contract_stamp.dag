@@ -221,6 +221,89 @@ fn compiler_gate_contract_stamp_value_from_rows(rows: List<String>) -> String {
   }
 }
 
+// ---------------------------------------------------------------------------
+// WHAT THE GATE ITSELF REFUSES TO EMIT WITHOUT. The same facts are also test fn claims in
+// test.claim.compiler_gate_contract_stamp_witness, which is where a reader expects them; those claims
+// delegate HERE, and this module is called from the generation gate, so a false one stops witnesses.yml
+// being emitted at all rather than sitting green in a lane that never evaluates a claim.
+//
+// THAT MOVEMENT IS THE POINT. One of these predicates previously lived only as a claim asserting the
+// stamp was 64 characters long, while the stamp is 16 -- so the claim could only ever have been red, and
+// it survived every heal on this branch. A check nobody executes is not a check; refusing to generate is
+// the only enforcement this repo has that a PR run cannot skip.
+// ---------------------------------------------------------------------------
+
+// EVERY ROW IS A PROMPT ABOUT AN INVOCATION OR AN OUTPUT, and none is a line of the workflow. A row
+// carrying workflow text would move the stamp on any reformatting of the emitted file, which is the
+// preimage mistake that would make the stamp useless: it would move on merges that touch no contract.
+fn compiler_gate_contract_stamp_rows_are_invocation_prompts() -> Bool {
+  all(
+    compiler_gate_invocation_contract_canonical_rows(),
+    row =>
+      (string_contains(s: row, pattern: "argv:") || string_contains(s: row, pattern: "stdout:") || string_contains(s: row, pattern: "locator:"))
+        && !string_contains(s: row, pattern: "runs-on")
+        && !string_contains(s: row, pattern: "steps:")
+        && !string_contains(s: row, pattern: "- name:")
+        && !string_contains(s: row, pattern: "${{")
+  )
+}
+
+// THE RENDERED STAMP IS THE ONE SUPPORTED FORM, at the width the emitted awk states -- and the width is
+// read from the same data row the awk embeds, so the two cannot drift apart by someone editing one of
+// them.
+fn compiler_gate_contract_stamp_literal_shape_holds() -> Bool {
+  compiler_gate_contract_stamp_is_derived()
+    && string_length(s: compiler_gate_contract_stamp_yaml_value()) == compiler_gate_contract_stamp_literal_length
+    && lower_hex_16(value: compiler_gate_contract_stamp_yaml_value())
+    && compiler_gate_contract_stamp_rows_are_invocation_prompts()
+}
+
+// THE PREIMAGE DISCRIMINATOR, AS A REAL BEFORE/AFTER. Three assertions, all through
+// compiler_gate_contract_stamp_value_from_rows, i.e. the same function the gate hashes with:
+//   - ADDING a field the walk is specified to print MOVES the stamp. This is the four silent runs turned
+//     into a check: they printed six counts fields where seven are declared, and a contract holding the
+//     field set could not have hashed those heads the same as this one.
+//   - REORDERING the rows does NOT move it. That is the canonical-order promise made testable rather than
+//     asserted; a hash that moved on a reorder would fire on every unrelated edit.
+//   - A row carrying a GitHub expression is REFUSED, not hashed, so an unresolvable value can never be
+//     certified.
+fn compiler_gate_contract_stamp_preimage_discriminator_holds() -> Bool {
+  let before = compiler_gate_contract_stamp_yaml_value()
+  let rows = compiler_gate_invocation_contract_canonical_rows()
+  let added = compiler_gate_contract_stamp_value_from_rows(
+    rows: list_append(left: rows, right: ["stdout:the-field-nobody-prints-anymore"])
+  )
+  let reordered = compiler_gate_contract_stamp_value_from_rows(
+    rows: sort_by(compiler_gate_invocation_contract_rows(), f => f)
+  )
+  let polluted = compiler_gate_contract_stamp_value_from_rows(
+    rows: list_append(left: rows, right: ["argv:${{ secrets.X }}"])
+  )
+  before != "refused"
+    && before != added
+    && before == reordered
+    && polluted == "refused"
+}
+
+// THE OUTPUT CONTRACT IS A POPULATION, NOT A SUBSET: one stdout row per declared counts field, exactly,
+// plus the one attribution row the walk's own step asserts. A missing label is the silent run itself
+// (six printed where seven are specified); an unexplained row is the mirror image, a promise about a
+// field nobody specified. A subset check passes when rows quietly drop out, so this is a bijection.
+fn compiler_gate_contract_stamp_output_population_is_exact() -> Bool {
+  let declared = list_map(
+    xs: parse_verdict_reuse_counts_field_labels,
+    f: fn(label) { join(["stdout:", parse_verdict_reuse_counts_prefix, " ", label], "") }
+  )
+  let expected = list_append(left: declared, right: ["stdout:ancestor-attribution-required"])
+  let stdout_rows = filter(
+    compiler_gate_invocation_contract_canonical_rows(),
+    row => string_contains(s: row, pattern: "stdout:")
+  )
+  all(expected, e => any(stdout_rows, r => r == e))
+    && all(stdout_rows, r => any(expected, e => e == r))
+    && length(stdout_rows) == length(expected)
+}
+
 // -------------------------------------------------------------------------------------- DERIVED OR REFUSE
 //
 // The value is a function of the declared rows and nothing else, so no author can pin a stamp that

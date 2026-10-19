@@ -709,7 +709,15 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomesAdmitted =>
           if compiler_gate_emit_build_capability_closure_holds() && compiler_gate_emit_build_scripts_are_renderable() && compiler_gate_merge_path_runs_on_the_fleet() && required_ci_contract_epoch_is_derived() && compiler_gate_contract_stamp_is_derived()
             && compiler_gate_contract_stamp_guard_script_is_renderable()
-            && compiler_gate_contract_stamp_evidence_script_is_renderable() {
+            && compiler_gate_contract_stamp_evidence_script_is_renderable()
+            // THE CONTRACT'S OWN INVARIANTS, ENFORCED AT GENERATION. These three also exist as test fn
+            // claims, but a claim this branch proved is not enforcement: one of them asserted a 64-character
+            // stamp while the stamp is 16 -- red always -- and every heal stayed green because no lane on
+            // a PR run evaluates them. Generation is the only check a PR run cannot skip, so the gate
+            // refuses to emit witnesses.yml unless they hold.
+            && compiler_gate_contract_stamp_literal_shape_holds()
+            && compiler_gate_contract_stamp_preimage_discriminator_holds()
+            && compiler_gate_contract_stamp_output_population_is_exact() {
             match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
               EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
               YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.witness.compiler_gate_workflow", path: p, reason: r) }

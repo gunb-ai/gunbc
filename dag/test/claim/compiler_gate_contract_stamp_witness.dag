@@ -38,6 +38,9 @@ import gunbc.witness.compiler_gate_contract_stamp {
   compiler_gate_contract_stamp_read_from,
   compiler_gate_contract_stamp_refusal_line,
   compiler_gate_contract_stamp_step_name,
+  compiler_gate_contract_stamp_literal_shape_holds,
+  compiler_gate_contract_stamp_output_population_is_exact,
+  compiler_gate_contract_stamp_preimage_discriminator_holds,
   compiler_gate_contract_stamp_value_from_rows, compiler_gate_contract_stamp_yaml_value,
   compiler_gate_invocation_contract_canonical_rows
 }
@@ -378,79 +381,23 @@ fn compiler_gate_contract_stamp_awk_matches_stamped_document() -> Bool {
 // refusal to produce one is typed. And the preimage is the INVOCATION CONTRACT ONLY -- never workflow
 // text, which is the law that keeps an unrelated commit to main from forcing every open PR to merge
 // (DESIGN §4d, and the stated law of gunbc.required_ci_contract_epoch).
+// THE THREE CONTRACT INVARIANTS, as claims. Each body DELEGATES to the predicate the generation gate
+// already refuses without, for two reasons. First, one implementation: a claim restating the rule is a
+// second authority that can drift in private, and the drift would show up as a green claim next to a
+// gate that refuses to emit. Second, and this is the finding being fixed: a claim is not enforcement on
+// this path. One of these previously asserted the stamp was 64 characters long while the stamp is 16 --
+// so it was red by construction and survived every heal, because no lane on a PR run evaluates a claim.
+// Reading them here is a check the reader can audit by name; the gate is the check that runs.
 test fn the_stamp_is_derived_from_the_invocation_contract_only_holds() -> Bool {
-  compiler_gate_contract_stamp_is_derived()
-    // SIXTEEN, NOT SIXTY-FOUR, and the number comes from the data row rather than from a second
-    // constant: the stamp is the rendering of a FNV-1a 64 content hash, and this claim used to demand
-    // 64 characters while the value it inspects is 16 -- a claim that could only ever be red, which is
-    // the same defect as a claim that can only ever be green, just less comfortable.
-    && string_length(s: compiler_gate_contract_stamp_yaml_value()) == compiler_gate_contract_stamp_literal_length
-    && lower_hex_16(value: compiler_gate_contract_stamp_yaml_value())
-    // EVERY ROW IS A PROMPT ABOUT AN ARGV OR AN OUTPUT, and none is a line of the workflow: a row that
-    // carried workflow text would move the stamp on any formatting change to the emitted file.
-    && for_all(
-      compiler_gate_invocation_contract_canonical_rows(),
-      row =>
-        (string_contains(s: row, pattern: "argv:") || string_contains(s: row, pattern: "stdout:") || string_contains(s: row, pattern: "locator:"))
-          && !string_contains(s: row, pattern: "runs-on")
-          && !string_contains(s: row, pattern: "steps:")
-          && !string_contains(s: row, pattern: "- name:")
-    )
+  compiler_gate_contract_stamp_literal_shape_holds()
 }
 
-// THE PREIMAGE DISCRIMINATOR, AS AN ACTUAL BEFORE/AFTER. The first version asked every row to contain
-// every counts label -- which no row set can satisfy, since rows are per-label -- and compared nothing,
-// so it was true only if it was never run. Both halves are now real, and both go through
-// compiler_gate_contract_stamp_value_from_rows: the SAME function the gate hashes with, so a witness
-// that claimed to test the derivation was not quietly running a second one.
 test fn the_stamp_moves_when_an_invoked_field_is_added_holds() -> Bool {
-  let before = compiler_gate_contract_stamp_yaml_value()
-  let rows = compiler_gate_invocation_contract_canonical_rows()
-  // DISCRIMINATOR: a field the walk reads back, absent from the contract and then added, moves it.
-  // This is the four silent runs as a check: they printed six counts fields where seven are declared,
-  // and a contract that contained the field set could not have hashed those heads the same as this one.
-  let added = compiler_gate_contract_stamp_value_from_rows(
-    rows: list_append(left: rows, right: ["stdout:the-field-nobody-prints-anymore"])
-  )
-  // CONTROL: an unrelated re-spelling of the same contract must NOT move it. Reordering rows is the
-  // canonical-order promise made testable; adding a GitHub expression is the second control, refused
-  // rather than hashed so an unresolvable value can never be certified.
-  let reordered = compiler_gate_contract_stamp_value_from_rows(rows: sort_by(compiler_gate_invocation_contract_rows(), f => f))
-  let polluted = compiler_gate_contract_stamp_value_from_rows(
-    rows: list_append(left: rows, right: ["argv:${{ secrets.X }}"])
-  )
-  before != "refused"
-    && before != added
-    && before == reordered
-    && polluted == "refused"
-    && for_all(
-      rows,
-      row => !string_contains(s: row, pattern: "${{")
-    )
+  compiler_gate_contract_stamp_preimage_discriminator_holds()
 }
 
-// THE OUTPUT CONTRACT IS A POPULATION, NOT A SUBSET. One row per declared counts label, exactly -- no
-// label missing from the preimage (that is the silent run: six printed where seven are specified) and no
-// row in the preimage for a field nobody specified. A subset check passes when rows quietly drop out; a
-// bijection cannot.
 test fn the_output_rows_cover_the_declared_field_population_exactly_holds() -> Bool {
-  // ONE stdout ROW PER DECLARED COUNTS FIELD, EXACTLY, plus the one attribution row the step asserts
-  // beyond the counts line. Missing a label is the silent run itself (six printed where seven are
-  // specified); carrying a row for an unspecified field is the mirror image. A subset check passes when
-  // rows quietly drop out, so this is a bijection: every declared row is present, every stdout row is
-  // explained, and the counts agree.
-  let declared = list_map(
-    xs: parse_verdict_reuse_counts_field_labels,
-    f: fn(label) { join(["stdout:", parse_verdict_reuse_counts_prefix, " ", label], "") }
-  )
-  let stdout_rows = filter(
-    compiler_gate_invocation_contract_canonical_rows(),
-    row => string_contains(s: row, pattern: "stdout:")
-  )
-  let explained = list_append(left: declared, right: ["stdout:ancestor-attribution-required"])
-  all(explained, e => any(stdout_rows, r => r == e))
-    && all(stdout_rows, r => any(explained, e => e == r))
-    && length(stdout_rows) == length(explained)
+  compiler_gate_contract_stamp_output_population_is_exact()
 }
 
 // THE LOCATOR WINDOW IS IN THE PREIMAGE FROM THE ROWS THAT EMIT THE WALK, so a head that cannot walk as
