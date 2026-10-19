@@ -1,23 +1,22 @@
 module product.fabric.flex_vast_template_control
 
 import std.types { String, NonEmptyStr, Bool, List, Secret, list_length }
-import std.algebra { trim }
 import std.optional { Present, Absent }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadSucceeded, FilesystemReadRefused, filesystem_read_outcome }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.vast_ai
 import extdeps.cloud.vast_ai { VastAiTemplateRow, VastAiTemplateList, VastAiTemplateCreateResult }
-import gunbc.flex_vast_credential { flex_vast_api_key_host_path }
+import gunbc.fleet.flex_pass_run { flex_vast_key, FlexVastKeyReady, FlexVastKeyRefused }
 import product.fabric.flex_vast_template {
   FlexTemplateSpec, flex_vast_template_spec, flex_template_env, flex_template_retired_hash,
   FlexTemplateDecision, FlexTemplateNoop, FlexTemplateApply, FlexTemplateRefuse,
   flex_template_decide, flex_template_env_forbidden_name,
 }
 
-// THE ENSURE FOR THE SECRET-FREE FLEX TEMPLATE, run on srv1 where the Vast key is in custody
-// (gunbc.flex_vast_credential flex_vast_api_key_host_path): observe by name, decide Noop/Apply/Refuse
+// THE ENSURE FOR THE SECRET-FREE FLEX TEMPLATE, run by the fleet-converge flex_template_ensure mode, the
+// Vast key read from Secret Manager (gunbc.flex_vast_credential flex_vast_api_key_secret_ref): observe by name, decide Noop/Apply/Refuse
 // (product.fabric.flex_vast_template flex_template_decide), create on Apply, then read back by name
 // and refuse unless the readback is the declared content with no credential env name. The retired
 // template is only READ (by its hash) and its presence recorded; nothing here can edit or delete it.
@@ -116,10 +115,10 @@ fn flex_template_run(api_key: Secret) -> ProcessExit uses net: Network {
 }
 
 // `gunbc run --source-root dag --source-root src/v2 --entry dag/product/fabric/flex_vast_template_control.dag --function ensure`
+// The key is the custody read under the run's fleet identity (gunbc.fleet.flex_pass_run flex_vast_key).
 fn ensure() -> ProcessExit uses net: Network {
-  let read = Filesystem.Read(path: flex_vast_api_key_host_path as String)
-  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-    FilesystemReadRefused { error: e } => exit_failure(reason: concat("THE VAST KEY COULD NOT BE READ: ", e))
-    FilesystemReadSucceeded { content: key } => flex_template_run(api_key: trim(s: key) as Secret)
+  match flex_vast_key() {
+    FlexVastKeyRefused { cause: cause } => exit_failure(reason: cause as String)
+    FlexVastKeyReady { key: key, resolved_version: _ } => flex_template_run(api_key: key)
   }
 }
