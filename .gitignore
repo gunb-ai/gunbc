@@ -230,4 +230,5 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /docs/plans/v2-compiler-architecture.md
 /docs/plans/durable-work-handoff.md
 /docs/plans/source-layout-authority.md
-/docs/plans/census-scoped-run.md
+/docs/plans/physical-machine-boot-program.md
+/docs/plans/gunb-ai-projection-inventory.md
