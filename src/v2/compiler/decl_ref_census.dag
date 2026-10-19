@@ -1,0 +1,423 @@
+module v2.compiler.decl_ref_census
+
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional, list_head, list_reverse, list_snoc_item, map_lookup }
+import std.decl_ref { DeclField, DeclarationRef, NamedField, WholeDeclaration }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { List, NonEmptyStr }
+import v2.compiler.name_resolve { ResolutionContext }
+import v2.std.compilers.lexing { Token }
+import v2.std.decl_ref_resolution {
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent,
+  DeclarationRefModuleAbsent,
+  DeclarationRefOutsideIndex,
+  DeclarationRefResolution,
+  DeclarationRefResolved,
+  resolve_declaration_ref
+}
+import v2.std.integer { Int }
+import v2.std.node { symbol_lexeme }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String, string_all_chars_in, string_any_char_in }
+
+// THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (a pure reader; the verb is
+// v2.compiler.source_root_eval `decl-ref-census`). Two populations, one resolver:
+//
+//   * every `DeclarationRef { module_path: "..", decl_name: "..", field: .. }` literal in the ingested
+//     source, resolved by v2.std.decl_ref_resolution against the native ingest's ResolutionContext;
+//   * every backtick span inside a string literal of the files the caller scopes in (the
+//     recurring-failure-mode and rung_drop ledgers), classified by the CLOSED grammar below.
+//
+// A span is exactly one of four, and the grammar is decidable on the span's characters alone:
+//   SymbolShaped  -- dotted identifier segments whose first segment is a top-level namespace of
+//                    gunbc.source_layout_namespaces (the caller passes that set); resolved by module
+//                    then declaration (then field), and a span that does not resolve is a REFUSAL.
+//   NotASymbol    -- carries a character outside the identifier alphabet (a path, flag, call, code),
+//                    or is dotted with a first segment that is no namespace (a file name, a field path).
+//   Unclassified  -- a bare identifier. Counted and reported, never resolved and never admitted as
+//                    resolved: there is no module to key it by, so any answer would be a heuristic.
+// Nothing here compares a count to a literal; the verb's exit is decided by the refusal population.
+
+type CitedRef {
+  file: Symbol
+  ref: DeclarationRef
+}
+
+type SpanStanding
+  = SpanResolves
+  | SpanStale
+  | SpanOutsideIndex
+  | SpanNotASymbol
+  | SpanUnclassified
+
+type ProseSpan {
+  file: Symbol
+  span: String
+  standing: SpanStanding
+}
+
+type DeclRefCensus {
+  cited: List<CitedRef>
+  resolutions: List<DeclarationRefResolution>
+  prose: List<ProseSpan>
+}
+
+fn token_is_ident(t: Token, lexeme: String) -> Bool {
+  t.class == ^dag_token_ident && t.lexeme == lexeme
+}
+
+fn token_string_body(t: Token) -> Optional<String> {
+  if t.class == ^dag_token_string_literal && t.lexeme.length() >= 2 {
+    optional_present(value: t.lexeme.substring(start: 1, end: t.lexeme.length() - 1))
+  } else {
+    optional_absent()
+  }
+}
+
+// `ident : "string"`, with commas between fields skipped by the caller. Returns the string body and
+// the tokens after it.
+type StringField {
+  value: String
+  rest: List<Token>
+}
+
+fn drop_comma(toks: List<Token>) -> List<Token> {
+  match toks {
+    Cons { head: h, tail: rest } => if h.class == ^dag_token_comma { rest } else { toks }
+    Empty => toks
+  }
+}
+
+fn expect_string_field(toks: List<Token>, name: String) -> Optional<StringField> {
+  match toks {
+    Cons { head: a, tail: r1 } =>
+      if token_is_ident(t: a, lexeme: name) {
+        match r1 {
+          Cons { head: c, tail: r2 } =>
+            if c.class == ^dag_token_colon {
+              match r2 {
+                Cons { head: s, tail: r3 } =>
+                  match token_string_body(t: s) {
+                    Present { value: body } => optional_present(value: StringField { value: body, rest: drop_comma(toks: r3) })
+                    Absent => optional_absent()
+                  }
+                Empty => optional_absent()
+              }
+            } else {
+              optional_absent()
+            }
+          Empty => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    Empty => optional_absent()
+  }
+}
+
+fn citation_from(file: Symbol, toks: List<Token>) -> Optional<CitedRef> {
+  match expect_string_field(toks: toks, name: "module_path") {
+    Absent => optional_absent()
+    Present { value: m } =>
+      match expect_string_field(toks: m.rest, name: "decl_name") {
+        Absent => optional_absent()
+        Present { value: d } =>
+          match d.rest {
+            Cons { head: f, tail: r1 } =>
+              if token_is_ident(t: f, lexeme: "field") {
+                match r1 {
+                  Cons { head: colon, tail: r2 } =>
+                    if colon.class == ^dag_token_colon {
+                      match r2 {
+                        Cons { head: arm, tail: r3 } =>
+                          if token_is_ident(t: arm, lexeme: "WholeDeclaration") {
+                            optional_present(value: CitedRef {
+                              file: file,
+                              ref: DeclarationRef {
+                                module_path: m.value as NonEmptyStr,
+                                decl_name: d.value as NonEmptyStr,
+                                field: WholeDeclaration
+                              }
+                            })
+                          } else if token_is_ident(t: arm, lexeme: "NamedField") {
+                            match r3 {
+                              Cons { head: lb, tail: r4 } =>
+                                if lb.class == ^dag_token_lbrace {
+                                  match expect_string_field(toks: r4, name: "field_name") {
+                                    Present { value: n } =>
+                                      optional_present(value: CitedRef {
+                                        file: file,
+                                        ref: DeclarationRef {
+                                          module_path: m.value as NonEmptyStr,
+                                          decl_name: d.value as NonEmptyStr,
+                                          field: NamedField { field_name: n.value as NonEmptyStr }
+                                        }
+                                      })
+                                    Absent => optional_absent()
+                                  }
+                                } else {
+                                  optional_absent()
+                                }
+                              Empty => optional_absent()
+                            }
+                          } else {
+                            optional_absent()
+                          }
+                        Empty => optional_absent()
+                      }
+                    } else {
+                      optional_absent()
+                    }
+                  Empty => optional_absent()
+                }
+              } else {
+                optional_absent()
+              }
+            Empty => optional_absent()
+          }
+      }
+  }
+}
+
+fn citations_of(file: Symbol, toks: List<Token>, acc: List<CitedRef>) -> List<CitedRef> {
+  match toks {
+    Empty => acc
+    Cons { head: h, tail: rest } =>
+      if token_is_ident(t: h, lexeme: "module_path") {
+        match citation_from(file: file, toks: toks) {
+          Present { value: c } => citations_of(file: file, toks: rest, acc: list_snoc_item(xs: acc, item: c))
+          Absent => citations_of(file: file, toks: rest, acc: acc)
+        }
+      } else {
+        citations_of(file: file, toks: rest, acc: acc)
+      }
+  }
+}
+
+fn declaration_ref_citations(file: Symbol, tokens: List<Token>) -> List<CitedRef> {
+  citations_of(file: file, toks: tokens, acc: [])
+}
+
+// ---- prose --------------------------------------------------------------------------------
+
+data prose_identifier_alphabet: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+
+data prose_dotted_alphabet: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_."
+
+// The odd-indexed segments of a split on the backtick: the text between an opening and a closing tick.
+// An unclosed tick yields no span (the final segment has no closer).
+type SpanFold {
+  index: Int
+  spans: List<String>
+}
+
+fn backtick_spans(body: String) -> List<String> {
+  let parts = body.split(delimiter: "`")
+  let last = length(xs: parts) - 1
+  let folded = fold_list(
+    xs: parts,
+    empty: SpanFold { index: 0, spans: [] },
+    cons: fn(acc, part) {
+      SpanFold {
+        index: acc.index + 1,
+        spans: if acc.index % 2 == 1 && acc.index < last { list_snoc_item(xs: acc.spans, item: part) } else { acc.spans }
+      }
+    }
+  )
+  folded.spans
+}
+
+fn span_first_segment(span: String) -> String {
+  match list_head(xs: span.split(delimiter: ".")) {
+    Present { value: s } => s
+    Absent => ""
+  }
+}
+
+fn contains_text(xs: List<String>, item: String) -> Bool {
+  any(xs: xs, predicate: fn(x) { x == item })
+}
+
+// The longest module prefix of a dotted span that the ingest declared, with the segments after it.
+type SpanSplit {
+  module: String
+  rest: List<String>
+}
+
+fn take_segments(segs: List<String>, k: Int) -> List<String> {
+  fold_list(
+    xs: segs,
+    empty: Empty,
+    cons: fn(acc, s) { if length(xs: acc) < k { list_snoc_item(xs: acc, item: s) } else { acc } }
+  )
+}
+
+type SegmentFold {
+  index: Int
+  kept: List<String>
+}
+
+fn drop_segments(segs: List<String>, k: Int) -> List<String> {
+  fold_list(
+    xs: segs,
+    empty: SegmentFold { index: 0, kept: [] },
+    cons: fn(acc, s) {
+      SegmentFold {
+        index: acc.index + 1,
+        kept: if acc.index >= k { list_snoc_item(xs: acc.kept, item: s) } else { acc.kept }
+      }
+    }
+  ).kept
+}
+
+// A dotted span is split at EVERY k and judged at the longest k whose prefix is a declared module.
+fn span_longest_module(segs: List<String>, k: Int, context: ResolutionContext) -> Optional<Int> {
+  if k < 1 {
+    optional_absent()
+  } else {
+    match map_lookup(
+      m: context.roots.by_name,
+      key: qualified_name_from_dotted_string(dotted: join_segments(segs: take_segments(segs: segs, k: k)))
+    ) {
+      Present { value: _ } => optional_present(value: k)
+      Absent => span_longest_module(segs: segs, k: k - 1, context: context)
+    }
+  }
+}
+
+fn join_segments(segs: List<String>) -> String {
+  match segs {
+    Empty => ""
+    Cons { head: h, tail: t } => fold_list(xs: t, empty: h, cons: fn(acc, s) { concat(acc, ".", s) })
+  }
+}
+
+fn symbol_span_standing(span: String, context: ResolutionContext) -> SpanStanding {
+  let segs = span.split(delimiter: ".")
+  match span_longest_module(segs: segs, k: length(xs: segs), context: context) {
+    Absent =>
+      if span.starts_with(prefix: "test.") || span.starts_with(prefix: "v2.test.") { SpanOutsideIndex } else { SpanStale }
+    Present { value: k } =>
+      let rest = drop_segments(segs: segs, k: k)
+      match rest {
+        Empty => SpanResolves
+        Cons { head: decl, tail: after } =>
+          match after {
+            Empty => ref_standing(module: join_segments(segs: take_segments(segs: segs, k: k)), decl: decl, field: WholeDeclaration, context: context)
+            Cons { head: field, tail: more } =>
+              match more {
+                Empty => ref_standing(module: join_segments(segs: take_segments(segs: segs, k: k)), decl: decl, field: NamedField { field_name: field as NonEmptyStr }, context: context)
+                Cons { head: _, tail: _ } => SpanStale
+              }
+          }
+      }
+  }
+}
+
+fn ref_standing(module: String, decl: String, field: DeclField, context: ResolutionContext) -> SpanStanding {
+  match resolve_declaration_ref(
+    ref: DeclarationRef { module_path: module as NonEmptyStr, decl_name: decl as NonEmptyStr, field: field },
+    context: context
+  ) {
+    DeclarationRefResolved { declaration_identity: _ } => SpanResolves
+    DeclarationRefModuleAbsent { reference: _ } => SpanStale
+    DeclarationRefDeclarationAbsent { reference: _ } => SpanStale
+    DeclarationRefFieldAbsent { reference: _ } => SpanStale
+    DeclarationRefOutsideIndex { reference: _, coverage: _ } => SpanOutsideIndex
+  }
+}
+
+fn span_standing(span: String, namespaces: List<String>, context: ResolutionContext) -> SpanStanding {
+  if span.length() == 0 {
+    SpanNotASymbol
+  } else if !string_all_chars_in(s: span, alphabet: prose_dotted_alphabet) {
+    SpanNotASymbol
+  } else if !string_any_char_in(s: span, alphabet: ".") {
+    SpanUnclassified
+  } else if contains_text(xs: namespaces, item: span_first_segment(span: span)) {
+    symbol_span_standing(span: span, context: context)
+  } else {
+    SpanNotASymbol
+  }
+}
+
+fn prose_spans_of(
+  file: Symbol,
+  tokens: List<Token>,
+  namespaces: List<String>,
+  context: ResolutionContext
+) -> List<ProseSpan> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, t) {
+      match token_string_body(t: t) {
+        Absent => acc
+        Present { value: body } =>
+          fold_list(
+            xs: backtick_spans(body: body),
+            empty: acc,
+            cons: fn(inner, span) {
+              list_snoc_item(xs: inner, item: ProseSpan {
+                file: file,
+                span: span,
+                standing: span_standing(span: span, namespaces: namespaces, context: context)
+              })
+            }
+          )
+      }
+    }
+  )
+}
+
+// ---- the report ---------------------------------------------------------------------------
+
+fn span_is_refusal(s: ProseSpan) -> Bool {
+  match s.standing {
+    SpanStale => true
+    SpanResolves => false
+    SpanOutsideIndex => false
+    SpanNotASymbol => false
+    SpanUnclassified => false
+  }
+}
+
+fn span_has_standing(s: ProseSpan, wanted: SpanStanding) -> Bool {
+  match s.standing {
+    SpanStale => match wanted { SpanStale => true, _ => false }
+    SpanResolves => match wanted { SpanResolves => true, _ => false }
+    SpanOutsideIndex => match wanted { SpanOutsideIndex => true, _ => false }
+    SpanNotASymbol => match wanted { SpanNotASymbol => true, _ => false }
+    SpanUnclassified => match wanted { SpanUnclassified => true, _ => false }
+  }
+}
+
+fn resolution_is_refusal(r: DeclarationRefResolution) -> Bool {
+  match r {
+    DeclarationRefResolved { declaration_identity: _ } => false
+    DeclarationRefOutsideIndex { reference: _, coverage: _ } => false
+    DeclarationRefModuleAbsent { reference: _ } => true
+    DeclarationRefDeclarationAbsent { reference: _ } => true
+    DeclarationRefFieldAbsent { reference: _ } => true
+  }
+}
+
+fn decl_ref_census_exit(c: DeclRefCensus) -> Int {
+  if count_where(xs: c.resolutions, predicate: resolution_is_refusal) + count_where(xs: c.prose, predicate: span_is_refusal) == 0 {
+    0
+  } else {
+    1
+  }
+}
+
+fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
+  [
+    concat("[decl-ref-census] refs=", int_to_string(n: length(xs: c.cited)), " refused=", int_to_string(n: count_where(xs: c.resolutions, predicate: resolution_is_refusal))),
+    concat("[decl-ref-census] prose spans=", int_to_string(n: length(xs: c.prose)),
+      " resolves=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanResolves) })),
+      " stale=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanStale) })),
+      " outside_index=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanOutsideIndex) })),
+      " not_a_symbol=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanNotASymbol) })),
+      " unclassified=", int_to_string(n: count_where(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanUnclassified) })))
+  ]
+}
