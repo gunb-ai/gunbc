@@ -279,6 +279,11 @@ test fn a_workflow_declaring_the_stamp_twice_is_unreadable_not_first_wins_holds(
     match tree {
       StampPresent { stamp: _ } => false
       StampAbsent => false
+      // A disputed document must never come back as a COMPARISON of two resolved values. Reaching this
+      // arm would mean the fold read both members into strings and compared them against the running
+      // stamp -- which is the dispute having been resolved twice, once per member, and then reported as a
+      // data point. It is also the leak this claim exists to catch: both member values are in the carrier.
+      StampMismatch { running: _, tree: _ } => false
       StampUnreadable { detail: d } =>
         !string_contains(s: d, pattern: stamp)
         && !string_contains(s: d, pattern: stamp_other)
