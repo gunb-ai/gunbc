@@ -54,6 +54,42 @@ fn w_literal_of_another_type_keeps_new() -> Bool {
   )
 }
 
+fn w_fold_branch_end_moves_acc() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fa_fold_branch_end_moves_acc\n\nimport std.types { Int, Bool, List }\n\ntype Acc {\n  n: Int\n  done: Bool\n  xs: List<Int>\n}\n\nfn step(acc: Acc) -> Acc {\n  Acc { n: acc.n + 1, done: acc.done, xs: acc.xs }\n}\n\nfn flag(a: Acc) -> Bool {\n  a.done\n}\n\nfn mk(a: Acc, b: Acc) -> Acc {\n  Acc { n: a.n + b.n, done: a.done, xs: b.xs }\n}\n\nfn at(acc: Acc, k: Int) -> Acc {\n  Acc { n: k, done: acc.done, xs: acc.xs }\n}\n\nfn run(xs: List<Int>, init: Acc) -> Acc {\n  xs |> fold(init: init, f: (acc, e) => if acc.done { acc } else { step(acc: acc) })\n}\n",
+    "src/fa_fold_branch_end_moves_acc.rs",
+    ["step(acc)"],
+    ["step(acc.clone())"]
+  )
+}
+
+fn w_fold_leaf_using_acc_twice_clones() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fa_fold_leaf_using_acc_twice_clones\n\nimport std.types { Int, Bool, List }\n\ntype Acc {\n  n: Int\n  done: Bool\n  xs: List<Int>\n}\n\nfn step(acc: Acc) -> Acc {\n  Acc { n: acc.n + 1, done: acc.done, xs: acc.xs }\n}\n\nfn flag(a: Acc) -> Bool {\n  a.done\n}\n\nfn mk(a: Acc, b: Acc) -> Acc {\n  Acc { n: a.n + b.n, done: a.done, xs: b.xs }\n}\n\nfn at(acc: Acc, k: Int) -> Acc {\n  Acc { n: k, done: acc.done, xs: acc.xs }\n}\n\nfn run(xs: List<Int>, init: Acc) -> Acc {\n  xs |> fold(init: init, f: (acc, e) => if acc.done { acc } else { mk(a: acc, b: acc) })\n}\n",
+    "src/fa_fold_leaf_using_acc_twice_clones.rs",
+    [],
+    ["mk(acc, acc)"]
+  )
+}
+
+fn w_fold_condition_using_acc_whole_clones() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fa_fold_condition_using_acc_whole_clones\n\nimport std.types { Int, Bool, List }\n\ntype Acc {\n  n: Int\n  done: Bool\n  xs: List<Int>\n}\n\nfn step(acc: Acc) -> Acc {\n  Acc { n: acc.n + 1, done: acc.done, xs: acc.xs }\n}\n\nfn flag(a: Acc) -> Bool {\n  a.done\n}\n\nfn mk(a: Acc, b: Acc) -> Acc {\n  Acc { n: a.n + b.n, done: a.done, xs: b.xs }\n}\n\nfn at(acc: Acc, k: Int) -> Acc {\n  Acc { n: k, done: acc.done, xs: acc.xs }\n}\n\nfn run(xs: List<Int>, init: Acc) -> Acc {\n  xs |> fold(init: init, f: (acc, e) => if flag(a: acc) { acc } else { step(acc: acc) })\n}\n",
+    "src/fa_fold_condition_using_acc_whole_clones.rs",
+    [],
+    ["step(acc)"]
+  )
+}
+
+fn w_fold_leaf_reading_acc_field_clones() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fa_fold_leaf_reading_acc_field_clones\n\nimport std.types { Int, Bool, List }\n\ntype Acc {\n  n: Int\n  done: Bool\n  xs: List<Int>\n}\n\nfn step(acc: Acc) -> Acc {\n  Acc { n: acc.n + 1, done: acc.done, xs: acc.xs }\n}\n\nfn flag(a: Acc) -> Bool {\n  a.done\n}\n\nfn mk(a: Acc, b: Acc) -> Acc {\n  Acc { n: a.n + b.n, done: a.done, xs: b.xs }\n}\n\nfn at(acc: Acc, k: Int) -> Acc {\n  Acc { n: k, done: acc.done, xs: acc.xs }\n}\n\nfn run(xs: List<Int>, init: Acc) -> Acc {\n  xs |> fold(init: init, f: (acc, e) => if acc.done { acc } else { at(acc: acc, k: acc.n) })\n}\n",
+    "src/fa_fold_leaf_reading_acc_field_clones.rs",
+    [],
+    ["at(acc, "]
+  )
+}
+
 test fn projected_param_with_terminal_literal_reuses_its_box() -> Bool {
   w_projected_param_terminal_literal_reuses()
 }
@@ -72,4 +108,20 @@ test fn param_captured_by_a_lambda_does_not_reuse() -> Bool {
 
 test fn literal_of_another_type_does_not_reuse() -> Bool {
   w_literal_of_another_type_keeps_new()
+}
+
+test fn fold_branch_end_whole_use_moves_the_accumulator() -> Bool {
+  w_fold_branch_end_moves_acc()
+}
+
+test fn fold_leaf_using_the_accumulator_twice_does_not_move() -> Bool {
+  w_fold_leaf_using_acc_twice_clones()
+}
+
+test fn fold_condition_using_the_accumulator_whole_does_not_move() -> Bool {
+  w_fold_condition_using_acc_whole_clones()
+}
+
+test fn fold_leaf_reading_an_accumulator_field_does_not_move() -> Bool {
+  w_fold_leaf_reading_acc_field_clones()
 }
