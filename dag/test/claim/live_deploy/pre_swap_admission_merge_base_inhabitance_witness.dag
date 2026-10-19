@@ -2,9 +2,9 @@ module test.claim.live_deploy.pre_swap_admission_merge_base_inhabitance_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, GitRef, FilePath }
 import std.algebra { trim }
+import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.retained_shell_script { retained_runtime }
 import gunbc.live_deploy.desired { production_admitted_branch }
 import gunbc.live_deploy.pre_swap_admission {
   checkout_branch_for_admission,
@@ -13,122 +13,197 @@ import gunbc.live_deploy.pre_swap_admission {
   CheckoutNamedBranch,
 }
 import extdeps.git
+import extdeps.git.plumbing { GitWorktreeAt, GitParents }
 import extdeps.git.inspect { merge_base_outcome, MergeBaseOutcome }
 import extdeps.shell
+import test.fixture.bootstrap_repository_fixture {
+  FixtureRepoOutcome,
+  FixtureRepoBuilt,
+  FixtureRepoRefused,
+  fixture_build_committed_repo,
+  fixture_commit_tracked_file,
+  fixture_remove_tree,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data real_execution_home_doc: String = "Inhabitance for gunbc.live_deploy.pre_swap_admission checkout_branch_for_admission: git.Inspect.MergeBase over a real throwaway repository emits MergeBaseOutcome, and the admission fold consumes that shape. Hermetic discovery has no mock_response for MergeBase or Mktemp; this file is LocalRepoWetLane."
 
+// CHARTER 2 MIGRATION (witness 8, retained_runtime): the fixture mints nothing through
+// gunbc.retained_shell_script. It is one repository built by the shared plumbing-level builder
+// (test.fixture.bootstrap_repository_fixture): the on-main commit, then a CHILD commit of it
+// (fixture_commit_tracked_file with GitParents), so the "HEAD ahead of origin/main" state is the
+// same merge-base shape the old two-clone `cp -a` produced. The refs are placed by typed ops
+// (CheckoutNewBranchAtInRepo, CreateRefIfAbsent, AdvanceRefIfExpected). THE ONE DEPARTURE FROM THE
+// OLD FIXTURE: HEAD is attached to branch `main` rather than detached, because no checkout
+// --detach op exists upstream in extdeps/git (gap listed to snappy-bat-554); the fold under test
+// receives `named: "HEAD"` and the merge-base outcome, neither of which reads symbolic-ness.
+
 type AncestryScratch {
   root: String
-  on_main: String
-  off_main: String
+  repo: String
+  on_commit: String
+  off_commit: String
 }
 
-fn line_at(raw: String, index: Int) -> String {
-  fold(
-    split(s: raw, delimiter: "\n"),
-    init: LineScan { at: 0, found: "" },
-    f: (acc, l) => LineScan { at: acc.at + 1, found: if acc.at == index { trim(s: l) } else { acc.found } },
-  ).found
+// A setup step that could not run is a refusal naming the step and carrying the op's own stderr;
+// it is never an Absent that a test can read as "no fixture, so false by accident".
+type AncestrySetup
+  = AncestryReady { scratch: AncestryScratch }
+  | AncestryRefused { step: String, cause: String }
+
+fn ancestry_scratch() -> AncestrySetup {
+  let mk = shell.Mktemp.Dir()
+  if !mk.success {
+    AncestryRefused { step: "mktemp -d", cause: "mktemp -d exited nonzero" }
+  } else {
+    let root = trim(s: mk.path as String)
+    let repo = concat(root, "/repo")
+    match fixture_build_committed_repo(
+      parent_address: GitWorktreeAt { path: root as FilePath },
+      repo: repo,
+      tracked_path: "tracked",
+      tracked_bytes: "on-main",
+      message: "on-main",
+    ) {
+      FixtureRepoRefused { step, cause } => AncestryRefused { step: step, cause: cause }
+      FixtureRepoBuilt { commit_hex: on_commit } => {
+        let branched = git.Core.CheckoutNewBranchAtInRepo(repo: repo as FilePath, branch: "main", start_point: on_commit as GitRef)
+        if branched.exit_code != 0 {
+          AncestryRefused { step: "checkout -b main <on-main>", cause: trim(s: branched.stderr) }
+        } else {
+          let tracking = git.Plumbing.CreateRefIfAbsent(
+            address: GitWorktreeAt { path: repo as FilePath },
+            ref_name: "refs/remotes/origin/main",
+            new: on_commit,
+          )
+          if tracking.exit_code != 0 {
+            AncestryRefused { step: "update-ref refs/remotes/origin/main", cause: trim(s: tracking.stderr) }
+          } else {
+            match fixture_commit_tracked_file(
+              repo: repo,
+              tracked_path: "tracked",
+              tracked_bytes: "off-main",
+              message: "off-main",
+              parents: GitParents { first: on_commit as NonEmptyStr, remaining: [] },
+            ) {
+              FixtureRepoRefused { step, cause } => AncestryRefused { step: step, cause: cause }
+              FixtureRepoBuilt { commit_hex: off_commit } =>
+                AncestryReady { scratch: AncestryScratch { root: root, repo: repo, on_commit: on_commit, off_commit: off_commit } }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
-type LineScan {
-  at: Int
-  found: String
-}
-
-fn ancestry_scratch() -> AncestryScratch? {
-  let result = shell.Exec.Run(
-    script: retained_runtime(
-      body: join([
-        "set -eu",
-        "root=$(mktemp -d)",
-        "on=$root/on",
-        "off=$root/off",
-        "git init -q -b main \"$on\"",
-        "git -C \"$on\" config user.email witness@example.invalid",
-        "git -C \"$on\" config user.name witness",
-        "printf on-main > \"$on/tracked\"",
-        "git -C \"$on\" add tracked",
-        "git -C \"$on\" commit -qm on-main",
-        "git -C \"$on\" update-ref refs/remotes/origin/main HEAD",
-        "git -C \"$on\" checkout -q --detach HEAD",
-        "cp -a \"$on\" \"$off\"",
-        "printf off-main > \"$off/tracked\"",
-        "git -C \"$off\" add tracked",
-        "git -C \"$off\" commit -qm off-main",
-        "printf '%s\\n%s\\n%s\\n' \"$root\" \"$on\" \"$off\"",
-      ], "\n"),
-      reason: "detached-HEAD merge-base inhabitance fixture" as NonEmptyStr,
-    ),
-    expect: OutcomeIsData,
+// Move the attached branch from the on-main commit to the child commit, expected-old checked: a
+// fixture whose branch was not where it claimed to be refuses rather than measuring a wrong state.
+fn advance_head_to_off(s: AncestryScratch) -> Optional<StandingVerdict> {
+  let moved = git.Plumbing.AdvanceRefIfExpected(
+    address: GitWorktreeAt { path: s.repo as FilePath },
+    ref_name: "refs/heads/main",
+    new: s.off_commit,
+    expected_old: s.on_commit,
   )
-  if result.success {
-    Present { value: AncestryScratch {
-      root: line_at(raw: result.stdout, index: 0),
-      on_main: line_at(raw: result.stdout, index: 1),
-      off_main: line_at(raw: result.stdout, index: 2),
-    } }
-  } else { none }
+  if moved.exit_code != 0 {
+    Present { value: StandingUnreadable { exit_code: moved.exit_code, stderr: moved.stderr } }
+  } else {
+    Absent
+  }
 }
 
-fn merge_base_standing(repo: String) -> MergeBaseProbe {
+// HEAD read back, three-way: the sha, or UNREADABLE carrying the op's exit and stderr.
+type HeadObservation
+  = HeadObserved { sha: String }
+  | HeadUnreadable { exit_code: Int, stderr: String }
+
+fn observe_head(repo: String) -> HeadObservation {
   let head = git.Core.RevParseInRepo(repo: repo as FilePath, target: "HEAD" as GitRef)
+  if head.exit_code != 0 {
+    HeadUnreadable { exit_code: head.exit_code, stderr: head.stderr }
+  } else {
+    HeadObserved { sha: trim(s: head.revision) }
+  }
+}
+
+// Verdicts: correct / wrong (carrying both sides) / unreadable (carrying the op's real stderr+exit).
+type StandingVerdict
+  = StandingCorrect
+  | StandingWrong { observed: String, expected: String }
+  | StandingUnreadable { exit_code: Int, stderr: String }
+
+fn on_main_verdict(repo: String, expected_head: String) -> StandingVerdict {
+  match observe_head(repo: repo) {
+    HeadUnreadable { exit_code, stderr } => StandingUnreadable { exit_code: exit_code, stderr: stderr }
+    HeadObserved { sha } => {
+      let probe = merge_base_probe(repo: repo)
+      match checkout_branch_for_admission(
+        named: "HEAD",
+        admitted: production_admitted_branch,
+        head: sha,
+        outcome: probe,
+      ) {
+        DetachedHeadOnAdmittedBranch { head, branch } =>
+          if head == expected_head && branch == (production_admitted_branch as String) {
+            StandingCorrect
+          } else {
+            StandingWrong { observed: head, expected: expected_head }
+          }
+        CheckoutNamedBranch { branch } => StandingWrong { observed: branch, expected: "DetachedHeadOnAdmittedBranch" }
+        DetachedHeadNotOnAdmittedBranch { head: _, branch: _, cause } => StandingWrong { observed: cause, expected: "DetachedHeadOnAdmittedBranch" }
+      }
+    }
+  }
+}
+
+fn off_main_verdict(repo: String) -> StandingVerdict {
+  match observe_head(repo: repo) {
+    HeadUnreadable { exit_code, stderr } => StandingUnreadable { exit_code: exit_code, stderr: stderr }
+    HeadObserved { sha } => {
+      let probe = merge_base_probe(repo: repo)
+      match checkout_branch_for_admission(
+        named: "HEAD",
+        admitted: production_admitted_branch,
+        head: sha,
+        outcome: probe,
+      ) {
+        DetachedHeadNotOnAdmittedBranch { head: _, branch: _, cause } =>
+          if string_contains(s: cause, pattern: "DetachedHeadNotOnAdmittedBranch") {
+            StandingCorrect
+          } else {
+            StandingWrong { observed: cause, expected: "a cause naming DetachedHeadNotOnAdmittedBranch" }
+          }
+        CheckoutNamedBranch { branch } => StandingWrong { observed: branch, expected: "DetachedHeadNotOnAdmittedBranch" }
+        DetachedHeadOnAdmittedBranch { head, branch: _ } => StandingWrong { observed: head, expected: "DetachedHeadNotOnAdmittedBranch" }
+      }
+    }
+  }
+}
+
+fn merge_base_probe(repo: String) -> MergeBaseOutcome {
   let probe = git.Inspect.MergeBase(
     repository_path: repo,
     left: "HEAD" as GitRef,
     right: "refs/remotes/origin/main" as GitRef,
     expect: OutcomeIsData,
   )
-  MergeBaseProbe {
-    head: trim(s: head.revision),
-    outcome: merge_base_outcome(exit_code: probe.exit_code, stdout: probe.sha as String, stderr: probe.stderr),
-  }
-}
-
-type MergeBaseProbe {
-  head: String
-  outcome: MergeBaseOutcome
+  merge_base_outcome(exit_code: probe.exit_code, stdout: probe.sha as String, stderr: probe.stderr)
 }
 
 test fn git_merge_base_in_a_temp_repo_emits_the_standing_admission_consumes() -> Bool {
   match ancestry_scratch() {
-    Absent => false
-    Present { value: s } => {
-      let on = merge_base_standing(repo: s.on_main)
-      let off = merge_base_standing(repo: s.off_main)
-      let cleaned = shell.Exec.Run(
-        script: retained_runtime(
-          body: join(["set -eu", concat("rm -rf ", s.root)], "\n"),
-          reason: "detached-HEAD merge-base inhabitance cleanup" as NonEmptyStr,
-        ),
-        expect: OutcomeIsData,
-      ).success
-      let on_ok = match checkout_branch_for_admission(
-        named: "HEAD",
-        admitted: production_admitted_branch,
-        head: on.head,
-        outcome: on.outcome,
-      ) {
-        DetachedHeadOnAdmittedBranch { head, branch } =>
-          head == on.head && branch == (production_admitted_branch as String)
-        CheckoutNamedBranch { branch: _ } => false
-        DetachedHeadNotOnAdmittedBranch { head: _, branch: _, cause: _ } => false
+    AncestryRefused { step: _, cause: _ } => false
+    AncestryReady { scratch: s } => {
+      let on = on_main_verdict(repo: s.repo, expected_head: s.on_commit)
+      let advanced = advance_head_to_off(s: s)
+      let off = match advanced {
+        Present { value: refused } => refused
+        Absent => off_main_verdict(repo: s.repo)
       }
-      let off_ok = match checkout_branch_for_admission(
-        named: "HEAD",
-        admitted: production_admitted_branch,
-        head: off.head,
-        outcome: off.outcome,
-      ) {
-        DetachedHeadNotOnAdmittedBranch { cause } =>
-          string_contains(s: cause, pattern: "DetachedHeadNotOnAdmittedBranch")
-        CheckoutNamedBranch { branch: _ } => false
-        DetachedHeadOnAdmittedBranch { head: _, branch: _ } => false
-      }
-      cleaned && on_ok && off_ok
+      let cleaned = fixture_remove_tree(path: s.root)
+      cleaned && match on { StandingCorrect => true _ => false } && match off { StandingCorrect => true _ => false }
     }
   }
 }

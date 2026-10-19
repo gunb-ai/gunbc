@@ -24,7 +24,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.git.plumbing
-import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt, GitNoParents }
+import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt, GitNoParents, GitCommitParents }
 
 // The outcome of authoring the fixture. `commit_hex` is the one commit's oid as git wrote it (the
 // candidate the witness hands the production path); the refusal arm names which step refused and
@@ -83,45 +83,52 @@ fn fixture_build_committed_repo(parent_address: GitRepositoryAddress, repo: Stri
   } else {
     match fixture_set_committer_identity(repo: repo) {
       Present { value: refused } => refused
-      Absent => {
-        let address = GitWorktreeAt { path: repo as FilePath }
-        let written = Filesystem.Write(path: concat(repo, concat("/", tracked_path)), content: tracked_bytes)
-        if !written.success {
-          FixtureRepoRefused { step: "write tracked file", cause: written.error }
+      Absent => fixture_commit_tracked_file(repo: repo, tracked_path: tracked_path, tracked_bytes: tracked_bytes, message: message, parents: GitNoParents)
+    }
+  }
+}
+
+// One commit in an already-initialised fixture repo: write the file, hash it from STDIN, stage it,
+// write the tree, commit-tree with `parents`. `fixture_build_committed_repo` is this with
+// GitNoParents on a fresh repo; a witness needing a descendant of that commit (a HEAD ahead of a
+// remote-tracking ref) calls it again with GitParents, so the hash->index->tree->commit chain has
+// one home. Still no ref is written: the caller places refs, and the refs it places are pre-state.
+fn fixture_commit_tracked_file(repo: String, tracked_path: String, tracked_bytes: String, message: String, parents: GitCommitParents) -> FixtureRepoOutcome {
+  let address = GitWorktreeAt { path: repo as FilePath }
+  let written = Filesystem.Write(path: concat(repo, concat("/", tracked_path)), content: tracked_bytes)
+  if !written.success {
+    FixtureRepoRefused { step: "write tracked file", cause: written.error }
+  } else {
+    let hashed = git.Plumbing.HashObjectWriteStdin(address: address, content: tracked_bytes)
+    if hashed.exit_code != 0 {
+      FixtureRepoRefused { step: "hash-object -w --stdin", cause: trim(s: hashed.stderr) }
+    } else {
+      let oid = trim(s: hashed.oid)
+      let index_path = concat(repo, "/.git/index")
+      let staged = git.Plumbing.UpdateIndexCacheInfo(
+        address: address,
+        index: index_path as FilePath,
+        mode: "100644",
+        oid: oid,
+        path: tracked_path,
+      )
+      if staged.exit_code != 0 {
+        FixtureRepoRefused { step: "update-index --cacheinfo", cause: trim(s: staged.stderr) }
+      } else {
+        let tree = git.Plumbing.WriteTreeFromIndex(address: address, index: index_path as FilePath)
+        if tree.exit_code != 0 {
+          FixtureRepoRefused { step: "write-tree", cause: trim(s: tree.stderr) }
         } else {
-          let hashed = git.Plumbing.HashObjectWriteStdin(address: address, content: tracked_bytes)
-          if hashed.exit_code != 0 {
-            FixtureRepoRefused { step: "hash-object -w --stdin", cause: trim(s: hashed.stderr) }
+          let committed = git.Plumbing.CommitTree(
+            address: address,
+            tree: trim(s: tree.tree),
+            parents: parents,
+            message: message,
+          )
+          if committed.exit_code != 0 {
+            FixtureRepoRefused { step: "commit-tree", cause: trim(s: committed.stderr) }
           } else {
-            let oid = trim(s: hashed.oid)
-            let index_path = concat(repo, "/.git/index")
-            let staged = git.Plumbing.UpdateIndexCacheInfo(
-              address: address,
-              index: index_path as FilePath,
-              mode: "100644",
-              oid: oid,
-              path: tracked_path,
-            )
-            if staged.exit_code != 0 {
-              FixtureRepoRefused { step: "update-index --cacheinfo", cause: trim(s: staged.stderr) }
-            } else {
-              let tree = git.Plumbing.WriteTreeFromIndex(address: address, index: index_path as FilePath)
-              if tree.exit_code != 0 {
-                FixtureRepoRefused { step: "write-tree", cause: trim(s: tree.stderr) }
-              } else {
-                let committed = git.Plumbing.CommitTree(
-                  address: address,
-                  tree: trim(s: tree.tree),
-                  parents: GitNoParents,
-                  message: message,
-                )
-                if committed.exit_code != 0 {
-                  FixtureRepoRefused { step: "commit-tree", cause: trim(s: committed.stderr) }
-                } else {
-                  FixtureRepoBuilt { commit_hex: trim(s: committed.commit) }
-                }
-              }
-            }
+            FixtureRepoBuilt { commit_hex: trim(s: committed.commit) }
           }
         }
       }
