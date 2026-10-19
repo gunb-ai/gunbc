@@ -1829,8 +1829,9 @@ fn render_rust_shared_type_with_optional(n: Node, type_name: String, rendered: S
 }
 
 fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
-  let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
+  let rendered0 = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
   let type_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+  let rendered = if type_name == "Witness" { concat("/*ATS*/", rendered0) } else { rendered0 }
   render_rust_shared_type_with_optional(n: n, type_name: type_name, rendered: rendered, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
 }
 
@@ -1888,7 +1889,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
       } else if n.connective == NoConnective && n.children |> count > 0 {
         match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types, env: env) {
-          Present { value: scalar } => render_rust_shared_type_with_optional(n: n, type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: scalar, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
+          Present { value: scalar } => render_rust_shared_type_with_optional(n: n, type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: concat("/*SCB*/", scalar), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
           Absent =>
         if !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
           render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
@@ -2011,7 +2012,7 @@ fn render_rust_fn_sig_type_spelled(n: Node, generic_param_names: List<String>, s
   let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
   match exact_leaf {
-    Present { value: exact } => render_rust_shared_type_with_optional(n: n, type_name: name, rendered: exact, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
+    Present { value: exact } => render_rust_shared_type_with_optional(n: n, type_name: name, rendered: concat("/*EXL*/", exact), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
     Absent =>
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types, type_decl_items: type_decl_items))
