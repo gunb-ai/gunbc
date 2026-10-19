@@ -144,7 +144,7 @@ done
 # every rename (12 fields) and printed only the first token of others -- a scope guard that can
 # under-report is not a guard.
 echo "CHANGED_AFTER_REGEN:"; git status --porcelain | sed 's/^/  /'
-STRAY=$(git status --porcelain | sed -E 's/^.{3}//' | grep -v '^src/v1/stage0/src/[^/]+\.rs$' | grep -c . || true)
+STRAY=$(git status --porcelain | sed -E 's/^.{3}//' | grep -Ev '^src/v1/stage0/src/[^/]+\.rs$' | grep -c . || true)
 ADDED=$(git status --porcelain | awk '$1=="??" || $1=="A" || $1=="??" {c++} END{print c+0}')
 if [ "$(git status --porcelain | sed -E 's/^.{3}//' | grep -c '^src/v1/stage0/src/')" != "$(git status --porcelain | grep -c .)" ]; then
   STRAY=1
@@ -159,6 +159,24 @@ for m in src/v1/stage0/src/v1_compiler_infer.rs src/v1/stage0/src/v1_compiler_em
   [ -f "$m" ] || { echo "FATAL mirror missing: $m"; exit 6; }
   printf 'SEED_MIRROR %s %s\n' "$(basename "$m")" "$(sha256sum "$m" | cut -c1-16)"
 done
+# THE MERGE MUST NOT SWALLOW THE REPAIR. This whole script exists because mirrors are generated, and
+# the failure mode that matters here is silent: if the merged .dag lost the repair, or the emitter ran
+# against stale authorities, the mirror comes back WITHOUT the repair and every later test measures
+# the pre-repair compiler while looking green. Assert it in the tree AND in the mirror, and say which
+# side the mirror resembles -- ours-side bytes that already carry the repair and main's bytes look
+# equally plausible in a log that does not say.
+DAG_MARKS=$(grep -c 'fresh_call_variables' src/v1/04_infer.dag || true)
+MIR_MARKS=$(grep -c 'fresh_call_variables' src/v1/stage0/src/v1_compiler_infer.rs || true)
+echo "REPAIR_IN_DAG $DAG_MARKS"
+echo "REPAIR_IN_MIRROR $MIR_MARKS"
+[ "$DAG_MARKS" -ge 1 ] || { echo "VOID: the merged 04_infer.dag has no repair -- the merge lost it"; exit 6; }
+[ "$MIR_MARKS" -ge 1 ] || { echo "VOID: the regenerated mirror has no repair while the .dag does -- the emitter did not see the merged authority (stale emitter or stale .dag)"; exit 6; }
+# Where did the pre-regen mirror start from? main's bytes or ours. Reported, not asserted: both can be
+# correct depending on whether the emitter agreed with either side.
+git show "$MAIN:src/v1/stage0/src/v1_compiler_infer.rs" > /tmp/main_infer.rs 2>/dev/null \
+  && { cmp -s /tmp/main_infer.rs src/v1/stage0/src/v1_compiler_infer.rs \
+       && echo "MIRROR_VS_MAIN identical (emitter reproduced main's bytes exactly -- implies the merged .dag changes nothing in this mirror, which would mean the repair is NOT here; check REPAIR_IN_MIRROR)" \
+       || echo "MIRROR_VS_MAIN differs (expected: it carries the repair)"; }
 printf 'SEED_DAG %s\n' "$(sha256sum src/v1/04_infer.dag | cut -c1-16)"
 echo "REPAIR_MARKS $(grep -c 'fresh_call_variables' src/v1/stage0/src/v1_compiler_infer.rs)"
 echo "FOLD_REFS $(grep -c 'fold=' src/v1/stage0/src/v1_compiler_infer.rs || true)"
