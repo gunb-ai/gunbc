@@ -689,7 +689,7 @@ fn footer() -> Fragment {
 // ── The parity differences, as an enumerable roster ───────────────────────────────────────────
 //
 // The witness compares render_page()'s bytes to the committed served page. The byte positions listed below
-// differ, each for a stated reason, and each is NULL — the rendered document behaves identically.
+// differ, each for a reason stated in the // comment above its row, and each is NULL — the rendered document behaves identically.
 // They are rows rather than prose so the comparison is not "everything matches except what the
 // author forgot to mention": the witness asserts the observed difference set EQUALS this roster, so
 // a fourth difference is red, and it asserts every row here actually occurs, so a difference that
@@ -699,45 +699,68 @@ type ParityDifference {
   served: String
   // What this module emits instead.
   generated: String
-  // Why the difference cannot change behaviour, cited.
-  null_reason: String
 }
 
 data parity_nullities: List<ParityDifference> = [
+  // HTML attribute values are optional: a present-and-empty value and a bare name set the same
+  // attribute (HTML Living Standard, attributes section — 'Empty string' is a valid value state and
+  // boolean attributes are spelled either way). std.markup spells every attribute name=value, which is
+  // the repo's existing convention (gunbc.site.document emits defer the same way), and the difference
+  // is spelling only.
   ParityDifference {
     served: "crossorigin />",
     generated: "crossorigin=\"\" />",
-    null_reason: "HTML attribute values are optional: a present-and-empty value and a bare name set the same attribute (HTML Living Standard, attributes section — 'Empty string' is a valid value state and boolean attributes are spelled either way). std.markup spells every attribute name=value, which is the repo's existing convention (gunbc.site.document emits defer the same way), and the difference is spelling only.",
   },
+  // Same clause as the crossorigin row: the same attribute, spelled with its empty value.
   ParityDifference {
     served: "defer></script>",
     generated: "defer=\"\"></script>",
-    null_reason: "Same clause as the crossorigin row: the same attribute, spelled with its empty value.",
   },
+  // The separator sits inside an attribute value, where U+0026 is the character a value carries and
+  // '&amp;' is its entity spelling; both are decoded to '&' before the URL is used (HTML Living
+  // Standard, character/reference section, plus the URL-parsing step that runs on the decoded value).
+  // The Google Fonts stylesheet loads identically. This is std.markup's attribute escaping being
+  // correct-by-construction — the alternative would be a second emitter that does not escape.
   ParityDifference {
     served: "wght@400;500&family=",
     generated: "wght@400;500&amp;family=",
-    null_reason: "The separator sits inside an attribute value, where U+0026 is the character a value carries and '&amp;' is its entity spelling; both are decoded to '&' before the URL is used (HTML Living Standard, character/reference section, plus the URL-parsing step that runs on the decoded value). The Google Fonts stylesheet loads identically. This is std.markup's attribute escaping being correct-by-construction — the alternative would be a second emitter that does not escape.",
   },
+  // The same clause as the row above, listed separately because this URL carries TWO separators and
+  // each is escaped on its own: the roster substitutes one pair per occurrence site, so a row covering
+  // only the first would leave the second unexplained and the equality claim red.
   ParityDifference {
     served: ";600&display=swap",
     generated: ";600&amp;display=swap",
-    null_reason: "The same clause as the row above, listed separately because this URL carries TWO separators and each is escaped on its own: the roster substitutes one pair per occurrence site, so a row covering only the first would leave the second unexplained and the equality claim red.",
   },
+  // The seal's <path> is the only self-closed element the served file writes without a space before
+  // the solidus. In SGML-derived markup the space is not significant: the solidus alone terminates the
+  // tag and begins the self-close (HTML Living Standard, 'self-closing start tag state', which is
+  // entered on U+002F regardless of what precedes it). Both spellings produce the same SVG path
+  // element with the same three attributes. Both texts are anchored on the closing newline and eight-
+  // space indent so each occurs exactly once in its own file, which is what keeps the roster's
+  // uniqueness claim from passing on a substring shared with the nine link/meta lines that DO carry
+  // the space.
   ParityDifference {
     served: "\n        \"/>",
     generated: "\n        \" />",
-    null_reason: "The seal's <path> is the only self-closed element the served file writes without a space before the solidus. In SGML-derived markup the space is not significant: the solidus alone terminates the tag and begins the self-close (HTML Living Standard, 'self-closing start tag state', which is entered on U+002F regardless of what precedes it). Both spellings produce the same SVG path element with the same three attributes. Both texts are anchored on the closing newline and eight-space indent so each occurs exactly once in its own file, which is what keeps the roster's uniqueness claim from passing on a substring shared with the nine link/meta lines that DO carry the space.",
   },
+  // Both subpaths trace the same circle: centre (cx,cy), radius 8, sweep flag 1 for both arcs, so two
+  // half-circle arcs joined at the ends of a diameter. The served file starts the diameter at the top
+  // and the brand_mark builder starts it at the left; the filled region under fill-rule evenodd is the
+  // same set of points (SVG 1.1 §8.3.8 elliptical arc curve, §11.3.1 fill-rule). The builder is shared
+  // with the studio mark, so the page keeps the builder's spelling rather than a second disc grammar.
   ParityDifference {
     served: "M35,40 A8,8 0 0,1 35,56 A8,8 0 0,1 35,40 Z",
     generated: "M27,48 A8,8 0 0,1 43,48 A8,8 0 0,1 27,48 Z",
-    null_reason: "Both subpaths trace the same circle: centre (cx,cy), radius 8, sweep flag 1 for both arcs, so two half-circle arcs joined at the ends of a diameter. The served file starts the diameter at the top and the brand_mark builder starts it at the left; the filled region under fill-rule evenodd is the same set of points (SVG 1.1 §8.3.8 elliptical arc curve, §11.3.1 fill-rule). The builder is shared with the studio mark, so the page keeps the builder's spelling rather than a second disc grammar.",
   },
+  // Both subpaths trace the same circle: centre (cx,cy), radius 8, sweep flag 1 for both arcs, so two
+  // half-circle arcs joined at the ends of a diameter. The served file starts the diameter at the top
+  // and the brand_mark builder starts it at the left; the filled region under fill-rule evenodd is the
+  // same set of points (SVG 1.1 §8.3.8 elliptical arc curve, §11.3.1 fill-rule). The builder is shared
+  // with the studio mark, so the page keeps the builder's spelling rather than a second disc grammar.
   ParityDifference {
     served: "M85,40 A8,8 0 0,1 85,56 A8,8 0 0,1 85,40 Z",
     generated: "M77,48 A8,8 0 0,1 93,48 A8,8 0 0,1 77,48 Z",
-    null_reason: "Both subpaths trace the same circle: centre (cx,cy), radius 8, sweep flag 1 for both arcs, so two half-circle arcs joined at the ends of a diameter. The served file starts the diameter at the top and the brand_mark builder starts it at the left; the filled region under fill-rule evenodd is the same set of points (SVG 1.1 §8.3.8 elliptical arc curve, §11.3.1 fill-rule). The builder is shared with the studio mark, so the page keeps the builder's spelling rather than a second disc grammar.",
   },
 ]
 
