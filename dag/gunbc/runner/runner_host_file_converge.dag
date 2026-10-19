@@ -910,7 +910,13 @@ fn runner_slot_unit_standing_wire(standing: RunnerSlotUnitStanding) -> String {
 // THE RELOAD STATE IS ITS OWN FACT, never a value of the lifecycle standing. A loaded unit that owes a
 // reload is still a fabric member running a runner, or a teardown-effective slot, and a later
 // classification of the lifecycle must not overwrite it. Derived once, from the raw show observation.
-type SlotReloadStatus = SlotReloadNotPending | SlotReloadOwed | SlotReloadUnobserved
+//
+// OwedInert is Owed on a unit whose OWN show block says it cannot take a reload's effect: LoadState=masked,
+// ActiveState=inactive and no ControlGroup. A reload applies pending limits to a running cgroup, and this
+// unit has none. It is decided from that block alone -- never from whether the unit is a fabric member or a
+// retiree, which is a separate fact -- and it is still a status of the unit, not a verdict: whether it is
+// admitted is decided where the bracket's own unit set is known (runner_host_cap_pending_reloads).
+type SlotReloadStatus = SlotReloadNotPending | SlotReloadOwed | SlotReloadOwedInert | SlotReloadUnobserved
 
 type RunnerSlotUnitResult {
   unit: NonEmptyStr
@@ -921,8 +927,42 @@ type RunnerSlotUnitResult {
 fn slot_reload_status_for(unit: NonEmptyStr, show_stdout: String) -> SlotReloadStatus {
   match parse_runner_slot_reading_for(unit: unit, show_stdout: show_stdout) {
     Absent => SlotReloadUnobserved
-    Present { value: rd } => if trim(s: rd.need_daemon_reload) == "no" { SlotReloadNotPending } else { SlotReloadOwed }
+    Present { value: rd } =>
+      if trim(s: rd.need_daemon_reload) == "no" {
+        SlotReloadNotPending
+      } else if slot_unit_inert_in_show(unit: unit, show_stdout: show_stdout) {
+        SlotReloadOwedInert
+      } else {
+        SlotReloadOwed
+      }
   }
+}
+
+// MASKED, INACTIVE, NO CGROUP -- all three read from the unit's own block; any key missing is not inert.
+fn slot_unit_inert_in_show(unit: NonEmptyStr, show_stdout: String) -> Bool {
+  fold(split(s: show_stdout, delimiter: "\n\n"), init: false, f: (acc, b) => {
+    let lines = map(split(s: b, delimiter: "\n"), l => trim(s: l))
+    match show_block_value(lines: lines, property: IdProperty) {
+      Absent => acc
+      Present { value: id } =>
+        if trim(s: id) != (unit as String) {
+          acc
+        } else {
+          match show_block_value(lines: lines, property: LoadState) {
+            Absent => false
+            Present { value: load } =>
+              match show_block_value(lines: lines, property: ActiveState) {
+                Absent => false
+                Present { value: act } =>
+                  match show_block_value(lines: lines, property: ControlGroup) {
+                    Absent => false
+                    Present { value: cg } => trim(s: load) == (systemd_unit_load_state_masked_wire as String) && trim(s: act) == "inactive" && trim(s: cg) == ""
+                  }
+              }
+          }
+        }
+    }
+  })
 }
 
 type RunnerSlotPopulation
@@ -2070,14 +2110,14 @@ fn runner_host_cap_files_state(subject: RunnerHostFileSubject, context: FleetSsh
 // that could not be read is unknown and counts as pending (an unread unit proves nothing about what a reload would load).
 // systemd reports an instance's NeedDaemonReload for the template's drop-ins too. The answer is LOCATED:
 // the units and which of the two each is, kept typed until the refusal is rendered.
-fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation) -> HostPendingReloads {
+fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation, bracket_units: List<NonEmptyStr>) -> HostPendingReloads {
   match population {
     SlotPopulationUnobservable { reason: r } => HostPopulationUnobserved { reason: r }
     SlotPopulationObserved { units: us } => {
       // One partition: a unit either owes a kind of pending reload or contributes nothing, and the
       // nonempty carrier is built at that split, so an empty "pending" cannot be written.
       let located: FreeSemigroup<UnitPendingReload>? = fold(us, init: none, f: (acc, r) =>
-        match slot_reload_pending_kind(status: r.reload) {
+        match slot_reload_pending_kind(status: r.reload, in_bracket: any(bracket_units, b => (b as String) == (r.unit as String))) {
           Absent => acc
           Present { value: k } => {
             let one = non_empty_singleton(item: UnitPendingReload { unit: r.unit, kind: k })
@@ -2095,10 +2135,15 @@ fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation) -> HostPend
   }
 }
 
-fn slot_reload_pending_kind(status: SlotReloadStatus) -> PendingReloadKind? {
+// An inert owed reload is admitted ONLY for a unit the bracket never touches: activation unmasks, enables
+// and starts every unit in the bracket's set, so there a masked unit stops being inert mid-bracket and its
+// pending change would load onto a live cgroup. Fabric members are outside that set by construction
+// (desired_runner_slot_members), and the width phase only masks and stops them, never unmasks.
+fn slot_reload_pending_kind(status: SlotReloadStatus, in_bracket: Bool) -> PendingReloadKind? {
   match status {
     SlotReloadNotPending => none
     SlotReloadOwed => Present { value: PendingReloadOwed }
+    SlotReloadOwedInert => if in_bracket { Present { value: PendingReloadOwed } } else { none }
     SlotReloadUnobserved => Present { value: PendingReloadUnobserved }
   }
 }
@@ -2148,7 +2193,7 @@ fn run_runner_host_cap_phase(
             gate: gate,
             files: runner_host_cap_files_state(subject: subject, context: context, privilege: privilege),
             extras: extras,
-            pending_reloads: runner_host_cap_pending_reloads(population: population),
+            pending_reloads: runner_host_cap_pending_reloads(population: population, bracket_units: subject.desired_units),
             retirement_cause: runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: subject.retired_units, population: population)),
           ) {
             HostCapsWithheld { cause: c } => CapPhaseWithheld { cause: c }
