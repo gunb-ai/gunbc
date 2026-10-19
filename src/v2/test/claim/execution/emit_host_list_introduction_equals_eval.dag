@@ -43,6 +43,7 @@ import std.optional {
 }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic {
+  diagnostics_fatal_reason,
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
@@ -489,3 +490,15 @@ test fn probe_eval_ok() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+fn probe_reason(r: Symbol) -> Bool {
+  match probe_emit() { Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == r }
+}
+test fn probe_r_unwired() -> Bool { probe_reason(r: ^target_value_expr_list_introduction_form_unwired) }
+test fn probe_r_lex() -> Bool { probe_reason(r: ^target_value_expr_reason_transform_shape_invalid) }
+test fn probe_r_binding() -> Bool { probe_reason(r: ^target_lex_rule_literal_not_found) }
+test fn probe_r_none() -> Bool { probe_reason(r: ^target_value_expression_emit_unsupported_kind) }
+test fn probe_r_scope() -> Bool { probe_reason(r: ^target_value_expr_reason_body_scope_binding_invalid) }
+test fn probe_r_operator() -> Bool { probe_reason(r: ^target_operator_realization_catalog_miss) }
+test fn probe_r_arrow_body() -> Bool { probe_reason(r: ^target_value_expr_reason_arrow_body_form_unsupported) }
