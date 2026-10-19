@@ -188,3 +188,27 @@ test fn dbg_c_no_declaration() -> Bool {
 test fn dbg_c_is_accepted() -> Bool {
   match list_introduction_probe_table().c { ListIntroductionTokensAccepted => true _ => false }
 }
+
+test fn dbg_p_a() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "cu bytes 107") _ => false }
+}
+
+test fn dbg_p_b() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "..113") _ => false }
+}
+
+test fn dbg_p_c() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "cu bytes 10") _ => false }
+}
+
+test fn dbg_p_d() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "cu bytes 1") _ => false }
+}
+
+test fn dbg_p_e() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "cu bytes 5") _ => false }
+}
+
+test fn dbg_p_f() -> Bool {
+  match list_introduction_probe_table().c { ListIntroductionRefused { reason: _, locus: l } => string_contains(s: l, pattern: "cu bytes 0") _ => false }
+}
