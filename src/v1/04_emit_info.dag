@@ -604,9 +604,9 @@ type EmitGraphInfo {
   fn_return_type: Node?
   expected_type: Node?
 
-  // The one list parameter of the function being emitted whose Cons-tail is realized as an index
-  // into an unchanged base ("" = none), and the tail binders that advance it, each with its spine
-  // depth. Derived once per fn by v1.compiler.emit_rust tco_cursor_plan from the use graph.
+  // The list parameters of the function being emitted whose Cons-tail is realized as an index
+  // into an unchanged base (empty = none), and the tail binders that advance them, each with its
+  // spine depth, keyed by the parameter it advances (v1.compiler.emit_rust cursor_tail_key). Derived once per fn by v1.compiler.emit_rust tco_cursor_plan from the use graph.
   tco_cursor_params: List<String>
   tco_cursor_tails: Map<String, Int>
 

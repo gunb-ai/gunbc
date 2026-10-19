@@ -1,4 +1,5 @@
 module test.claim.web_fonts_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 import gunbc.site.web_fonts {
   WebFontFace, web_font_faces, web_font_derivation,
   web_font_roboto_400, web_font_roboto_500, web_font_roboto_700, web_font_google_sans_400, web_font_google_sans_500,
@@ -87,9 +88,14 @@ fn head_children(page: Fragment) -> List<Fragment> {
         Element { tag, attributes: _, children: kids } => if tag == "head" { kids } else { [] }
         FragmentText { content: _ } => []
         RawNode { content: _ } => []
+        MarkupComment { body: _ } => []
       })
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
+    MarkupComment { body: _ } => []
+    // Walked: the outer arm already descends into an Element's children to find <head>, and a page
+    // built as a Document keeps <head> inside its root. Skipping it would report "no head children"
+    // for a well-formed page, which is the silent-pass shape.
   }
 }
 
@@ -98,6 +104,7 @@ fn attribute_values(nodes: List<Fragment>, name: String) -> List<String> {
     Element { tag: _, attributes, children: _ } => map(filter(attributes, a => a.name == name), a => a.value)
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
+    MarkupComment { body: _ } => []
   })
 }
 
@@ -116,6 +123,6 @@ test fn the_document_head_links_the_stylesheet_once_and_only_same_origin() -> Bo
   count(filter(hrefs, h => h == web_font_stylesheet_path())) == 1
     && count(filter(hrefs, h => h.starts_with(prefix: "/assets/fonts-"))) == 1
     && all(refs, u => u.starts_with(prefix: "/") && !u.starts_with(prefix: "//"))
-    && occurrences(s: serialize_html_source(node: page(shell: ApplicationShell)), pattern: join(["<link rel=\"stylesheet\" href=\"", web_font_stylesheet_path(), "\">"], "")) == 1
+    && occurrences(s: render_html(serialize_html_source(node: page(shell: ApplicationShell))), pattern: join(["<link rel=\"stylesheet\" href=\"", web_font_stylesheet_path(), "\">"], "")) == 1
     && count(filter(attribute_values(nodes: head_children(page: page(shell: ApprovalShell)), name: "href"), h => h.starts_with(prefix: "/assets/fonts-"))) == 0
 }
