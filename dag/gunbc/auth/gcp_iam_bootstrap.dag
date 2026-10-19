@@ -25,7 +25,7 @@ import gunbc.secret_provision_actuator {
   observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused, SecretObservationOutcome, SecretContainerCreation,
   SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown,
 }
-import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, estate_refused_texts, GcpIamEstatePartialNoop, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
+import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, estate_refused_texts, GcpIamEstatePartialNoop, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
 import gunbc.auth.heal_publisher_provision {
   standing_principal_set,
   DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present, dedicated_federation_input_refusals,
@@ -34,11 +34,11 @@ import gunbc.auth.heal_publisher_provision {
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
-  iam_bootstrap_resource_key, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_trust_bindings,
+  iam_bootstrap_resource_key, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_trust_bindings, iam_bootstrap_capability_bindings_over, iam_bootstrap_root_ceremony_bindings_over,
   iam_bootstrap_deny_policy_id, iam_bootstrap_attachment_point,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
   IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match,
-  iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_ceremony_identity_population, iam_bootstrap_bound_secrets,
+  iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_ceremony_identity_population, iam_bootstrap_ceremony_identity_population_over, iam_bootstrap_identity_population_over, IamBootstrapIdentity, iam_bootstrap_bound_secrets,
 }
 
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
@@ -113,7 +113,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("The grant targets ", iam_bootstrap_operator_member, " after verified Google subject ", iam_bootstrap_operator_subject, "; retry cannot renew or republish it."),
   ]
   let roles = map(iam_bootstrap_roles, r => join(["role ", iam_bootstrap_role_name(role: r) as String, " permissions=", join(iam_bootstrap_role_permissions(role: r), ",")], ""))
-  let cells = map(iam_bootstrap_root_ceremony_bindings() + iam_bootstrap_trust_bindings(), b => join([
+  let cells = map(iam_bootstrap_stage_bindings(stage: BootstrapCapabilities) + iam_bootstrap_trust_bindings(), b => join([
     "binding ", iam_bootstrap_resource_key(resource: b.resource), " ", cell_preimage(c: b.cell),
   ], ""))
   let input_refusals = dedicated_federation_input_refusals(federations: iam_bootstrap_identity_federations())
@@ -500,12 +500,48 @@ fn iam_bootstrap_ensure_fenced_binding(binding: IamBootstrapBinding, token: Secr
   }
 }
 
+// ── THE CEREMONY EXECUTES A PLAN: one pure selector per stage, read by the executor and the plan text ──
+// The stage dispatcher folds exactly the selector's value through a generic executor that names no
+// population, so which cells and identities the ceremony touches is decided here and nowhere else, and
+// test.claim.gcp_iam_bootstrap_population_split_witness reads the same selectors.
+fn iam_bootstrap_stage_bindings_over(stage: IamBootstrapStage, targets: List<DedicatedFederation>, grant_set_secrets: List<NonEmptyStr>) -> List<IamBootstrapBinding> {
+  match stage {
+    BootstrapCapabilities => iam_bootstrap_capability_bindings_over(targets: targets, grant_set_secrets: grant_set_secrets)
+    BootstrapServices => []  BootstrapIdentities => []  BootstrapRoles => []  BootstrapDeny => []  BootstrapAuthorityCleanup => []
+    BootstrapProbeAuthority => []  BootstrapPrivilegeReadback => []  BootstrapProbeCleanup => []  BootstrapWorkflowTrust => []
+  }
+}
+
+fn iam_bootstrap_stage_identities_over(stage: IamBootstrapStage, targets: List<DedicatedFederation>) -> List<IamBootstrapIdentity> {
+  match stage {
+    BootstrapIdentities => iam_bootstrap_identity_population_over(targets: targets)
+    BootstrapServices => []  BootstrapCapabilities => []  BootstrapRoles => []  BootstrapDeny => []  BootstrapAuthorityCleanup => []
+    BootstrapProbeAuthority => []  BootstrapPrivilegeReadback => []  BootstrapProbeCleanup => []  BootstrapWorkflowTrust => []
+  }
+}
+
+fn iam_bootstrap_stage_bindings(stage: IamBootstrapStage) -> List<IamBootstrapBinding> {
+  iam_bootstrap_stage_bindings_over(stage: stage, targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+}
+
+fn iam_bootstrap_stage_identities(stage: IamBootstrapStage) -> List<IamBootstrapIdentity> {
+  iam_bootstrap_stage_identities_over(stage: stage, targets: gcp_iam_converge_targets)
+}
+
+// THE GENERIC EXECUTORS: each folds what it is handed and names no population.
+fn iam_bootstrap_execute_bindings(bindings: List<IamBootstrapBinding>, token: Secret) -> String {
+  fold(bindings, init: "", f: (prior, binding) => if prior != "" { prior } else { iam_bootstrap_ensure_binding(binding: binding, token: token) })
+}
+
+fn iam_bootstrap_execute_identities(identities: List<IamBootstrapIdentity>, token: Secret) -> String {
+  fold(identities, init: "", f: (prior, i) => if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: i.federation, own_trust: i.own_trust, token: token) })
+}
+
 fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> String {
   match stage {
     BootstrapServices => fold(iam_bootstrap_required_services, init: "", f: (prior, api) => if prior != "" { prior } else { iam_bootstrap_ensure_service(service: api, token: token) })
     BootstrapIdentities => {
-      let identities = fold(iam_bootstrap_ceremony_identity_population(), init: "", f: (prior, i) =>
-        if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: i.federation, own_trust: i.own_trust, token: token) })
+      let identities = iam_bootstrap_execute_identities(identities: iam_bootstrap_stage_identities(stage: stage), token: token)
       if identities != "" { identities } else { fold(iam_bootstrap_bound_secrets(), init: "", f: (prior, secret) =>
         if prior != "" { prior } else { iam_bootstrap_ensure_custody_container(secret: secret, token: token) }) }
     }
@@ -523,7 +559,7 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
       }
     })
     BootstrapAuthorityCleanup => iam_bootstrap_authority_converge(token: token, withdrawing: true)
-    BootstrapCapabilities => fold(iam_bootstrap_root_ceremony_bindings(), init: "", f: (prior, binding) => if prior != "" { prior } else { iam_bootstrap_ensure_binding(binding: binding, token: token) })
+    BootstrapCapabilities => iam_bootstrap_execute_bindings(bindings: iam_bootstrap_stage_bindings(stage: stage), token: token)
     BootstrapProbeAuthority => iam_bootstrap_probe_authority_converge(token: token, withdrawing: false)
     BootstrapPrivilegeReadback => iam_bootstrap_privilege_readback(token: token)
     BootstrapProbeCleanup => iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
@@ -613,7 +649,7 @@ fn iam_bootstrap_check_probe(resource: IamBootstrapResource, requested: List<Str
 }
 
 fn iam_bootstrap_positive_probes(token: Secret) -> String {
-  fold(filter(iam_bootstrap_root_ceremony_bindings(), b => b.cell.member == concat("serviceAccount:", iam_converge_service_account as String)), init: "", f: (prior, binding) => {
+  fold(filter(iam_bootstrap_stage_bindings(stage: BootstrapCapabilities), b => b.cell.member == concat("serviceAccount:", iam_converge_service_account as String)), init: "", f: (prior, binding) => {
     if prior != "" { prior } else { match filter(iam_bootstrap_roles, role => (iam_bootstrap_role_name(role: role) as String) == binding.cell.role).first() {
       Absent => "apply binding has no declared custom role"
       Present { value: role } => iam_bootstrap_check_probe(resource: binding.resource, requested: iam_bootstrap_role_permissions(role: role), expected: iam_bootstrap_role_permissions(role: role), token: token)
@@ -952,7 +988,7 @@ fn iam_bootstrap_operator_readback(token: Secret) -> String {
 data iam_bootstrap_pool_window: String = "exclusive-pool-policy-initialization-20260929"
 
 fn iam_bootstrap_pool_initial_cells(pool: NonEmptyStr) -> List<GcpIamBindingCell> {
-  map(filter(iam_bootstrap_root_ceremony_bindings(), binding => binding.resource == BootstrapPool { pool: pool }), binding => binding.cell)
+  map(filter(iam_bootstrap_stage_bindings(stage: BootstrapCapabilities), binding => binding.resource == BootstrapPool { pool: pool }), binding => binding.cell)
 }
 
 fn iam_bootstrap_pool_seedable(audit_configured: Bool, bindings: List<GcpBinding>?, etag: String?, version: Int?) -> Bool {

@@ -18,6 +18,7 @@ import gunbc.auth.gcp_iam_bootstrap_delta {
   bootstrap_delta_over, roster_subjects, subject_cells, observer_reach,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route { root_cell_repair_ceremony }
+import gunbc.auth.gcp_iam_bootstrap { BootstrapCapabilities, BootstrapIdentities, iam_bootstrap_stage_bindings_over, iam_bootstrap_stage_identities_over }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -135,4 +136,24 @@ fn same_ceremony(a: TrustRootCeremony, b: TrustRootCeremony) -> Bool {
 test fn each_root_cell_names_its_own_repairing_ceremony() -> Bool {
   count(ceremony_trust_root_cells()) == 4
     && all(ceremony_trust_root_cells(), t => match root_cell_repair_ceremony(b: IamBootstrapBinding { resource: BootstrapSecret { secret: t.secret }, cell: t.cell }) { Present { value: c } => same_ceremony(a: c, b: t.ceremony)  Absent => false })
+}
+
+// ── THE CEREMONY'S STAGES EXECUTE THE SELECTOR (srv2 mutations N1, N1b) ───────────────────────
+// gunbc.auth.gcp_iam_bootstrap folds exactly iam_bootstrap_stage_bindings / iam_bootstrap_stage_identities
+// through executors that name no population, so these claims over the selector are claims over what
+// the capabilities and identities stages do.
+test fn the_capabilities_stage_binds_exactly_the_root_population_and_does_not_move_when_inputs_widen() -> Bool {
+  let narrow = iam_bootstrap_stage_bindings_over(stage: BootstrapCapabilities, targets: gcp_iam_converge_targets.skip(n: 1), grant_set_secrets: gcp_iam_converge_grant_set_secrets().skip(n: 1))
+  let wide = iam_bootstrap_stage_bindings_over(stage: BootstrapCapabilities, targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets() + [probe_secret])
+  count(wide) > 0
+    && same_cells(a: wide, b: iam_bootstrap_root_ceremony_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets() + [probe_secret]))
+    && same_cells(a: narrow, b: wide)
+    && !any(wide, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapSecret { secret: probe_secret }))
+}
+
+test fn the_identities_stage_creates_exactly_the_root_identities_and_does_not_move_when_targets_widen() -> Bool {
+  let narrow = map(iam_bootstrap_stage_identities_over(stage: BootstrapIdentities, targets: []), i => i.federation.pool_id as String)
+  let wide = map(iam_bootstrap_stage_identities_over(stage: BootstrapIdentities, targets: gcp_iam_converge_targets), i => i.federation.pool_id as String)
+  count(narrow) == 3 && count(wide) == 3 && all(wide, x => any(narrow, y => y == x))
+    && all(iam_bootstrap_stage_identities_over(stage: BootstrapIdentities, targets: gcp_iam_converge_targets), i => i.own_trust)
 }

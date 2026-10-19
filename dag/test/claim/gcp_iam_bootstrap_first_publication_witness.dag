@@ -20,7 +20,7 @@ import gunbc.auth.gcp_iam_bootstrap_delta_route {
 }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation }
 import gunbc.auth.gcp_iam_bootstrap {
-  PoolInitDecision, PoolInitNothing, PoolInitCloseJournal, PoolInitPublish, PoolInitRefused, pool_initialization_decision,
+  iam_bootstrap_pool_seedable, PoolInitDecision, PoolInitNothing, PoolInitCloseJournal, PoolInitPublish, PoolInitRefused, pool_initialization_decision,
   PoolInitReadback, PoolInitReadbackExact, PoolInitReadbackRefused, pool_initialization_readback,
 }
 
@@ -105,6 +105,20 @@ test fn an_uncertain_publication_is_never_replayed() -> Bool {
 
 fn refused(r: PoolInitReadback) -> Bool {
   match r { PoolInitReadbackRefused { reason: _ } => true  PoolInitReadbackExact => false }
+}
+
+// (a)3b NO UNFENCED FIRST PUBLICATION OVER EXISTING BINDINGS (srv2 mutation N6): the state can change
+// between the tap and the apply, so the apply-time initializer refuses on its own whenever the policy it
+// reads carries no etag but is not empty; the seedable verdict is computed from that read.
+test fn an_etagless_policy_with_bindings_is_refused_at_apply_time() -> Bool {
+  all(target_pools(), p => {
+    let cells = approved_cells(p: p)
+    let present = Present { value: gcp_cells_bindings(cs: cells) }
+    let seedable = iam_bootstrap_pool_seedable(audit_configured: false, bindings: present, etag: Absent, version: Absent)
+    !seedable
+      && (match pool_initialization_decision(elected: false, closed: false, observed: Absent, seedable: seedable, cells: cells) { PoolInitRefused { reason: _ } => true  _ => false })
+      && (match pool_initialization_decision(elected: false, closed: false, observed: Absent, seedable: false, cells: cells) { PoolInitRefused { reason: _ } => true  _ => false })
+  })
 }
 
 // (a)4 A READBACK THAT DIFFERS FROM THE APPROVED CELLS REFUSES: one cell short, one foreign cell more, or

@@ -137,6 +137,10 @@ fn classify_bootstrap_subject(roster: List<IamBootstrapBinding>, o: BootstrapSub
     }
     SubjectAnswered => SubjectRefused { reason: concat(key, ": answered without its policy, so its cells are unverifiable; refusing rather than counting them converged") }
     SubjectUnobservable => match observer_reach(subject: o.subject) {
+      // Unreachable by construction today: the only subject the observer holds nothing on is the project,
+      // and iam_bootstrap_cell_owner makes every project cell root-owned, so this guard's RED is not
+      // authorable over the real owner relation. It becomes reachable, and owes a RED, when a delta-owned
+      // cell is rostered on a subject iam-observe holds nothing on (a new resource kind or reach change).
       ObserverHoldsNothing => if all(cells, b => !delta_owned(b: b)) { SubjectRootResidual { cells: cells } }
         else { SubjectRefused { reason: concat(key, ": unobservable, yet it carries a delta cell; refusing rather than dropping it") } }
       ObserverReadsSubjectOnly => SubjectRefused { reason: concat(key, ": not observed, though the observer is bound on it") }
