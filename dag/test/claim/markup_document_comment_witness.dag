@@ -40,16 +40,24 @@ import test.fixture.markup_render { render_html, render_markup, render_jsx }
 //       declaring, e.g. reuse the DeclaresDocument keyword branch unconditionally).
 //       witness_a_document_medium_refuses_to_write_a_document goes red. The pair claim
 //       witness_a_declaring_medium_writes_the_document stays green, which is why both exist.
-//   C12 std.markup serialize_fragment_with Element arm: test the children through raw_text_children_text
-//       again (or any fold that skips MarkupComment / Element). witness_comment_body_cannot_close_a_raw_text_element
-//       and witness_nested_element_cannot_close_a_raw_text_element go red -- one per skipped arm.
-//   C13 std.markup serialize_fragment_with Element arm: move the raw-text test BEFORE serialize_children
-//       (i.e. test the raw child list rather than the emitted bytes). Same two claims go red.
-//   C14 std.markup serialize_fragment_with Element arm: build child_medium WITHOUT the EscapeRaw override,
-//       i.e. escape raw-text children. witness_plain_text_cannot_close_its_own_raw_text_element goes red:
-//       the close sequence arrives as "&lt;/script" and the substring test finds nothing. That is a silent
-//       widen -- the guard still runs and reports clean -- so it needs its own claim, which is why the
-//       plain-text case is asserted here even though it predates this PR.
+//   C12+C13 MEASURED red 2/38 (36 pass): std.markup serialize_fragment_with Element arm, make the raw-text
+//       test read a structural fold over the child list instead of the emitted bytes -- a fold with
+//       `MarkupComment { body: _ } => acc` and `Element { ... } => acc`, i.e. the deleted
+//       raw_text_children_text restored. RED: witness_comment_body_cannot_close_a_raw_text_element and
+//       witness_nested_element_cannot_close_a_raw_text_element -- exactly one per skipped arm, which is why
+//       they are two claims and not one. The other 36 stay green, so nothing else is load-bearing on this.
+//       (C12 and C13 were run as one mutation because this restoration expresses both: the guard reads a
+//       re-derived summary rather than the bytes it writes. They are listed separately because the two
+//       regressions are conceptually distinct -- a skipped arm vs a pre-serialization test -- even though the
+//       single mutation that reintroduces the old fold triggers both.)
+//   C14 MEASURED red 2/38 (36 pass): build child_medium WITHOUT the EscapeRaw override, so raw-text children
+//       are escaped. RED: witness_plain_text_cannot_close_its_own_raw_text_element -- the close sequence
+//       arrives as "&lt;/script" and the substring test finds nothing -- a SILENT widen, the guard still runs
+//       and reports clean, which is why the plain-text case needed its own claim even though it predates this
+//       PR. witness_nested_element_cannot_close_a_raw_text_element is red here too (its text payload escapes
+//       the same way).
+//
+// Baseline after both mutations were reverted and the compiler rebuilt: 38 pass / 0 fail.
 //   C7  std.markup comment_body_hazard: drop the first test (the one that asks whether the close sequence
 //       contains its own terminator), so an unsatisfiable medium is serialized anyway.
 //       witness_medium_grammar_decides_the_comment_check and witness_broken_close_names_both_rows go red.
