@@ -92,3 +92,46 @@ fn ut_newtype_to_newtype_source() -> String {
 test fn ut_newtype_at_its_own_declared_type_still_compiles() -> Bool {
   compile_dag_rust_emit_check(ut_newtype_to_newtype_source(), "src/ut_probe.rs", [], [])
 }
+
+// A MACHINE WIDTH AT Int IS ADMITTED BY ITS Compose<Int|UInt, MachineWidth<N>> DECLARATION (std.integer),
+// read from the resolved declaration; Int -> UIntN stays a refusal and a user type merely NAMED UInt8
+// has no Compose declaration, so it refuses at an Int formal.
+fn ut_uint8_source() -> String {
+  "module ut.probe\n\nimport std.integer { UInt8 }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: UInt8) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_std_uint8_at_int_formal_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_uint8_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_int_at_uint8_source() -> String {
+  "module ut.probe\n\nimport std.integer { UInt8 }\n\nfn takes(x: UInt8) -> Int {\n  1\n}\n\nfn probe(q: Int) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_int_at_uint8_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_int_at_uint8_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_int_at_uint8_control_source() -> String {
+  "module ut.probe\n\nimport std.integer { UInt8 }\n\nfn takes(x: UInt8) -> Int {\n  1\n}\n\nfn probe(q: UInt8) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_uint8_at_uint8_formal_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_int_at_uint8_control_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_named_uint8_source() -> String {
+  "module ut.probe\n\ntype UInt8 {\n  value: Int\n}\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: UInt8) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_user_type_named_uint8_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_named_uint8_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_named_uint8_control_source() -> String {
+  "module ut.probe\n\ntype UInt8 {\n  value: Int\n}\n\nfn takes(x: UInt8) -> UInt8 {\n  x\n}\n\nfn probe(q: UInt8) -> UInt8 {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_user_type_named_uint8_at_itself_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_named_uint8_control_source(), "src/ut_probe.rs", [], [])
+}
