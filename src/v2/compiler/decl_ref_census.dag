@@ -437,6 +437,14 @@ fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
 // ---- assembly -----------------------------------------------------------------------------
 
 // One ingested file's tokens, and whether its string literals are in the prose scope.
+fn top_level_namespaces(all: List<String>) -> List<String> {
+  fold_list(
+    xs: all,
+    empty: [],
+    cons: fn(acc, n) { if string_any_char_in(s: n, alphabet: ".") { acc } else { list_snoc_item(xs: acc, item: n) } }
+  )
+}
+
 data empty_decl_ref_census: DeclRefCensus = DeclRefCensus { cited: [], resolutions: [], prose: [] }
 
 // ONE FILE'S CONTRIBUTION, reduced at once: the driver tokenizes a file, calls this and drops the
