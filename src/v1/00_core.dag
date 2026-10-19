@@ -1216,7 +1216,8 @@ type Node {
 }
 
 // THE IDENTITY POSITION OF A NODE: where the identifier token sits (`span`) and the spelling the
-// source has there (`text`). The two are one fact read two ways, so they are one payload and cannot
+// source has there (`text`; for a parsed node the token text, which every parser site that passes the
+// structural name also spells identically -- see the corpus differential in parse_witness). The two are one fact read two ways, so they are one payload and cannot
 // be updated apart. `text` is what authored_name_at used to re-slice from source on every call; it
 // is fixed where the span is minted (ruling: v1-interface-cull-audit section 9.2 C2-C4). Spans index
 // Unicode scalars, so `text` is cut from the same char codes the span indexes. `Node.name` stays the
@@ -1432,7 +1433,8 @@ fn generic_param_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> 
 // THE SPELLING THE SOURCE HAS AT A SPAN: the slice of the tokenized source when the span's file is
 // indexed, the kernel name a `<kernel:N>` pseudo-file spells, and `fallback` for any other file
 // (`no_span`, `<synthetic>`). authored_ident_at carries this value at construction; authored_name_at
-// still re-derives it per call until the callers migrate.
+// still re-derives it per call until lane H2 PR 2 (v1 cull, brief ead5158ad23a section 9.8) moves its callers to
+// the carried text and deletes it.
 fn authored_text_at(source_indices: Map<String, NewlineIndex>, span: SourceSpan, fallback: String) -> String {
   match map_get(source_indices, span.file) {
     Present { value: index } => source_text_at(index: index, span: span)
