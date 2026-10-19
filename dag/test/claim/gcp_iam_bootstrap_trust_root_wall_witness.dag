@@ -1,0 +1,67 @@
+module test.claim.gcp_iam_bootstrap_trust_root_wall_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import extdeps.cloud.gcp.iam { GcpResourceTag, GcpTagConditionVerdict, GcpTagConditionHolds, GcpTagConditionFails, GcpTagConditionUndecided, gcp_tag_condition_verdict, gcp_tag_condition_expression }
+import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, iam_converge_service_account, iam_observe_service_account }
+import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  iam_bootstrap_trust_root_wall_rule, iam_bootstrap_trust_root_tag_condition, iam_bootstrap_trust_root_tagged_accounts,
+  iam_bootstrap_trust_root_tag_key_namespaced, iam_bootstrap_trust_root_tag_value_short, iam_bootstrap_delta_principal,
+  iam_bootstrap_deny_policies, iam_bootstrap_trust_root_wall_policy_id,
+}
+import gunbc.auth.gcp_iam_bootstrap { BootstrapTrustRootTags, BootstrapDeny, BootstrapIdentities, iam_bootstrap_stage_admitted }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── THE TRUST-ROOT WALL IN THE CREDENTIAL LAYER (PR2 after gunbc#14360; retires gunbc.rung_drop
+// gcp_iam_bootstrap_trust_root_wall_in_code) ─────────────────────────────────────────────────────
+// The wall's deny rule, evaluated over the tags the ceremony's tag stage binds: iam-bootstrap's
+// setIamPolicy on a tagged trust-root account is denied; on a target account it is not; the tagged
+// population is the owner relation's own-trust accounts. Whether GCP enforces it is the live readback
+// the rung drop's trigger names; these claims pin what the declarations say.
+
+fn account_tags(account: ServiceAccountEmail) -> List<GcpResourceTag> {
+  if any(iam_bootstrap_trust_root_tagged_accounts(), a => (a as String) == (account as String)) {
+    [GcpResourceTag { key_namespaced_name: iam_bootstrap_trust_root_tag_key_namespaced() as String, value_short_name: iam_bootstrap_trust_root_tag_value_short as String }]
+  } else { [] }
+}
+
+fn wall_denies(principal: String, permission: String, account: ServiceAccountEmail) -> Bool {
+  match iam_bootstrap_trust_root_wall_rule().deny_rule {
+    Absent => false
+    Present { value: r } => any(r.denied_principals, p => p == principal) && any(r.denied_permissions, x => x == permission)
+      && match gcp_tag_condition_verdict(c: iam_bootstrap_trust_root_tag_condition(), tags: account_tags(account: account)) {
+        GcpTagConditionHolds => true  GcpTagConditionFails => false  GcpTagConditionUndecided => false }
+  }
+}
+
+data set_policy: String = "iam.googleapis.com/serviceAccounts.setIamPolicy"
+
+test fn iam_bootstrap_set_iam_policy_on_a_tagged_trust_root_account_is_denied() -> Bool {
+  all([iam_converge_service_account, iam_observe_service_account, iam_bootstrap_service_account], a => wall_denies(principal: iam_bootstrap_delta_principal(), permission: set_policy, account: a))
+}
+
+test fn the_wall_leaves_target_accounts_and_other_principals_alone() -> Bool {
+  count(gcp_iam_converge_targets) > 0
+    && all(gcp_iam_converge_targets, t => !wall_denies(principal: iam_bootstrap_delta_principal(), permission: set_policy, account: t.service_account))
+    && !wall_denies(principal: "principal://iam.googleapis.com/someone-else", permission: set_policy, account: iam_converge_service_account)
+}
+
+test fn the_tagged_population_is_exactly_the_three_own_trust_accounts() -> Bool {
+  let tagged = map(iam_bootstrap_trust_root_tagged_accounts(), a => a as String)
+  count(tagged) == 3 && all([iam_converge_service_account, iam_observe_service_account, iam_bootstrap_service_account], a => any(tagged, x => x == (a as String)))
+    && !any(gcp_iam_converge_targets, t => any(tagged, x => x == (t.service_account as String)))
+}
+
+test fn the_wall_is_its_own_deny_policy_with_the_rendered_tag_condition() -> Bool {
+  any(iam_bootstrap_deny_policies(), d => (d.policy_id as String) == (iam_bootstrap_trust_root_wall_policy_id as String) && count(d.rules) == 1)
+    && gcp_tag_condition_expression(c: iam_bootstrap_trust_root_tag_condition()) == "resource.matchTag('gunbai-secrets/gunbc-trust-root', 'root')"
+}
+
+test fn the_tags_exist_before_the_deny_that_names_them() -> Bool {
+  !iam_bootstrap_stage_admitted(stage: BootstrapDeny, completed: [BootstrapIdentities])
+    && iam_bootstrap_stage_admitted(stage: BootstrapDeny, completed: [BootstrapIdentities, BootstrapTrustRootTags])
+}
