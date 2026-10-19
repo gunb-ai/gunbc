@@ -1,0 +1,117 @@
+module gunbc.claim_coverage_census
+
+import std.types { String, Bool, List, Int }
+import extdeps.languages.json.emit { serialize_json_string }
+
+// FOR EVERY CLAIM A SOURCE ENROLS, DOES A REQUIRED JOB EXECUTE IT?
+//
+// A roster that names a claim is not an executor of it. `v2.workflow.local_repo_wet_terminal`
+// `local_repo_wet_schedule` enrolls its claims as ExpectedToHold and its only executor was the
+// `floor` lane that gunbc.rung_drop v1_required_lanes_withdrawn deleted, so the enrollment kept
+// reading as coverage while nothing ran it. gunbc.required_lane_resolution_census answers the
+// neighbouring question at MODULE grain (does a lane resolve the module); it cannot say a claim
+// runs, and no enumerated population said so at claim grain. This module is the fold that does.
+//
+// ONE INSTRUMENT, GENERIC OVER CLAIM SOURCES (manager ruling 2026-10-19, Charter 4): a further
+// source of enrolled claims is a ClaimSource row in gunbc.claim_coverage_census_live, never another
+// instrument.
+//
+// EXECUTION IS A DERIVED RELATION, NOT AN AUTHORED LIST OF COVERED IDENTITIES. A required job
+// declares the claim subjects its steps execute (ExecutesScheduleOf names a source whose executor
+// the job runs; ExecutesNoClaims names what the job does instead). An identity is covered exactly
+// when some required job executes its source, and the source's own completeness join
+// (`local_repo_wet_join`) is what makes that statement hold at identity grain. A source no job
+// executes is uncovered by identity; the count is the length of a list the receipt also prints.
+//
+// The fold is pure over supplied populations so its claims discriminate at one interface; the live
+// entry supplies the sources from their real producers.
+
+type ClaimSource {
+  source_id: String
+  enrolled: List<String>
+  // The gunbc.rung_drop identity that declares this source's non-execution, or the empty string
+  // when none does. An uncovered identity with no declaring drop is UNDECLARED and is named so.
+  declaring_drop: String
+}
+
+type ClaimExecutorSubject
+  = ExecutesScheduleOf { source_id: String }
+  | ExecutesNoClaims { reason: String }
+
+type ClaimExecutorRow {
+  job_id: String
+  subjects: List<ClaimExecutorSubject>
+}
+
+type ClaimCoverageInputs {
+  sources: List<ClaimSource>
+  jobs: List<ClaimExecutorRow>
+}
+
+type UncoveredClaim {
+  source_id: String
+  identity: String
+  declaring_drop: String
+}
+
+type ClaimCoverage {
+  enrolled: List<String>
+  covered: List<String>
+  uncovered: List<UncoveredClaim>
+}
+
+type ClaimCoverageStanding
+  = ClaimCoverageHeld
+  | ClaimCoverageDidNotHold { uncovered: List<UncoveredClaim> }
+
+fn executes_source(s: ClaimExecutorSubject, source_id: String) -> Bool {
+  match s {
+    ExecutesScheduleOf { source_id: id } => id == source_id
+    ExecutesNoClaims { reason: _ } => false
+  }
+}
+
+fn job_executes_source(row: ClaimExecutorRow, source_id: String) -> Bool {
+  row.subjects |> filter(s => executes_source(s: s, source_id: source_id)) |> count > 0
+}
+
+fn source_is_executed(inputs: ClaimCoverageInputs, source_id: String) -> Bool {
+  inputs.jobs |> filter(j => job_executes_source(row: j, source_id: source_id)) |> count > 0
+}
+
+fn claim_coverage(inputs: ClaimCoverageInputs) -> ClaimCoverage {
+  let enrolled = inputs.sources |> fold(init: [], f: fn(acc, s) { concat(acc, s.enrolled) })
+  let covered = inputs.sources
+    |> filter(s => source_is_executed(inputs: inputs, source_id: s.source_id))
+    |> fold(init: [], f: fn(acc, s) { concat(acc, s.enrolled) })
+  let uncovered = inputs.sources
+    |> filter(s => !source_is_executed(inputs: inputs, source_id: s.source_id))
+    |> fold(init: [], f: fn(acc, s) {
+      concat(acc, s.enrolled |> map(i => UncoveredClaim { source_id: s.source_id, identity: i, declaring_drop: s.declaring_drop }))
+    })
+  ClaimCoverage { enrolled: enrolled, covered: covered, uncovered: uncovered }
+}
+
+fn claim_coverage_standing(c: ClaimCoverage) -> ClaimCoverageStanding {
+  if (c.uncovered |> count) == 0 { ClaimCoverageHeld {} } else { ClaimCoverageDidNotHold { uncovered: c.uncovered } }
+}
+
+fn undeclared(c: ClaimCoverage) -> List<UncoveredClaim> {
+  c.uncovered |> filter(u => u.declaring_drop == "")
+}
+
+// THE RECEIPT: one JSON object per line. A summary whose counts are lengths of lists printed
+// beneath it, and one `uncovered` line per identity so the population is greppable by identity.
+fn claim_coverage_receipt_lines(c: ClaimCoverage) -> List<String> {
+  let summary = concat(concat(concat(concat(
+    "{\"kind\":\"summary\",\"instrument\":\"claim-coverage-census\",\"enrolled\":", to_string(c.enrolled |> count)),
+    concat(",\"covered\":", to_string(c.covered |> count))),
+    concat(",\"uncovered\":", to_string(c.uncovered |> count))),
+    concat(",\"undeclared\":", concat(to_string(undeclared(c: c) |> count), "}")))
+  let lines = c.uncovered |> map(u =>
+    concat(concat(concat(concat(concat(
+      "{\"kind\":\"uncovered\",\"source\":", serialize_json_string(s: u.source_id)),
+      ",\"identity\":"), serialize_json_string(s: u.identity)),
+      ",\"declaring_drop\":"), concat(serialize_json_string(s: u.declaring_drop), "}")))
+  concat([summary], lines)
+}
