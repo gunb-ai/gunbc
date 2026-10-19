@@ -11,7 +11,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected, bind_outcome }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.node { Node, NodeFold, Symbol, fold_node, symbol_eq }
@@ -297,4 +297,66 @@ test fn list_introduction_eval_reason_runtime_binding_lookup_miss() -> Bool {
 
 test fn list_introduction_eval_reason_infer_facts_lookup_miss() -> Bool {
   list_introduction_eval_reason_is(wanted: ^infer_facts_lookup_miss)
+}
+
+// WHICH NODE MISSES: the list itself, or something the walk reached under it.
+fn list_introduction_eval_locus(source: String) -> Optional<Node> {
+  match bind_outcome(
+    o: assemble_program_from_ingest_located(
+      ingest: list_introduction_eval_ingest(probe: source),
+      admission: Admission {
+        subject: ResolutionSubject { name: Cons { head: ^list_introduction_eval_probe, tail: Empty } },
+        imports: Empty
+      },
+      lm: dag_language_model()
+    ).program,
+    f: fn(p) { infer(tree: p) }
+  ) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: inferred, diagnostics: _ } =>
+      match list_introduction_eval_first_list(n: inferred.root) {
+        Absent => optional_absent()
+        Present { value: list } =>
+          match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: list)) {
+            Accepted { value: _, diagnostics: _ } => optional_absent()
+            Rejected { diagnostics: ds } =>
+              match ds.head.at {
+                NodeLocus { anchor: a } => if a.at == list { optional_present(value: list) } else { optional_absent() }
+                _ => optional_absent()
+              }
+          }
+      }
+  }
+}
+
+test fn list_introduction_eval_locus_is_the_list() -> Bool {
+  match list_introduction_eval_locus(source: list_introduction_eval_forward_source) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn list_introduction_eval_facts_hold_the_list() -> Bool {
+  match bind_outcome(
+    o: assemble_program_from_ingest_located(
+      ingest: list_introduction_eval_ingest(probe: list_introduction_eval_forward_source),
+      admission: Admission {
+        subject: ResolutionSubject { name: Cons { head: ^list_introduction_eval_probe, tail: Empty } },
+        imports: Empty
+      },
+      lm: dag_language_model()
+    ).program,
+    f: fn(p) { infer(tree: p) }
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match list_introduction_eval_first_list(n: inferred.root) {
+        Absent => false
+        Present { value: list } =>
+          match inferred.facts.lookup(list) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
 }
