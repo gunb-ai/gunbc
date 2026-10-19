@@ -95,10 +95,22 @@ for r in "${SELECT[@]}"; do
   rrc=$?
   t1=$(date +%s)
   cat "$rowlog" >> "$LOG"
-  if   grep -qE "^test .*${r} \.\.\. ok$"     "$rowlog"; then echo "ROW $LABEL $r PASS rc=$rrc elapsed=$((t1-t0))s"
-  elif grep -qE "^test .*${r} \.\.\. FAILED$" "$rowlog"; then echo "ROW $LABEL $r FAIL rc=$rrc elapsed=$((t1-t0))s"
-  elif [ "$rrc" = 124 ]; then echo "ROW $LABEL $r TIMEOUT_FATAL rc=124 after ${ROW_TIMEOUT}s elapsed=$((t1-t0))s"
-  else echo "ROW $LABEL $r MISSING_FATAL rc=$rrc elapsed=$((t1-t0))s"; fi
+  # WHICH LINE DECIDES THE VERDICT. --nocapture interleaves the harness's own prints with the
+  # test's, which splits `test NAME ... ok` away from its result on the next line, so matching
+  # that single line reports MISSING_FATAL rc=0 on a run that passed. For a one-test --exact
+  # invocation the summary line cannot be ambiguous: `1 passed; 0 failed` is the row passing,
+  # any non-zero failed count is the row failing, and `0 passed; 0 failed` means the filter
+  # matched nothing -- which is the only case that is genuinely MISSING.
+  res=$(grep -E "^test result:" "$rowlog" | tail -1)
+  passed=$(echo "$res" | sed -n "s/.*test result: [a-zA-Z]*\. \([0-9]*\) passed.*/\1/p")
+  failed=$(echo "$res" | sed -n "s/.*; \([0-9]*\) failed.*/\1/p")
+  [ -z "$passed" ] && passed=-1
+  [ -z "$failed" ] && failed=-1
+  if   [ "$rrc" = 124 ]; then echo "ROW $LABEL $r TIMEOUT_FATAL rc=124 after ${ROW_TIMEOUT}s elapsed=$((t1-t0))s"
+  elif [ "$failed" != -1 ] && [ "$failed" -gt 0 ]; then echo "ROW $LABEL $r FAIL rc=$rrc elapsed=$((t1-t0))s"
+  elif [ "$passed" != -1 ] && [ "$passed" -ge 1 ]; then echo "ROW $LABEL $r PASS rc=$rrc elapsed=$((t1-t0))s"
+  elif [ "$passed" = 0 ] && [ "$failed" = 0 ]; then echo "ROW $LABEL $r MISSING_FATAL rc=$rrc filter matched nothing elapsed=$((t1-t0))s"
+  else echo "ROW $LABEL $r NO_SUMMARY rc=$rrc elapsed=$((t1-t0))s"; fi
 done
 grep -E "^test result:" "$LOG" | sed "s/^/SUMMARY $LABEL /"
 grep -E "^error(\[|:)" "$LOG" | head -8 | sed 's/^/COMPILE_ERROR /'
