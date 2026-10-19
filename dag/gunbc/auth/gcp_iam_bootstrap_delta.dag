@@ -11,11 +11,12 @@ import extdeps.cloud.gcp.errors {
 import extdeps.transports.rest { RestRefusal, RestAnswered, RestRefused }
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.storage
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
 import gunbc.auth.heal_publisher_provision { outcome_is_not_found, outcome_is_forbidden, rest_refusal_text }
 import gunbc.auth.gcp_iam_converge { same_key_set }
 import gunbc.auth.gcp_iam_bootstrap_model {
-  IamBootstrapRole, BootstrapObservePool, BootstrapObserveAccount, BootstrapObserveSecret, iam_bootstrap_role_permissions,
+  IamBootstrapRole, BootstrapObservePool, BootstrapObserveAccount, BootstrapObserveSecret, BootstrapObserveBucket, BootstrapBucket, iam_bootstrap_role_permissions,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_capability_bindings, iam_bootstrap_resource_key, delta_owned,
 }
@@ -47,6 +48,7 @@ fn observer_role_for(subject: IamBootstrapResource) -> IamBootstrapRole? {
     BootstrapPool { pool: _ } => Present { value: BootstrapObservePool }
     BootstrapAccount { account: _ } => Present { value: BootstrapObserveAccount }
     BootstrapSecret { secret: _ } => Present { value: BootstrapObserveSecret }
+    BootstrapBucket { bucket: _ } => Present { value: BootstrapObserveBucket }
   }
 }
 
@@ -234,6 +236,11 @@ fn observe_bootstrap_subject(subject: IamBootstrapResource, token: Secret) -> Bo
       }
     BootstrapSecret { secret } =>
       match gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: secret) {
+        RestAnswered { answer: r } => SubjectPolicyRead { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
+        RestRefused { refusal } => subject_reading_of_refusal(refusal: refusal)
+      }
+    BootstrapBucket { bucket } =>
+      match gcp.Storage.GetBucketIamPolicy(access_token: token, bucket: bucket) {
         RestAnswered { answer: r } => SubjectPolicyRead { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
         RestRefused { refusal } => subject_reading_of_refusal(refusal: refusal)
       }

@@ -8,6 +8,7 @@ import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, gcp_iam_converge_
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapResource, BootstrapPool, IamBootstrapBinding,
   iam_bootstrap_delta_bindings_over, iam_bootstrap_ceremony_identity_population_over, iam_bootstrap_resource_key,
+  BootstrapBucket, iam_bootstrap_journal_bucket, iam_bootstrap_journal_cells, iam_bootstrap_capability_bindings_over, delta_owned, iam_bootstrap_delta_role_withholds_its_boundary,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta {
   BootstrapSubjectReading, SubjectPolicyRead, SubjectPolicyUnpublished, SubjectUnreadable,
@@ -15,12 +16,13 @@ import gunbc.auth.gcp_iam_bootstrap_delta {
   pool_policy_reading, roster_subjects, subject_cells,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route {
-  SubjectWriteRoute, FencedAdditionOnly, FirstPublicationAdmitted, subject_write_route,
+  SubjectWriteRoute, FencedAdditionOnly, FirstPublicationAdmitted, subject_write_route, RootCeremonyCellsMissing, bootstrap_delta_requestable,
   BootstrapDeltaRequestBody, bootstrap_delta_preimage,
 }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation }
+import gunbc.auth.gcp_iam_bootstrap_journal { JournalMark, JournalElection, JournalClosure, JournalPoolFirstPublication, journal_object_name }
 import gunbc.auth.gcp_iam_bootstrap {
-  iam_bootstrap_pool_seedable, PoolInitDecision, PoolInitNothing, PoolInitCloseJournal, PoolInitPublish, PoolInitRefused, pool_initialization_decision,
+  iam_bootstrap_pool_seedable, PoolJournalStanding, PoolJournalRead, PoolJournalUnreadable, pool_journal_standing, PoolInitDecision, PoolInitNothing, PoolInitCloseJournal, PoolInitPublish, PoolInitRefused, pool_initialization_decision,
   PoolInitReadback, PoolInitReadbackExact, PoolInitReadbackRefused, pool_initialization_readback,
 }
 
@@ -155,4 +157,40 @@ test fn the_ceremony_identities_population_does_not_move_when_targets_widen() ->
   count(gcp_iam_converge_targets) > 0 && count(narrow) == 3
     && count(wide) == count(narrow) && all(wide, x => any(narrow, y => y == x))
     && !any(gcp_iam_converge_targets, t => any(wide, x => x == (t.pool_id as String)))
+}
+
+// ── BLOCKER 2: THE DURABLE JOURNAL (operator ruling A, 2026-10-19) ─────────────────────────────
+// Through the pure half: a durable "elected, unresolved" record with an empty checkout refuses reissue;
+// no record admits the election and the publication; a closed election settles. The checkout is not an
+// input: the standing is a function of the journal's listed names only.
+fn pool_names(pool: IamBootstrapResource, consent: String, marks: List<JournalMark>) -> List<String> {
+  map(marks, m => journal_object_name(subject: JournalPoolFirstPublication, resource_key: iam_bootstrap_resource_key(resource: pool), consent: consent, mark: m) as String)
+}
+
+fn decision_over(pool: IamBootstrapResource, names: List<String>) -> PoolInitDecision {
+  match pool_journal_standing(pool_key: iam_bootstrap_resource_key(resource: pool), names: names) {
+    PoolJournalUnreadable { cause: c } => PoolInitRefused { reason: c as String }
+    PoolJournalRead { elected, closed, unresolved: _ } => pool_initialization_decision(elected: elected, closed: closed, observed: Absent, seedable: true, cells: approved_cells(p: pool))
+  }
+}
+
+test fn a_durable_unresolved_election_refuses_reissue_from_an_empty_checkout() -> Bool {
+  count(target_pools()) > 0 && all(target_pools(), p =>
+    !publishes(d: decision_over(pool: p, names: pool_names(pool: p, consent: "digest-a", marks: [JournalElection])))
+      && !publishes(d: decision_over(pool: p, names: pool_names(pool: p, consent: "digest-a", marks: [JournalElection]) + pool_names(pool: p, consent: "digest-b", marks: [JournalElection, JournalClosure])))
+      && publishes(d: decision_over(pool: p, names: []))
+      && !publishes(d: decision_over(pool: p, names: pool_names(pool: p, consent: "digest-a", marks: [JournalClosure]))))
+}
+
+// THE JOURNAL'S AUTHORITY IS THE DECLARED BUCKET, AND ITS CELLS ARE ROOT CELLS: iam-bootstrap may create,
+// get and list objects on that bucket only, the cell is the root ceremony's (so a delta reaching it
+// refuses as RootCeremonyCellsMissing), and no journal permission is one the boundary denies.
+test fn the_journal_is_the_declared_bucket_and_its_cells_are_root_cells() -> Bool {
+  let cells = iam_bootstrap_journal_cells()
+  let all_cells = iam_bootstrap_capability_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+  count(cells) == 2
+    && all(cells, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapBucket { bucket: iam_bootstrap_journal_bucket })
+      && !delta_owned(b: b) && any(all_cells, x => iam_bootstrap_resource_key(resource: x.resource) == iam_bootstrap_resource_key(resource: b.resource) && x.cell.role == b.cell.role && x.cell.member == b.cell.member))
+    && (match bootstrap_delta_requestable(subjects: [SubjectNotBootstrapped { subject: BootstrapBucket { bucket: iam_bootstrap_journal_bucket }, standing: SubjectUnbound, missing: cells }]) { RootCeremonyCellsMissing { cells: rs } => count(rs) == 2  _ => false })
+    && iam_bootstrap_delta_role_withholds_its_boundary()
 }

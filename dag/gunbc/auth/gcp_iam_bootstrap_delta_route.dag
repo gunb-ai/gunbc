@@ -19,7 +19,6 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
 import gunbc.auth.gcp_operation_wait { OperationWaitOutcome, OperationWaitDone, operation_wait_refusal, wif_create_operation_outcome }
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, rest_refusal_text, outcome_is_not_found }
-import gunbc.secret_provision_actuator { create_secret_container, SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown }
 import gunbc.auth.gcp_iam_converge {
   iam_converge_service_account, iam_observe_service_account, gcp_iam_observe_dedicated_federation, cell_preimage,
   PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable,
@@ -30,7 +29,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_identity_federations, iam_bootstrap_cell_owner, BootstrapCellOwner, RootCeremonyOwned, DeltaOwned,
 }
-import gunbc.auth.gcp_iam_bootstrap { iam_bootstrap_read_policy, iam_bootstrap_write_policy, BootstrapPolicyWritten, BootstrapPolicyWriteRefused, iam_bootstrap_publish_initial_pool_policy, PoolInitApprovedDelta, PoolPublication, PoolPublicationSettled, PoolPublicationRefused }
+import gunbc.auth.gcp_iam_bootstrap { iam_bootstrap_read_policy, iam_bootstrap_write_policy, BootstrapPolicyWritten, BootstrapPolicyWriteRefused, iam_bootstrap_publish_initial_pool_policy, iam_bootstrap_ensure_bare_secret, BareSecretOutcome, BareSecretSettled, BareSecretRefused, PoolInitApprovedDelta, PoolPublication, PoolPublicationSettled, PoolPublicationRefused }
 import gunbc.auth.gcp_iam_bootstrap_delta {
   SubjectNotBootstrapped, BootstrapSubjectStanding, SubjectUnbound, SubjectUnpublished, SubjectAbsent, SubjectAbsentOrUnboundCannotTell, subject_not_bootstrapped_text,
 }
@@ -128,6 +127,7 @@ fn subject_write_route(s: SubjectNotBootstrapped) -> SubjectWriteRoute {
     BootstrapProject => FencedAdditionOnly
     BootstrapAccount { account: _ } => FencedAdditionOnly
     BootstrapSecret { secret: _ } => FencedAdditionOnly
+    BootstrapBucket { bucket: _ } => FencedAdditionOnly
   }
 }
 
@@ -243,6 +243,7 @@ fn federation_for(s: IamBootstrapResource) -> DedicatedFederation? {
     BootstrapPool { pool } => (f.pool_id as String) == (pool as String)
     BootstrapProject => false
     BootstrapSecret { secret: _ } => false
+    BootstrapBucket { bucket: _ } => false
   }).first()
 }
 
@@ -292,16 +293,15 @@ fn operation_step(o: OperationWaitOutcome) -> SubjectStep {
 // iam-bootstrap reads its parent, so here a NOT_FOUND IS absence (google.aip.dev/211); a subject
 // still absent is created bare -- a secret with no version, an account with no key, a pool with no
 // provider -- and anything else stops before a policy is written.
-fn settle_existence(s: IamBootstrapResource, token: Secret) -> SubjectStep {
+fn settle_existence(s: IamBootstrapResource, digest: String, token: Secret) -> SubjectStep {
   match iam_bootstrap_read_policy(resource: s, token: token) {
     PolicyObserved { policy: _ } => SubjectStepDone
     PolicyUnreadable { cause } => step_refused(reason: concat("unreadable to iam-bootstrap: ", cause))
     PolicyResourceAbsent => match s {
       BootstrapProject => step_refused(reason: "the project is absent")
-      BootstrapSecret { secret } => match create_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token) {
-        SecretContainerCreated { container: _ } => SubjectStepDone
-        SecretContainerCreationRefused { cause } => step_refused(reason: concat("bare create refused: ", cause as String))
-        SecretContainerCreationOutcomeUnknown { cause } => step_refused(reason: concat("bare create outcome unknown; nothing bound: ", cause as String))
+      BootstrapSecret { secret } => match iam_bootstrap_ensure_bare_secret(secret: secret, operation: digest, token: token) {
+        BareSecretSettled => SubjectStepDone
+        BareSecretRefused { reason } => step_refused(reason: reason as String)
       }
       BootstrapAccount { account: _ } => match federation_for(s: s) {
         Absent => step_refused(reason: "the account is not one the roster declares")
@@ -310,6 +310,7 @@ fn settle_existence(s: IamBootstrapResource, token: Secret) -> SubjectStep {
           RestRefused { refusal } => created_or_present(o: refusal, what: f.service_account as String)
         }
       }
+      BootstrapBucket { bucket: _ } => step_refused(reason: "the journal bucket is the root ceremony's to create (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply)")
       BootstrapPool { pool: _ } => match federation_for(s: s) {
         Absent => step_refused(reason: "the pool is not one the roster declares")
         Present { value: f } => match gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, display_name: f.pool_display_name) {
@@ -332,6 +333,7 @@ fn first_publication(s: SubjectNotBootstrapped, approved: List<GcpIamBindingCell
       BootstrapProject => SubjectStepDone
       BootstrapAccount { account: _ } => SubjectStepDone
       BootstrapSecret { secret: _ } => SubjectStepDone
+      BootstrapBucket { bucket: _ } => SubjectStepDone
     }
   }
 }
@@ -355,7 +357,7 @@ fn fenced_cells_step(s: SubjectNotBootstrapped, approved: List<GcpIamBindingCell
 fn apply_subject(s: SubjectNotBootstrapped, digest: String, token: Secret) -> SubjectApplyOutcome {
   let key = iam_bootstrap_resource_key(resource: s.subject)
   let approved = map(s.missing, b => b.cell)
-  let settled = if needs_existence_settled(s: s.standing) { settle_existence(s: s.subject, token: token) } else { SubjectStepDone }
+  let settled = if needs_existence_settled(s: s.standing) { settle_existence(s: s.subject, digest: digest, token: token) } else { SubjectStepDone }
   match settled {
     SubjectStepRefused { reason } => SubjectApplyRefused { key: key, reason: reason }
     SubjectStepDone => match first_publication(s: s, approved: approved, digest: digest, token: token) {

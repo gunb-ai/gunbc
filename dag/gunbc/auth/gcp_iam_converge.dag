@@ -161,6 +161,8 @@ data iam_observe_role_permissions: List<String> = [
   "iam.serviceAccounts.getIamPolicy",
   "secretmanager.secrets.get",
   "secretmanager.secrets.getIamPolicy",
+  "storage.buckets.get",
+  "storage.buckets.getIamPolicy",
 ]
 
 // 2. A DENY POLICY on the project for iam-converge, which is what makes "grant but never read"

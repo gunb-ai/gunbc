@@ -21,9 +21,9 @@ import gunbc.auth.gcp_iam_bootstrap_federation {
 }
 
 // Bootstrap owns the job's trust. Ongoing iam-converge never receives authority over these subjects.
-type IamBootstrapRole = BootstrapApplyRole { role: IamConvergeRole } | BootstrapObservePool | BootstrapObserveAccount | BootstrapObserveSecret | BootstrapProbeToken | BootstrapDeltaRole
+type IamBootstrapRole = BootstrapApplyRole { role: IamConvergeRole } | BootstrapObservePool | BootstrapObserveAccount | BootstrapObserveSecret | BootstrapProbeToken | BootstrapDeltaRole | BootstrapJournalRole | BootstrapObserveBucket
 
-type IamBootstrapResource = BootstrapProject | BootstrapPool { pool: NonEmptyStr } | BootstrapAccount { account: ServiceAccountEmail } | BootstrapSecret { secret: NonEmptyStr }
+type IamBootstrapResource = BootstrapProject | BootstrapPool { pool: NonEmptyStr } | BootstrapAccount { account: ServiceAccountEmail } | BootstrapSecret { secret: NonEmptyStr } | BootstrapBucket { bucket: NonEmptyStr }
 
 type IamBootstrapBinding { resource: IamBootstrapResource, cell: GcpIamBindingCell }
 
@@ -31,6 +31,7 @@ data iam_bootstrap_roles: List<IamBootstrapRole> = [
   BootstrapApplyRole { role: ConvergeCreateRole }, BootstrapApplyRole { role: ConvergeProviderRole },
   BootstrapApplyRole { role: ConvergeAccountPolicyRole }, BootstrapApplyRole { role: ConvergeSecretPolicyRole },
   BootstrapObservePool, BootstrapObserveAccount, BootstrapObserveSecret, BootstrapProbeToken, BootstrapDeltaRole,
+  BootstrapJournalRole, BootstrapObserveBucket,
 ]
 
 fn iam_bootstrap_project_role_name(role_id: String) -> NonEmptyStr {
@@ -45,6 +46,8 @@ fn iam_bootstrap_role_name(role: IamBootstrapRole) -> NonEmptyStr {
     BootstrapObserveSecret => iam_bootstrap_project_role_name(role_id: "gunbcIamObserveSecret")
     BootstrapProbeToken => iam_bootstrap_project_role_name(role_id: "gunbcIamBootstrapProbeToken")
     BootstrapDeltaRole => iam_bootstrap_project_role_name(role_id: "gunbcIamBootstrapDelta")
+    BootstrapJournalRole => iam_bootstrap_project_role_name(role_id: "gunbcIamBootstrapJournal")
+    BootstrapObserveBucket => iam_bootstrap_project_role_name(role_id: "gunbcIamObserveBucket")
   }
 }
 
@@ -62,6 +65,8 @@ fn iam_bootstrap_role_permissions(role: IamBootstrapRole) -> List<String> {
     BootstrapObserveSecret => filter(iam_observe_role_permissions, p => starts_with(s: p, prefix: "secretmanager."))
     BootstrapProbeToken => ["iam.serviceAccounts.getAccessToken"]
     BootstrapDeltaRole => iam_bootstrap_delta_role_permissions
+    BootstrapJournalRole => iam_bootstrap_journal_role_permissions
+    BootstrapObserveBucket => filter(iam_observe_role_permissions, p => starts_with(s: p, prefix: "storage.buckets"))
   }
 }
 
@@ -130,6 +135,7 @@ fn iam_bootstrap_resource_key(resource: IamBootstrapResource) -> String {
     BootstrapPool { pool } => join(["projects/", fleet_secrets_project_number, "/locations/global/workloadIdentityPools/", pool as String], "")
     BootstrapAccount { account } => join(["projects/", fleet_secrets_project_id as String, "/serviceAccounts/", account as String], "")
     BootstrapSecret { secret } => join(["projects/", fleet_secrets_project_number, "/secrets/", secret as String], "")
+    BootstrapBucket { bucket } => join(["projects/_/buckets/", bucket as String], "")
   }
 }
 
@@ -166,7 +172,7 @@ fn iam_bootstrap_capability_bindings_over(targets: List<DedicatedFederation>, gr
   let submission = flat_map(gcp_iam_observe_dedicated_federation().secret_grants, g => map(
     secret_access_desired_cells(member: federated_service_account_member(email: iam_observe_service_account), grant: g), c =>
     IamBootstrapBinding { resource: BootstrapSecret { secret: g.target.secret }, cell: c }))
-  distinct_by_key(xs: apply + observe + custody + submission, key: b => concat(iam_bootstrap_resource_key(resource: b.resource), cell_preimage(c: b.cell)))
+  distinct_by_key(xs: apply + observe + custody + submission + iam_bootstrap_journal_cells(), key: b => concat(iam_bootstrap_resource_key(resource: b.resource), cell_preimage(c: b.cell)))
 }
 
 // ── WHO OWNS A CELL: one relation, read by the ceremony, the delta and the route ──────────────
@@ -188,11 +194,12 @@ fn own_trust_resource(resource: IamBootstrapResource) -> Bool {
     BootstrapPool { pool } => any(own_trust_federations(), f => (f.pool_id as String) == (pool as String))
     BootstrapAccount { account } => any(own_trust_federations(), f => (f.service_account as String) == (account as String))
     BootstrapSecret { secret } => ceremony_trust_root_secret(secret: secret)
+    BootstrapBucket { bucket: _ } => true
   }
 }
 
 fn resource_secret_name(resource: IamBootstrapResource) -> String {
-  match resource { BootstrapSecret { secret } => secret as String  BootstrapProject => ""  BootstrapPool { pool: _ } => ""  BootstrapAccount { account: _ } => "" }
+  match resource { BootstrapSecret { secret } => secret as String  BootstrapProject => ""  BootstrapPool { pool: _ } => ""  BootstrapAccount { account: _ } => ""  BootstrapBucket { bucket: _ } => "" }
 }
 
 fn iam_bootstrap_cell_owner(b: IamBootstrapBinding) -> BootstrapCellOwner {
@@ -239,6 +246,7 @@ fn iam_bootstrap_delta_bindings() -> List<IamBootstrapBinding> {
 fn iam_bootstrap_root_secret_cells() -> List<TrustRootCell> {
   flat_map(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
     BootstrapSecret { secret } => [TrustRootCell { secret: secret, cell: b.cell, ceremony: IamBootstrapApply }]
+    BootstrapBucket { bucket: _ } => []
     BootstrapProject => []
     BootstrapPool { pool: _ } => []
     BootstrapAccount { account: _ } => []
@@ -249,12 +257,35 @@ fn secret_iam_root_cells() -> List<TrustRootCell> {
   ceremony_trust_root_cells() + iam_bootstrap_root_secret_cells()
 }
 
+// ── THE BOOTSTRAP JOURNAL'S BUCKET AND CELLS (operator ruling A, 2026-10-19) ──────────────────
+// One bucket of gunbai-secrets holds the create-once election and closure records
+// (gunbc.auth.gcp_iam_bootstrap_journal). The root ceremony creates it (uniform bucket-level access,
+// public access prevented) and binds two ROOT cells on it, read back like the others: iam-bootstrap may
+// create and read objects (the one cell operator ruling A admits), and iam-observe may read the bucket's
+// policy, so the delta sees whether the journal cell exists and refuses as RootCeremonyCellsMissing
+// until it does. Neither identity may delete or overwrite a record: objects.delete and objects.update
+// are in neither role, and create-once is the store's ifGenerationMatch=0.
+data iam_bootstrap_journal_bucket: NonEmptyStr = "gunbai-secrets-bootstrap-journal"
+data iam_bootstrap_journal_bucket_location: NonEmptyStr = "us-central1"
+
+// create and get, as ruled, plus list: a reader finds an unresolved election under ANY earlier consent by
+// listing the resource's marks (gunbc.auth.gcp_iam_bootstrap_journal journal_list), and list is read-only.
+data iam_bootstrap_journal_role_permissions: List<String> = ["storage.objects.create", "storage.objects.get", "storage.objects.list"]
+
+fn iam_bootstrap_journal_cells() -> List<IamBootstrapBinding> {
+  [
+    iam_bootstrap_binding(resource: BootstrapBucket { bucket: iam_bootstrap_journal_bucket }, role: BootstrapJournalRole, account: iam_bootstrap_service_account),
+    iam_bootstrap_binding(resource: BootstrapBucket { bucket: iam_bootstrap_journal_bucket }, role: BootstrapObserveBucket, account: iam_observe_service_account),
+  ]
+}
+
 // Every secret the ROOT CEREMONY binds a role on (the trust-root secrets it reads for iam-observe). The
 // identities stage creates each one bare when absent; a delta secret is created bare by the delta apply
 // (gunbc.auth.gcp_iam_bootstrap_delta_route settle_existence), never by the ceremony.
 fn iam_bootstrap_bound_secrets() -> List<NonEmptyStr> {
   distinct_by_key(xs: flat_map(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
     BootstrapSecret { secret } => [secret]
+    BootstrapBucket { bucket: _ } => []
     BootstrapProject => []
     BootstrapPool { pool: _ } => []
     BootstrapAccount { account: _ } => []
@@ -362,6 +393,12 @@ data iam_bootstrap_denied_permissions: List<String> = [
   "iam.googleapis.com/workloadIdentityPoolProviders.create",
   "iam.googleapis.com/workloadIdentityPoolProviders.update",
   "iam.googleapis.com/workloadIdentityPools.update",
+  "storage.googleapis.com/objects.delete",
+  "storage.googleapis.com/objects.update",
+  "storage.googleapis.com/objects.move",
+  "storage.googleapis.com/buckets.delete",
+  "storage.googleapis.com/buckets.update",
+  "storage.googleapis.com/buckets.setIamPolicy",
 ]
 
 // WITHHELD BUT NOT DENIABLE: deny policies and tag bindings do not appear on the deny-supported list
@@ -380,7 +417,7 @@ fn deny_permission_iam_spelling(p: String) -> String {
 
 fn iam_bootstrap_delta_role_withholds_its_boundary() -> Bool {
   let denied = map(iam_bootstrap_denied_permissions, p => deny_permission_iam_spelling(p: p))
-  !any(iam_bootstrap_delta_role_permissions, p => any(denied, d => d == p) || any(iam_bootstrap_withheld_undeniable_permissions, w => w == p))
+  !any(iam_bootstrap_delta_role_permissions + iam_bootstrap_journal_role_permissions, p => any(denied, d => d == p) || any(iam_bootstrap_withheld_undeniable_permissions, w => w == p))
 }
 
 // THE TRUST ROOTS ARE WALLED BY THE ROUTE'S REFUSAL TODAY (gunbc.auth.gcp_iam_bootstrap_delta_route
