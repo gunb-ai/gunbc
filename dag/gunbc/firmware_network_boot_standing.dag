@@ -40,6 +40,7 @@ import extdeps.bmc.types {
   NetworkBootTarget,
   NotNetworkBootTarget,
   redfish_boot_target_network_standing,
+  redfish_boot_target_wire,
   BootTargetNone,
   BootTargetPxe,
   BootTargetHdd,
@@ -529,8 +530,10 @@ type RouteBindingRefusal
   // THE SPELLINGS DISAGREE. The name may be perfectly real; what is missing is proof that it matches
   // what THIS unit reports. Both spellings travel on the arm -- the one the transcription was grounded
   // to and the one the unit reports -- because the refusal's whole value is that an operator can see
-  // which two readings disagree. The arm deliberately does not claim the name came from another board:
-  // equality here is over strings, and a mismatch is a mismatch whoever the other board was.
+  // which two readings disagree. Equality here is over two version SPELLINGS and nothing more: a
+  // mismatch is a mismatch, and the arm claims nothing about WHICH unit the other spelling came from
+  // -- no model, vendor, or board id is read anywhere on this path, and two units can share a version
+  // string, so neither agreement nor disagreement identifies a board.
   | RouteBindingStaleGrounding {
       mechanism: NonEmptyStr,
       grounded_for_bios_version: NonEmptyStr,
@@ -1194,25 +1197,29 @@ fn attribute_slot_refusal(
           match observed_bios_version {
             // A TRANSCRIPTION NOBODY CAN CURRENTLY VOUCH FOR. Without an observed version there is no
             // comparison to make, and 'we could not check' is not a reason to write to persistent
-            // firmware -- so this refuses as unresolved rather than falling through as unchecked. The
-            // fold that has no BIOS version yet (the Secure Boot arm, evaluated above the BIOS axis)
-            // arrives here, which is what makes it safe for it to pass an absence.
+            // firmware -- so this refuses as unresolved rather than falling through as unchecked. This
+            // arm is reached when the BIOS axis genuinely did not answer (BiosVersionUnobserved); the
+            // Secure Boot arm used to arrive here too, passing an absence on the claim that it sits
+            // above the BIOS axis -- that claim was false, the axis is a field of the same observation,
+            // and it now forwards the version it holds (see the SecureBootEnabled row). What remains
+            // here is the honest case: a read that was actually never taken.
             Absent =>
               Present {
                 value: BindingRefused {
                   refusal: RouteBindingUnresolvedRoute {
                     mechanism: mechanism,
-                    owed_read: "GET the BIOS version from THIS unit: the transcription states the version it was read against, and what is missing is the version this unit is CURRENTLY running -- without that second value the two can never be compared, so the name cannot be shown current (this is a comparison of spellings: agreeing spellings show the transcription is current for this unit only if the read that produced `observed` came from this board, which is the producer's obligation, not something this equality proves)",
+                    owed_read: "GET the BIOS version from THIS unit: the transcription states the version it was read against, and what is missing is the version this unit is CURRENTLY running -- without that second value the two can never be compared at all (the comparison is over SPELLINGS: agreeing strings establish only that the transcription claims the version the unit currently reports, which is everything this equality establishes and is not a proof that the name is fresh)",
                   },
                 },
               }
             // THE COMPARISON THAT KEEPS A STALE NAME FROM BEING PATCHED, stated at the rung it holds:
-            // an equality over two version SPELLINGS. Equal means the transcription and this unit's read
-            // say the same version; unequal means they do not -- and either way the write goes nowhere,
-            // so it does not get to go. This proves nothing about which BOARD the name came from: no
-            // model, vendor, or board id is read anywhere in this fold, and two boards can share a
-            // version string. What it does prove is enough for the purpose -- a name whose spelling
-            // matches the unit's current read is not a name from an older reading of that read.
+            // an equality over two version SPELLINGS. All it can establish is whether the two strings
+            // agree or disagree -- equal means the transcription and the current read say the same
+            // version, unequal means they do not -- and either way the write goes nowhere, so a name
+            // that cannot be shown to agree with the current read does not get to go. It proves
+            // NOTHING about freshness: nothing here shows the transcription is current, and nothing
+            // shows which BOARD either string came from -- no model, vendor, or board id is read
+            // anywhere in this fold, and two boards can share a version string.
             Present { value: seen } =>
               if read_against == seen {
                 Absent
@@ -1648,12 +1655,15 @@ type FirmwareNetworkBootRefusal
   // executor would have PATCHed it. Now the seam refuses and says which read resolves it -- which is
   // why shipping this seam before any per-firmware attribute read is safe rather than dangerous.
   | RouteBindingUnresolved { mechanism: NonEmptyStr, owed_read: NonEmptyStr }
-  // A NAME THAT IS REAL, FOR ANOTHER BOARD OR ANOTHER BIOS VERSION. A transcribed attribute name
-  // carries the version it was read against; when that is not the version observed on THIS unit the
-  // write is refused, because a rename in a BIOS update turns a stale transcription into a PATCH to
-  // a key that no longer exists -- and that is a persistent firmware write, not a read that fails
-  // harmlessly. The versions travel as typed fields so the comparison a machine must make is between
-  // fields, and no prose has to be kept in sync with them (DESIGN 5).
+  // A NAME THAT IS REAL, BUT GROUNDED TO ANOTHER BIOS VERSION. A transcribed attribute name
+  // carries the version it was read against; when that spelling is not the spelling observed on THIS
+  // unit the write is refused, because a rename in a BIOS update turns a stale transcription into a
+  // PATCH to a key that no longer exists -- and that is a persistent firmware write, not a read that
+  // fails harmlessly. What the comparison computes is an equality over two version SPELLINGS: it
+  // identifies a mismatch, not a board. No model, vendor or board id is read on this path, and two
+  // different boards can report the same version string, so this arm never claims to have recognised
+  // another unit's name. The versions travel as typed fields so the comparison a machine must make is
+  // between fields, and no prose has to be kept in sync with them (DESIGN 5).
   | RouteBindingStaleForUnit {
       mechanism: NonEmptyStr,
       grounded_for_bios_version: NonEmptyStr,
@@ -2202,12 +2212,16 @@ fn decide(
                     // THE VERSION IS IN HAND, SO IT IS CARRIED. An earlier revision passed `Absent`
                     // here, and the reason it gave -- that this arm runs above the BIOS axis and so has
                     // no version -- was simply false: `bios_version` is a field of the `observation`
-                    // already in scope at this line. The consequence was not a fail-open (the route for
-                    // this blocker is an unbound attribute slot, so the answer was a refusal either way)
-                    // but a lost read: a `SecureBoot` attribute transcription grounded to BIOS 1.08 on a
-                    // unit now reporting 2.00 was never compared, because the comparison's right-hand
-                    // side had been discarded, so every stale name looked merely unverifiable instead of
-                    // wrong. Carry the read; keep Absent only for axes that truly did not answer.
+                    // already in scope at this line. The consequence was NOT a fail-open and must not be
+                    // described as one: with `Absent` the binder refused the route as unresolved (an
+                    // unchecked name never reaches a write), so the behaviour was already fail-closed.
+                    // What the discarded read cost was a SHARPER REFUSAL and the information that goes
+                    // with it: a `SecureBoot` attribute transcription grounded to BIOS 1.08 on a unit
+                    // now reporting 2.00 arrived as 'unverifiable, go read the BIOS version' instead of
+                    // 'this name is grounded to 1.08 and this unit reports 2.00' -- the operator was
+                    // sent to make a read that had already been made, and the two spellings that
+                    // disagree were not carried for them to check. Carry the read; keep Absent only for
+                    // axes that truly did not answer.
                     //
                     // Absent is still the honest answer when the BIOS axis itself did not answer: an
                     // invented "" or "unknown" would be a fabricated observation of the worst kind, one
@@ -2428,12 +2442,14 @@ fn decide_absent(
         existence: existence,
         observed_bios_version: observed_bios_version,
       )
-    // THE TWO READS DISAGREE: usability says nothing usable, existence says something usable. From a
-    // single observation this arm is unreachable -- both folds classify with the same predicate and
-    // differ only on the flag, so Enabled existence forces usability Present (the arm above). Kept
-    // total rather than refused, and answered like the arm above because both readings of the
-    // disagreement end at the same next step: do NOT author firmware while an option exists; ask the
-    // binder, which will refuse what it cannot name and carry the owed read.
+    // THE ORDINARY CONFIGURED BOARD, ANSWERED THROUGH THIS ARM. An enabled disk head with an enabled
+    // PXE entry elsewhere in the enumeration reaches here, and the two reads AGREE: existence says
+    // Enabled and usability says Present (both folds use the same classifier and the same enabled
+    // flag, so Enabled existence and Present usability arrive together). Nothing is broken and
+    // nothing needs authoring -- the PXE option exists and is not what the order selects, which is
+    // `NetworkBootOptionNotSelected`: the operator points the head at it, or arms a one-shot. This is
+    // a normal arm, not an unreachable one; the fold matches `existence` directly, and every arm of
+    // that standing is answered, so the fold stays total on its own input type.
     NetworkOptionExistsEnabled { examined_count: _ } =>
       prepare(
         blocker: NetworkBootOptionNotSelected,
@@ -2646,11 +2662,16 @@ fn enumerated_options_or_empty(observation: FirmwareBootObservation) -> List<Boo
 // ONE PASS OVER THE ENUMERATION, NOT ONE PER OPTION (merry-fox-82, round 2 item 4; DESIGN.md §6).
 // The first version asked, for every option, 'does any other option carry your reference with a
 // different decision?' -- an inner `filter` per outer option, n^2 comparisons for a check that reads
-// each option once. Options are now BUCKETED BY REFERENCE with a map fold (insert O(1)), and only the
-// buckets with two or more readings are examined. The §6 obligation is stated where it can be checked
-// against a contract rather than against prose: `map_insert` is contracted `work: "1"` and
-// `sorted_map_keys` is contracted `work: "n * log(n)"`, so the pass is n + n log n with no
-// option-by-option scan anywhere in it.
+// each option once. Options are now BUCKETED BY REFERENCE with a map fold, and only the buckets with
+// two or more readings are examined. The §6 obligation is stated where it can be checked against a
+// contract rather than against prose -- the PRIMITIVES THIS PASS ACTUALLY CALLS, with their carrier
+// costs, not just one of them: `map_insert` (dag/std/primitives.dag) is contracted `work: "1"`;
+// `concat`, used to append into a bucket, is `work: "n + m"` with `carrier_cost: CarrierSensitive {
+// ephemeral_work: "n + m", persistent_work: "log(n + m)" }`, so on the ephemeral carrier a bucket
+// append costs the bucket's current length and the whole bucketing pass is quadratic in the
+// WORST-BUCKET size, linear when references are distinct as a Redfish enumeration makes them; and
+// `sorted_map_keys` is contracted `work: "n * log(n)"`. No option-by-option scan remains anywhere in
+// the fold.
 //
 // THE BUCKET KEYS ARE VISITED IN SORTED ORDER because the receipt names a specific pair, and a receipt
 // whose content moved when the BMC reordered its enumeration is the order-dependence this fold exists
@@ -2707,16 +2728,22 @@ fn conflict_within_bucket(
   match readings {
     Empty => Absent
     Cons { head: first, tail: _ } =>
-      // THE TWIN IS THE FIRST DISAGREEING READING IN BUCKET ORDER, and the bucket order is the
-      // enumeration order under a key that never changes -- so both claims, 'which pair' and
-      // 'first means first', are pinned without an inner scan.
+      // THE TWIN IS THE FIRST READING IN BUCKET ORDER THAT DISAGREES WITH THE BUCKET'S FIRST ENTRY.
+      // For the two-reading buckets the controls below use, that is the whole bucket and 'first'
+      // means first; for a bucket of three or more mutually distinct readings, which reading becomes
+      // the twin follows the BMC's enumeration order, and the comment on the receipt below is scoped
+      // to that, rather than claiming a physical fact the fold does not compute.
       match first_disagreeing(other_than: first, in_: readings) {
         Absent => Absent
         Present { value: twin } =>
-          // THE ORDER IS CANONICAL, NOT THE INPUT'S: the pair is ranked by
-          // ordered_reading_pair, so the same physical disagreement reported in either enumeration
-          // order yields byte-identical receipts. A twin exists precisely because the readings
-          // differ, so the ranking never collapses them into one.
+          // WHICH PAIR IS THE FIRST DISAGREEING ONE IN BUCKET ORDER -- enumeration-dependent when a
+          // bucket holds three or more mutually distinct readings ([Pxe,Hdd,Cd] twin's Hdd, [Pxe,Cd,Hdd]
+          // twin's Cd). WHAT IS CANONICAL IS THE ORDER WITHIN THE REPORTED PAIR: ordered_reading_pair
+          // ranks the two it is handed, so the SAME pair yields byte-identical receipts whichever way
+          // the BMC listed the enumeration, and the two-ordering controls below pin exactly that, for
+          // buckets of two readings. Which twin a three-reading bucket reports is a property of the
+          // BMC's order, not of the physical machine, and the receipt does not claim otherwise: the
+          // refusal is keyed by the reference, which every reading in the bucket shares.
           match ordered_reading_pair(
             a: option_reading(option: first),
             b: option_reading(option: twin),
@@ -2734,13 +2761,14 @@ fn conflict_within_bucket(
   }
 }
 
-// THE ONE PLACE THAT DECIDES WHICH READING PRINTS FIRST, returning the pair in that order. The
-// receipt's order is a CLAIM, not an accident: the same physical disagreement must yield the same
-// receipt whichever way the BMC listed its enumeration, and that is only true if the order is a
-// function of the readings alone. Rank is by decision-bearing kind first (network readings sort
-// ahead, because the operator's question in this module is always 'where is the network path'), then
-// by the enabled flag (enabled first: the actionable disagreement is usually 'the same entry reported
-// both available and unavailable'), then by target name as a tiebreak.
+// THE ONE PLACE THAT DECIDES WHICH OF THE TWO READINGS IT IS HANDED PRINTS FIRST, returning the pair
+// in that order. The claim is over a PAIR and is a function of those two readings alone: the same
+// disagreement, listed either way round by the BMC, yields the same receipt. Which PAIR a bucket of
+// three or more mutually distinct readings contributes is decided upstream, in bucket order, and is
+// not this function's claim. Rank is by decision-bearing kind first (network readings sort ahead,
+// because the operator's question in this module is always 'where is the network path'), then by the
+// enabled flag (enabled first: the actionable disagreement is usually 'the same entry reported both
+// available and unavailable'), then by target name as a tiebreak.
 fn ordered_reading_pair(a: ReferenceReading, b: ReferenceReading) -> OrderedReferenceReadings {
   match reading_precedes(candidate: a, other: b) {
     true => OrderedReferenceReadings { first: a, second: b }
@@ -2756,7 +2784,11 @@ fn ordered_reading_pair(a: ReferenceReading, b: ReferenceReading) -> OrderedRefe
 }
 
 fn tie_broken_by_name(a: ReferenceReading, b: ReferenceReading) -> OrderedReferenceReadings {
-  if rank_label(reading: a) <= rank_label(reading: b) {
+  // THE TIEBREAK LABEL IS THE UPSTREAM WIRE SPELLING, not a local restatement of it (review 82728):
+  // extdeps.bmc.types owns how each target is spelled on the wire, and a second match here could
+  // drift from it without changing any behaviour the fold performs -- exactly the kind of private
+  // restatement DESIGN 3 refuses.
+  if redfish_boot_target_wire(t: a.target) <= redfish_boot_target_wire(t: b.target) {
     OrderedReferenceReadings { first: a, second: b }
   } else {
     OrderedReferenceReadings { first: b, second: a }
@@ -2774,10 +2806,12 @@ fn reading_precedes(candidate: ReferenceReading, other: ReferenceReading) -> Boo
     false =>
       match o < c {
         true => false
-        // SAME RANK: a genuine tie on the decision-bearing class, broken by the target name so the
-        // pair is still deterministic. Two readings that reach here differ in nothing that changes
-        // what the firmware would do.
-        false => rank_label(reading: candidate) < rank_label(reading: other)
+        // SAME RANK: a genuine tie on the decision-bearing class -- the readings are both network or
+        // both non-network, and both enabled or both disabled. They may still differ in KIND (two
+        // non-network readings, Hdd vs Cd, land here), which is exactly why the tie is broken by the
+        // target's wire spelling: it is a total order over the kinds, so the pair stays deterministic
+        // without pretending the tie meant sameness.
+        false => redfish_boot_target_wire(t: candidate.target) < redfish_boot_target_wire(t: other.target)
       }
   }
 }
@@ -2785,10 +2819,6 @@ fn reading_precedes(candidate: ReferenceReading, other: ReferenceReading) -> Boo
 type OrderedReferenceReadings {
   first: ReferenceReading
   second: ReferenceReading
-}
-
-fn same_reading(a: ReferenceReading, b: ReferenceReading) -> Bool {
-  a.target == b.target && a.enabled == b.enabled
 }
 
 type ReadingRank = NetworkEnabled | NetworkDisabled | OtherEnabled | OtherDisabled
@@ -2817,19 +2847,6 @@ fn reading_rank_standing(reading: ReferenceReading) -> ReadingRank {
         true => OtherEnabled
         false => OtherDisabled
       }
-  }
-}
-
-fn rank_label(reading: ReferenceReading) -> NonEmptyStr {
-  match reading.target {
-    BootTargetPxe => "Pxe"
-    BootTargetNone => "None"
-    BootTargetHdd => "Hdd"
-    BootTargetCd => "Cd"
-    BootTargetUsb => "Usb"
-    BootTargetBiosSetup => "BiosSetup"
-    BootTargetDiags => "Diags"
-    BootTargetUefiHttp => "UefiHttp"
   }
 }
 
