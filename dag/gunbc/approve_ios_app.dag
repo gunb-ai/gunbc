@@ -42,7 +42,7 @@ data approve_ios_vector_check_unenrolled_frontier: DissolutionCondition = unboun
 // THE HAND-AUTHORED SWIFT, AS TYPED ROWS (std.roster_frontier FrontierRow, the existing retained-row
 // shape: subject, reason, dissolution). It replaces one prose condition naming five files. Every .swift
 // file under apps/approve-ios is joined to EXACTLY ONE of a registered generated artifact or one of
-// these rows by gunbc.approve_ios_swift_join; a file in neither refuses.
+// these rows by gunbc.approve_ios_swift_join; a file in neither is a finding (the live read of the real tree is an operator instrument, gunbc.rung_drop approve_ios_swift_join_live_off_the_merge_path).
 //
 // PLATFORM GLUE: the file is a call-shape realization of an Apple framework. Its trigger names the
 // CAPABILITY that would move it, not the file.

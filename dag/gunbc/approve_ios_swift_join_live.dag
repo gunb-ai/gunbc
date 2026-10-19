@@ -1,0 +1,33 @@
+module gunbc.approve_ios_swift_join_live
+
+import std.types { String, List, Bool, GitRef }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.algebra { length }
+import extdeps.git
+import extdeps.git.inspect
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.approve_ios_swift_join { swift_join_is_clean, is_approve_ios_swift }
+
+// THE INHABITANCE CLAIM for gunbc.approve_ios_swift_join: the listing it joins is the HEAD tree as
+// git reports it (git.Inspect.HeadCommit then ListTreePathsAtRevision, the route
+// gunbc.rust_item_host_observation head_rust_sources uses), not a hand copy. It reaches git, which
+// the hermetic per-PR envelope has no route for, so it is an operator instrument and not a floor
+// claim: gunbc.rung_drop approve_ios_swift_join_live_off_the_merge_path declares that.
+//   gunbc run --entry dag/gunbc/approve_ios_swift_join_live.dag --function approve_ios_swift_join_live_report
+// PAIRED REDS, same route: a planted stray path appended to the REAL listing must refuse.
+
+fn head_tree_paths() -> List<String> {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  let tree = git.Inspect.ListTreePathsAtRevision(ref: (head.sha as String) as GitRef, expect: ExpectSuccess)
+  if head.success && tree.success { split(s: tree.paths_nul, delimiter: "\u{0}") } else { [] }
+}
+
+fn approve_ios_swift_join_live_report() -> ProcessExit {
+  let tree = head_tree_paths()
+  let swift = length(filter(tree, p => is_approve_ios_swift(path: p)))
+  let clean = swift_join_is_clean(tree: tree)
+  let stray_refused = !swift_join_is_clean(tree: concat(tree, ["apps/approve-ios/Approve/Stray.swift"]))
+  if swift == 0 { exit_failure(reason: "UNOBSERVED: no apps/approve-ios swift file in the HEAD listing") }
+  else if clean && stray_refused { ExitSuccess }
+  else { exit_failure(reason: concat("RED: real tree clean=", to_string(clean))) }
+}

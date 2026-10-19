@@ -2,7 +2,7 @@ module test.claim.approve_ios_swift_join_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, List }
-import gunbc.approve_ios_swift_join { swift_join_is_clean, swift_join_findings, retained_swift_paths, registered_artifact_paths }
+import gunbc.approve_ios_swift_join { swift_join_is_clean, swift_join_findings, retained_swift_paths, registered_artifact_paths, path_set }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -32,5 +32,5 @@ test fn a_non_swift_file_is_not_the_joins_business() -> Bool {
 }
 
 test fn a_path_in_both_refuses() -> Bool {
-  length(swift_join_findings(tree: real_listing(), registered: concat(registered_artifact_paths(), ["apps/approve-ios/Approve/Views.swift"]), retained: retained_swift_paths())) == 1
+  length(swift_join_findings(tree: real_listing(), registered: path_set(paths: concat(registered_artifact_paths(), ["apps/approve-ios/Approve/Views.swift"])), retained: path_set(paths: retained_swift_paths()))) == 1
 }
