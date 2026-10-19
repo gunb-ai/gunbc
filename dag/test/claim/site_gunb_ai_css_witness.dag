@@ -9,6 +9,12 @@ module test.claim.site_gunb_ai_css_witness
 // lands, so the parity claim is "served starts with render, and the render ends where a section
 // ends". Once the sheet is complete the prefix claim and the equality claim are the same claim.
 //
+// PARTIAL, UNCOVERED RANGE: this claim covers the served bytes [0, len(render)) = fixture lines 1-74 (file
+// header and the TOKENS :root block). NOT covered: fixture lines 75-680 (RESET + BASE through MEDIA
+// QUERIES, the STORY DECK at 316-628 included), i.e. every byte after the "}\n" that ends :root.
+// witness_render_ends_at_a_section_boundary pins where the covered range stops. Later PRs extend the
+// render per section group until the prefix claim is an equality claim.
+//
 // RUN: gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_css_witness.dag --claim-run
 //
 // Red controls are run against the compiler and reported in the PR body, not here.
