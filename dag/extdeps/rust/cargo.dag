@@ -185,13 +185,33 @@ fn cargo_default_target_dir(build_root: String) -> String {
   join([build_root, "/", cargo_default_target_relative_segment], "")
 }
 
-// The same layout's RELEASE profile, in the two shapes consumers actually hold. "target/release"
-// is not a second fact -- it is the default layout plus the profile cargo builds when asked for
-// --release -- so it is spelled once here and nowhere else: consumers take these and never append
-// "/release" to a target dir by hand (three sites did, which is exactly the second-local-
-// implementation §6b rejects).
-data cargo_default_release_dir_rel: String = concat(cargo_default_target_relative_segment, "/release")
+// The same layout's PROFILE faces. "target/release" is not a second fact -- it is the default
+// layout plus the profile cargo builds when asked for (--release to target/release, unoptimized to
+// target/debug, same cited page) -- so the join exists once here, in cargo's own profile names, and
+// no consumer appends "/release" or "/debug" to a target dir by hand. A second local join beside
+// the home is the §6b leaf this migration exists to delete.
+data cargo_default_dev_profile: String = "debug"
+data cargo_default_release_profile: String = "release"
+
+// Profile under an ALREADY-NAMED target directory: the join exists only here, so a site holding a
+// target dir from another authority (gunbc.owned_cargo_target's partition, say) still gets its
+// profile face from this module rather than re-spelling the append.
+fn cargo_profile_dir_under_target_dir(target_dir: String, profile: String) -> String {
+  join([target_dir, "/", profile], "")
+}
+
+fn cargo_default_profile_dir(build_root: String, profile: String) -> String {
+  cargo_profile_dir_under_target_dir(
+    target_dir: cargo_default_target_dir(build_root: build_root),
+    profile: profile
+  )
+}
 
 fn cargo_default_release_dir(build_root: String) -> String {
-  concat(cargo_default_target_dir(build_root: build_root), "/release")
+  cargo_default_profile_dir(build_root: build_root, profile: cargo_default_release_profile)
 }
+
+// The relative face of the release layout, for sites bound to a working directory they do not name
+// (a CI job's cwd, a bash word whose root is a shell var).
+data cargo_default_release_dir_rel: String =
+  join([cargo_default_target_relative_segment, "/", cargo_default_release_profile], "")

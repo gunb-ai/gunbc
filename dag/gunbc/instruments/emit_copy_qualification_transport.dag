@@ -2,7 +2,7 @@ module gunbc.instruments.emit_copy_qualification_transport
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import extdeps.rust.cargo { cargo_default_target_dir }
+import extdeps.rust.cargo { cargo_default_release_dir, cargo_default_target_dir }
 import extdeps.rust.cargo_build
 import extdeps.git
 import extdeps.git.inspect
@@ -544,7 +544,10 @@ fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) 
                   } else if !build.success {
                     refuse_all(rows: rows, r: ShardRefusal { phase: "cargo_build", detail: stderr_tail(s: build.stderr) })
                   } else {
-                    let runner_bin = concat(cargo_default_target_dir(build_root: a.base), concat("/release/", shard_runner_bin_name(c: c, mutant: mutant)))
+                    let runner_bin = join(
+                      [cargo_default_release_dir(build_root: a.base), "/", shard_runner_bin_name(c: c, mutant: mutant)],
+                      ""
+                    )
                     let native = gunbc.WitnessBin.Run(workdir: root, bin_path: runner_bin)
                     let interp = gunbc.WitnessBin.Run(workdir: root, bin_path: gunbc_path, args: [
                       "run", "--source-root", a.src_dag_dir, "--source-root", concat(root, "/dag"),

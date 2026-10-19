@@ -2,7 +2,14 @@ module test.claim.extdeps.cargo_default_target_dir_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool }
-import extdeps.rust.cargo { cargo_default_target_dir, cargo_default_release_dir, cargo_default_release_dir_rel }
+import extdeps.rust.cargo {
+  cargo_default_dev_profile,
+  cargo_default_profile_dir,
+  cargo_default_release_dir,
+  cargo_default_release_dir_rel,
+  cargo_default_target_dir,
+  cargo_profile_dir_under_target_dir,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -30,4 +37,21 @@ test fn cargo_default_release_dirs_derive_from_the_same_segment() -> Bool {
   cargo_default_release_dir_rel == "target/release"
     && cargo_default_release_dir(build_root: "/work/repo") == "/work/repo/target/release"
     && cargo_default_release_dir(build_root: "") == "/target/release"
+}
+
+// The PROFILE faces are the same layout plus cargo's own profile names, and they are the only
+// spelling of that append in the corpus: a site holding a target dir from another authority takes
+// its profile face from cargo_profile_dir_under_target_dir rather than concatenating "/release" or
+// "/debug" by hand (four sites did, which is the second-local-implementation §6b deletes). RED:
+// hand-joining "/release" in one of those sites while the home moved, or renaming a profile
+// constant without moving the faces.
+test fn cargo_profile_faces_derive_from_the_same_segment() -> Bool {
+  cargo_default_dev_profile == "debug"
+    && cargo_default_profile_dir(build_root: "/work/repo", profile: cargo_default_dev_profile)
+         == "/work/repo/target/debug"
+    && cargo_default_profile_dir(build_root: "/work/repo", profile: "release") == "/work/repo/target/release"
+    && cargo_default_release_dir(build_root: "/work/repo")
+         == cargo_default_profile_dir(build_root: "/work/repo", profile: "release")
+    && cargo_profile_dir_under_target_dir(target_dir: "/owned/ab12/target", profile: cargo_default_dev_profile)
+         == "/owned/ab12/target/debug"
 }
