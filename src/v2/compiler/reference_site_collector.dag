@@ -483,14 +483,25 @@ type SiteScope {
 fn site_head_binding(scope: SiteScope, position: List<EdgeLabel>, spelling: QualifiedName) -> SiteHeadBinding {
   match spelling {
     Cons { head: head, tail: _ } =>
-      if map_contains_key(m: scope.frame, key: head) {
-        HeadBoundInFrame
-      } else if map_contains_key(m: scope.roots, key: head) {
-        HeadBoundAtRootValue
-      } else if site_head_is_undecided(scope: scope, head: head) {
-        HeadBindingUndecided
-      } else {
-        HeadLexicallyUnbound
+      // The position authority is matched WHERE IT IS READ, at the one place a head is classified --
+      // not funnelled through a Bool, which would let a second caller ask "is it not-a-value?" of a
+      // four-way fact and get a two-way answer. ONE RULE FOR EVERY NON-VALUE POSITION (DESIGN 6b): a
+      // value frame is consulted for a value position and for nothing else, and every other position
+      // shares this one answer, the split among them being informational only.
+      match reference_position_of(position: position) {
+        ValuePosition =>
+          if map_contains_key(m: scope.frame, key: head) {
+            HeadBoundInFrame
+          } else if map_contains_key(m: scope.roots, key: head) {
+            HeadBoundAtRootValue
+          } else if site_head_is_undecided(scope: scope, head: head) {
+            HeadBindingUndecided
+          } else {
+            HeadLexicallyUnbound
+          }
+        TypeAnnotationPosition => HeadNotAValuePosition
+        LabelPosition => HeadNotAValuePosition
+        PatternTagPosition => HeadNotAValuePosition
       }
     Empty => HeadLexicallyUnbound
   }
