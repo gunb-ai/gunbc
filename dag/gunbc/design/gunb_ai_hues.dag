@@ -79,3 +79,10 @@ data gunb_ai_hues: SwatchSet = SwatchSet {
 fn gunb_ai_hues_admissible() -> Bool {
   swatch_set_admissible(s: gunb_ai_hues)
 }
+
+// The seal's body paint, as gunb.ai's assets/mark.svg fills it (#f4efe6, read off the served file
+// 2026-10-19). It is NOT warm_white (#f4f1ec): the two differ in green and blue, and the favicon's
+// seal reads warmer than the page's text, so collapsing them would repaint the tab icon. Like
+// theme_chrome_black it is a row outside gunb_ai_hues, because it is not a --gunb-* role.
+// CONSUMER (§3c): gunbc.site.gunb_ai_mark reads it through gunbc.design.palette.swatch_paint.
+data seal_white: Swatch = Swatch { name: "seal-white", color: Srgb8 { r: 244, g: 239, b: 230 } }
