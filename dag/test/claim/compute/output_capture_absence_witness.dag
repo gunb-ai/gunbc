@@ -22,16 +22,24 @@ module test.claim.compute.output_capture_absence_witness
 //    reading does not distinguish absent from unreadable from not-a-repo, so naming "absent" would
 //    INVENT a cause the host never reported;
 //  - the fold rows fail if the fold keeps collecting after a refusal or reorders;
-//  - the inhabitance rows EXECUTE production's route and FAIL if compute_return_outputs stops
-//    calling the step, or if the capture route stops calling compute_return_outputs -- the only
-//    authority for "production reaches the same fold" (a grep is not a consumer, DESIGN 5).
+//  - the inhabittance rows fail if a production caller stops calling the step -- see their section
+//    header for exactly what they do and do not establish.
 //
-// THE RED THIS FILE KILLS, and which must FAIL when planted (see the PR witness output): replacing
-// the step's CaptureReadingFailed hash arm with `OutputsReturned { outputs: returned }` -- capture
-// ACCEPTING an absent output -- turns every refusal row red while the positive controls stay
-// green; deleting compute_return_outputs' call of the step turns the inhabitance rows red; and
-// giving the exec pair-builder its own exit-code stop-condition (a second decision site, no longer
-// consulting the step) turns the pair-builder inhabittance row red.
+// WHAT THIS FILE CANNOT DO, said plainly: the capture's EXECUTIONS cannot run here. The route goes
+// through compute_exec -> gunbc.WitnessBin.Run, and the hermetic envelope refuses that operation
+// (no mock arm may be added -- operator ruling 2026-08-23). So this file controls the capture's
+// DECISIONS (the step and the fold, executed for real on supplied readings), and pins the ROUTE's
+// shape with the compiler-reflected call walk below. No row here runs systemd-run or git.
+//
+// THE REDs THIS FILE KILLS, and which must FAIL when planted (see the PR witness output):
+//  - replacing the step's CaptureReadingFailed hash arm with `OutputsReturned` -- capture ACCEPTING
+//    an absent output -- turns the three absence rows red while every other row, including both
+//    positive controls, stays green;
+//  - forking the verdict inside the fold (compute_return_outputs_over_readings deciding its own
+//    answer instead of asking the step) turns the three inhabittance rows red;
+//  - making the executions stop on a builder-owned exit-code test instead of asking the step turns
+//    the executions row red. That row proves the executions CONSULT the step; read its body for
+//    what it cannot prove.
 
 import std.types { Bool, Int, String, List }
 import std.algebra { string_contains, length, list_map, FreeMonoid }
@@ -49,7 +57,7 @@ import v2.std.fn_index { FnArrowDecl, CallReach, call_reachable_decls_from_root,
 // The reading `git hash-object <path>` actually gives when <path> is not there: exit 128 and the
 // command's own stderr. This is a SUPPLIED INPUT to the real fold -- the shape the capture route
 // hands the step when compute_exec reports the failure (work_provider_local.dag
-// compute_capture_exec_pairs) -- and nothing below relabels it.
+// compute_capture_executions) -- and nothing below relabels it.
 // Built from the path so a refusal row can assert WHICH output the fold refused and that no OTHER
 // output's name leaked into the detail -- the reading is the host's, and it names only what failed.
 fn absent_hash_reading_for(rel: String) -> ComputeOutputCaptureReading {
@@ -203,16 +211,20 @@ test fn no_declared_outputs_is_the_empty_return_never_a_refusal() -> Bool {
   }
 }
 
-// ── inhabitation: production EXECUTES this fold (a grep is not a consumer, DESIGN 5) ───────────
+// ── inhabittance: production CALLS this fold, per the parser's own call graph ───────────────────
 //
-// These rows run the compiler-reflected call walk (v2.std.fn_index) over the REAL source of
-// gunbc.compute.work_provider_local, and they are what stand in for "the capture route reaches the
-// same fold" -- reachability computed from the parser's own call graph, not text matching. Each
-// goes RED the moment production stops calling what it must: if compute_return_outputs stops
-// calling compute_output_capture_step, the step is unreachable and the first row fails; if
-// compute_spawn_and_collect (the capture route) stops calling compute_return_outputs, the second
-// row fails. A positive control beside them pins that the walk finds the deep leaf at all, so an
-// empty walk cannot pass the negative half of any of this.
+// What these rows are, precisely (they do NOT "execute the capture" -- nothing hermetic can; see
+// the file header): each runs the compiler-reflected call walk v2.std.fn_index
+// (call_reachable_decls_from_root) over the REAL parsed source of gunbc.compute.work_provider_local
+// and asks whether a production caller reaches the step. This is not text matching -- the walk is
+// built by the compiler's own parser, so a call that does not exist in the AST is not in the graph
+// -- but it is a STATIC reachability fact, not an execution of the route.
+//
+// What they establish: the moment production stops calling the step (a forked verdict in the fold,
+// a route that stops routing through the executions), the step drops out of the caller's reachable
+// set and the row goes red. What they do NOT establish: that a caller who calls the step does
+// nothing else to decide -- reachability cannot see an ADDITIONAL private decision. The builder
+// row's body says which half of that the fold rows and the shared accumulator close.
 
 data compute_pool_roots: List<String> = ["dag/gunbc/compute"]
 data provider_module: String = "gunbc.compute.work_provider_local"
@@ -238,23 +250,25 @@ test fn the_capture_route_reaches_the_capture_step_through_production() -> Bool 
   reached_contains(entry: "compute_spawn_and_collect", fn_name: "compute_output_capture_step")
 }
 
-// THE STEP IS PRODUCTION'S VERDICT: compute_return_outputs -- what every capture call site calls,
-// including compute_spawn_and_collect -- reaches the step. RED if production forks its own copy of
-// the decision instead of folding through the step.
+// ONE ANSWER, FROM THE STEP: compute_return_outputs -- what every capture call site calls,
+// including compute_spawn_and_collect -- reaches the step, with the executions builder the only
+// path between them. RED if production forks its own copy of the decision, or answers without
+// asking the step.
 test fn production_reaches_the_same_capture_fold() -> Bool {
   reached_contains(entry: "compute_return_outputs", fn_name: "compute_output_capture_step")
 }
 
-// THE BUILDER STOPS ONLY BECAUSE THE STEP STOPPED IT: the capture route reaches the exec
-// pair-builder, and the builder itself reaches the step -- it asks the step for the verdict it
-// stops on, rather than testing the exit codes on its own. A second stop-condition in the builder
-// is the defect this row kills: the day the step tolerated some failing reading, a builder of its
-// own opinion would still have stopped and the fold would have returned OutputsReturned missing
-// the later outputs -- a silent partial success. RED if the builder re-derives stop from readings
-// instead of consulting the step, and RED if the route stops executing pairs through it.
-test fn the_capture_route_executes_the_pair_builder_which_stops_on_the_steps_verdict() -> Bool {
-  reached_contains(entry: "compute_spawn_and_collect", fn_name: "compute_capture_exec_pairs")
-    && reached_contains(entry: "compute_capture_exec_pairs", fn_name: "compute_output_capture_step")
+// THE ROUTE RUNS ITS EXECUTIONS THROUGH THE STEP: compute_spawn_and_collect reaches the executions
+// builder, and the builder reaches the step. HONEST SCOPE: this proves the builder CONSULTS the
+// step for the verdict it stops on; it cannot prove the builder does not ALSO keep a private stop,
+// because reachability sees calls, not extra state. The half reachability cannot close is closed
+// structurally instead: the builder's accumulator IS an OutputsReturn (no pairs list, no Bool), so
+// there is no field left for a private stop to live in, and the fold rows above are the same fold
+// the builder carries. RED if the builder stops consulting the step, or if the route stops routing
+// its executions through it.
+test fn the_capture_route_runs_its_executions_through_the_step() -> Bool {
+  reached_contains(entry: "compute_spawn_and_collect", fn_name: "compute_capture_executions")
+    && reached_contains(entry: "compute_capture_executions", fn_name: "compute_output_capture_step")
 }
 
 // THE STEP DECIDES FOR THE FOLD: the fold reaches the step -- so no fold-side copy of the verdict
