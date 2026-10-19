@@ -1,6 +1,6 @@
 module gunbc.approve_ios_enrolment_machine
 
-import std.types { Bool, NonEmptyStr, String, List, list_length }
+import std.types { Bool, NonEmptyStr, String, List }
 import std.algebra { list_append }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import std.content_hash { ContentHash, compare_content_hash, content_hash_of_value, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
@@ -26,7 +26,7 @@ import std.durable_compare_and_set {
 import std.durable_transfer { LocalCommitStanding, LocallyCommitted, LocalCommitFailed }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { unbound_dissolution }
 import extdeps.crypto.signature { VerifyingKey }
 import extdeps.apple.secure_enclave { SecureEnclaveWrappedKeyBlob }
 import extdeps.apple.app_attest { AttestKeyId }
@@ -539,40 +539,52 @@ fn enrolment_call_admitted(call: EnrolmentRemoteCall, verdict: EnrolmentPersistV
 // naming the declarations that carry the law, so a change to the order has to move the basis with it
 // or the fact refuses — an ordering that lives only in a call sequence can be reordered silently.
 // ──────────────────────────────────────────────────────────────────────────────────────────────
-type EnrolmentOrderingProperty
-  = PersistBeforeEffect
-
-data enrolment_persist_before_effect_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.approve_ios_enrolment_machine", decl_name: "enrolment_call_admitted")
+// WHY THERE IS NO `EnrolmentOrderingProperty` SUM TYPE HERE, which is a finding rather than an
+// omission. An earlier draft had a one-arm property sum and a standing fn taking it. With one arm the
+// parameter cannot be varied by any caller, so the match over it is total by accident and the
+// "property" argues nothing: it is a Bool with a longer name, and DESIGN 4b's decoration test applies.
+// gunbc.serving.caller_backlog — the precedent this block follows — has no property type at all: the
+// law is its basis declarations, and what refuses is the standing computed from them.
+//
+// WHAT MAKES THIS A FACT AND NOT A COMMENT: the standing names the declarations that carry the law,
+// and it refuses unless the sealed persist door is among them. A change to the order has to move the
+// basis with it or the fact stops being admitted — an ordering that lives only in a call sequence can
+// be reordered silently and nothing downstream notices.
+data enrolment_persist_before_effect_gate_ref: DeclarationRef = decl_ref(module_path: "gunbc.approve_ios_enrolment_machine", decl_name: "enrolment_call_admitted")
 data enrolment_persist_proof_route_ref: DeclarationRef = decl_ref(module_path: "gunbc.approve_ios_enrolment_machine", decl_name: "enrolment_persist")
 data enrolment_commit_proof_ref: DeclarationRef = decl_ref(module_path: "gunbc.approve_ios_enrolment_machine", decl_name: "EnrolmentCommitProof")
+data enrolment_effect_admission_proof_ref: DeclarationRef = decl_ref(module_path: "gunbc.approve_ios_enrolment_machine", decl_name: "EnrolmentEffectAdmission")
 
-data enrolment_persist_before_effect_basis: NonEmptyStr = declaration_ref_display_key(ref: enrolment_persist_before_effect_basis_ref) as NonEmptyStr
+data enrolment_persist_before_effect_basis: NonEmptyStr = declaration_ref_display_key(ref: enrolment_persist_before_effect_gate_ref) as NonEmptyStr
 
 fn enrolment_persist_before_effect_basis_refs() -> List<DeclarationRef> {
   [
-    enrolment_persist_before_effect_basis_ref,
+    enrolment_persist_before_effect_gate_ref,
     enrolment_persist_proof_route_ref,
     enrolment_commit_proof_ref,
+    enrolment_effect_admission_proof_ref,
   ]
 }
 
-fn enrolment_persist_before_effect_ordering(property: EnrolmentOrderingProperty) -> List<DeclarationRef> {
-  match property {
-    PersistBeforeEffect => enrolment_persist_before_effect_basis_refs()
-  }
-}
-
-// THE FACT IS ADMITTED ONLY WHILE ITS BASIS EXISTS AND IS THE PROOF ROUTE, and refused otherwise: a
-// basis list that has been emptied or pointed somewhere else is not the same law.
+// THE FACT, ADMITTED OR REFUSED. It is admitted exactly when the basis names BOTH halves of the law:
+// the sealed door that mints an admission (enrolment_persist) and the check that binds an admitted
+// effect to the record it was persisted for (enrolment_call_admitted). Drop either — reorder the flow
+// by deleting one of them, or repoint the basis at something else — and the standing is the refusal
+// arm, not a silently weakened guarantee.
 type EnrolmentOrderingStanding
   = PersistBeforeEffectAdmitted { basis: NonEmptyStr }
-  | PersistBeforeEffectBasisMissing
+  | PersistBeforeEffectBasisMissing { missing: NonEmptyStr }
 
-fn enrolment_persist_before_effect_standing(property: EnrolmentOrderingProperty) -> EnrolmentOrderingStanding {
-  if list_length(items: enrolment_persist_before_effect_ordering(property: property)) == 0 {
-    PersistBeforeEffectBasisMissing
-  } else {
+fn enrolment_persist_before_effect_standing() -> EnrolmentOrderingStanding {
+  let refs = enrolment_persist_before_effect_basis_refs()
+  let has_door = any(refs, r => declaration_ref_eq(a: r, b: enrolment_persist_proof_route_ref))
+  let has_binding = any(refs, r => declaration_ref_eq(a: r, b: enrolment_persist_before_effect_gate_ref))
+  let has_evidence = any(refs, r => declaration_ref_eq(a: r, b: enrolment_commit_proof_ref))
+    && any(refs, r => declaration_ref_eq(a: r, b: enrolment_effect_admission_proof_ref))
+  if has_door && has_binding && has_evidence {
     PersistBeforeEffectAdmitted { basis: enrolment_persist_before_effect_basis }
+  } else {
+    PersistBeforeEffectBasisMissing { missing: "the sealed persist door, the record-binding check, or the sealed commit evidence" as NonEmptyStr }
   }
 }
 

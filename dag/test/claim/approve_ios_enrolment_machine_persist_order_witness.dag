@@ -31,9 +31,9 @@ module test.claim.approve_ios_enrolment_machine_persist_order_witness
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 
 import std.types { String, Bool, Int, List, list_length }
-import std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import std.optional { Present, Absent, optional_present, optional_absent }
 import std.content_hash { content_hash_of_value }
-import std.decl_ref { declaration_ref_eq, decl_ref }
+import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
 import std.durable_compare_and_set {
   CasAttempt,
   cas_attempt,
@@ -81,12 +81,12 @@ import gunbc.approve_ios_enrolment_machine {
   EnrolmentPersistVerdict,
   EnrolmentPersistRefused,
   EnrolmentPersistRefusedProposedRecordIsNotThisState,
-  EnrolmentOrderingProperty,
-  PersistBeforeEffect,
   PersistBeforeEffectAdmitted,
   PersistBeforeEffectBasisMissing,
   enrolment_persist_before_effect_standing,
   enrolment_persist_before_effect_basis_refs,
+  enrolment_persist_before_effect_gate_ref,
+  enrolment_persist_proof_route_ref,
   approve_ios_enrolment_state_generator_frontier_rows,
 }
 import extdeps.crypto.signature { VerifyingKey }
@@ -540,12 +540,11 @@ test fn known_gap_a_caller_authored_commit_reaches_the_admitted_arm() -> Bool {
 // cannot be answered by a constant; the basis is the sealed persist route, so an empty basis is visible
 // as the refusal arm rather than as an empty list a caller might ignore.
 test fn the_ordering_fact_is_admitted_over_its_sealed_route() -> Bool {
-  let proof_route = decl_ref(module_path: "gunbc.approve_ios_enrolment_machine", decl_name: "enrolment_persist")
-  let property: EnrolmentOrderingProperty = PersistBeforeEffect
-  match enrolment_persist_before_effect_standing(property: property) {
-    PersistBeforeEffectAdmitted { basis: _ } =>
-      any(enrolment_persist_before_effect_basis_refs(), r => declaration_ref_eq(a: r, b: proof_route))
-    PersistBeforeEffectBasisMissing => false
+  match enrolment_persist_before_effect_standing() {
+    PersistBeforeEffectAdmitted { basis: basis } =>
+      (basis as String) == declaration_ref_display_key(ref: enrolment_persist_before_effect_gate_ref)
+        && any(enrolment_persist_before_effect_basis_refs(), r => declaration_ref_eq(a: r, b: enrolment_persist_proof_route_ref))
+    PersistBeforeEffectBasisMissing { missing: _ } => false
   }
 }
 
