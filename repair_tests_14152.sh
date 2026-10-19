@@ -79,14 +79,16 @@ stamp "rows begin (${#SELECT[@]} rows, per-row bound ${ROW_TIMEOUT}s)"
 for r in "${SELECT[@]}"; do
   [ -n "${SEED_DELAY:-}" ] && sleep "$SEED_DELAY"
   rowlog="$D/row.$r.log"
+  t0=$(date +%s)
   timeout -k 15 "${ROW_TIMEOUT}" cargo test -p v1-compiler-tests --lib cross_coproduct \
     -- --exact "${MOD}${r}" --nocapture --test-threads=1 >"$rowlog" 2>&1
   rrc=$?
+  t1=$(date +%s)
   cat "$rowlog" >> "$LOG"
-  if   grep -qE "^test .*${r} \.\.\. ok$"     "$rowlog"; then echo "ROW $LABEL $r PASS rc=$rrc"
-  elif grep -qE "^test .*${r} \.\.\. FAILED$" "$rowlog"; then echo "ROW $LABEL $r FAIL rc=$rrc"
-  elif [ "$rrc" = 124 ]; then echo "ROW $LABEL $r TIMEOUT_FATAL rc=124 after ${ROW_TIMEOUT}s"
-  else echo "ROW $LABEL $r MISSING_FATAL rc=$rrc"; fi
+  if   grep -qE "^test .*${r} \.\.\. ok$"     "$rowlog"; then echo "ROW $LABEL $r PASS rc=$rrc elapsed=$((t1-t0))s"
+  elif grep -qE "^test .*${r} \.\.\. FAILED$" "$rowlog"; then echo "ROW $LABEL $r FAIL rc=$rrc elapsed=$((t1-t0))s"
+  elif [ "$rrc" = 124 ]; then echo "ROW $LABEL $r TIMEOUT_FATAL rc=124 after ${ROW_TIMEOUT}s elapsed=$((t1-t0))s"
+  else echo "ROW $LABEL $r MISSING_FATAL rc=$rrc elapsed=$((t1-t0))s"; fi
 done
 grep -E "^test result:" "$LOG" | sed "s/^/SUMMARY $LABEL /"
 grep -E "^error(\[|:)" "$LOG" | head -8 | sed 's/^/COMPILE_ERROR /'
