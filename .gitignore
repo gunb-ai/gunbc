@@ -232,3 +232,9 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /docs/plans/source-layout-authority.md
 /docs/plans/census-scoped-run.md
 dag/test/claim/live_deploy/w2_row_head_red_probe.dag
+
+# Contract-stamp evidence scratch. The harness refuses to write these inside the tree, but a root-anchored
+# exact-name ignore is the second net: an empty one of these was committed once, and the next `git add -A`
+# after any probe would do it again.
+/gunbc-contract-stamp-evidence.log
+/gunbc-contract-stamp-evidence.fail

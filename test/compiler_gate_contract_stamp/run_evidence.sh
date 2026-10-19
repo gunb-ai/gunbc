@@ -124,8 +124,6 @@ if [ -n "$evidence_dir" ]; then
        exit 1 ;;
   esac
 fi
-transcript="${GUNBC_CONTRACT_STAMP_EVIDENCE_TRANSCRIPT:-${evidence_dir:+$evidence_dir/}gunbc-contract-stamp-evidence.log}"
-fail_marker="${GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER:-${evidence_dir:+$evidence_dir/}gunbc-contract-stamp-evidence.fail}"
 # ONE RULE, EVERY CHANNEL, NO EXEMPTION FOR ARGV.
 # Every verdict channel -- transcript or fail marker, however it was obtained -- must live inside the
 # per-run directory. Earlier this file exempted paths handed in as argv, on the reasoning that a caller
@@ -176,6 +174,14 @@ require_per_run_channels() {
 fail=0
 guard_template="$(mktemp)"
 tmpdir="$(mktemp -d)"
+# THE VERDICT CHANNEL DEFAULTS, assigned HERE and nowhere earlier. Two traps, both of which shipped a
+# stray file at the repo root:
+#   * a bare relative name is resolved against the caller's CWD, so a truncated default CREATES a file in
+#     the working tree, where the next `git add -A` commits it;
+#   * the value must not be evaluated before $tmpdir exists, or the fallback degenerates to a path at the
+#     filesystem root. Assignment order is the whole difference between scratch and scratch-that-destroys.
+transcript="${GUNBC_CONTRACT_STAMP_EVIDENCE_TRANSCRIPT:-${evidence_dir:-$tmpdir}/gunbc-contract-stamp-evidence.log}"
+fail_marker="${GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER:-${evidence_dir:-$tmpdir}/gunbc-contract-stamp-evidence.fail}"
 cleanup() { rm -f "$guard_template"; [ -n "$tmpdir" ] && rm -rf "$tmpdir"; }
 trap 'cleanup' EXIT
 
@@ -567,10 +573,6 @@ echo "== running-side stamp (workflow-level literal): $RUNNING"
 
 stepdir="$tmpdir/step"; mkdir -p "$stepdir"
 cp "$tmpdir/evidence_step.sh" "$stepdir/evidence_step.sh"
-: > "$transcript"
-# The generated step clears the marker itself as its first modelled statement; clearing here too keeps
-# LOCAL MODE honest when the step is run twice in one shell, and is harmless when it is not.
-rm -f "$fail_marker"
 # THE HARNESS SUPPLIES THE RUN IDENTITY HERE, because outside Actions GITHUB_RUN_ID and
 # GITHUB_RUN_ATTEMPT are unset and the step's own refusal would fire before any case ran -- a correct
 # refusal, but one that makes local mode permanently red and so trains everyone to ignore it. The step
@@ -589,9 +591,22 @@ run_token="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
 # THE HARNESS AND THE STEP MUST MEAN THE SAME TWO FILES. The step derives them from RUNNER_TEMP + the
 # run identity; derive them identically here rather than trusting the defaults, so a divergence in either
 # derivation is a loud disagreement and not a count of a file that was never written.
-transcript="$RUNNER_TEMP/gunbc-contract-stamp-$run_token/gunbc-contract-stamp-evidence.log"
-fail_marker="$RUNNER_TEMP/gunbc-contract-stamp-$run_token/gunbc-contract-stamp-evidence.fail"
+# evidence_dir is set HERE, not just derived from the environment: local mode invents its own run
+# identity, and the guard that demands every channel live inside the per-run directory tests against
+# this value. Setting the paths without it would make local mode refuse its own correct layout.
+evidence_dir="$RUNNER_TEMP/gunbc-contract-stamp-$run_token"
+transcript="$evidence_dir/gunbc-contract-stamp-evidence.log"
+fail_marker="$evidence_dir/gunbc-contract-stamp-evidence.fail"
 mkdir -p "$(dirname "$transcript")"
+# NOW the channels may be touched -- after they have been settled and guarded. Truncating or removing
+# them earlier acted on whatever the defaults happened to be, which is how a stray file was created in
+# the working tree rather than in scratch space.
+require_per_run_channels "$transcript"
+require_per_run_channels "$fail_marker"
+# The generated step clears the marker itself as its first modelled statement; clearing here too keeps
+# LOCAL MODE honest when the step is run twice in one shell, and is harmless when it is not.
+: > "$transcript"
+rm -f "$fail_marker"
 echo "== run token: $run_token"
 out="$(cd "$repo" && bash "$stepdir/evidence_step.sh" 2>&1)"; rc=$?
 printf '%s\n' "$out"
