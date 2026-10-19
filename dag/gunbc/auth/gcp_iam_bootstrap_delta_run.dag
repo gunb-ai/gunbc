@@ -11,20 +11,24 @@ import gunbc.auth.gcp_iam_bootstrap_delta {
   BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused, observe_bootstrap_delta, subject_not_bootstrapped_text,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route {
-  BootstrapDeltaRequestBody, BootstrapDeltaRequestable, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, bootstrap_delta_requestable,
+  BootstrapDeltaRequestBody, BootstrapDeltaRequestable, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, BootstrapIdentityNotProvisioned, bootstrap_delta_requestable,
   BootstrapDeltaRequest, BootstrapDeltaRequested, BootstrapDeltaRequestRefused, bootstrap_delta_request, apply_approved_subjects,
 }
 
-// ── THE BOOTSTRAP DELTA RUN (fleet-converge mode gcp_iam_converge, its own job, before the converge) ─
-// One job in the gcp-iam-bootstrap environment, three steps, the converge's order (gunbc.auth.gcp_iam_converge_run):
-//   request -- as iam-observe: derive the whole roster's delta; an empty one exits clean and asks nobody;
-//              a nonempty one files ONE request over exactly its cells and writes the approved output
-//              only when the live gate admits an approval of exactly that request for this attempt.
-//   impersonate -- the workflow's second auth step federates to iam-bootstrap, only on that output.
-//   apply   -- re-derive the delta as iam-observe, re-derive the request for this attempt, re-admit
-//              the recorded approval, then iam-bootstrap applies exactly the approved cells and reads
-//              each back. The independent readback is the converge job that follows: its observer
-//              re-derives the delta, and a nonempty one there refuses the converge.
+// ── THE BOOTSTRAP DELTA RUN (fleet-converge mode gcp_iam_converge, two jobs ahead of the converge) ─
+// The converge's order (gunbc.auth.gcp_iam_converge_run), split across the environment boundary:
+//   request (job gcp-iam-bootstrap-request, UNGATED, the converge's environment and pool) -- as
+//            iam-observe: derive the whole roster's delta; an empty one exits clean and asks nobody; a
+//            nonempty one files ONE request over exactly its cells and writes the approved output only
+//            when the live gate admits an approval of exactly that request for this attempt.
+//   apply   (job gcp-iam-bootstrap-apply, the gcp-iam-bootstrap environment, only on that output) --
+//            re-derive the delta as iam-observe, re-derive the request for this attempt, re-admit the
+//            recorded approval, then federate as iam-bootstrap and apply exactly the approved cells,
+//            reading each back. The independent readback is the converge job that follows.
+// ORDER OF FIRST USE: the first-time root ceremony provisions iam-bootstrap's pool, provider, account,
+// role, project cell, deny policy and trust, and is read back; only then is a delta requestable. Before
+// it, the request refuses typed (BootstrapIdentityNotProvisioned, naming the ceremony) and the apply job
+// never starts, so no absent identity is met as a raw authentication failure.
 // The approval is enforced by this reviewed code until a custom protection rule answered only on a
 // redeemed capability gates the environment (gunbc.rung_drop gcp_iam_bootstrap_approval_in_reviewed_code).
 
@@ -48,6 +52,7 @@ fn bootstrap_delta_step(delta: BootstrapDelta) -> BootstrapDeltaStep {
       BootstrapDeltaRefused { reasons } => BootstrapStepRefused { reason: concat("the delta refuses, nothing requested: ", join(reasons, "; ")) }
       BootstrapDeltaRequired { subjects, unverified: _ } => match bootstrap_delta_requestable(subjects: subjects) {
         BootstrapDeltaUnrequestable { reasons } => BootstrapStepRefused { reason: concat("not requestable: ", join(reasons, "; ")) }
+        BootstrapIdentityNotProvisioned { root_subjects } => BootstrapStepRefused { reason: concat("BOOTSTRAP IDENTITY NOT PROVISIONED: the root ceremony's cells are missing, so nothing is requested and no iam-bootstrap token is minted. Repair: run the first-time root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) and read it back; then the delta is requestable. Missing: ", join(map(root_subjects, s => subject_not_bootstrapped_text(s: s)), " || ")) }
         BootstrapDeltaRequestAdmitted { body } => match bootstrap_delta_request(b: body, attempt: attempt) {
           BootstrapDeltaRequestRefused { reason } => BootstrapStepRefused { reason: reason }
           BootstrapDeltaRequested { request } => BootstrapStepRequest { request: request }

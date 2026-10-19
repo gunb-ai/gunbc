@@ -9,7 +9,7 @@ import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, 
 import gunbc.auth.gcp_iam_bootstrap_model { BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding, IamBootstrapResource }
 import gunbc.auth.gcp_iam_bootstrap_delta { SubjectNotBootstrapped, SubjectUnbound, SubjectAbsentOrUnboundCannotTell }
 import gunbc.auth.gcp_iam_bootstrap_delta_route {
-  BootstrapDeltaRequestBody, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, bootstrap_delta_requestable,
+  BootstrapDeltaRequestBody, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, BootstrapIdentityNotProvisioned, bootstrap_delta_requestable,
   BootstrapCellsWrite, WriteBootstrapCells, BootstrapCellsAlreadyPresent, BootstrapCellsRefused, bootstrap_cells_write,
   approved_subjects, bootstrap_delta_preimage, trust_root_subject,
 }
@@ -78,10 +78,13 @@ test fn trust_roots_and_project_cells_are_unrequestable() -> Bool {
     BootstrapPool { pool: gcp_iam_bootstrap_wif_pool_id }, BootstrapPool { pool: gcp_iam_observe_dedicated_federation().pool_id },
   ]
   all(roots, r => trust_root_subject(s: r)
-    && match bootstrap_delta_requestable(subjects: [subject_of(s: r, cells: [converge_cell])]) { BootstrapDeltaUnrequestable { reasons: _ } => true  _ => false })
-    && (match bootstrap_delta_requestable(subjects: [subject_of(s: BootstrapProject, cells: [converge_cell])]) { BootstrapDeltaUnrequestable { reasons: _ } => true  _ => false })
+    && match bootstrap_delta_requestable(subjects: [subject_of(s: r, cells: [converge_cell])]) { BootstrapIdentityNotProvisioned { root_subjects: rs } => count(rs) == 1  _ => false })
+    && (match bootstrap_delta_requestable(subjects: [subject_of(s: BootstrapProject, cells: [converge_cell])]) { BootstrapIdentityNotProvisioned { root_subjects: _ } => true  _ => false })
+    && (match bootstrap_delta_requestable(subjects: [subject_of(s: r_secret(), cells: [converge_cell]), subject_of(s: BootstrapAccount { account: iam_bootstrap_service_account }, cells: [converge_cell])]) { BootstrapIdentityNotProvisioned { root_subjects: rs } => count(rs) == 1  _ => false })
     && (match bootstrap_delta_requestable(subjects: body.subjects) { BootstrapDeltaRequestAdmitted { body: _ } => true  _ => false })
 }
+
+fn r_secret() -> IamBootstrapResource { BootstrapSecret { secret: secret } }
 
 // CONSENT IS TO EXACTLY THE CELLS: one cell more or less is a different preimage.
 test fn the_preimage_binds_every_cell() -> Bool {

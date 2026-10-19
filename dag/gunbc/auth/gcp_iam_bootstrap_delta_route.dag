@@ -87,19 +87,20 @@ type BootstrapDeltaRequestBody {
   subjects: List<SubjectNotBootstrapped>
 }
 
+// A DELTA THAT REACHES A TRUST ROOT OR THE PROJECT IS NOT A REQUEST AT ALL: those cells are the
+// first-time root ceremony's, and before it has run they are exactly what is missing -- iam-bootstrap's
+// own pool, account and project role among them. That state is typed so the run names the ceremony as
+// the repair instead of meeting an absent identity as a raw authentication failure.
 type BootstrapDeltaRequestable
   = BootstrapDeltaRequestAdmitted { body: BootstrapDeltaRequestBody }
+  | BootstrapIdentityNotProvisioned { root_subjects: List<SubjectNotBootstrapped> }
   | BootstrapDeltaUnrequestable { reasons: List<String> }
 
 fn bootstrap_delta_requestable(subjects: List<SubjectNotBootstrapped>) -> BootstrapDeltaRequestable {
   let roots = filter(subjects, s => trust_root_subject(s: s.subject))
   let ceremony = filter(subjects, s => root_ceremony_subject(s: s.subject))
   if count(subjects) == 0 { BootstrapDeltaUnrequestable { reasons: ["the delta is empty; there is nothing to approve"] } }
-  else if count(roots) > 0 || count(ceremony) > 0 {
-    let root_reasons = map(roots, s => concat(iam_bootstrap_resource_key(resource: s.subject), ": a trust root; only the first-time root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) writes it"))
-    let ceremony_reasons = map(ceremony, s => concat(iam_bootstrap_resource_key(resource: s.subject), ": project cells are the root ceremony's; iam-bootstrap is denied the project's setIamPolicy"))
-    BootstrapDeltaUnrequestable { reasons: root_reasons + ceremony_reasons }
-  } else { BootstrapDeltaRequestAdmitted { body: BootstrapDeltaRequestBody { subjects: subjects } } }
+  else if count(roots) > 0 || count(ceremony) > 0 { BootstrapIdentityNotProvisioned { root_subjects: roots + ceremony } } else { BootstrapDeltaRequestAdmitted { body: BootstrapDeltaRequestBody { subjects: subjects } } }
 }
 
 // ── The consent preimage, the digest and the request ─────────────────────────────────────────
