@@ -514,7 +514,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     } else {
       match realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: n, dag_name: qualified_last_segment(name: tn), env: emit_info.fn_type_env, source_indices: source_indices)) {
         Present { value: host } => rust_carrier_optional_wrap(n: n, rendered: host)
-        Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+        Absent => render_rust_declaration_position(n: n, spelled: render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices), shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names)
       }
     }
   }
@@ -1619,7 +1619,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
   } else {
 
     match rust_reference_checkpoint_spelling_at(n: n, source_indices: source_indices, env: env) {
-      Present { value: scalar } => render_rust_shared_type_if_needed(n: n, rendered: concat(if base_name == "Witness" { "/*WCK*/" } else { "" }, scalar), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+      Present { value: scalar } => render_rust_shared_type_if_needed(n: n, rendered: scalar, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
       Absent =>
     match closed_alias_peel_verdict(env: env, n: n) {
       ClosedAliasPeelZeroParam => {
@@ -1642,7 +1642,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
         render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env), type_decl_items: type_decl_items)
       }
     ) |> join(separator: ", ")
-    render_rust_shared_type_if_needed(n: n, rendered: concat(if base_name == "Witness" { "/*WHP peel=" } else { "" }, if base_name == "Witness" { if peel { "T" } else { "F" } } else { "" }, if base_name == "Witness" { "*/" } else { "" }, base, "<", args, ">"), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+    render_rust_shared_type_if_needed(n: n, rendered: concat(base, "<", args, ">"), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
       }
       ClosedAliasBindingAbsent => {
     let base = match rust_seed_host_container_base(name: base_name) {
@@ -1657,7 +1657,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
         render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env), type_decl_items: type_decl_items)
       }
     ) |> join(separator: ", ")
-    render_rust_shared_type_if_needed(n: n, rendered: concat(if base_name == "Witness" { "/*WBA peel=" } else { "" }, if base_name == "Witness" { if peel { "T" } else { "F" } } else { "" }, if base_name == "Witness" { "*/" } else { "" }, base, "<", args, ">"), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+    render_rust_shared_type_if_needed(n: n, rendered: concat(base, "<", args, ">"), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
       }
     }
     }
@@ -1829,9 +1829,8 @@ fn render_rust_shared_type_with_optional(n: Node, type_name: String, rendered: S
 }
 
 fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
-  let rendered0 = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
+  let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
   let type_name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-  let rendered = if type_name == "Witness" { concat("/*ATS*/", rendered0) } else { rendered0 }
   render_rust_shared_type_with_optional(n: n, type_name: type_name, rendered: rendered, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
 }
 
@@ -1889,7 +1888,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
       } else if n.connective == NoConnective && n.children |> count > 0 {
         match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types, env: env) {
-          Present { value: scalar } => render_rust_shared_type_with_optional(n: n, type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: concat("/*SCB*/", scalar), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
+          Present { value: scalar } => render_rust_shared_type_with_optional(n: n, type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: scalar, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
           Absent =>
         if !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
           render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
@@ -1969,9 +1968,7 @@ fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
   let spelled = render_rust_fn_sig_type_spelled(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
-  let sigleaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-  let sigdbg = if starts_with(s: spelled, prefix: "Witness") || starts_with(s: spelled, prefix: "Rc<Witness") { concat("/*SIG leaf=", sigleaf, " kids=", to_string(value: n.children |> count), " applied=", if find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) == none { "F" } else { "T" }, " gp=", to_string(value: generic_param_names |> count), "*/") } else { "" }
-  concat(sigdbg, render_rust_declaration_position(n: n, spelled: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names))
+  render_rust_declaration_position(n: n, spelled: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
 }
 
 // THE ONE RENDERER OF "the Rust type of a bare reference to declaration D at a type position": the
@@ -1986,11 +1983,10 @@ fn render_rust_declaration_position(n: Node, spelled: String, shared_types: Set<
     _ => false
   }
   let bare_declared_leaf = names_declaration && find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) == none && n.return_cardinality != CardOptional && !is_container_type(name: leaf) && !(generic_param_names |> any(g => g == leaf))
-  let dbg = if spelled == "TerminationProof" { concat("/*DBG leaf=", leaf, " kids=", to_string(value: n.children |> count), " names=", if names_declaration { "T" } else { "F" }, " bare=", if bare_declared_leaf { "T" } else { "F" }, " spelled=", spelled, "*/") } else { "" }
   if bare_declared_leaf {
-    concat(rust_field_stored_layer_type(rt_field: n, ty: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names), dbg)
+    concat(rust_field_stored_layer_type(rt_field: n, ty: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names))
   } else {
-    concat(spelled, dbg)
+    spelled
   }
 }
 
@@ -2012,7 +2008,7 @@ fn render_rust_fn_sig_type_spelled(n: Node, generic_param_names: List<String>, s
   let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
   match exact_leaf {
-    Present { value: exact } => render_rust_shared_type_with_optional(n: n, type_name: name, rendered: concat("/*EXL*/", exact), shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
+    Present { value: exact } => render_rust_shared_type_with_optional(n: n, type_name: name, rendered: exact, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items)
     Absent =>
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types, type_decl_items: type_decl_items))
