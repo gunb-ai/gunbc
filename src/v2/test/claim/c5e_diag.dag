@@ -1,0 +1,54 @@
+module v2.test.claim.c5e_diag
+
+import v2.compiler.source_root_eval { native_test_context_from_ingest, native_test_infer_resolved, native_test_resolve_module, NativeTestPreparedModule }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived, not_derived_site_symbol }
+import v2.test.claim.infer_not_derived_site { nds_read }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { node_subtree_nodes, Symbol }
+import std.algebra { fold_list, contains, Cons }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { Bool, List, String }
+
+data cd_q3: String = "module v2.test.cd_q3\n\nimport v2.test.cd_qb { bx }\n\nfn ax() -> Int { bx() }\n"
+data cd_qb: String = "module v2.test.cd_qb\n\nfn bx() -> Int { 7 }\n"
+
+fn cd_sites() -> List<Symbol> {
+  match native_test_context_from_ingest(ingest: [
+    nds_read(source: cd_q3, id: ^cd_q3_read, file: "src/v2/test/fixture/cd/q3.dag"),
+    nds_read(source: cd_qb, id: ^cd_qb_read, file: "src/v2/test/fixture/cd/qb.dag")
+  ]) {
+    Rejected { diagnostics: _ } => [^ingest_rejected]
+    Accepted { value: context, diagnostics: _ } =>
+      match native_test_resolve_module(context: context, module: [^v2, ^test, ^cd_q3]).resolved {
+        Rejected { diagnostics: _ } => [^resolve_rejected]
+        Accepted { value: resolved, diagnostics: _ } =>
+          match native_test_infer_resolved(module: [^v2, ^test, ^cd_q3], resolved: resolved) {
+            Rejected { diagnostics: _ } => [^infer_rejected]
+            Accepted { value: p, diagnostics: _ } =>
+              fold_list(
+                xs: node_subtree_nodes(root: p.inferred.root),
+                empty: [],
+                cons: fn(acc, n) {
+                  match p.inferred.facts.lookup(n) {
+                    Absent => acc
+                    Present { value: facts } =>
+                      match facts.grounding {
+                        GroundingNotDerived { node: _, site: s } => Cons { head: not_derived_site_symbol(site: s), tail: acc }
+                        DerivedGrounding { grounding: _ } => acc
+                      }
+                  }
+                }
+              )
+          }
+      }
+  }
+}
+
+test fn cd_has_ingest_rejected() -> Bool { contains(xs: cd_sites(), item: ^ingest_rejected, eq: fn(a, b) { a == b }) }
+test fn cd_has_resolve_rejected() -> Bool { contains(xs: cd_sites(), item: ^resolve_rejected, eq: fn(a, b) { a == b }) }
+test fn cd_has_infer_rejected() -> Bool { contains(xs: cd_sites(), item: ^infer_rejected, eq: fn(a, b) { a == b }) }
+test fn cd_has_ReferenceLookupMiss() -> Bool { contains(xs: cd_sites(), item: ^ReferenceLookupMiss, eq: fn(a, b) { a == b }) }
+test fn cd_has_CallableEvidenceAbsent() -> Bool { contains(xs: cd_sites(), item: ^CallableEvidenceAbsent, eq: fn(a, b) { a == b }) }
+test fn cd_has_ReferenceRejectedGrounding() -> Bool { contains(xs: cd_sites(), item: ^ReferenceRejectedGrounding, eq: fn(a, b) { a == b }) }
+test fn cd_has_DeclarationReferenceWithoutPath() -> Bool { contains(xs: cd_sites(), item: ^DeclarationReferenceWithoutPath, eq: fn(a, b) { a == b }) }
+test fn cd_has_DeclarationWrapperEvidenceEdgesAbsent() -> Bool { contains(xs: cd_sites(), item: ^DeclarationWrapperEvidenceEdgesAbsent, eq: fn(a, b) { a == b }) }
