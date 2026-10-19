@@ -6,7 +6,7 @@ import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarati
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_fixture_two }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 import v2.std.node { ComputationNode, Edge, Node, Positional, Symbol, Transform, symbol_eq }
 import v2.std.qualified_name { declaration_reference_node }
@@ -228,4 +228,31 @@ test fn lie_reason_eval_rejected_type_node() -> Bool {
 
 test fn lie_reason_eval_rejected_unsupported_callee() -> Bool {
   lie_reason_is(wanted: ^eval_rejected_unsupported_callee)
+}
+
+fn lie_locus_is(list: Node, wanted: Node) -> Bool {
+  match lie_eval(list: list) {
+    Present { value: Rejected { diagnostics: ds } } =>
+      match ds.head.at {
+        NodeLocus { anchor: a } => a.at == wanted
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn lie_locus_list() -> Bool {
+  lie_locus_is(list: lie_forward, wanted: lie_forward)
+}
+
+test fn lie_locus_head() -> Bool {
+  lie_locus_is(list: lie_forward, wanted: lie_head())
+}
+
+test fn lie_locus_first_element() -> Bool {
+  lie_locus_is(list: lie_forward, wanted: dag_int_literal_fixture_one())
+}
+
+test fn lie_locus_second_element() -> Bool {
+  lie_locus_is(list: lie_forward, wanted: dag_int_literal_fixture_two())
 }
