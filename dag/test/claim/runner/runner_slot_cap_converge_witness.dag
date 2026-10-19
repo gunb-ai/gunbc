@@ -551,3 +551,24 @@ test fn fabric_classification_alone_does_not_change_the_extras_decision() -> Boo
     && length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: inert, as_fabric: true)))
       == length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: inert, as_fabric: false)))
 }
+
+// Positive: reach is "no loaded config AND no cgroup", not masked-ness. A not-found, inactive, cgroupless
+// non-fabric extra has nothing for a reload to apply to, so it is admitted.
+test fn a_non_fabric_not_found_inactive_cgroupless_extra_is_no_hazard() -> Bool {
+  let show = masked_show_reload(load: "not-found", active: "inactive", cgroup: "", reload: "no")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 0
+    && plan_drains(p: extras_plan_with(extra_show: show, as_fabric: false))
+}
+
+// RED: a not-found but ACTIVE extra (a live cgroup) is still reached, and withholds by unit name.
+test fn a_non_fabric_not_found_active_extra_withholds() -> Bool {
+  let show = masked_show_reload(load: "not-found", active: "active", cgroup: "/system.slice/x", reload: "no")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 1
+    && plan_withheld_naming(p: extras_plan_with(extra_show: show, as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
+
+// Positive: a LOADED, inactive, cgroupless extra is still reached (it can be started), unchanged.
+test fn a_non_fabric_loaded_inactive_cgroupless_extra_still_withholds() -> Bool {
+  let show = masked_show_reload(load: "loaded", active: "inactive", cgroup: "", reload: "no")
+  plan_withheld_naming(p: extras_plan_with(extra_show: show, as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
