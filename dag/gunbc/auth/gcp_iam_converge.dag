@@ -333,7 +333,11 @@ fn fleet_roster_grants() -> List<SecretAccessGrant> {
 // all three, is that one cell and not a second row; any grant differing on one of them stays its own.
 fn bmc_assimilator_grants() -> List<SecretAccessGrant> {
   distinct_by_key(
-    xs: map([bmc_wif_canary_grant, bmc_srv3_admin_access_grant, bmc_srv3_admin_legacy_binding], g => SecretAccessGrant { target: g.secret_ref, role: g.role, condition: none }),
+    xs: [
+      SecretAccessGrant { target: bmc_wif_canary_grant.secret_ref, role: bmc_wif_canary_grant.role, condition: none },
+      SecretAccessGrant { target: bmc_srv3_admin_access_grant.secret_ref, role: bmc_srv3_admin_access_grant.role, condition: none },
+      SecretAccessGrant { target: bmc_srv3_admin_legacy_binding.secret_ref, role: bmc_srv3_admin_legacy_binding.role, condition: none },
+    ],
     key: g => concat(concat(g.target.secret as String, " "), g.role),
   )
 }
