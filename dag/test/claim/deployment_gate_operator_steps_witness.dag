@@ -155,8 +155,11 @@ fn observed_identity(installation_id: Int, identity_repo: NonEmptyStr) -> Observ
       app_id: Present { value: 1900000001 },
       app_slug: Present { value: "gunbc-deployment-gate" },
     },
+    // the claim follows the parameter: a claim pinned to one installation would make every OTHER
+    // installation refuse at the OBSERVATION, and the trial case below would be absent for the wrong
+    // reason instead of reaching the arm under test
     claim: GateInstallationClaim {
-      installation_id: GitHubAppInstallationId { value: 888800001 },
+      installation_id: GitHubAppInstallationId { value: installation_id },
       app_id: GitHubAppId { value: 1900000001 },
     },
   ) {
@@ -230,8 +233,11 @@ fn receipt_for(
     ),
     requested_rule_id: rule_id,
   ) {
+    // `none`, the spelling this model's Optional arms use. A fixture yielding the other absent
+    // constructor would not fall into `none =>` at the consumer; it crashes the match instead of
+    // refusing it, which is a worse failure than a red.
     Accepted { receipt: r } => Present { value: r }
-    AcceptedReviewRefused { because: _ } => Absent
+    AcceptedReviewRefused { because: _ } => none
   }
 }
 
@@ -595,7 +601,7 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
          identity_repo: gate_repo,
          rule_id: canonical_rule_id,
        )
-         == Absent
+         == none
     // A STATUS GITHUB DOES NOT ACCEPT FOR THIS CALL.
     && receipt_for(
          run_id: 35447067113,
@@ -609,7 +615,7 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
          identity_repo: gate_repo,
          rule_id: canonical_rule_id,
        )
-         == Absent
+         == none
     // THE BODY RELEASES ANOTHER ENVIRONMENT while the caller claims srv1-production. This is the
     // other half of the mandated red — a mutated environment binding must not approve either.
     && receipt_for(
@@ -624,7 +630,7 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
          identity_repo: gate_repo,
          rule_id: canonical_rule_id,
        )
-         == Absent
+         == none
     // AND THE BODY AGAINST THE CLAIM ITSELF.
     && receipt_for(
          run_id: 35447067113,
