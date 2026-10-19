@@ -8,6 +8,8 @@ import v2.compiler.source_root_eval {
   native_census_owner_of,
   native_census_position_table_empty,
   native_census_positions_absorb_accepted,
+  NativeCensusPositions,
+  NativeCensusPositionsBuilt,
   native_test_context_from_ingest
 }
 import v2.compiler.native_test_vocabulary { FileRefusalAtLine, FileRefusalAtUnresolvedNode }
@@ -652,13 +654,15 @@ test fn a_projected_node_from_real_assembly_recovers_its_bytes_holds() -> Bool {
   }
 }
 
-fn attribution_census_positions() -> NativeCensusPositionTable {
-  native_census_positions_absorb_accepted(
-    table: native_census_position_table_empty(),
-    path: ^attribution_file_a,
-    spans: attribution_index_in_scope_a(),
-    text: attribution_source_a
-  )
+fn attribution_census_positions() -> NativeCensusPositions {
+  NativeCensusPositionsBuilt {
+    table: native_census_positions_absorb_accepted(
+      table: native_census_position_table_empty(),
+      path: ^attribution_file_a,
+      spans: attribution_index_in_scope_a(),
+      text: attribution_source_a
+    )
+  }
 }
 
 // THE CENSUS LOCATOR USES THE SAME SCOPED DOOR. A foreign projected cause must not become a line

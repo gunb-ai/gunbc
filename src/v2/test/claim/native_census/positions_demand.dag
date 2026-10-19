@@ -1,18 +1,23 @@
 module v2.test.claim.native_census.positions_demand
 
 import v2.compiler.source_root_eval {
+  NativeCensusPositions,
+  NativeCensusPositionsBuilt,
+  NativeCensusPositionsNotBuilt,
   NativeLocatesFatals,
   NativeNeverLocates,
+  native_census_locate,
   NativeTestContext,
   native_test_context_from_ingest_for
 }
-import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
+import v2.compiler.native_test_vocabulary { FileRefusalAtPositionsNotBuilt, native_test_file_refusal_fatal_reason }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.test.claim.native_census.whole_tree_census_resolve {
   census_clean_source,
   census_poison_source,
   census_probe_read
 }
+import v2.std.diagnostic { ByteRange, Textual }
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty, fold_list, length }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
@@ -66,13 +71,16 @@ data positions_probe: PositionsProbe = match native_test_context_from_ingest_for
 }
 
 fn positions_probe_files(context: NativeTestContext) -> Int {
-  count(sorted_map_keys(context.positions.files))
+  match context.positions {
+    NativeCensusPositionsNotBuilt => -1
+    NativeCensusPositionsBuilt { table: t } => count(sorted_map_keys(t.files))
+  }
 }
 
 test fn never_locates_builds_no_position_table_holds() -> Bool {
   match positions_probe {
     PositionsProbeRefused => false
-    PositionsProbeDecided { never: n, locates: _ } => positions_probe_files(context: n) == 0
+    PositionsProbeDecided { never: n, locates: _ } => positions_probe_files(context: n) == -1
   }
 }
 
@@ -92,5 +100,18 @@ test fn the_demand_does_not_change_the_census_answer_holds() -> Bool {
         && length(xs: n.accepted_file_advisories) == length(xs: l.accepted_file_advisories)
         && fold_list(xs: n.file_refusals, empty: ^no_refusal, cons: fn(acc, r) { native_test_file_refusal_fatal_reason(fr: r) })
           == fold_list(xs: l.file_refusals, empty: ^no_refusal, cons: fn(acc, r) { native_test_file_refusal_fatal_reason(fr: r) })
+  }
+}
+
+// THE RED THE DEMAND OWES: a fatal located against a context that never built its table refuses with the
+// typed not-built site, never the ordinary unresolved-node answer a miss in a real table gives.
+test fn locating_against_a_never_locates_context_refuses_visibly_holds() -> Bool {
+  match native_census_locate(
+    at: Textual { file: ^positions_probe_clean_cu, extent: ByteRange { start: 0, end: 1 } },
+    path: ^positions_probe_clean_cu,
+    positions: NativeCensusPositionsNotBuilt
+  ) {
+    FileRefusalAtPositionsNotBuilt => true
+    _ => false
   }
 }
