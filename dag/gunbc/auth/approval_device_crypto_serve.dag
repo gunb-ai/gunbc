@@ -21,7 +21,6 @@ import extdeps.apple.app_attest {
 }
 import gunbc.auth.approval_device_crypto_self_check { device_crypto_startup, p256_multiple_scalar, p256_scalar_is_infinity }
 import gunbc.auth.approval_device_crypto_realization { device_crypto_obligations, DeviceCryptoHandlerReceipt }
-import gunbc.auth.approval_device_crypto_receipt { device_crypto_receipt_of_note }
 import gunbc.auth.approval_device_wire { WireDecode, WireDecoded, WireRefused }
 import gunbc.auth.approval_device_crypto_wire {
   device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path, device_crypto_p256_order_path,
@@ -140,23 +139,19 @@ fn order_route(body: String, receipt: DeviceCryptoHandlerReceipt) -> ServeWireRe
   }
 }
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, startup_note: String) -> ServeWireResponse {
-  match device_crypto_receipt_of_note(note: startup_note) {
-    Absent => crypto_response(status: 503, body: "the startup note names no device-crypto receipt\n")
-    Present { value: receipt } =>
-      if method != "POST" { crypto_response(status: 405, body: "the verifier answers POST only\n") }
-      else if path == device_crypto_signature_path { signature_route(body: body, receipt: receipt) }
-      else if path == device_crypto_attestation_path { attestation_route(body: body, receipt: receipt) }
-      else if path == device_crypto_assertion_path { assertion_route(body: body, receipt: receipt) }
-      else if path == device_crypto_p256_order_path { order_route(body: body, receipt: receipt) }
-      else { crypto_response(status: 404, body: concat("no verifier route ", concat(path, "\n"))) }
-  }
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
+  if method != "POST" { crypto_response(status: 405, body: "the verifier answers POST only\n") }
+  else if path == device_crypto_signature_path { signature_route(body: body, receipt: receipt) }
+  else if path == device_crypto_attestation_path { attestation_route(body: body, receipt: receipt) }
+  else if path == device_crypto_assertion_path { assertion_route(body: body, receipt: receipt) }
+  else if path == device_crypto_p256_order_path { order_route(body: body, receipt: receipt) }
+  else { crypto_response(status: 404, body: concat("no verifier route ", concat(path, "\n"))) }
 }
 
 // THE STARTUP SELF-CHECK (gunbc.native_serve native_serve_startup_entry_function): the rendered main runs this once
 // before it binds, with the octets of this very executable, and refuses to bind when it refuses. Every obligation of
 // device_crypto_obligations is executed on the real folds and the receipt minted over them carries the binary's
 // SHA-256 as its exact revision (gunbc.auth.approval_device_crypto_self_check device_crypto_startup).
-fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup {
+fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup<DeviceCryptoHandlerReceipt> {
   device_crypto_startup(obligations: device_crypto_obligations, executable_octets: executable_octets)
 }

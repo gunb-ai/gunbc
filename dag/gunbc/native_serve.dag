@@ -18,8 +18,8 @@ import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
 // process is (native_serve_start), whether a request head is admissible and how many body bytes to
 // read (native_serve_frame), and whether the request is answered before the handler is entered
 // (native_serve_route). The handler contract is the seed's `gunbc serve` contract plus one trailing argument --
-// `fn native_serve_handle(method, path, body, tailscale_identity, release_revision, startup_note) ->
-// ServeWireResponse` (startup_note being what this process's self-check produced) -- so a program served by the seed today is served natively by declaring the
+// `fn native_serve_handle(method, path, body, tailscale_identity, release_revision[, startup]) ->
+// ServeWireResponse` (startup being the typed value this process's self-check passed with, when the entry declares one) -- so a program served by the seed today is served natively by declaring the
 // arm and naming its handler that.
 //
 // WHERE THIS DOOR IS BETTER THAN THE SEED'S, WHICH IS THE BAR (DESIGN section 7):
@@ -426,8 +426,11 @@ fn native_serve_route(contract: NativeServeContract, head: NativeServeRequestHea
 // binary identity this carries. Instrument: //gunbc/instruments:native-serve-device-crypto.
 data native_serve_startup_entry_function: String = "native_serve_startup"
 
-type NativeServeStartup
-  = NativeServeStartupPassed { note: String }
+// S is the handler's startup payload: the typed value the fold passed with, handed to every handler call as a
+// trailing argument (the device-crypto handler's is its DeviceCryptoHandlerReceipt). The line is only what the
+// process announces; nothing reads it back.
+type NativeServeStartup<S>
+  = NativeServeStartupPassed { line: String, value: S }
   | NativeServeStartupRefused { reason: String }
 
 // Distinct from 2 (a refused start) so a supervisor and the instruments can tell a failed
@@ -438,8 +441,8 @@ fn native_serve_startup_refusal_line(reason: String) -> String {
   concat("REFUSED: startup self-check: ", reason)
 }
 
-fn native_serve_startup_passed_line(note: String) -> String {
-  concat("native-serve startup self-check passed: ", note)
+fn native_serve_startup_passed_line(line: String) -> String {
+  concat("native-serve startup self-check passed: ", line)
 }
 
 data native_serve_handler_name: String = "native_serve_handle"

@@ -19968,25 +19968,25 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
     concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup;", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};", "\n")
   } else { "" }
-  let startup_run = if startup {
+  let worker_startup = if startup {
     concat(
-      "    // The startup fold runs before any bind: it judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
-      "    match std::fs::read(\"/proc/self/exe\") \{", "\n",
-      "        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
-      "            NativeServeStartup::NativeServeStartupPassed \{ note \} => \{", "\n",
-      "                println!(\"\{\}\", native_serve_startup_passed_line(note.clone()));", "\n",
-      "                let _ = STARTUP_NOTE.set(note.clone());", "\n",
-      "            \}", "\n",
-      "            NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
-      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
+      "        // It judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
+      "        let startup_value = match std::fs::read(\"/proc/self/exe\") \{", "\n",
+      "            Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
+      "                NativeServeStartup::NativeServeStartupPassed \{ line, value \} => \{", "\n",
+      "                    if !STARTUP_ANNOUNCED.swap(true, std::sync::atomic::Ordering::SeqCst) \{ println!(\"\{\}\", native_serve_startup_passed_line(line.clone())); \}", "\n",
+      "                    value.clone()", "\n",
+      "                \}", "\n",
+      "                NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
+      "                    eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
+      "                    std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "                \}", "\n",
+      "            \},", "\n",
+      "            Err(cause) => \{", "\n",
+      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
       "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
       "            \}", "\n",
-      "        \},", "\n",
-      "        Err(cause) => \{", "\n",
-      "            eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
-      "            std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
-      "        \}", "\n",
-      "    \}", "\n")
+      "        \};", "\n")
   } else { "" }
   let worker_realize = if effectful {
     concat(
@@ -19996,8 +19996,8 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "        \};", "\n",
       binding_lines)
   } else { "" }
-  let startup_arg = if startup { ", STARTUP_NOTE.get().cloned().expect(\"the startup note is set before the first handler call\")" } else { "" }
-  let startup_static = if startup { "// The note the startup fold passed with, handed to every handler call (the handler echoes the receipt it names).\nstatic STARTUP_NOTE: std::sync::OnceLock<String> = std::sync::OnceLock::new();\n\n" } else { "" }
+  let startup_arg = if startup { ", startup_value.clone()" } else { "" }
+  let startup_static = if startup { "// Whether the startup line has been printed: every worker generation judges the image, only the first announces.\nstatic STARTUP_ANNOUNCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\n" } else { "" }
   let worker_call = if effectful {
     concat(
       "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
@@ -20117,6 +20117,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    let worker_state = state.clone();", "\n",
       "    std::thread::spawn(move || \{", "\n",
       "        let _guard = guard;", "\n",
+      worker_startup,
       worker_realize,
       "        let _ = ready.send(Ok(()));", "\n",
       "        while let Ok((call, reply)) = inbox.recv() \{", "\n",
@@ -20207,7 +20208,15 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \};", "\n",
-      startup_run,
+      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
+      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
+      "    let mut generation = match realize_generation(&stuck, deadline) \{", "\n",
+      "        Ok(generation) => generation,", "\n",
+      "        Err(cause) => \{", "\n",
+      "            eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \};", "\n",
       "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
       "        Ok(listener) => listener,", "\n",
       "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",
@@ -20218,15 +20227,6 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    \};", "\n",
       "    let bound_host = bound.ip().to_string();", "\n",
       "    let bound_port = bound.port() as i64;", "\n",
-      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
-      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
-      "    let mut generation = match realize_generation(&stuck, deadline) \{", "\n",
-      "        Ok(generation) => generation,", "\n",
-      "        Err(cause) => \{", "\n",
-      "            eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
-      "            std::process::exit(2);", "\n",
-      "        \}", "\n",
-      "    \};", "\n",
       "    eprintln!(\"\{\}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));", "\n",
       "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);", "\n",
       "    for accepted in listener.incoming() \{", "\n",

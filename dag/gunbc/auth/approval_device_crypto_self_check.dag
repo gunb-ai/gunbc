@@ -256,7 +256,7 @@ fn device_crypto_obligation_holds(o: DeviceCryptoObligation) -> Bool {
 // Runs `obligations` (the whole population in production), refuses naming the evidence of any that did not hold, and
 // otherwise hands the receipt to gunbc.auth.approval_device_crypto_receipt device_crypto_receipt_startup, whose exact
 // revision is the executable's SHA-256. An empty executable has no revision and refuses.
-fn device_crypto_startup(obligations: List<DeviceCryptoObligation>, executable_octets: List<Int>) -> NativeServeStartup {
+fn device_crypto_startup(obligations: List<DeviceCryptoObligation>, executable_octets: List<Int>) -> NativeServeStartup<DeviceCryptoHandlerReceipt> {
   if count(executable_octets) == 0 {
     NativeServeStartupRefused { reason: "the running executable's octets are empty, so the receipt has no exact revision" }
   } else {

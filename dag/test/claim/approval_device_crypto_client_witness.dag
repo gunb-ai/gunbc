@@ -31,7 +31,7 @@ import gunbc.auth.approval_device_crypto_client {
   SidecarResult, SidecarReply, SidecarAnswered, SidecarFailed, SidecarReplied, SidecarReplyFailed,
   sidecar_reply_from, approval_device_crypto_sidecar_endpoint, signature_from_answer, attestation_from_answer, assertion_from_answer,
 }
-import gunbc.auth.approval_device_crypto_receipt { device_crypto_receipt_of_note, device_crypto_receipt_startup }
+import gunbc.auth.approval_device_crypto_receipt { device_crypto_receipt_startup }
 import gunbc.native_serve { NativeServeStartupPassed, NativeServeStartupRefused }
 import gunbc.auth.approval_device_routes { DeviceRouteResponse, sidecar_failure_response }
 
@@ -429,20 +429,16 @@ test fn witness_a_verified_assertion_for_another_request_is_a_sidecar_failure() 
     && assertion_failed(r: assertion_from_answer(admission: admitted(), answer: asserted_with(id: "kid", pk: "BPK", cd: "other"), expectation: assertion_request()))
 }
 
-// THE STARTUP NOTE CARRIES COVERAGE: an admitted receipt's note reads back whole, and a note naming fewer than all the
-// obligations (or none) is no receipt, so the handler echoes what was admitted and never a restated population.
-test fn witness_the_startup_note_carries_the_admitted_coverage() -> Bool {
+// THE STARTUP VALUE CARRIES COVERAGE: an admitted startup hands the handler the receipt whole and typed, and a partial
+// population is refused before any value exists, so the handler echoes what was admitted and never a restated population.
+test fn witness_the_startup_value_carries_the_admitted_coverage() -> Bool {
   let whole = match device_crypto_receipt_startup(covered: device_crypto_obligations, exact_revision: "deadbeef") {
-    NativeServeStartupPassed { note: n } => match device_crypto_receipt_of_note(note: n) {
-      Present { value: r } => (r.covered |> count) == (device_crypto_obligations |> count) && (r.exact_revision as String) == "deadbeef"
-      Absent => false
-    }
+    NativeServeStartupPassed { line: _, value: r } => (r.covered |> count) == (device_crypto_obligations |> count) && (r.exact_revision as String) == "deadbeef"
     NativeServeStartupRefused { reason: _ } => false
   }
   let partial_refused = match device_crypto_receipt_startup(covered: device_crypto_obligations |> take(n: 1), exact_revision: "deadbeef") {
     NativeServeStartupRefused { reason: _ } => true
-    NativeServeStartupPassed { note: _ } => false
+    NativeServeStartupPassed { line: _, value: _ } => false
   }
-  let forged_note_refused = match device_crypto_receipt_of_note(note: join([device_crypto_handler_identity as String, " @ sha256:deadbeef covers "], "")) { Absent => true  Present { value: _ } => false }
-  whole && partial_refused && forged_note_refused
+  whole && partial_refused
 }
