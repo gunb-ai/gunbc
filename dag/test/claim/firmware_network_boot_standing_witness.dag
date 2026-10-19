@@ -15,7 +15,7 @@ import std.optional { Optional, Present, Absent }
 // blocking diagnostics by class AND subject, so a probe can name WHICH mint refused rather than merely
 // that something refused.
 import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for, census_rows_for }
-import gunbc.compile_diagnostic_census { census_count_at_key, censuses_differ_by_exactly_the_target_key }
+import gunbc.compile_diagnostic_census { census_blocking_rows, census_total_count, census_count_at_key, censuses_differ_by_exactly_the_target_key }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // THE FRONTIER IS WITNESSED, NOT ASSERTED IN PROSE: the witness reads the bound triggers and
 // states what their status is TODAY, so the day the probe lands, this is the thing that changes.
@@ -2199,7 +2199,7 @@ test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
 // call route (may a stranger call the mint and pass its output off as this module's verdict), and
 // merry's specific ask -- legitimate evidence reused with a swapped conclusion.
 
-data verdict_probe_hdr: String = "module probe_verdict_forgery\nimport std.types { Bool, EpochMs, List, NonEmptyStr }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }\nimport extdeps.uri { uri_https }\nimport extdeps.bmc.types { BootTargetPxe }\nimport extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }\nimport gunbc.firmware_network_boot_standing { FirmwareNetworkBootStanding, Ready, ReadyEvidence, AdmittedReadyConclusion, FirmwareBootObservation, firmware_boot_observation, BootOrderUnobserved, BootOptionsUnobserved, NicsUnobserved, SecureBootUnobserved, BiosVersionUnobserved, PreparationBlockingOn, NoInterfaceCarriesPxe, prepare, join_head_to_options, available_network_options, network_option_existence, NetworkOptionExistsEnabled, boot_order_entry, boot_option, redirect_target, RedirectTargetStanding, admissible_readiness_for, RouteReadinessStanding }\n"
+data verdict_probe_hdr: String = "module probe_verdict_forgery\nimport std.types { Bool, EpochMs, List, NonEmptyStr }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }\nimport extdeps.uri { uri_https }\nimport extdeps.bmc.types { BootTargetPxe }\nimport extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }\nimport gunbc.firmware_network_boot_standing { FirmwareNetworkBootStanding, Ready, ReadyEvidence, AdmittedReadyConclusion, FirmwareBootObservation, firmware_boot_observation, BootOrderUnobserved, BootOptionsUnobserved, NicsUnobserved, SecureBootUnobserved, BiosVersionUnobserved, PreparationBlockingOn, NoInterfaceCarriesPxe, prepare, join_head_to_options, available_network_options, network_option_existence, NetworkOptionExistsEnabled, boot_order_entry, boot_option, redirect_target, RedirectTargetStanding, admissible_readiness_for, RouteReadinessStanding }\nimport std.algebra { length }\n"
 
 // THE OBSERVATION EVERY FORGE SHARES, spelled once so the two sources below differ in EXACTLY one
 // way: whether a Ready is wrapped around the evidence.
@@ -2310,7 +2310,7 @@ test fn the_conclusion_seal_is_a_wall_measured_as_a_delta_not_a_lone_count() -> 
 // caller has to bring unit evidence to the mint -- and is still refused, for the same reason as
 // before: it is not an admitted caller. Refusing a well-formed call is the only refusal worth
 // witnessing; refusing a call that would not compile proves nothing.
-data direct_mint_source: String = verdict_probe_hdr + "\nfn bypass_to_a_verdict() -> FirmwareNetworkBootStanding {\n  let enabled_network_option = boot_option(reference: \"0001\", kind: BootTargetPxe, label: \"PXE\", enabled: true)\n  prepare(\n    blocker: NoInterfaceCarriesPxe,\n    join: join_head_to_options(devices: [boot_order_entry(reference: \"0001\", label: \"PXE\")], options: [enabled_network_option]),\n    available: available_network_options(options: [enabled_network_option]),\n\n    existence: network_option_existence(options: [enabled_network_option]),\n    observed_bios_version: Present { value: \"1.08\" },\n  )\n}\n"
+data direct_mint_source: String = verdict_probe_hdr + "\nfn s0_probe_case() -> Bool {\n  let enabled_network_option = boot_option(reference: \"0001\", kind: BootTargetPxe, label: \"PXE\", enabled: true)\n  let join = join_head_to_options(devices: [boot_order_entry(reference: \"0001\", label: \"PXE\")], options: [enabled_network_option])\n  let available = available_network_options(options: [enabled_network_option])\n  let existence = network_option_existence(options: [enabled_network_option])\n  let redirect = redirect_target(join: join, available: available)\n  let readiness = admissible_readiness_for(blocker: NoInterfaceCarriesPxe, redirect_to: redirect, existence: existence, observed_bios_version: Present { value: \"1.08\" })\n  let direct = prepare(blocker: NoInterfaceCarriesPxe, join: join, available: available, existence: existence, observed_bios_version: Present { value: \"1.08\" })\n  0 <= length(xs: readiness)\n}\n"
 
 // THE LAWFUL PAIR, AND NOT A WEAK ONE (merry-fox-82, round 2 item 3). The first control imported
 // the mint and defined an identity function, which proved only that importing is allowed -- it
@@ -2337,7 +2337,7 @@ data lawful_import_source: String = verdict_probe_hdr + "\nfn names_the_blocker(
 // (Round 3, merry-fox-82: the earlier control built only `join` and `available` and called
 // redirect_target, so the probe's `existence` and `observed_bios_version` expressions were exercised
 // NOWHERE clean, and a bug in them was invisible to the pair.)
-data lawful_call_source: String = verdict_probe_hdr + "\nfn what_would_the_catalog_answer() -> List<RouteReadinessStanding> {\n  let enabled_network_option = boot_option(reference: \"0001\", kind: BootTargetPxe, label: \"PXE\", enabled: true)\n  admissible_readiness_for(\n    blocker: NoInterfaceCarriesPxe,\n    redirect_to: redirect_target(\n      join: join_head_to_options(devices: [boot_order_entry(reference: \"0001\", label: \"PXE\")], options: [enabled_network_option]),\n      available: available_network_options(options: [enabled_network_option]),\n    ),\n    existence: network_option_existence(options: [enabled_network_option]),\n    observed_bios_version: Present { value: \"1.08\" },\n  )\n}\n"
+data lawful_call_source: String = verdict_probe_hdr + "\nfn s0_probe_case() -> Bool {\n  let enabled_network_option = boot_option(reference: \"0001\", kind: BootTargetPxe, label: \"PXE\", enabled: true)\n  let join = join_head_to_options(devices: [boot_order_entry(reference: \"0001\", label: \"PXE\")], options: [enabled_network_option])\n  let available = available_network_options(options: [enabled_network_option])\n  let existence = network_option_existence(options: [enabled_network_option])\n  let redirect = redirect_target(join: join, available: available)\n  let readiness = admissible_readiness_for(blocker: NoInterfaceCarriesPxe, redirect_to: redirect, existence: existence, observed_bios_version: Present { value: \"1.08\" })\n  0 <= length(xs: readiness)\n}\n"
 
 // THE CONTROL MUST BE CLEAN IN ITSELF, AND THE PAIR MUST BE DIFFERENTIAL -- stated through the SHARED
 // comparator, not through arithmetic on totals (merry-fox-82, round 3). Three claims, each checkable:
@@ -2413,6 +2413,28 @@ test fn the_probe_is_refused_once_at_the_target_key() -> Bool {
       subject_name: "prepare",
       blocking: true,
     ) == 1
+  }
+}
+
+// (a'') THE CONTROL IS CLEAN OVERALL, not merely at the target key: zero blocking rows of any class
+// anywhere in its census. This is the claim a positive control has to be able to make (codex review
+// 45357's point in gunbc.compile_diagnostic_census: a control that asserts nothing about
+// zero-diagnostics-of-any-severity lets an advisory pass unnoticed). It is stated separately from
+// (a') so a FAIL names which cleanliness claim broke.
+test fn the_control_has_no_blocking_rows_at_all() -> Bool {
+  match census_rows_for(source: lawful_call_source) {
+    Absent => false
+    Present { value: control } => census_total_count(rows: census_blocking_rows(rows: control.rows)) == 0
+  }
+}
+
+// (b') THE PROBE'S ONLY BLOCKING ROW IS THE ADMISSION REFUSAL. Together with (b) this says the extra
+// line buys exactly one refusal and no other hard diagnostic; the comparator below then also pins
+// that nothing else, advisory included, moved.
+test fn the_probe_has_exactly_one_blocking_row() -> Bool {
+  match census_rows_for(source: direct_mint_source) {
+    Absent => false
+    Present { value: probe } => census_total_count(rows: census_blocking_rows(rows: probe.rows)) == 1
   }
 }
 
