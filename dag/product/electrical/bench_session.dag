@@ -132,13 +132,27 @@ fn is_at_baseline(o: ResistanceObservation) -> Bool {
   }
 }
 
+// A PROBE WIRE FIXED TO A LEAD IS ITS OWN POINT. What the meter touched was the wire; that the wire sat
+// on the terminal the operator named, and on it alone, is the operator's statement, not a reading. So
+// readings taken at the wire are recorded at the wire's point, and intended names the terminal the wire
+// was meant for. Whether it stands for that terminal is derived from readings joining the two, in the
+// layer that reads the board, and never stored here; disputes are the operator's own later statements
+// doubting where it sat.
+type ProbeAttachment {
+  point: ElectricalTerminalRef
+  intended: ElectricalTerminalRef
+  statement: EvidenceRef
+  disputes: List<EvidenceRef>
+}
+
 type BenchRecord {
   incidents: List<BenchIncident>
+  attachments: List<ProbeAttachment>
   voltages: List<NodeVoltageObservation>
   resistances: List<ResistanceObservation>
 }
 
-data no_bench_record: BenchRecord = BenchRecord { incidents: [], voltages: [], resistances: [] }
+data no_bench_record: BenchRecord = BenchRecord { incidents: [], attachments: [], voltages: [], resistances: [] }
 
 // Whether a reading may stand for the board's state before every incident it is ordered against.
 fn is_before_incidents(o: ReadingOrder) -> Bool {
