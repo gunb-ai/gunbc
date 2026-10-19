@@ -20,8 +20,8 @@ echo "T=$(date +%T) MEASURED_AT $(cd $d && git rev-parse HEAD)"
 # GUARD: which tree is this, so a .dag-only or wrong-branch tree cannot read as green
 dg=$d/src/v1/04_infer.dag
 acc=$(grep -c "UnifyGenericsAcc" "$dg" || true)
-nm=$(grep -c "id: g," "$dg" || true)
-sp=$(grep -c 'concat(g, "@", span.file' "$dg" || true)
+nm=$(grep -c "type_variable_node(id: g)" "$dg" || true)
+sp=$(grep -c 'type_variable_node(id: concat(g, "@", span.file' "$dg" || true)
 echo "GUARD acc=$acc dag_namekeyed=$nm dag_span_keyed=$sp"
 case "$KIND" in
   repair)     { [ "$acc" = 0 ] && [ "$nm" = 1 ] && [ "$sp" = 1 ]; } || { echo "VOID repair tree guard failed (would measure the wrong tree)"; exit 8; } ;;
