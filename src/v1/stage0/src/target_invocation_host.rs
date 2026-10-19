@@ -315,6 +315,7 @@ pub enum TargetProducer {
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
     DependencyDemandCensus,
+    DeclRefCensus,
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
@@ -572,6 +573,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("dependency-demand-census"),
             TargetProducer::DependencyDemandCensus,
+        ),
+        (
+            instrument_label("decl-ref-census"),
+            TargetProducer::DeclRefCensus,
         ),
         (
             instrument_label("generic-identity-census"),
@@ -1071,6 +1076,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::DependencyDemandCensus => {
             run_dependency_demand_census(&self_host_source_roots())
         }
+        TargetProducer::DeclRefCensus => run_decl_ref_census(&self_host_source_roots()),
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
         }
@@ -5466,6 +5472,28 @@ fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
             },
             message: format!(
                 "dependency-demand-census: exit {code}; the [demand-census] lines above are the census"
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// `gunbc test //gunbc/instruments:decl-ref-census`: the emitted compiler's `decl-ref-census` verb,
+/// spawned exactly as `demand-census` is. Every line and the exit are decided by
+/// `v2.compiler.source_root_eval` `native_decl_ref_census_output`; the host adds no verdict.
+fn run_decl_ref_census(source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_decl_ref_census(source_roots) {
+        Ok(code) => InvocationOutcome {
+            termination: match code {
+                0 => Termination::ObservationHeld,
+                1 => Termination::ObservationDidNotHold,
+                _ => Termination::SubjectUnreached,
+            },
+            message: format!(
+                "decl-ref-census: exit {code}; the [decl-ref-census] lines above are the census"
             ),
         },
         Err(cause) => InvocationOutcome {
