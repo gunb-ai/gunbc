@@ -1620,7 +1620,7 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 //
 // WHAT IS NOT CLAIMED: this is a repair at two call sites, not a wall. Nothing refuses the next
 // prelude that interpolates a credential into a command string — these bodies are hand-authored
-// shell text, not declared operation argv, so v2.std.operation_argv's binding wall cannot see them.
+// shell text, not declared operation argv, so std.operation_argv's binding wall cannot see them.
 // The class stays mitigatable here; the trigger is the one extdeps.bmc.http names: credentials
 // modeled as declared inputs whose type the binder can refuse.
 //

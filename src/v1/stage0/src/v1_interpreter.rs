@@ -9940,7 +9940,7 @@ fn op_declared_readonly(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
     })
 }
 
-/// The BoundOperationInvocation (`v2.std.operation_argv`) of one dispatched operation: its resolved
+/// The BoundOperationInvocation (`std.operation_argv`) of one dispatched operation: its resolved
 /// identity -- declaring file, service, operation -- and each declared input by name.
 fn bound_operation_invocation_value(
     service_name: &str,
