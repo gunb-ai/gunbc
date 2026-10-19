@@ -83,7 +83,14 @@ import extdeps.github.actions_runs {
   RunFailure,
 }
 // The permission vocabulary is extdeps.github.app's, not re-minted here (§2).
+// THE ID CARRIERS ARE NOT RE-MINTED HERE. `components/schemas/installation` is the SAME upstream
+// response extdeps.github.app already models as GitHubAppInstallation, and its two id axes already
+// have types there. Declaring a second bare Int for an installation id would put a second source for
+// one fact where the first can drift from it, and would throw away the type that keeps an installation
+// id from being passed where an app id belongs (§2, §3).
 import extdeps.github.app {
+  GitHubAppInstallationId,
+  GitHubAppId,
   GitHubPermissionAxis,
   ActionsAxis,
   DeploymentsAxis,
@@ -303,7 +310,7 @@ fn rule_webhook_missing_field(parse: RuleWebhookParse) -> NonEmptyStr? {
 // looking like it had authenticated the sender. A model that read payload.installation as an Int would
 // fail on the real delivery in a different way; both wrong shapes are worth naming.
 type RuleWebhookInstallation {
-  id: Int,
+  id: GitHubAppInstallationId,
   node_id: NonEmptyStr,
 }
 
@@ -644,8 +651,8 @@ data installation_field_app_id: NonEmptyStr = "app_id"
 data installation_field_app_slug: NonEmptyStr = "app_slug"
 
 type InstallationIdentity {
-  installation_id: Int,
-  app_id: Int,
+  installation_id: GitHubAppInstallationId,
+  app_id: GitHubAppId,
   app_slug: NonEmptyStr,
 }
 
@@ -674,10 +681,13 @@ fn installation_identity_from_wire(wire: InstallationWireFields) -> Installation
     Present { value: i } => match wire.app_id {
       Present { value: a } => match wire.app_slug {
         Present { value: sl } =>
+          // The WIRE carries bare JSON integers, because that is what the JSON is; the PARSED value
+          // carries the types the rest of the repository already uses for these two axes, so a caller
+          // cannot swap them and no second id-type is born here.
           InstallationParsed {
             identity: InstallationIdentity {
-              installation_id: i,
-              app_id: a,
+              installation_id: GitHubAppInstallationId { value: i },
+              app_id: GitHubAppId { value: a },
               app_slug: sl,
             },
           }
@@ -858,7 +868,7 @@ type EnabledDeploymentProtectionRule {
 }
 
 type RuleOwningApp {
-  id: Int,
+  id: GitHubAppId,
   slug: NonEmptyStr,
 }
 

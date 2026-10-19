@@ -146,6 +146,8 @@ import extdeps.github.deployment_protection_rule {
 }
 import extdeps.github.app {
   GitHubAppPermission,
+  GitHubAppInstallationId,
+  GitHubAppId,
   ActionsAxis,
   DeploymentsAxis,
   AppAccessRead,
@@ -395,7 +397,7 @@ test fn the_enabled_rule_row_carries_exactly_the_four_fields_the_pin_requires() 
     id: 900000001,
     node_id: "RDP_1",
     enabled: true,
-    app: RuleOwningApp { id: 1900000001, slug: "gunbc-deployment-gate" },
+    app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },
   }
   row.id == 900000001
     && row.enabled
@@ -407,7 +409,7 @@ test fn the_enabled_rule_row_carries_exactly_the_four_fields_the_pin_requires() 
            id: 900000002,
            node_id: "RDP_2",
            enabled: false,
-           app: RuleOwningApp { id: 1900000001, slug: "gunbc-deployment-gate" },
+           app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },
          }).enabled
   // THE OTHER HALF OF THE CLAIM — that the App row has no installation field — is NOT tested here, and
   // cannot be: the field list is what the compiler enforces from the pinned schema, and an expression
@@ -603,7 +605,7 @@ fn full_wire() -> RuleWebhookWireFields {
     event: Present { value: rule_webhook_event_name },
     deployment_callback_url: Present { value: "https://api.github.com/callback" },
     installation: Present {
-      value: RuleWebhookInstallation { id: 1900000001, node_id: "I_1900000001" },
+      value: RuleWebhookInstallation { id: GitHubAppInstallationId { value: 1900000001 }, node_id: "I_1900000001" },
     },
   }
 }
@@ -615,7 +617,7 @@ fn wire_without_environment() -> RuleWebhookWireFields {
     event: Present { value: rule_webhook_event_name },
     deployment_callback_url: Present { value: "https://api.github.com/callback" },
     installation: Present {
-      value: RuleWebhookInstallation { id: 1900000001, node_id: "I_1900000001" },
+      value: RuleWebhookInstallation { id: GitHubAppInstallationId { value: 1900000001 }, node_id: "I_1900000001" },
     },
   }
 }
@@ -637,7 +639,7 @@ fn wire_without_callback() -> RuleWebhookWireFields {
     event: Present { value: rule_webhook_event_name },
     deployment_callback_url: Absent,
     installation: Present {
-      value: RuleWebhookInstallation { id: 1900000001, node_id: "I_1900000001" },
+      value: RuleWebhookInstallation { id: GitHubAppInstallationId { value: 1900000001 }, node_id: "I_1900000001" },
     },
   }
 }
@@ -647,7 +649,7 @@ fn wire_without_callback() -> RuleWebhookWireFields {
 // would trust to identify who sent the delivery. The witness is the type's own field census read by
 // construction: adding a third required field makes these literals stop compiling.
 test fn the_installation_object_carries_only_the_two_fields_the_pin_has() -> Bool {
-  let identity = RuleWebhookInstallation { id: 1900000001, node_id: "I_1900000001" }
+  let identity = RuleWebhookInstallation { id: GitHubAppInstallationId { value: 1900000001 }, node_id: "I_1900000001" }
   identity.id == 1900000001 && (identity.node_id as String) == "I_1900000001"
 }
 

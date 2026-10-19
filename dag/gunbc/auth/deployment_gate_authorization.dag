@@ -63,6 +63,11 @@ import extdeps.github.deployment_protection_rule {
   rule_delivery_documented_guarantee,
 }
 import extdeps.github.app {
+  // THE ID CARRIERS, imported rather than re-declared here. A second `Int` for an installation id
+  // would be a second source for one fact that can drift from the first, and it drops the type that
+  // keeps an installation id from reaching a parameter meant for an app id (§2, §3).
+  GitHubAppInstallationId,
+  GitHubAppId,
   GitHubPermissionAxis,
   GitHubAppPermission,
   ActionsAxis,
@@ -411,7 +416,7 @@ fn refusal_from_the_ownership(
 ) -> Optional<BrokerAnswerRefusal> {
   match ownership {
     OwnedByGateApp { observation: o } =>
-      if o.installation_id <= 0 {
+      if o.installation_id.value <= 0 {
         // The arm that authorises a token refuses to authorise one it cannot name an installation for.
         optional_present(
           value: RuleOwnershipNotEstablished { because: ObservedIdentityIsNotTheRuleOwner }
@@ -571,8 +576,8 @@ type BrokerAnswerVerdict = BrokerMayAnswer | BrokerRefused { because: BrokerAnsw
 // readback is asked to corroborate; nothing may treat it as established, which is why it no longer
 // carries the name of the thing it is trying to become.
 type GateInstallationClaim {
-  installation_id: Int,
-  app_id: Int,
+  installation_id: GitHubAppInstallationId,
+  app_id: GitHubAppId,
 }
 
 // THE OBSERVED IDENTITY: what GET /repos/{owner}/{repo}/installation returned, joined with the claim it
@@ -580,8 +585,8 @@ type GateInstallationClaim {
 // nothing else attributing; requiring id AND slug to agree is what stops a same-App, different-slug
 // record from passing. Minted only by observe_gate_installation below.
 type ObservedGateInstallation sole_constructor {
-  installation_id: Int,
-  app_id: Int,
+  installation_id: GitHubAppInstallationId,
+  app_id: GitHubAppId,
   app_slug: NonEmptyStr,
   owner: NonEmptyStr,
   repo: NonEmptyStr,
@@ -598,7 +603,17 @@ type InstallationObservationRefusal =
   // working App. A read that did not answer is its own reason; the next arm's "GitHub says no
   // installation for this repository" is the only reading that justifies an install.
   | ReadbackDidNotAnswer { status: HttpStatus }
-  | ClaimDisagreesWithObservation { claimed_installation_id: Int, observed_installation_id: Int }
+  | ClaimDisagreesOnInstallation {
+      claimed_installation_id: GitHubAppInstallationId,
+      observed_installation_id: GitHubAppInstallationId,
+    }
+  // A SEPARATE ARM FOR THE OTHER AXIS. One variant for both used to name its fields
+  // claimed/observed_installation_id, so an operator whose APP id was mistyped was shown two
+  // installation numbers and told nothing about the axis that actually disagreed.
+  | ClaimDisagreesOnApp {
+      claimed_app_id: GitHubAppId,
+      observed_app_id: GitHubAppId,
+    }
 
 type InstallationObservation
   = InstallationObserved { observed: ObservedGateInstallation }
@@ -658,18 +673,18 @@ fn observe_gate_installation(
         because: WireIncomplete { missing_field: f.missing_field },
       }
       InstallationParsed { identity: identity } =>
-        if identity.installation_id != claim.installation_id {
+        if identity.installation_id.value != claim.installation_id.value {
           InstallationObservationRefused {
-            because: ClaimDisagreesWithObservation {
+            because: ClaimDisagreesOnInstallation {
               claimed_installation_id: claim.installation_id,
               observed_installation_id: identity.installation_id,
             },
           }
-        } else if identity.app_id != claim.app_id {
+        } else if identity.app_id.value != claim.app_id.value {
           InstallationObservationRefused {
-            because: ClaimDisagreesWithObservation {
-              claimed_installation_id: claim.installation_id,
-              observed_installation_id: identity.installation_id,
+            because: ClaimDisagreesOnApp {
+              claimed_app_id: claim.app_id,
+              observed_app_id: identity.app_id,
             },
           }
         } else {
@@ -700,9 +715,9 @@ fn observe_gate_installation(
 type ObservedRuleOwnership sole_constructor {
   rule_id: Int,
   environment_name: NonEmptyStr,
-  app_id: Int,
+  app_id: GitHubAppId,
   app_slug: NonEmptyStr,
-  installation_id: Int,
+  installation_id: GitHubAppInstallationId,
 }
 
 type OwnershipRefusalReason
@@ -752,13 +767,13 @@ fn observe_rule_ownership(
 {
   if (rules |> count) == 0 {
     NotOwnedByGateApp { because: ReadbackCarriedNoRules }
-  } else if !(rules |> any(r => r.app.id == observed.app_id && r.app.slug == observed.app_slug)) {
+  } else if !(rules |> any(r => r.app.id.value == observed.app_id.value && r.app.slug == observed.app_slug)) {
     NotOwnedByGateApp { because: NoRuleBelongsToThisApp }
   } else {
     rules |> fold(
       init: NotOwnedByGateApp { because: NoEnabledRule },
       f: fn(acc, rule) {
-        if rule.enabled && rule.app.id == observed.app_id && rule.app.slug == observed.app_slug {
+        if rule.enabled && rule.app.id.value == observed.app_id.value && rule.app.slug == observed.app_slug {
           OwnedByGateApp {
             observation: ObservedRuleOwnership {
               rule_id: rule.id,
@@ -779,7 +794,7 @@ fn observe_rule_ownership(
 // The token's source, stated as a lookup rather than a parameter: the only installation id any call in
 // this feature may mint for is the one an observation produced. There is no path from
 // GateInstallationClaim to a token that does not go through observe_gate_installation.
-fn mintable_installation_id(ownership: EnvironmentRuleOwnership) -> Optional<Int> {
+fn mintable_installation_id(ownership: EnvironmentRuleOwnership) -> Optional<GitHubAppInstallationId> {
   match ownership {
     OwnedByGateApp { observation: o } => Present { value: o.installation_id }
     NotOwnedByGateApp { because: _ } => Absent
@@ -844,7 +859,7 @@ type AcceptedRuleReviewReceipt sole_constructor {
   environment_name: NonEmptyStr,
   state: ReviewState,
   rule_id: Int,
-  installation_id: Int,
+  installation_id: GitHubAppInstallationId,
 }
 
 // WHAT THE MINT REFUSES, by name: not the 204 GitHub gives an accepted review; a body that does not
@@ -852,10 +867,18 @@ type AcceptedRuleReviewReceipt sole_constructor {
 // that does not name the same installation/rule; a body that would not release anything.
 type AcceptedReviewRefusal =
   | NotAcceptedStatus { status: HttpStatus }
+  // The ownership refusal, VERBATIM from the readback's join, not renamed at the mint.
+  | OwnershipNotEstablished { because: OwnershipRefusalReason }
   | BodyNamesAnotherEnvironment { body_environment: NonEmptyStr, claimed: NonEmptyStr }
   | PathNotForThisRun { path: NonEmptyStr, run_id: Int }
-  | OwnershipInstallationMismatch { claimed: Int, observed: Int }
-  | OwnershipRuleMismatch { claimed: Int, observed: Int }
+  // THE OWNERSHIP MUTATIONS, at the mint rather than after the response. The arm that used to be
+  // `OwnershipInstallationMismatch` never fired: the only way to this mint's ownership arm is
+  // OwnedByGateApp, whose installation id already came from the observation, so there was no second
+  // "claimed" id to compare — it was a refusal no input could produce, and the next arm was emitted
+  // with `{ claimed: 0, observed: 0 }`, two constants standing in for values the model had. Both are
+  // replaced by one arm that names what the READBACK produced, so a receipt whose rule is not the rule
+  // the caller intended is refused with both rule ids visible.
+  | RuleIsNotTheOneRequested { requested_rule_id: Int, observed_rule_id: Int }
 
 type AcceptedReviewOutcome
   = Accepted { receipt: AcceptedRuleReviewReceipt }
@@ -874,7 +897,8 @@ fn mint_accepted_rule_review(
   path: NonEmptyStr,
   review: DeploymentProtectionRuleReview,
   status: HttpStatus,
-  ownership: EnvironmentRuleOwnership
+  ownership: EnvironmentRuleOwnership,
+  requested_rule_id: Int
 ) -> AcceptedReviewOutcome
   admit_callers: [
     decl_ref(
@@ -912,12 +936,23 @@ fn mint_accepted_rule_review(
     AcceptedReviewRefused { because: PathNotForThisRun { path: path, run_id: run_id } }
   } else {
     match ownership {
-      NotOwnedByGateApp { because: _ } =>
-        AcceptedReviewRefused {
-          because: OwnershipRuleMismatch { claimed: 0, observed: 0 },
-        }
+      NotOwnedByGateApp { because: b } =>
+        // The refusal the READBACK gave, carried rather than renamed: "no rule is enabled" and "the
+        // rule belongs to another App" are different operator situations, and minting one name for
+        // both is the Bool's habit, not the sum's.
+        AcceptedReviewRefused { because: OwnershipNotEstablished { because: b } }
       OwnedByGateApp { observation: o } =>
-        if o.environment_name != environment_name {
+        // The rule the two readbacks attributed is checked against the rule the CALLER intended to
+        // answer. Without this, ownership for gate A's rule would mint a receipt while the caller
+        // believed it was answering gate B — the same environment, a different rule.
+        if o.rule_id != requested_rule_id {
+          AcceptedReviewRefused {
+            because: RuleIsNotTheOneRequested {
+              requested_rule_id: requested_rule_id,
+              observed_rule_id: o.rule_id,
+            },
+          }
+        } else if o.environment_name != environment_name {
           AcceptedReviewRefused {
             because: BodyNamesAnotherEnvironment {
               body_environment: o.environment_name,

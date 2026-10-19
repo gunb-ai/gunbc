@@ -57,11 +57,12 @@ import extdeps.github.deployment_protection_rule {
   RuleOwningApp,
   InstallationWireFields,
 }
+import extdeps.github.app { GitHubAppInstallationId, GitHubAppId }
 
 data forged_run_id: Int = 35447067113
 data forged_environment: NonEmptyStr = "srv1-production"
-data forged_installation_id: Int = 888800001
-data forged_app_id: Int = 1900000001
+data forged_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 888800001 }
+data forged_app_id: GitHubAppId = GitHubAppId { value: 1900000001 }
 data forged_app_slug: NonEmptyStr = "gunbc-deployment-gate"
 
 // (d') THE FORGED IDENTITY, written instead of read. Declared at top level so the refusal is a row about
@@ -124,6 +125,7 @@ fn forge_an_accepted_review() -> AcceptedReviewOutcome {
     },
     status: 204,
     ownership: forged_ownership,
+    requested_rule_id: 900000001,
   )
 }
 

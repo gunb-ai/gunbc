@@ -117,7 +117,10 @@ import gunbc.auth.deployment_gate_authorization {
   WireIncomplete,
   NoInstallationForThisRepository,
   ReadbackDidNotAnswer,
-  ClaimDisagreesWithObservation,
+  ClaimDisagreesOnInstallation,
+  OwnershipNotEstablished,
+  RuleIsNotTheOneRequested,
+  ClaimDisagreesOnApp,
   GateInstallationClaim,
   mint_accepted_rule_review,
   AcceptedRuleReviewReceipt,
@@ -142,7 +145,12 @@ data gated_env: NonEmptyStr = srv1_production_environment_name
 data ungated_env: NonEmptyStr = "gcp-iam-converge"
 data other_env: NonEmptyStr = "mtcollins1-boot"
 data gate_run_id: Int = 35447067113
-data gate_app_id: Int = 1900000001
+// THE CARRIERS, imported rather than invented: an installation id and an app id are typed upstream,
+// so the fixtures build the same types the model produces.
+data gate_app_id: GitHubAppId = GitHubAppId { value: 1900000001 }
+data gate_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 888800001 }
+data other_app_id: GitHubAppId = GitHubAppId { value: 7777777 }
+data other_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 777 }
 
 // ---------------------------------------------------------------------------
 // Fixtures: the three sources, kept genuinely separate
@@ -181,7 +189,7 @@ fn gate_capability(decision: ProposedDecision) -> ApprovalCapability {
 // the thing the readbacks are asked to corroborate, never the authority for anything: `mintable_installation_id`
 // reads the token's source off the JOINED ownership, not off this record.
 data fx_claim: GateInstallationClaim = GateInstallationClaim {
-  installation_id: 888800001,
+  installation_id: gate_installation_id,
   app_id: gate_app_id,
 }
 
@@ -190,7 +198,7 @@ data fx_claim: GateInstallationClaim = GateInstallationClaim {
 fn fx_wire() -> InstallationWireFields {
   InstallationWireFields {
     id: Present { value: 888800001 },
-    app_id: Present { value: gate_app_id },
+    app_id: Present { value: 1900000001 },
     app_slug: Present { value: "gunbc-deployment-gate" },
   }
 }
@@ -240,7 +248,7 @@ test fn the_identity_readback_refuses_by_name_and_by_status() -> Bool {
          status: installation_readback_success_status,
          wire: InstallationWireFields {
            id: Present { value: 888800001 },
-           app_id: Present { value: gate_app_id },
+           app_id: Present { value: 1900000001 },
            app_slug: Absent,
          },
          claim: fx_claim,
@@ -276,14 +284,14 @@ test fn the_identity_readback_refuses_by_name_and_by_status() -> Bool {
     && (match fx_observation_probe(
           status: installation_readback_success_status,
           wire: fx_wire(),
-          claim: GateInstallationClaim { installation_id: 777, app_id: gate_app_id },
+          claim: GateInstallationClaim { installation_id: other_installation_id, app_id: gate_app_id },
         ) {
           InstallationObservationRefused {
-            because: ClaimDisagreesWithObservation {
+            because: ClaimDisagreesOnInstallation {
               claimed_installation_id: claimed_id,
               observed_installation_id: seen_id,
             },
-          } => claimed_id == 777 && seen_id == 888800001
+          } => claimed_id.value == 777 && seen_id.value == 888800001
           _ => false
         })
     // 5. The honest read still succeeds — the control that keeps the four refusals above from passing
@@ -294,8 +302,8 @@ test fn the_identity_readback_refuses_by_name_and_by_status() -> Bool {
           claim: fx_claim,
         ) {
           InstallationObserved { observed: o } =>
-            o.installation_id == 888800001
-              && o.app_id == gate_app_id
+            o.installation_id.value == 888800001
+              && o.app_id.value == gate_app_id.value
               && (o.app_slug as String) == "gunbc-deployment-gate"
               && (o.owner as String) == "gunb-ai"
               && (o.repo as String) == "gunbc"
@@ -354,6 +362,7 @@ fn fx_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt? {
     },
     status: 204,
     ownership: minted_ownership(),
+    requested_rule_id: 900000001,
   ) {
     Accepted { receipt: receipt } => Present { value: receipt }
     AcceptedReviewRefused { because: _ } => none
@@ -372,7 +381,8 @@ fn fx_mint_probe(
   path: NonEmptyStr,
   review: DeploymentProtectionRuleReview,
   status: HttpStatus,
-  ownership: EnvironmentRuleOwnership
+  ownership: EnvironmentRuleOwnership,
+  requested_rule_id: Int
 ) -> AcceptedReviewOutcome {
   mint_accepted_rule_review(
     run_id: run_id,
@@ -382,6 +392,7 @@ fn fx_mint_probe(
     review: review,
     status: status,
     ownership: ownership,
+    requested_rule_id: requested_rule_id,
   )
 }
 
@@ -692,7 +703,7 @@ test fn the_ownership_reason_the_readback_gave_is_the_reason_the_broker_reports(
                 id: 900000001,
                 node_id: "DPPR_1",
                 enabled: true,
-                app: RuleOwningApp { id: 7777777, slug: "someone-else" },
+                app: RuleOwningApp { id: other_app_id, slug: "someone-else" },
               }
             ],
             environment_name: gated_env,
@@ -814,7 +825,7 @@ test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -
     id: 900000003,
     node_id: "DPPR_3",
     enabled: true,
-    app: RuleOwningApp { id: 2222222222, slug: "some-other-integration" },
+    app: RuleOwningApp { id: GitHubAppId { value: 2222222222 }, slug: "some-other-integration" },
   }
   // THE SUM IS THE ANSWER, and it is JOINED: a rule counts as ours only when it is enabled AND
   // attributed to the App whose identity was OBSERVED, id and slug both. There is no Bool wrapper and
@@ -825,10 +836,10 @@ test fn ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app() -
   match observe_rule_ownership_for(rules: [enabled_rule], environment_name: gated_env) {
     OwnedByGateApp { observation: o } =>
       o.rule_id == 900000001
-        && o.app_id == gate_app_id
+        && o.app_id.value == gate_app_id.value
         && (o.app_slug as String) == "gunbc-deployment-gate"
         && o.environment_name == gated_env
-        && o.installation_id == 888800001
+        && o.installation_id.value == 888800001
     NotOwnedByGateApp { because: _ } => false
   }
     && (match observe_rule_ownership_for(rules: [disabled_rule], environment_name: gated_env) {
@@ -878,7 +889,7 @@ test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
   (match minted_ownership() {
     OwnedByGateApp { observation: o } =>
       o.environment_name == srv1_production_environment_name
-        && o.installation_id == 888800001
+        && o.installation_id.value == 888800001
     NotOwnedByGateApp { because: _ } => false
   })
     && (match unattributed_ownership() {
@@ -902,7 +913,7 @@ test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
                id: 900000001,
                node_id: "DPPR_1",
                enabled: true,
-               app: RuleOwningApp { id: 7777777, slug: "someone-else" },
+               app: RuleOwningApp { id: other_app_id, slug: "someone-else" },
              }
            ],
            environment_name: gated_env,
@@ -1213,6 +1224,7 @@ test fn the_mint_refuses_a_body_for_another_environment() -> Bool {
     },
     status: 204,
     ownership: minted_ownership(),
+    requested_rule_id: 900000001,
   ) {
     AcceptedReviewRefused {
       because: BodyNamesAnotherEnvironment { body_environment: b, claimed: c },
@@ -1239,6 +1251,7 @@ test fn the_mint_refuses_a_status_it_does_not_accept() -> Bool {
     },
     status: 200,
     ownership: minted_ownership(),
+    requested_rule_id: 900000001,
   ) {
     AcceptedReviewRefused { because: NotAcceptedStatus { status: s } } => s == 200
     AcceptedReviewRefused { because: _ } => false
@@ -1261,8 +1274,36 @@ test fn the_mint_refuses_a_path_from_another_run() -> Bool {
     },
     status: 204,
     ownership: minted_ownership(),
+    requested_rule_id: 900000001,
   ) {
     AcceptedReviewRefused { because: PathNotForThisRun { run_id: r } } => r == 35447067113
+    AcceptedReviewRefused { because: _ } => false
+    Accepted { receipt: _ } => false
+  }
+}
+
+// A receipt is minted only for the RULE THE CALLER MEANT. The ownership above is real and attributed;
+// it was read back for rule 900000001, so a caller asking to record an answer to rule 900000002 is
+// refused with both ids visible. The old model could not express this refusal at all — its ownership arm
+// emitted { claimed: 0, observed: 0 }, two constants where the model had no values.
+test fn the_mint_refuses_a_rule_that_is_not_the_one_read_back() -> Bool {
+  match fx_mint_probe(
+    run_id: 35447067113,
+    environment_name: gated_env,
+    claimed: Approved,
+    path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
+    review: DeploymentProtectionRuleReview {
+      environment_name: gated_env,
+      state: Approved,
+      comment: Present { value: "ok" },
+    },
+    status: 204,
+    ownership: minted_ownership(),
+    requested_rule_id: 900000002,
+  ) {
+    AcceptedReviewRefused {
+      because: RuleIsNotTheOneRequested { requested_rule_id: r, observed_rule_id: o },
+    } => r == 900000002 && o == 900000001
     AcceptedReviewRefused { because: _ } => false
     Accepted { receipt: _ } => false
   }
@@ -1283,13 +1324,18 @@ test fn no_receipt_and_no_token_without_an_attributed_ownership() -> Bool {
          },
          status: 204,
          ownership: unattributed_ownership(),
+         requested_rule_id: 900000001,
        ) {
-         AcceptedReviewRefused { because: _ } => true
+         // the refusal is pinned to the reason the READBACK gave, not to any refusal at all
+         AcceptedReviewRefused {
+           because: OwnershipNotEstablished { because: NoRuleBelongsToThisApp },
+         } => true
+         AcceptedReviewRefused { because: _ } => false
          Accepted { receipt: _ } => false
        })
     // THE TOKEN'S SOURCE IS THE OBSERVATION, never the claim.
     && (match mintable_installation_id(ownership: minted_ownership()) {
-          Present { value: i } => i == 888800001
+          Present { value: i } => i.value == 888800001
           Absent => false
         })
     && (match mintable_installation_id(ownership: unattributed_ownership()) {
@@ -1305,10 +1351,15 @@ test fn the_configured_installation_carries_both_ids_and_no_readback_can() -> Bo
   // not an App id: the enabled-rules readback carries an App id and slug and no installation id at all,
   // so a claim that confused the two would be caught only by a value that differs. Reusing one number
   // here would have made the last clause vacuous.
-  let configured = GateInstallationClaim { installation_id: 888800001, app_id: gate_app_id }
-  configured.installation_id == 888800001
-    && configured.app_id == gate_app_id
-    && configured.app_id != configured.installation_id
+  let configured = GateInstallationClaim {
+    installation_id: gate_installation_id,
+    app_id: gate_app_id,
+  }
+  configured.installation_id.value == 888800001
+    && configured.app_id.value == 1900000001
+    // the two axes are DIFFERENT TYPES now, so passing one where the other belongs is a compile
+    // error rather than a value a test has to remember to check
+    && configured.app_id.value != configured.installation_id.value
   // That the enabled-rule readback carries NO installation id — only id, enabled, and an app object with
   // id and slug — is upstream's fact and is red there
   // (test.claim.github_deployment_protection_rule_witness's four-field row test). Restating it here

@@ -24,6 +24,7 @@ import std.types {
   HttpStatus,
 }
 import std.human_intervention { DischargedAt }
+import extdeps.github.app { GitHubAppInstallationId, GitHubAppId }
 import extdeps.github.deployment_protection_rule {
   Approved,
   Rejected,
@@ -142,7 +143,10 @@ fn observed_identity() -> ObservedGateInstallation? {
       app_id: Present { value: 1900000001 },
       app_slug: Present { value: "gunbc-deployment-gate" },
     },
-    claim: GateInstallationClaim { installation_id: 888800001, app_id: 1900000001 },
+    claim: GateInstallationClaim {
+      installation_id: GitHubAppInstallationId { value: 888800001 },
+      app_id: GitHubAppId { value: 1900000001 },
+    },
   ) {
     InstallationObserved { observed: o } => Present { value: o }
     InstallationObservationRefused { because: _ } => none
@@ -162,7 +166,7 @@ fn ownership_for(environment: NonEmptyStr) -> EnvironmentRuleOwnership {
             id: 900000001,
             node_id: "DPPR_1",
             enabled: true,
-            app: RuleOwningApp { id: 1900000001, slug: "gunbc-deployment-gate" },
+            app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },
           }
         ],
         environment_name: environment,
@@ -191,7 +195,8 @@ fn receipt_for(
       comment: Present { value: "witness" },
     },
     status: expected,
-    ownership: ownership_for(environment: owned_environment),
+    ownership: ownership_for(environment: owned_environment),,
+    requested_rule_id: 900000001
   ) {
     Accepted { receipt: r } => Present { value: r }
     AcceptedReviewRefused { because: _ } => Absent
@@ -562,6 +567,9 @@ test fn the_permission_set_refuses_a_widened_app() -> Bool {
 // enabled-rules response carries an App id and slug and no installation id. A record that could hold
 // both confusions is the record that gets written; this checks the type cannot.
 test fn the_configured_installation_is_separate_from_the_readback() -> Bool {
-  let configured = GateInstallationClaim { installation_id: 1900000001, app_id: 1234567 }
+  let configured = GateInstallationClaim {
+    installation_id: GitHubAppInstallationId { value: 1900000001 },
+    app_id: GitHubAppId { value: 1234567 },
+  }
     configured.installation_id == 1900000001 && configured.app_id == 1234567
 }
