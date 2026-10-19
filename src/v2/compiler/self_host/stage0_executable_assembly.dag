@@ -17,6 +17,7 @@ import v2.compiler.self_host.stage0_crate_layout {
 import v2.compiler.self_host.seed_retention_frontier {
   ControlsNotPassed,
   EmittedUnexecuted,
+  GeneratedCensusArtifact,
   SeedRetained,
   SeedRetentionFrontierRow,
   SelfEmitted,
