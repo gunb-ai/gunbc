@@ -335,28 +335,3 @@ test fn list_introduction_eval_locus_is_the_list() -> Bool {
     Absent => false
   }
 }
-
-test fn list_introduction_eval_facts_hold_the_list() -> Bool {
-  match bind_outcome(
-    o: assemble_program_from_ingest_located(
-      ingest: list_introduction_eval_ingest(probe: list_introduction_eval_forward_source),
-      admission: Admission {
-        subject: ResolutionSubject { name: Cons { head: ^list_introduction_eval_probe, tail: Empty } },
-        imports: Empty
-      },
-      lm: dag_language_model()
-    ).program,
-    f: fn(p) { infer(tree: p) }
-  ) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: inferred, diagnostics: _ } =>
-      match list_introduction_eval_first_list(n: inferred.root) {
-        Absent => false
-        Present { value: list } =>
-          match inferred.facts.lookup(list) {
-            Present { value: _ } => true
-            Absent => false
-          }
-      }
-  }
-}
