@@ -724,7 +724,7 @@ data compiler_gate_contract_stamp_unreadable_sentinel: String = "UNREADABLE"
 
 fn compiler_gate_contract_stamp_refusal_parts_unreadable_tree() -> List<Node> {
   [
-    bash_build_word_lit(text: "REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares "),
+    bash_build_word_lit(text: "REFUSED gunbc contract stamp: StampUnreadable \{tree member is malformed}. The checked-out subject declares "),
     bash_build_word_lit(text: compiler_gate_contract_stamp_env_key),
     bash_build_word_lit(text: " at "),
     bash_build_word_lit(text: compiler_gate_contract_stamp_tree_file()),
