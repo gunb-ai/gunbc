@@ -181,12 +181,6 @@ fn swift_toolchain_archive_subject(archive: SwiftToolchainArchive) -> SwiftToolc
   }
 }
 
-fn swift_toolchain_archive_is_verified(archive: SwiftToolchainArchive) -> Bool {
-  match archive {
-    Verified { archive: _ } => true
-    Unverified { declared: _ } => false
-  }
-}
 
 // THE PIN, AND WHAT ITS DIGEST IS CITED TO.
 //
@@ -372,15 +366,6 @@ fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVeri
     }
   } else {
     Absent
-  }
-}
-
-// Whether a run may use the toolchain at all. Kept as its own name so an instrument's green is defined as
-// "verification refused nothing", not as "swiftc exited 0".
-fn swift_toolchain_candidate_is_usable(candidate: SwiftToolchainCandidate) -> Bool {
-  match swift_toolchain_verify(candidate: candidate) {
-    Present { value: _ } => false
-    Absent => true
   }
 }
 

@@ -25,7 +25,6 @@ import extdeps.swift_toolchain {
   swift_toolchain_pinned_archive,
   swift_toolchain_archive_as_pin,
   swift_toolchain_archive_subject,
-  swift_toolchain_archive_is_verified,
   swift_toolchain_archive_url,
   swift_toolchain_expected_size,
   swift_toolchain_expected_digest,
@@ -34,7 +33,6 @@ import extdeps.swift_toolchain {
   swift_toolchain_signature_url,
   swift_toolchain_signing_key_fingerprint,
   swift_toolchain_verify,
-  swift_toolchain_candidate_is_usable,
   swift_toolchain_standing_cites_signature,
   swift_toolchain_digest_is_a_known_refused_value,
   swift_toolchain_refused_digest_from_fabricated_pin,
@@ -110,12 +108,13 @@ test fn verification_refuses_a_mismatched_archive_and_accepts_only_the_signed_on
     observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
     observed_size: byte_size(count: 1122730812)
   }
-  swift_toolchain_candidate_is_usable(candidate: signed_bytes)
-    && !swift_toolchain_candidate_is_usable(candidate: the_previously_pinned_value)
-    && !swift_toolchain_candidate_is_usable(candidate: unsigned_bytes)
-    && !swift_toolchain_candidate_is_usable(candidate: signed_by_another_key)
-    && !swift_toolchain_candidate_is_usable(candidate: truncated)
-    // The refusal NAMES the cause, so a run cannot report "digest mismatch" for a signature failure.
+  // The accepted candidate is refused by NOTHING -- asserted on the gate's own result rather than through
+  // a Bool "is usable" wrapper, which would be a second reader of the same Present/Absent answer.
+  match swift_toolchain_verify(candidate: signed_bytes) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // The refusal NAMES the cause, so a run cannot report "digest mismatch" for a signature failure.
     && match swift_toolchain_verify(candidate: unsigned_bytes) {
          // The refusal carries the authorities a reader needs to fix it, read out of the rows rather than
          // retyped at the call site: keyring to import, instructions that define a good signature. Drop the
