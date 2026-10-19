@@ -7,10 +7,11 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
 };
 pub use crate::std_occurrence_identity::{OccurrenceCategory, ReferenceOccurrence};
 pub use crate::std_types::{Bool, List};
-pub use crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source;
-pub use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource;
 use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource::{
     ParsedOccurrenceBindingSourceReady, ParsedOccurrenceBindingSourceRefused,
+};
+pub use crate::v1_gunbc_occurrence_binding_parser_walk::{
+    parse_authored_occurrence_binding_source, ParsedOccurrenceBindingSource,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

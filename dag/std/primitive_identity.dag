@@ -1110,6 +1110,8 @@ data primitive_projection_target_canonical_names: List<String> = [
   "pure_dag_seam_unreachable",
   "to_string",
   "string_contains",
+  "chars",
+  "machine_word_native_operate",
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {

@@ -12,6 +12,7 @@ import extdeps.systemd {
 }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  WorkerIsServiceUser, dashboard_instance_worker_user,
   HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
   public_builtin_dashboard_instances, dashboard_instance_for_id,
   DashboardInstanceForId, DashboardInstanceIdUnknown,
@@ -33,7 +34,7 @@ import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_full_install_plan }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
@@ -87,7 +88,7 @@ import gunbc.cli_invoke {
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
-  HumanOnlyStep, OperatorOwnSession, ManualStepRequired, NoAdmissiblePattern,
+  HumanOnlyStep, OperatorOwnSession, AdministratorEdge, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
 }
 import gunbc.auth.privileged_effect_census {
@@ -185,7 +186,7 @@ test fn a_start_with_another_user_is_refused() -> Bool {
     instance: inst,
     facts: facts,
   ) {
-    AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "service user")
+    AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "worker user")
     AttemptSystemUnitAdmitted { unit: _, facts: _ } => false
   }
   }
@@ -197,6 +198,7 @@ test fn the_launcher_effect_selects_federated_scoped_grant() -> Bool {
     PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => false
     PatternSelected { pattern: HumanOnlyStep { step: _ }, receipt: _ } => false
     PatternSelected { pattern: OperatorOwnSession, receipt: _ } => false
+    PatternSelected { pattern: AdministratorEdge, receipt: _ } => false
     ManualStepRequired { step: _, receipt: _ } => false
     NoAdmissiblePattern { causes: _, scope: _ } => false
     PatternSelectionNeedsEvidence { needs: _ } => false
@@ -308,6 +310,7 @@ fn full_install_apply_text(spec: DeploymentSpec) -> String {
       plan: deploy_witness_full_install_plan(spec: spec),
       cap_authorization: CapConvergeWithheld { cause: "the launcher grant claims are not about the cap step" },
       oidc_now: claim_oidc_now(),
+      object_source_serve: apply_complete_object_source_serve(),
     ).steps,
     st => pipeline_step_text(st: st)
   ), "")
@@ -438,6 +441,8 @@ test fn the_launcher_derives_the_exit_hook_from_the_attempt_identity() -> Bool {
   }
 }
 
+// User= is the instance WORKER user (WorkerIdentity arm), not the service user: on the srv1 lab the worker is the
+// dedicated account (#14246), and the launcher refuses any User= other than dashboard_instance_worker_user.
 test fn the_launcher_derives_the_user_and_paths_from_the_attempt_identity() -> Bool {
   let inst = srv1_lab_dashboard_instance()
   let node = "n1"
@@ -445,7 +450,7 @@ test fn the_launcher_derives_the_user_and_paths_from_the_attempt_identity() -> B
   match attempt_system_unit_start_facts_for_request(instance: inst, request: claim_request(node_id: node, attempt_key: key)) {
     AttemptSystemUnitStartUnderivable { reason: _ } => false
     AttemptSystemUnitStartDerived { facts } =>
-      (facts.user as String) == (inst.directory_owner.user as String)
+      (facts.user as String) == (dashboard_instance_worker_user(instance: inst) as String)
         && facts.attempt_worktree == dispatch_worktree_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
         && facts.stdout_path == dispatch_attempt_worker_log_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
         && facts.working_directory == dispatch_pane_working_directory(provider: GunbcHarnessProvider, instance: inst, worktree_path: facts.attempt_worktree)
@@ -823,6 +828,7 @@ fn live_with_instance_root(root: FilePath) -> HostDashboardInstance {
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
     directory_owner: live.directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: live.materialization_store_root,
     publication_base_branch: live.publication_base_branch,
   }

@@ -16,6 +16,7 @@ import v1.std.core {
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes,
   foreach_collection, foreach_body,
+  param_node_type_expr,
   expr_var_name_at, expr_call_func_at, expr_method_name_at, field_access_field_at, authored_name_at,
   NewlineIndex
 }
@@ -565,6 +566,36 @@ fn fold_body_consumes_acc_once(lambda_node: Node, acc_name: String, si: Map<Stri
     && (summary.field_moves |> count == 0)
 }
 
+// A branch-ended accumulator. The lambda body is an if-chain whose conditions may read fields of the
+// accumulator and whose branch leaves use it at most once and as a whole value, never a field. Every
+// field read runs before the branch is taken, and branches are exclusive, so the single whole use in
+// the taken branch is the accumulator's last use and the emitter may move it instead of cloning it.
+fn fold_branch_ends_move_acc(node: Node, acc_name: String, si: Map<String, NewlineIndex>) -> Bool {
+  match node.expr_data {
+    ExprIf =>
+      let cond = summarize_fold_acc_uses(node: if_condition(texpr: node), acc_name: acc_name, si: si, inside_nested: false)
+      let then_ok = fold_branch_ends_move_acc(node: if_then_branch(texpr: node), acc_name: acc_name, si: si)
+      let else_ok = match if_else_branch(texpr: node) {
+        Present { value: e } => fold_branch_ends_move_acc(node: e, acc_name: acc_name, si: si)
+        Absent => false
+      }
+      !cond.nested_acc_refs && cond.whole_acc_uses == 0 && then_ok && else_ok
+    _ =>
+      let leaf = summarize_fold_acc_uses(node: node, acc_name: acc_name, si: si, inside_nested: false)
+      !leaf.nested_acc_refs && leaf.whole_acc_uses == 1 && (leaf.field_moves |> count == 0)
+  }
+}
+
+fn fold_body_branch_ends_move_acc(lambda_node: Node, acc_name: String, si: Map<String, NewlineIndex>) -> Bool {
+  match lambda_node.expr_data {
+    ExprLambda => match lambda_body(texpr: lambda_node).expr_data {
+      ExprIf => fold_branch_ends_move_acc(node: lambda_body(texpr: lambda_node), acc_name: acc_name, si: si)
+      _ => false
+    }
+    _ => false
+  }
+}
+
 fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> FoldAccUnwrapProof {
   let args = method_arg_nodes(texpr: method_call)
   let init_arg_node = match args |> first {
@@ -593,15 +624,72 @@ fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> Fold
   let cond_struct = fold_body_constructs_acc_struct(lambda_node: fold_lambda_node, acc_type_name: acc_type_name, si: si)
   let cond_whole_acc = fold_body_consumes_acc_once(lambda_node: fold_lambda_node, acc_name: acc_param_name, si: si)
   let cond_safe = fold_body_safe_field_moves(lambda_node: fold_lambda_node, acc_name: acc_param_name, si: si)
-  let eligible = cond_required && acc_type_name != "" && ((cond_struct && cond_safe) || cond_whole_acc)
+  let cond_branch_ends = fold_body_branch_ends_move_acc(lambda_node: fold_lambda_node, acc_name: acc_param_name, si: si)
+  let eligible = cond_required && acc_type_name != "" && ((cond_struct && cond_safe) || cond_whole_acc || cond_branch_ends)
   FoldAccUnwrapProof {
     site_key: to_string(value: method_call.span.start),
     acc_param_name: acc_param_name,
     acc_type_name: acc_type_name,
     body_constructs_acc: cond_struct,
-    whole_acc_single_use: cond_whole_acc,
+    whole_acc_single_use: cond_whole_acc || cond_branch_ends,
     safe_field_moves: cond_safe,
     eligible: eligible
+  }
+}
+
+// A DYING BASE HANDLE. A parameter is a base handle that dies at a record literal when the literal is
+// in terminal position of the body, has the parameter's own type, and the parameter has no use except
+// field projections (no whole-value use, no capture by a nested lambda or loop). Every projection runs
+// before the literal is built, so the value the parameter held is dead once the literal exists: the
+// emitter may build the result in the parameter's own box when that box is uniquely held. This is the
+// same field-granular last-use evidence a fold accumulator is judged by (summarize_fold_acc_uses),
+// applied to a fn parameter, which analyze_ownership never classified field-granularly.
+//
+// What the fact does NOT claim: that the box is uniquely held. Uniqueness is the runtime reading the
+// emitter's Rc::get_mut takes; a shared box takes the allocating arm, which is the arm without this
+// fact. So the fact decides WHERE reuse is attempted, and correctness does not depend on runtime uniqueness, provided eligibility, the field-storage conversions and the fallback construction are correct.
+fn terminal_record_literals(body: Node) -> List<Node> {
+  match body.expr_data {
+    ExprLet => match let_body(texpr: body) {
+      Present { value: inner } => terminal_record_literals(body: inner)
+      Absent => []
+    }
+    ExprBlock => match body.children |> last {
+      Present { value: last_child } => terminal_record_literals(body: last_child)
+      Absent => []
+    }
+    ExprIf =>
+      let then_sites = terminal_record_literals(body: if_then_branch(texpr: body))
+      match if_else_branch(texpr: body) {
+        Present { value: e } => concat(then_sites, terminal_record_literals(body: e))
+        Absent => then_sites
+      }
+    ExprMatch => match_arm_nodes(texpr: body) |> flat_map(arm => terminal_record_literals(body: arm_body(n: arm)))
+    ExprRecordLit { parent_enum: parent } =>
+      match parent {
+        Present { value: _ } => []
+        Absent => [body]
+      }
+    _ => []
+  }
+}
+
+fn analyze_dying_base_sites(params: List<Node>, body: Node, si: Map<String, NewlineIndex>) -> Map<String, String> {
+  let literals = terminal_record_literals(body: body)
+  if literals |> count == 0 {
+    empty_map()
+  } else {
+    params |> fold(init: empty_map(), f: (found, p) =>
+      let pname = authored_name_at(source_indices: si, node: p)
+      let ptype = authored_name_at(source_indices: si, node: param_node_type_expr(n: p))
+      let summary = summarize_fold_acc_uses(node: body, acc_name: pname, si: si, inside_nested: false)
+      if ptype == "" || summary.whole_acc_uses > 0 || summary.nested_acc_refs {
+        found
+      } else {
+        literals |> filter(lit => authored_name_at(source_indices: si, node: lit) == ptype)
+          |> fold(init: found, f: (acc, lit) => map_insert(acc, to_string(value: lit.span.start), pname))
+      }
+    )
   }
 }
 

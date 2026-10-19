@@ -32,6 +32,11 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_compare_argv,
   classify_typed_remote_file_comparison,
   converge_typed_remote_file,
+  typed_remote_file_pre_compare_steps,
+  RemoteFileValidation,
+  NoValidation,
+  VisudoCheck,
+  RemoteFileModeOwnerGroupRead,
   TypedRemoteFileConvergence,
   TypedRemoteFileConverged,
   TypedRemoteFileConvergenceRefused,
@@ -92,7 +97,7 @@ test fn fresh_staging_unlinks_before_dd() -> Bool {
     Absent => false
     Present { value: w } => {
       let steps = typed_remote_file_fresh_staging_steps(write: w)
-      let pre = typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWrite)
+      let pre = typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWrite, validation: NoValidation)
       map(steps, s => s.step) == ["unlink-staging", "stage"]
         && map(steps, s => s.argv) == [
           typed_remote_file_unlink_staging_argv(write: w),
@@ -331,6 +336,7 @@ test fn the_converge_route_yields_a_receipt_naming_the_exact_write_and_target() 
             admission: TypedRemoteFileWriteAdmitted { write: w },
             mode: RemoteFileModeOwnerReadWrite,
             privilege: RemoteFileAsSessionPrincipal,
+            validation: NoValidation,
           ) {
             TypedRemoteFileConverged { converged: c } =>
               ((c.write.path as String) == (subject_path as String))
@@ -342,5 +348,52 @@ test fn the_converge_route_yields_a_receipt_naming_the_exact_write_and_target() 
         Absent => false
       }
     Absent => false
+  }
+}
+
+// ── Validation before install (visudo on the STAGING path) ────────────────────────────────────────
+
+// RED: a visudo failure must refuse BEFORE the rename. converge stops at the first failing step, so the
+// property is the ORDER: `validate` precedes `rename`, and it names the staged file, never the
+// destination. A validator pointed at the destination would judge the OLD bytes and pass.
+test fn visudo_validates_the_staged_file_before_the_rename() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } => {
+      let steps = typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerGroupRead, validation: VisudoCheck)
+      let names = map(steps, s => s.step)
+      let validate = filter(steps, s => s.step == "validate")
+      names == ["unlink-staging", "stage", "mode", "validate", "rename"]
+        && map(validate, s => s.argv) == [["/usr/sbin/visudo", "-cf", typed_remote_file_staging_path(write: w)]]
+        && !string_list_contains(xs: fold(validate, init: [], f: (acc, s) => concat(acc, s.argv)), wanted: subject_path as String)
+    }
+  }
+}
+
+// The default is unchanged: no validator step appears for any caller that did not ask for one.
+test fn no_validation_adds_no_step() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      map(typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWrite, validation: NoValidation), s => s.step)
+        == ["unlink-staging", "stage", "mode", "rename"]
+  }
+}
+
+// RED: a readback that is not the rendered content refuses with the compare step named.
+test fn a_sudoers_readback_mismatch_refuses_at_compare() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      (match classify_typed_remote_file_comparison(write: w, compare_exit_code: 1, compare_stderr: "") {
+        ComparisonDiffers { reason: _ } => true
+        ComparisonIdentical => false
+        ComparisonUnavailable { reason: _ } => false
+      })
+        && (match classify_typed_remote_file_comparison(write: w, compare_exit_code: 2, compare_stderr: "sudo: a password is required") {
+          ComparisonUnavailable { reason: _ } => true
+          ComparisonIdentical => false
+          ComparisonDiffers { reason: _ } => false
+        })
   }
 }

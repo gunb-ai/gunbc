@@ -7,10 +7,8 @@ use crate::v1_compiler_stage0_crates::Stage0CratePlanOutcome::{
 };
 pub use crate::v1_compiler_stage0_crates::{
     stage0_crate_boundary_emit_refusal_message, stage0_crate_plan_outcome,
-    stage0_map_package_dir_refusal_to_boundary,
-};
-pub use crate::v1_compiler_stage0_crates::{
-    Stage0CrateBoundaryEmitRefusalCause, Stage0CratePlanOutcome, Stage0CrateSpec,
+    stage0_map_package_dir_refusal_to_boundary, Stage0CrateBoundaryEmitRefusalCause,
+    Stage0CratePlanOutcome, Stage0CrateSpec,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

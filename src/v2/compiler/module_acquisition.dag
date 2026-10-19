@@ -1,7 +1,7 @@
 module v2.compiler.module_acquisition
 
 import std.types { Bool, Int, List, Map }
-import std.algebra { Cons, Empty, list_snoc_item, fold_list, list_find_first, list_head, list_map, list_reverse, skip, empty_map, map_contains_key, map_insert, map_lookup }
+import std.algebra { Cons, Empty, list_snoc_item, fold_list, list_find_first, list_head, list_map, list_reverse, skip, empty_map, map_contains_key, map_insert, map_lookup, collection_concat_shape }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import extdeps.filesystem.filesystem_io { FilesystemExactPathAbsent, FilesystemExactPathKindUnrecognized, FilesystemExactPathRead, FilesystemExactPathUnreadable, FilesystemFailureKindAdmitted, FilesystemFailureKindUnrecognized, FilesystemNotFound, admit_filesystem_failure_kind, filesystem_failure_kind_name }
 import gunbc.source_root_read { SourceRootDirectoryListed, SourceRootDirectoryRefused, SourceRootPathsRead, SourceRootPathsRefused, SourceRootWalkTask, SourceRootWalkedPath, source_root_child_path, source_root_directory, source_root_read_file, source_root_walk }
@@ -21,8 +21,7 @@ import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
-import v2.std.optional_layers { occupancy_declaration_spelling }
-import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
 
@@ -428,7 +427,7 @@ fn acquisition_read_requests(
 // site is promoted from a qualified reference (whose unknown module requests nothing) to an imported member (whose
 // unknown module refuses). An authored reference spelled the same is owed the same declaration.
 fn acquisition_sugar_member_texts(references: List<String>) -> List<String> {
-  let sugar = qualified_name_to_dotted_string(qn: occupancy_declaration_spelling())
+  let sugar = qualified_name_to_dotted_string(qn: optional_declaration_identity())
   match list_find_first(xs: references, predicate: fn(t) { t == sugar }) {
     Present { value: _ } => [sugar]
     Absent => []

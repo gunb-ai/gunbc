@@ -142,6 +142,14 @@ data chars_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
+data machine_word_native_operate_contract: PrimitiveContract = {
+  name: "machine_word_native_operate",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
 data to_string_contract: PrimitiveContract = {
   name: "to_string",
   work: "n",
@@ -674,6 +682,9 @@ fn builtin_registry_surface_names() -> List<String> {
     "observed_peak_resident_bytes",
     "observed_monotonic_nanos",
     "observed_thread_cpu_nanos",
+    "observed_allocation_available",
+    "observed_allocation_operations",
+    "observed_allocation_bytes",
     "string_contains",
     "length",
     "starts_with",
@@ -784,6 +795,7 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     split_contract,
     repeat_contract,
     chars_contract,
+    machine_word_native_operate_contract,
     to_string_contract,
     parse_int_contract,
     str_eq_contract,

@@ -5,18 +5,15 @@ pub use crate::extdeps_languages_dag_syntax::{dag_parse_environment, render_anno
 use crate::std_source_annotation::AnnotationPlacement::{
     LeadingAfterLineIndent, TrailingAfterSemanticToken,
 };
-pub use crate::std_source_annotation::{keyed_annotation_rows_agree, source_annotation_graph_rows};
 pub use crate::std_source_annotation::{
-    AnnotationPlacement, KeyedAnnotationRow, SourceAnnotationDebt, SourceAnnotationGraph,
-    UnboundAnnotationCapture,
+    keyed_annotation_rows_agree, source_annotation_graph_rows, AnnotationPlacement,
+    KeyedAnnotationRow, SourceAnnotationDebt, SourceAnnotationGraph, UnboundAnnotationCapture,
 };
 pub use crate::std_types::{Bool, List, SourceSpan};
-pub use crate::v1_compiler_annotation_bind::KeyedAnnotationRegion;
 pub use crate::v1_compiler_annotation_bind::{
-    bind_annotations, keyed_annotation_regions, keyed_annotation_rows,
+    bind_annotations, keyed_annotation_regions, keyed_annotation_rows, KeyedAnnotationRegion,
 };
-pub use crate::v1_compiler_parse::parse_with_table;
-pub use crate::v1_compiler_parse::ParseWithTableResult;
+pub use crate::v1_compiler_parse::{parse_with_table, ParseWithTableResult};
 pub use crate::v1_compiler_tokenize::tokenize_artifact;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -99,7 +96,7 @@ pub fn gap_parse(source: String) -> Rc<GapParse> {
 }
 
 pub fn parsed_ok(p: Rc<GapParse>) -> bool {
-    match p.parsed.clone().result.clone().error.clone() {
+    match p.parsed.result.error.clone() {
         Some(_) => false,
         std::option::Option::None => true,
     }
@@ -231,11 +228,8 @@ pub fn identity_rows(p: Rc<GapParse>) -> Rc<Vec<String>> {
         let mut __result = Vec::new();
         for e in p
             .parsed
-            .clone()
             .occurrence_transport
-            .clone()
             .index
-            .clone()
             .entries
             .clone()
             .iter()
@@ -245,14 +239,14 @@ pub fn identity_rows(p: Rc<GapParse>) -> Rc<Vec<String>> {
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            (e.projection.clone().occurrence.clone().value.clone()).to_string(),
+                            (e.projection.occurrence.value.clone()).to_string(),
                             ":".to_string(),
                         ),
-                        e.projection.clone().authored_name.clone(),
+                        e.projection.authored_name.clone(),
                     ),
                     ":".to_string(),
                 ),
-                (e.containment.clone().ancestors.clone().len() as i64).to_string(),
+                (e.containment.ancestors.clone().len() as i64).to_string(),
             ));
         }
         __result
@@ -376,16 +370,13 @@ pub fn indent_from(
 pub fn comment_edit(source: String, capture: Rc<UnboundAnnotationCapture>) -> Rc<CharEdit> {
     match capture.placement.clone() {
         AnnotationPlacement::LeadingAfterLineIndent => Rc::new(CharEdit {
-            start: line_start(source.clone(), capture.origin.clone().start.clone()),
-            end: v1_rt::int_add(
-                line_end(source.clone(), capture.origin.clone().end.clone()),
-                1,
-            ),
+            start: line_start(source.clone(), capture.origin.start.clone()),
+            end: v1_rt::int_add(line_end(source.clone(), capture.origin.end.clone()), 1),
             text: "".to_string(),
         }),
         AnnotationPlacement::TrailingAfterSemanticToken => Rc::new(CharEdit {
-            start: trailing_space_start(source.clone(), capture.origin.clone().start.clone()),
-            end: capture.origin.clone().end.clone(),
+            start: trailing_space_start(source.clone(), capture.origin.start.clone()),
+            end: capture.origin.end.clone(),
             text: "".to_string(),
         }),
     }
@@ -486,8 +477,8 @@ pub fn extent_for_key(target: Rc<GapParse>, key: Option<String>) -> Option<Rc<So
         Some(k) => match Rc::new({
             let mut __result = Vec::new();
             for r in crate::v1_compiler_annotation_bind::keyed_annotation_regions(
-                target.parsed.clone().occurrence_transport.clone(),
-                target.parsed.clone().source_extents.clone(),
+                target.parsed.occurrence_transport.clone(),
+                target.parsed.source_extents.clone(),
             )
             .iter()
             .cloned()
@@ -751,17 +742,14 @@ pub fn identity_ordinals(p: Rc<GapParse>) -> Rc<Vec<i64>> {
         let mut __result = Vec::new();
         for e in p
             .parsed
-            .clone()
             .occurrence_transport
-            .clone()
             .index
-            .clone()
             .entries
             .clone()
             .iter()
             .cloned()
         {
-            __result.push(e.projection.clone().occurrence.clone().value.clone());
+            __result.push(e.projection.occurrence.value.clone());
         }
         __result
     })
@@ -777,8 +765,8 @@ pub fn text_of_key(p: Rc<GapParse>, key: Option<String>) -> String {
                 match Rc::new({
                     let mut __result = Vec::new();
                     for r in crate::v1_compiler_annotation_bind::keyed_annotation_regions(
-                        p.parsed.clone().occurrence_transport.clone(),
-                        p.parsed.clone().source_extents.clone(),
+                        p.parsed.occurrence_transport.clone(),
+                        p.parsed.source_extents.clone(),
                     )
                     .iter()
                     .cloned()
@@ -794,8 +782,8 @@ pub fn text_of_key(p: Rc<GapParse>, key: Option<String>) -> String {
                 {
                     Some(r) => v1_rt::substring(
                         &p.source.clone(),
-                        r.extent.clone().start.clone(),
-                        r.extent.clone().end.clone(),
+                        r.extent.start.clone(),
+                        r.extent.end.clone(),
                     ),
                     std::option::Option::None => "<unresolved>".to_string(),
                 }
