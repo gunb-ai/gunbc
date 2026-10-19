@@ -1,4 +1,5 @@
 module test.claim.markdown_markup_xss_witness
+import std.live_tree { LiveTreeDisposition }
 import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
