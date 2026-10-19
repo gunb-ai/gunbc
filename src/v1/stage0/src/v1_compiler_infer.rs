@@ -151,7 +151,7 @@ pub use crate::v1_compiler_infer_env::{
     empty_symbol_index, empty_type_env_cache, env_with_type_variable_bindings,
     global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates,
     host_text_into_structural_sequence, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, kernel_settled_name,
+    is_recursive_type, is_recursive_type_by_name, is_type_variable_name, kernel_settled_name,
     listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
     lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
     merge_type_env_cache, merge_type_env_cache_guarded, node_with_children, node_with_inferred,
@@ -4732,6 +4732,10 @@ pub fn actual_is_unjudged_by_formal(
                 ),
                 TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: _, .. } => false,
                 TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => true,
+                TypeReferenceDeclarationReading::TypeReferenceUninstantiatedTypeParameter {
+                    name: _,
+                    ..
+                } => true,
                 TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => false,
             }
         }
@@ -17093,7 +17097,8 @@ pub fn record_field_type_is_unresolved_param(
                             }
                             __found
                         };
-                        let conv = is_type_variable_name(fname.clone());
+                        let conv =
+                            crate::v1_compiler_infer_env::is_type_variable_name(fname.clone());
                         (in_params.clone() || conv.clone())
                     }
                 }
@@ -18233,6 +18238,10 @@ pub fn optional_reading_by_census(
         TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => {
             Rc::new(OptionalDeclarationReading::IsOtherType)
         }
+        TypeReferenceDeclarationReading::TypeReferenceUninstantiatedTypeParameter {
+            name: _,
+            ..
+        } => Rc::new(OptionalDeclarationReading::IsOtherType),
         TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => {
             if (spelling.clone() == "Optional".to_string()) {
                 Rc::new(OptionalDeclarationReading::OptionalUnrecovered {
@@ -24855,13 +24864,6 @@ pub fn infer_items(
     })
 }
 
-pub fn is_type_variable_name(name: String) -> bool {
-    (((((name.clone() == "T".to_string()) || (name.clone() == "K".to_string()))
-        || (name.clone() == "V".to_string()))
-        || (name.clone() == "MappedElement".to_string()))
-        || (name.clone() == "FoldAccumulator".to_string()))
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArgGenericFoldState {
     pub results: Rc<Vec<Rc<ArgInferResult>>>,
@@ -25997,7 +25999,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                             parent_env.intern_table.clone(),
                             ident.clone(),
                         );
-                        if is_type_variable_name(name.clone()) {
+                        if crate::v1_compiler_infer_env::is_type_variable_name(name.clone()) {
                             acc.clone()
                         } else {
                             match v1_rt::map_get(&parent_env.bindings.clone(), ident.clone()) {
@@ -26017,7 +26019,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                 .fold(
                     v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
                     |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                        if is_type_variable_name(name.clone()) {
+                        if crate::v1_compiler_infer_env::is_type_variable_name(name.clone()) {
                             acc.clone()
                         } else {
                             match v1_rt::map_get(&parent_env.str_bindings.clone(), name.clone()) {
@@ -26036,7 +26038,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                     .fold(
                         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
                         |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                            if is_type_variable_name(name.clone()) {
+                            if crate::v1_compiler_infer_env::is_type_variable_name(name.clone()) {
                                 acc.clone()
                             } else {
                                 match v1_rt::map_get(
@@ -28039,7 +28041,9 @@ pub fn overlay_direct_import_exports(
                             .iter()
                             .cloned()
                         {
-                            if (is_type_variable_name(name.clone()) == false) {
+                            if (crate::v1_compiler_infer_env::is_type_variable_name(name.clone())
+                                == false)
+                            {
                                 __result.push(name);
                             }
                         }

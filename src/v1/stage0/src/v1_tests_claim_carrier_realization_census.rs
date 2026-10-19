@@ -35,7 +35,7 @@ use crate::v1_compiler_infer_env::TypeNodeUnidentifiedCause::{
 };
 use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{
     TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceNamesDeclaration,
-    TypeReferenceUnidentified,
+    TypeReferenceUnidentified, TypeReferenceUninstantiatedTypeParameter,
 };
 pub use crate::v1_compiler_infer_env::{
     lookup_type_for, type_reference_declaration_reading, TypeEnv, TypeNodeUnidentifiedCause,
@@ -659,6 +659,10 @@ pub fn decl_identity_label(r: Rc<TypeReferenceDeclarationReading>) -> String {
         TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: v, .. } => {
             v1_rt::concat("TypeVariable:".to_string(), v.clone())
         }
+        TypeReferenceDeclarationReading::TypeReferenceUninstantiatedTypeParameter {
+            name: n,
+            ..
+        } => v1_rt::concat("UninstantiatedTypeParameter:".to_string(), n.clone()),
         TypeReferenceDeclarationReading::TypeReferenceUnidentified {
             authored: a,
             resolved: r2,
