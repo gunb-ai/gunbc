@@ -4,7 +4,7 @@ import v2.compiler.self_host.closure_emission {
   closure_emission_json,
   emit_closure_from_ingest_located
 }
-import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.rust { rust_closure_crate_target_model }
 import v2.test.claim.infer_not_derived_site { nds_read }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Atom, Node, TypeNode, node_synthetic }
@@ -37,7 +37,7 @@ fn cic_json() -> String {
     ],
     entry: qualified_name_from_dotted_string(dotted: "v2.test.cic_a"),
     entry_locus: cic_locus(),
-    target: rust_target_model()
+    target: rust_closure_crate_target_model()
   ).outcome {
     Rejected { diagnostics: _ } => "emit_refused"
     Accepted { value: emission, diagnostics: _ } => closure_emission_json(emission: emission)
@@ -45,5 +45,12 @@ fn cic_json() -> String {
 }
 
 test fn cic_the_imported_call_is_emitted_not_refused() -> Bool {
-  string_contains(s: cic_json(), pattern: "fn ax() -> i32 { crate::v2_test_cic_b::bx() }")
+  string_contains(s: cic_json(), pattern: "pub fn ax() -> i32 { crate::v2_test_cic_b::bx() }")
+}
+
+// THE REFERENCED DECLARATION IS PUBLIC, or the emitted crate does not compile (rustc E0603, function is
+// private): the closure-crate profile spells the visibility row on every member declaration. Removing the
+// row turns this red and leaves the call above standing, which is the silent-uncompilable-output shape.
+test fn cic_the_imported_callee_is_emitted_public() -> Bool {
+  string_contains(s: cic_json(), pattern: "pub fn bx() -> i32 { 1 }")
 }
