@@ -3220,7 +3220,7 @@ fn native_decl_ref_census_files(ingest: SourceRootIngest, front: NativeTestFront
         Accepted { value: tokens, diagnostics: _ } =>
           list_snoc_item(xs: acc, item: CensusFile {
             file: read.compilation_unit,
-            tokens: tokens,
+            tokens: tokens.all,
             prose_scoped: native_decl_ref_census_file_in_prose_scope(path: symbol_lexeme(sym: read.compilation_unit))
           })
       }
