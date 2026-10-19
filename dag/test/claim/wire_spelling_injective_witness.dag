@@ -1,10 +1,9 @@
 module test.claim.wire_spelling_injective_witness
 
 import std.types { String, List, Bool, NonEmptyStr }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import v2.std.decl_index { decl_facts, DeclFact }
 import v2.std.node_query { coproduct_arm_list_from_node }
-import gunbc.auth.wire_strict_reader { first_repeated_spelling }
 import extdeps.apple.apns { ApnsDevelopment, ApnsProduction }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, proposed_decision_name }
 import gunbc.auth.approval_device_wire {
@@ -13,9 +12,29 @@ import gunbc.auth.approval_device_wire {
   wire_admission_public_key_encoding, wire_admission_signature_encoding, EnrolmentStandingActive, EnrolmentStandingRevoked, enrolment_standing_wire, apns_environment_wire,
 }
 
-// THE GENERIC INJECTIVITY CLAIM over every nullary sum spelled by a *_wire match fn. Totality is the
-// compiler's (an exhaustive match); distinctness is checked here. The arm lists are supplied, and ONE
-// inhabitance claim joins each to the declaration's arm count so a new arm cannot be left unlisted.
+// INJECTIVITY OF THE MULTI-ARM NULLARY SPELLING FNS: platform, enrolment refusal, standing, APNs
+// environment and decision. The single-arm sums (suite and the two encodings) are trivially injective,
+// and the payload sum DeviceRedemptionOutcome is AsAuthored, so neither is listed. Totality is the
+// compiler's (an exhaustive match); distinctness is checked here, and ONE inhabitance claim joins each
+// supplied arm list to its declaration's arm count so a new arm cannot be left unlisted.
+//
+// first_repeated_spelling lives here, not in a production module, because its only consumer is this
+// witness; the generator that will emit raw-value enums is the later consumer and would move it then.
+// It names the first spelling an EARLIER arm already used, in one pass over a Set of those seen.
+type SpellingScan { seen: Set<String>, repeated: Optional<String> }
+
+fn first_repeated_spelling(spellings: List<String>) -> Optional<String> {
+  fold(spellings, init: SpellingScan { seen: empty_set(), repeated: Absent }, f: fn(acc, s) {
+    match acc.repeated {
+      Present { value: _ } => acc
+      Absent => if set_contains(acc.seen, s) {
+        SpellingScan { seen: acc.seen, repeated: Present { value: s } }
+      } else {
+        SpellingScan { seen: set_insert(acc.seen, s), repeated: Absent }
+      }
+    }
+  }).repeated
+}
 fn platform_spellings() -> List<String> {
   wire_admission_platform.declared
 }
