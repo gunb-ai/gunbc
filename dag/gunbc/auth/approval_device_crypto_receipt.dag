@@ -3,7 +3,7 @@ module gunbc.auth.approval_device_crypto_receipt
 import std.types { String, List, NonEmptyStr }
 import gunbc.native_serve { NativeServeStartup, NativeServeStartupPassed, NativeServeStartupRefused }
 import gunbc.auth.approval_device_crypto_realization {
-  DeviceCryptoObligation, DeviceCryptoHandlerReceipt, NativeDeviceCryptoBound, device_crypto_admission,
+  DeviceCryptoObligation, DeviceCryptoHandlerReceipt, NativeDeviceCryptoBound, device_crypto_admission, device_crypto_obligations, device_crypto_handler_identity,
   DeviceCryptoAdmitted, DeviceCryptoRefused,
 }
 
@@ -13,7 +13,21 @@ import gunbc.auth.approval_device_crypto_realization {
 // executes the obligations and supplies the binary's digest) and by the control that drops obligations
 // (gunbc.instruments.native_serve_startup_refusal_fixture). A receipt that omits an obligation is refused by
 // device_crypto_admission naming the evidence it lacks; the startup carries that refusal and the door then refuses to bind.
-data device_crypto_handler_identity: NonEmptyStr = "gunbc.auth.approval_device_crypto_serve native_serve_handle"
+
+// The receipt a startup note names. A note exists only for a receipt device_crypto_admission admitted, so the
+// population it covers is the whole of device_crypto_obligations; a note of any other shape is no receipt.
+data device_crypto_note_separator: String = " @ sha256:"
+
+fn device_crypto_receipt_of_note(note: String) -> DeviceCryptoHandlerReceipt? {
+  let parts = split(note, separator: device_crypto_note_separator)
+  if count(parts) != 2 { none }
+  else {
+    let h = match parts.first() { Present { value: v } => v Absent => "" }
+    let r = match parts.skip(n: 1).first() { Present { value: v } => v Absent => "" }
+    if h == "" || r == "" { none }
+    else { Present { value: DeviceCryptoHandlerReceipt { handler_identity: h as NonEmptyStr, exact_revision: r as NonEmptyStr, covered: device_crypto_obligations } } }
+  }
+}
 
 fn device_crypto_receipt_startup(covered: List<DeviceCryptoObligation>, exact_revision: NonEmptyStr) -> NativeServeStartup {
   let receipt = DeviceCryptoHandlerReceipt {
@@ -23,7 +37,7 @@ fn device_crypto_receipt_startup(covered: List<DeviceCryptoObligation>, exact_re
   }
   match device_crypto_admission(r: NativeDeviceCryptoBound { receipt: receipt }) {
     DeviceCryptoAdmitted { handler_identity: h, exact_revision: r } =>
-      NativeServeStartupPassed { note: concat(h as String, concat(" @ sha256:", r as String)) }
+      NativeServeStartupPassed { note: concat(h as String, concat(device_crypto_note_separator, r as String)) }
     DeviceCryptoRefused { status: _, reason: why } => NativeServeStartupRefused { reason: why }
   }
 }

@@ -19973,7 +19973,10 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    // The startup fold runs before any bind: it judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
       "    match std::fs::read(\"/proc/self/exe\") \{", "\n",
       "        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
-      "            NativeServeStartup::NativeServeStartupPassed \{ note \} => println!(\"\{\}\", native_serve_startup_passed_line(note.clone())),", "\n",
+      "            NativeServeStartup::NativeServeStartupPassed \{ note \} => \{", "\n",
+      "                println!(\"\{\}\", native_serve_startup_passed_line(note.clone()));", "\n",
+      "                let _ = STARTUP_NOTE.set(note.clone());", "\n",
+      "            \}", "\n",
       "            NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
       "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
       "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
@@ -19993,14 +19996,16 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "        \};", "\n",
       binding_lines)
   } else { "" }
+  let startup_arg = if startup { ", STARTUP_NOTE.get().cloned().expect(\"the startup note is set before the first handler call\")" } else { "" }
+  let startup_static = if startup { "// The note the startup fold passed with, handed to every handler call (the handler echoes the receipt it names).\nstatic STARTUP_NOTE: std::sync::OnceLock<String> = std::sync::OnceLock::new();\n\n" } else { "" }
   let worker_call = if effectful {
     concat(
-      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", handler_effect_args, ")) \{", "\n",
+      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
       "                Ok(response) => response,", "\n",
       "                Err(cause) => native_serve_effect_failed(cause.to_string()),", "\n",
       "            \};", "\n")
   } else {
-    "            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision);\n"
+    concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, ");\n")
   }
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
@@ -20087,6 +20092,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    \}", "\n",
       "\}", "\n",
       "\n",
+      startup_static,
       "struct HandlerCall \{", "\n",
       "    method: String,", "\n",
       "    path: String,", "\n",

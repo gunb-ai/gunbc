@@ -41,6 +41,6 @@ fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup {
   }
 }
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, startup_note: String) -> ServeWireResponse {
   ServeWireResponse { status: 200, content_type_label: native_serve_application_json, body: "unreachable\n", headers: [] }
 }

@@ -17,9 +17,9 @@ import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
 // those reads and writes is one of the folds below: which address to bind and which release this
 // process is (native_serve_start), whether a request head is admissible and how many body bytes to
 // read (native_serve_frame), and whether the request is answered before the handler is entered
-// (native_serve_route). The handler contract is the seed's `gunbc serve` contract unchanged --
-// `fn native_serve_handle(method, path, body, tailscale_identity, release_revision) ->
-// ServeWireResponse` -- so a program served by the seed today is served natively by declaring the
+// (native_serve_route). The handler contract is the seed's `gunbc serve` contract plus one trailing argument --
+// `fn native_serve_handle(method, path, body, tailscale_identity, release_revision, startup_note) ->
+// ServeWireResponse` (startup_note being what this process's self-check produced) -- so a program served by the seed today is served natively by declaring the
 // arm and naming its handler that.
 //
 // WHERE THIS DOOR IS BETTER THAN THE SEED'S, WHICH IS THE BAR (DESIGN section 7):

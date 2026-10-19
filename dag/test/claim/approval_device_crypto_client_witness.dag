@@ -18,13 +18,14 @@ import extdeps.apple.app_attest { AttestationExpectation, AssertionExpectation, 
 import gunbc.auth.approval_device_wire { WireDecoded, WireRefused }
 import gunbc.auth.approval_device_crypto_realization {
   DeviceCryptoAdmission, NativeDeviceCryptoBound, NativeDeviceCryptoUnavailable, DeviceCryptoHandlerReceipt, device_crypto_admission, device_crypto_obligations, device_crypto_proof_of,
+  DeviceCryptoExpectation, DeviceCryptoEchoJoin, DeviceCryptoEchoJoined, DeviceCryptoEchoRefused, device_crypto_echo_join, device_crypto_handler_identity,
 }
 import std.decl_ref { decl_ref }
 import gunbc.auth.approval_device_crypto_wire {
   DeviceCryptoAnswer, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, CryptoFinite, NoPayload, SignedPayload, AttestedPayload, AssertedPayload, RefusedPayload, NoFields, OneField, TwoFields,
   device_crypto_arm_signature_verified, device_crypto_arm_attestation_verified, device_crypto_arm_assertion_verified,
   device_crypto_arm_infinity, device_crypto_arm_finite, device_crypto_arm_scalar_unrepresentable,
-  device_crypto_answer_json, decode_device_crypto_answer,
+  device_crypto_answer_json, decode_device_crypto_answer, device_crypto_echoed_answer_json,
 }
 import gunbc.auth.approval_device_crypto_client {
   SidecarResult, SidecarReply, SidecarAnswered, SidecarFailed, SidecarReplied, SidecarReplyFailed,
@@ -34,6 +35,14 @@ import gunbc.auth.approval_device_routes { DeviceRouteResponse, sidecar_failure_
 
 fn admitted() -> DeviceCryptoAdmission {
   device_crypto_admission(r: NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture", exact_revision: "0000000", covered: device_crypto_obligations } })
+}
+
+fn receipt() -> DeviceCryptoHandlerReceipt {
+  DeviceCryptoHandlerReceipt { handler_identity: device_crypto_handler_identity, exact_revision: "deadbeef", covered: device_crypto_obligations }
+}
+
+fn expectation() -> DeviceCryptoExpectation {
+  DeviceCryptoExpectation { handler_identity: device_crypto_handler_identity, deployed_digest: "deadbeef" }
 }
 
 fn unavailable() -> DeviceCryptoAdmission {
@@ -190,11 +199,42 @@ fn reply_answered(r: SidecarReply) -> Bool {
 }
 
 test fn witness_a_timeout_a_bad_status_and_a_bad_body_are_sidecar_failures() -> Bool {
-  let good = device_crypto_answer_json(a: signed_answer())
-  reply_failed(r: sidecar_reply_from(exit_code: 28, stdout: "", stderr: "timed out"))
-    && reply_failed(r: sidecar_reply_from(exit_code: 0, stdout: "\{\"error\":\"x\"\}\n503", stderr: ""))
-    && reply_failed(r: sidecar_reply_from(exit_code: 0, stdout: "not json\n200", stderr: ""))
-    && reply_answered(r: sidecar_reply_from(exit_code: 0, stdout: join([good, "\n200"], ""), stderr: ""))
+  let good = device_crypto_echoed_answer_json(a: signed_answer(), receipt: receipt())
+  let x = expectation()
+  reply_failed(r: sidecar_reply_from(exit_code: 28, stdout: "", stderr: "timed out", expectation: x))
+    && reply_failed(r: sidecar_reply_from(exit_code: 0, stdout: "\{\"error\":\"x\"\}\n503", stderr: "", expectation: x))
+    && reply_failed(r: sidecar_reply_from(exit_code: 0, stdout: "not json\n200", stderr: "", expectation: x))
+    && reply_answered(r: sidecar_reply_from(exit_code: 0, stdout: join([good, "\n200"], ""), stderr: "", expectation: x))
+}
+
+// THE SIDECAR DOWN: curl exit 7 (connection refused) is a sidecar failure and the route maps it to the typed 503.
+test fn witness_a_down_sidecar_is_a_typed_503() -> Bool {
+  match sidecar_reply_from(exit_code: 7, stdout: "", stderr: "connection refused", expectation: expectation()) {
+    SidecarReplyFailed { cause: c } => ((sidecar_failure_response(cause: c as String).status) as Int) == 503
+    SidecarReplied { answer: _ } => false
+  }
+}
+
+// THE ECHO JOIN CONTROLS: a digest differing from the deployed artifact's is refused (503), a missing echo is refused, an echo
+// covering fewer than all four obligations is refused, and a matching echo passes the gate.
+test fn witness_an_echo_that_differs_from_the_deployed_digest_is_refused() -> Bool {
+  let other = DeviceCryptoHandlerReceipt { handler_identity: device_crypto_handler_identity, exact_revision: "cafef00d", covered: device_crypto_obligations }
+  reply_failed(r: sidecar_reply_from(exit_code: 0, stdout: join([device_crypto_echoed_answer_json(a: signed_answer(), receipt: other), "\n200"], ""), stderr: "", expectation: expectation()))
+}
+
+test fn witness_an_answer_without_its_echo_is_refused() -> Bool {
+  reply_failed(r: sidecar_reply_from(exit_code: 0, stdout: join([device_crypto_answer_json(a: signed_answer()), "\n200"], ""), stderr: "", expectation: expectation()))
+}
+
+test fn witness_an_echo_covering_fewer_than_all_obligations_is_refused() -> Bool {
+  device_crypto_obligations |> all(dropped => {
+    let partial = DeviceCryptoHandlerReceipt { handler_identity: device_crypto_handler_identity, exact_revision: "deadbeef", covered: device_crypto_obligations |> filter(o => o != dropped) }
+    reply_failed(r: sidecar_reply_from(exit_code: 0, stdout: join([device_crypto_echoed_answer_json(a: signed_answer(), receipt: partial), "\n200"], ""), stderr: "", expectation: expectation()))
+  })
+}
+
+test fn witness_the_echo_join_admits_the_matching_receipt() -> Bool {
+  match device_crypto_echo_join(expectation: expectation(), echo: receipt()) { DeviceCryptoEchoJoined => true  DeviceCryptoEchoRefused { cause: _ } => false }
 }
 
 // THE ROUTE'S MAPPING: a sidecar failure is a 503 carrying its cause, never a 200.
@@ -225,7 +265,7 @@ test fn witness_the_native_realization_proof_is_derived_only_from_an_admission()
 // THE EXECUTED JOIN, per refusal arm: the answer the service writes for a fold value decodes in the broker to the SAME
 // value the in-process fold returned (a verdict and arm that disagree, or an arm with the wrong members, is a sidecar failure).
 fn signature_joined(v: SignatureVerification) -> Bool {
-  match decode_device_crypto_answer(text: signature_answer(v: v).body) {
+  match decode_device_crypto_answer(text: signature_answer(v: v, receipt: receipt()).body) {
     WireRefused { at: _, cause: _ } => false
     WireDecoded { value: a } =>
       match signature_from_answer(admission: admitted(), answer: a, key: key(), message: request_message()) {
@@ -236,7 +276,7 @@ fn signature_joined(v: SignatureVerification) -> Bool {
 }
 
 fn attestation_joined(r: AttestationRefusal) -> Bool {
-  match decode_device_crypto_answer(text: attestation_answer(v: AttestationRefused { cause: r }).body) {
+  match decode_device_crypto_answer(text: attestation_answer(v: AttestationRefused { cause: r }, receipt: receipt()).body) {
     WireRefused { at: _, cause: _ } => false
     WireDecoded { value: a } =>
       match attestation_from_answer(admission: admitted(), answer: a, expectation: attestation_request()) {
@@ -247,7 +287,7 @@ fn attestation_joined(r: AttestationRefusal) -> Bool {
 }
 
 fn assertion_joined(r: AssertionRefusal) -> Bool {
-  match decode_device_crypto_answer(text: assertion_answer(v: AssertionRefused { cause: r }).body) {
+  match decode_device_crypto_answer(text: assertion_answer(v: AssertionRefused { cause: r }, receipt: receipt()).body) {
     WireRefused { at: _, cause: _ } => false
     WireDecoded { value: a } =>
       match assertion_from_answer(admission: admitted(), answer: a, expectation: assertion_request()) {

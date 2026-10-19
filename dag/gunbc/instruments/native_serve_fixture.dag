@@ -35,7 +35,7 @@ fn fixture_spin(n: Int, acc: Int) -> Int {
   if n == 0 { acc } else { fixture_spin(n: n - 1, acc: (acc * 31 + n) % 1000003) }
 }
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, startup_note: String) -> ServeWireResponse {
   if path == "/hello" && method == "GET" {
     fixture_text(status: 200, body: concat("hello, ", concat(tailscale_identity, "\n")))
   } else if path == "/redirect" && method == "GET" {
