@@ -2312,14 +2312,48 @@ test fn the_shared_scan_refuses_reserved_characters_wherever_they_sit() -> Bool 
 test fn every_reserved_character_the_shelf_claims_is_actually_refused_in_both_positions() -> Bool {
   let reserved = crypt_reserved_characters()
   let digest = "8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj."
-  let spliced_digest = fold(reserved, init: 0, f: (n, r) =>
-    if (r as String) == "$" then n
-    else if refuses(crypt_digest: concat(concat("$6$saltsalt$", r as String), digest)) then n + 1 else n)
-  let spliced_salt = fold(reserved, init: 0, f: (n, r) =>
-    if (r as String) == "$" then n
-    else if refuses(crypt_digest: concat(concat(concat("$6$salt", r as String), "salt$"), digest)) then n + 1 else n)
-  let testable = fold(reserved, init: 0, f: (n, r) =>
-    if (r as String) == "$" then n else n + 1)
+  let spliced_digest = fold(
+    reserved,
+    init: 0,
+    f: (counted, character) =>
+      match (character as String) == "$" {
+        // '$' is the segment delimiter: a candidate holding one is no longer the setting being adjudicated but a
+        // setting with an extra segment, so splicing it would test the segment count and report it had tested the
+        // alphabet. Its refusal is asserted honestly where it can be stated -- the consuming module's
+        // segment-count arm, which counts the delimiters it is handed.
+        True => counted
+        False => match refuses(crypt_digest: concat(concat("$6$saltsalt$", character as String), digest)) {
+          True => counted + 1
+          False => counted
+        }
+      },
+  )
+  let spliced_salt = fold(
+    reserved,
+    init: 0,
+    f: (counted, character) =>
+      match (character as String) == "$" {
+        True => counted
+        False => match refuses(crypt_digest: concat(concat(concat("$6$salt", character as String), "salt$"), digest)) {
+          True => counted + 1
+          False => counted
+        }
+      },
+  )
+  let testable = fold(
+    reserved,
+    init: 0,
+    f: (counted, character) =>
+      match (character as String) == "$" {
+        True => counted
+        False => counted + 1
+      },
+  )
+  // THE DENOMINATOR IS ASSERTED, NOT ASSUMED, AND AN EMPTY LIST IS A FAILURE. A fold over an empty list reports
+  // 0 == 0 == 0 and every comparison above passes, so emptying crypt_shared_restriction.reserved_characters --
+  // deleting the entire alphabet rule from the shelf -- would keep this row green while the module began accepting
+  // settings the board's crypt(3) refuses. That is the exact catastrophe this shelf exists to prevent, which is
+  // why a vacuous sweep is reported as a failure rather than a pass.
   testable > 0 && spliced_digest == testable && spliced_salt == testable
 }
 
@@ -2334,9 +2368,9 @@ test fn every_reserved_character_the_shelf_claims_is_actually_refused_in_both_po
 test fn the_printable_range_admits_its_endpoints_and_refuses_just_outside() -> Bool {
   shared_restriction_character_is_printable(code: 33)
     && shared_restriction_character_is_printable(code: 126)
-    && !shared_restriction_character_is_printable(code: 32)
-    && !shared_restriction_character_is_printable(code: 127)
-    && !shared_restriction_character_is_printable(code: 0)
+    && shared_restriction_character_is_printable(code: 32) == false
+    && shared_restriction_character_is_printable(code: 127) == false
+    && shared_restriction_character_is_printable(code: 0) == false
 }
 
 test fn permitted_punctuation_in_the_salt_is_still_accepted() -> Bool {
