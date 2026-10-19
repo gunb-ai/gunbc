@@ -6,10 +6,11 @@ import std.types { String, List, Bool, NonEmptyStr }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
 import extdeps.languages.json.emit { JsonValue, JsonNull }
 import gunbc.auth.approval_device_wire {
-  WireDecoded, WireRefused, decode_read_authentication, decode_push_registration, apns_environment_wire, ApnsProduction, ApnsDevelopment,
+  WireDecoded, WireRefused, wire_admission_apns_environment, wire_admission_rows, decode_read_authentication, decode_push_registration, apns_environment_wire, ApnsProduction, ApnsDevelopment,
 }
 import gunbc.auth.wire_strict_reader {
   WireVerdict, wire_cause_text, WireAccepted, WireRefusedAt, WireFieldRule, WireFreeString, WireAdmittedString, WireNested, WireField, WireShape, WireRecord, WireSum, WireSumArm,
+  WireAdmission, AdmissionVerdict, AdmissionSound, AdmissionNotDeclared, admission_verdict,
   BoundShape, ShapeBound, ShapeRefused, bind_record, read_shape,
 }
 
@@ -28,7 +29,7 @@ fn read_authentication_rules() -> List<WireField> {
 
 fn apns_registration_fields() -> List<WireField> {
   [
-    WireField { name: "environment", rule: WireAdmittedString { admitted: [apns_environment_wire(e: ApnsProduction) as String, apns_environment_wire(e: ApnsDevelopment) as String], cause: "not an APNs environment" } },
+    WireField { name: "environment", rule: WireAdmittedString { admitted: wire_admission_apns_environment.admitted, cause: "not an APNs environment" } },
     WireField { name: "topic", rule: WireFreeString },
     WireField { name: "token", rule: WireFreeString },
   ]
@@ -133,4 +134,17 @@ test fn a_policy_that_is_the_declared_fields_binds() -> Bool {
 // The four declared consumers carry a reason and a bound-or-described dissolution trigger.
 test fn the_declared_frontier_rows_are_well_formed() -> Bool {
   frontier_rows_well_formed(rows: wire_strict_reader_frontier_rows) && count(wire_strict_reader_frontier_rows) == 4
+}
+
+// B3/B4: every admission row the protocol declares is a subset of its declared arms.
+test fn every_admission_row_is_within_its_declared_arms() -> Bool {
+  all(wire_admission_rows, r => match admission_verdict(row: r) { AdmissionSound => true  AdmissionNotDeclared { subject: _, spelling: _ } => false })
+}
+
+// RED: an admitted spelling no arm has is refused, naming it.
+test fn an_admitted_spelling_that_is_not_declared_is_refused() -> Bool {
+  match admission_verdict(row: WireAdmission { subject: "platform", declared: ["ios", "android"], admitted: ["ios", "windows"] }) {
+    AdmissionNotDeclared { subject: s, spelling: v } => s == "platform" && v == "windows"
+    AdmissionSound => false
+  }
 }

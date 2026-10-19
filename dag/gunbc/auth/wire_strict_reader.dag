@@ -198,9 +198,9 @@ data wire_strict_reader_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "feature:wire-swift-generator-switch -- rows.dag retirement step 4: the Wire.swift generator emits its decoders from this fold's shapes and the transcribed tree deletes; the server decode_* chains stay until the option-2 step"),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "bind_record"),
-    reason: "the policy rows (admitted spellings, admitted values, per-sum causes: rulings B3 and B4) are authored in the witness, not beside the protocol in gunbc.auth.approval_device_wire",
-    dissolution: unbound_dissolution(description: "feature:wire-policy-rows-in-approval-device-wire -- B3/B4 policy rows are declared in approval_device_wire and the witness consumes them instead of authoring them"),
+    ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "admission_verdict"),
+    reason: "the admitted-spelling rows are declared beside the protocol and checked here, but the server decode_* chains still spell their admission as if-chains and the per-shape cause texts (CausePolicy) are still authored in the witness",
+    dissolution: unbound_dissolution(description: "feature:wire-option-2-decode-cutover -- the server decode_* chains read their admission from the same rows and the per-shape causes become rows beside them"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "WireSumArm"),
@@ -223,6 +223,32 @@ fn first_repeated_spelling(spellings: List<String>) -> Optional<String> {
     match acc {
       Present { value: v } => Present { value: v }
       Absent => if count(filter(spellings, t => t == s)) > 1 { Present { value: s } } else { Absent }
+    }
+  })
+}
+
+// B3/B4 POLICY ROWS (rulings B3 admitted arms, B4 admitted values). A row names a wire subject, the
+// spellings of EVERY declared arm of its sum (declared, from the sum's *_wire spelling fn over the
+// full arm list) and the spellings the protocol admits. Admission is a policy narrowing, so an admitted
+// spelling that is not a declared one is a policy fork and refuses, typed, with the offender named.
+type WireAdmission { subject: String, declared: List<String>, admitted: List<String> }
+
+type AdmissionVerdict
+  = AdmissionSound
+  | AdmissionNotDeclared { subject: String, spelling: String }
+
+fn admission_verdict(row: WireAdmission) -> AdmissionVerdict {
+  match first_undeclared(declared: row.declared, admitted: row.admitted) {
+    Present { value: v } => AdmissionNotDeclared { subject: row.subject, spelling: v }
+    Absent => AdmissionSound
+  }
+}
+
+fn first_undeclared(declared: List<String>, admitted: List<String>) -> Optional<String> {
+  fold(admitted, init: Absent, f: fn(acc, a) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if wire_name_listed(allowed: declared, k: a) { Absent } else { Present { value: a } }
     }
   })
 }

@@ -12,6 +12,7 @@ import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
+import gunbc.auth.wire_strict_reader { WireAdmission }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, UInt8 }
 import std.encoding { base64_encode, base64_octets, base64_decode, UrlSafe, utf8_decode_octets }
 import std.coercion { unicode_scalar_fold }
@@ -1040,3 +1041,32 @@ fn device_request_path(escalation_id: NonEmptyStr) -> NonEmptyStr {
 fn device_enrollment_path(enrollment_id: NonEmptyStr) -> NonEmptyStr {
   join([approval_device_enrollment_path_prefix as String, path_segment(s: enrollment_id) as String], "") as NonEmptyStr
 }
+
+// ── Admission policy rows (rulings B3 and B4) ─────────────────────────────────────────────────
+// What the protocol ADMITS of each sum, beside the spelling fn that names every declared arm.
+// wire_strict_reader admission_verdict refuses a row admitting a spelling no declared arm has.
+data wire_admission_platform: WireAdmission = WireAdmission {
+  subject: "platform",
+  declared: map([MobileIos, MobileAndroid], p => platform_wire(p: p) as String),
+  admitted: [platform_wire(p: MobileIos) as String],
+}
+
+data wire_admission_apns_environment: WireAdmission = WireAdmission {
+  subject: "environment",
+  declared: map([ApnsDevelopment, ApnsProduction], e => apns_environment_wire(e: e) as String),
+  admitted: [apns_environment_wire(e: ApnsProduction) as String, apns_environment_wire(e: ApnsDevelopment) as String],
+}
+
+data wire_admission_decision: WireAdmission = WireAdmission {
+  subject: "decision",
+  declared: map([ProposeApprove, ProposeDeny], d => proposed_decision_name(d: d) as String),
+  admitted: [proposed_decision_name(d: ProposeApprove) as String, proposed_decision_name(d: ProposeDeny) as String],
+}
+
+data wire_admission_signature_suite: WireAdmission = WireAdmission {
+  subject: "suite",
+  declared: [signature_suite_wire(s: EcdsaP256Sha256) as String],
+  admitted: [signature_suite_wire(s: EcdsaP256Sha256) as String],
+}
+
+data wire_admission_rows: List<WireAdmission> = [wire_admission_platform, wire_admission_apns_environment, wire_admission_decision, wire_admission_signature_suite]
