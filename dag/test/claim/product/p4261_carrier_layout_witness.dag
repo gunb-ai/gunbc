@@ -1095,7 +1095,8 @@ fn overvoltage_of(layout: CarrierLayoutObservation) -> List<ControllerPinStandin
 // AN ENABLE PIN IS HELD LOW ONLY BELOW THE DATASHEET MINIMUM, AND A PAD IS A PIN'S ONLY ONCE SEPARATED
 // FROM ITS NEIGHBOURS. U1_P5 is the LM5066I by its marking. Live, the back-side pad is at the baseline
 // to pin 8 and separated from pins 7 and 9, so its 1.8 V and 1.35 V are OVLO's -- below the 2.39 V
-// minimum, not locking out -- and pin 7 is unread. Without the separating readings the same pad is
+// minimum, not locking out -- and pin 7, read through a wire on the pin itself, is held below at
+// about 1.0 V. Without the separating readings the same pad is
 // only a candidate for pin 8. The pad's readings put on pin 7 instead count only with a join to pin 7
 // and readings separating it from pins 6 and 8; a pad also at the baseline to pin 8 stays a
 // candidate, and a pad with no join, or a kilohm join, is no reading of pin 7 at all. With no join, a
@@ -1103,7 +1104,8 @@ fn overvoltage_of(layout: CarrierLayoutObservation) -> List<ControllerPinStandin
 test fn an_enable_bound_above_the_threshold_minimum_establishes_nothing() -> Bool {
   let identified = finding_holds(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u1_p5 })
   let pad_reading = filter(e1_bench_record.voltages, o => component_identity_eq(a: o.at.component, b: e1_ovlo_pad))
-  let live = enable_gap(ss: enable_of(layout: p4261_e1_layout), which: 0) && !finding_holds(layout: p4261_e1_layout, f: ControllerEnableState { component: e1_u1_p5 })
+  let live = enable_is(ss: enable_of(layout: p4261_e1_layout), held: true) && finding_holds(layout: p4261_e1_layout, f: ControllerEnableState { component: e1_u1_p5 })
+    && carrier_input_reading(layout: p4261_e1_layout).contains("U1_P5's enable (UVLO/EN) is HELD BELOW its threshold, so the gate is held off")
     && enable_is(ss: overvoltage_of(layout: p4261_e1_layout), held: true) && finding_holds(layout: p4261_e1_layout, f: ControllerOvervoltageState { component: e1_u1_p5 })
     && carrier_input_reading(layout: p4261_e1_layout).contains("U1_P5's overvoltage lockout (OVLO) is BELOW its threshold, so it does not lock the input out")
     && count(pad_reading) == 2
@@ -1205,15 +1207,15 @@ fn pin7(mv: Nat, source_volts: Nat) -> NodeVoltageObservation {
   reading_under(c: e1_u1_p5, terminal: "pin 7", value: about(mv: mv), order: before(), source_volts: source_volts)
 }
 
-// A PROJECTION NEEDS PIN 7'S OWN READINGS. The live pad (1.8 V at 48 V, 1.35 V at 36 V) is pin 8's, so
-// the live E1 projects nothing. Were the same readings pin 7's -- joined to it and separated from both
+// A PROJECTION NEEDS READINGS IN PROPORTION TO THE SOURCE. The live pin 7 holds about 1.0 V at 36, 48
+// and 54 V -- not in proportion -- so the live E1 projects nothing; the 1.8 V / 1.35 V pad is pin 8's. Were the same readings pin 7's -- joined to it and separated from both
 // neighbours -- they track the input in proportion and would reach the 2.41 V minimum only near 64.3 V,
 // above the 60 V working bound. Two readings out of proportion, or a single source setting, project nothing; a steeper
 // divider (3.0 V at 48 V) would reach the threshold within the bound.
 test fn the_enable_cannot_reach_its_threshold_within_the_input_bound() -> Bool {
   let pad_reading = filter(e1_bench_record.voltages, o => component_identity_eq(a: o.at.component, b: e1_ovlo_pad))
   let separated = e1_with_bench(vs: pad_reading, rs: concat([pad_join(pin: "pin 7")], separated_from_neighbours()))
-  let live = projection_gap(ps: projection_of(layout: p4261_e1_layout), proportional_gap: false)
+  let live = projection_gap(ps: projection_of(layout: p4261_e1_layout), proportional_gap: true)
     && !finding_holds(layout: p4261_e1_layout, f: EnableInputProjection { component: e1_u1_p5 })
     && turn_on_is(t: unreachable_turn_on(ps: projection_of(layout: separated)), expected: 64266)
     && finding_holds(layout: separated, f: EnableInputProjection { component: e1_u1_p5 })

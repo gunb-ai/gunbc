@@ -1308,17 +1308,17 @@ data p4261_j20_main_input_hypothesis: InvestigationHypothesis = InvestigationHyp
 // whether or not its hot-swap stage conducts: the module carries its own regulators, so a low draw does
 // not say the main path is off. Neither reading is established; one live measurement decides between them.
 data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
-  claim: "if U1_P5's UVLO/EN (pin 7) proves to sit below its threshold with the input applied, something holds it there -- a local network around pin 7 (candidates Q5_P5 with the resistor and capacitor beside it, D5_P5, not the input TVS D5, and Q300 / Q301) awaiting a remote-enable, chassis-presence or module-presence condition the original system supplies. If it sits above, the input stage is held off by something else: a protection, bias, timing or gate-drive condition of U1_P5, or damage",
+  claim: "U1_P5's UVLO/EN (pin 7) is held near 1 V, below its threshold, by a network that does not depend on the input -- a path of about 500 ohm to the return with a fixed source above it -- most likely a remote-shutdown pull-down (candidates Q300 / Q301, on whose trace the 500 ohm ground pad sits; D5_P5, not the input TVS D5; Q5_P5 with the resistor and capacitor beside it) holding the input stage off until a remote-enable, chassis-presence or module-presence condition the original system supplies releases it. Alternatives not excluded: an override by another circuit, or damage to pin 7's network",
   sources: [
-    "Q21_P5 and Q22_P5 read blocking at 48 V (input_switch_standing): the input stage is held off",
-    "U1_P5's OVLO pad reads 1.8 V at 48 V and 1.35 V at 36 V, below the 2.39 V minimum (controller_overvoltage_standing): overvoltage lockout is not what holds it off. TI SNVS950C's design example, section 9.2.1.2.6 option B (R3 = 95.3 kohm, R4 = 3.74 kohm for a 65 V trip on a 40-60 V input), predicts 1.81 V and 1.36 V -- a reference circuit, not this board's parts",
-    "the same TI example sets UVLO with 150 kohm / 11.5 kohm, about 3.4 V on UVLO/EN at 48 V; whether this board follows it is unread",
+    "Q21_P5 and Q22_P5 read blocking at 48 V (input_switch_standing), and pin 7 read about 1.0 V at 36, 48 and 54 V, below the 2.41 V minimum (controller_enable_standing) and not in proportion to the source (enable_projection): the input stage is held off by its enable, and the enable is not fed from the input",
+    "U1_P5's OVLO reads 1.8 V at 48 V and 1.35 V at 36 V, below its 2.39 V minimum (controller_overvoltage_standing): overvoltage lockout is not what holds it off. TI SNVS950C's design example, section 9.2.1.2.6 option B (R3 = 95.3 kohm, R4 = 3.74 kohm), predicts those readings -- a reference circuit, not this board's parts",
     "TI SNVS950C: the load can be remotely switched off by taking UVLO/EN below its threshold with an open-collector or open-drain device; released, the LM5066I switches on (extdeps.electronic_component.ti_lm5066i vendor statement)",
-    "the K1, never energized and never bridged, reads the same 3.5 kohm from the same back-side pad to ground (operator 2026-10-19), so that reading is the design's rather than the bridge's -- on a pad located by the E1's layout",
+    "unpowered, pin 7 reads about 500 ohm to a back-side pad on the ground rings that sits on the trace toward Q300 / Q301; in-circuit, so the path's parts are unread",
+    "no K1 comparison of pin 7 was made, so damage to pin 7's network from the 2026-10-19 bridge is not excluded by a sibling board; the bridge was a MOSFET's source to its drain, not on pin 7's network",
     "Q5_P5's single lead is on the return; its function is unread",
     "the 11-13 mA draw does not establish which circuits are powered, so it neither shows nor excludes other powered logic",
   ],
-  decided_by: "pin 7's own access point, at the baseline to pin 7 and separated from pins 6 and 8, read at 48 V as a value; if below 2.41 V, the parts that join pin 7 directly, mapped unpowered before any off-board signal is sought",
+  decided_by: "unpowered, pin 7's resistance to each lead of Q300, Q301 and Q5_P5, both ends of the resistor between Q300 and Q301, of D5_P5, and of the parts beside Q5_P5: the lowest readings name the parts on pin 7's network; then those parts' markings and, powered, the voltage on their control leads",
 }
 
 data p4261_q4_temperature_diode_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
@@ -1620,7 +1620,7 @@ fn e1_switch_readings(c: ComponentInstanceIdentity) -> List<NodeVoltageObservati
 // recorded: it was a reading of two leads at once. Unpowered, with the supply's leads unplugged, from
 // that pad: the ground ring (itself on J20's return), Q5_P5's single lead (on the return), D5_P5's
 // nearer end, the '01B' resistor's ends and Q21_P5's tab. Energized through the same leads, the pad
-// read at two source settings. Pin 7's own access point is not yet found.
+// read at two source settings.
 data e1_ovlo_pad: ComponentInstanceIdentity = e1_component(local: "back-side via pad beside the 01B resistor, behind U1_P5")
 data e1_ground_ring: ComponentInstanceIdentity = e1_component(local: "copper mounting ring behind U3_P5 (back side)")
 data e1_01b: ComponentInstanceIdentity = e1_component(local: "01B resistor below D5_P5 (back side)")
@@ -1675,10 +1675,42 @@ fn e1_pad_volts(source_volts: Nat, millivolts: Nat, said: NonEmptyStr) -> NodeVo
   }
 }
 
+// U1_P5'S ENABLE, READ THROUGH A WIRE TAPED TO PIN 7 (2026-10-19, after the probe bridge). The wire is
+// not at the baseline to pin 8's pad; pin 7 reads about 500 ohm to a back-side pad that is on the
+// ground rings; energized, pin 7 held about 1.0 V with the source at 36, 48 and 54 V. No comparison
+// with the K1 was made (the operator declined to wire the K1's pin 7), so whether the probe bridge
+// changed pin 7's network is not separated by a sibling board -- the bridge itself was a MOSFET's
+// source to its drain, not on pin 7's network.
+data e1_ground_pad: ComponentInstanceIdentity = e1_component(local: "back-side pad on the trace toward Q300 / Q301, on the ground rings")
+data e1_pin7_wire_said: NonEmptyStr = "I taped a thin wire to pin 7 now so I can explore the bottom"
+
+fn e1_pin7_ohms(to: ElectricalTerminalRef, display: ResistanceDisplay, certainty: StatementCertainty, said: NonEmptyStr) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_terminal(c: e1_u1_p5, name: "pin 7"), second: to, record: both_points_recorded, conditions: e1_bench,
+    range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: certainty, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, OperatorStatement { stated_on: "2026-10-19", verbatim: e1_pin7_wire_said }, e1_u1_closeup_photo],
+  }
+}
+
+data e1_pin7_resistances: List<ResistanceObservation> = [
+  e1_pin7_ohms(to: e1_terminal(c: e1_ovlo_pad, name: "pad"), display: DisplayAboveBaseline, certainty: StatedPlainly, said: "Yeah it's not on pin 8, I checked"),
+  e1_pin7_ohms(to: e1_terminal(c: e1_ground_pad, name: "pad"), display: DisplayValue { ohms: 500, approximate: false }, certainty: StatedPlainly, said: "This pad is 500 ohms to pin 7"),
+  e1_to_return(from: e1_terminal(c: e1_ground_pad, name: "pad"), said: "I think that pad is ground., it's the same as copper rings"),
+]
+
+fn e1_pin7_volts(source_volts: Nat) -> NodeVoltageObservation {
+  NodeVoltageObservation {
+    asset: p4261_e1_b, at: e1_terminal(c: e1_u1_p5, name: "pin 7"), reference: e1_ground_ref, record: second_point_inferred(basis: e1_supply_return_basis),
+    conditions: e1_live_bench, source: volt(count: source_volts), value: ReadAbout { value: millivolt(count: 1000) }, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "It's steady at 1v always / It was 36v, 48v, and 54v I tried" }, OperatorStatement { stated_on: "2026-10-19", verbatim: e1_pin7_wire_said }],
+  }
+}
+
 data e1_bench_record: BenchRecord = BenchRecord {
   incidents: [e1_bridge_incident],
-  voltages: concat(concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)), [e1_pad_volts(source_volts: 48, millivolts: 1800, said: "1.8v"), e1_pad_volts(source_volts: 36, millivolts: 1350, said: "1.35 at 36v")]),
-  resistances: e1_ovlo_pad_resistances,
+  voltages: concat(concat(concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)), [e1_pad_volts(source_volts: 48, millivolts: 1800, said: "1.8v"), e1_pad_volts(source_volts: 36, millivolts: 1350, said: "1.35 at 36v")]), map([48, 36, 54], v => e1_pin7_volts(source_volts: v))),
+  resistances: concat(e1_ovlo_pad_resistances, e1_pin7_resistances),
 }
 
 data e1_measured: MeasuredBoard = MeasuredBoard {
