@@ -1,0 +1,122 @@
+module test.claim.runner.runner_host_cap_bracket_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.measure { second, second_count }
+import std.temporal_effect { LeaseAbsent, LeaseRunningPastExpiry }
+import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
+import gunbc.runner.runner_slot_actuation { SlotActuationOutcome, SlotActivated, SlotActuationRefused }
+import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsRestartedAndRead, SlotCapsRefused }
+import gunbc.runner.runner_host_cap_bracket {
+  AdmissionMaskOnly,
+  SlotDrainReading,
+  BracketWaitStep,
+  BracketDrained,
+  BracketWaiting,
+  BracketAdmissionNotClosed,
+  BracketBoundExceeded,
+  HostCapBracketResult,
+  BracketAtDesired,
+  BracketRefused,
+  BracketRefusedReadmit,
+  BracketRefusedReadback,
+  BracketRefusedWriteNotSettled,
+  HostAdmitting,
+  HostLeftDrained,
+  bracket_wait_step,
+  bracket_result,
+  host_drain_lease_observed,
+  host_cap_drain_ticks,
+  runner_host_cap_drain_policy,
+}
+
+// THE CONTROLS FOR THE DRAIN BRACKET'S DECISIONS, over supplied readings (the boundary these claims
+// discriminate at). The wet driver's route is the remote run against a fleet host.
+
+fn u(n: String) -> NonEmptyStr { concat("actions-runner@srv3-", n, ".service") as NonEmptyStr }
+fn drained(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: false, activity: SlotIdle } }
+fn finishing(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, activity: SlotHasLiveWorker } }
+fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, activity: SlotIdle } }
+fn unreadable(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, activity: SlotActivityUnobserved { cause: "ps exit=1" as NonEmptyStr } } }
+fn unmasked(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: false, listener_running: false, activity: SlotIdle } }
+
+fn is_drained(s: BracketWaitStep) -> Bool { match s { BracketDrained => true BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn is_waiting(s: BracketWaitStep) -> Bool { match s { BracketWaiting { ticks_left: _ } => true BracketDrained => false BracketAdmissionNotClosed { listeners: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn is_not_closed(s: BracketWaitStep) -> Bool { match s { BracketAdmissionNotClosed { listeners: ls } => length(ls) == 1 BracketDrained => false BracketWaiting { ticks_left: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn exceeded(s: BracketWaitStep, busy: Int, unproven: Int) -> Bool { match s { BracketBoundExceeded { busy: b, unproven: p } => length(b) == busy && length(p) == unproven BracketDrained => false BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _ } => false } }
+
+// the bound is a declared policy row that yields a positive tick count
+test fn the_declared_bound_yields_positive_ticks() -> Bool { host_cap_drain_ticks(policy: runner_host_cap_drain_policy) > 0 }
+
+test fn every_slot_masked_stopped_and_idle_is_drained() -> Bool {
+  is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), drained(n: "02")], ticks_left: 3))
+}
+
+// a slot whose job is finishing holds the wait while ticks remain
+test fn a_finishing_job_waits_inside_the_bound() -> Bool {
+  is_waiting(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), finishing(n: "02")], ticks_left: 3))
+}
+
+// RED: bound exhausted with a live job refuses, naming the busy slot
+test fn the_bound_exceeded_refuses_naming_the_busy_slot() -> Bool {
+  exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), finishing(n: "02")], ticks_left: 0), busy: 1, unproven: 0)
+}
+
+// RED: could-not-tell is not idle, at the bound it is unproven and refuses
+test fn an_unreadable_idleness_reading_is_never_drained() -> Bool {
+  !is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unreadable(n: "01")], ticks_left: 3))
+    && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unreadable(n: "01")], ticks_left: 0), busy: 0, unproven: 1)
+}
+
+// RED: a slot that is not masked has admission open, so it is never drained
+test fn an_unmasked_slot_is_never_drained() -> Bool {
+  !is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unmasked(n: "01")], ticks_left: 3))
+}
+
+// RED: mask-only plus an idle running listener withholds and names the unit
+test fn mask_only_with_an_idle_listener_is_not_closed() -> Bool {
+  is_not_closed(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), idle_listener(n: "02")], ticks_left: 3))
+    && is_not_closed(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [idle_listener(n: "02")], ticks_left: 0))
+}
+
+fn units() -> List<NonEmptyStr> { [u(n: "01"), u(n: "02")] }
+fn read_ok() -> List<SlotCapOutcome> { [SlotCapsRestartedAndRead { unit: u(n: "01") }, SlotCapsRestartedAndRead { unit: u(n: "02") }] }
+fn read_mismatch() -> List<SlotCapOutcome> { [SlotCapsRestartedAndRead { unit: u(n: "01") }, SlotCapsRefused { unit: u(n: "02"), step: "readback", reason: "memory.max 27917287424" }] }
+fn readmitted() -> List<SlotActuationOutcome> { [SlotActivated { unit: u(n: "01") }, SlotActivated { unit: u(n: "02") }] }
+fn readmit_stuck() -> List<SlotActuationOutcome> { [SlotActivated { unit: u(n: "01") }, SlotActuationRefused { unit: u(n: "02"), step: "start", reason: "x" }] }
+
+fn at_desired(r: HostCapBracketResult) -> Bool { match r { BracketAtDesired { units: _ } => true BracketRefused { refusal: _, left: _ } => false } }
+fn refused_admitting(r: HostCapBracketResult) -> Bool { match r { BracketRefused { refusal: _, left: HostAdmitting } => true BracketRefused { refusal: _, left: HostLeftDrained { units: _ } } => false BracketAtDesired { units: _ } => false } }
+
+// drain, idle, write, readback, re-admit lands AtDesired
+test fn drain_write_readback_and_readmit_lands_at_desired() -> Bool {
+  at_desired(r: bracket_result(units: units(), write_settled: true, readbacks: read_ok(), readmit: readmitted()))
+}
+
+// RED: a readback mismatch is a failure, never success, and the host is re-admitted
+test fn a_readback_mismatch_is_reported_as_a_failure() -> Bool {
+  refused_admitting(r: bracket_result(units: units(), write_settled: true, readbacks: read_mismatch(), readmit: readmitted()))
+}
+
+// RED: an unsettled write is a failure even with clean readings
+test fn an_unsettled_write_is_a_failure() -> Bool {
+  refused_admitting(r: bracket_result(units: units(), write_settled: false, readbacks: read_ok(), readmit: readmitted()))
+}
+
+// RED: a refusal path (no readbacks) still reports re-admission, and a stuck slot is left DRAINED
+test fn a_slot_that_does_not_readmit_leaves_the_host_drained_and_says_so() -> Bool {
+  match bracket_result(units: units(), write_settled: false, readbacks: [], readmit: readmit_stuck()) {
+    BracketRefused { refusal: BracketRefusedReadmit { refused: _ }, left: HostLeftDrained { units: us } } => length(us) == 1
+    BracketAtDesired { units: _ } => false
+    BracketRefused { refusal: _, left: _ } => false
+  }
+}
+
+// RED: a readmit list shorter than the units cannot read as admitting
+test fn a_missing_readmit_reading_is_not_admitting() -> Bool {
+  !at_desired(r: bracket_result(units: units(), write_settled: true, readbacks: read_ok(), readmit: [SlotActivated { unit: u(n: "01") }]))
+}
+
+test fn the_lease_is_absent_only_when_the_host_is_admitting() -> Bool {
+  host_drain_lease_observed(left: HostAdmitting) == LeaseAbsent && host_drain_lease_observed(left: HostLeftDrained { units: units() }) == LeaseRunningPastExpiry
+}
