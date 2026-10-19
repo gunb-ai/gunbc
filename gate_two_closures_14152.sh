@@ -66,14 +66,23 @@ run_side () {
   echo "[$side] mirror seed=$(python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest()[:16])" $d/src/v1/stage0/src/v1_compiler_infer.rs) fold=$(grep -c UnifyGenericsAcc $d/src/v1/stage0/src/v1_compiler_infer.rs) arms=$(grep -ac 'binding_is_generic_declaration_own_form' $d/src/v1/stage0/src/v1_compiler_infer.rs)"
   ( cd $d && cargo build --release -p v1-compiler --bin gunbc ) > $LOGS/build_$side.log 2>&1
   brc=$?
-  echo "[$side] build rc=$brc errors=$(grep -acE '^error' $LOGS/build_$side.log) binary=$([ -f $d/target/release/gunbc ] && echo yes || echo NO)"
-  { [ $brc -eq 0 ] && [ -f $d/target/release/gunbc ]; } || { echo "VOID: no gunbc for $side -- its counts would be false zeros, not greens"; return 6; }
+  # WHERE THE BINARY IS. CARGO_TARGET_DIR is exported above for build reuse, so cargo puts the
+  # binary in the SHARED dir, not in $d/target -- and a check hardcoded to $d/target/release/gunbc
+  # then reports "binary=NO" on a build that succeeded with rc=0 and zero errors, VOIDing a
+  # measurement that actually happened. Print every candidate so a VOID is diagnosable rather
+  # than looking like a failed build.
+  bin=""
+  for cand in "${CARGO_TARGET_DIR:-$d/target}/release/gunbc" "$d/target/release/gunbc"; do
+    [ -f "$cand" ] && { bin="$cand"; break; }
+  done
+  echo "[$side] build rc=$brc errors=$(grep -acE '^error' $LOGS/build_$side.log) binary=${bin:-NONE} checked1=${CARGO_TARGET_DIR:-$d/target}/release/gunbc checked2=$d/target/release/gunbc"
+  { [ $brc -eq 0 ] && [ -n "$bin" ]; } || { echo "VOID: no gunbc for $side -- its counts would be false zeros, not greens"; return 6; }
   for target in $TARGETS; do
     # THE WHOLE COMMAND IS THE -c STRING. An earlier draft wrote sh -e -c 'target/release/gunbc' 'test'
     # '<target>' -- copying the workflow's quote-NESTED rendering literally -- which hands gunbc no
     # subcommand at all: it printed its usage text, exited 2, and reported a spotless zero type
     # mismatches. A wrong invocation that produces zero diagnostics is the most dangerous kind of wrong.
-    ( cd $d && timeout 3000 sh -e -c "target/release/gunbc test //gunbc/instruments:$target" ) > $LOGS/${side}_${target}.log 2>&1
+    ( cd $d && timeout 3000 sh -e -c "$bin test //gunbc/instruments:$target" ) > $LOGS/${side}_${target}.log 2>&1
     rc=$?
     # A usage page is 18 lines; a real floor run is hundreds. Refuse to call a short log a measurement.
     n=$($LOGS/wc_l "$LOGS/${side}_${target}.log" 2>/dev/null || wc -l < $LOGS/${side}_${target}.log)
