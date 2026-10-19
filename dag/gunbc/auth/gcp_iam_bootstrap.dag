@@ -34,7 +34,7 @@ import gunbc.auth.heal_publisher_provision {
 import gunbc.auth.gcp_iam_bootstrap_delta { BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused, bootstrap_delta_over, observe_bootstrap_subject, roster_subjects, subject_not_bootstrapped_text }
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ceremony_trust_root_cells, trust_root_ceremony_entry }
 import extdeps.cloud.gcp.storage
-import gunbc.auth.gcp_iam_bootstrap_journal { JournalSubject, JournalPoolFirstPublication, JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, JournalListing, JournalListed, JournalListingUnreadable, journal_list, journal_mark, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused, journal_listed_consents, journal_has }
+import gunbc.auth.gcp_iam_bootstrap_journal { JournalSubject, JournalPoolFirstPublication, JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, JournalListing, JournalListed, JournalListingUnreadable, journal_list, journal_mark, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused, journal_listed_consents, journal_has, journal_object_name }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_journal_bucket, iam_bootstrap_journal_bucket_location,
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
@@ -1157,6 +1157,11 @@ fn iam_bootstrap_initialize_pool_policy(pool: NonEmptyStr, token: Secret) -> Str
     PoolPublicationSettled => ""
     PoolPublicationRefused { reason } => reason as String
   }
+}
+
+// THE POOL'S ELECTION OBJECT. RED STUB: today it is keyed (resource, consent), like the closure.
+fn pool_election_object(pool: NonEmptyStr, consent: String) -> NonEmptyStr {
+  journal_object_name(subject: JournalPoolFirstPublication, resource_key: iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), consent: consent, mark: JournalElection)
 }
 
 fn pool_journal_mark(pool: NonEmptyStr, consent: String, mark: JournalMark, token: Secret) -> Bool {
