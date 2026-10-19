@@ -1836,6 +1836,16 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
             subjects.push(module.clone());
         }
     }
+    // The base receipt's population (GUNBC_CENSUS_SUBJECTS): modules the binding-diff host chose from the base tree alone.
+    for module in std::env::var("GUNBC_CENSUS_SUBJECTS")
+        .unwrap_or_default()
+        .split(',')
+        .filter(|m| !m.is_empty())
+    {
+        if !subjects.iter().any(|s| s == module) {
+            subjects.push(module.to_string());
+        }
+    }
     let (controls, union) = match cli_run::run_census_controls_and_subjects(
         source_roots,
         &[vec![fixture_root], vec![unindexed_root]],
@@ -2014,10 +2024,30 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
             return unreached(format!("the rewritten modules could not be read: {cause}"))
         }
     };
+    let instr_rev = match instrument_revision(source_roots, &head) {
+        Ok(rev) => rev,
+        Err(cause) => return unreached(format!("instrument revision: {cause}")),
+    };
+    // The base receipt covers the roster plus every module of the MERGE-BASE tree that spells a name the wave rows move;
+    // it is chosen from git at the merge base alone, never from the head (so one base serves every wave on that revision).
+    let population = if shard_mode == "base" {
+        match base_population(&ctx, &merge_base) {
+            Ok(modules) => Some(modules.join(",")),
+            Err(cause) => return unreached(format!("base population: {cause}")),
+        }
+    } else {
+        None
+    };
     let (base, base_tree) = if !use_base {
         ((String::new(), None), String::new())
     } else {
-        match run_base_ambient_name_census(&scratch, &base_ref, &head, base_census) {
+        match run_base_ambient_name_census(
+            &scratch,
+            &base_ref,
+            &head,
+            base_census,
+            population.as_deref(),
+        ) {
             Ok(base) => base,
             Err(cause) => return unreached(format!("base: {cause}")),
         }
@@ -2080,6 +2110,7 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         ),
         (Some("head_sha".to_string()), text(&head)),
         (Some("base_sha".to_string()), text(&merge_base)),
+        (Some("instr_rev".to_string()), text(&instr_rev)),
         (Some("rewritten".to_string()), text(&rewritten_text)),
         (Some("shard_mode".to_string()), text(&shard_mode)),
     ];
@@ -2103,6 +2134,7 @@ fn run_base_ambient_name_census(
     base_ref: &str,
     head: &str,
     run_census: bool,
+    population: Option<&str>,
 ) -> Result<((String, Option<i32>), String), String> {
     let merge_base = census_merge_base(head, base_ref)?;
     let tree = scratch.join("base_tree");
@@ -2124,22 +2156,38 @@ fn run_base_ambient_name_census(
     let target_dir = std::fs::canonicalize(scratch)
         .map_err(|e| e.to_string())?
         .join("base_target");
-    let run = std::process::Command::new("cargo")
-        .args([
-            "run",
-            "--release",
-            "-p",
-            "v1-compiler",
-            "--bin",
-            "gunbc",
-            "--",
-            "test",
-            "//gunbc/instruments:ambient-name-census",
-        ])
-        .current_dir(&tree)
-        .env("CARGO_TARGET_DIR", &target_dir)
-        .env("GITHUB_SHA", head)
-        .output();
+    // The base receipt (`population` set) is read at the MERGE BASE with this executable run inside the base tree: the
+    // receipt's census must not depend on the head, and base's own older seed does not know the population.
+    let run = match population {
+        Some(modules) => std::env::current_exe()
+            .map_err(|e| format!("current_exe: {e}"))
+            .and_then(|exe| {
+                std::process::Command::new(exe)
+                    .args(["test", "//gunbc/instruments:ambient-name-census"])
+                    .current_dir(&tree)
+                    .env("GITHUB_SHA", &merge_base)
+                    .env("GUNBC_CENSUS_SUBJECTS", modules)
+                    .output()
+                    .map_err(|e| e.to_string())
+            }),
+        None => std::process::Command::new("cargo")
+            .args([
+                "run",
+                "--release",
+                "-p",
+                "v1-compiler",
+                "--bin",
+                "gunbc",
+                "--",
+                "test",
+                "//gunbc/instruments:ambient-name-census",
+            ])
+            .current_dir(&tree)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .env("GITHUB_SHA", head)
+            .output()
+            .map_err(|e| e.to_string()),
+    };
     let output = match run {
         Ok(output) => output,
         Err(e) => {
@@ -2156,6 +2204,79 @@ fn run_base_ambient_name_census(
         }
     };
     Ok(((reading, output.status.code()), tree_text))
+}
+
+/// THE INSTRUMENT REVISION: the content identity of the label's own module closure as the compiler acquires it (the diff
+/// reader and the census reader), plus the tree of the seed's build inputs at the head commit. A wave that edits a module
+/// in that closure, or the seed, gets a fresh base receipt.
+fn instrument_revision(source_roots: &[String], head: &str) -> Result<String, String> {
+    let mut closure: Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for entry in [
+        "dag/gunbc/instruments/namespace_wave_binding_diff.dag",
+        "dag/gunbc/instruments/ambient_name_census_reading.dag",
+    ] {
+        for source in cli_run::load_sources_for_entry_with_pool_index(source_roots, entry, false)? {
+            if seen.insert(source.path.clone()) {
+                closure.push(source);
+            }
+        }
+    }
+    let digest = crate::closure_identity::closure_content_digest(&closure);
+    let seed = git_text(&["rev-parse", &format!("{head}:src/v1/stage0")])?;
+    Ok(format!(
+        "{}-{}",
+        &digest[..16.min(digest.len())],
+        &seed[..16.min(seed.len())]
+    ))
+}
+
+/// THE BASE RECEIPT'S POPULATION, chosen from git at the merge base alone: every `.dag` module of that tree that spells
+/// (as a word) a name the wave rows move. The roster is added by the census itself.
+fn base_population(
+    ctx: &crate::v1_interpreter::InterpContext,
+    merge_base: &str,
+) -> Result<Vec<String>, String> {
+    let value = crate::v1_interpreter::run_in_context_with_args(
+        ctx,
+        "binding_diff_population_names",
+        &[],
+        true,
+    )
+    .map_err(|cause| format!("binding_diff_population_names failed: {cause}"))?;
+    let names = match &value {
+        crate::v1_interpreter::Value::List(items) => items
+            .iter()
+            .map(|item| match item {
+                crate::v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+                _ => Err("binding_diff_population_names holds a non-string".to_string()),
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        _ => return Err("binding_diff_population_names is not a list".to_string()),
+    };
+    let mut modules = std::collections::BTreeSet::new();
+    for name in names {
+        let out = std::process::Command::new("git")
+            .args(["grep", "-lw", "-e", &name, merge_base, "--", "*.dag"])
+            .output()
+            .map_err(|e| format!("git grep: {e}"))?;
+        // exit 1 is "no match"; anything else is a failure
+        if !out.status.success() && out.status.code() != Some(1) {
+            return Err(format!("git grep exited {:?}", out.status.code()));
+        }
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let path = line.strip_prefix(&format!("{merge_base}:")).unwrap_or(line);
+            let module = if let Some(rest) = path.strip_prefix("src/v2/") {
+                format!("v2.{}", rest.trim_end_matches(".dag").replace('/', "."))
+            } else if let Some(rest) = path.strip_prefix("dag/") {
+                rest.trim_end_matches(".dag").replace('/', ".")
+            } else {
+                continue;
+            };
+            modules.insert(module);
+        }
+    }
+    Ok(modules.into_iter().collect())
 }
 
 /// Removes the base worktree the census left in place for the edit proof, whichever way the label ends.
