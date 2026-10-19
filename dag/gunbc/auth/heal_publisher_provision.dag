@@ -27,7 +27,7 @@ import gunbc.auth.heal_publisher_federation {
   heal_publisher_wif_attribute_mapping, heal_publisher_federation_attribute_condition,
   heal_publisher_federation_principal_set, heal_publisher_federation_service_account_member
 }
-import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant, secret_access_ensure_for_member }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
 import gunbc.auth.github_apps { gunbai_bot_app_pem_secret }
 import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user }
 
@@ -542,19 +542,11 @@ fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationCl
   }
 }
 
-fn grant_secret_reads(fed: DedicatedFederation, token: Secret) -> ProcessExit
-{
-  fold(fed.secret_grants, init: ExitSuccess, f: (acc, g) =>
-    match acc {
-      ExitSuccess => secret_access_ensure_for_member(grant: g, member: fed.service_account_member, token_source: OperatorSuppliedToken { token: token })
-      failed => failed
-    }
-  )
-}
-
 // THE ORDER IS THE PROTOCOL: observe and classify; create only what was absent; re-observe and
-// require every subject present and matching; only then write who may act as the account and what
-// it may read. No policy write precedes a matching readback of the pool, its whole provider
+// require every subject present and matching; only then write who may act as the account. What it
+// may read is NOT written here: a federation's secret_grants are gcp_iam_converge target cells, bound by
+// the converge (and its bootstrap delta) under one approval, never under this operator token (writer
+// census, gunbc#14360). No policy write precedes a matching readback of the pool, its whole provider
 // population and the account.
 fn provision_dedicated_federation(f: DedicatedFederation, token: Secret) -> ProcessExit
 {
@@ -576,10 +568,7 @@ fn provision_dedicated_federation(f: DedicatedFederation, token: Secret) -> Proc
       if !federation_fully_present(c: after) {
         exit_failure(reason: concat(f.label, ": a created subject is not yet visible on readback -- nothing was granted; rerun once it reads back"))
       } else {
-        match bind_impersonation(f: f, token: token) {
-          ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-          ExitSuccess => grant_secret_reads(fed: f, token: token)
-        }
+        bind_impersonation(f: f, token: token)
       }
   }
 }
