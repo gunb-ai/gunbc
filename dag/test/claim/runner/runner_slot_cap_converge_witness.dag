@@ -2,7 +2,7 @@ module test.claim.runner.runner_slot_cap_converge_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.optional { Absent, Present }
-import std.algebra { string_contains }
+import std.algebra { string_contains, non_empty_singleton, non_empty_to_list }
 import std.measure { byte_size_count, hardware_thread_count }
 import gunbc.runner.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired }
 import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
@@ -341,11 +341,11 @@ test fn a_hand_placed_instance_dropin_pending_on_a_busy_slot_bars_the_reload() -
   plan_withheld_naming(p: plan, needle: "pending reload") && !plan_leaves(p: plan)
 }
 
-fn owed_01() -> HostPendingReloads { HostReloadsPending { units: [UnitPendingReload { unit: unit(n: "01"), kind: PendingReloadOwed }] } }
+fn owed_01() -> HostPendingReloads { HostReloadsPending { units: non_empty_singleton(item: UnitPendingReload { unit: unit(n: "01"), kind: PendingReloadOwed }) } }
 
 fn pending_is(got: HostPendingReloads, kind: PendingReloadKind) -> Bool {
   match got {
-    HostReloadsPending { units: us } => length(us) == 1 && any(us, u => (u.unit as String) == "actions-runner@srv3-01.service" && match u.kind { PendingReloadOwed => match kind { PendingReloadOwed => true PendingReloadUnobserved => false } PendingReloadUnobserved => match kind { PendingReloadUnobserved => true PendingReloadOwed => false } })
+    HostReloadsPending { units: xs } => length(non_empty_to_list(xs: xs)) == 1 && any(non_empty_to_list(xs: xs), u => (u.unit as String) == "actions-runner@srv3-01.service" && match u.kind { PendingReloadOwed => match kind { PendingReloadOwed => true PendingReloadUnobserved => false } PendingReloadUnobserved => match kind { PendingReloadUnobserved => true PendingReloadOwed => false } })
     HostNoReloadPending => false
     HostPopulationUnobserved { reason: _ } => false
   }

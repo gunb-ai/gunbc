@@ -2,7 +2,7 @@ module gunbc.runner.runner_slot_cap_converge
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
-import std.algebra { trim }
+import std.algebra { trim, FreeSemigroup, non_empty_to_list }
 import std.measure { ByteSize, byte_size_count }
 import extdeps.systemd { MemoryMax, MemorySwapMax, MemoryHigh, TasksMax, ControlGroup, systemd_unit_property_wire, SystemdUnitProperty }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, SystemctlStep, ManagerReloadedImplicitly, ManagerReloadedExplicitly, ManagerNotReloaded, systemctl_mask_step, systemctl_unmask_step, systemctl_enable_step, systemctl_start_step, systemctl_stop_step, systemctl_daemon_reload_step }
@@ -174,13 +174,13 @@ type UnitPendingReload {
 
 type HostPendingReloads
   = HostNoReloadPending
-  | HostReloadsPending { units: List<UnitPendingReload> }
+  | HostReloadsPending { units: FreeSemigroup<UnitPendingReload> }
   | HostPopulationUnobserved { reason: String }
 
 fn host_pending_reloads_owed(p: HostPendingReloads) -> Bool {
   match p {
     HostNoReloadPending => false
-    HostReloadsPending { units: us } => length(us) > 0
+    HostReloadsPending { units: _ } => true
     HostPopulationUnobserved { reason: _ } => true
   }
 }
@@ -188,7 +188,7 @@ fn host_pending_reloads_owed(p: HostPendingReloads) -> Bool {
 fn host_pending_reloads_wire(p: HostPendingReloads) -> String {
   match p {
     HostNoReloadPending => "none"
-    HostReloadsPending { units: us } => join(map(us, u => join([u.unit as String, match u.kind { PendingReloadOwed => " reload=owed (NeedDaemonReload is not no)" PendingReloadUnobserved => " reload=unobserved (systemctl show returned no complete block for it)" }], "")), "; ")
+    HostReloadsPending { units: us } => join(map(non_empty_to_list(xs: us), u => join([u.unit as String, match u.kind { PendingReloadOwed => " reload=owed (NeedDaemonReload is not no)" PendingReloadUnobserved => " reload=unobserved (systemctl show returned no complete block for it)" }], "")), "; ")
     HostPopulationUnobserved { reason: r } => concat("the slot population was not observed: ", r)
   }
 }

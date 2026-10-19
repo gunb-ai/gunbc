@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
-import std.algebra { trim, list_head }
+import std.algebra { trim, list_head, FreeSemigroup, non_empty_singleton, non_empty_append }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
@@ -33,7 +33,7 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, read_host_idleness_over, drain_all_slots_over, drain_all_settled, drain_all_cause, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
+import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, read_host_idleness_over, drain_all_slots_over, drain_all_settled, drain_all_cause, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
@@ -2074,12 +2074,32 @@ fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation) -> HostPend
   match population {
     SlotPopulationUnobservable { reason: r } => HostPopulationUnobserved { reason: r }
     SlotPopulationObserved { units: us } => {
-      let owed = map(filter(us, r => match r.reload { SlotReloadNotPending => false SlotReloadOwed => true SlotReloadUnobserved => true }), r => UnitPendingReload {
-        unit: r.unit,
-        kind: match r.reload { SlotReloadUnobserved => PendingReloadUnobserved SlotReloadOwed => PendingReloadOwed SlotReloadNotPending => PendingReloadOwed },
-      })
-      if length(owed) == 0 { HostNoReloadPending } else { HostReloadsPending { units: owed } }
+      // One partition: a unit either owes a kind of pending reload or contributes nothing, and the
+      // nonempty carrier is built at that split, so an empty "pending" cannot be written.
+      let located: FreeSemigroup<UnitPendingReload>? = fold(us, init: none, f: (acc, r) =>
+        match slot_reload_pending_kind(status: r.reload) {
+          Absent => acc
+          Present { value: k } => {
+            let one = non_empty_singleton(item: UnitPendingReload { unit: r.unit, kind: k })
+            match acc {
+              Absent => Present { value: one }
+              Present { value: xs } => Present { value: non_empty_append(left: xs, right: one) }
+            }
+          }
+        })
+      match located {
+        Absent => HostNoReloadPending
+        Present { value: xs } => HostReloadsPending { units: xs }
+      }
     }
+  }
+}
+
+fn slot_reload_pending_kind(status: SlotReloadStatus) -> PendingReloadKind? {
+  match status {
+    SlotReloadNotPending => none
+    SlotReloadOwed => Present { value: PendingReloadOwed }
+    SlotReloadUnobserved => Present { value: PendingReloadUnobserved }
   }
 }
 
