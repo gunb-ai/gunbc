@@ -107,6 +107,10 @@ fn the_rust_renderer_matches_the_dag_carrier_for_every_cause() {
         "claim source refused: p: unreadable: r"
     );
     assert_eq!(
+        r("p", &C::ModuleCollision { other: "q".into() }),
+        "claim source refused: p: declares a module also declared by q; one module, one authority (DESIGN section 3), so de-fork or rename one side"
+    );
+    assert_eq!(
         r("p", &C::DirectoryNamedDag),
         "claim source refused: p: a directory named like a .dag source; a source path is a file"
     );
@@ -139,4 +143,17 @@ fn an_unreadable_claim_source_refuses_naming_the_file() {
     std::os::unix::fs::symlink("/nonexistent/zz_target.dag", &link).expect("dangling symlink");
     let err = route(root).expect_err("an unreadable claim source must refuse, not panic");
     assert!(err.contains("zz_dangling.dag"), "must name the file: {err}");
+}
+
+#[test]
+fn two_claim_sources_declaring_one_module_refuse_naming_both_paths() {
+    let root = scratch_claim_root("collision", "a.dag", "module test.claim.zz_dup\n");
+    let second = std::path::Path::new(&root).join("test/claim/b.dag");
+    std::fs::write(&second, "module test.claim.zz_dup\n").expect("second declaring file");
+    let err = route(root).expect_err("a module-path collision must refuse, not panic");
+    assert!(
+        err.contains("a.dag") && err.contains("b.dag"),
+        "must name both paths: {err}"
+    );
+    assert!(err.contains("also declared by"), "{err}");
 }

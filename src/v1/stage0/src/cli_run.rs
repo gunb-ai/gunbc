@@ -3748,19 +3748,6 @@ fn module_path_collision_panic_message(
     )
 }
 
-fn insert_module_path(index: &mut HashMap<String, String>, module_path: &str, rel: String) {
-    if let Some(existing) = index.get(module_path) {
-        if existing != &rel && !same_canonical_file(existing, &rel) {
-            panic!(
-                "{}",
-                module_path_collision_panic_message(module_path, existing, &rel)
-            );
-        }
-        return;
-    }
-    index.insert(module_path.to_string(), rel);
-}
-
 /// Walks every `.dag` under `source_roots`, visiting each module-bound file.
 ///
 /// Nothing here exits or panics: every file the walk cannot bind returns as a typed, located
@@ -3841,6 +3828,7 @@ pub(crate) enum ModuleIndexRefusal {
     Unreadable { path: String, reason: String },
     RootUnreadable { path: String, reason: String },
     DirectoryNamedDag { path: String },
+    ModuleCollision { path: String, other: String },
 }
 
 impl ModuleIndexRefusal {
@@ -3864,6 +3852,12 @@ impl ModuleIndexRefusal {
             Self::DirectoryNamedDag { path } => {
                 claim_source_refusal_rendered(path, &ClaimSourceRefusalCause::DirectoryNamedDag)
             }
+            Self::ModuleCollision { path, other } => claim_source_refusal_rendered(
+                path,
+                &ClaimSourceRefusalCause::ModuleCollision {
+                    other: other.clone(),
+                },
+            ),
             Self::RootUnreadable { path, reason } => claim_source_refusal_rendered(
                 path,
                 &ClaimSourceRefusalCause::RootUnreadable {
@@ -21056,6 +21050,7 @@ pub enum ClaimSourceRefusalCause {
     Unreadable { reason: String },
     RootUnreadable { reason: String },
     DirectoryNamedDag,
+    ModuleCollision { other: String },
 }
 
 /// `gunbc.target_invocation` `claim_source_refusal_rendered`, mirrored.
@@ -21074,6 +21069,9 @@ pub fn claim_source_refusal_rendered(path: &str, cause: &ClaimSourceRefusalCause
         ClaimSourceRefusalCause::RootUnreadable { reason } => {
             format!(": unreadable source root: {reason}")
         }
+        ClaimSourceRefusalCause::ModuleCollision { other } => format!(
+            ": declares a module also declared by {other}; one module, one authority (DESIGN section 3), so de-fork or rename one side"
+        ),
     };
     format!("claim source refused: {path}{tail}")
 }

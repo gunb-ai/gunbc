@@ -115,7 +115,7 @@ fn test_operand_set_form_refusal_rendered(operand: String) -> String {
 // `gunbc test //test/claim/x:c` selects a claim by the module name a file declares, and paths follow
 // names (DESIGN section 3). A file whose declaration cannot be read therefore cannot be selected, and
 // reporting that as "the pattern selected no discovered claim" makes a broken admitted file read like
-// a misspelled label. All five causes terminate `InvocationSubjectUnreached` (exit 2, never 1: no claim
+// a misspelled label. All six causes terminate `InvocationSubjectUnreached` (exit 2, never 1: no claim
 // ran), each LOCATED at the file and each distinct from an unknown label.
 type ClaimSourceRefusalCause
   = ClaimSourceUnparseable { diagnostic: String }
@@ -123,6 +123,7 @@ type ClaimSourceRefusalCause
   | ClaimSourceUnreadable { reason: String }
   | ClaimSourceRootUnreadable { reason: String }
   | ClaimSourceDirectoryNamedDag
+  | ClaimSourceModuleCollision { other: String }
 
 fn claim_source_refusal_rendered(path: String, cause: ClaimSourceRefusalCause) -> String {
   concat(
@@ -133,6 +134,7 @@ fn claim_source_refusal_rendered(path: String, cause: ClaimSourceRefusalCause) -
       ClaimSourceUnreadable { reason: r } => concat(": unreadable: ", r)
       ClaimSourceDirectoryNamedDag => ": a directory named like a .dag source; a source path is a file"
       ClaimSourceRootUnreadable { reason: r } => concat(": unreadable source root: ", r)
+      ClaimSourceModuleCollision { other: o } => concat(concat(": declares a module also declared by ", o), "; one module, one authority (DESIGN section 3), so de-fork or rename one side")
     }
   )
 }

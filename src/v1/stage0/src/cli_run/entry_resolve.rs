@@ -157,7 +157,8 @@ fn try_build_module_path_index_uncached(
     source_roots: &[String],
 ) -> Result<HashMap<String, String>, Vec<ModuleIndexRefusal>> {
     let mut index: HashMap<String, String> = HashMap::new();
-    let refusals = for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
+    let mut collisions: Vec<ModuleIndexRefusal> = Vec::new();
+    let mut refusals = for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
         let rel = module_index_path_key(path);
         if let Some(existing) = index.get(&binding.module_path) {
             if existing == &rel || same_canonical_file(existing, &rel) {
@@ -169,8 +170,18 @@ fn try_build_module_path_index_uncached(
                 return;
             }
         }
-        insert_module_path(&mut index, &binding.module_path, rel);
+        match index.get(&binding.module_path) {
+            // Same name, a different file, in the primary root: one module, two authorities.
+            Some(existing) => collisions.push(ModuleIndexRefusal::ModuleCollision {
+                path: rel,
+                other: existing.clone(),
+            }),
+            None => {
+                index.insert(binding.module_path.clone(), rel);
+            }
+        }
     });
+    refusals.extend(collisions);
     if refusals.is_empty() {
         Ok(index)
     } else {
