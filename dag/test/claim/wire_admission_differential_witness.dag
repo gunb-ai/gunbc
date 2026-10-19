@@ -10,7 +10,7 @@ import gunbc.auth.approval_device_wire {
 }
 import gunbc.auth.wire_strict_reader {
   WireVerdict, wire_cause_text, WireAccepted, WireRefusedAt, WireField, WireFreeString, WireAdmittedString, WireNested,
-  WireShape, WireRecord, WireSum, WireSumArm, WireAdmission, read_shape, bind_record, BoundShape, ShapeBound, ShapeRefused,
+  WireShape, WireRecord, WireSum, WireSumArm, WireAdmission, sum_admission, read_shape, bind_record, BoundShape, ShapeBound, ShapeRefused,
 }
 
 // THE FOUR ADMISSION ROWS READ BY THE FOLD, against the server chains that still spell the same
@@ -62,7 +62,7 @@ fn push_shape() -> WireShape {
       WireField { name: "topic", rule: WireFreeString },
       WireField { name: "token", rule: WireFreeString },
     ] }],
-    admitted: ["apns"],
+    admitted: sum_admission(subject: "kind", arms: [WireSumArm { wire_tag: "apns", fields: [WireField { name: "environment", rule: WireAdmittedString { row: wire_admission_apns_environment, cause: "not an APNs environment" } }, WireField { name: "topic", rule: WireFreeString }, WireField { name: "token", rule: WireFreeString }] }], admitted: ["apns"]),
     cause: "not an admitted push provider",
   }
 }
@@ -70,7 +70,7 @@ fn push_shape() -> WireShape {
 fn evidence_shape() -> WireShape {
   WireSum {
     arms: [WireSumArm { wire_tag: "ios_app_attest", fields: [WireField { name: "attest_key_id", rule: WireFreeString }, WireField { name: "attestation_b64", rule: WireFreeString }] }],
-    admitted: ["ios_app_attest"],
+    admitted: sum_admission(subject: "kind", arms: [WireSumArm { wire_tag: "ios_app_attest", fields: [WireField { name: "attest_key_id", rule: WireFreeString }, WireField { name: "attestation_b64", rule: WireFreeString }] }], admitted: ["ios_app_attest"]),
     cause: "not an admitted evidence kind",
   }
 }

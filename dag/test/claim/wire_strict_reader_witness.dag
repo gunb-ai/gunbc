@@ -10,7 +10,7 @@ import gunbc.auth.approval_device_wire {
 }
 import gunbc.auth.wire_strict_reader {
   WireVerdict, wire_cause_text, WireAccepted, WireRefusedAt, WireFieldRule, WireFreeString, WireAdmittedString, WireNested, WireField, WireShape, WireRecord, WireSum, WireSumArm,
-  WireAdmission, AdmissionVerdict, AdmissionSound, AdmissionNotDeclared, admission_verdict,
+  WireAdmission, sum_admission, bind_record, BoundShape, ShapeBound, ShapeRefused, AdmissionVerdict, AdmissionSound, AdmissionNotDeclared, admission_verdict,
   BoundShape, ShapeBound, ShapeRefused, bind_record, read_shape,
 }
 
@@ -37,7 +37,7 @@ fn apns_registration_fields() -> List<WireField> {
 
 data push_shape: WireShape = WireSum {
   arms: [WireSumArm { wire_tag: "apns", fields: apns_registration_fields() }],
-  admitted: ["apns"],
+  admitted: sum_admission(subject: "kind", arms: [WireSumArm { wire_tag: "apns", fields: apns_registration_fields() }], admitted: ["apns"]),
   cause: "not an admitted push provider",
 }
 
@@ -111,7 +111,7 @@ test fn derived_reader_matches_chain_on_push_registration() -> Bool {
 test fn a_changed_spelling_row_reds_a_vector() -> Bool {
   let changed = WireSum {
     arms: [WireSumArm { wire_tag: "apns", fields: apns_registration_fields() }],
-    admitted: ["apns2"],
+    admitted: sum_admission(subject: "kind", arms: [WireSumArm { wire_tag: "apns", fields: apns_registration_fields() }], admitted: ["apns2"]),
     cause: "not an admitted push provider",
   }
   reader_key(shape: changed, text: apns_ok, path: "push") != chain_push_key(text: apns_ok)
@@ -146,5 +146,18 @@ test fn an_admitted_spelling_that_is_not_declared_is_refused() -> Bool {
   match admission_verdict(row: WireAdmission { subject: "platform", declared: ["ios", "android"], admitted: ["ios", "windows"] }) {
     AdmissionNotDeclared { subject: s, spelling: v } => s == "platform" && v == "windows"
     AdmissionSound => false
+  }
+}
+
+// RED: a sum admitting a tag no arm has does not bind, through the same verdict that judges field values.
+test fn a_sum_admitting_an_undeclared_tag_does_not_bind() -> Bool {
+  let bad = WireSum {
+    arms: [WireSumArm { wire_tag: "apns", fields: [] }],
+    admitted: sum_admission(subject: "kind", arms: [WireSumArm { wire_tag: "apns", fields: [] }], admitted: ["mobile_web"]),
+    cause: "x",
+  }
+  match bind_record(derived: ["push"], rules: [WireField { name: "push", rule: WireNested { shape: bad } }]) {
+    ShapeRefused { cause: c } => wire_cause_text(c: c) == "policy admits a spelling no declared arm has: kind mobile_web"
+    ShapeBound { shape: _ } => false
   }
 }
