@@ -1,0 +1,4 @@
+module probe.p9
+import std.types { Bool }
+import v2.std.compilers.target_model { target_model_canonical_operation_wire_child_member_type }
+fn t() -> Bool { true }

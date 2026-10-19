@@ -1,0 +1,36 @@
+module probe.p7
+
+import std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import std.types { Int }
+
+type Rec = Rec { a: Int }
+
+fn dt(r: Rec) -> Optional<Rec> {
+  if r.a == 0 { optional_present(value: r) } else { optional_absent() }
+}
+
+fn m3(acc: Optional<Rec>, r: Rec, n: Int) -> Optional<Rec> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if r.a == n {
+        dt(r: r)
+      } else {
+        acc
+      }
+  }
+}
+
+fn m4(acc: Optional<Rec>, r: Rec, n: Int) -> Optional<Rec> {
+  if r.a == n { acc } else { dt(r: r) }
+}
+
+fn m5(acc: Optional<Rec>, r: Rec, n: Int) -> Optional<Rec> {
+  if r.a == n { optional_absent() } else { acc }
+}
+
+fn m6(acc: Optional<Rec>, r: Rec, n: Int) -> Optional<Rec> {
+  if r.a == n { Absent } else { acc }
+}
+
+fn t() -> Bool { true }

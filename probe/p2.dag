@@ -1,0 +1,53 @@
+module probe.p2
+
+import std.optional { Optional, Absent, Present }
+import std.types { Int, List }
+import std.algebra { fold_list }
+
+fn g(b: Int) -> Optional<Int> {
+  Absent
+}
+
+fn h(b: Int) -> Optional<Int> {
+  if b == 0 { g(b: b) } else { Absent }
+}
+
+fn k(b: Int) -> Int? {
+  if b == 0 { g(b: b) } else { Absent }
+}
+
+fn m(b: Int, acc: Optional<Int>) -> Optional<Int> {
+  match acc {
+    Present { value: _ } => acc
+    Absent => if b == 0 { Present { value: 1 } } else { Absent }
+  }
+}
+
+test fn t() -> Bool { true }
+
+fn g2(x: Int) -> Optional<Int> { Present { value: x } }
+
+fn f1(xs: List<Int>, w: Int) -> Optional<Int> {
+  fold_list(
+    xs: xs,
+    empty: Absent,
+    cons: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => if e == w { g2(x: e) } else { Absent }
+      }
+    }
+  )
+}
+
+fn m3(w: Int, acc: Optional<Int>, e: Int) -> Optional<Int> {
+  match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if e == w {
+        g2(x: e)
+      } else {
+        acc
+      }
+  }
+}

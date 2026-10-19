@@ -1,0 +1,18 @@
+module probe.p16
+import std.optional { Optional, Absent, Present }
+import std.types { Bool, Int }
+
+fn a(o: std.optional.Optional<Int>) -> Bool {
+  match o {
+    Absent => false
+    Present { value: id } => zz(s: id)
+  }
+}
+fn b(o: Optional<Int>) -> Bool {
+  match o {
+    Absent => false
+    Present { value: id } => zz(s: id)
+  }
+}
+fn zz(s: Bool) -> Bool { true }
+fn t() -> Bool { true }

@@ -1,0 +1,11 @@
+module probe.p10
+import std.types { Bool }
+import std.keyed_row { }
+import std.keyed_roster { }
+import std.primitive_projection { }
+import std.induction { }
+import std.content_hash { }
+import extdeps.uri { }
+import std.algebra { }
+import std.nat { }
+fn t() -> Bool { true }
