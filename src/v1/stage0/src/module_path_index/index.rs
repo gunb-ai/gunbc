@@ -72,8 +72,11 @@ impl ModuleBindingRefusal {
         source_indices.insert(self.source_path.clone(), index);
         format!(
             "{}: {}",
+            // The authority takes the span as `Rc<SourceSpan>` (seed-emitted record
+            // parameters are `Rc`-wrapped), so the span is handed over as the pointer it already
+            // is -- dereferencing and cloning builds the wrong type.
             crate::v1_std_core::render_span_location(
-                (*span).clone(),
+                span.clone(),
                 std::rc::Rc::new(source_indices),
             ),
             diagnostic_to_message(self.diagnostic.clone())

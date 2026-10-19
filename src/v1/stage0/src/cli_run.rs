@@ -15290,8 +15290,10 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                         source_indices.insert(span.file.clone(), index.clone());
                         lock.push(format!(
                             "{}: {}",
+                            // `Rc<SourceSpan>`, the authority's own parameter shape; see
+                            // module_path_index/index.rs for the same hand-off.
                             crate::v1_std_core::render_span_location(
-                                (*span).clone(),
+                                span.clone(),
                                 std::rc::Rc::new(source_indices),
                             ),
                             crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),

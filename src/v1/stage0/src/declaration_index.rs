@@ -3232,12 +3232,15 @@ pub fn render_finding(
                 // is `Rc<NewlineIndex>`, so the index goes in as built. Wrapping it again is a
                 // second pointer to the same fact, and the compiler says so.
                 source_indices.insert(finding.rel_path.clone(), index);
+                // The authority's own signature takes the span as `Rc<SourceSpan>` -- every
+                // seed-emitted record parameter is `Rc`-wrapped, so the literal is handed over
+                // inside the same pointer the rest of the seed sees.
                 crate::v1_std_core::render_span_location(
-                    crate::v1_std_core::SourceSpan {
+                    std::rc::Rc::new(crate::v1_std_core::SourceSpan {
                         file: finding.rel_path.clone(),
                         start: offset,
                         end: offset,
-                    },
+                    }),
                     std::rc::Rc::new(source_indices),
                 )
             }
