@@ -1,0 +1,223 @@
+module test.claim.gunbc_instruments_known_red_derivation_witness
+
+import std.types { Bool, Int, List, String }
+import std.algebra { string_contains }
+import std.optional { Absent, Present }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity }
+import v2.workflow.wet_evidence { WetScheduledClaim }
+import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
+import gunbc.instruments.known_red_derivation {
+  ClaimRun, KnownRedChildRun, KnownRedSubject, KnownRedSubjectPopulation,
+  known_red_fold, known_red_is_green, known_red_held_rows, known_red_refusal_name,
+  known_red_stale_enrolments, known_red_unaccounted_reds, known_red_subjects,
+  known_red_subject_qualified, known_red_report
+}
+
+// THE ARMS THIS FILE GIVES THE INSTRUMENT. Each one supplies the two things a run supplies — the
+// subjects it owes and what the children printed — and asks the fold what it concluded. Nothing here
+// asserts a count taken from the tree, and nothing here spawns claim_batch: the executed receipt is the
+// label's own job (it prints its head and its children), and these claims are what make that print mean
+// something. A fold that ignores its inputs fails at least one arm, in both directions.
+
+// THE ENTRY EVERY FIXTURE SUBJECT CLAIMS. It is a file that EXISTS in the tree (this one), because the
+// instrument asks the filesystem about entries and treats an absent one as a defect -- a fixture pointing
+// at a file that never existed would test the defect path, not the fold. The function names are fictions:
+// the fold's projection reads what the child PRINTED, and no child here is a real process.
+fn fixture_entry() -> String {
+  "dag/test/claim/gunbc_instruments_known_red_derivation_witness.dag"
+}
+
+fn wet_subject(module_path: String, function: String) -> KnownRedSubject {
+  KnownRedSubject {
+    identity: WitnessIdentity { module_path: module_path, function: function },
+    entry: fixture_entry(),
+    function: function,
+    origin: WetLane
+  }
+}
+
+fn roster_subject(module_path: String, function: String) -> KnownRedSubject {
+  KnownRedSubject {
+    identity: WitnessIdentity { module_path: module_path, function: function },
+    entry: fixture_entry(),
+    function: function,
+    origin: RequiredFloor
+  }
+}
+
+// THE CHILD, BUILT FROM WHAT THE HARNESS PRINTED. `invoked: true` is the fact that a process was spawned
+// and answered; `stdout` is the verdict text it wrote. A silent child is one that ran and printed nothing
+// a verdict line can be read out of — which must never be read as a pass.
+fn child(claims: List<ClaimRun>, stdout: String) -> KnownRedChildRun {
+  KnownRedChildRun { claims: claims, invoked: true, exit_code: 0, stdout: stdout, stderr: "" }
+}
+
+fn silent_child(claims: List<ClaimRun>) -> KnownRedChildRun {
+  KnownRedChildRun { claims: claims, invoked: true, exit_code: 0, stdout: "no verdict here\n", stderr: "" }
+}
+
+fn claim_run(function: String) -> ClaimRun {
+  ClaimRun { entry: fixture_entry(), function: function }
+}
+
+// ───────────────────────── the discriminating RED: a failing scheduled claim ─────────────────────────
+
+// DISCRIMINATING RED, AND THE ARM A HOLLOW FOLD CANNOT PASS. An UNENROLLED claim the schedule owes, whose
+// child printed `FAIL <function> (...)`, must come out as a red the known-red roster does NOT carry —
+// that unaccounted red is the list this label exists to print, and it comes from the executed line and
+// nowhere else. The same subject passing leaves nothing behind: an implementation that reads a roster and
+// ignores stdout is wrong about one arm or the other.
+test fn a_failing_unenrolled_scheduled_claim_is_listed_and_the_same_claim_passing_is_not() -> Bool {
+  let s = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_hollow_fold_passes")
+  let broken = known_red_fold(
+    head: "0000000000000000000000000000000000000001",
+    subjects: [s],
+    children: [
+      child(
+        claims: [claim_run(function: "the_hollow_fold_passes")],
+        stdout: "FAIL the_hollow_fold_passes (assertion returned false)\n"
+      )
+    ]
+  )
+  let fixed = known_red_fold(
+    head: "0000000000000000000000000000000000000001",
+    subjects: [s],
+    children: [child(claims: [claim_run(function: "the_hollow_fold_passes")], stdout: "PASS the_hollow_fold_passes\n")]
+  )
+  known_red_unaccounted_reds(rows: broken.rows) == ["test.claim.examples.known_red_fixture.the_hollow_fold_passes"]
+    && (known_red_held_rows(rows: broken.rows) |> length) == 0
+    && (known_red_unaccounted_reds(rows: fixed.rows) |> length) == 0
+    && known_red_is_green(d: fixed)
+}
+
+// ────────────── the controlled known-red: one enrolled identity, made red and then fixed ──────────────
+
+// CONTROLLED RED-B, BOTH WAYS THROUGH THE FOLD'S OWN AUTHORITY. One identity the roster of record carries
+// is run twice. Failing, it is a known-red holding its ground: printed as held, and NOT an unaccounted
+// red, because the roster carries it. Passing, it is a stale enrolment — a paid debt still on the roster,
+// which the run refuses by name. Neither disposition is constructed in this file: both are the ledger
+// module's projection of (expectation, terminal), so an arm cannot be satisfied by hard-coding its own
+// expectation, and swapping the two verdict lines is what tells Held from NowPassing.
+test fn an_enrolled_red_holds_when_it_fails_and_a_fixed_one_is_a_stale_enrolment() -> Bool {
+  let s = roster_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_debt_is_paid")
+  let red = known_red_fold(
+    head: "0000000000000000000000000000000000000002",
+    subjects: [s],
+    children: [
+      child(
+        claims: [claim_run(function: "the_debt_is_paid")],
+        stdout: "FAIL the_debt_is_paid (assertion returned false)\n"
+      )
+    ]
+  )
+  let fixed = known_red_fold(
+    head: "0000000000000000000000000000000000000002",
+    subjects: [s],
+    children: [child(claims: [claim_run(function: "the_debt_is_paid")], stdout: "PASS the_debt_is_paid\n")]
+  )
+  (known_red_held_rows(rows: red.rows) |> length) == 1
+    && (known_red_unaccounted_reds(rows: red.rows) |> length) == 0
+    && known_red_is_green(d: red)
+    && known_red_stale_enrolments(rows: fixed.rows)
+      == ["test.claim.examples.known_red_fixture.the_debt_is_paid"]
+    && !known_red_is_green(d: fixed)
+    && (fixed.refusals |> map(r => known_red_refusal_name(r: r))) == ["StaleEnrolmentNowPassing"]
+}
+
+// ABSENCE IS NOT EVIDENCE. An enrolled identity that printed no verdict is NOT a held red: the naive fold
+// that defaults a missing row to 'red, as advertised' passes the arm above and fails this one.
+test fn an_enrolled_identity_with_no_verdict_is_not_counted_as_a_held_red() -> Bool {
+  let s = roster_subject(module_path: "test.claim.examples.known_red_fixture", function: "silent_but_enrolled")
+  let d = known_red_fold(
+    head: "0000000000000000000000000000000000000003",
+    subjects: [s],
+    children: [silent_child(claims: [claim_run(function: "silent_but_enrolled")])]
+  )
+  (known_red_held_rows(rows: d.rows) |> length) == 0
+    && (d.reconciliation.planned_without_terminal |> length) == 1
+    && !known_red_is_green(d: d)
+}
+
+// ────────────────────────── the anti-hollow arm: a deleted spawn ──────────────────────────
+
+// THE ANTI-HOLLOW ARM. Delete the spawn and the derivation still prints a population with the right owed
+// counts and no rows: every aggregate looks fine. That hollowing is refused BY NAME, and the refusal is
+// derived from the children's own fact (nothing printed a verdict line), not from a flag an author can
+// set. The control half is the same fold with one child that did run: it does not carry that refusal.
+test fn no_child_being_spawned_refuses_by_name_and_one_that_ran_does_not() -> Bool {
+  let s = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_claim_that_never_ran")
+  let hollow = known_red_fold(head: "0000000000000000000000000000000000000004", subjects: [s], children: [])
+  let honest = known_red_fold(
+    head: "0000000000000000000000000000000000000004",
+    subjects: [s],
+    children: [child(claims: [claim_run(function: "the_claim_that_never_ran")], stdout: "PASS the_claim_that_never_ran\n")]
+  )
+  let hollow_names = join(hollow.refusals |> map(r => known_red_refusal_name(r: r)), ",")
+  let honest_names = join(honest.refusals |> map(r => known_red_refusal_name(r: r)), ",")
+  // deleting the spawn is caught twice over: nothing printed a verdict, and nothing was dispatched
+  string_contains(s: hollow_names, pattern: "LocalRepoWetExecutorNotInvoked")
+    && string_contains(s: hollow_names, pattern: "DispatchedPopulationNotComplete")
+    && !known_red_is_green(d: hollow)
+    && !string_contains(s: honest_names, pattern: "LocalRepoWetExecutorNotInvoked")
+    && !string_contains(s: honest_names, pattern: "DispatchedPopulationNotComplete")
+}
+
+// ─────────────────────── completeness is the identity join, not the count ───────────────────────
+
+// COMPLETENESS IS A JOIN, AND THIS IS THE CASE THAT BREAKS A COUNT CHECK. Three identities are owed and
+// one of them is owed twice: the row total still agrees with the subject total, every aggregate in a
+// summary is identical to a correct run, and only the join sees it. A fold that compared lengths reports
+// this run complete.
+test fn a_duplicated_identity_is_refused_where_every_count_still_agrees() -> Bool {
+  let a = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "counted_once")
+  let b = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "counted_twice")
+  let dup = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "counted_twice")
+  let d = known_red_fold(
+    head: "0000000000000000000000000000000000000005",
+    subjects: [a, b, dup],
+    children: [
+      child(
+        claims: [claim_run(function: "counted_once"), claim_run(function: "counted_twice")],
+        stdout: "PASS counted_once\nPASS counted_twice\n"
+      )
+    ]
+  )
+  (d.rows |> length) == 3
+    && (d.reconciliation.terminal_duplicated |> length) == 1
+    && !known_red_is_green(d: d)
+}
+
+// ───────────────────────── the positive control, on the live route ─────────────────────────
+
+// POSITIVE CONTROL, ON THE LIVE ROUTE: the wet half of the instrument's population is the wet lane's own
+// accessor — the same `local_repo_wet_schedule` the coverage census reads — row for row, in order, with
+// no enumeration of its own. A claim added to the schedule joins the instrument with no edit here and no
+// edit there; an instrument pointed at a private list of claims fails this arm.
+test fn the_wet_population_is_the_wet_lanes_own_schedule_row_for_row() -> Bool {
+  let schedule = local_repo_wet_schedule()
+  let wet = known_red_subjects() |> filter(s => s.origin == WetLane)
+  (schedule |> length) > 0
+    && (wet |> length) == (schedule |> length)
+    && join(map(wet, s => known_red_subject_qualified(s: s)), "\n")
+      == join(map(schedule, w => qualified_of(w: w)), "\n")
+}
+
+fn qualified_of(w: WetScheduledClaim) -> String {
+  join([w.identity.module_path, w.identity.function], ".")
+}
+
+// THE PRINT NAMES THE HEAD IT RAN ON. A receipt that does not name its commit cannot be checked against
+// anything, so the head is echoed into every row and into the report; the arm reads it back out of the
+// printed bytes rather than trusting the field.
+test fn every_row_and_the_printed_report_carry_the_head_the_run_printed() -> Bool {
+  let s = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "printed_with_its_head")
+  let head = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  let d = known_red_fold(
+    head: head,
+    subjects: [s],
+    children: [child(claims: [claim_run(function: "printed_with_its_head")], stdout: "PASS printed_with_its_head\n")]
+  )
+  (d.rows |> length) == 1
+    && (d.rows |> map(r => r.head) |> map(h => h == head)) == [true]
+    && string_contains(s: known_red_report(d: d), pattern: head)
+}

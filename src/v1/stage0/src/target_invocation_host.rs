@@ -630,6 +630,16 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
                 function: "claim_coverage_census_exit",
             },
         ),
+        // Registry row for the known-red derivation instrument (mirror of gunbc.instrument_targets
+        // known_red_derivation_binding). This table is hand-maintained -- `heal` never regenerates it --
+        // so a label without a row here exits 2 'no such target' no matter what the .dag registry says.
+        (
+            instrument_label("known-red-derivation"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/known_red_derivation.dag",
+                function: "known_red_derivation_exit",
+            },
+        ),
         (
             instrument_label("compute-run-unit-cold"),
             TargetProducer::CliWireProgram {
