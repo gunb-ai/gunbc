@@ -55,7 +55,7 @@ test fn an_absent_target_does_not_block_trust_and_its_delta_is_requestable() -> 
   let absent = match targets.first() { Present { value: t } => [t]  Absent => [] }
   let with_absent = map(roster_subjects(roster: all_cells), s => if any(absent, a => iam_bootstrap_resource_key(resource: a) == iam_bootstrap_resource_key(resource: s)) { BootstrapSubjectObservation { subject: s, reading: SubjectNotFound } } else { bound(r: all_cells, s: s) })
   count(absent) == 1
-    && (match iam_bootstrap_root_readback_verdict(delta: bootstrap_delta_over(roster: root, observations: map(roster_subjects(roster: root), s => bound(r: root, s: s))))) { RootReadbackAdmitted => true  RootReadbackRefused { reason: _ } => false })
+    && (match iam_bootstrap_root_readback_verdict(delta: bootstrap_delta_over(roster: root, observations: map(roster_subjects(roster: root), s => bound(r: root, s: s)))) { RootReadbackAdmitted => true  RootReadbackRefused { reason: _ } => false })
     && (match bootstrap_delta_over(roster: all_cells, observations: with_absent) {
       BootstrapDeltaRequired { subjects, root_residual: _ } => count(subjects) == 1 && (match bootstrap_delta_requestable(subjects: subjects) { BootstrapDeltaRequestAdmitted { body: _ } => true  _ => false })
       _ => false

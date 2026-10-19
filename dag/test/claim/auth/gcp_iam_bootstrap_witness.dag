@@ -324,7 +324,7 @@ test fn resolved_journals_admit_a_new_create_and_unreadable_ones_refuse() -> Boo
     && (match custody_after_create(secret: custody_x, c: CustodyCreated) { CustodyReadBack => true  CustodyCreateRefusedDefinitely { reason: _ } => false  CustodyCreateStops { reason: _ } => false })
     && creates(st: absent_step(records: [ops(op: "op1", elected: valid(op: "op1"), closed: AuthorityRecordAbsent, refused: valid(op: "op1"), disposed: AuthorityRecordAbsent)]))
     && count(custody_candidate_operations(secret: custody_x, listing: other)) == 0
-    && (match custody_container_step(secret: custody_x, o: CustodyObservedPresent, journal: custody_journal_of(secret: custody_x, records: [])) { CustodyContainerLeave => true  CustodyContainerSettle { operations: _ } => false  CustodyContainerCreateBare => false  CustodyContainerRefuse { reason: _ } => false })
+    && (match custody_container_step(secret: custody_x, o: CustodyObservedPresent, journal: custody_journal_of(secret: custody_x, records: [])) { CustodyContainerLeave => true  CustodyContainerSettle { operations: _ } => false  CustodyContainerCreateBare => false  CustodyContainerRefuse { reason: _ } => false  CustodyContainerRunCeremonyFirst { ceremony: _ } => false })
     && refuses(st: custody_container_step(secret: custody_x, o: CustodyObservedAbsent, journal: CustodyJournalUnreadable { cause: "list failed" }))
     && refuses(st: custody_container_step(secret: custody_x, o: CustodyObservationRefused { cause: "403" }, journal: custody_journal_of(secret: custody_x, records: [])))
 }
