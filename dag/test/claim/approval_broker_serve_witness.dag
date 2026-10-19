@@ -517,3 +517,7 @@ test fn device_bound_routes_are_exactly_the_table_rows() -> Bool {
 test fn device_binding_dropped_is_refused() -> Bool {
   !bound_routes_cover_table(bindings: device_route_handlers |> filter(b => approval_device_route_path(r: b.route) != (approval_device_push_path as String)))
 }
+
+test fn device_binding_duplicated_is_refused() -> Bool {
+  !bound_routes_cover_table(bindings: concat(device_route_handlers, device_route_handlers |> filter(b => approval_device_route_path(r: b.route) == (approval_device_push_path as String))))
+}
