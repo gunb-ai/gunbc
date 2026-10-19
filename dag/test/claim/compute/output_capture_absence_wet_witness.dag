@@ -61,7 +61,7 @@ module test.claim.compute.output_capture_absence_wet_witness
 //      no mock_response)"), which is the operation shell.Mktemp.Dir resolves to.
 
 import std.types { Bool, Int, NonEmptyStr, String }
-import std.algebra { join, length, string_contains, trim }
+import std.algebra { length, string_contains, trim }
 import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -126,6 +126,10 @@ data capture_bytes_oid: String = "cc815613cfd8c8f3870be038765d840d7c656d02"
 // The declared output paths, relative to the checkout root.
 data capture_rel: String = "out/captured/plan.json"
 data capture_rel_absent: String = "out/captured/absent.json"
+
+// The basename the recursive listing under the root looks for, so containment is proved by a
+// recursive find over absolute paths rather than by a single directory's bare-name listing.
+data capture_file_name: String = "plan.json"
 
 // THE WITNESS'S OWN HOST: the production constructor shape (cf.
 // fleet_compute_hermetic_dashboard_instance_at) with exactly three departures, all toward
@@ -218,13 +222,15 @@ fn production_populations() -> String {
   join([fleet_frame_scratch_population(), "##", durable_host_volume_population()], "")
 }
 
-// EVERY PATH UNDER THE ROOT, and whether the host would answer not_found for it after cleanup.
+// EVERY PATH UNDER THE ROOT, recursively, as absolute paths -- shell.Find.Files runs
+// `find <root> -name <glob>`, so its stdout carries full paths, which Filesystem.List's bare
+// directory names could not. A refusal is NAMED as a refusal rather than read as an empty tree.
 fn root_listing(root: String) -> String {
-  let listed = Filesystem.List(path: root)
-  if listed.success {
-    listed.entries
+  let found = shell.Find.Files(workdir: root as FilePath, root: root as FilePath, name_glob: capture_file_name)
+  if found.success {
+    found.stdout
   } else {
-    join(["<root listing refused:", listed.error, ":", listed.error_kind, ">"], "")
+    join(["<root listing refused:", trim(s: found.stderr), ">"], "")
   }
 }
 
@@ -353,11 +359,12 @@ fn wet_capture_case(write_output: Bool, second_output_present: Bool) -> WetCaptu
         }
     }
     let tree = root_listing(root: root)
-    // The positive half: the listing sees the file this case wrote, so containment is not satisfied
-    // by an empty or blind listing.
+    // The positive half: the recursive listing under the root sees the file this case wrote, at a
+    // path under the root. Without it, containment could be satisfied by a blind or empty listing.
     let root_lists_own_writes =
       !string_contains(s: tree, pattern: "<root listing refused")
-        && string_contains(s: tree, pattern: capture_rel)
+        && string_contains(s: tree, pattern: root)
+        && string_contains(s: tree, pattern: capture_file_name)
     let after = production_populations()
     let removed = shell.Remove.RecursiveForce(path: root as FilePath).success
     let contained = before == after && removed && root_is_gone(root: root)

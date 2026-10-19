@@ -1140,8 +1140,8 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "output_capture_absence_wet_witness.dag",
     classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_tempdir_write_reason,
-    dissolution: excl_local_repo_wet_dissolve},
+    reason: excl_output_capture_absence_wet_reason,
+    dissolution: excl_output_capture_absence_wet_dissolve},
   WitnessExclusionRow {
     pattern: "host_capacity_wet_witness.dag",
     classification: LocalRepoWetLane,
