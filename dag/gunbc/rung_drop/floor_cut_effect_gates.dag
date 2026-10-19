@@ -1,17 +1,11 @@
 module gunbc.rung_drop.floor_cut_effect_gates
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 
-data floor_cut_effect_gates_population: List<String> = [
-  "compile-clean",
-  "emit-host",
-  "extdeps citation",
-  "extdeps placement",
-  "prose-row",
-  "cheap-claim pool",
-]
+data floor_cut_effect_gates_population: FreeSemigroup<String> = FreeSemigroup { head: "compile-clean", tail: ["emit-host", "extdeps citation", "extdeps placement", "prose-row", "cheap-claim pool"] }
 
 data floor_cut_effect_gates: RungDrop = RungDrop {
   identity: "floor_cut_effect_gates" as NonEmptyStr,

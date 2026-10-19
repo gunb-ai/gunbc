@@ -1,6 +1,7 @@
 module gunbc.rung_drop.native_lane_live_pair_expected_red
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
@@ -22,10 +23,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // refusal holds, admission accepts a receipt in which the evaluator was never shown to
 // discriminate. That is the rung this row declares dropped.
 
-data native_lane_live_pair_expected_red_population: List<String> = [
-  "v2.native_lane_fixture.control native_lane_false_control (live-verdict control: must return false)",
-  "v2.native_lane_fixture.control native_lane_true_control (live-verdict control: must pass)",
-]
+data native_lane_live_pair_expected_red_population: FreeSemigroup<String> = FreeSemigroup { head: "v2.native_lane_fixture.control native_lane_false_control (live-verdict control: must return false)", tail: ["v2.native_lane_fixture.control native_lane_true_control (live-verdict control: must pass)"] }
 
 data native_lane_live_pair_expected_red: RungDrop = RungDrop {
   identity: "native_lane_live_pair_expected_red" as NonEmptyStr,

@@ -1,6 +1,7 @@
 module gunbc.rung_drop.rust_unit_tests_over_their_cap
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Superseded, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
@@ -28,9 +29,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // subject; its loss is held by gunbc.rung_drop v1_integration_tests_deleted_from_the_unit_lane and
 // nowhere else. Over the population that remains, the lane blocks again with a cap re-derived from
 // the post-#13452 walls (gunbc.witness.compiler_gate_workflow compiler_gate_unit_test_timeout).
-data rust_unit_tests_over_their_cap_population: List<String> = [
-  "the fleet rust-unit-tests job of gunbc.witness.compiler_gate_workflow: cargo test --release -p v1-compiler --lib (gunbc.repo_self_test_command), every #[test] it reaches -- its verdict no longer reaches the witnesses aggregate",
-]
+data rust_unit_tests_over_their_cap_population: FreeSemigroup<String> = FreeSemigroup { head: "the fleet rust-unit-tests job of gunbc.witness.compiler_gate_workflow: cargo test --release -p v1-compiler --lib (gunbc.repo_self_test_command), every #[test] it reaches -- its verdict no longer reaches the witnesses aggregate", tail: [] }
 
 data rust_unit_tests_over_their_cap: RungDrop = RungDrop {
   identity: "rust_unit_tests_over_their_cap" as NonEmptyStr,

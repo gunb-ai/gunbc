@@ -1,6 +1,7 @@
 module gunbc.rung_drop.v2_native_route_off_the_merge_path
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
@@ -47,13 +48,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // trigger names as NOT sufficient; it does not execute //gunbc/instruments:v2-native-frontier over
 // the v2.test.* universe, so no run of it can fire this trigger yet. What remains is that step.
 
-data v2_native_route_off_the_merge_path_population: List<String> = [
-  "v2.workflow.v2_native_route native_route_admission — every receipt clause, on every merge candidate",
-  "the derived v2.test.* universe executed by the emitted-native compiler (positive population)",
-  "v2.native_lane_fixture.control native_lane_false_control / native_lane_true_control (live-verdict controls)",
-  "fixtures/native_lane_malformed/poison.dag.poisoned (malformed-specimen control)",
-  "the old-route-withdrawn (no-fallback) control",
-]
+data v2_native_route_off_the_merge_path_population: FreeSemigroup<String> = FreeSemigroup { head: "v2.workflow.v2_native_route native_route_admission — every receipt clause, on every merge candidate", tail: ["the derived v2.test.* universe executed by the emitted-native compiler (positive population)", "v2.native_lane_fixture.control native_lane_false_control / native_lane_true_control (live-verdict controls)", "fixtures/native_lane_malformed/poison.dag.poisoned (malformed-specimen control)", "the old-route-withdrawn (no-fallback) control"] }
 
 data v2_native_route_off_the_merge_path: RungDrop = RungDrop {
   identity: "v2_native_route_off_the_merge_path" as NonEmptyStr,

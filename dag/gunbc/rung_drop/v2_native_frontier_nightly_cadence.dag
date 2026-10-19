@@ -1,6 +1,7 @@
 module gunbc.rung_drop.v2_native_frontier_nightly_cadence
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
 
@@ -19,12 +20,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
 // whose execution ends it. It keeps its identity, because the subject (the frontier off the merge
 // path) is unchanged; only the interim mechanism was withdrawn.
 
-data v2_native_frontier_nightly_cadence_population: List<String> = [
-  "v2.workflow.native_frontier_ratchet native_frontier_verdict over the whole v2.test.* universe, on every merge candidate (nothing runs it at all until the required native-route lane is live)",
-  "the derived v2.test.* universe executed by the emitted-native compiler, on every merge candidate",
-  "the [native-frontier-roster] proposal a mint or re-mint pull request carries: with no run there is no proposal, so the roster stays RosterUnminted and the ratchet has no baseline to hold",
-  "what the route cannot see even when it runs, so a shrinking roster bounds the frontier from below and never measures it exactly: (i) every refusal inside a module whose FILE the front end refused; (ii) sites under a refused binder, which resolve marks ObservationIncomplete and never visits; (iii) call arguments, which do not reach resolve (gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering); and, per identity, every refusal after the FIRST terminal one",
-]
+data v2_native_frontier_nightly_cadence_population: FreeSemigroup<String> = FreeSemigroup { head: "v2.workflow.native_frontier_ratchet native_frontier_verdict over the whole v2.test.* universe, on every merge candidate (nothing runs it at all until the required native-route lane is live)", tail: ["the derived v2.test.* universe executed by the emitted-native compiler, on every merge candidate", "the [native-frontier-roster] proposal a mint or re-mint pull request carries: with no run there is no proposal, so the roster stays RosterUnminted and the ratchet has no baseline to hold", "what the route cannot see even when it runs, so a shrinking roster bounds the frontier from below and never measures it exactly: (i) every refusal inside a module whose FILE the front end refused; (ii) sites under a refused binder, which resolve marks ObservationIncomplete and never visits; (iii) call arguments, which do not reach resolve (gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering); and, per identity, every refusal after the FIRST terminal one"] }
 
 data v2_native_frontier_nightly_cadence: RungDrop = RungDrop {
   identity: "v2_native_frontier_nightly_cadence" as NonEmptyStr,

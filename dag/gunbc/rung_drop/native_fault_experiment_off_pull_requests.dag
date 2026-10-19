@@ -1,6 +1,7 @@
 module gunbc.rung_drop.native_fault_experiment_off_pull_requests
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
@@ -17,9 +18,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // THE TRIGGER IS THE CAPABILITY, NOT THE ARTIFACT. Re-enabling the step on pull requests retires
 // nothing by itself; what restores the rung is the experiment running exactly when it can matter.
 
-data native_fault_experiment_off_pull_requests_population: List<String> = [
-  "pull_request runs of the emit-build lane of gunbc.witness.compiler_gate_workflow, for //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli: the fault-and-restoration rebuild is skipped, so a fingerprint alias or replayed cached verdict standing in for a real compile of the emitted crate is caught at merge_group, not per push",
-]
+data native_fault_experiment_off_pull_requests_population: FreeSemigroup<String> = FreeSemigroup { head: "pull_request runs of the emit-build lane of gunbc.witness.compiler_gate_workflow, for //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli: the fault-and-restoration rebuild is skipped, so a fingerprint alias or replayed cached verdict standing in for a real compile of the emitted crate is caught at merge_group, not per push", tail: [] }
 
 data native_fault_experiment_off_pull_requests: RungDrop = RungDrop {
   identity: "native_fault_experiment_off_pull_requests" as NonEmptyStr,

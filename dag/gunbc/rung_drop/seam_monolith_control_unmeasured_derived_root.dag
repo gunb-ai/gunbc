@@ -1,6 +1,7 @@
 module gunbc.rung_drop.seam_monolith_control_unmeasured_derived_root
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
@@ -20,9 +21,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // which already kept cross_shard_seam_preservation_holds_on_live_tree false before this change. That
 // is a separate inert-instrument class, routed by the direction, and it is not declared here.
 
-data seam_monolith_control_unmeasured_derived_root_population: List<String> = [
-  "gunbc.instruments.dag_compile_clean_seam_transport run_cross_shard_seam_probe monolith control M (the stage-less cross_shard_seam_compile_args whole-root compile of the mutated dag copy)",
-]
+data seam_monolith_control_unmeasured_derived_root_population: FreeSemigroup<String> = FreeSemigroup { head: "gunbc.instruments.dag_compile_clean_seam_transport run_cross_shard_seam_probe monolith control M (the stage-less cross_shard_seam_compile_args whole-root compile of the mutated dag copy)", tail: [] }
 
 data seam_monolith_control_unmeasured_derived_root: RungDrop = RungDrop {
   identity: "seam_monolith_control_unmeasured_derived_root" as NonEmptyStr,

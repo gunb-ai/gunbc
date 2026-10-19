@@ -1,6 +1,7 @@
 module gunbc.rung_drop.retention_census_counts_one_retention_per_refused_module
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
 import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 
@@ -25,9 +26,7 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 // the closure inside the consumer would be a second observation of a second run, which the receipt
 // contract that consumer carried refused.
 
-data retention_census_counts_one_retention_per_refused_module_population: List<String> = [
-  "v2.workflow.body_lowering_retention_census over the boundary-4 closure refusal: every refused module with two or more wrapper retentions, whose retentions after the first are uncounted",
-]
+data retention_census_counts_one_retention_per_refused_module_population: FreeSemigroup<String> = FreeSemigroup { head: "v2.workflow.body_lowering_retention_census over the boundary-4 closure refusal: every refused module with two or more wrapper retentions, whose retentions after the first are uncounted", tail: [] }
 
 data retention_census_counts_one_retention_per_refused_module: RungDrop = RungDrop {
   identity: "retention_census_counts_one_retention_per_refused_module" as NonEmptyStr,

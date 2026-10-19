@@ -1,6 +1,7 @@
 module gunbc.rung_drop
 
 import std.types { String, NonEmptyStr, List, Bool }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.bazel.label { Label, render_label }
 import gunbc.instrument_targets { instrument_targets }
 import gunbc.guarantee_rung {
@@ -218,7 +219,7 @@ import gunbc.guarantee_rung {
 // operator relays and dashboard message ids rather than gunbc.design_ruling symbols, and
 // `population_gone` is prose (section 4c: a String only where nothing typed exists, and never
 // evidence that the population is gone). Admission is mechanical: gunbc.rung_drop.standing
-// dissolved_populations_empty admits a Dissolved row only over an empty TypedDeclaration population.
+// dissolved_populations_empty admits a Dissolved row only over a TypedDeclaration whose population is PopulationDeleted.
 type RungDropStanding
   = Standing
   | Retired { trigger_fired: NonEmptyStr }
@@ -313,9 +314,29 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
 // `gunbc.instrument_targets instrument_targets` names a producer that cannot run, and
 // `rung_drop_population_is_readable` refuses it. A prose sentence in a `String` is the
 // unreadable form this type removes.
+// `Enumerated` is non-empty BY CONSTRUCTION (std.algebra FreeSemigroup, ruling nonemptiness_is_constructed_or_proved):
+// an empty enumeration has no constructor. The two arms that say "no countable members" are named
+// for what they are. `NotYetCounted` is a population nobody counts yet, with a typed cause;
+// `PopulationDeleted` is the form of a loss whose members no longer exist, the only form a
+// Dissolved row is admitted over. Neither is readable for a Standing drop.
+type UncountedCause
+  = NoInstrumentObservesTheZero
+  | DerivedEnumerationYieldedNoMember
+
 type RungDropPopulation
-  = Enumerated { members: List<String> }
+  = Enumerated { members: FreeSemigroup<String> }
   | DerivedBy { label: Label }
+  | NotYetCounted { cause: UncountedCause }
+  | PopulationDeleted
+
+// THE TOTAL CONSTRUCTOR FOR A POPULATION DERIVED FROM A LIST: a list with a member is Enumerated, an
+// empty one is a typed NotYetCounted, never an empty Enumerated.
+fn population_from_list(xs: List<String>) -> RungDropPopulation {
+  match xs {
+    Cons { head: h, tail: t } => Enumerated { members: FreeSemigroup { head: h, tail: t } }
+    Empty => NotYetCounted { cause: DerivedEnumerationYieldedNoMember }
+  }
+}
 
 type RungDropDeclaration
   = TypedDeclaration {
@@ -360,7 +381,9 @@ fn rung_drop_declaration_message(d: RungDrop) -> String {
 
 fn rung_drop_population_label(p: RungDropPopulation) -> String {
   match p {
-    Enumerated { members: ms } => join(ms, ", ")
+    Enumerated { members: ms } => join(non_empty_to_list(xs: ms), ", ")
+    NotYetCounted { cause: _ } => "not yet counted"
+    PopulationDeleted => "deleted"
     DerivedBy { label: l } => concat("derived by `gunbc test ", concat(render_label(l: l), "`"))
   }
 }
@@ -372,7 +395,9 @@ fn rung_drop_population_label(p: RungDropPopulation) -> String {
 // does not exist.
 fn rung_drop_population_is_readable(p: RungDropPopulation) -> Bool {
   match p {
-    Enumerated { members: ms } => length(xs: ms) > 0
+    Enumerated { members: _ } => true
+    NotYetCounted { cause: _ } => false
+    PopulationDeleted => false
     DerivedBy { label: l } => length(xs: filter(instrument_targets(), t => render_label(l: t) == render_label(l: l))) == 1
   }
 }
@@ -536,8 +561,8 @@ fn every_consolidated_typed_drop_is_rostered_once(ds: List<RungDrop>) -> Bool {
 
 // THE ONE VALIDITY FUNCTION FOR DISSOLVED. A Dissolved row erases a drop from live accounting, so every
 // consumer that would drop its loss asks this first and treats an invalid one as STILL STANDING:
-// counted live and outstanding, never erased (fail closed). Admitted only over an empty
-// TypedDeclaration population; a non-empty typed population or an AuthoredProse declaration is
+// counted live and outstanding, never erased (fail closed). Admitted only over a
+// TypedDeclaration whose population is PopulationDeleted; a non-empty typed population or an AuthoredProse declaration is
 // invalid. A row that is not Dissolved has nothing to refuse.
 fn dissolved_is_admissible(drop: RungDrop) -> Bool {
   match drop.standing {
@@ -546,8 +571,10 @@ fn dissolved_is_admissible(drop: RungDrop) -> Bool {
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
     Dissolved { ruling: _, decision_record: _, population_gone: _ } => match drop.declaration {
       TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => match p {
-        Enumerated { members: ms } => length(xs: ms) == 0
+        PopulationDeleted => true
+        Enumerated { members: _ } => false
         DerivedBy { label: _ } => false
+        NotYetCounted { cause: _ } => false
       }
       AuthoredProse { legacy: _, authored: _ } => false
     }
@@ -573,24 +600,26 @@ fn rung_drop_is_readable(d: RungDrop) -> Bool {
 
 // THE STANDING DROPS WHOSE POPULATION IS NOT READABLE, DERIVED FROM THE ROSTER RATHER THAN LISTED.
 // A genuine zero is an observation, so it is readable only as a `DerivedBy` label whose executed run
-// yields the empty population; an authored empty `Enumerated` stays unreadable. No such producer
+// yields the empty population; an empty `Enumerated` has no constructor. No such producer
 // exists for provider_path_jurisdiction_unread_admits, so it is counted here with that reason.
 fn unreadable_standing_drops(ds: List<RungDrop>) -> List<RungDrop> {
   filter(ds, d => !rung_drop_is_readable(d: d))
 }
 
-fn population_is_authored_empty(d: RungDrop) -> Bool {
+fn population_is_not_yet_counted(d: RungDrop) -> Bool {
   match d.declaration {
     TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => match p {
-      Enumerated { members: ms } => length(xs: ms) == 0
+      NotYetCounted { cause: _ } => true
+      Enumerated { members: _ } => false
       DerivedBy { label: _ } => false
+      PopulationDeleted => false
     }
     AuthoredProse { legacy: _, authored: _ } => false
   }
 }
 
-// THE ONLY ADMITTED CAUSE OF UNREADABILITY IS AN AUTHORED EMPTY ENUMERATION: an unknown DerivedBy
+// THE ONLY ADMITTED CAUSE OF UNREADABILITY IS A TYPED NotYetCounted POPULATION: an unknown DerivedBy
 // label or any other unreadable shape is a new defect and refuses.
-fn every_unreadable_standing_drop_is_an_authored_empty_population(ds: List<RungDrop>) -> Bool {
-  length(xs: filter(unreadable_standing_drops(ds: ds), d => !population_is_authored_empty(d: d))) == 0
+fn every_unreadable_standing_drop_is_not_yet_counted(ds: List<RungDrop>) -> Bool {
+  length(xs: filter(unreadable_standing_drops(ds: ds), d => !population_is_not_yet_counted(d: d))) == 0
 }

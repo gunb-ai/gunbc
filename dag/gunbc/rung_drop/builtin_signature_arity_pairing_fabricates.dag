@@ -1,31 +1,11 @@
 module gunbc.rung_drop.builtin_signature_arity_pairing_fabricates
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
 import gunbc.guarantee_rung { Mitigatable }
 
-data builtin_signature_arity_pairing_fabricates_population: List<String> = [
-  "count",
-  "to_int",
-  "substring",
-  "to_string",
-  "concat",
-  "map_insert",
-  "map_merge",
-  "with",
-  "map_contains_key",
-  "map_has",
-  "lookup",
-  "map_get",
-  "map_keys",
-  "map_values",
-  "get",
-  "reverse",
-  "list_push",
-  "length",
-  "starts_with",
-  "replace",
-]
+data builtin_signature_arity_pairing_fabricates_population: FreeSemigroup<String> = FreeSemigroup { head: "count", tail: ["to_int", "substring", "to_string", "concat", "map_insert", "map_merge", "with", "map_contains_key", "map_has", "lookup", "map_get", "map_keys", "map_values", "get", "reverse", "list_push", "length", "starts_with", "replace"] }
 
 data builtin_signature_arity_pairing_fabricates: RungDrop = RungDrop {
   identity: "builtin_signature_arity_pairing_fabricates" as NonEmptyStr,

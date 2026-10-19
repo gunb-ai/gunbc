@@ -1,6 +1,7 @@
 module gunbc.rung_drop.seed_whole_corpus_demand_population_blind
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
@@ -23,9 +24,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // (gunbc.rung_drop rust_unit_tests_off_the_merge_path). Retiring this drop on evidence that lives inside
 // another standing drop's population would report a rung the executed evidence does not establish, so it
 // stays Standing until that half executes on the acceptance path.
-data seed_whole_corpus_demand_population_blind_population: List<String> = [
-  "v1_compiler.memory_governor tests whole_corpus_compile_unmeasured_root_refuses_naming_the_recipe and whole_corpus_compile_admission_is_tight_at_the_measured_demand -- the seed's discriminating red and positive control for the per-root join, which execute on no acceptance-path step (their home, cargo unit tests, is gunbc.rung_drop rust_unit_tests_off_the_merge_path)",
-]
+data seed_whole_corpus_demand_population_blind_population: FreeSemigroup<String> = FreeSemigroup { head: "v1_compiler.memory_governor tests whole_corpus_compile_unmeasured_root_refuses_naming_the_recipe and whole_corpus_compile_admission_is_tight_at_the_measured_demand -- the seed's discriminating red and positive control for the per-root join, which execute on no acceptance-path step (their home, cargo unit tests, is gunbc.rung_drop rust_unit_tests_off_the_merge_path)", tail: [] }
 
 data seed_whole_corpus_demand_population_blind: RungDrop = RungDrop {
   identity: "seed_whole_corpus_demand_population_blind" as NonEmptyStr,

@@ -1,6 +1,7 @@
 module test.claim.compiler_frontend_program_status_witness
 
 import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.witness_admission { DiscoverySelection, NoConsumer }
@@ -371,7 +372,7 @@ test fn the_native_route_fold_answers_both_ways() -> Bool {
       previous: MechanicallyPreventable,
       temporary: Mitigatable,
       reason: DeletedWithoutReplacement,
-      population: Enumerated { members: ["fixture"] },
+      population: Enumerated { members: FreeSemigroup { head: "fixture", tail: [] } },
       restoration_trigger: "fixture",
     },
   }

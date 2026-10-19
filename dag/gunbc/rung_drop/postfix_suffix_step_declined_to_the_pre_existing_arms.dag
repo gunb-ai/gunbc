@@ -1,6 +1,7 @@
 module gunbc.rung_drop.postfix_suffix_step_declined_to_the_pre_existing_arms
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
@@ -21,9 +22,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // class. Lowering them needs a construct tag that can carry a qualified name, and v2.std.node_query
 // construct_node's tag is a Symbol, so that is a change to the construct shape gunbc#12033 lands and
 // a wider package than this one.
-data postfix_suffix_step_declined_to_the_pre_existing_arms_population: List<String> = [
-  "every module over dag + src/v2 for which v2.compiler.body_lowering_fold emits body_lowering_reason_postfix_suffix_carried: a postfix chain step whose suffix is a brace record-literal (`a.b.C { f: v }`) or an `as` suffix. the population is re-derived, not transcribed: the workload adjudicate over dag + src/v2 (claim_executor --v2-native-route) counts the advisory per module",
-]
+data postfix_suffix_step_declined_to_the_pre_existing_arms_population: FreeSemigroup<String> = FreeSemigroup { head: "every module over dag + src/v2 for which v2.compiler.body_lowering_fold emits body_lowering_reason_postfix_suffix_carried: a postfix chain step whose suffix is a brace record-literal (`a.b.C { f: v }`) or an `as` suffix. the population is re-derived, not transcribed: the workload adjudicate over dag + src/v2 (claim_executor --v2-native-route) counts the advisory per module", tail: [] }
 
 data postfix_suffix_step_declined_to_the_pre_existing_arms: RungDrop = RungDrop {
   identity: "postfix_suffix_step_declined_to_the_pre_existing_arms" as NonEmptyStr,
