@@ -1,11 +1,15 @@
 module test.claim.materialized_ssh_key_file_real_execution_witness
 
-import std.algebra { trim }
 import std.types { String, NonEmptyStr, Secret, FilePath, Bool }
-import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import gunbc.retained_shell_script { retained_runtime }
+import extdeps.tools.coreutils_stat {
+  coreutils_stat_path_mode,
+  PathModeObservation,
+  PathModeObserved,
+  PathModeUnobservable,
+}
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal }
 import gunbc.auth.materialized_secret {
   with_materialized_ssh_key_file,
   gunbc_private_materialization_dir,
@@ -17,17 +21,82 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data real_execution_home_doc: String = "Wet execution witnesses for SECRETREF-WIRE-0 ssh key materialization: with_materialized_ssh_key_file (private scoped root, Filesystem.WriteOwnerOnly mode 0600 at creation via create_new/O_EXCL, post-bracket shred) and WriteOwnerOnly refusal when the path already exists. shell.Mktemp.Dir, shell.Mkdir, shell.Chmod, shell.Remove, Filesystem.Write/WriteOwnerOnly, and shell.Exec.Run(stat) have no mock_response on the file-effect path (WriteOwnerOnly uses the v1 file transport, not shell.Exec mock), so hermetic discovery refuses this file; it is excluded from discovery (gunbc.ci.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag --functions witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"
+data real_execution_home_doc: String = "Wet execution witnesses for SECRETREF-WIRE-0 ssh key materialization: with_materialized_ssh_key_file (private scoped root, Filesystem.WriteOwnerOnly mode 0600 at creation via create_new/O_EXCL, post-bracket shred) and WriteOwnerOnly refusal when the path already exists. The mode check is TYPED (Charter 2, 2026-10-19): coreutils.Stat.PathMode via coreutils_stat_path_mode returns PathModeObservation, and the bracket arm refuses the reason-bearing PathModeUnobservable separately from the wrong-mode arm — a stat that cannot read the file never reads as 'not 600'. The third test fn ssh_key_mode_probe_distinguishes_unobservable_from_wrong_mode is pure (no host effect) and is the discriminating witness for that three-state refusal. shell.Mktemp.Dir, shell.Mkdir, shell.Chmod, shell.Remove, Filesystem.Write/WriteOwnerOnly, and coreutils.Stat.PathMode have no mock_response on the file-effect path (WriteOwnerOnly uses the v1 file transport, not shell.Exec mock; Stat.PathMode has no mock_response block, unlike Stat.PathSize), so hermetic discovery refuses this file; it is excluded from discovery (gunbc.ci.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag --functions witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"
 
-fn stat_octal_mode(path: String) -> String {
-  let result = shell.Exec.Run(
-    script: retained_runtime(
-      body: concat("stat -c %a ", path),
-      reason: "materialized ssh key bracket witness octal mode stat" as NonEmptyStr,
-    ),
-    expect: OutcomeIsData,
+// The mode the bracket's WriteOwnerOnly creation owes the key file, as a VALUE (extdeps.access.posix
+// FileMode) rather than stat's argv spelling. file_mode_octal renders it for comparison; the witness
+// never re-derives the digit layout (DESIGN §4: one grammar, both directions, lives with the grammar).
+data ssh_key_owner_only_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: false },
+  group: PermissionBits { read: false, write: false, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+// THREE STATES, NONE COLLAPSED (§5 fail-closed): the observed mode, the wrong mode, and an
+// UNOBSERVABLE mode are distinct values. The old witness ran `stat -c %a` through the retained
+// shell bridge and compared stdout to "600"; a stat that could not read the path yielded stdout
+// that string-compared to false, so unreadable read as wrong. Here the unobservable arm is its own
+// constructor and the bracket arm below refuses it apart from the wrong-mode arm — unknown never
+// reads as absent (or as present-and-wrong).
+fn ssh_key_file_mode_probe(path: String) -> PathModeObservation {
+  coreutils_stat_path_mode(path: path as NonEmptyStr)
+}
+
+fn ssh_key_mode_is_owner_only(observation: PathModeObservation) -> Bool {
+  match observation {
+    PathModeObserved { path: _, mode } =>
+      file_mode_octal(mode: mode) == file_mode_octal(mode: ssh_key_owner_only_mode)
+    PathModeUnobservable { path: _, reason: _ } => false
+  }
+}
+
+// DISCRIMINATING ARMS, dry (no host effects — these run under hermetic claim discovery):
+// wrong-mode and unobservable both refuse, and the probe values that carry them are DISTINCT, so
+// neither state is the other's spelling. The wet bracket witness below keeps one Bool (the witness
+// contract); the three states stay distinct up to the refusal site, with no default arm.
+test fn ssh_key_mode_probe_distinguishes_unobservable_from_wrong_mode() -> Bool {
+  let wrong = PathModeObserved {
+    path: "keys/witness-key" as NonEmptyStr,
+    mode: FileMode {
+      owner: PermissionBits { read: true, write: true, execute: false },
+      group: PermissionBits { read: true, write: false, execute: false },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: false,
+      sticky: false,
+    },
+  }
+  let unknown = PathModeUnobservable {
+    path: "keys/witness-key" as NonEmptyStr,
+    reason: "stat could not read the path",
+  }
+  let wrong_mode_probe = ssh_key_mode_is_owner_only(observation: wrong)
+  let unobservable_probe = ssh_key_mode_is_owner_only(observation: unknown)
+  let owed_mode_probe = ssh_key_mode_is_owner_only(
+    observation: PathModeObserved {
+      path: "keys/witness-key" as NonEmptyStr,
+      mode: ssh_key_owner_only_mode,
+    }
   )
-  trim(result.stdout)
+  let unobservable_is_not_a_mode = match unknown {
+    PathModeObserved { path: _, mode: _ } => true
+    PathModeUnobservable { path: _, reason: _ } => false
+  }
+  // The owed mode is asserted against the GRAMMAR'S OWN rendering, not against itself: the bracket
+  // owes 0600, and if ssh_key_owner_only_mode ever drifts (group bit added, owner write dropped)
+  // this arm refuses even though every comparison against itself would still pass.
+  let owed_renders_as_stat_owes_it = file_mode_octal(mode: ssh_key_owner_only_mode) == "600"
+  // wrong mode → refuse; unobservable → refuse on its OWN reason-bearing arm, not via the mode
+  // compare; the owed mode → accept, so the refusals above are not vacuous; and the two refusal
+  // states carry distinct values — unobservable is never spelled as a mode.
+  !wrong_mode_probe
+    && !unobservable_probe
+    && owed_mode_probe
+    && owed_renders_as_stat_owes_it
+    && !unobservable_is_not_a_mode
 }
 
 test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -> Bool {
@@ -38,12 +107,19 @@ test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -
     secret_bytes: secret,
     use: fn(key_path) {
       let path = key_path as String
-      if stat_octal_mode(path: path) == "600"
-        && string_contains(s: path, pattern: "/gunbc-private/")
-        && !string_contains(s: path, pattern: "target/") {
-        path
-      } else {
-        ""
+      // Each refusal state is its own arm (no default): a mode the probe could not read is NOT
+      // spelled as 'not 600' — it refuses on the reason-bearing arm, so a stat that cannot see the
+      // file can never pass, and never passes by looking like the wrong-mode failure either.
+      match ssh_key_file_mode_probe(path: path) {
+        PathModeObserved { path: _, mode } =>
+          if file_mode_octal(mode: mode) == file_mode_octal(mode: ssh_key_owner_only_mode)
+            && string_contains(s: path, pattern: "/gunbc-private/")
+            && !string_contains(s: path, pattern: "target/") {
+            path
+          } else {
+            ""
+          }
+        PathModeUnobservable { path: _, reason: _ } => ""
       }
     },
   )
