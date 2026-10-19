@@ -372,7 +372,8 @@ fn c_semantic_decl_binding_spelling_rows() -> List<Node> {
 fn c_semantic_decl_serialize_profile_bundle_node() -> Node {
   semantic_decl_serialize_profile_bundle(
     lex_rows: c_semantic_decl_lex_rows(),
-    spelling_rows: c_semantic_decl_binding_spelling_rows()
+    spelling_rows: c_semantic_decl_binding_spelling_rows(),
+    line_break_rows: []
   )
 }
 
