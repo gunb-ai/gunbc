@@ -47,25 +47,34 @@ say "apply the producer patch (fresh call-site-keyed variables)"
 python3 "$D/instr/patch_producer_instantiate.py" "$D/repo" || { echo "FATAL patch"; exit 1; }
 
 say "LOCAL SYNTAX + DIAGNOSTIC-NEUTRALITY GATE (abort here, not after a 45-minute build)"
-# parsecheck.py runs a locally runnable gunbc over the single patched file; parse diagnostics
-# come before import resolution, so the missing corpus is noise. A malformed patch cost one
-# full dispatch (a `let` inside `match sig { ... }` -> expected FatArrow, found Ident), and an
-# in-body `//` comment turned out to add 15 HARD diagnostics -- both are caught here for free.
+# A malformed patch cost one full dispatch (a `let` inside `match sig { ... }` -> expected
+# FatArrow, found Ident), and an in-body // comment turned out to add 15 HARD diagnostics
+# (241 -> 256) which would have polluted the two-closure gate. Both are checkable per file.
+# rc 2 means the checker could not run here -- reported as UNKNOWN, never read as clean.
 cp "$INFER_DAG" "$LOGS/infer.patched"
-python3 "$D/instr/parsecheck.py" "$INFER_DAG" || { echo "FATAL parsecheck -- the patch does not parse"; exit 5; }
-# Diagnostic neutrality: the repair must not add hard diagnostics to this file.
-hard_of(){ rm -rf /tmp/hardchk; mkdir -p /tmp/hardchk; cp "$1" /tmp/hardchk/04_infer.dag
-  timeout 300 gunbc compile --source-dir /tmp/hardchk --output-dir /tmp/hardout --target rust 2>&1 \
-    | grep -aoE "produced [0-9]+ hard" | grep -oE "[0-9]+" | head -1; }
-export PATH="/home/briansrls/gunbc/target-main/release:$PATH"
-H_BEFORE=$(hard_of "$LOGS/$(basename "$INFER_DAG")")
-git show HEAD:"$INFER_DAG" > "$LOGS/pristine_infer.dag" 2>/dev/null || true
-H_AFTER=$(hard_of "$INFER_DAG")
-echo "HARD_DIAG pristine=${H_BEFORE:-?} patched=${H_AFTER:-?}   (must be equal)"
-sha256sum "$INFER_DAG" | sed 's/^/SEED_AFTER_DAGPATCH /'
-if [ "$(seed "$MIRROR")" = "$(seed "$LOGS/mirror.before")" ]; then
-  echo "MIRROR_UNMOVED_OK (expected: the .dag alone cannot change the mirror; this is the"
-  echo "  StaleBinary fact that makes regeneration mandatory, not optional)"
+git show HEAD:"$INFER_DAG" > "$LOGS/infer.pristine" || { echo "FATAL pristine"; exit 1; }
+python3 "$D/instr/parsecheck.py" "$LOGS/infer.patched"; PC=$?
+case $PC in
+  0) echo "PARSE ok" ;;
+  1) echo "FATAL parsecheck -- the patch does not parse"; exit 5 ;;
+  *) echo "PARSE UNKNOWN (checker unavailable on this runner) -- relying on the same gate run locally before dispatch" ;;
+esac
+hard_of(){ # <file> -> hard-diagnostic count for that one file, or UNKNOWN
+  local d; d=$(mktemp -d); cp "$1" "$d/04_infer.dag"
+  timeout 300 gunbc compile --source-dir "$d" --output-dir "$d/out" --target rust 2>&1 \
+    | grep -aoE "produced [0-9]+ hard" | grep -oE "[0-9]+" | head -1 || true
+  rm -rf "$d"
+}
+if command -v gunbc >/dev/null 2>&1; then
+  H_PRE=$(hard_of "$LOGS/infer.pristine"); H_POST=$(hard_of "$LOGS/infer.patched")
+  echo "HARD_DIAG pristine=${H_PRE:-UNKNOWN} patched=${H_POST:-UNKNOWN}"
+  if [ -n "${H_PRE:-}" ] && [ -n "${H_POST:-}" ] && [ "$H_PRE" != "$H_POST" ]; then
+    echo "HARD_DIAG_UNSAFE the repair changed this file's hard-diagnostic count by $((H_POST-H_PRE));"
+    echo "  a comment line inside a function body does exactly this. Fix the patch, not the gate."
+    exit 6
+  fi
+else
+  echo "HARD_DIAG UNKNOWN -- no gunbc on PATH; neutrality was checked locally before dispatch"
 fi
 
 say "REGENERATE mirrors from the patched .dag (fixed point)"
