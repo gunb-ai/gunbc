@@ -1,6 +1,9 @@
 module v2.test.claim.infer_not_derived_site
 
 import v2.compiler.source_root_eval {
+  native_infer_grounding_not_derived_count,
+  native_infer_not_derived_site_counts,
+  NativeInferSiteCount,
   native_test_context_from_ingest,
   native_test_infer_resolved,
   native_test_resolve_module,
@@ -15,7 +18,7 @@ import v2.std.node { node_subtree_nodes, Symbol }
 import v2.std.qualified_name { QualifiedName }
 import std.algebra { fold_list, contains, Cons }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.types { Bool, List, String }
+import std.types { Bool, Int, List, String }
 import extdeps.communication.medium { Lossless, Medium }
 
 // WHICH SITE LEFT EACH NODE ON THE GROUNDING FRONTIER. The advisory is one reason; the site on the
@@ -106,3 +109,21 @@ fn nds_q0_sites() -> List<Symbol> {
 test fn nds_q0_has_DeclarationWrapperEvidenceEdgesAbsent() -> Bool { contains(xs: nds_q0_sites(), item: ^DeclarationWrapperEvidenceEdgesAbsent, eq: fn(a, b) { a == b }) }
 
 test fn nds_q0_has_ProductEvidenceEdgesAbsent() -> Bool { contains(xs: nds_q0_sites(), item: ^ProductEvidenceEdgesAbsent, eq: fn(a, b) { a == b }) }
+
+// The consumer's rows are the same census as the count the advisory reports: they sum to it. A module
+// the fixture route cannot prepare reports false, never a vacuous pass.
+fn nds_rows_total(rows: List<NativeInferSiteCount>) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, r) { acc + r.count })
+}
+
+test fn nds_q1_site_rows_sum_to_the_grounding_not_derived_count() -> Bool {
+  match nds_prepared(
+    read: nds_read(source: nds_q1_source, id: ^nds_q1_read, file: "src/v2/test/fixture/nds/q1.dag"),
+    module: [^v2, ^test, ^nds_q1]
+  ) {
+    Absent => false
+    Present { value: p } =>
+      nds_rows_total(rows: native_infer_not_derived_site_counts(tree: p.inferred))
+        == native_infer_grounding_not_derived_count(tree: p.inferred)
+  }
+}
