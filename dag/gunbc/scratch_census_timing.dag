@@ -49,3 +49,63 @@ fn markers_n(n: Int) -> CliWireResponse {
 fn t3_markers_100() -> CliWireResponse { markers_n(n: 100) }
 fn t3_markers_200() -> CliWireResponse { markers_n(n: 200) }
 fn t3_markers_400() -> CliWireResponse { markers_n(n: 400) }
+
+import std.optional { Absent, Present }
+import std.algebra { map_lookup }
+import v2.cli.repository_layout { repository_module_file_of_path }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.source_authority { module_file_key }
+import v2.std.node { symbol_intern_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.test_marker_capture { test_marker_content }
+
+// stage 1 = tokenize, 2 = tokenize+parse, 3 = +test_marker_content; counts files that were Accepted.
+fn probe_one(env: AcquisitionEnv, stage: Int, path: String, contents: Map<String, String>) -> Int {
+  match repository_module_file_of_path(path: path) {
+    Absent => 0
+    Present { value: file } =>
+      match map_lookup(m: contents, key: path) {
+        Absent => 0
+        Present { value: content } =>
+          match tokenize_prepared(text: content, file: symbol_intern_lexeme(lexeme: module_file_key(file: file)), prepared: env.lex) {
+            Rejected { diagnostics: _ } => 0
+            Accepted { value: tokens, diagnostics: _ } =>
+              if stage == 1 { 1 } else {
+                match parse_module_prepared(tokens: tokens, prepared: env.grammar) {
+                  Rejected { diagnostics: _ } => 0
+                  Accepted { value: artifact, diagnostics: _ } =>
+                    if stage == 2 { 1 } else {
+                      match test_marker_content(tree: artifact.tree) {
+                        Rejected { diagnostics: _ } => 0
+                        Accepted { value: _, diagnostics: _ } => 1
+                      }
+                    }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn probe_n(stage: Int, n: Int) -> CliWireResponse {
+  match floor_discovery_source_inventory_live(pool_roots: witness_layer_roots) {
+    FloorDiscoverySourcesRefused { reason: r } => done(text: concat("refused ", r))
+    FloorDiscoverySourcesObserved { sources: s } =>
+      match acquisition_env(layout: repository_storage_layout(), bindings: governed_bindings()) {
+        AcquisitionEnvUnprepared { diagnostics: _ } => done(text: "unprepared")
+        AcquisitionEnvReady { env: env } => {
+          let contents = content_index(sources: s)
+          let ok = fold(take_prefix(xs: map(s, x => x.repo_path), n: n), init: 0, f: fn(acc, p) { acc + probe_one(env: env, stage: stage, path: p, contents: contents) })
+          done(text: concat("probe stage=", concat(to_string(stage), concat(" ok=", to_string(ok)))))
+        }
+      }
+  }
+}
+
+fn p1_10() -> CliWireResponse { probe_n(stage: 1, n: 10) }
+fn p2_10() -> CliWireResponse { probe_n(stage: 2, n: 10) }
+fn p3_10() -> CliWireResponse { probe_n(stage: 3, n: 10) }
+fn p1_30() -> CliWireResponse { probe_n(stage: 1, n: 30) }
+fn p2_30() -> CliWireResponse { probe_n(stage: 2, n: 30) }
+fn p3_30() -> CliWireResponse { probe_n(stage: 3, n: 30) }
