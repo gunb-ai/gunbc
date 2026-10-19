@@ -15,9 +15,16 @@ type BmcCell { target: SecretRef, role: String }
 
 type BmcAssimilatorCells { cells: List<BmcCell>, members: List<String> }
 
+fn bmc_cell_of(grant: SecretAccessGrant) -> BmcCell {
+  BmcCell { target: grant.secret_ref, role: grant.role }
+}
+
+fn bmc_cell_key(cell: BmcCell) -> String {
+  concat(concat(cell.target.secret as String, " "), cell.role)
+}
+
 fn bmc_assimilator_cells_over(grants: List<SecretAccessGrant>) -> BmcAssimilatorCells {
-  BmcAssimilatorCells {
-    cells: distinct_by_key(xs: map(grants, g => BmcCell { target: g.secret_ref, role: g.role }), key: c => concat(concat(c.target.secret as String, " "), c.role)),
-    members: distinct_by_key(xs: map(grants, g => grant_member(grant: g)), key: m => m),
-  }
+  let cells: List<BmcCell> = map(grants, g => bmc_cell_of(grant: g))
+  let members: List<String> = map(grants, g => grant_member(grant: g))
+  BmcAssimilatorCells { cells: distinct_by_key(xs: cells, key: c => bmc_cell_key(cell: c)), members: distinct_by_key(xs: members, key: m => m) }
 }
