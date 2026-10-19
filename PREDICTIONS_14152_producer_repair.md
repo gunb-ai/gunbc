@@ -120,3 +120,31 @@ so that no number in them is mistaken for a measurement, and so a rerun is not b
 
 Consequence for reading results: a fast exit with no `T=` stamps means the harness, not the tree.
 Every row verdict below comes only from a run that printed `ROW <label> <row> PASS|FAIL rc=`.
+
+## AMENDMENT 4 (11:30Z): the collision row is NOT a RED-before, and I must say so
+
+Measured, both by `test result:` summary line, both on fresh clones at printed SHAs:
+
+| head | mirror REPAIR_MARKS | collision_two_zero_arg_generic_calls_both_type |
+|---|---|---|
+| 714346740aca (pre-repair, Acc only) | 0 | `1 passed; 0 failed` in 63.24s |
+| 81824abfa3c (shipped repair)         | 1 | `1 passed; 0 failed` in 63.00s |
+
+`FAIL@RED` was pre-registered (AMENDMENT: "collision FAIL@RED PASS@repair"). It is FALSIFIED. The
+row accepts the program at both heads, so it does not demonstrate the repair and must not be
+described as doing so. Why it accepts pre-repair: both calls get the callee's own declaration form
+`Map<K, V>` (K, V the parameters), the two call types are shape-equal, `m.get(1)` yields Int
+against a formal Int, and the fold's unsettled arms replace rather than refuse -- so nothing fires.
+The row is therefore an ACCEPT CONTROL ONLY: it proves the repair does not break a program that
+must type. Its last chance to be discriminating is the name-keyed MUTANT, where the two calls mint
+the SAME variable ids; predicted FAIL there (spurious diagnostic from cross-binding). If the mutant
+also passes, the row is vacuous and I will say the fixture cannot expose sharing, keeping the
+freshness case on what does support it -- the escape asymmetry (the seed at 04_infer.dag:11775 is
+consumed in place; the substituted type at :9272 escapes into the body environment) -- not on
+this row.
+
+Two corrections to my own earlier reporting in this session, also recorded before results:
+- I asserted "pre-repair PASSED in 147s" from a run that had actually died on `reference is not a
+  valid name` (a full SHA typed from memory). There was no such measurement until 11:19Z, above.
+- `MISSING_FATAL rc=0` in these logs meant "the --nocapture output split the result line", not
+  "row missing"; fixed by deciding from the summary line (verified over all three summary shapes).
