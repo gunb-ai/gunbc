@@ -1,0 +1,60 @@
+module test.claim.census.claim_coverage_census_s1_live_pairing_wet_witness
+
+// THE PAIRING CLAIM THAT READS THE CHECKOUT (Charter 4 exit census, sunny-ibex-149; warm-wolf-570's GO).
+//
+// WHY IT IS WET, AND WHY IT IS NOT IN `dag/test/claim/claim_coverage_census_s1_witness.dag`: that corpus is
+// PURE — its header promises no filesystem read, and every claim there injects fixtures so the fold's LOGIC
+// is decided without touching a checkout. DESIGN 3's pairing obligation needs the opposite here. The
+// carrier row below is hand-authored `.dag` data, so deleting a claim's fn cannot change the ROW — the only
+// thing that changes is DISCOVERY. A claim joining the row against a fixture could not fail when the fn
+// disappeared, and an assertion that can only fail because a sibling claim's code path is shared is exactly
+// what the pairing obligation forbids. So this claim runs the census's own fold for real, scoped, and is
+// scheduled as a wet claim beside every other claim that reads the repository
+// (`v2.workflow.local_repo_wet_terminal bin_witness_wet_entries`).
+//
+// THE SCOPE IS SUPPLIED, NOT INVENTED. `s1_compose_scoped` is the census's fold given a subset of the
+// governed roots (see that module: one enumeration, one identity join, one classification; the roots are a
+// parameter). Nothing here re-implements discovery, and no claim runs the full-corpus entry — the
+// full-corpus cost is the instrument's own business, measured and reported there.
+//
+// ITS COST IS DECLARED, NOT HIDDEN: the claim is a member of
+// `v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt`, where the measured steps, the fixed
+// pipeline's budget and the trigger that retires it are recorded.
+
+import std.types { String, Bool }
+import std.algebra { any }
+import gunbc.claim_coverage_census_s1 { GroundedCover, S1Composed, S1InputsUnread, classifier_member_text }
+import gunbc.claim_coverage_census_s1_live { s1_compose_scoped }
+
+// THE PAIRING CLAIM'S OWN FILE, AS A ROOT. The producer's walk takes a file root as one module file (its
+// rule: a listing that fails on something that stats as a file IS a module file), so scoping to this path
+// costs one file's content read and one marker read -- not the 41 files of the directory that contains it.
+// The path is spelled from the identity the row carries (module -> governed path), which is the same
+// `gunbc.source_layout` rule the census itself joins on; it is a ROOT, and what discovery finds inside it
+// remains the ingress's answer, not this corpus's.
+data real_path_pairing_root: String = "src/v2/test/claim/compiler/infer_record_construct_field_inhabitance_witness.dag"
+
+data rcf_carrier: String = "gunbc.module_real_path_pairing_claim.infer_record_construct_field_inhabitance_witness"
+
+// THE MODULE-REAL-PATH PAIRING ROW GROUNDS AGAINST THE REAL DISCOVERY (jolly-boar-495's row — the only
+// claim over the full ingest). Before this claim its RED was asserted in the carrier's comment and
+// guaranteed only by SHARING the stale-enrolment code path with the three pre-fix #14373 rows. Now: delete
+// the fn at `src/v2/test/claim/compiler/infer_record_construct_field_inhabitance_witness.dag`, discovery
+// stops bearing the identity, the row turns StaleEnrolled, and this claim fails. Both halves are asserted
+// together — the identity must be in the discovered universe AND the row must be a grounded cover over
+// exactly that identity — so the claim cannot pass on a census that discovered nothing and enrolled nothing.
+test fn the_module_real_path_pairing_row_grounds_against_the_real_discovery() -> Bool {
+  let identity = "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness.rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds"
+  match s1_compose_scoped(roots: [real_path_pairing_root]) {
+    S1InputsUnread { causes: _ } => false
+    S1Composed { census: census, notes: _ } =>
+      any(census.universe, candidate => candidate == identity)
+        && any(census.stands, standing => match standing {
+             GroundedCover { row: row, covers: covers } =>
+               row.carrier == rcf_carrier
+                 && classifier_member_text(row: row) == identity
+                 && any(covers, covered => covered == identity)
+             _ => false
+           })
+  }
+}

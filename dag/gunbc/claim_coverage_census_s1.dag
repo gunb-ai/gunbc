@@ -366,22 +366,43 @@ type S1Composition
 // printed: a stale enrollment, an ungroundable drop member, or an uncovered discovered claim. Zero is
 // answered only when the fold found nothing to complain about, which -- at this head, with the live
 // population -- it will not: the findings ARE the result.
+// THE OUTCOME, AS A DECLARED THREE-ARM SUM (review 82914, DESIGN §5 and §6b; ctrl's hand-rolled-sum
+// rule). It was `exit_code: Int` chosen from three `data ... : Int` constants with a `reason` beside them,
+// which made the illegal states writable -- `exit_code: 7`, or a HELD block carrying a reason -- and left
+// every consumer comparing integers instead of matching. The third defect of this shape in this PR, after
+// the grain (review 82804) and the cover/enrollment flag (review 82845). `S1Held` has no reason field
+// because a held census has nothing to explain, and an unread outcome has no claim population to print.
+type S1Standing
+  = S1Held
+  | S1DidNotHold { reason: String }
+  | S1Unread { reason: String }
+
 type S1Block {
   lines: List<String>
-  exit_code: Int
-  reason: String
+  standing: S1Standing
 }
 
-data s1_exit_held: Int = 0
-data s1_exit_did_not_hold: Int = 1
-data s1_exit_unread: Int = 2
+// THE PROCESS PROTOCOL, NOT THE CENSUS'S STATE. These are the numbers a process exits with; they are
+// derived FROM the standing by one match, so no caller can pair an exit code with an outcome the census
+// did not report, and no integer stands for an outcome anywhere else in this file.
+data s1_exit_code_did_not_hold: Int = 1
+data s1_exit_code_unread: Int = 2
+
+fn s1_process_exit_code(standing: S1Standing) -> Int {
+  match standing {
+    S1Held => 0
+    S1DidNotHold { reason: _ } => s1_exit_code_did_not_hold
+    S1Unread { reason: _ } => s1_exit_code_unread
+  }
+}
 
 fn s1_block(s1: S1Composition, head: String) -> S1Block {
   match s1 {
     S1InputsUnread { causes: causes } => S1Block {
       lines: map(causes, cause => concat("S1-CENSUS INPUT UNREAD ", cause)),
-      exit_code: s1_exit_unread,
-      reason: "claim-coverage-census: the discovered universe could not be read (causes listed above); no claim population was decided"
+      standing: S1Unread {
+        reason: "claim-coverage-census: the discovered universe could not be read (causes listed above); no claim population was decided"
+      }
     }
     S1Composed { census: census, notes: notes } => {
       let lines = concat(notes, s1_census_lines(census: census, head: head))
@@ -389,12 +410,13 @@ fn s1_block(s1: S1Composition, head: String) -> S1Block {
         + count(s1_ungrounded_rows(census: census))
         + count(s1_uncovered(census: census))
       if findings == 0 {
-        S1Block { lines: lines, exit_code: s1_exit_held, reason: "" }
+        S1Block { lines: lines, standing: S1Held }
       } else {
         S1Block {
           lines: lines,
-          exit_code: s1_exit_did_not_hold,
-          reason: "claim-coverage-census: the discovered universe did not hold -- a discovered test claim is executed by no required job and covered by no drop, or a carrier enrolled an identity discovery does not hold, or a drop population member grounds in no path and no identity (each is listed above, located)"
+          standing: S1DidNotHold {
+            reason: "claim-coverage-census: the discovered universe did not hold -- a discovered test claim is executed by no required job and covered by no drop, or a carrier enrolled an identity discovery does not hold, or a drop population member grounds in no path and no identity (each is listed above, located)"
+          }
         }
       }
     }

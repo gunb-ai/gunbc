@@ -11,12 +11,12 @@ import gunbc.rung_drop.v1_required_lanes_withdrawn { v1_required_lanes_withdrawn
 import gunbc.emitted_subject_build_gate { emitted_subject_build_rows, emitted_subject_build_label_text }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_required_job_id }
 import gunbc.claim_coverage_census {
-  ClaimSource, ClaimExecutorRow, ClaimCoverageInputs,
+  ClaimSource, ClaimExecutorRow, ClaimCoverageInputs, UncoveredClaim, ClaimCoverageStanding,
   ClaimCoverageHeld, ClaimCoverageDidNotHold,
   claim_coverage, claim_coverage_standing, claim_coverage_receipt_lines,
 }
 import gunbc.claim_coverage_census_s1_live { s1_live_block }
-import gunbc.claim_coverage_census_s1 { s1_exit_held, s1_exit_did_not_hold, s1_exit_unread }
+import gunbc.claim_coverage_census_s1 { S1Standing, S1Held, S1DidNotHold, S1Unread, s1_process_exit_code }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -63,6 +63,63 @@ fn claim_executors() -> List<ClaimExecutorRow> {
 // failure would hide which. The policy is one pure function over an injected composition
 // (`gunbc.claim_coverage_census_s1_live s1_block`), so a witness can assert all three arms over a fixture
 // instead of only over whatever the checkout happens to look like.
+// THE WET REASON, from the wet census's own sum. A did-not-hold that lists nothing is not a thing this
+// census can print, so the wording is a property of the arm rather than a string chosen at the call site.
+fn claim_coverage_wet_reason(uncovered: List<UncoveredClaim>) -> String {
+  concat(
+    "claim-coverage-census: did not hold -- an enrolled claim is executed by no required job (",
+    concat(map(uncovered, u => u.identity) |> join(separator: ", "), ")")
+  )
+}
+
+// THE COMPOSED EXIT, AS ONE PURE EXHAUSTIVE MATCH OVER TWO SUMS (review 82914). Both inputs are declared
+// coproducts -- `ClaimCoverageStanding` is stern-raven-457's, `S1Standing` is the discovered universe's --
+// and nothing here turns either into a Bool or compares an integer: the arms decide, and the exit CODE is
+// derived from the standing by `s1_process_exit_code`, so an exit number cannot be paired with an outcome
+// the censuses did not report. An unread input outranks a finding, because a census that could not read is
+// not a census that failed and reporting the failure would hide which one the reader is looking at; when
+// both censuses complain, both reasons print, since either alone would send the reader to the wrong file.
+//
+// PURE AND INJECTED, which is the other half of why it is a function: the witness asserts all three exits
+// over fixtures (`dag/test/claim/claim_coverage_census_s1_witness.dag`) and, by importing this module,
+// resolves every body in it -- the reason an unresolvable module can no longer hide behind a green
+// per-file parse sweep.
+fn claim_coverage_composed_exit(
+  bytes: String,
+  wet: ClaimCoverageStanding,
+  s1: S1Standing
+) -> CliWireResponse {
+  match s1 {
+    S1Unread { reason: reason } => CliWirePrintable {
+      bytes: bytes,
+      exit: ExitFailure { code: s1_process_exit_code(standing: s1), reason: reason }
+    }
+    S1DidNotHold { reason: s1_reason } => match wet {
+      ClaimCoverageHeld => CliWirePrintable {
+        bytes: bytes,
+        exit: ExitFailure { code: s1_process_exit_code(standing: s1), reason: s1_reason }
+      }
+      ClaimCoverageDidNotHold { uncovered: uncovered } => CliWirePrintable {
+        bytes: bytes,
+        exit: ExitFailure {
+          code: s1_process_exit_code(standing: s1),
+          reason: concat(claim_coverage_wet_reason(uncovered: uncovered), concat(" | ", s1_reason))
+        }
+      }
+    }
+    S1Held => match wet {
+      ClaimCoverageHeld => CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+      ClaimCoverageDidNotHold { uncovered: uncovered } => CliWirePrintable {
+        bytes: bytes,
+        exit: ExitFailure {
+          code: s1_process_exit_code(standing: s1),
+          reason: claim_coverage_wet_reason(uncovered: uncovered)
+        }
+      }
+    }
+  }
+}
+
 fn claim_coverage_census_exit() -> CliWireResponse {
   let c = claim_coverage(inputs: ClaimCoverageInputs { sources: claim_sources(), jobs: claim_executors() })
   let s1 = s1_live_block()
@@ -70,25 +127,9 @@ fn claim_coverage_census_exit() -> CliWireResponse {
     concat(claim_coverage_receipt_lines(c: c) |> join(separator: "\n"), "\n"),
     concat(s1.lines |> join(separator: "\n"), "\n")
   )
-  if s1.exit_code == s1_exit_unread {
-    return CliWirePrintable { bytes: bytes, exit: ExitFailure { code: s1_exit_unread, reason: s1.reason } }
-  }
-  let wet_holds = match claim_coverage_standing(c: c) {
-    ClaimCoverageHeld => true
-    ClaimCoverageDidNotHold { uncovered: _ } => false
-  }
-  if wet_holds && s1.exit_code == s1_exit_held {
-    return CliWirePrintable { bytes: bytes, exit: ExitSuccess }
-  }
-  return CliWirePrintable {
+  claim_coverage_composed_exit(
     bytes: bytes,
-    exit: ExitFailure {
-      code: s1_exit_did_not_hold,
-      reason: if !wet_holds {
-        "claim-coverage-census: did not hold -- an enrolled claim is executed by no required job, or the discovered universe printed a finding (each listed above, located)"
-      } else {
-        s1.reason
-      }
-    }
-  }
+    wet: claim_coverage_standing(c: c),
+    s1: s1.standing
+  )
 }

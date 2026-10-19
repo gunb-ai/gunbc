@@ -26,24 +26,17 @@ import gunbc.claim_coverage_census_s1 {
   ExactMemberMatch, SubstringMemberMatch, classifier_member_text,
   S1Census, ClassifierStanding, GroundedCover, S1Composed, S1InputsUnread,
   classify_rows, derive_executed, s1_uncovered, s1_census_lines,
-  s1_block, s1_exit_held, s1_exit_did_not_hold, s1_exit_unread
+  s1_block, S1Standing, S1Held, S1DidNotHold, S1Unread
 }
 import gunbc.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
-// THE LIVE MODULE IS IMPORTED DELIBERATELY, AND THAT IS THE POINT. The rest of this corpus is pure: it
-// injects fixtures, so it tests the fold's LOGIC without touching a filesystem. Importing the live module
-// is the one place it does not, and it is here because a module no claim imports is a module no witness
-// resolves (see `a_live_function_resolves_and_names_nothing_for_a_producer_that_names_nothing`). The
-// effectful entry it exposes, `s1_compose_scoped`, is used by exactly one claim and is scoped to one
-// governed root -- the census's own full-corpus entry is never run from a claim.
-import gunbc.claim_coverage_census_s1_live { producer_named_identities, s1_compose_scoped }
+// THE LIVE MODULE IS IMPORTED DELIBERATELY: a module no claim imports is a module no witness RESOLVES, and
+// that is how its `Cons`-into-a-`List`-field type error survived a green per-file parse sweep (see
+// `a_live_function_resolves_and_names_nothing_for_a_producer_that_names_nothing`). Importing is not
+// READING: the one entry this corpus calls is a pure match over producer variants. The claims that DO read
+// the checkout -- the scoped real-discovery pairing claims -- live in
+// `test.claim.census.claim_coverage_census_s1_live_pairing_wet_witness`, which states why they cannot live here.
+import gunbc.claim_coverage_census_s1_live { producer_named_identities }
 import gunbc.target_binding { TargetProducer, RequiredFloorProducer }
-
-// The governed root holding the module-real-path pairing claim's file, spelled as the governed roots spell
-// it (`gunbc.ci.ci_layer_roots witness_layer_roots` uses `src/v2`). The claim names a DIRECTORY, never a
-// file it read: which files that root holds is the ingress's answer, not this corpus's.
-data real_path_pairing_root: String = "src/v2/test/claim/compiler"
-
-data rcf_carrier: String = "gunbc.module_real_path_pairing_claim.infer_record_construct_field_inhabitance_witness"
 
 // The fixture corpus: two claims of module `m` over `m.dag` and one of module `other` over `other.dag`.
 // The module is a fixture token and the identity is its exact `module.function` spelling -- the same shape
@@ -208,7 +201,7 @@ test fn a_fixture_whose_claims_are_all_covered_holds_and_exits_zero() -> Bool {
     produced: ["m.a"]
   )
   let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
-  block.exit_code == s1_exit_held
+  match block.standing { S1Held => true, _ => false }
     && covered(census: census, identity: "m.a")
     && covered(census: census, identity: "m.b")
     && covered(census: census, identity: "other.c")
@@ -234,7 +227,7 @@ test fn removing_a_covered_claim_from_its_drop_makes_the_census_name_it() -> Boo
     produced: []
   )
   let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
-  block.exit_code == s1_exit_did_not_hold
+  match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && (s1_uncovered(census: census) == ["m.b"])
     && line_names(lines: block.lines, needle: "UNCOVERED m.b")
     && !line_names(lines: block.lines, needle: "UNCOVERED m.a")
@@ -259,7 +252,7 @@ test fn a_floor_expected_red_row_never_covers_a_claim() -> Bool {
     produced: []
   )
   let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
-  block.exit_code == s1_exit_did_not_hold
+  match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && (s1_uncovered(census: census) == ["m.b"])
     && !line_names(lines: block.lines, needle: "UNCOVERED m.a")
 }
@@ -284,7 +277,7 @@ test fn the_three_prefix_fill_debt_rows_are_stale_enrolled_by_name() -> Bool {
     produced: []
   )
   let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
-  block.exit_code == s1_exit_did_not_hold
+  match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && all(stale, member => line_names(lines: block.lines, needle: concat("STALE-ENROLLED ", concat(fill_debt_carrier, concat(" ", member)))))
     && all(stale, member => stale_stands(stands: census.stands, member: member))
     && any(block.lines, line => line == "S1-CENSUS head:fixturehead")
@@ -336,7 +329,7 @@ test fn a_fully_resolving_carrier_prints_no_stale_row_and_holds() -> Bool {
   )
   let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
   !line_names(lines: block.lines, needle: "STALE-ENROLLED")
-    && block.exit_code == s1_exit_held
+    && match block.standing { S1Held => true, _ => false }
     && all(fixture_universe(), id => grounded_cover(stands: census.stands, member: id))
 }
 
@@ -385,7 +378,7 @@ test fn a_drop_member_that_is_neither_path_nor_identity_is_an_ungrounded_refusal
     produced: []
   )
   let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
-  block.exit_code == s1_exit_did_not_hold
+  match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && all(ungroundable, member => line_names(lines: block.lines, needle: concat("UNGROUNDED-DROP-MEMBER gunbc.rung_drop.t.drop ", member)))
     && all(ungroundable, member => ungrounded_stands(stands: census.stands, member: member))
 }
@@ -463,7 +456,7 @@ test fn an_untyped_drop_member_grounds_in_either_population_and_neither_by_spell
     && (covers_of(stands: census.stands, member: "m.dag") == ["m.a", "m.b"])
     && ungrounded_stands(stands: census.stands, member: "the whole long-lane class is excused")
     && (count(s1_uncovered(census: census)) == 0)
-    && block.exit_code == s1_exit_did_not_hold
+    && match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
 }
 
 // AN EXACT FILE MEMBER SELECTING NO DISCOVERED CLAIM IS REFUSED. A real-looking path whose file discovery
@@ -478,7 +471,7 @@ test fn an_exact_file_member_selecting_no_discovered_claim_is_refused() -> Bool 
     produced: []
   )
   let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
-  block.exit_code == s1_exit_did_not_hold
+  match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && line_names(lines: block.lines, needle: "UNGROUNDED-DROP-MEMBER t.drop renamed_away.dag")
     && ungrounded_stands(stands: census.stands, member: "renamed_away.dag")
 }
@@ -541,7 +534,7 @@ test fn a_producer_exposing_no_claim_set_leaves_the_universe_uncovered_and_is_a_
   let rows = fixture_rows()
   let census = census_over(rows: rows, universe: fixture_universe(), covers: [], produced: [])
   let block = s1_block(s1: S1Composed { census: census, notes: [] }, head: "fixturehead")
-  block.exit_code == s1_exit_did_not_hold
+  match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && all(fixture_universe(), id => line_names(lines: block.lines, needle: concat("UNCOVERED ", id)))
 }
 
@@ -555,7 +548,7 @@ test fn an_unread_input_exits_two_and_reports_no_claim_population() -> Bool {
     s1: S1InputsUnread { causes: ["m.dag: unreadable", "the dag grammar did not prepare: the marker channel cannot answer"] },
     head: "fixturehead"
   )
-  block.exit_code == s1_exit_unread
+  match block.standing { S1Unread { reason: _ } => true, _ => false }
     && line_names(lines: block.lines, needle: "S1-CENSUS INPUT UNREAD m.dag: unreadable")
     && line_names(lines: block.lines, needle: "marker channel cannot answer")
     && !line_names(lines: block.lines, needle: "UNCOVERED ")
@@ -582,7 +575,7 @@ test fn an_unattributable_required_job_label_prints_beside_clean_standings() -> 
   let note = "REQUIRED-JOB LABEL UNBOUND //gunbc/instruments:t.thing (no producer binds it: nothing it runs is attributable)"
   let block = s1_block(s1: S1Composed { census: census, notes: [note] }, head: "fixturehead")
   line_names(lines: block.lines, needle: "REQUIRED-JOB LABEL UNBOUND")
-    && block.exit_code == s1_exit_held
+    && match block.standing { S1Held => true, _ => false }
 }
 
 // THE PAIRING OBLIGATION ON THE REAL PRODUCER (DESIGN 3, required by nimble-badger-800's verification
@@ -638,28 +631,4 @@ test fn a_real_rung_drop_member_arrives_under_its_own_drop_carrier() -> Bool {
 // is a pure match over the producer variants, and a producer that names no claim must contribute none.
 test fn a_live_function_resolves_and_names_nothing_for_a_producer_that_names_nothing() -> Bool {
   producer_named_identities(producer: RequiredFloorProducer, index: empty_map()) |> is_empty()
-}
-
-// THE PAIRING CLAIM FOR THE MODULE-REAL-PATH ROW, RUN THROUGH THE REAL DISCOVERY (warm-wolf-570's GO).
-// The row jolly-boar-495 asked for enrols the only claim over the full ingest, and until now its RED was
-// asserted in a carrier comment and guaranteed only by SHARING a code path with the three pre-fix #14373
-// rows — which is exactly what the pairing obligation forbids: an assertion resting on a sibling claim.
-// This claim joins the REAL discovery (the census's own fold, scoped to the governed root that holds the
-// file — see `s1_compose_scoped` for why scoping is a supplied fact and not a second rule) against the
-// REAL carrier, at identity grain, and fails when the fn is deleted: with the fn gone the discovery does
-// not bear the identity, so the row is StaleEnrolled instead of a grounded cover.
-test fn the_module_real_path_pairing_row_grounds_against_the_real_discovery() -> Bool {
-  let identity = "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness.rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds"
-  match s1_compose_scoped(roots: [real_path_pairing_root]) {
-    S1InputsUnread { causes: _ } => false
-    S1Composed { census: census, notes: _ } =>
-      any(census.universe, candidate => candidate == identity)
-        && any(census.stands, standing => match standing {
-             GroundedCover { row: row, covers: covers } =>
-               row.carrier == rcf_carrier
-                 && classifier_member_text(row: row) == identity
-                 && any(covers, covered => covered == identity)
-             _ => false
-           })
-  }
 }
