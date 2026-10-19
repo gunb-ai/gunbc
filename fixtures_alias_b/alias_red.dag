@@ -1,0 +1,29 @@
+module instruments.fixtures.alias_red
+
+import std.types { Char }
+import std.algebra { FreeMonoid, is_empty }
+
+// (b) RED for stern-bat-401 msg_db49ee15 (3): reproduce `String` against its OWN right-hand side
+// `FreeMonoid<Char>` on main, with no change to the fold, and name the refusal site.
+// `type String = FreeMonoid<Char>` is verbatim src/v2/std/text.dag:7.
+type String = FreeMonoid<Char>
+
+fn takes_int_list(xs: FreeMonoid<Int>) -> Bool {
+  is_empty(xs: xs)
+}
+
+// ROW 1, the RED: today this is expected to REFUSE (the alias is compared as an opaque head,
+// transparent_alias_rhs returning none because the alias declares no params of its own).
+fn alias_against_its_own_rhs(s: String) -> Bool {
+  is_empty(xs: s)
+}
+
+// ROW 2, the refusal twin: a genuinely different instance must still refuse.
+fn alias_against_a_different_instance(s: String) -> Bool {
+  takes_int_list(xs: s)
+}
+
+// ROW 3, the accept control: the right-hand side against itself, no alias involved.
+fn rhs_against_itself(xs: FreeMonoid<Char>) -> Bool {
+  is_empty(xs: xs)
+}
