@@ -285,8 +285,12 @@ test fn the_removal_is_not_collapsed_into_the_enablement() -> Bool {
 // one reddens if either instruction stops stating which side of the boundary it is on — the pair of
 // claims that keeps an interval with no gate from being described as a handover.
 test fn the_last_field_is_the_one_that_weakens_the_gate() -> Bool {
-  (deployment_gate_operator_steps.reviewer_removal.instruction as String).contains("required reviewers")
-    && (deployment_gate_operator_steps.rule_enablement.instruction as String).contains("custom rule")
+  // each act's own text says the thing its name promises, in words that are actually there
+  (deployment_gate_operator_steps.reviewer_removal.instruction as String).contains("after the removal")
+    && (deployment_gate_operator_steps.rule_enablement.instruction as String).contains("custom deployment protection rule")
+    // and the enablement row forbids itself from doing the removal, in its own words
+    && (deployment_gate_operator_steps.rule_enablement.instruction as String).contains("must still be present")
+    && !(deployment_gate_operator_steps.rule_enablement.instruction as String).contains("after the removal")
     && (deployment_gate_operator_steps.reviewer_removal.identity as String)
       != (deployment_gate_operator_steps.rule_enablement.identity as String)
 }
@@ -312,7 +316,7 @@ test fn a_sequence_with_the_boundary_fields_swapped_is_not_the_honest_one() -> B
     && deployment_gate_operator_steps.rule_enablement.identity == rule_enablement_step.identity
     && deployment_gate_operator_steps.reviewer_removal.identity == reviewer_removal_step.identity
     // the swapped pair would put a weakening act in the enabling slot: its instruction is the removal's
-    && (swapped.rule_enablement.instruction as String).contains("required reviewers")
+    && (swapped.rule_enablement.instruction as String).contains("after the removal")
 }
 
 // ---------------------------------------------------------------------------

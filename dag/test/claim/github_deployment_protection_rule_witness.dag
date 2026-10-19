@@ -712,8 +712,8 @@ test fn both_documented_credential_kinds_are_representable() -> Bool {
   let operator_label =
     review_credential_documented_label(credential: OAuthClassicWithRepoScope) as String
   // both arms are named, and named DIFFERENTLY
-  (length(app_label) > 4 as Nat)
-    && (length(operator_label) > 4 as Nat)
+  (length(app_label) > 4)
+    && (length(operator_label) > 4)
     && (app_label != operator_label)
     // the classic arm's scope, in upstream's words: it is the arm that needs `repo`
     && (review_oauth_classic_scope as String) == "repo"
