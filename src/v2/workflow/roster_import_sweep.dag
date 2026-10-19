@@ -1616,7 +1616,7 @@ fn zz_w2_probe_exit() -> ProcessExit {
                   let sites = collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites
                   let spelled = fold_list(xs: sites, empty: 0, cons: fn(n, st) { if roster_spelling_is(qn: st.site.spelling, call: "List") { n + 1 } else { n } })
                   let free = roster_sites_count(sites: sites, call: "List")
-                  let heads = fold_list(xs: sites, empty: "", cons: fn(acc, st) { if roster_spelling_is(qn: st.site.spelling, call: "List") { acc + " [" + zz_head_name(head: st.head) + " path=" + roster_join(xs: list_map(xs: st.site.position, f: fn(l) { symbol_lexeme(sym: label_sort_key(label: l)) }), sep: "/") + " pos=" + zz_pos_name(p: reference_position_of(position: st.site.position)) + " free=" + (if roster_head_is_free(head: st.head, imported_from_home: false) { "yes" } else { "no" }) + "]" } else { acc } })
+                  let heads = fold_list(xs: sites, empty: "", cons: fn(acc, st) { if roster_spelling_is(qn: st.site.spelling, call: "List") { acc + " [" + zz_head_name(head: st.head) + " path=" + roster_join(xs: list_map(xs: st.site.position, f: fn(l) { symbol_lexeme(sym: label_sort_key(label: l)) }), sep: "/") + " pos=" + zz_pos_name(p: reference_position_of(position: st.site.position)) + " free=" + zz_yes(b: roster_head_is_free(head: st.head, imported_from_home: false)) + "]" } else { acc } })
                   let outcome = roster_render_outcome(path: "w2.dag", outcome: roster_sweep_text_scoped(path: "w2.dag", text: text, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.types") }))
                   exit_failure(reason: "W2 sites_total=" + int_to_decimal_string(value: length(xs: sites)) + " list_sites=" + int_to_decimal_string(value: spelled) + " list_free=" + int_to_decimal_string(value: free) + " heads=" + heads + " outcome=[" + outcome + "]")
               }
@@ -1642,4 +1642,8 @@ fn zz_pos_name(p: ReferencePosition) -> String {
     LabelPosition => "label"
     PatternTagPosition => "pattern-tag"
   }
+}
+
+fn zz_yes(b: Bool) -> String {
+  if b { "yes" } else { "no" }
 }
