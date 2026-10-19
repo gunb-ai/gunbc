@@ -795,7 +795,9 @@ fn normalize_census(parse_tree: ParseTree) -> Outcome<CensusTree> {
 }
 
 fn zz_normalize_probe(stage: Int, parse_tree: ParseTree, spans: SpanIndex) -> String {
-  if stage == 11 {
+  if stage == 12 {
+    "depth=" + std.integer.int_to_decimal_string(value: zz_depth(n: parse_tree)) + " rootkids=" + std.integer.int_to_decimal_string(value: length(xs: parse_tree.children))
+  } else if stage == 11 {
     match normalize_node(n: parse_tree) {
       Rejected { diagnostics: _ } => "fold-refused"
       Accepted { value: t, diagnostics: d } =>
@@ -858,4 +860,9 @@ fn zz_diag_count(d: Diagnostics) -> String {
     None => "0"
     v2.std.diagnostic.Some { diagnostics: nd } => std.integer.int_to_decimal_string(value: 1 + length(xs: nd.tail))
   }
+}
+
+fn zz_depth(n: Node) -> Int {
+  fold_list(xs: n.children, empty: 0, cons: fn(m, e) { let d = zz_depth(n: e.target)
+    if d > m { d } else { m } }) + 1
 }
