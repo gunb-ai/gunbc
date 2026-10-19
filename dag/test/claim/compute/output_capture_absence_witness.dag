@@ -1,0 +1,254 @@
+module test.claim.compute.output_capture_absence_witness
+
+// THE CAPTURE REFUSAL OF AN ABSENT BUILD OUTPUT HAS AN EXECUTING CONTROL.
+//
+// The build-output capture -- compute_return_outputs in gunbc.compute.work_provider_local -- is
+// what turns a declared output that is NOT THERE into a refusal (OutputsMismatch) rather than a
+// success with a hole. Before this witness no control executed that refusal: the capture runs
+// inside compute_spawn_and_collect, whose neighbours execute systemd-run and the host transport,
+// and the hermetic envelope refuses the transport (no mock_response for operation Run; adding one
+// is forbidden, operator ruling 2026-08-23). The capture's verdict is therefore decided from two
+// EXECUTION READINGS -- the typed outcome of `git hash-object` on the output and of the install
+// that stages it -- and readings are data (ComputeOutputCaptureReading). That is what makes the
+// refusal controllable hermetically: a control supplies the reading an absent output produces
+// (hash-object failing with its real exit and stderr) and the REAL fold, not a copy, decides.
+//
+// WHAT DISCRIMINATES WHAT (each row fails on a specific mutation, listed at its body):
+//  - the refusal rows fail if the step accepts a failed or never-taken reading;
+//  - the positive controls fail if the step refuses everything (a refusal that cannot be told
+//    apart from a working capture is no capture at all -- DESIGN 5: unknown never reads as absent
+//    and a refusal never flattens to []/Bool);
+//  - the detail rows fail if the refusal drops the exit code or the execution's own stderr -- the
+//    reading does not distinguish absent from unreadable from not-a-repo, so naming "absent" would
+//    INVENT a cause the host never reported;
+//  - the fold rows fail if the fold keeps collecting after a refusal or reorders;
+//  - the inhabitance rows EXECUTE production's route and FAIL if compute_return_outputs stops
+//    calling the step, or if the capture route stops calling compute_return_outputs -- the only
+//    authority for "production reaches the same fold" (a grep is not a consumer, DESIGN 5).
+//
+// THE RED THIS FILE KILLS, and which must FAIL when planted (see the PR witness output): replacing
+// the step's CaptureReadingFailed hash arm with `OutputsReturned { outputs: returned }` -- capture
+// ACCEPTING an absent output -- turns every refusal row red while the positive controls stay
+// green; and deleting compute_return_outputs' call of the step turns the inhabitance rows red.
+
+import std.types { Bool, Int, String, List }
+import std.algebra { string_contains, length, list_map, FreeMonoid }
+import gunbc.compute.work_request { DeclaredOutput, WorkOutput, CheckoutRoot, TargetRoot }
+import gunbc.compute.work_provider_local {
+  OutputsReturn, OutputsMismatch, OutputsReturned,
+  ComputeOutputCaptureReading, CaptureReadingOk, CaptureReadingFailed, CaptureReadingNotRun,
+  ComputeOutputCapturePair,
+  compute_output_capture_step, compute_return_outputs_over_readings
+}
+import v2.std.fn_index { FnArrowDecl, CallReach, call_reachable_decls_from_root, fn_arrow_decl_facts_live }
+
+// ── supplied data ─────────────────────────────────────────────────────────────────────────────
+
+// The reading `git hash-object <path>` actually gives when <path> is not there: exit 128 and the
+// command's own stderr. This is a SUPPLIED INPUT to the real fold -- the shape the capture route
+// hands the step when compute_exec reports the failure (work_provider_local.dag
+// compute_capture_exec_pairs) -- and nothing below relabels it.
+data absent_hash_reading: ComputeOutputCaptureReading = CaptureReadingFailed {
+  exit_code: 128,
+  stdout: "",
+  stderr: "fatal: could not read 'target/out/plan.json': No such file or directory"
+}
+
+data present_hash_reading: ComputeOutputCaptureReading = CaptureReadingOk { stdout: "  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n", stderr: "" }
+data install_ok_reading: ComputeOutputCaptureReading = CaptureReadingOk { stdout: "", stderr: "" }
+data install_failed_reading: ComputeOutputCaptureReading = CaptureReadingFailed { exit_code: 1, stdout: "", stderr: "cannot create '/store/.staged/plan.json': Read-only file system" }
+data never_taken: ComputeOutputCaptureReading = CaptureReadingNotRun
+
+fn plan_output() -> DeclaredOutput {
+  DeclaredOutput { path: "target/out/plan.json", root: TargetRoot }
+}
+
+fn model_output() -> DeclaredOutput {
+  DeclaredOutput { path: "target/out/model.bin", root: CheckoutRoot }
+}
+
+fn mismatch_detail(r: OutputsReturn) -> String {
+  match r {
+    OutputsMismatch { detail } => detail
+    OutputsReturned { outputs: _ } => ""
+  }
+}
+
+fn returned_outputs(r: OutputsReturn) -> List<WorkOutput> {
+  match r {
+    OutputsMismatch { detail: _ } => []
+    OutputsReturned { outputs } => outputs
+  }
+}
+
+// What the capture returned, rendered as "declared=blob" cells joined by '|'. Rendering rather
+// than indexing keeps the rows off the resolver's weak spot (a value bound from a recursive tail
+// field) and states the ORDER in one equality.
+fn returned_shape(outputs: List<WorkOutput>) -> String {
+  join(list_map(xs: outputs, f: fn(o: WorkOutput) { join([o.declared, "=", o.blob], "") }), "|")
+}
+
+// ── the refusal, driven on the real fold with a supplied absent output ─────────────────────────
+
+// REFUSAL + THE REAL CAUSE, NOT THE WORD "ABSENT". Fails if the step accepts the failed reading,
+// drops the exit code, or drops the execution's own stderr. The detail must carry 128 and the
+// git-reported text -- the reading alone cannot tell absence from a permission or not-a-repo
+// error, so an honest refusal reports what happened and invents no cause (DESIGN 5).
+test fn an_absent_declared_output_is_refused_with_the_executions_real_exit_and_stderr() -> Bool {
+  let verdict = compute_output_capture_step(
+    declared: "target/out/plan.json",
+    returned: [],
+    hash: absent_hash_reading,
+    install: never_taken
+  )
+  let detail = mismatch_detail(r: verdict)
+  match verdict {
+    OutputsMismatch { detail: _ } =>
+      string_contains(s: detail, pattern: "target/out/plan.json")
+        && string_contains(s: detail, pattern: "could not be hashed")
+        && string_contains(s: detail, pattern: "128")
+        && string_contains(s: detail, pattern: "No such file or directory")
+    OutputsReturned { outputs: _ } => false
+  }
+}
+
+// AN UNREADABLE OUTPUT REFUSES THE SAME WAY AND READS DIFFERENTLY: same fold, a permission
+// failure's reading. Fails if the refusal is keyed to the absence text instead of the exit code.
+test fn an_unreadable_declared_output_refuses_through_the_same_fold_naming_its_own_cause() -> Bool {
+  let permission_denied = CaptureReadingFailed { exit_code: 128, stdout: "", stderr: "fatal: could not read 'target/out/plan.json': Permission denied" }
+  let detail = mismatch_detail(r: compute_output_capture_step(declared: "target/out/plan.json", returned: [], hash: permission_denied, install: never_taken))
+  string_contains(s: detail, pattern: "Permission denied")
+    && string_contains(s: detail, pattern: "could not be hashed")
+}
+
+// A READING THAT WAS NEVER TAKEN REFUSES, IT IS NOT A HOLE: an absent reading never reads as an
+// absent output's refusal, and never as success. Fails if NotRun is treated as passed.
+test fn a_hash_reading_never_taken_is_refused_never_a_hole() -> Bool {
+  match compute_output_capture_step(declared: "target/out/plan.json", returned: [], hash: never_taken, install: never_taken) {
+    OutputsMismatch { detail } => string_contains(s: detail, pattern: "was never hashed")
+    OutputsReturned { outputs: _ } => false
+  }
+}
+
+test fn an_install_reading_never_taken_refuses_even_after_a_successful_hash() -> Bool {
+  match compute_output_capture_step(declared: "target/out/plan.json", returned: [], hash: present_hash_reading, install: never_taken) {
+    OutputsMismatch { detail } => string_contains(s: detail, pattern: "was never stored")
+    OutputsReturned { outputs: _ } => false
+  }
+}
+
+test fn a_failing_install_is_refused_with_its_real_exit_and_stderr() -> Bool {
+  let detail = mismatch_detail(r: compute_output_capture_step(declared: "target/out/plan.json", returned: [], hash: present_hash_reading, install: install_failed_reading))
+  string_contains(s: detail, pattern: "could not be stored")
+    && string_contains(s: detail, pattern: "exited 1")
+    && string_contains(s: detail, pattern: "Read-only file system")
+}
+
+// THE POSITIVE CONTROLS. Without these, a step that refused every reading would pass every refusal
+// row above -- a refusal that cannot be told apart from a working capture is no capture (DESIGN 5).
+test fn a_present_output_with_both_readings_ok_is_returned_with_its_trimmed_blob() -> Bool {
+  match compute_output_capture_step(declared: "target/out/plan.json", returned: [], hash: present_hash_reading, install: install_ok_reading) {
+    OutputsReturned { outputs } =>
+      length(xs: outputs) == 1
+        && returned_shape(outputs: outputs) == "target/out/plan.json=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    OutputsMismatch { detail: _ } => false
+  }
+}
+
+// ── the fold: order, stop-at-first-refusal, and what an empty declaration list means ───────────
+
+test fn the_fold_returns_every_present_output_in_declaration_order() -> Bool {
+  let returned = returned_outputs(r: compute_return_outputs_over_readings(pairs: [
+    ComputeOutputCapturePair { declared: plan_output(), hash: present_hash_reading, install: install_ok_reading },
+    ComputeOutputCapturePair { declared: model_output(), hash: present_hash_reading, install: install_ok_reading }
+  ]))
+  length(xs: returned) == 2 && returned_shape(outputs: returned) == "target/out/plan.json=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855|target/out/model.bin=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
+
+// FAILS IF THE FOLD IGNORES A REFUSAL: the absent second output must stop the fold, and nothing
+// collected for a LATER output may survive the refusal (no flattening to a partial success).
+test fn the_fold_refuses_at_the_first_absent_output_and_keeps_nothing_after_it() -> Bool {
+  let verdict = compute_return_outputs_over_readings(pairs: [
+    ComputeOutputCapturePair { declared: plan_output(), hash: present_hash_reading, install: install_ok_reading },
+    ComputeOutputCapturePair { declared: model_output(), hash: absent_hash_reading, install: never_taken },
+    ComputeOutputCapturePair { declared: plan_output(), hash: present_hash_reading, install: install_ok_reading }
+  ])
+  match verdict {
+    OutputsMismatch { detail } =>
+      string_contains(s: detail, pattern: "target/out/model.bin")
+        && (string_contains(s: detail, pattern: "target/out/plan.json") == false)
+    OutputsReturned { outputs } => false
+  }
+}
+
+// AN EMPTY DECLARED-OUTPUT LIST RETURNS THE EMPTY LIST AND ONLY THE EMPTY LIST -- it is not the
+// shape a refusal takes, and a refusal is never the shape an empty list takes.
+test fn no_declared_outputs_is_the_empty_return_never_a_refusal() -> Bool {
+  match compute_return_outputs_over_readings(pairs: []) {
+    OutputsReturned { outputs } => length(xs: outputs) == 0
+    OutputsMismatch { detail: _ } => false
+  }
+}
+
+// ── inhabitation: production EXECUTES this fold (a grep is not a consumer, DESIGN 5) ───────────
+//
+// These rows run the compiler-reflected call walk (v2.std.fn_index) over the REAL source of
+// gunbc.compute.work_provider_local, and they are what stand in for "the capture route reaches the
+// same fold" -- reachability computed from the parser's own call graph, not text matching. Each
+// goes RED the moment production stops calling what it must: if compute_return_outputs stops
+// calling compute_output_capture_step, the step is unreachable and the first row fails; if
+// compute_spawn_and_collect (the capture route) stops calling compute_return_outputs, the second
+// row fails. A positive control beside them pins that the walk finds the deep leaf at all, so an
+// empty walk cannot pass the negative half of any of this.
+
+data compute_pool_roots: List<String> = ["dag/gunbc/compute"]
+data provider_module: String = "gunbc.compute.work_provider_local"
+data capture_route_fns: List<String> = [
+  "compute_spawn_and_collect",
+  "compute_return_outputs",
+  "compute_capture_exec_pairs",
+  "compute_return_outputs_over_readings",
+  "compute_output_capture_step"
+]
+
+fn reached_names_from(entry: String) -> List<String> {
+  let reach = call_reachable_decls_from_root(
+    entry_module: provider_module,
+    fn_name: entry,
+    terminal_callee_symbols: [],
+    closure_modules: [provider_module],
+    decls: fn_arrow_decl_facts_live(pool_roots: compute_pool_roots, pool_files: [])
+  )
+  list_map(xs: reach.reached, f: fn(d: FnArrowDecl) { d.qualified_name })
+}
+
+fn reached_contains(entry: String, fn_name: String) -> Bool {
+  any(xs: reached_names_from(entry: entry), predicate: fn(q: String) { q == concat(concat("gunbc.compute.work_provider_local.", "."), fn_name) })
+}
+
+// POSITIVE CONTROL FIRST: the walk reaches the deepest leaf from the route, so the rows below are
+// excluding a reachable thing from a non-empty walk, not passing over an empty answer.
+test fn the_capture_route_reaches_the_capture_step_through_production() -> Bool {
+  reached_contains(entry: "compute_spawn_and_collect", fn_name: "compute_output_capture_step")
+}
+
+// THE STEP IS PRODUCTION'S VERDICT: compute_return_outputs -- what every capture call site calls,
+// including compute_spawn_and_collect -- reaches the step. RED if production forks its own copy of
+// the decision instead of folding through the step.
+test fn production_reaches_the_same_capture_fold() -> Bool {
+  reached_contains(entry: "compute_return_outputs", fn_name: "compute_output_capture_step")
+}
+
+// THE ROUTE AND THE READING-BUILDER ARE ONE PATH: the capture route reaches the exec pair-builder,
+// and the pair-builder does NOT reach back into the verdict fold -- the split (executions here,
+// verdicts there) is what keeps the refusal controllable, and this row pins it in both directions.
+test fn the_capture_route_executes_the_pair_builder_which_never_decides_verdicts() -> Bool {
+  reached_contains(entry: "compute_spawn_and_collect", fn_name: "compute_capture_exec_pairs")
+    && (reached_contains(entry: "compute_capture_exec_pairs", fn_name: "compute_output_capture_step") == false)
+}
+
+// THE STEP DECIDES FOR THE FOLD: the fold reaches the step -- so no fold-side copy of the verdict
+// can hide from the controls above.
+test fn the_fold_asks_the_step_and_never_decides_itself() -> Bool {
+  reached_contains(entry: "compute_return_outputs_over_readings", fn_name: "compute_output_capture_step")
+}

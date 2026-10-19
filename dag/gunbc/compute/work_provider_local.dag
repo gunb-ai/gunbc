@@ -1011,25 +1011,112 @@ type OutputsReturn
   = OutputsReturned { outputs: List<WorkOutput> }
   | OutputsMismatch { detail: String }
 
-fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> OutputsReturn {
-  fold(declared, init: OutputsReturned { outputs: [] }, f: (acc, d) =>
+// THE ONE CAPTURE STEP, OVER READINGS. What the capture decides for one declared output is decided
+// HERE, and nowhere else: the two readings are the typed outcomes of the two executions the capture
+// performs -- `git hash-object` on the output, and the install that stages it -- and this step maps
+// them to the verdict. A declared output that is NOT THERE reaches the step as the reading
+// `git hash-object` actually gives when its argument cannot be opened: a non-zero exit with that
+// command's own stderr. THE REFUSAL IS FAIL-CLOSED AND NEVER SAYS "ABSENT" (DESIGN 5): a non-zero
+// hash-object means the output could not be hashed -- absent, unreadable, or not a workspace git can
+// read; the reading does not distinguish them -- so the detail carries the exit code and stderr the
+// execution reported and invents no cause. A reading that was never taken is likewise a refusal,
+// never a hole: nothing staged is nothing returned. A reading is data, so the refusal has an
+// executing control that supplies one; the executions themselves stay in the pair-building route
+// below, which remains the only producer of readings.
+type ComputeOutputCaptureReading
+  = CaptureReadingOk { stdout: String, stderr: String }
+  | CaptureReadingFailed { exit_code: Int, stdout: String, stderr: String }
+  | CaptureReadingNotRun
+
+// ONE DECLARED OUTPUT WITH THE READINGS ITS TWO EXECUTIONS PRODUCED.
+type ComputeOutputCapturePair {
+  declared: DeclaredOutput
+  hash: ComputeOutputCaptureReading
+  install: ComputeOutputCaptureReading
+}
+
+// ONE OUTPUT'S VERDICT, PURE: the capture's decision for one declared output, from its two
+// readings plus the outputs already returned. No execution, no path, no host.
+fn compute_output_capture_step(
+  declared: String,
+  returned: List<WorkOutput>,
+  hash: ComputeOutputCaptureReading,
+  install: ComputeOutputCaptureReading
+) -> OutputsReturn {
+  match hash {
+    CaptureReadingFailed { exit_code, stdout: _, stderr } =>
+      OutputsMismatch { detail: join(["declared output ", declared, " could not be hashed: git hash-object exited ", to_string(value: exit_code), ": ", stderr], "") }
+    CaptureReadingNotRun =>
+      OutputsMismatch { detail: join(["declared output ", declared, " was never hashed: git hash-object was not run"], "") }
+    CaptureReadingOk { stdout, stderr: _ } => match install {
+      CaptureReadingFailed { exit_code, stdout: _, stderr } =>
+        OutputsMismatch { detail: join(["declared output ", declared, " could not be stored: install exited ", to_string(value: exit_code), ": ", stderr], "") }
+      CaptureReadingNotRun =>
+        OutputsMismatch { detail: join(["declared output ", declared, " was never stored: install was not run"], "") }
+      CaptureReadingOk { stdout: _, stderr: _ } =>
+        OutputsReturned { outputs: concat(returned, [WorkOutput { declared: declared, blob: trim(s: stdout) }]) }
+    }
+  }
+}
+
+// THE CAPTURE FOLD, OVER READINGS ALREADY TAKEN: the verdict for a whole declared-output list, in
+// order, refusing at the first output whose readings refuse and adding nothing after it. This is
+// the only site the step is asked; production reaches it through compute_return_outputs.
+fn compute_return_outputs_over_readings(pairs: List<ComputeOutputCapturePair>) -> OutputsReturn {
+  fold(pairs, init: OutputsReturned { outputs: [] }, f: (acc, p) =>
     match acc {
       OutputsMismatch { detail } => OutputsMismatch { detail: detail }
-      OutputsReturned { outputs } => {
-        let rel = d.path
-        let src = join([match d.root { CheckoutRoot => layout.checkout  TargetRoot => layout.target_dir }, "/", rel], "")
-        let dst = compute_staged_path(layout: layout, declared: rel)
-        match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: layout.checkout, args: ["hash-object", src]) {
-          ComputeExecFailed { exit_code: _, stdout: _, stderr } => OutputsMismatch { detail: join(["declared output ", rel, " could not be hashed: ", stderr], "") }
-          ComputeExecOk { stdout, stderr: _ } =>
-            match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: layout.checkout, args: ["-m", "0755", src, dst]) {
-              ComputeExecFailed { exit_code: _, stdout: _, stderr } => OutputsMismatch { detail: join(["declared output ", rel, " could not be stored: ", stderr], "") }
-              ComputeExecOk { stdout: _, stderr: _ } =>
-                OutputsReturned { outputs: concat(outputs, [WorkOutput { declared: rel, blob: trim(s: stdout) }]) }
-            }
-        }
+      OutputsReturned { outputs } =>
+        compute_output_capture_step(declared: p.declared.path, returned: outputs, hash: p.hash, install: p.install)
+    })
+}
+
+// THE EXECUTIONS, IN ORDER, STOPPING AT THE FIRST READING THAT REFUSES: hash each declared output
+// with git in the workspace, and -- only once that succeeded -- install it into the staging path.
+// The count and order of executions are exactly what they were before the readings became data:
+// the install of an output is reached only after that output hashed successfully, and no output
+// after a refusal executes at all.
+type ComputeCapturePairBuild {
+  pairs: List<ComputeOutputCapturePair>
+  stopped: Bool
+}
+
+fn compute_capture_exec_pairs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> List<ComputeOutputCapturePair> {
+  let build = fold(declared, init: ComputeCapturePairBuild { pairs: [], stopped: false }, f: (b, d) =>
+    if b.stopped {
+      b
+    } else {
+      let rel = d.path
+      let src = join([match d.root { CheckoutRoot => layout.checkout  TargetRoot => layout.target_dir }, "/", rel], "")
+      let dst = compute_staged_path(layout: layout, declared: rel)
+      match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: layout.checkout, args: ["hash-object", src]) {
+        ComputeExecFailed { exit_code, stdout, stderr } =>
+          ComputeCapturePairBuild {
+            pairs: concat(b.pairs, [ComputeOutputCapturePair { declared: d, hash: CaptureReadingFailed { exit_code: exit_code, stdout: stdout, stderr: stderr }, install: CaptureReadingNotRun }]),
+            stopped: true
+          }
+        ComputeExecOk { stdout, stderr } =>
+          match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: layout.checkout, args: ["-m", "0755", src, dst]) {
+            ComputeExecFailed { exit_code, stdout: install_stdout, stderr: install_stderr } =>
+              ComputeCapturePairBuild {
+                pairs: concat(b.pairs, [ComputeOutputCapturePair { declared: d, hash: CaptureReadingOk { stdout: stdout, stderr: stderr }, install: CaptureReadingFailed { exit_code: exit_code, stdout: install_stdout, stderr: install_stderr } }]),
+                stopped: true
+              }
+            ComputeExecOk { stdout: install_stdout, stderr: install_stderr } =>
+              ComputeCapturePairBuild {
+                pairs: concat(b.pairs, [ComputeOutputCapturePair { declared: d, hash: CaptureReadingOk { stdout: stdout, stderr: stderr }, install: CaptureReadingOk { stdout: install_stdout, stderr: install_stderr } }]),
+                stopped: false
+              }
+          }
       }
     })
+  build.pairs
+}
+
+// THE CAPTURE ROUTE: execute the pairs, then ask the one fold for the verdict. An absent or
+// unreadable output is a mismatch, never a success with a hole.
+fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> OutputsReturn {
+  compute_return_outputs_over_readings(pairs: compute_capture_exec_pairs(instance: instance, layout: layout, declared: declared))
 }
 
 // THE STAGING DIRECTORY sits beside the store root, so a staged file and the root share a filesystem
