@@ -143,6 +143,25 @@ def main():
             sys.exit("FATAL: the fresh id must be call-site keyed")
         if out.index("let fresh_call_variables") > stmt_at:
             sys.exit("FATAL: the seed must precede the statement that consumes it")
+    else:
+        # THE MUTATIONS NEED THEIR OWN LANDING CHECK. Without one a mutation that silently no-ops is
+        # measured as a result: `grep type_variable_node(id: g)` is ALREADY true on an unmutated tree,
+        # because that exact text exists in the pre-existing unbound_owner_param_variables fold. So
+        # count occurrences -- 2 means the call-site fold also mints by the callee's declared
+        # parameter name, which is what the name-keyed mutant must mean.
+        if MUTATE == "name-keyed":
+            if out.count("map_insert(acc, g, type_variable_node(id: g))") != 2:
+                sys.exit("FATAL: name-keyed mutation did not land at the call site (found %d "
+                         "occurrences of the name-keyed insert, need 2: the pre-existing fold plus "
+                         "the call site)" % out.count("map_insert(acc, g, type_variable_node(id: g))"))
+            if 'type_variable_node(id: concat(g, "@", span.file' in out:
+                sys.exit("FATAL: the shipped span-keyed id survived the name-keyed mutation")
+        elif MUTATE == "withdrawn":
+            if "let fresh_call_variables = empty_map()" not in out:
+                sys.exit("FATAL: withdrawn mutation did not land")
+            if "type_variable_node(id: concat" in out:
+                sys.exit("FATAL: withdrawn mutation left minted variables behind")
+        print("MUTATION VERIFIED: %s landed at the call site, shipped expression gone" % MUTATE)
 
     delta = len(out.split("\n")) - len(src.split("\n"))
     open(PATH, "w", encoding="utf-8").write(out)

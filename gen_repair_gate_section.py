@@ -13,7 +13,7 @@ inputs (written by earlier runs, paths fixed there):
   /tmp/gate_both_dispatch.log     the both-sides gate run (PINNED, build rc, mirror seeds, emitted)
   /tmp/rows_*_dispatch.log        per-row verdicts (ROW <label> <name> PASS|FAIL rc= elapsed=)
 """
-import json, os, re, sys, glob
+import json, os, re, sys, glob, subprocess
 
 CLOSURES = ["self-host", "v2-native-cli"]
 
@@ -29,8 +29,11 @@ def strip_ansi(s):
     return re.sub(r"\x1b\[[0-9;]*m", "", s)
 
 
-def gate_stamps():
-    p = need("/tmp/gate_both_dispatch.log", "both-sides gate dispatch log")
+# WHAT COUNTS AS A GATE LOG: any dispatch log whose lines were written by a gate script -- the
+# stamp format is the contract, not the filename. Point it at the newest run that measured the head
+# the section is about; the pinned SHAs it prints are what tie the numbers to a head.
+def gate_stamps(log_path="/tmp/gate_both_dispatch.log"):
+    p = need(log_path, "both-sides gate dispatch log")
     txt = strip_ansi(open(p, errors="replace").read())
     out = {}
     for line in txt.splitlines():
@@ -54,17 +57,71 @@ def gate_stamps():
     return out
 
 
+REPO_DIR = os.environ.get("GENTLE_CARP_REPO", os.path.dirname(os.path.abspath(__file__)))
+
+
+def tree_tag(sha):
+    """Describe the tree a run measured, from the tree's own bytes -- not from my run label.
+
+    Labels are mine and one was reused for a tree whose repair had been reverted, so a label-driven
+    description can misstate which compiler a PASS came from. The two greps below are the whole
+    classification: `fresh_call_variables` absent means the repair is not in this compiler at all;
+    a second hit for `type_variable_node(id: g)` means the call-site fold mints by the callee's
+    declared parameter name -- the name-keyed defect the freshness row exists to catch. Anything
+    else is the shipped repair. None of this can be right when the SHA is absent, so it says so.
+    """
+    if not sha:
+        return "tree UNNAMED (no MEASURED_AT in that run's log -- do not read its verdict as being about a specific tree)"
+
+    def grep(pattern):
+        try:
+            out = subprocess.run(["git", "-C", REPO_DIR, "show", f"{sha}:src/v1/04_infer.dag"],
+                                 capture_output=True, text=True, timeout=60)
+            if out.returncode != 0:
+                return None
+            return out.stdout.count(pattern)
+        except Exception:
+            return None
+
+    repair = grep("fresh_call_variables")
+    namekeyed = grep("type_variable_node(id: g)")
+    if repair is None or namekeyed is None:
+        return f"`{sha[:11]}` (tree not readable locally -- description unavailable)"
+    if repair == 0:
+        return f"`{sha[:11]}` **pre-repair** (the call arm does not instantiate)"
+    if namekeyed >= 2:
+        return f"`{sha[:11]}` **name-keyed MUTANT** (mints by the callee's parameter name)"
+    return f"`{sha[:11]}` shipped repair"
+
+
 def row_verdicts():
+    """Every ROW line from every rows dispatch log, keyed by (label, row name).
+
+    Each record also carries the SHA that run measured (`MEASURED_AT`, printed by the script after
+    the fresh clone checks it out). The SHA, not the label, is what identifies the tree: labels are
+    my own run names and one of them (`rows_repair`) was reused for a tree whose repair had been
+    reverted, so a label-driven description can misstate which tree a PASS came from -- and one row
+    (`minted_variables_are_fresh_per_call_site`) is the evidence that discriminates, so getting its
+    tree wrong is not cosmetic.
+    """
     rows = {}
     for p in sorted(glob.glob("/tmp/rows_*_dispatch.log")):
-        for line in strip_ansi(open(p, errors="replace").read()).splitlines():
+        txt = strip_ansi(open(p, errors="replace").read())
+        measured = re.findall(r"MEASURED_AT ([0-9a-f]{40})", txt)
+        # A log may measure several trees in one dispatch (the A/B runs do). Pair each ROW line with
+        # the MEASURED_AT that precedes it, which is the tree the row actually ran against.
+        marks = [(m.start(), m.group(1)) for m in re.finditer(r"MEASURED_AT ([0-9a-f]{40})", txt)]
+        for line in txt.splitlines():
             m = re.match(r"ROW (\S+) (\S+) (PASS|FAIL|TIMEOUT_FATAL|MISSING_FATAL|NO_SUMMARY) rc=(\d+)(?: after (\d+)s)?(?: elapsed=(\d+)s)?", line)
             if m:
                 name, verdict = m.group(2), m.group(3)
+                pos = txt.find(line)
+                sha = None
+                for start, cand in marks:
+                    if start <= pos:
+                        sha = cand
                 rec = dict(verdict=verdict, rc=m.group(4), elapsed=m.group(6), label=m.group(1),
-                           src=os.path.basename(p))
-                # Keep the worst/latest evidence per row name; a row measured at two heads is
-                # reported per head below, so key on (label, name).
+                           src=os.path.basename(p), sha=sha)
                 rows[(m.group(1), name)] = rec
     if not rows:
         print("FATAL: no ROW verdict lines in any /tmp/rows_*_dispatch.log -- nothing to report")
@@ -137,9 +194,17 @@ def main():
             if not inside:
                 continue
             s_ = s_[len("ROWS='"):]        # the first row is on the opening line itself
-        if s_.startswith("'"):
+        # TERMINATION: the closing quote sits at the END of the last row line, so a
+        # startswith("'") test never fires and the loop swallows the whole script -- every stamp/
+        # timeout line then reads as a "row name". A row name is [a-z_0-9]+; anything else ends it.
+        if s_.endswith("'"):
+            s_ = s_[:-1]
+            if s_:
+                real.add(s_)
             break
-        real.add(s_.strip().strip("'").strip())
+        if not re.fullmatch(r"[a-z_0-9]+", s_):
+            break
+        real.add(s_)
     if not real:
         print("FATAL: no ROWS literal parsed from " + script + " -- refusing to filter verdicts")
         sys.exit(1)
