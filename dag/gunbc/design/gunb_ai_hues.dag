@@ -5,7 +5,7 @@ import std.optional { Optional, Absent, Present }
 import extdeps.color.srgb { Srgb8, hsl_to_srgb8 }
 import std.error_primitives { pure_dag_seam_unreachable }
 import extdeps.languages.css.values {
-  CssHsl, CssColorComponent, ComponentVar, ComponentPercent, CssVarRef, CssDecimal,
+  CssHsl, CssColorComponent, ComponentVar, ComponentPercent, CssVarRef,
 }
 import gunbc.design.palette {
   Swatch, SwatchSet, SwatchSetProvenance, SwatchMember,
@@ -120,7 +120,7 @@ type LiveColorToken {
   hue: HueDegrees
   saturation: LivePercent
   lightness: LivePercent
-  alpha: Optional<CssDecimal>
+  alpha_milli: Optional<Int>
 }
 
 data live_hue_warm: HueDegrees = HueDegrees { name: "hue-warm", degrees: 37 }
@@ -131,25 +131,25 @@ data live_hue_brass: HueDegrees = HueDegrees { name: "hue-brass", degrees: 43 }
 data live_accent_saturation: PercentParameter = PercentParameter { name: "accent-sat", percent: 36 }
 data live_accent_lightness: PercentParameter = PercentParameter { name: "accent-l", percent: 48 }
 
-data live_token_moss: LiveColorToken = LiveColorToken { name: "moss", hue: live_hue_moss, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha: Absent }
-data live_token_moss_dim: LiveColorToken = LiveColorToken { name: "moss-dim", hue: live_hue_moss, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentLiteral { n: 36 }, alpha: Absent }
-data live_token_moss_subtle: LiveColorToken = LiveColorToken { name: "moss-subtle", hue: live_hue_moss, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha: Present { value: CssDecimal { milli: 140 } } }
-data live_token_clay: LiveColorToken = LiveColorToken { name: "clay", hue: live_hue_clay, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha: Absent }
-data live_token_clay_dim: LiveColorToken = LiveColorToken { name: "clay-dim", hue: live_hue_clay, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentLiteral { n: 36 }, alpha: Absent }
-data live_token_clay_subtle: LiveColorToken = LiveColorToken { name: "clay-subtle", hue: live_hue_clay, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha: Present { value: CssDecimal { milli: 140 } } }
-data live_token_brass: LiveColorToken = LiveColorToken { name: "brass", hue: live_hue_brass, saturation: PercentLiteral { n: 34 }, lightness: PercentLiteral { n: 54 }, alpha: Absent }
-data live_token_brass_dim: LiveColorToken = LiveColorToken { name: "brass-dim", hue: live_hue_brass, saturation: PercentLiteral { n: 28 }, lightness: PercentLiteral { n: 40 }, alpha: Absent }
-data live_token_brass_subtle: LiveColorToken = LiveColorToken { name: "brass-subtle", hue: live_hue_brass, saturation: PercentLiteral { n: 34 }, lightness: PercentLiteral { n: 54 }, alpha: Present { value: CssDecimal { milli: 130 } } }
-data live_token_void: LiveColorToken = LiveColorToken { name: "void", hue: live_hue_warm, saturation: PercentLiteral { n: 0 }, lightness: PercentLiteral { n: 5 }, alpha: Absent }
-data live_token_void_up: LiveColorToken = LiveColorToken { name: "void-up", hue: live_hue_warm, saturation: PercentLiteral { n: 3 }, lightness: PercentLiteral { n: 8 }, alpha: Absent }
-data live_token_void_up2: LiveColorToken = LiveColorToken { name: "void-up2", hue: live_hue_warm, saturation: PercentLiteral { n: 4 }, lightness: PercentLiteral { n: 11 }, alpha: Absent }
-data live_token_stone: LiveColorToken = LiveColorToken { name: "stone", hue: live_hue_warm, saturation: PercentLiteral { n: 20 }, lightness: PercentLiteral { n: 76 }, alpha: Absent }
-data live_token_stone_dim: LiveColorToken = LiveColorToken { name: "stone-dim", hue: live_hue_warm, saturation: PercentLiteral { n: 12 }, lightness: PercentLiteral { n: 55 }, alpha: Absent }
-data live_token_stone_faint: LiveColorToken = LiveColorToken { name: "stone-faint", hue: live_hue_warm, saturation: PercentLiteral { n: 10 }, lightness: PercentLiteral { n: 38 }, alpha: Absent }
-data live_token_warm_white: LiveColorToken = LiveColorToken { name: "warm-white", hue: live_hue_warm, saturation: PercentLiteral { n: 27 }, lightness: PercentLiteral { n: 94 }, alpha: Absent }
-data live_token_warm_white_dim: LiveColorToken = LiveColorToken { name: "warm-white-dim", hue: live_hue_warm, saturation: PercentLiteral { n: 18 }, lightness: PercentLiteral { n: 87 }, alpha: Absent }
-data live_token_border_dark: LiveColorToken = LiveColorToken { name: "border-dark", hue: live_hue_warm, saturation: PercentLiteral { n: 20 }, lightness: PercentLiteral { n: 76 }, alpha: Present { value: CssDecimal { milli: 80 } } }
-data live_token_border_dark_strong: LiveColorToken = LiveColorToken { name: "border-dark-strong", hue: live_hue_warm, saturation: PercentLiteral { n: 20 }, lightness: PercentLiteral { n: 76 }, alpha: Present { value: CssDecimal { milli: 160 } } }
+data live_token_moss: LiveColorToken = LiveColorToken { name: "moss", hue: live_hue_moss, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha_milli: Absent }
+data live_token_moss_dim: LiveColorToken = LiveColorToken { name: "moss-dim", hue: live_hue_moss, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentLiteral { n: 36 }, alpha_milli: Absent }
+data live_token_moss_subtle: LiveColorToken = LiveColorToken { name: "moss-subtle", hue: live_hue_moss, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha_milli: Present { value: 140 } }
+data live_token_clay: LiveColorToken = LiveColorToken { name: "clay", hue: live_hue_clay, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha_milli: Absent }
+data live_token_clay_dim: LiveColorToken = LiveColorToken { name: "clay-dim", hue: live_hue_clay, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentLiteral { n: 36 }, alpha_milli: Absent }
+data live_token_clay_subtle: LiveColorToken = LiveColorToken { name: "clay-subtle", hue: live_hue_clay, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha_milli: Present { value: 140 } }
+data live_token_brass: LiveColorToken = LiveColorToken { name: "brass", hue: live_hue_brass, saturation: PercentLiteral { n: 34 }, lightness: PercentLiteral { n: 54 }, alpha_milli: Absent }
+data live_token_brass_dim: LiveColorToken = LiveColorToken { name: "brass-dim", hue: live_hue_brass, saturation: PercentLiteral { n: 28 }, lightness: PercentLiteral { n: 40 }, alpha_milli: Absent }
+data live_token_brass_subtle: LiveColorToken = LiveColorToken { name: "brass-subtle", hue: live_hue_brass, saturation: PercentLiteral { n: 34 }, lightness: PercentLiteral { n: 54 }, alpha_milli: Present { value: 130 } }
+data live_token_void: LiveColorToken = LiveColorToken { name: "void", hue: live_hue_warm, saturation: PercentLiteral { n: 0 }, lightness: PercentLiteral { n: 5 }, alpha_milli: Absent }
+data live_token_void_up: LiveColorToken = LiveColorToken { name: "void-up", hue: live_hue_warm, saturation: PercentLiteral { n: 3 }, lightness: PercentLiteral { n: 8 }, alpha_milli: Absent }
+data live_token_void_up2: LiveColorToken = LiveColorToken { name: "void-up2", hue: live_hue_warm, saturation: PercentLiteral { n: 4 }, lightness: PercentLiteral { n: 11 }, alpha_milli: Absent }
+data live_token_stone: LiveColorToken = LiveColorToken { name: "stone", hue: live_hue_warm, saturation: PercentLiteral { n: 20 }, lightness: PercentLiteral { n: 76 }, alpha_milli: Absent }
+data live_token_stone_dim: LiveColorToken = LiveColorToken { name: "stone-dim", hue: live_hue_warm, saturation: PercentLiteral { n: 12 }, lightness: PercentLiteral { n: 55 }, alpha_milli: Absent }
+data live_token_stone_faint: LiveColorToken = LiveColorToken { name: "stone-faint", hue: live_hue_warm, saturation: PercentLiteral { n: 10 }, lightness: PercentLiteral { n: 38 }, alpha_milli: Absent }
+data live_token_warm_white: LiveColorToken = LiveColorToken { name: "warm-white", hue: live_hue_warm, saturation: PercentLiteral { n: 27 }, lightness: PercentLiteral { n: 94 }, alpha_milli: Absent }
+data live_token_warm_white_dim: LiveColorToken = LiveColorToken { name: "warm-white-dim", hue: live_hue_warm, saturation: PercentLiteral { n: 18 }, lightness: PercentLiteral { n: 87 }, alpha_milli: Absent }
+data live_token_border_dark: LiveColorToken = LiveColorToken { name: "border-dark", hue: live_hue_warm, saturation: PercentLiteral { n: 20 }, lightness: PercentLiteral { n: 76 }, alpha_milli: Present { value: 80 } }
+data live_token_border_dark_strong: LiveColorToken = LiveColorToken { name: "border-dark-strong", hue: live_hue_warm, saturation: PercentLiteral { n: 20 }, lightness: PercentLiteral { n: 76 }, alpha_milli: Present { value: 160 } }
 
 data live_color_tokens: List<LiveColorToken> = [live_token_moss, live_token_moss_dim, live_token_moss_subtle, live_token_clay, live_token_clay_dim, live_token_clay_subtle, live_token_brass, live_token_brass_dim, live_token_brass_subtle, live_token_void, live_token_void_up, live_token_void_up2, live_token_stone, live_token_stone_dim, live_token_stone_faint, live_token_warm_white, live_token_warm_white_dim, live_token_border_dark, live_token_border_dark_strong]
 
@@ -172,7 +172,7 @@ fn live_token_css(t: LiveColorToken) -> CssHsl {
     hue: ComponentVar { reference: CssVarRef { name: t.hue.name } },
     saturation: live_percent_component(p: t.saturation),
     lightness: live_percent_component(p: t.lightness),
-    alpha: t.alpha,
+    alpha_milli: t.alpha_milli,
   }
 }
 
