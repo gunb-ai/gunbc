@@ -18,6 +18,7 @@ export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=0 CARGO_INCREMENTAL
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/root/gunbc_target_14152}"
 mkdir -p "$CARGO_TARGET_DIR"
 CARGO_TIMEOUT="${CARGO_TIMEOUT:-1500}"
+ROW_TIMEOUT="${ROW_TIMEOUT:-420}"
 
 ROWS='collision_two_zero_arg_generic_calls_both_type
 collision_pair_still_refuses_when_instantiated_twice
@@ -58,17 +59,32 @@ if [ "$SYN_RC" != 0 ]; then
   exit 3
 fi
 
-stamp "rows begin"
-timeout -k 30 "$CARGO_TIMEOUT" cargo test -j "$(nproc)" -p v1-compiler-tests --lib cross_coproduct -- --nocapture >"$LOG" 2>&1
-rc=$?
-stamp "rows done rc=$rc (124 = my own bound fired, not the runner's)"
-
-for r in $ROWS; do
-  if   grep -qE "^test .*${r} \.\.\. ok$"     "$LOG"; then echo "ROW $LABEL $r PASS"
-  elif grep -qE "^test .*${r} \.\.\. FAILED$" "$LOG"; then echo "ROW $LABEL $r FAIL"
-  else echo "ROW $LABEL $r MISSING_FATAL"; fi
+# WHY ONE INVOCATION PER ROW, BOUNDED SEPARATELY. This crate pins RUST_TEST_THREADS=1
+# (.cargo/config.toml:17) and EVERY row calls compile_to_resolved, which compiles the whole
+# std corpus: ~2 minutes per row, so the 35-row crate filter cannot fit one dispatch -- the
+# first attempt burned its whole bound and never returned a verdict on the rows after the
+# third. One --exact invocation per row, each on its own timeout, so a slow or hung row
+# costs its own budget and the other rows still answer. Extra positional args select a
+# SUBSET, which is how the 9 rows are split across two dispatches. Positional args survive
+# ctrl-build's arg join; env-prefix args do not (they become the -c command).
+MOD=cross_coproduct_generic_locate_test::
+SELECT=("$@")
+if [ "${#SELECT[@]}" -eq 0 ]; then SELECT=($ROWS); fi
+: > "$LOG"
+stamp "rows begin (${#SELECT[@]} rows, per-row bound ${ROW_TIMEOUT}s)"
+for r in "${SELECT[@]}"; do
+  [ -n "${SEED_DELAY:-}" ] && sleep "$SEED_DELAY"
+  rowlog="$D/row.$r.log"
+  timeout -k 15 "${ROW_TIMEOUT}" cargo test -p v1-compiler-tests --lib cross_coproduct \
+    -- --exact "${MOD}${r}" --nocapture --test-threads=1 >"$rowlog" 2>&1
+  rrc=$?
+  cat "$rowlog" >> "$LOG"
+  if   grep -qE "^test .*${r} \.\.\. ok$"     "$rowlog"; then echo "ROW $LABEL $r PASS rc=$rrc"
+  elif grep -qE "^test .*${r} \.\.\. FAILED$" "$rowlog"; then echo "ROW $LABEL $r FAIL rc=$rrc"
+  elif [ "$rrc" = 124 ]; then echo "ROW $LABEL $r TIMEOUT_FATAL rc=124 after ${ROW_TIMEOUT}s"
+  else echo "ROW $LABEL $r MISSING_FATAL rc=$rrc"; fi
 done
-grep -E "^test result:" "$LOG" | tail -1 | sed "s/^/SUMMARY $LABEL /"
+grep -E "^test result:" "$LOG" | sed "s/^/SUMMARY $LABEL /"
 grep -E "^error(\[|:)" "$LOG" | head -8 | sed 's/^/COMPILE_ERROR /'
 
 # A FAILING row's message is the measurement (the collision row's expected pre-repair
