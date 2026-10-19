@@ -1,0 +1,479 @@
+module test.claim.diagnostic_span_location_rendering_witness
+
+// ONE AUTHORITY FOR A REFUSAL'S LOCATION, AND THE EOF SPAN THAT FEEDS IT.
+//
+// WHY THIS IS A CLAIM AND NOT A RUST TEST. Rust tests do not run on pull requests (rung_drop
+// `rust_unit_tests_off_pull_requests`), so a `.rs` assertion here would be evidence that nothing
+// executes. Every row below is executed by `claim_batch` against the REAL built binary:
+//
+//   ./target/release/claim_batch --wet \
+//     --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --entry dag/test/claim/diagnostic_span_location_rendering_witness.dag \
+//     --functions <the row names, comma-separated>
+//
+// WHAT IS WRONG, MEASURED. Every number below was printed by the instrument named under it, at
+// origin/main 600f8d6a19c220d4d8415c8ea7083f27c40a4b09, from the SAME fixture bytes this claim
+// writes (bytes and sha256 are printed by the measuring run next to each line, so a reader can
+// re-derive any of them; none of these strings was typed from memory):
+//
+//   `gunbc compile` on eof_after_comment_source (90 bytes, sha 09ad825f57dc5934):
+//     target/…/m.dag:90-90: heads-only parse: unterminated function body
+//   `gunbc compile` on eof_plain_source (64 bytes, sha 6d0d002b461d8330):
+//     target/…/m.dag:64-64: heads-only parse: unterminated function body
+//   `gunbc compile` on arity_control_source (141 bytes, sha c6c7bf1019ef6f7e) -- ONE diagnostic,
+//   rendered TWICE in different units by two producers:
+//     …produced 1 hard diagnostic(s):
+//     call shape mismatch calling 'f': too many positional arguments: 2 supplied, 1 positional
+//       parameter(s) declared (target/…/m.dag:133-134)
+//     error[target/…/m.dag:9:5]: call shape mismatch calling 'f': too many positional arguments…
+//        |
+//      9 |     2
+//        |     ^
+//   the parse sweep (`v1_src_dag_parse`, the instrument its own header recommends for an
+//   unattributed parse refusal) over a workspace holding one comments-only file:
+//     v1_src_dag_parse: …/dag/no_lexemes.dag:3:1: expected keyword 'module', found Eof
+//
+// THE UNITS ARE THE DEFECT. The offsets above are the file's own byte positions, and they are
+// where a reader is sent: 90 is line 7 column 19 -- one column past the last character of
+// `  // trailing note`, the comment that is the last thing in the file, while the last lexeme is
+// the `}` on line 6. 64 is line 7 column 1, past the final newline, a line with no bytes in it.
+// And the same diagnostic reaches the author as `133-134` from one producer and `9:5` from the
+// other: 133 IS line 9 column 5, so the two agree in fact and disagree in units, which is what an
+// author reads as the compiler not knowing where it is. A location that cannot be reproduced in
+// the editor is not a location, so the refusal is unlocated however many digits it carries.
+//
+// THE ROOT, ONE LEVEL ABOVE ANY CALL SITE (DESIGN 6b: fix the class, not the case). There is no
+// authority: each producer formats a location itself, and the EOF token arrives with a span that
+// was never a lexeme's. Both are fixed here, and the rows below are the deletion test for the
+// second -- if the seed grew a second formatter, the rows that read the CLI's line and the lane's
+// line would diverge again.
+//
+// NOT IN SCOPE, DELIBERATELY: five sites render `{file}:{start}-{end}` as an IDENTITY KEY (a
+// cache/dedup key that is never shown to an author) -- dag/gunbc/dag_collect.dag:64,
+// src/v1/05_emit_rust.dag:14725, src/v1/05_emit_rust.dag:18118, src/v1/ownership.dag:597. A key
+// is not a location, and changing one would churn a cache key for no author-facing gain. They are
+// named in the PR rather than quietly left alone. src/v1/05_emit_rust.dag:709 is NOT one of them:
+// it interpolates `to_string(n.span.start)` into `compile_error!` TEXT a human reads, so it is
+// reader-facing and is in scope.
+// ---------------------------------------------------------------------------------------------
+
+import std.logic { Bool }
+import std.types { Int, String, List, FilePath }
+import std.shell_stream_capture { WitnessStderrCapturePolicy, BoundedTail }
+import std.measure { byte_size }
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+data claim_subject: String = "a refusal's location is rendered by one authority in the units the author reads (line:col), and the EOF span ends at the last lexeme rather than at the consumed position"
+
+data real_execution_home_doc: String = "LocalRepoWetLane: every row runs the checkout's own built binary (target/release/gunbc, target/release/v1_src_dag_parse) over fixtures this claim WRITES at run time under the gitignored target/, and the text a row asserts on exists only on that process's output stream. No job runs it; it is covered by v1_required_lanes_withdrawn."
+
+// ---------------------------------------------------------------------------------------------
+// THE FIXTURES. Each is the smallest file that refuses for exactly ONE reason, so a row cannot
+// pass by reading some other refusal's location. `//` appears only where a row's whole point is
+// the comment. These four literals are the bytes that were measured: 90/64/141/40 with the sha256
+// prefixes cited in the header, and each row also writes only its own file.
+// ---------------------------------------------------------------------------------------------
+
+// THE RED'S FILE, and it is the class in one line: a comment is the last thing in the file.
+// Line 7 is `  // trailing note`, occupying bytes 72..89; the LAST LEXEME is the `}` on line 6,
+// at offset 70 (its end is 71, which is line 6 column 4). The scanner's stop position is 90.
+data eof_after_comment_source: String = "module probe.eof.after.comment\n\nfn bad() -> Int {\n  if true {\n    1\n  }\n  // trailing note"
+
+// THE DISCRIMINATOR FOR ROW 1'S CAUSE. Identical minus the comment: if the comment were not the
+// cause, this file would be located as accurately as that one.
+data eof_plain_source: String = "module probe.eof.plain\n\nfn bad() -> Int {\n  if true {\n    1\n  }\n"
+
+// THE POSITIVE CONTROL'S FILE, and the two-units witness: one diagnostic, rendered `133-134` by
+// the compile lane and `9:5` by the emitted CLI. The comment sits INSIDE the call, so the
+// straddled span is not a newline artifact either.
+data arity_control_source: String = "module probe.arity.control\n\nfn f(x: Int) -> Int { x }\n\nfn bad() -> Int {\n  f(\n    1,\n    // a whole comment line inside the call\n    2\n  )\n}\n"
+
+// THE NO-LEXEMES FILE: nothing but trivia, so there is no lexeme to end a span at. Measured: the
+// sweep sends the author to `no_lexemes.dag:3:1`, a line this file does not have (it is 2 lines
+// plus a trailing newline), and `gunbc compile` never parses it at all -- closure-load refuses it
+// with 'has no provenance in the module-graph facts pool … missing a module declaration'.
+data comments_only_source: String = "// nothing but a comment\n// and another\n"
+
+// A valid module, written beside the no-lexemes file in the sweep's workspace. THE INSTRUMENT'S
+// OWN CONTROL: its header warns 'a bin that read no files would report the same thing', so a
+// clean-reporting sweep is only evidence if a real file is reported clean while the bad one is
+// still refused.
+// One per sweep root, each with its OWN module identity: four files declaring the same module is a
+// duplicate-identity refusal, which would make the clean sweep dirty for a reason that has nothing
+// to do with what row 6 is measuring.
+data valid_dag_module_source: String = "module scratch.clean.dag.module\n\nfn ok() -> Int { 1 }\n"
+data valid_v1_module_source: String = "module scratch.clean.v1.module\n\nfn ok() -> Int { 1 }\n"
+data valid_v2_module_source: String = "module scratch.clean.v2.module\n\nfn ok() -> Int { 1 }\n"
+data valid_body_module_source: String = "module scratch.clean.body.module\n\nfn ok() -> Int { 1 }\n"
+
+// THE AUTHORITY'S WORD for "this refusal has no position", asserted as a literal so the no-lexemes
+// row is a POSITIVE assertion and not the absence of a shape. It is the string the authority's
+// unlocated arm prints -- `data unlocated_position_phrase` in src/v1/00_core.dag, giving e.g.
+// `no_lexemes.dag: (no position: file has no lexemes)`. Repeated here rather than imported because
+// the claim runs under claim_batch, which resolves the v1 seed but does not import it; a rename in
+// the authority renames here too, and row 4 then fails -- that is the check that the two agree.
+// It carries no digit-after-colon run, so it is not a location by the predicate below either.
+data unlocated_marker: String = "(no position:"
+
+// The digits and separators an AUTHORITY-FORMAT position must contain, so "a position" is decided
+// structurally rather than by the specific numbers in the header: `m.dag:9:5` qualifies,
+// `m.dag:90-90` and `m.dag:0-0` do not.
+data digits: List<String> = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+// The exact offset strings the head printed, kept as literals so a row can refuse them by name and
+// a reader can see which shapes the head produced. This is a census of what was observed, not the
+// predicate: the predicate is the structural one below.
+data observed_offset_shapes: List<String> = ["m.dag:90-90", "m.dag:64-64", "m.dag:133-134", "m.dag:0-0"]
+
+// ---------------------------------------------------------------------------------------------
+// THE HARNESS. Each row CREATES its fixtures at run time from the literals above and deletes them
+// afterwards, so nothing refusing is committed and no reader has to reproduce a file that exists
+// only in someone's /tmp. The fixture goes under the CHECKOUT's gitignored `target/`, not `/tmp`:
+// `gunbc compile` fail-closes on the entry when it is outside the workspace root
+// (src/v1/stage0/src/cli_run.rs:7228 and :7303 -- 'a fixture written elsewhere, such as /tmp,
+// cannot be keyed into the module graph'), measured at the head with exit=1 and that cause.
+// `target/` is inside the workspace root and gitignored (.gitignore:10), the placement the host's
+// own fixtures use (src/v1/stage0/src/cli_run.rs:26356), so a deliberately-refusing file is
+// neither version-controlled nor visible to any corpus lane. The binaries are the checkout's own,
+// resolved as the real lanes resolve them (git toplevel + target/release/...), so every row
+// reaches the same driver and nothing reads an env var for it.
+// ---------------------------------------------------------------------------------------------
+
+// A root that could not be created is deliberately NOT under the root above, so a row reads it as
+// a failure rather than as a vacuous truth from a compile that never ran on the intended file.
+data unavailable_scratch_root: String = "/p/a/t/h/that/cannot/exist/gunbc-diagnostic-span-location"
+
+fn scratch_is_usable(root: String) -> Bool {
+  root != unavailable_scratch_root
+}
+
+fn scratch_root() -> String {
+  let toplevel = git.Inspect.Toplevel()
+  let made = shell.Mktemp.DirWithTemplate(
+    template: concat(toplevel.path as String, "/target/gunbc-diagnostic-span-XXXXXX") as FilePath
+  )
+  if made.success { made.path as String } else { unavailable_scratch_root }
+}
+
+fn discard_scratch(root: String) -> Bool {
+  shell.Remove.RecursiveForce(path: root as FilePath).success
+}
+
+fn case_dir(root: String, name: String) -> String {
+  concat(root, concat("/", name))
+}
+
+// Writes one fixture and returns its path. `mkdir -p` first, because Filesystem.Write does not
+// create parents.
+fn write_fixture(root: String, name: String, file: String, content: String) -> String {
+  let dir = case_dir(root: root, name: name)
+  let made = shell.Mkdir.Parents(path: dir as FilePath)
+  let path = concat(dir, concat("/", file))
+  let written = Filesystem.Write(path: path, content: content)
+  if made.success && written.success { path } else { concat(dir, "/WRITE-FAILED") }
+}
+
+// Drops the progress chatter the CLI writes (`◐ started …`, `✓ … done`, `resolved N sources`,
+// `compiled: …`) so a row can only read a refusal or a location, never a status line that happens
+// to name the file. Declared, not inline: a lambda's parameters are bare name leaves with no type
+// slot, so an annotated lambda in a `let` is a parse error.
+fn drops_progress_chatter(l: String) -> Bool {
+  !starts_with(s: l, prefix: "◐") && !starts_with(s: l, prefix: "✓")
+    && !starts_with(s: l, prefix: "resolved ") && !starts_with(s: l, prefix: "compiled:")
+}
+
+fn refusal_lines(result: WitnessOutcome) -> List<String> {
+  let out = join(filter(split(s: result.stdout, delimiter: "\n"), drops_progress_chatter), separator: "\n")
+  let err = join(filter(split(s: result.stderr, delimiter: "\n"), drops_progress_chatter), separator: "\n")
+  split(s: concat(out, concat("\n", err)), delimiter: "\n")
+}
+
+fn refusal_text(result: WitnessOutcome) -> String {
+  join(refusal_lines(result: result), separator: "\n")
+}
+
+// A position in THE AUTHORITY'S UNITS: the file name, then a digit run, then a separator, against
+// any digit. `m.dag:9:5` qualifies; `m.dag:90-90`, `m.dag:0-0` and `m.dag:75-75` do not, because
+// nothing after the digits is a separator -- an offset run is not a position.
+fn names_a_position(text: String, file: String) -> Bool {
+  let lead = concat(file, ":")
+  any(digits, d => contains(text, concat(concat(lead, d), ":")))
+}
+
+fn shows_an_offset_run(text: String, file: String) -> Bool {
+  let lead = concat(file, ":")
+  any(digits, d => contains(text, concat(concat(lead, d), "-")))
+}
+
+fn shows_a_named_offset_shape(text: String) -> Bool {
+  any(observed_offset_shapes, shape => contains(text, shape))
+}
+
+fn has_line_starting(lines: List<String>, prefix: String) -> Bool {
+  any(lines, l => starts_with(s: l, prefix: prefix))
+}
+
+fn any_line_with(lines: List<String>, needle: String) -> Bool {
+  any(lines, l => contains(l, needle))
+}
+
+// The compile lane's own line for the arity refusal: it carries the message and is NOT the CLI's
+// `error[…]:` line. The message is inlined rather than captured, because a declared fn is the only
+// form a lambda-typed argument takes here.
+fn is_lane_line_without_error_prefix(l: String) -> Bool {
+  contains(l, "too many positional arguments") && !contains(l, "error[")
+}
+
+type WitnessOutcome {
+  success: Bool
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+// The one driver. `--target dag` is what the CI lanes compile, so a row exercises the route an
+// author is on rather than a neighbouring one.
+fn compiled(root: String, name: String, content: String) -> WitnessOutcome {
+  let path = write_fixture(root: root, name: name, file: "m.dag", content: content)
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(toplevel.path, "/target/release/gunbc"),
+    args: [
+      "compile",
+      "--source-root", case_dir(root: root, name: name),
+      "--entry", path,
+      "--output-dir", concat(case_dir(root: root, name: name), "/out"),
+      "--target", "dag"
+    ]
+  )
+  // The refusal is already captured in the record above, so the fixture and its output directory
+  // are deleted here rather than left for a later reader to trip over.
+  let discarded = shell.Remove.RecursiveForce(path: case_dir(root: root, name: name) as FilePath)
+  result
+}
+
+// The parse sweep over a workspace THIS ROW BUILDS. The sweep walks the four roots named by
+// cli_run::DAG_PARSE_SWEEP_ROOTS relative to its CWD, so the row supplies all four (measured: with
+// `dag/` holding only the no-lexemes file and no sibling roots, the sweep refuses to run at all --
+// 'no .dag files found under …/dag -- check the workspace root' -- so a sweep row that skipped
+// this would assert on a refusal to MEASURE rather than on a refusal to parse).
+// `with_no_lexemes_file` is the only difference between a row's bad workspace and its clean one,
+// so the pair can only be explained by the file itself.
+fn swept(root: String, with_no_lexemes_file: Bool) -> WitnessOutcome {
+  let toplevel = git.Inspect.Toplevel()
+  let made_dag = shell.Mkdir.Parents(path: concat(root, "/dag") as FilePath)
+  let made_v1 = shell.Mkdir.Parents(path: concat(root, "/src/v1") as FilePath)
+  let made_v2 = shell.Mkdir.Parents(path: concat(root, "/src/v2") as FilePath)
+  let made_body = shell.Mkdir.Parents(path: concat(root, "/test/primitive_runtime_body") as FilePath)
+  let good_dag = Filesystem.Write(path: concat(root, "/dag/dag_module.dag"), content: valid_dag_module_source)
+  let good_v1 = Filesystem.Write(path: concat(root, "/src/v1/v1_module.dag"), content: valid_v1_module_source)
+  let good_v2 = Filesystem.Write(path: concat(root, "/src/v2/v2_module.dag"), content: valid_v2_module_source)
+  let good_body = Filesystem.Write(path: concat(root, "/test/primitive_runtime_body/body_module.dag"), content: valid_body_module_source)
+  let bad = if with_no_lexemes_file {
+    Filesystem.Write(path: concat(root, "/dag/no_lexemes.dag"), content: comments_only_source)
+  } else { made_dag }
+  gunbc.WitnessBin.Run(
+    workdir: root as FilePath,
+    bin_path: concat(toplevel.path, "/target/release/v1_src_dag_parse"),
+    // A tail wide enough to hold the census. Measured at the head: in a scratch cwd the sweep
+    // prints ~83 CITATION-DEBT-ROW-STALE lines (~20 KB) BEFORE its census line, so the default
+    // BoundedTail of 16384 bytes truncates the census away and the row would fail for a reason
+    // unrelated to spans. `Complete` is not available here -- measured refusal,
+    // WitnessStderrCaptureCompleteBudgetUnreadable: it requires the GUNBC_MEMORY_BUDGET_BYTES
+    // authority, which a claim does not set.
+    stderr_capture: BoundedTail { bytes: byte_size(count: 262144) }
+  )
+}
+
+// A finding line is what the SWEEP prints per refusal; its header says 'ONE LINE PER REFUSAL
+// NAMING THE FILE'. The census line shares the prefix but names no file, so it is excluded here
+// and asserted separately, where its own shape is the subject.
+fn is_sweep_finding_line(l: String) -> Bool {
+  starts_with(s: l, prefix: "v1_src_dag_parse: ") && contains(l, ".dag:") && !contains(l, "parse-clean")
+}
+
+fn sweep_finding_lines(result: WitnessOutcome) -> List<String> {
+  filter(refusal_lines(result: result), is_sweep_finding_line)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE REDS. Pre-fix every one of these prints FAIL, and prints it because the property is absent,
+// not because the harness could not run: the control rows below pass at the same head with the
+// same binaries and the same fixtures.
+// ---------------------------------------------------------------------------------------------
+
+// THE OBSERVED CASE. A file whose last content is a `//` comment is refused at a location inside
+// that comment -- one column past the comment's last character, on the comment's line -- because
+// the EOF token's span ends at the scanner's CONSUMED position, which the comment arm advanced
+// past (src/v1/01_tokenize.dag:97-104 emits no token, and :157 then stamps EOF at that position).
+// It must be located at the last lexeme, in line:col. Pre-fix: the refusal renders
+// `m.dag:90-90`, no position, so this row FAILS.
+test fn an_end_of_input_refusal_after_a_comment_is_located_at_the_last_lexeme_in_line_col() -> Bool {
+  let root = scratch_root()
+  if !scratch_is_usable(root: root) { return false }
+  let result = compiled(root: root, name: "eof_after_comment", content: eof_after_comment_source)
+  let lines = refusal_lines(result: result)
+  let text = join(lines, separator: "\n")
+  let usable = discard_scratch(root: root)
+  let refused_our_file = result.exit_code != 0 && contains(text, "m.dag")
+  let is_our_refusal = contains(text, "unterminated function body")
+  usable && (
+    refused_our_file && is_our_refusal
+      && names_a_position(text: text, file: "m.dag")
+      && !shows_an_offset_run(text: text, file: "m.dag")
+      && !shows_a_named_offset_shape(text: text)
+  )
+}
+
+// THE DISCRIMINATOR, and the reason the row above is not 'refusals are unlocated, full stop'. Same
+// file with the comment deleted: the refusal must also be located. This is what rules out a
+// comment-awareness guard in the renderer (the DESIGN 6b tell) -- a guard would leave this file
+// rendering offsets, because nothing about it is a comment. Pre-fix: `m.dag:64-64`, so this row
+// FAILS.
+test fn an_end_of_input_refusal_without_a_comment_is_located_in_line_col_too() -> Bool {
+  let root = scratch_root()
+  if !scratch_is_usable(root: root) { return false }
+  let result = compiled(root: root, name: "eof_plain", content: eof_plain_source)
+  let lines = refusal_lines(result: result)
+  let text = join(lines, separator: "\n")
+  let usable = discard_scratch(root: root)
+  let refused_our_file = result.exit_code != 0 && contains(text, "m.dag")
+  let is_our_refusal = contains(text, "unterminated function body")
+  usable && (
+    refused_our_file && is_our_refusal
+      && names_a_position(text: text, file: "m.dag")
+      && !shows_an_offset_run(text: text, file: "m.dag")
+  )
+}
+
+// THE TWO RENDERERS MUST AGREE IN UNITS, not merely in fact. One diagnostic reaches the author
+// twice: the compile lane's `…produced 1 hard diagnostic(s):` block and the emitted CLI's
+// `error[file:line:col]:` block. Measured at the head they disagree -- `133-134` against `9:5`,
+// which are the SAME position -- and the lane line, the one that carries the refusal when the CLI
+// block is truncated, is the unlocated one. The row asserts the lane line independently (matching
+// on the message so the CLI's own line cannot satisfy it) and separately asserts the CLI line, so
+// it fails ONLY because the lane lacks the position. Pre-fix: FAILS.
+test fn the_compile_lane_line_and_the_cli_line_render_the_same_position_for_the_same_diagnostic() -> Bool {
+  let root = scratch_root()
+  if !scratch_is_usable(root: root) { return false }
+  let result = compiled(root: root, name: "arity", content: arity_control_source)
+  let lines = refusal_lines(result: result)
+  let text = join(lines, separator: "\n")
+  let usable = discard_scratch(root: root)
+  let message = "too many positional arguments"
+  // The lane line: it ends in the parenthesised location and is not the CLI's `error[…]:` line.
+  let lane_agrees = any_line_with(lines: lines, needle: "m.dag:9:5")
+    && any_line_with(lines: lines, needle: message)
+  let lane_line_count = count(filter(lines, is_lane_line_without_error_prefix))
+  let cli_line_present = any_line_with(lines: lines, needle: "error[")
+    && any_line_with(lines: lines, needle: "m.dag:9:5")
+  // lane_line_count is the LANE's line only (the predicate excludes the CLI's `error[…]:` line),
+  // so >= 1 means the lane spoke at all; cli_line_present is the second renderer's own assertion.
+  usable && (
+    result.exit_code != 0
+      && lane_agrees
+      && lane_line_count >= 1
+      && cli_line_present
+      && !shows_an_offset_run(text: text, file: "m.dag")
+  )
+}
+
+// NO LEXEMES => NO POSITION, AND NO FABRICATED ONE. A file of pure trivia has no lexeme to end a
+// span at, so it must be refused with the authority's typed Unlocated cause -- never `byte 0`, and
+// never a position at a line the file does not have. Measured: the sweep prints
+// `no_lexemes.dag:3:1` for a 2-line file, and `gunbc compile` cannot see the case at all (its
+// closure-load refuses the file for a missing module declaration, which is why THIS row uses the
+// instrument whose header exists for exactly that: 'this binary prints ONE LINE PER REFUSAL NAMING
+// THE FILE'). Pre-fix: FAILS, because the author is sent to a fabricated line rather than told the
+// refusal is unlocated.
+test fn a_file_with_no_lexemes_is_refused_as_unlocated_rather_than_at_a_fabricated_position() -> Bool {
+  let root = scratch_root()
+  if !scratch_is_usable(root: root) { return false }
+  let result = swept(root: root, with_no_lexemes_file: true)
+  let findings = sweep_finding_lines(result: result)
+  let text = join(findings, separator: "\n")
+  let usable = discard_scratch(root: root)
+  let refused_our_file = result.exit_code != 0 && contains(text, "no_lexemes.dag")
+  let is_our_refusal = contains(text, "expected keyword 'module'")
+  usable && (
+    refused_our_file && is_our_refusal
+      && contains(text, unlocated_marker)
+      && !contains(text, "no_lexemes.dag:3:1")
+      && !contains(text, "byte 0")
+      && !contains(text, ":0:1:")
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE POSITIVE CONTROLS. Both PASS at the head, before any fix, with the same binaries and the
+// same harness. They are what makes the four rows above evidence: without them, a row that reads
+// no output, or a sweep that reads no files, satisfies every assertion equally well.
+// ---------------------------------------------------------------------------------------------
+
+// ORDINARY CODE SPANS ARE ALREADY LOCATED, so the defect is the EOF span and the missing
+// authority, not 'the compiler never says where'. The measured CLI block --
+// `error[…/m.dag:9:5]:` then ` 9 |     2` then `   |     ^` -- points at the `2` on line 9 column
+// 5, inside code, which is exactly what an author should get for every refusal.
+test fn an_ordinary_code_span_is_located_in_line_col_with_the_caret_on_the_lexeme() -> Bool {
+  let root = scratch_root()
+  if !scratch_is_usable(root: root) { return false }
+  let result = compiled(root: root, name: "arity_control", content: arity_control_source)
+  let lines = refusal_lines(result: result)
+  let text = join(lines, separator: "\n")
+  let usable = discard_scratch(root: root)
+  usable && (
+    !result.success
+      && contains(text, "error[")
+      && names_a_position(text: text, file: "m.dag")
+      && contains(text, "m.dag:9:5")
+      && has_line_starting(lines: lines, prefix: " 9 |")
+      && has_line_starting(lines: lines, prefix: "   |")
+      && contains(text, "^")
+  )
+}
+
+// THE INSTRUMENT DISCRIMINATES. Its own header: 'a bin that read no files would report the same
+// thing', so a sweep that refuses the bad file must simultaneously report the good ones clean --
+// not silently, but by naming them in its parse-clean population. Measured: the finding names
+// exactly one file, `dag/no_lexemes.dag`, and the valid modules it wrote in the same run are not
+// findings. PASS at the head.
+test fn the_sweep_refuses_the_no_lexemes_file_while_reporting_the_valid_modules_clean() -> Bool {
+  let root = scratch_root()
+  if !scratch_is_usable(root: root) { return false }
+  // THE INSTRUMENT WORKS. Same harness, same four roots, no bad file: exit 0, its parse-clean
+  // census printed, and nothing named as a finding. Without this, row 4 would be equally
+  // satisfied by a sweep that read no files at all -- the failure its own header warns about.
+  let clean = swept(root: concat(root, "/clean"), with_no_lexemes_file: false)
+  let clean_findings = sweep_finding_lines(result: clean)
+  let clean_census = any_line_with(refusal_lines(result: clean), "parse-clean")
+  let list_is_empty_clean = count(clean_findings) == 0
+  // AND IT DISCRIMINATES. Add ONLY the no-lexemes file and the same sweep refuses, naming that
+  // file and none of the four valid modules it parsed in the same run.
+  let bad = swept(root: concat(root, "/bad"), with_no_lexemes_file: true)
+  let bad_findings = sweep_finding_lines(result: bad)
+  let bad_text = join(bad_findings, separator: "\n")
+  let bad_refused_our_file = count(bad_findings) > 0 && contains(bad_text, "no_lexemes.dag")
+  let usable = discard_scratch(root: root)
+  // THE DISCRIMINATION, scoped to the files THIS ROW WROTE. Other findings may appear in the same
+  // sweep (a real parse refusal anywhere in the repo's own sources, or an empty scratch root --
+  // measured at the head: `dag/valid_module.dag:1:1` from an earlier revision of this harness);
+  // those are other lanes' business and asserting their absence would make this row fail for
+  // reasons unrelated to spans. What must hold is that none of the FOUR VALID FILES I WROTE is a
+  // finding, while the no-lexemes file is.
+  let names_only_the_bad_file = contains(bad_text, "no_lexemes.dag")
+    && !any_line_with(refusal_lines(result: bad), "dag_module.dag")
+    && !any_line_with(refusal_lines(result: bad), "v1_module.dag")
+    && !any_line_with(refusal_lines(result: bad), "v2_module.dag")
+    && !any_line_with(refusal_lines(result: bad), "body_module.dag")
+  usable && (
+    clean_census
+      && list_is_empty_clean
+      && bad_refused_our_file
+      && names_only_the_bad_file
+  )
+}
