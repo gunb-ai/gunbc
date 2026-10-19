@@ -29,7 +29,7 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
 import gunbc.native_serve { NativeServeStartup, NativeServeStartupRefused }
 import gunbc.auth.approval_device_crypto_realization {
   DeviceCryptoObligation, P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification,
-  P256BasePointOrder, device_crypto_obligation_evidence,
+  P256BasePointOrder, DeviceCryptoHandlerReceipt, device_crypto_obligation_evidence,
 }
 import gunbc.auth.approval_device_crypto_receipt { device_crypto_receipt_startup }
 import gunbc.auth.approval_device_crypto_wire { SignatureCheck, P256Multiple, OrderItself, OrderMinusOne }
