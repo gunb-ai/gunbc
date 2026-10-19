@@ -206,6 +206,17 @@ ask whether the name should be carried on the node (the occurrence-identity doma
 
 ## 3b. Problem sections, dive 1 (code reading, not profiles)
 
+> **Corrections (source review at `56b18b20cc7` plus the §3a profile).** The generated code and
+> `v1_rt` use `im::{HashMap, Vector}`, which are persistent collections. A clone shares structure,
+> and append/update copies only the affected paths. So three claims below are **withdrawn**:
+> - the annotation concat does not copy the whole accumulated list;
+> - `global_variant_base` is not deep-cloned per module;
+> - the four `RealizeState` updates are not full map copies.
+>
+> The profile agrees: all `rc_map_*` together are ~3% of reconcile. The 315x/88% emit figures are
+> historical (a different commit and a 108-file workload) and do not price today's phase.
+
+
 Four read-only investigations, one per phase. **None of them got a profile.** The remote image has no
 `perf`, and two of the scripts had bugs. So every attribution below comes from reading the code and
 is not measured. One remote timing of the same transaction on a 32-core runner: pre-frontend 67 s,
@@ -246,12 +257,69 @@ repair, choose one of:
 
 Each repair must also state beforehand which multiplicity collapses (§6b).
 
-## 4. Next passes
+## 4. Cleanup plan (P0 → P2)
 
-- [ ] Rerun the pass 1 census with string-reachable names (rosters, `--function` entries) subtracted, and confirm with a build that deletes the batch.
-- [ ] Whole-module candidates: `trace.dag`, `expected_red_roster_join.dag`. Check what imports each, then delete it.
-- [ ] Host Rust: single-referrer modules (§1.3). Trace each referrer up to a CLI subcommand or bin and check whether anything still invokes it.
-- [ ] `src/bin/*`: which binaries does any workflow, instrument row or script still invoke?
-- [ ] Deep dive on emit (`05_emit_rust.dag`, ~5 min): where the time goes inside the phase.
-- [ ] Deep dive on reconcile (~90 s) and the ~107 s before frontend.
-- [ ] Promote the confirmed census to an instrument row, then delete this file.
+This combines the §3a profile with the source review at `56b18b20cc7`. The review found the shape
+behind the waste: **information produced at one boundary, then discarded or carried incompletely,
+then reconstructed downstream.** Order rule: delete demand that has no consumer first, share a value
+that is computed twice next, and only then repair contracts. A cache is never the fix (§2,
+`std.materialization_ladder`).
+
+Each item lands as its own PR. Each one must:
+- name the multiplicity it collapses before the change;
+- show that semantic outputs and refusals are unchanged on a small discriminating specimen;
+- run the required self-host / native routes;
+- re-profile, so the price comes from measurement, not from this table.
+
+**~s** is the profiled inclusive cost of the enclosing frame, an upper bound on what the item saves.
+**src** means the item comes from the source review and was not seen as a separate frame in the
+profile.
+
+### P0: high certainty, no contract change, or the biggest measured term
+
+| # | Item | Phase | ~s | What disappears / what to check |
+|---|---|---|---|---|
+| P0.1 | **Print the existing `pre_entry_phase` receipt** from `compile_emission_over`, plus a total transaction duration so unattributed time stays visible. | pre | — | Hidden observation. Check whether each row is inclusive or exclusive before summing. |
+| P0.2 | **Stop binding annotations on the compile path.** `front_end_sources` always runs `bind_annotations` (region derivation and sort), and `compile_to_resolved_with_options` never reads `frontend.annotations`. Dedicated annotation and round-trip consumers keep their demand and derive it themselves. | frontend | 35 | A production with no consumer on this path. Enumerate every reader of `frontend.annotations` first. |
+| P0.3 | **Emit: delete the absorbed candidate predicate.** In `(authored ∨ anonymous_head ∨ emitted_token) ∧ ¬builtin ∧ emitted_token`, the disjunction is redundant. Remove it and its now-unused local producers (authored-source reconstruction, anonymous-record-head collection). | emit | ≤67 | Hypothesis to verify: `anonymous_record_struct_candidates` → `struct_candidates_by_field_names` (21–30% of emit) is part of this producer. If so, this is the largest single cut. Keep candidate order and membership identical. |
+| P0.4 | **Emit: compute `applied_type_argument_names` once** in `emit_module_full`, and pass it to both `emit_imports` and `reference_derived_use_line_plan`. | emit | src | One full traversal per module that has imports. |
+| P0.5 | **Emit: carry `provider_module` from `CandidateSurvived`** instead of discarding it and looking it up again. Fold the per-provider binding rescan into one grouping pass with canonical order. | emit | src | A decision recomputed after it was already made. The qualified route already carries it. |
+| P0.6 | **Loader: reuse `pool_path_lookup(index)`** in `extend_with_bare_reference_closure` instead of rebuilding `path_to_source_lookup(&index.source_files)` on every fixpoint round. | pre | src | A tree-sized lookup rebuilt per round. |
+| P0.7 | **Dive into `infer_call_arguments_generic_pass`.** It is 58% of reconcile and neither review covered it. Read it before choosing anything. | reconcile | 50 | Unknown. This item only produces a diagnosis. |
+
+### P1: clear defects with a bounded contract to preserve
+
+| # | Item | Phase | ~s | Notes |
+|---|---|---|---|---|
+| P1.1 | **Emitter `sort_by` lowering: compute each key once.** The key is currently recomputed for both operands on every comparison (22 sites in 12 generated files). Also make `swept_region_key` a structural `(Int, Int, Int)`, not a zero-padded string. | all | ≤35 | Root generalization (§6b). Still worth doing after P0.2, because the other 21 sites remain. |
+| P1.2 | **Module index without tokenizing every file.** `build_module_path_index_uncached` fully tokenizes all ~8.8k files to read each one's `module` line. The source-layout rule (DESIGN §3) makes the name derivable from the path. | pre | ≤75 | Preserve the refusal for a source-layout mismatch, and the non-standard fixture roots. Later bare-name queries may still force heads (see P2.1). |
+| P1.3 | **Parser allocator postcondition.** Every parse result carries an allocator advanced past every identity it constructed. Then delete the `parse_context_after_node` recovery walks in `parse_expr_loop(_no_brace)` and their sibling helpers. | frontend | ≤5 | Quadratic in left-associated chain length; §6 says a proven cost-shape defect is always fixed. Fix any producer that currently relies on the rescue before removing a scan. Give genuine adoption an explicit boundary. |
+| P1.4 | **Closure fixpoint as one worklist** over the union of edges that `build_both_closure_edge_index` already produces. | pre | ≤25 | Deterministic output and the same refusal selection. Reuse the existing worklist machinery. |
+| P1.5 | **`struct_candidates_by_field_names`**, if it survives P0.3: look up by field-name set instead of scanning every struct per literal. | emit | ≤67 | Re-profile after P0.3 first. |
+| P1.6 | **Post-emit reachability:** `std.graph` `reverse_adjacency` is rebuilt for each `reached_set` query in `gunbc_crate_partition` `emitted_target_reach`. Build it once per graph. | post | 19 | Generalize at `std.graph`, not at the call site. |
+| P1.7 | **Exit teardown:** ~27 s of `free`/`Rc::drop_slow` after the work is done, plus ~10 ms per advisory line for 4,485 lines. | post | ~27+ | Decide what owns the process-exit boundary. Advisory output may want a buffered writer. |
+| P1.8 | **One census service view** per effective census, built beside `symbol_index` and carried into `build_module_context`, instead of being rebuilt per module. | reconcile | ≤3 | Measured as small. It is still a §2 defect. The view belongs to the producer that owns that census, not to a process-global table. |
+
+### P2: contract work, larger seams, and the cull itself
+
+| # | Item | Notes |
+|---|---|---|
+| P2.1 | **One acquisition authority**, parameterized by subject and declared name-resolution rules. Entries acquire their justified dependencies, not the tree. | The `run` loader answers a narrower bare-name question. Account for the pool's bare-name guarantee, primary-root precedence, fixture roots, derived rosters and layout mismatches before removing any production. |
+| P2.2 | **One complete parsed-source product** consumed by both reference discovery (`parsed_file_references`) and the frontend. | Carry the whole bundle: tree, intern state, occurrence transport, allocator, extents, captures and indices. Otherwise IDs collide. |
+| P2.3 | **One owner of interning.** Today `front_end_sources` pre-interns everything and `parse_context_for_tokens` does it again. | Check that the ID assignment order does not change meaning. |
+| P2.4 | **Per-target type-declaration-name set** beside the exported-name facts, instead of being derived per import in `03_resolve`. | Collision diagnostics stay per importer. |
+| P2.5 | **Typed-module service export view**, consumed by `merge_scope_from_imports` instead of rebuilt per importer. | Preserve the layering census < local < imports, in resolved-import order. |
+| P2.6 | **Effect propagation:** reuse `UniqueAccum { seen, result }` in `expand_transitive_services_once` (today membership is a linear `any` scan). Carry the `after` count into the next `before`. | Preserve convergence, exhaustion and `remaining_delta`. |
+| P2.7 | **Reconcile assembly:** drop the parent list from `collect_parent_envs` that no caller reads, keeping its errors. Share the module-name index across the two final rewires. | Small. |
+| P2.8 | **Typed-graph identity, aware of traversal role:** extend `OccurrenceProjected` to the inferred and rebuilt type nodes that are still `OccurrenceSynthetic`. The key covers immutable node state **and** traversal role. | The prerequisite for deduplicating `collect_type_node_import_surface_occurrences` (33 s). A visited set keyed on node ID alone would drop classifications. |
+| P2.9 | **`authored_name_at`**: carry the name instead of re-materializing it from char codes. | ~19 s in reconcile and ~43 s in emit. The same identity domain as P2.8, so decide the model there. |
+| P2.10 | **Cull pass 1:** subtract the names reached by string (rosters, `--function`, claims) from the 116 unreferenced v1 functions (§3), then delete in batches, each checked by a build. | The original goal of this doc. |
+| P2.11 | **Dead whole modules:** `trace.dag`, `expected_red_roster_join.dag`. List their importers by name first (DESIGN §3, roots outside the gate). | |
+| P2.12 | **Host Rust and `src/bin`:** trace the single-referrer modules (§1.3) and binaries to a live invocation, or delete them. | |
+| P2.13 | **Promote** the censuses and the per-phase breakdown to `gunbc test` rows, then delete this file. | DESIGN §6: name the instrument. |
+
+### Specimens to build alongside
+- A long left-associated expression chain (P1.3).
+- One shared type reached in both roles (P2.8).
+- Service propagation through a chain and a diamond (P2.6).
+- Closure cases with bare names and primary-root precedence (P1.4, P2.1).
