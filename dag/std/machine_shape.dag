@@ -112,7 +112,8 @@ fn machine_shape_validate_edge(index: MachineShapeValidationIndex, edge: Interco
 
 fn machine_shape_validate(shape: MachineShape) -> MachineShapeConstruction {
   let index = machine_shape_build_validation_index(domains: shape.domains)
-  match fold(shape.edges, init: none, f: (refused, edge) =>
+  let no_refusal_yet: MachineShapeConstruction? = none
+  match fold(shape.edges, init: no_refusal_yet, f: (refused, edge) =>
     match refused {
       Present { value: _ } => refused
       Absent => machine_shape_validate_edge(index: index, edge: edge)
