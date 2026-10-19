@@ -58,6 +58,14 @@ Two consequences found by inspection:
   if Phase A's map/all work changes those shapes, adjust — the direction is keyed on the realized
   declaration path, the stable part.
 
+### 1b. B-emitter-1: the v2 emitter consumes the declaration-identity-keyed sharing authority. Classification: BLOCKED on #13936 landing.
+
+Recorded by the manager (2026-10-19) as a Phase B obligation: when emission reaches shared-type
+realization, the v2 emitter must consume the SAME declaration-identity-keyed sharing authority as
+#13936 — no re-keying by spelling. Blocked until #13936 (stern-raven-480) lands its re-key; starting
+before it would author a second keying for one fact (DESIGN §3), and it is why candidate 3's
+emit-module half is declined rather than deferred arbitrarily.
+
 ### 2. v2 evaluation meaning for roster-bound concat — #13284. Classification: BLOCKED on a named Phase A output.
 
 - Anchor: the roadmap `first_slice` lists "kernel-text concat (#13284)" INSIDE the Phase A chain,
