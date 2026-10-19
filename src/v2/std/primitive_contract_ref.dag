@@ -2,6 +2,7 @@ module v2.std.primitive_contract_ref
 
 import std.decl_ref { DeclarationRef, decl_ref }
 import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 
 // THE NAMING OF A std.primitives CONTRACT DECLARATION, ONCE. A PrimitiveContract row is declared at
 // std.primitives.<name>_contract and carries `name: "<name>"`; a call head names the primitive by that `name`.
@@ -21,5 +22,17 @@ fn primitive_contract_declaration_ref(head: Symbol) -> DeclarationRef {
   decl_ref(
     module_path: primitive_contract_module_path(),
     decl_name: primitive_contract_declaration_name(head: head)
+  )
+}
+
+// THE CONTRACT DECLARATION'S QUALIFIED PATH, ONCE: resolve binds a primitive head to it and emission recognizes a
+// resolved callee by structural equality with it, so neither re-spells the join of module and declaration name.
+fn primitive_contract_qualified_name(head: Symbol) -> QualifiedName {
+  qualified_name_from_dotted_string(
+    dotted: concat(
+      primitive_contract_module_path(),
+      ".",
+      primitive_contract_declaration_name(head: head)
+    )
   )
 }

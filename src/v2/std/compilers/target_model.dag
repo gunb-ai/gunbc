@@ -19,7 +19,7 @@ import v2.std.node { positional_child_target_nodes, StructuralLabel, LoopBoundMe
 import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import v2.std.node_query { declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional }
 import v2.std.host_transport { EmitHostRuntimeRow, TargetEmitHostRuntimeRow, configured_emit_host_runtime_row_from_target_row }
 import v2.std.integer { integer_decimal_magnitude_node_to_int }
 import std.integer { int_to_decimal_string }
@@ -28,7 +28,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, uri_scheme_inhabitants }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.decl_ref { DeclarationRef, decl_ref }
-import v2.std.primitive_contract_ref { primitive_contract_declaration_ref }
+import v2.std.primitive_contract_ref { primitive_contract_declaration_ref, primitive_contract_qualified_name }
 
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
@@ -6215,11 +6215,7 @@ fn target_transform_callee_is_resolved_primitive(body: Node, callee: Symbol) -> 
       match declaration_reference_path_optional(node: child) {
         Absent => false
         Present { value: path } =>
-          qualified_name_to_dotted_string(qn: path) == concat(
-            primitive_contract_declaration_ref(head: callee).module_path as String,
-            ".",
-            primitive_contract_declaration_ref(head: callee).decl_name as String
-          )
+          path == primitive_contract_qualified_name(head: callee)
       }
   }
 }

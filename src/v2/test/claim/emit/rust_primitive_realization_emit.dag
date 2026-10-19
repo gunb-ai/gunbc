@@ -131,3 +131,19 @@ test fn rust_user_fn_spelled_like_a_primitive_needs_no_row() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+// The emitted text of each call, for the execution recipe (v2.test.claim.emit.rust_primitive_realization_emit is run
+// with --function and the text is compiled against the seed runtime's string_length by rustc).
+fn rust_primitive_row_text() -> String {
+  match rust_primitive_emit(expr: rust_primitive_string_length_call(), catalog: rust_operator_realizations_catalog_node()) {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+fn rust_primitive_bare_text() -> String {
+  match rust_primitive_emit(expr: rust_user_string_length_call(), catalog: rust_operator_realizations_catalog_node()) {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
