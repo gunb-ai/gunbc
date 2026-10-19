@@ -742,7 +742,7 @@ fn collide() -> Int {
 }
 "#;
 
-fn collision_resolved() -> ResolvedPipelineResult {
+fn collision_resolved() -> Rc<ResolvedPipelineResult> {
     let ws = workspace_root();
     let roots = [ws.join("src/v2"), ws.join("dag")];
     let sources =
