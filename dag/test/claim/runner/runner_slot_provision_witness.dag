@@ -35,6 +35,7 @@ import gunbc.runner.runner_slot_provision {
   desired_runner_slot_members,
   runner_slot_membership_reconcile,
   runner_slot_provision_plan,
+  runner_slot_provision_plan_over,
   runner_slot_enumeration_postcondition,
   RunnerSlotEnumerationMatched,
   RunnerSlotEnumerationMismatch,
@@ -80,7 +81,8 @@ import gunbc.runner.runner_slot_retirement {
   runner_retirement_standing,
   retirement_observation_from_readings,
   interruption_authorization_for_host,
-  interruption_authorization_covers,
+  srv4_transition_interruption_authorization,
+  InterruptionAuthorization,
   HostInterruptionAuthorizationPresent,
   HostInterruptionAuthorizationAbsent,
   transition_retirement_admission_over,
@@ -663,14 +665,6 @@ fn no_retirement_evidence() -> SlotRetirementEvidence {
   SlotRetirementEvidenceAbsent { cause: "this control binds no observation" }
 }
 
-fn srv1_evidence(standings: List<RunnerRetirementStanding>) -> SlotRetirementEvidence {
-  match interruption_authorization_for_host(host: operator_host_srv1) {
-    HostInterruptionAuthorizationAbsent { host: _, cause: c } => SlotRetirementEvidenceAbsent { cause: c }
-    HostInterruptionAuthorizationPresent { authorization: a } =>
-      SlotRetirementEvidencePresent { authorization: a, standings: standings }
-  }
-}
-
 fn srv1_deploy() -> RunnerHostDeploy {
   match runner_host_deploy_for(host: operator_host_srv1) {
     RunnerHostDeployFound { deploy: d } => d
@@ -679,7 +673,7 @@ fn srv1_deploy() -> RunnerHostDeploy {
   }
 }
 
-fn srv1_surplus_member(name: String, active: Bool, enabled: Bool) -> RunnerSlotMember {
+fn fixture_surplus_member(name: String, active: Bool, enabled: Bool) -> RunnerSlotMember {
   provenance_witness_member(
     name: name,
     p: SlotProvenanceObserved {
@@ -691,7 +685,7 @@ fn srv1_surplus_member(name: String, active: Bool, enabled: Bool) -> RunnerSlotM
   )
 }
 
-fn srv1_plan(observed: List<RunnerSlotMember>, evidence: SlotRetirementEvidence) -> List<String> {
+fn real_srv1_plan(observed: List<RunnerSlotMember>, evidence: SlotRetirementEvidence) -> List<String> {
   match actions_runner_binary_artifact_for_arch(
     binary_release: actions_runner_release_2_336_0,
     arch: altra_max_m12830_catalog.architecture,
@@ -703,6 +697,45 @@ fn srv1_plan(observed: List<RunnerSlotMember>, evidence: SlotRetirementEvidence)
         artifact: artifact,
         observed: observed,
         retirement_evidence: evidence,
+      )
+      concat(plan.retirement_scripts, plan.teardown_scripts)
+    }
+  }
+}
+
+// THE SUPPLIED WORLD FOR THE PLAN FOLD (DESIGN 3, a witness discriminates at one interface): the
+// fold runner_slot_provision_plan_over takes its retirement obligation and maskable scope as values, so
+// these claims name no live host. The authorization is the one declared value that can be consumed
+// (InterruptionAuthorization is sole_constructor); its scope is the fixture's required retirees and its
+// maskable scope, and the fixture deploy is a fixture host, so no claim moves with the fleet. The
+// pairing obligation is srv1_real_route_takes_the_retirement_arm_for_its_first_authorized_retiree,
+// which runs the real wrapper and is the claim allowed to go red when the fleet moves.
+fn fixture_authorization() -> InterruptionAuthorization {
+  srv4_transition_interruption_authorization
+}
+
+fn fixture_required_retirees() -> List<NonEmptyStr> {
+  fixture_authorization().scope
+}
+
+fn fixture_evidence(standings: List<RunnerRetirementStanding>) -> SlotRetirementEvidence {
+  SlotRetirementEvidencePresent { authorization: fixture_authorization(), standings: standings }
+}
+
+fn fixture_plan(observed: List<RunnerSlotMember>, evidence: SlotRetirementEvidence) -> List<String> {
+  match actions_runner_binary_artifact_for_arch(
+    binary_release: actions_runner_release_2_336_0,
+    arch: altra_max_m12830_catalog.architecture,
+  ) {
+    Absent => []
+    Present { value: artifact } => {
+      let plan = runner_slot_provision_plan_over(
+        deploy: fixture_five_slot_deploy(),
+        artifact: artifact,
+        observed: observed,
+        retirement_evidence: evidence,
+        required: RetireesKnown { units: fixture_required_retirees() },
+        maskable: fixture_authorization().scope,
       )
       concat(plan.retirement_scripts, plan.teardown_scripts)
     }
@@ -740,6 +773,8 @@ fn line_emits_mask_for(lines: List<String>, unit: String) -> Bool {
 // rather than withholding the whole host. 07..12 are refused per unit (outside the grant),
 // not masked or deleted. On main this observation never reaches the planner: admission
 // returned Absent before any read.
+// INHABITANCE CLAIM (DESIGN 3 pairing obligation): the REAL wrapper on srv1, reading the live model,
+// takes the retirement arm for authorized required retirees. It goes red when the fleet moves.
 test fn srv1_provision_plan_masks_the_authorized_remainder_when_07_through_12_are_complete() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesUnresolved { host: _, cause: _ } => false
@@ -755,11 +790,12 @@ test fn srv1_provision_plan_masks_the_authorized_remainder_when_07_through_12_ar
           ) {
             SlotRetirementEvidenceAbsent { cause: _ } => false
             SlotRetirementEvidencePresent { authorization: _, standings: ss } => {
-              let lines = srv1_plan(
+              let lines = real_srv1_plan(
                 observed: [],
                 evidence: SlotRetirementEvidencePresent { authorization: auth, standings: ss },
               )
-              line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-15.service")
+              any(required, r => any(auth.scope, a => (a as String) == (r as String)))
+                && line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-15.service")
                 && line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-50.service")
                 && !line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-07.service")
                 && !line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-12.service")
@@ -777,18 +813,11 @@ test fn srv1_provision_plan_masks_the_authorized_remainder_when_07_through_12_ar
   }
 }
 
-type Srv1Subject
-  = Srv1SubjectFound { unit: String, instance: String }
-  | Srv1SubjectAbsent { cause: String }
+type FixtureSubject
+  = FixtureSubjectFound { unit: String, instance: String }
+  | FixtureSubjectAbsent { cause: String }
 
-fn srv1_required_retiree_units() -> List<String> {
-  match required_retirees_for_host(host: operator_host_srv1) {
-    RetireesUnresolved { host: _, cause: _ } => []
-    RetireesKnown { units: us } => us |> map(u => u as String)
-  }
-}
-
-fn srv1_unit_instance(unit: String) -> String {
+fn fixture_unit_instance(unit: String) -> String {
   match read_runner_unit_name(observed: unit as NonEmptyStr) {
     RunnerUnitInstance { registration_name: r } => r as String
     NotARunnerUnit { observed: _ } => ""
@@ -796,54 +825,25 @@ fn srv1_unit_instance(unit: String) -> String {
   }
 }
 
-fn srv1_authorized_required_retiree_units() -> List<String> {
-  match interruption_authorization_for_host(host: operator_host_srv1) {
-    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => []
-    HostInterruptionAuthorizationPresent { authorization: a } =>
-      srv1_required_retiree_units()
-        |> filter(u => interruption_authorization_covers(auth: a, unit: u))
-        |> filter(u => !any(
-          desired_runner_slot_members(deploy: wt_srv1_deploy()),
-          m => srv1_unit_instance(unit: u) == (m.instance_name as String),
-        ))
-  }
-}
-
-fn srv1_retiree_subject(rank: Int) -> Srv1Subject {
-  let units = srv1_authorized_required_retiree_units()
-  match units.skip(n: rank).first() {
-    Absent => Srv1SubjectAbsent { cause: "the host owes fewer authorized required retirees than this row's rank" }
+fn fixture_retiree_subject(rank: Int) -> FixtureSubject {
+  match fixture_required_retirees().skip(n: rank).first() {
+    Absent => FixtureSubjectAbsent { cause: "the fixture owes fewer required retirees than this row's rank" }
     Present { value: u } =>
-      match read_runner_unit_name(observed: u as NonEmptyStr) {
-        RunnerUnitInstance { registration_name: r } => Srv1SubjectFound { unit: u, instance: r as String }
-        NotARunnerUnit { observed: _ } => Srv1SubjectAbsent { cause: "a required retiree is not a runner unit name" }
-        RunnerUnitInstanceMalformed { observed: _, cause: _ } => Srv1SubjectAbsent { cause: "a required retiree names no instance" }
+      if fixture_unit_instance(unit: u as String) == "" {
+        FixtureSubjectAbsent { cause: "a fixture retiree is not a runner unit name" }
+      } else {
+        FixtureSubjectFound { unit: u as String, instance: fixture_unit_instance(unit: u as String) }
       }
   }
 }
 
-fn srv1_outside_scope_subject() -> Srv1Subject {
-  let required = srv1_required_retiree_units()
-  let committed = match committed_slot_identities(host: operator_host_srv1) {
-    CommittedPopulationDerived { members: m } => m
-    CommittedPopulationWidthUnresolved { host: _, cause: _ } => []
-  }
-  let scope = match interruption_authorization_for_host(host: operator_host_srv1) {
-    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => []
-    HostInterruptionAuthorizationPresent { authorization: a } => a.scope |> map(u => u as String)
-  }
-  let free = nat_range_inclusive(lo: 1, hi: list_length(items: required) + list_length(items: committed) + 1)
-    |> map(i => RunnerSlotIdentity { host: operator_host_srv1, slot_index: i })
-    |> filter(id =>
-      !identity_in_list(identity: id, members: committed)
-        && !any(required, r => r == (runner_slot_unit_name(slot: id) as String))
-        && !any(scope, r => r == (runner_slot_unit_name(slot: id) as String)))
-  match free.first() {
-    Absent => Srv1SubjectAbsent { cause: "every slot index up to the prior width is committed, required or covered" }
-    Present { value: id } => Srv1SubjectFound {
-      unit: runner_slot_unit_name(slot: id) as String,
-      instance: runner_slot_instance_name(slot: id),
-    }
+// A unit no fixture authorization names, on the fixture host: fixed by the fixture, never by the fleet.
+fn fixture_outside_subject() -> FixtureSubject {
+  let unit = "actions-runner@wfix-90.service"
+  if any(fixture_authorization().scope, u => (u as String) == unit) {
+    FixtureSubjectAbsent { cause: "the fixture authorization names the outside unit" }
+  } else {
+    FixtureSubjectFound { unit: unit, instance: fixture_unit_instance(unit: unit) }
   }
 }
 
@@ -871,18 +871,18 @@ fn emits_mask(lines: List<String>) -> Bool {
 // gunbc.runner.runner_width_transition required_retirees_for_host that the host's interruption
 // authorization covers (the join host_maskable_units uses); the outside subject is the first slot that
 // is neither committed, required, nor covered. A model that offers no such subject makes the row RED
-// (Srv1SubjectAbsent), never vacuous.
+// (FixtureSubjectAbsent), never vacuous.
 //
 // 1. AN ACTIVE SURPLUS SLOT PRODUCES NO TREE REMOVAL. Ownership still refuses the incarnation, so
 // membership cannot authorize `rm -rf`. The inhibitor is a different obligation: a required retiree
 // the interruption authorization names is masked even while the unit is still serving.
 test fn an_active_surplus_slot_is_never_deleted() -> Bool {
-  match srv1_retiree_subject(rank: 0) {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: u0, instance: i0 } => {
-        let lines = srv1_plan(
-          observed: [srv1_surplus_member(name: i0, active: true, enabled: true)],
-          evidence: srv1_evidence(standings: []),
+  match fixture_retiree_subject(rank: 0) {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: u0, instance: i0 } => {
+        let lines = fixture_plan(
+          observed: [fixture_surplus_member(name: i0, active: true, enabled: true)],
+          evidence: fixture_evidence(standings: []),
         )
         emits_no_tree_removal(lines: lines)
     }
@@ -893,12 +893,12 @@ test fn an_active_surplus_slot_is_never_deleted() -> Bool {
 // admit their trees, so the inhibitor has to come from `transition_required_retiring`, or the cap
 // raise stays withheld after the inactive remainder is gone.
 test fn an_active_authorized_required_retiree_is_masked_and_not_deleted() -> Bool {
-  match srv1_retiree_subject(rank: 0) {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: u0, instance: i0 } => {
-        let lines = srv1_plan(
-          observed: [srv1_surplus_member(name: i0, active: true, enabled: true)],
-          evidence: srv1_evidence(standings: [
+  match fixture_retiree_subject(rank: 0) {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: u0, instance: i0 } => {
+        let lines = fixture_plan(
+          observed: [fixture_surplus_member(name: i0, active: true, enabled: true)],
+          evidence: fixture_evidence(standings: [
             runner_retirement_standing(
               o: retirement_observation_from_readings(
                 unit: u0 as NonEmptyStr,
@@ -915,12 +915,12 @@ test fn an_active_authorized_required_retiree_is_masked_and_not_deleted() -> Boo
 }
 
 test fn an_unobserved_required_retiree_outside_membership_is_named_as_withheld() -> Bool {
-  match srv1_retiree_subject(rank: 0) {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: u0, instance: i0 } => {
-        let lines = srv1_plan(
-          observed: [srv1_surplus_member(name: i0, active: true, enabled: true)],
-          evidence: srv1_evidence(standings: [
+  match fixture_retiree_subject(rank: 0) {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: u0, instance: i0 } => {
+        let lines = fixture_plan(
+          observed: [fixture_surplus_member(name: i0, active: true, enabled: true)],
+          evidence: fixture_evidence(standings: [
             runner_retirement_standing(
               o: retirement_observation_from_readings(
                 unit: u0 as NonEmptyStr,
@@ -946,12 +946,12 @@ test fn an_unobserved_required_retiree_outside_membership_is_named_as_withheld()
 // deleted this tree. The realization must withhold, because occupancy is the fact the provenance
 // predicate cannot see.
 test fn an_inactive_slot_with_a_populated_cgroup_is_not_deleted() -> Bool {
-  match srv1_retiree_subject(rank: 0) {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: u0, instance: i0 } => {
-        let lines = srv1_plan(
-          observed: [srv1_surplus_member(name: i0, active: false, enabled: false)],
-          evidence: srv1_evidence(standings: [
+  match fixture_retiree_subject(rank: 0) {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: u0, instance: i0 } => {
+        let lines = fixture_plan(
+          observed: [fixture_surplus_member(name: i0, active: false, enabled: false)],
+          evidence: fixture_evidence(standings: [
             runner_retirement_standing(
               o: retirement_observation_from_readings(
                 unit: u0 as NonEmptyStr,
@@ -971,12 +971,12 @@ test fn an_inactive_slot_with_a_populated_cgroup_is_not_deleted() -> Bool {
 // 3. FIRST PASS: A PERMITTED SURPLUS SLOT IS MASKED AND NOT DELETED. No standing exists yet, so the
 // realization actuates and defers. A pass that did both would be establishing its own postcondition.
 test fn a_permitted_surplus_slot_is_masked_and_not_deleted_on_the_first_pass() -> Bool {
-  match srv1_retiree_subject(rank: 0) {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: u0, instance: i0 } => {
-        let lines = srv1_plan(
-          observed: [srv1_surplus_member(name: i0, active: false, enabled: false)],
-          evidence: srv1_evidence(standings: []),
+  match fixture_retiree_subject(rank: 0) {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: u0, instance: i0 } => {
+        let lines = fixture_plan(
+          observed: [fixture_surplus_member(name: i0, active: false, enabled: false)],
+          evidence: fixture_evidence(standings: []),
         )
         emits_mask(lines: lines) && emits_no_tree_removal(lines: lines)
     }
@@ -987,12 +987,12 @@ test fn a_permitted_surplus_slot_is_masked_and_not_deleted_on_the_first_pass() -
 // host, so `ReplacementPendingDrain` (unmasked) is what production sees. Treating any incomplete
 // standing as "wait, do not actuate" made mask --now unreachable on that route (plan 35232162113).
 test fn a_pending_unmasked_standing_still_emits_the_inhibitor() -> Bool {
-  match srv1_retiree_subject(rank: 0) {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: u0, instance: i0 } => {
-        let lines = srv1_plan(
-          observed: [srv1_surplus_member(name: i0, active: false, enabled: false)],
-          evidence: srv1_evidence(standings: [
+  match fixture_retiree_subject(rank: 0) {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: u0, instance: i0 } => {
+        let lines = fixture_plan(
+          observed: [fixture_surplus_member(name: i0, active: false, enabled: false)],
+          evidence: fixture_evidence(standings: [
             runner_retirement_standing(
               o: retirement_observation_from_readings(
                 unit: u0 as NonEmptyStr,
@@ -1012,12 +1012,12 @@ test fn a_pending_unmasked_standing_still_emits_the_inhibitor() -> Bool {
 // NOTHING EVER. Second pass: the independently reobserved standing is complete, so this exact tree
 // is removed -- and the mask is NOT re-emitted, because the unit is already retired.
 test fn a_completed_retirement_authorizes_exactly_that_tree_removal() -> Bool {
-  match srv1_retiree_subject(rank: 0) {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: u0, instance: i0 } => {
-        let lines = srv1_plan(
-          observed: [srv1_surplus_member(name: i0, active: false, enabled: false)],
-          evidence: srv1_evidence(standings: [
+  match fixture_retiree_subject(rank: 0) {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: u0, instance: i0 } => {
+        let lines = fixture_plan(
+          observed: [fixture_surplus_member(name: i0, active: false, enabled: false)],
+          evidence: fixture_evidence(standings: [
             runner_retirement_standing(
               o: retirement_observation_from_readings(
                 unit: u0 as NonEmptyStr,
@@ -1038,12 +1038,12 @@ test fn a_completed_retirement_authorizes_exactly_that_tree_removal() -> Bool {
 // a completed standing for a remainder slot: the teardown argv names that tree. An apply.sh that
 // still only prints withheld lines fails this even if the srv4 row stays green.
 test fn a_completed_srv1_surplus_retirement_emits_the_teardown_argv() -> Bool {
-  match srv1_retiree_subject(rank: 0) {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: u0, instance: i0 } => {
-        let lines = srv1_plan(
-          observed: [srv1_surplus_member(name: i0, active: false, enabled: false)],
-          evidence: srv1_evidence(standings: [
+  match fixture_retiree_subject(rank: 0) {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: u0, instance: i0 } => {
+        let lines = fixture_plan(
+          observed: [fixture_surplus_member(name: i0, active: false, enabled: false)],
+          evidence: fixture_evidence(standings: [
             runner_retirement_standing(
               o: retirement_observation_from_readings(
                 unit: u0 as NonEmptyStr,
@@ -1062,12 +1062,12 @@ test fn a_completed_srv1_surplus_retirement_emits_the_teardown_argv() -> Bool {
 
 // 5. AN UNREADABLE CGROUP IS A NAMED REFUSAL, NOT A DELETION AND NOT A SILENCE.
 test fn an_unobserved_cgroup_withholds_the_removal_by_name() -> Bool {
-  match srv1_retiree_subject(rank: 0) {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: u0, instance: i0 } => {
-        let lines = srv1_plan(
-          observed: [srv1_surplus_member(name: i0, active: false, enabled: false)],
-          evidence: srv1_evidence(standings: [
+  match fixture_retiree_subject(rank: 0) {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: u0, instance: i0 } => {
+        let lines = fixture_plan(
+          observed: [fixture_surplus_member(name: i0, active: false, enabled: false)],
+          evidence: fixture_evidence(standings: [
             runner_retirement_standing(
               o: retirement_observation_from_readings(
                 unit: u0 as NonEmptyStr,
@@ -1088,15 +1088,15 @@ test fn an_unobserved_cgroup_withholds_the_removal_by_name() -> Bool {
 // 6. A COMPLETED RECEIPT FOR A DIFFERENT SLOT CANNOT AUTHORIZE THIS ONE. The join is by exact
 // identity; a gate that checked "some retirement completed" would delete srv1-22 on srv1-23's proof.
 test fn a_completed_receipt_for_another_slot_authorizes_nothing() -> Bool {
-  match srv1_retiree_subject(rank: 0) {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: u0, instance: i0 } => {
-      match srv1_retiree_subject(rank: 1) {
-        Srv1SubjectAbsent { cause: _ } => false
-        Srv1SubjectFound { unit: u1, instance: i1 } => {
-            let lines = srv1_plan(
-              observed: [srv1_surplus_member(name: i0, active: false, enabled: false)],
-              evidence: srv1_evidence(standings: [
+  match fixture_retiree_subject(rank: 0) {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: u0, instance: i0 } => {
+      match fixture_retiree_subject(rank: 1) {
+        FixtureSubjectAbsent { cause: _ } => false
+        FixtureSubjectFound { unit: u1, instance: i1 } => {
+            let lines = fixture_plan(
+              observed: [fixture_surplus_member(name: i0, active: false, enabled: false)],
+              evidence: fixture_evidence(standings: [
                 runner_retirement_standing(
                   o: retirement_observation_from_readings(
                     unit: u1 as NonEmptyStr,
@@ -1118,12 +1118,12 @@ test fn a_completed_receipt_for_another_slot_authorizes_nothing() -> Bool {
 // grammar and outside the operator's enumerated 13..21 scope, so permission refuses even though
 // membership and ownership would admit.
 test fn a_surplus_slot_outside_the_authorized_scope_is_neither_masked_nor_deleted() -> Bool {
-  match srv1_outside_scope_subject() {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: _, instance: io } => {
-        let lines = srv1_plan(
-          observed: [srv1_surplus_member(name: io, active: false, enabled: false)],
-          evidence: srv1_evidence(standings: []),
+  match fixture_outside_subject() {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: _, instance: io } => {
+        let lines = fixture_plan(
+          observed: [fixture_surplus_member(name: io, active: false, enabled: false)],
+          evidence: fixture_evidence(standings: []),
         )
         emits_no_tree_removal(lines: lines) && !emits_mask(lines: lines)
     }
@@ -1133,11 +1133,11 @@ test fn a_surplus_slot_outside_the_authorized_scope_is_neither_masked_nor_delete
 // 8. WITH NO EVIDENCE BOUND AT ALL, NOTHING DESTRUCTIVE IS EMITTED. This is the default the pure
 // planner supplies, so a route that has not been taught to observe retirement cannot delete or mask.
 test fn absent_evidence_emits_neither_mask_nor_removal() -> Bool {
-  match srv1_retiree_subject(rank: 0) {
-    Srv1SubjectAbsent { cause: _ } => false
-    Srv1SubjectFound { unit: u0, instance: i0 } => {
-        let lines = srv1_plan(
-          observed: [srv1_surplus_member(name: i0, active: false, enabled: false)],
+  match fixture_retiree_subject(rank: 0) {
+    FixtureSubjectAbsent { cause: _ } => false
+    FixtureSubjectFound { unit: u0, instance: i0 } => {
+        let lines = fixture_plan(
+          observed: [fixture_surplus_member(name: i0, active: false, enabled: false)],
           evidence: no_retirement_evidence(),
         )
         emits_no_tree_removal(lines: lines) && !emits_mask(lines: lines)
