@@ -4,6 +4,8 @@ import gunbc.assimilate.bmc_token_federation { bmc_secrets_project_id, bmc_assim
 import extdeps.cloud.gcp.gcp { GcpService, GcpServiceUsage, GcpIam, GcpIamCredentials, GcpSts, GcpSecretManager, gcp_service_api_id, ServiceAccountEmail }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
 import std.types { Secret, List }
+import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.serviceusage
 
 data bmc_assimilate_service_deps: List<GcpService> = [
   GcpServiceUsage,
