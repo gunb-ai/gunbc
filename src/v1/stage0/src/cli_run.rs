@@ -13482,12 +13482,28 @@ fn finish_resolved_graph_assembly(
     }
     resolve_stage_slot_add(|s| s.assembly_diagnostics += diagnostics_started.elapsed().as_nanos());
     let rewire_started = std::time::Instant::now();
-    let modules =
-        v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    let rewire_index = modules.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<v1_compiler_infer::TypedModule>>(),
+        |acc, m| {
+            v1_rt::rc_map_insert(
+                acc,
+                authored_name_at(source_indices.clone(), m.module.clone()),
+                m.clone(),
+            )
+        },
+    );
+    let modules = v1_compiler_infer::rewire_type_env_parent_links(
+        modules.clone(),
+        rewire_index.clone(),
+        source_indices.clone(),
+    );
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
     let rewire3_started = std::time::Instant::now();
-    let modules =
-        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+    let modules = v1_compiler_infer::rewire_func_env_parent_links(
+        modules.clone(),
+        rewire_index.clone(),
+        source_indices.clone(),
+    );
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     // NO EmitGraphInfo IS BUILT HERE (v1.compiler.infer_items ResolvedGraph): emission builds its
@@ -14248,7 +14264,7 @@ fn reconcile_with_typed_cache(
                     Rc::new(im::Vector::new())
                 } else {
                     let parent_envs_started = std::time::Instant::now();
-                    let parent_result = v1_compiler_infer::collect_parent_envs(
+                    let parent_diagnostics = v1_compiler_infer::missing_parent_env_diagnostics(
                         resolved.clone(),
                         module_index.clone(),
                         source_indices.clone(),
@@ -14256,7 +14272,7 @@ fn reconcile_with_typed_cache(
                     resolve_stage_slot_add(|s| {
                         s.parent_envs += parent_envs_started.elapsed().as_nanos()
                     });
-                    parent_result.diagnostics.clone()
+                    parent_diagnostics.clone()
                 };
                 let tc_result = match cached {
                     Some(hit) => hit,
