@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.self_host_program_assembly_contract_floor_enrollment_stall
 
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding }
 
 // A STALL AND NOT A DROP, AND THE DIFFERENCE IS A FACT ABOUT HISTORY. Before the self-host behavioral
 // rows carried .dag contracts, the program_assembly row's contract was a hand-written Rust driver

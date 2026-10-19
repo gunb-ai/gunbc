@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.floor_cost_basis_boundedness_stall
 
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, UncountedNotEnumerable, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding }
 
 // NO MEASUREMENT CAMPAIGN CAN DISCHARGE THIS ARM, AND THAT IS WHY IT IS A STALL RATHER THAN UNBUILT
 // WORK. `gunbc.rung_drop.floor_cost_claim_qualification_unavailable` states that its restoration

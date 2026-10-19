@@ -3,12 +3,12 @@ module gunbc.recurring_failure_mode.constant_verdict_gate_stops_discriminating
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
-import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
+import gunbc.rung_climb { CannotClimbFurther }
 
 data constant_verdict_gate_stops_discriminating: RecurringFailureMode = RecurringFailureMode {
   identity: "constant_verdict_gate_stops_discriminating" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: CannotClimbFurther { why: "WITH ITS REASON: mechanically preventable, not structural." }, trigger: climbs_when(capability: "a required run that ATTRIBUTES its own refusal -- reporting, per refusing identity, the commit at which it first refused and the owner that commit's lane names -- so that a standing red cannot be anonymous, joined with a declared bound on h") } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: CannotClimbFurther { why: "WITH ITS REASON: mechanically preventable, not structural." }, trigger_capability: "a required run that ATTRIBUTES its own refusal -- reporting, per refusing identity, the commit at which it first refused and the owner that commit's lane names -- so that a standing red cannot be anonymous, joined with a declared bound on h" } },
 
   receipts: [
     "**a gate whose verdict has stopped being a function of the change carries no information, and the RED direction is the one nobody files** (THE SYMMETRY IS THE POINT: DESIGN section 4b already names the permanently-GREEN check a decoration, worse than absent because it will be cited as coverage. A gate that refuses on EVERY run, for a cause outside the change under test, has lost exactly the same property from the other side, and there is no roster row for it because a red check does not LOOK like a missing wall -- it looks like a working one.)",

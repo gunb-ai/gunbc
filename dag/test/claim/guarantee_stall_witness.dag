@@ -5,16 +5,8 @@ import gunbc.guarantee_rung {
   OutsideTheLadder, Mitigatable, MechanicallyPreventable,
   StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_index,
 }
-import gunbc.guarantee_stall {
-  GuaranteeStall,
-  CannotClimbFurther, AwaitsOneGrounding, ClimbableButUnbuilt,
-  BoundedPopulation, UncountedNotEnumerable,
-  stall_is_below_ceiling, stall_report_message,
-  every_stall_is_below_its_ceiling, every_stall_names_a_trigger, stall_roster_size,
-  NextRungTrigger, climbs_when, climbs_when_awaiting,
-  TriggerAdmission, TriggerAdmitted, TriggerCapabilityEmpty, TriggerCapabilitySpellsAReferent,
-  stall_trigger_admission, every_stall_trigger_is_admitted,
-}
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling, stall_report_message, every_stall_is_below_its_ceiling, every_stall_names_a_trigger, stall_roster_size, NextRungTrigger, climbs_when, climbs_when_awaiting, stall_trigger_admission, every_stall_trigger_is_admitted }
+import gunbc.rung_climb { CannotClimbFurther, AwaitsOneGrounding, ClimbableButUnbuilt, TriggerAdmission, TriggerAdmitted, TriggerCapabilityEmpty, TriggerCapabilitySpellsAReferent }
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }

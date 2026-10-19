@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall
 
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data argument_shape_undecided_at_a_declared_position_stall: GuaranteeStall = GuaranteeStall {
   subject: "a decidable argument-shape mismatch is accepted with no diagnostic at a declared position: an unapplied nullary function stands where a value of its return type is declared, and a String stands at a generic formal — both measured accepted in the same compile in which a String at a CONCRETE position is refused, so refusal is reachable at that position and the deferral is a gap rather than a limit",

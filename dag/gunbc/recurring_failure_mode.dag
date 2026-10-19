@@ -168,14 +168,14 @@ module gunbc.recurring_failure_mode
 import std.types { String, NonEmptyStr, List, Int }
 import std.decl_ref { DeclarationRef }
 import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_index }
-import gunbc.guarantee_stall {
-  ClimbBlocker, NextRungTrigger, TriggerAdmission, TriggerAdmitted, next_rung_trigger_admission,
-}
+import gunbc.rung_climb { ClimbBlocker, TriggerAdmission, TriggerAdmitted, trigger_capability_admission }
 
 // WHERE A CLASS STANDS ON THE GUARANTEE LADDER, TYPED (DESIGN section 4b, the ledger rule's rung
 // found at / ceiling / next trigger). The rung and trigger vocabulary is gunbc.guarantee_rung and
-// gunbc.guarantee_stall, not a second one: a row's below-ceiling standing IS a stall without the
-// subject and population the row's identity and receipts already carry.
+// gunbc.rung_climb (the referent-free core gunbc.guarantee_stall composes with its `awaiting`
+// referents), not a second one: a row's below-ceiling standing IS a stall without the subject, the
+// population and the awaited lanes. The ledger does not import the stall, so reading rungs does not
+// reach roadmap_model and extdeps.github.
 //
 // THE POSITION TYPE IS SEPARATE FROM THE RUNG TYPE because section 4b says silent wrongness is below
 // the ladder and not a rung, so a class FOUND silently wrong has no GuaranteeRung to be found at;
@@ -185,7 +185,7 @@ type RungPosition
   | FoundOnRung { rung: GuaranteeRung }
 
 // BELOW CEILING WITHOUT A TRIGGER IS UNCONSTRUCTIBLE: BelowCeiling has no arm without a blocker
-// (which of the three section 4b ob.2 cases) and a NextRungTrigger (whose capability section 4b ob.3
+// (which of the three section 4b ob.2 cases) and a trigger capability (which section 4b ob.3
 // requires; standing_admission refuses an empty or referent-spelled one). AtCeiling carries ONE
 // rung, so at-ceiling-with-a-trigger and current-above-ceiling have no constructor.
 //
@@ -193,7 +193,7 @@ type RungPosition
 // CLIMBED receipt); where no receipt states a later rung, the standing is the rung as filed.
 type RungStanding
   = AtCeiling { rung: GuaranteeRung, ceiling_reason: NonEmptyStr }
-  | BelowCeiling { current: RungPosition, ceiling: GuaranteeRung, blocker: ClimbBlocker, trigger: NextRungTrigger }
+  | BelowCeiling { current: RungPosition, ceiling: GuaranteeRung, blocker: ClimbBlocker, trigger_capability: String }
 
 // RELATION TO gunbc.rung_drop OffLadderJudgment.NotJudgeableFromProse: the same honest refusal (a
 // rung cannot be read from authored prose), but that arm is one undifferentiated answer about a
@@ -243,9 +243,9 @@ type StandingAdmission
 fn standing_admission(subject: String, s: RungStanding) -> StandingAdmission {
   match s {
     AtCeiling { rung: _, ceiling_reason: _ } => StandingAdmitted
-    BelowCeiling { current: c, ceiling: k, blocker: _, trigger: t } =>
+    BelowCeiling { current: c, ceiling: k, blocker: _, trigger_capability: t } =>
       if rung_position_index(p: c) < guarantee_rung_index(r: k) {
-        match next_rung_trigger_admission(subject: subject, t: t) {
+        match trigger_capability_admission(subject: subject, capability: t) {
           TriggerAdmitted => StandingAdmitted
           refused => StandingTriggerRefused { subject: subject, admission: refused }
         }

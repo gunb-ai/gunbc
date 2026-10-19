@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.next_rung_trigger_enforcement_stall
 
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, UncountedNotEnumerable, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, UncountedNotEnumerable, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // THIS ROW IS THE STALL CARRIER'S OWN CLASS, and it sits in its own module for the reason every
 // other row does: the stall is in the stall machinery itself, whose type authority is

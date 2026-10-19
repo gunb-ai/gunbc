@@ -3,11 +3,11 @@ module gunbc.recurring_failure_mode.a_coproduct_arm_without_a_constructor_name_i
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { StructurallyImpossible }
-import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
+import gunbc.rung_climb { CannotClimbFurther }
 
 data a_coproduct_arm_without_a_constructor_name_is_accepted: RecurringFailureMode = RecurringFailureMode {
   identity: "a_coproduct_arm_without_a_constructor_name_is_accepted" as NonEmptyStr,
-  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "structurally impossible." }, trigger: climbs_when(capability: "the declaration fold that builds a coproduct refuses an arm with no authored constructor name, with a located diagnostic, and the claim above turns green.") } },
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "structurally impossible." }, trigger_capability: "the declaration fold that builds a coproduct refuses an arm with no authored constructor name, with a located diagnostic, and the claim above turns green." } },
 
   receipts: [
     "INVALID STATE: a coproduct declaration with an arm that has no constructor name, `type T = { x: Int } | B`. Nothing can build or match that arm, so the declaration is malformed. v2 normalize accepts it, and so does v2 resolve on the single-tree door. Measured by claim_batch on BuildBuddy, 2026-10-05 (clever-raven-680): `v2.test.claim.long.cwc_resolution_probe` `cwc_malformed_nary_coproduct_normalize_rejects` FAILs. The claim hands normalize a supplied parse tree for `type T = { x: Int } | B`; the module's real-path claim `cwc_cwc_module_resolve_accepts` checks that the real parser emits that tree for the source, by content hash.",

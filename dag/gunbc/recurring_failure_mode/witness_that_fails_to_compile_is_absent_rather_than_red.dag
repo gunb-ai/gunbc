@@ -3,12 +3,12 @@ module gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rath
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
+import gunbc.rung_climb { CannotClimbFurther }
 
 data witness_that_fails_to_compile_is_absent_rather_than_red: RecurringFailureMode = RecurringFailureMode {
   identity: "witness_that_fails_to_compile_is_absent_rather_than_red" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: CannotClimbFurther { why: "3, structurally guaranteed: the population is decidable and closed — every file under the claim roots — so a required step that compiles them and refuses a non-compiling claim file makes the state unwritable in an `Accepted` tree." }, trigger: climbs_when(capability: "the required floor must COMPILE every claim-root file and refuse a claim file that does not compile, rather than only executing the claim files that compile — AN EXECUTION ROSTER KEYED TO COMPILING FILES CANNOT SEE A FILE THAT FELL OUT OF I") } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: CannotClimbFurther { why: "3, structurally guaranteed: the population is decidable and closed — every file under the claim roots — so a required step that compiles them and refuses a non-compiling claim file makes the state unwritable in an `Accepted` tree." }, trigger_capability: "the required floor must COMPILE every claim-root file and refuse a claim file that does not compile, rather than only executing the claim files that compile — AN EXECUTION ROSTER KEYED TO COMPILING FILES CANNOT SEE A FILE THAT FELL OUT OF I" } },
 
   receipts: [
     "**a witness that fails to COMPILE is ABSENT rather than red, and running its SUBJECT proves nothing about it** (a claim file is committed, reviewed and merged while it cannot compile, so none of its assertions ever execute and the guarantee it was written to carry does not exist; the class it polices reports as walled while nothing walls it, which is worse than an absent witness because the file is cited as coverage by its own author and by its reviewers).",

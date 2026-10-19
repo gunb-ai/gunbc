@@ -3,13 +3,13 @@ module gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_chan
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
-import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
+import gunbc.rung_climb { CannotClimbFurther }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data base_readability_gate_refuses_a_grammar_change: RecurringFailureMode = RecurringFailureMode {
   identity: "base_readability_gate_refuses_a_grammar_change" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: CannotClimbFurther { why: "mechanically preventable -- the gate can read the base revision with the BASE revision's own compiler, which is the same seed-versus-head discipline the bootstrap already observes elsewhere in this repository, rather than assuming one gramm" }, trigger: climbs_when(capability: "base-side declaration reading bound to the compiler of the revision being read, so a grammar change is adjudicable instead of unevaluable.") } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: CannotClimbFurther { why: "mechanically preventable -- the gate can read the base revision with the BASE revision's own compiler, which is the same seed-versus-head discipline the bootstrap already observes elsewhere in this repository, rather than assuming one gramm" }, trigger_capability: "base-side declaration reading bound to the compiler of the revision being read, so a grammar change is adjudicable instead of unevaluable." } },
 
   receipts: [
     "**a gate that reads the base revision with the HEAD compiler refuses every change to the GRAMMAR ITSELF.** INVALID STATE: an adjudicator compares base-side and head-side declarations, parses both with one compiler, and has no representable arm for `the base is well-formed under its OWN grammar and unreadable only under the head's`. Removing a keyword makes every file in the diff unreadable at base at once, so the gate refuses in proportion to how thoroughly the change succeeded.",

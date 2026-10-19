@@ -3,13 +3,13 @@ module gunbc.recurring_failure_mode.fabric_object_identity_is_a_structural_locat
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { AwaitsOneGrounding, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data fabric_object_identity_is_a_structural_locator: RecurringFailureMode = RecurringFailureMode {
   identity: "fabric_object_identity_is_a_structural_locator" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: "native emission of the extdeps.crypto.sha2 closure sufficient for every consumer of gunbc.fabric.fabric_storage_file_store to run at floor rate -- measured as the spark pair_serving authority-log claims completing inside main's floor envelo" }, trigger: climbs_when(capability: "native emission of the extdeps.crypto.sha2 closure sufficient for every consumer of gunbc.fabric.fabric_storage_file_store to run at floor rate -- measured as the spark pair_serving authority-log claims completing inside main's floor envelo") } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: "native emission of the extdeps.crypto.sha2 closure sufficient for every consumer of gunbc.fabric.fabric_storage_file_store to run at floor rate -- measured as the spark pair_serving authority-log claims completing inside main's floor envelo" }, trigger_capability: "native emission of the extdeps.crypto.sha2 closure sufficient for every consumer of gunbc.fabric.fabric_storage_file_store to run at floor rate -- measured as the spark pair_serving authority-log claims completing inside main's floor envelo" } },
 
   receipts: [
     "Fabric object identity is a structural locator. INVALID STATE: a fabric object ref (std.fabric_storage FabricObjectRef) is minted by content_hash_of_value, the Fnv1a64Structural family -- sixty-four non-cryptographic bits. Two distinct preimages can share a ref at birthday work no adversary would notice paying, and the store has no way to tell them apart: the ref is the only name an object has.",

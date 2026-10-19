@@ -2,7 +2,8 @@ module gunbc.guarantee_stall.enforcement_live_closure_gate_stall
 
 import std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data enforcement_live_closure_gate_stall: GuaranteeStall = GuaranteeStall {
   subject: "the live enforcement closure and its question-zero gate are non-green",

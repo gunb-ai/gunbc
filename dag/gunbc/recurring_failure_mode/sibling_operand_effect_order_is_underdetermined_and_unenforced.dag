@@ -3,7 +3,7 @@ module gunbc.recurring_failure_mode.sibling_operand_effect_order_is_underdetermi
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
-import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
+import gunbc.rung_climb { CannotClimbFurther }
 
 // THIS ROW IS A DERIVATION READ, NOT A REPAIR, AND IT DELIBERATELY PROPOSES NO NEW VOCABULARY.
 // The question it was opened to answer is whether sibling-operand order is UNDERIVABLE or merely
@@ -16,7 +16,7 @@ import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
 data sibling_operand_effect_order_is_underdetermined_and_unenforced: RecurringFailureMode = RecurringFailureMode {
   identity: "sibling_operand_effect_order_is_underdetermined_and_unenforced" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "structurally impossible, and that is derived rather than aspirational -- the predicate is decidable, because how many argument children of one Transform node reach a declared effect is a call-reachability question over declared uses require" }, trigger: climbs_when(capability: "ONE effectfulness authority that answers for a method call and a direct call alike, consumed by this refusal -- at which point the method face is covered by construction rather than by the two sites happening to be repaired.") } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "structurally impossible, and that is derived rather than aspirational -- the predicate is decidable, because how many argument children of one Transform node reach a declared effect is a call-reachability question over declared uses require" }, trigger_capability: "ONE effectfulness authority that answers for a method call and a direct call alike, consumed by this refusal -- at which point the method face is covered by construction rather than by the two sites happening to be repaired." } },
 
   receipts: [
     "**sibling-operand effect order is underdetermined by the model, and the absence is declared but unenforced** (INVALID STATE: an accepted program in which two siblings of one operand list each reach an observable effect, so its meaning depends on which runs first, while every authority the realizations consult declines to carry that order -- and nothing refuses the program).",

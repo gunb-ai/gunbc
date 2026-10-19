@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.coproduct_wire_contract_target_not_local_in_emitted_extdeps_github
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data coproduct_wire_contract_target_not_local_in_emitted_extdeps_github: RecurringFailureMode = RecurringFailureMode {
+  identity: "coproduct_wire_contract_target_not_local_in_emitted_extdeps_github" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the emitter lowering a CoproductWireContract whose target coproduct is declared outside the emitting module, or the extdeps.github closure being emitted without that contract, so an emitted closure that reaches extdeps.github builds" } },
+
+  receipts: [
+    "**coproduct wire contract target not local in the emitted extdeps.github closure** (INVALID STATE: an emitted crate containing extdeps_github_github.rs whose CoproductWireContract names a coproduct, IssueState, that is not a local coproduct of the emitted module, so the target compiler refuses.",
+
+    "HARM: any native claim program whose import closure reaches extdeps.github cannot be built, so its `gunbc test` label exits 2 with no observation; the wall that fires is cargo's, not the front end's (the .dag parsed and emitted 886 files).",
+
+    "FILED FROM: `gunbc test //gunbc/instruments:rfm-rung-census` at head 1bceac02818: V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed first_error=`CoproductWireContract target does not name a local coproduct: IssueState @ extdeps_github_github.rs:19:1`, 35 errors in v2-emitted-policy-unit-0. The reaching chain was gunbc.guarantee_stall -> gunbc.lifecycle_bounded_referent -> gunbc.roadmap.roadmap_model -> gunbc.roadmap.roadmap_status -> extdeps.github.pulls -> extdeps.github.github.",
+
+    "WORKED AROUND NOWHERE: the rung-ledger census avoided the closure by giving the trigger capability and blocker a referent-free home (gunbc.rung_climb), which is a modeling correction on its own merit and does not repair the emitter; the defect is unfixed and routed outside that change.",
+
+    "RUNG: found at mitigatable (cargo refuses the emitted crate); ceiling structurally guaranteed because whether a contract's target is local is decidable from the emitted module's coproduct declarations, so the emitter can refuse or lower it before cargo. NEXT-RUNG TRIGGER: climbable but unbuilt, capability named in the typed standing.",
+  ],
+  evidence: [],
+}

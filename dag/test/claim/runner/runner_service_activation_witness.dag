@@ -57,7 +57,8 @@ import gunbc.fleet.fleet_converge_plan {
   fleet_converge_apply_shell, fleet_converge_apply_terminal, FleetConvergeRequest, FullHostConverge, fleet_converge_apply_terminal_line, timer_retirement_plan, caps_reconcile, fleet_converge_desired_caps,
 }
 import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, CannotClimbFurther, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling }
+import gunbc.rung_climb { AwaitsOneGrounding, ClimbableButUnbuilt, CannotClimbFurther }
 import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
 import gunbc.runner.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 

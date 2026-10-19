@@ -3,12 +3,12 @@ module gunbc.recurring_failure_mode.an_unreached_entry_body_is_never_typechecked
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
-import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
+import gunbc.rung_climb { CannotClimbFurther }
 
 data an_unreached_entry_body_is_never_typechecked: RecurringFailureMode = RecurringFailureMode {
   identity: "an_unreached_entry_body_is_never_typechecked" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "4, structurally impossible, and the reason it is decidable is that both operands are in the Node tree**: a body's free identifiers and its module's import list and local declarations are all ordinary declarations, so 'every identifier in ev" }, trigger: climbs_when(capability: "a pass that resolves the identifiers of EVERY declaration body in the compiled corpus, including bodies outside every witness closure and every entry closure, and refuses an unresolved one with its module, symbol and position.** SUFFICIENT ") } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "4, structurally impossible, and the reason it is decidable is that both operands are in the Node tree**: a body's free identifiers and its module's import list and local declarations are all ordinary declarations, so 'every identifier in ev" }, trigger_capability: "a pass that resolves the identifiers of EVERY declaration body in the compiled corpus, including bodies outside every witness closure and every entry closure, and refuses an unresolved one with its module, symbol and position.** SUFFICIENT " } },
 
   receipts: [
     "**an unreached entry body is never typechecked, so an unresolved symbol inside it is green everywhere** (INVALID STATE: a declaration body -- characteristically an effectful entry `fn` (the form spelled `func` before #10850 unified the two), invoked by an operator or a workflow rather than by any witness -- references an identifier that is neither imported nor locally declared. Resolution is CLOSURE-SCOPED: a claim run resolves the items reachable from its entry, so a body nothing reaches is never handed to the typechecker, and the defect is indistinguishable from correct code to every automated reader. ",

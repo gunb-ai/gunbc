@@ -3,7 +3,7 @@ module gunbc.instruments.rfm_rung_census
 import std.types { Int, List, String, Bool, NonEmptyStr }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { CannotClimbFurther, climbs_when, NextRungTrigger }
+import gunbc.rung_climb { CannotClimbFurther }
 import gunbc.recurring_failure_mode {
   RecurringFailureMode, RungReading, RungUnread, RungRead, RungStanding, AtCeiling, BelowCeiling,
   RungPosition, FoundOnRung, FoundBelowTheLadder, UnreadCause,
@@ -104,36 +104,32 @@ fn unread_cause_row(label: String) -> String {
 // SUPPLIED VALUES AT THE ONE INTERFACE standing_admission decides (DESIGN section 3, a witness
 // discriminates at one interface); the live roster above is the inhabitance claim that the real
 // rows reach it.
-fn control_trigger() -> NextRungTrigger {
-  climbs_when(capability: "control capability restored")
-}
-
 data control_below_ceiling_with_a_trigger: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: Mitigatable },
   ceiling: StructurallyGuaranteed,
   blocker: CannotClimbFurther { why: "control why" },
-  trigger: climbs_when(capability: "control capability restored"),
+  trigger_capability: "control capability restored",
 }
 
 data control_below_ceiling_blank_capability: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: Mitigatable },
   ceiling: StructurallyGuaranteed,
   blocker: CannotClimbFurther { why: "control why" },
-  trigger: climbs_when(capability: ""),
+  trigger_capability: "",
 }
 
 data control_current_at_ceiling_yet_below: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: StructurallyGuaranteed },
   ceiling: StructurallyGuaranteed,
   blocker: CannotClimbFurther { why: "control why" },
-  trigger: climbs_when(capability: "control capability restored"),
+  trigger_capability: "control capability restored",
 }
 
 data control_below_the_ladder_to_a_ceiling: RungStanding = BelowCeiling {
   current: FoundBelowTheLadder,
   ceiling: Mitigatable,
   blocker: CannotClimbFurther { why: "control why" },
-  trigger: climbs_when(capability: "control capability restored"),
+  trigger_capability: "control capability restored",
 }
 
 data control_at_ceiling: RungStanding = AtCeiling {

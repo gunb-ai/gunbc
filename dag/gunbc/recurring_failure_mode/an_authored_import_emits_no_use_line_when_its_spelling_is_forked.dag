@@ -3,13 +3,13 @@ module gunbc.recurring_failure_mode.an_authored_import_emits_no_use_line_when_it
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
+import gunbc.rung_climb { CannotClimbFurther }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data an_authored_import_emits_no_use_line_when_its_spelling_is_forked: RecurringFailureMode = RecurringFailureMode {
   identity: "an_authored_import_emits_no_use_line_when_its_spelling_is_forked" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: CannotClimbFurther { why: "3, structurally guaranteed -- which declaration an authored import names is fully modeled and decidable at emission, because the resolver already decides it for the same module; a single authority makes the disagreement unwritable rather th" }, trigger: climbs_when(capability: "THE EMITTED USE-LINE FOR AN AUTHORED IMPORT NAME IS DERIVED FROM THE RESOLVER'S BINDING FOR THAT NAME IN THAT MODULE, rather than from a bare-name lookup over the closure -- SUFFICIENT FOR emission and resolution to name the same declaratio") } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: CannotClimbFurther { why: "3, structurally guaranteed -- which declaration an authored import names is fully modeled and decidable at emission, because the resolver already decides it for the same module; a single authority makes the disagreement unwritable rather th" }, trigger_capability: "THE EMITTED USE-LINE FOR AN AUTHORED IMPORT NAME IS DERIVED FROM THE RESOLVER'S BINDING FOR THAT NAME IN THAT MODULE, rather than from a bare-name lookup over the closure -- SUFFICIENT FOR emission and resolution to name the same declaratio" } },
 
   receipts: [
     "an authored import emits no use-line when its spelling is forked (a module authors `import M { T }` and uses `T` in a signature; the emitted module RENDERS the bare `T` and emits NO use-line binding it, so one emitted module contradicts itself and the target compiler refuses at the reference). INVALID STATE: an emitted module that spells a type it declined to import. HARM: E0425 at rustc on a crate the compiler reported as emitted clean -- the emission itself reports success, so the refusal lands in the target toolchain rather than at any gunbc boundary, and it lands in a module whose SOURCE names exactly one provider for the name.",

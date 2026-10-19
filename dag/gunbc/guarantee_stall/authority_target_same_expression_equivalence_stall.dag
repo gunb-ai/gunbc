@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.authority_target_same_expression_equivalence_stall
 
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, UncountedNotEnumerable, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, UncountedNotEnumerable, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // ONE EXPRESSION, TWO EVALUATORS -- AND WHY THIS IS A STALL RATHER THAN A DROP, which is the whole
 // reason it is in this carrier. Nothing ever required this comparison, so no rung was lowered and

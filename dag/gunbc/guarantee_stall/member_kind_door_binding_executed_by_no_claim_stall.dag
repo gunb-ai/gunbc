@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.member_kind_door_binding_executed_by_no_claim_stall
 
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding }
 
 // A NEW LINK THAT HAS NEVER EXECUTED, RECORDED AS A STALL -- NOT A DROP: no rung stood here and none is claimed to have
 // fallen. gunbc#13513 carries the authored data-vs-fn kind from normalize to the mandatory_tag gate

@@ -4,12 +4,12 @@ import std.types { NonEmptyStr }
 import std.decl_ref { decl_ref }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { CannotClimbFurther, climbs_when }
+import gunbc.rung_climb { CannotClimbFurther }
 
 data emitter_nested_variant_pattern_inside_present_drops_the_rc_deref: RecurringFailureMode = RecurringFailureMode {
   identity: "emitter_nested_variant_pattern_inside_present_drops_the_rc_deref" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: CannotClimbFurther { why: "structurally guaranteed -- the emitter knows the field's Rust carrier and the nested pattern's variant, so it can lower the pattern through the deref." }, trigger: climbs_when(capability: "the emitter lowers a variant pattern nested inside Present in a record-field pattern through the Rc carrier, so the specimen compiles and runs; at that point the specimen is enrolled in gunbc.instruments.native_emission_controls as a perman") } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: CannotClimbFurther { why: "structurally guaranteed -- the emitter knows the field's Rust carrier and the nested pattern's variant, so it can lower the pattern through the deref." }, trigger_capability: "the emitter lowers a variant pattern nested inside Present in a record-field pattern through the Rc carrier, so the specimen compiles and runs; at that point the specimen is enrolled in gunbc.instruments.native_emission_controls as a perman" } },
 
   receipts: [
     "INVALID STATE: a record pattern whose field is an Optional of a coproduct, with the coproduct variant pattern nested inside Present (`ExprMethodCall { method_semantics: Present { value: AlgebraMethodSemantics { .. } } }`), is emitted as `Some(MethodSemantics::AlgebraMethodSemantics{..})` against a field of type Option<Rc<MethodSemantics>>. The emitter does not dereference the Rc carrier through Present for a nested pattern, so rustc refuses with E0308 in generated code.",

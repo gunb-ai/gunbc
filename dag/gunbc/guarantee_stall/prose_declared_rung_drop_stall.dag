@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.prose_declared_rung_drop_stall
 
 import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // THE PROSE HALF OF THE DROP ROSTER, DECLARED AS A STALL BECAUSE THAT IS WHAT IT IS. 26 of
 // gunbc.rung_drop's rows state their DESIGN section 4b(3) fields -- previous rung, temporary rung,

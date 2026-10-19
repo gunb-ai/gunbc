@@ -2,7 +2,8 @@ module gunbc.guarantee_stall.mandatory_tag_live_corpus_stall
 
 import std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data mandatory_tag_live_corpus_stall: GuaranteeStall = GuaranteeStall {
   subject: "the live corpus contains a mandatory-tag violation",
