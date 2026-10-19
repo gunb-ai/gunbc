@@ -1,0 +1,907 @@
+module v2.extdeps.languages.wasm
+import std.types { List, Map }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
+import v2.std.language_model { LanguageModel }
+
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.grammar {
+  StampClass,
+  StampBinding,
+  grammar_formal_terminal,
+  grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
+  Choice,
+  FormalGrammarSymbol,
+  FormalNonterminalOccurrence,
+  FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence,
+  ParseGrammar,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  Nonterminal,
+  Repeat,
+  Sequence,
+  Terminal,
+  grammar_empty_sync_tokens,
+  grammar_production_to_node,
+  grammar_relation_tokens_node
+}
+import v2.std.compilers.lexing {
+  CharClassPattern,
+  ChoicePattern,
+  DigitChar,
+  HexDigitChar,
+  IdentContinueChar,
+  IdentStartChar,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  KeywordPattern,
+  LiteralPattern,
+  ModeledLexRules,
+  OptionalPattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar,
+  lex_rule_set_token_class_member
+}
+
+import std.optional {
+  Absent,
+  Present,
+  Optional
+}
+import v2.std.model_core {
+  AlgebraInhabitanceDecl,
+  AlgebraLawObligation,
+  EffectSemanticsDecl,
+  EffectSignature,
+  FailClosedAtBoundary,
+  ModelCore,
+  PartialOperationDecl,
+  PartialitySemanticsDecl,
+  PrimitiveFactBundle,
+  PrimitiveOperationRef,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
+  ModelCoreFactAxisWidth
+}
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Authored,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+}
+import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, PointwisePower, empty_map, map_insert }
+import v2.std.algebra_structure_signature { approximate_field_type_node, commutative_semiring_type_node }
+import v2.std.text { String }
+
+type WasmIntWidth
+  = WasmIntBits32
+  | WasmIntBits64
+
+type WasmFloatWidth
+  = WasmFloatBits32
+  | WasmFloatBits64
+
+type WasmScalar
+  = IntScalar { width: WasmIntWidth }
+  | FloatScalar { width: WasmFloatWidth }
+
+type WasmIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  width: WasmIntWidth
+  std_projection: Symbol
+}
+
+type WasmFloatPrimitiveFacts {
+  surface_spelling: Symbol
+  width: WasmFloatWidth
+  ieee754_binary: Symbol
+  std_projection: Symbol
+}
+
+type WasmGrammarRelationRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<ConcreteSyntaxToken>
+}
+fn wasm_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^wasm_token_lparen },
+    FixedToken { token_class: ^wasm_token_kw_func },
+    BoundToken { token_class: ^wasm_token_ident, binding: ^wasm_binding_fn_add },
+    FixedToken { token_class: ^wasm_token_lparen },
+    FixedToken { token_class: ^wasm_token_kw_param },
+    FixedToken { token_class: ^wasm_token_type_i32 },
+    FixedToken { token_class: ^wasm_token_type_i32 },
+    FixedToken { token_class: ^wasm_token_rparen },
+    FixedToken { token_class: ^wasm_token_lparen },
+    FixedToken { token_class: ^wasm_token_kw_result },
+    FixedToken { token_class: ^wasm_token_type_i32 },
+    FixedToken { token_class: ^wasm_token_rparen },
+    FixedToken { token_class: ^wasm_token_local_get },
+    BoundToken { token_class: ^wasm_token_localidx_literal, binding: ^wasm_binding_localidx_0 },
+    FixedToken { token_class: ^wasm_token_local_get },
+    BoundToken { token_class: ^wasm_token_localidx_literal, binding: ^wasm_binding_localidx_1 },
+    FixedToken { token_class: ^wasm_token_i32_add },
+    FixedToken { token_class: ^wasm_token_rparen }
+  ]
+}
+data wasm_source_text: String = "(func $add (param i32 i32) (result i32) local.get 0 local.get 1 i32.add)"
+
+data wasm_facts_i32: WasmIntegerPrimitiveFacts = WasmIntegerPrimitiveFacts {
+  surface_spelling: ^wasm_surface_spelling_i32,
+  width: WasmIntBits32,
+  std_projection: ^wasm_std_projection_i32,
+}
+
+data wasm_facts_i64: WasmIntegerPrimitiveFacts = WasmIntegerPrimitiveFacts {
+  surface_spelling: ^wasm_surface_spelling_i64,
+  width: WasmIntBits64,
+  std_projection: ^wasm_std_projection_i64,
+}
+
+data wasm_facts_f32: WasmFloatPrimitiveFacts = WasmFloatPrimitiveFacts {
+  surface_spelling: ^wasm_surface_spelling_f32,
+  width: WasmFloatBits32,
+  ieee754_binary: ^wasm_ieee754_binary32,
+  std_projection: ^wasm_std_projection_f32,
+}
+
+data wasm_facts_f64: WasmFloatPrimitiveFacts = WasmFloatPrimitiveFacts {
+  surface_spelling: ^wasm_surface_spelling_f64,
+  width: WasmFloatBits64,
+  ieee754_binary: ^wasm_ieee754_binary64,
+  std_projection: ^wasm_std_projection_f64,
+}
+
+data wasm_integer_facts_catalog: List<WasmIntegerPrimitiveFacts> = [
+  wasm_facts_i32,
+  wasm_facts_i64,
+]
+
+data wasm_float_facts_catalog: List<WasmFloatPrimitiveFacts> = [
+  wasm_facts_f32,
+  wasm_facts_f64,
+]
+
+fn wasm_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn wasm_int_width_node(width: WasmIntWidth) -> Node {
+  match width {
+    WasmIntBits32 => wasm_inhabitant_atom(id: ^wasm_tag_bits32)
+    WasmIntBits64 => wasm_inhabitant_atom(id: ^wasm_tag_bits64)
+  }
+}
+
+fn wasm_float_width_node(width: WasmFloatWidth) -> Node {
+  match width {
+    WasmFloatBits32 => wasm_inhabitant_atom(id: ^wasm_tag_bits32)
+    WasmFloatBits64 => wasm_inhabitant_atom(id: ^wasm_tag_bits64)
+  }
+}
+
+fn wasm_scalar_node(scalar: WasmScalar) -> Node {
+  match scalar {
+    IntScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        wasm_named_edge(
+          name: ^wasm_scalar_field_classifier,
+          target: wasm_inhabitant_atom(id: ^wasm_tag_scalar_int)
+        ),
+        wasm_named_edge(name: ^wasm_scalar_field_width, target: wasm_int_width_node(width: width))
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+    FloatScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        wasm_named_edge(
+          name: ^wasm_scalar_field_classifier,
+          target: wasm_inhabitant_atom(id: ^wasm_tag_scalar_float)
+        ),
+        wasm_named_edge(name: ^wasm_scalar_field_width, target: wasm_float_width_node(width: width))
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+
+fn wasm_integer_facts_node(facts: WasmIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(
+        name: ^wasm_facts_field_surface_spelling,
+        target: wasm_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      wasm_named_edge(
+        name: ^wasm_facts_field_width,
+        target: wasm_int_width_node(width: facts.width)
+      ),
+      wasm_named_edge(
+        name: ^wasm_facts_field_std_projection,
+        target: wasm_inhabitant_atom(id: facts.std_projection)
+      ),
+      wasm_named_edge(
+        name: ^wasm_facts_field_scalar_classifier,
+        target: wasm_scalar_node(scalar: IntScalar { width: facts.width })
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn wasm_float_facts_node(facts: WasmFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(
+        name: ^wasm_facts_field_surface_spelling,
+        target: wasm_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      wasm_named_edge(name: ^wasm_facts_field_width, target: wasm_float_width_node(width: facts.width)),
+      wasm_named_edge(
+        name: ^wasm_facts_field_ieee754_binary,
+        target: wasm_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      wasm_named_edge(
+        name: ^wasm_facts_field_std_projection,
+        target: wasm_inhabitant_atom(id: facts.std_projection)
+      ),
+      wasm_named_edge(
+        name: ^wasm_facts_field_scalar_classifier,
+        target: wasm_scalar_node(scalar: FloatScalar { width: facts.width })
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn wasm_inhabitant_node(id: Symbol, facts: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(name: ^wasm_inhabitant_field_atom, target: wasm_inhabitant_atom(id: id)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_facts, target: facts)
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wasm_integer_inhabitant_node(id: Symbol, facts: WasmIntegerPrimitiveFacts) -> Node {
+  wasm_inhabitant_node(id: id, facts: wasm_integer_facts_node(facts: facts))
+}
+
+fn wasm_float_inhabitant_node(id: Symbol, facts: WasmFloatPrimitiveFacts) -> Node {
+  wasm_inhabitant_node(id: id, facts: wasm_float_facts_node(facts: facts))
+}
+
+fn wasm_inhabitant_i32_node() -> Node {
+  wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i32, facts: wasm_facts_i32)
+}
+
+fn wasm_integer_inhabitant_id(facts: WasmIntegerPrimitiveFacts) -> Symbol {
+  match facts {
+    wasm_facts_i32 => ^wasm_inhabitant_i32
+    wasm_facts_i64 => ^wasm_inhabitant_i64
+  }
+}
+
+fn wasm_float_inhabitant_id(facts: WasmFloatPrimitiveFacts) -> Symbol {
+  match facts {
+    wasm_facts_f32 => ^wasm_inhabitant_f32
+    wasm_facts_f64 => ^wasm_inhabitant_f64
+  }
+}
+
+fn wasm_integer_inhabitant_for_facts(facts: WasmIntegerPrimitiveFacts) -> Node {
+  wasm_integer_inhabitant_node(id: wasm_integer_inhabitant_id(facts: facts), facts: facts)
+}
+
+fn wasm_float_inhabitant_for_facts(facts: WasmFloatPrimitiveFacts) -> Node {
+  wasm_float_inhabitant_node(id: wasm_float_inhabitant_id(facts: facts), facts: facts)
+}
+
+fn wasm_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: target }
+}
+
+fn wasm_int_numeric_immediate_node(
+  surface: Symbol,
+  token_class: Symbol,
+  width: WasmIntWidth,
+  validation: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: surface } },
+    children: [
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_token_class,
+        target: wasm_inhabitant_atom(id: token_class)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_width,
+        target: wasm_int_width_node(width: width)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_validation,
+        target: wasm_inhabitant_atom(id: validation)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn wasm_float_numeric_immediate_node(
+  surface: Symbol,
+  token_class: Symbol,
+  width: WasmFloatWidth,
+  validation: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: surface } },
+    children: [
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_token_class,
+        target: wasm_inhabitant_atom(id: token_class)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_width,
+        target: wasm_float_width_node(width: width)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_validation,
+        target: wasm_inhabitant_atom(id: validation)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn wasm_localidx_node(token_class: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^wasm_surface_localidx } },
+    children: [
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_token_class,
+        target: wasm_inhabitant_atom(id: token_class)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_width,
+        target: wasm_int_width_node(width: WasmIntBits32)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_validation,
+        target: wasm_inhabitant_atom(id: ^wasm_localidx_validation_u32_range)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wasm_localidx_operand_node() -> Node {
+  wasm_localidx_node(token_class: ^wasm_token_localidx_literal)
+}
+
+fn wasm_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(name: ^wasm_inhabitant_field_i32, target: wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i32, facts: wasm_facts_i32)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_i64, target: wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i64, facts: wasm_facts_i64)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_f32, target: wasm_float_inhabitant_node(id: ^wasm_inhabitant_f32, facts: wasm_facts_f32)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_f64, target: wasm_float_inhabitant_node(id: ^wasm_inhabitant_f64, facts: wasm_facts_f64))
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wasm_selection_policy_node() -> Node {
+  wasm_inhabitant_i32_node()
+}
+
+fn wasm_emitted_add_fn_node() -> Node {
+  anonymous_signature_arrow(domain_types: [wasm_inhabitant_i32_node(), wasm_inhabitant_i32_node()], codomain: wasm_inhabitant_i32_node(), source: wasm_inhabitant_i32_node())
+}
+
+fn wasm_source_text_authority() -> String {
+  wasm_source_text
+}
+
+fn wasm_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+
+  concrete_syntax_token_to_node(token: token)
+}
+
+fn wasm_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+fn wasm_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Choice { left: left, right: right }
+}
+
+fn wasm_grammar_optional(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
+}
+
+fn wasm_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
+  Repeat { element: element }
+}
+
+fn wasm_grammar_choice_fold_step(acc: GrammarExpr, token_class: Symbol) -> GrammarExpr {
+  wasm_grammar_choice(
+    left: wasm_grammar_terminal(token_class: token_class),
+    right: acc
+  )
+}
+
+fn wasm_grammar_choice_from_token_classes(token_classes: List<Symbol>, last: Symbol) -> GrammarExpr {
+  fold_list(
+    xs: token_classes,
+    empty: wasm_grammar_terminal(token_class: last),
+    cons: fn(acc, token_class) {
+      wasm_grammar_choice_fold_step(acc: acc, token_class: token_class)
+    }
+  )
+}
+
+fn wasm_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn wasm_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken) -> GrammarExpr {
+  let token_class = concrete_syntax_token_class(token: token)
+  if token_class == ^wasm_token_lparen {
+    acc
+  } else {
+    Sequence {
+      left: wasm_grammar_terminal(token_class: token_class),
+      right: acc
+    }
+  }
+}
+
+fn wasm_grammar_sequence_from_token_classes() -> GrammarExpr {
+  fold_list(
+    xs: wasm_concrete_tokens(),
+    empty: wasm_grammar_terminal(token_class: ^wasm_token_lparen),
+    cons: fn(acc, token) {
+      wasm_grammar_sequence_fold_step(acc: acc, token: token)
+    }
+  )
+}
+
+
+type WasmIntWidth
+  = WasmIntBits32
+  | WasmIntBits64
+
+type WasmFloatWidth
+  = WasmFloatBits32
+  | WasmFloatBits64
+
+type WasmScalar
+  = IntScalar { width: WasmIntWidth }
+  | FloatScalar { width: WasmFloatWidth }
+
+type WasmIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  width: WasmIntWidth
+  std_projection: Symbol
+}
+
+type WasmFloatPrimitiveFacts {
+  surface_spelling: Symbol
+  width: WasmFloatWidth
+  ieee754_binary: Symbol
+  std_projection: Symbol
+}
+
+type WasmGrammarRelationRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<ConcreteSyntaxToken>
+}
+fn wasm_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^wasm_token_lparen },
+    FixedToken { token_class: ^wasm_token_kw_func },
+    BoundToken { token_class: ^wasm_token_ident, binding: ^wasm_binding_fn_add },
+    FixedToken { token_class: ^wasm_token_lparen },
+    FixedToken { token_class: ^wasm_token_kw_param },
+    FixedToken { token_class: ^wasm_token_type_i32 },
+    FixedToken { token_class: ^wasm_token_type_i32 },
+    FixedToken { token_class: ^wasm_token_rparen },
+    FixedToken { token_class: ^wasm_token_lparen },
+    FixedToken { token_class: ^wasm_token_kw_result },
+    FixedToken { token_class: ^wasm_token_type_i32 },
+    FixedToken { token_class: ^wasm_token_rparen },
+    FixedToken { token_class: ^wasm_token_local_get },
+    BoundToken { token_class: ^wasm_token_localidx_literal, binding: ^wasm_binding_localidx_0 },
+    FixedToken { token_class: ^wasm_token_local_get },
+    BoundToken { token_class: ^wasm_token_localidx_literal, binding: ^wasm_binding_localidx_1 },
+    FixedToken { token_class: ^wasm_token_i32_add },
+    FixedToken { token_class: ^wasm_token_rparen }
+  ]
+}
+data wasm_source_text: String = "(func $add (param i32 i32) (result i32) local.get 0 local.get 1 i32.add)"
+
+data wasm_facts_i32: WasmIntegerPrimitiveFacts = WasmIntegerPrimitiveFacts {
+  surface_spelling: ^wasm_surface_spelling_i32,
+  width: WasmIntBits32,
+  std_projection: ^wasm_std_projection_i32,
+}
+
+data wasm_facts_i64: WasmIntegerPrimitiveFacts = WasmIntegerPrimitiveFacts {
+  surface_spelling: ^wasm_surface_spelling_i64,
+  width: WasmIntBits64,
+  std_projection: ^wasm_std_projection_i64,
+}
+
+data wasm_facts_f32: WasmFloatPrimitiveFacts = WasmFloatPrimitiveFacts {
+  surface_spelling: ^wasm_surface_spelling_f32,
+  width: WasmFloatBits32,
+  ieee754_binary: ^wasm_ieee754_binary32,
+  std_projection: ^wasm_std_projection_f32,
+}
+
+data wasm_facts_f64: WasmFloatPrimitiveFacts = WasmFloatPrimitiveFacts {
+  surface_spelling: ^wasm_surface_spelling_f64,
+  width: WasmFloatBits64,
+  ieee754_binary: ^wasm_ieee754_binary64,
+  std_projection: ^wasm_std_projection_f64,
+}
+
+data wasm_integer_facts_catalog: List<WasmIntegerPrimitiveFacts> = [
+  wasm_facts_i32,
+  wasm_facts_i64,
+]
+
+data wasm_float_facts_catalog: List<WasmFloatPrimitiveFacts> = [
+  wasm_facts_f32,
+  wasm_facts_f64,
+]
+
+fn wasm_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn wasm_int_width_node(width: WasmIntWidth) -> Node {
+  match width {
+    WasmIntBits32 => wasm_inhabitant_atom(id: ^wasm_tag_bits32)
+    WasmIntBits64 => wasm_inhabitant_atom(id: ^wasm_tag_bits64)
+  }
+}
+
+fn wasm_float_width_node(width: WasmFloatWidth) -> Node {
+  match width {
+    WasmFloatBits32 => wasm_inhabitant_atom(id: ^wasm_tag_bits32)
+    WasmFloatBits64 => wasm_inhabitant_atom(id: ^wasm_tag_bits64)
+  }
+}
+
+fn wasm_scalar_node(scalar: WasmScalar) -> Node {
+  match scalar {
+    IntScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        wasm_named_edge(
+          name: ^wasm_scalar_field_classifier,
+          target: wasm_inhabitant_atom(id: ^wasm_tag_scalar_int)
+        ),
+        wasm_named_edge(name: ^wasm_scalar_field_width, target: wasm_int_width_node(width: width))
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+    FloatScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        wasm_named_edge(
+          name: ^wasm_scalar_field_classifier,
+          target: wasm_inhabitant_atom(id: ^wasm_tag_scalar_float)
+        ),
+        wasm_named_edge(name: ^wasm_scalar_field_width, target: wasm_float_width_node(width: width))
+      ],
+      occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+
+fn wasm_integer_facts_node(facts: WasmIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(
+        name: ^wasm_facts_field_surface_spelling,
+        target: wasm_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      wasm_named_edge(
+        name: ^wasm_facts_field_width,
+        target: wasm_int_width_node(width: facts.width)
+      ),
+      wasm_named_edge(
+        name: ^wasm_facts_field_std_projection,
+        target: wasm_inhabitant_atom(id: facts.std_projection)
+      ),
+      wasm_named_edge(
+        name: ^wasm_facts_field_scalar_classifier,
+        target: wasm_scalar_node(scalar: IntScalar { width: facts.width })
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn wasm_float_facts_node(facts: WasmFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(
+        name: ^wasm_facts_field_surface_spelling,
+        target: wasm_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      wasm_named_edge(name: ^wasm_facts_field_width, target: wasm_float_width_node(width: facts.width)),
+      wasm_named_edge(
+        name: ^wasm_facts_field_ieee754_binary,
+        target: wasm_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      wasm_named_edge(
+        name: ^wasm_facts_field_std_projection,
+        target: wasm_inhabitant_atom(id: facts.std_projection)
+      ),
+      wasm_named_edge(
+        name: ^wasm_facts_field_scalar_classifier,
+        target: wasm_scalar_node(scalar: FloatScalar { width: facts.width })
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn wasm_inhabitant_node(id: Symbol, facts: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(name: ^wasm_inhabitant_field_atom, target: wasm_inhabitant_atom(id: id)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_facts, target: facts)
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wasm_integer_inhabitant_node(id: Symbol, facts: WasmIntegerPrimitiveFacts) -> Node {
+  wasm_inhabitant_node(id: id, facts: wasm_integer_facts_node(facts: facts))
+}
+
+fn wasm_float_inhabitant_node(id: Symbol, facts: WasmFloatPrimitiveFacts) -> Node {
+  wasm_inhabitant_node(id: id, facts: wasm_float_facts_node(facts: facts))
+}
+
+fn wasm_inhabitant_i32_node() -> Node {
+  wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i32, facts: wasm_facts_i32)
+}
+
+fn wasm_integer_inhabitant_id(facts: WasmIntegerPrimitiveFacts) -> Symbol {
+  match facts {
+    wasm_facts_i32 => ^wasm_inhabitant_i32
+    wasm_facts_i64 => ^wasm_inhabitant_i64
+  }
+}
+
+fn wasm_float_inhabitant_id(facts: WasmFloatPrimitiveFacts) -> Symbol {
+  match facts {
+    wasm_facts_f32 => ^wasm_inhabitant_f32
+    wasm_facts_f64 => ^wasm_inhabitant_f64
+  }
+}
+
+fn wasm_integer_inhabitant_for_facts(facts: WasmIntegerPrimitiveFacts) -> Node {
+  wasm_integer_inhabitant_node(id: wasm_integer_inhabitant_id(facts: facts), facts: facts)
+}
+
+fn wasm_float_inhabitant_for_facts(facts: WasmFloatPrimitiveFacts) -> Node {
+  wasm_float_inhabitant_node(id: wasm_float_inhabitant_id(facts: facts), facts: facts)
+}
+
+fn wasm_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: target }
+}
+
+fn wasm_int_numeric_immediate_node(
+  surface: Symbol,
+  token_class: Symbol,
+  width: WasmIntWidth,
+  validation: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: surface } },
+    children: [
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_token_class,
+        target: wasm_inhabitant_atom(id: token_class)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_width,
+        target: wasm_int_width_node(width: width)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_validation,
+        target: wasm_inhabitant_atom(id: validation)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn wasm_float_numeric_immediate_node(
+  surface: Symbol,
+  token_class: Symbol,
+  width: WasmFloatWidth,
+  validation: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: surface } },
+    children: [
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_token_class,
+        target: wasm_inhabitant_atom(id: token_class)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_width,
+        target: wasm_float_width_node(width: width)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_validation,
+        target: wasm_inhabitant_atom(id: validation)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn wasm_localidx_node(token_class: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^wasm_surface_localidx } },
+    children: [
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_token_class,
+        target: wasm_inhabitant_atom(id: token_class)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_width,
+        target: wasm_int_width_node(width: WasmIntBits32)
+      ),
+      wasm_named_edge(
+        name: ^wasm_numeric_immediate_field_validation,
+        target: wasm_inhabitant_atom(id: ^wasm_localidx_validation_u32_range)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wasm_localidx_operand_node() -> Node {
+  wasm_localidx_node(token_class: ^wasm_token_localidx_literal)
+}
+
+fn wasm_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(name: ^wasm_inhabitant_field_i32, target: wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i32, facts: wasm_facts_i32)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_i64, target: wasm_integer_inhabitant_node(id: ^wasm_inhabitant_i64, facts: wasm_facts_i64)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_f32, target: wasm_float_inhabitant_node(id: ^wasm_inhabitant_f32, facts: wasm_facts_f32)),
+      wasm_named_edge(name: ^wasm_inhabitant_field_f64, target: wasm_float_inhabitant_node(id: ^wasm_inhabitant_f64, facts: wasm_facts_f64))
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wasm_selection_policy_node() -> Node {
+  wasm_inhabitant_i32_node()
+}
+
+fn wasm_emitted_add_fn_node() -> Node {
+  anonymous_signature_arrow(domain_types: [wasm_inhabitant_i32_node(), wasm_inhabitant_i32_node()], codomain: wasm_inhabitant_i32_node(), source: wasm_inhabitant_i32_node())
+}
+
+fn wasm_source_text_authority() -> String {
+  wasm_source_text
+}
+
+fn wasm_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+
+  concrete_syntax_token_to_node(token: token)
+}
+
+fn wasm_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+fn wasm_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Choice { left: left, right: right }
+}
+
+fn wasm_grammar_optional(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
+}
+
+fn wasm_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
+  Repeat { element: element }
+}
+
+fn wasm_grammar_choice_fold_step(acc: GrammarExpr, token_class: Symbol) -> GrammarExpr {
+  wasm_grammar_choice(
+    left: wasm_grammar_terminal(token_class: token_class),
+    right: acc
+  )
+}
+
+fn wasm_grammar_choice_from_token_classes(token_classes: List<Symbol>, last: Symbol) -> GrammarExpr {
+  fold_list(
+    xs: token_classes,
+    empty: wasm_grammar_terminal(token_class: last),
+    cons: fn(acc, token_class) {
+      wasm_grammar_choice_fold_step(acc: acc, token_class: token_class)
+    }
+  )
+}
+
+fn wasm_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn wasm_grammar_sequence_fold_step(acc: GrammarExpr, token: ConcreteSyntaxToken) -> GrammarExpr {
+  let token_class = concrete_syntax_token_class(token: token)
+  if token_class == ^wasm_token_lparen {
+    acc
+  } else {
+    Sequence {
+      left: wasm_grammar_terminal(token_class: token_class),
+      right: acc
+    }
+  }
+}
+
+fn wasm_grammar_sequence_from_token_classes() -> GrammarExpr {
+  fold_list(
+    xs: wasm_concrete_tokens(),
+    empty: wasm_grammar_terminal(token_class: ^wasm_token_lparen),
+    cons: fn(acc, token) {
+      wasm_grammar_sequence_fold_step(acc: acc, token: token)
+    }
+  )
+}
+
+
