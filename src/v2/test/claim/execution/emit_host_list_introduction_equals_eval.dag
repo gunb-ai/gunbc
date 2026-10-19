@@ -565,3 +565,17 @@ test fn probe_parse_ok() -> Bool {
         Rejected { diagnostics: _ } => false }
     Rejected { diagnostics: _ } => false }
 }
+
+test fn probe_exit_holds() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } =>
+      match r.exit.outcome { Accepted { value: Holds { value: _ }, diagnostics: _ } => true
+        Accepted { value: Violates { diagnostic: _ }, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false }
+    Rejected { diagnostics: _ } => false }
+}
+test fn probe_buildlog_empty() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } =>
+      match r.build_log.lines { [] => true
+        _ => false }
+    Rejected { diagnostics: _ } => false }
+}
