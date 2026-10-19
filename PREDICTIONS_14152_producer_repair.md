@@ -307,3 +307,23 @@ prevent -- two unrelated call sites sharing one variable -- rather than a proxy 
 Plus two fold-level rows for what the fold does decide: the settled-rebind refusal above (naming the
 binding in the diagnostic), and a row that LOCKS the measured limit -- shared and distinct leaf identity
 produce identical diagnostics -- so the limit is recorded in the test suite rather than only in this file.
+
+## AMENDMENT 9 (13:20Z, fixed BEFORE the rows were run): prediction for the three permanent rows
+
+Trees built from the candidate `81824abfa3c` and the mutant `786e30feb1` with the same test file
+(`probe/freshness-rows` @ 7feea58514, `probe/mut-freshness-rows` @ 6548fe077b), so only the two
+compiler seeds differ. Release profile, one `--exact` invocation per row, verdict from the run's own
+`test result:` line.
+
+| row | at repair | at mutant | why |
+|---|---|---|---|
+| `minted_variables_are_fresh_per_call_site` | PASS | **FAIL** | measured id sets differ: 4 distinct, all site-tagged vs 2 bare `K`/`V` shared |
+| `fold_refuses_a_settled_rebind_of_a_declaration_form_binding` | PASS | PASS | fold-level, and the fold is invariant to minting (AMENDMENT 8) |
+| `fold_cannot_distinguish_shared_from_distinct_leaf_identity` | PASS | PASS | asserts equality of two fold runs; no compiler involved |
+
+Exactly ONE row may differ between the trees. If the freshness row PASSES at the mutant, my assertion
+is wrong somewhere (most likely `collide_minted_ids` collecting ids from outside the two calls, e.g.
+inheriting unrelated variables from the body), and I will fix the row rather than keep a red that
+asserts obsolete behaviour. If it FAILS at the REPAIR, the row is broken outright -- the AMENDMENT 8
+print says 4 distinct site-tagged ids at that exact tree, so a failure there means the assertion
+disagrees with a print I already read, and the assertion is the suspect.
