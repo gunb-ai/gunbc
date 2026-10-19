@@ -206,9 +206,20 @@ def _patch_text(src: str):
     if b < 0:
         return src, rep | {"ok": False, "why": "no enclosing break before the diagnostic marker"}
     out = out[:b] + CALL + out[b:]
-    anchor_fn = "fn unify_generics("
+    # Anchor on the FULL visibility modifier. "fn unify_generics(" also matches INSIDE
+    # "pub fn unify_generics(", so injecting there put the helper block between `pub` and `fn`:
+    # `pub` attached to the first injected item and unify_generics itself became PRIVATE -- three
+    # E0603s from the census, after a 22-minute run. Probe v16 anchors on "pub fn unify_generics(";
+    # so does this now, and the guard below makes the failure mode impossible rather than unlikely.
+    anchor_fn = "pub fn unify_generics("
+    assert out.count(anchor_fn) == 1, "expected exactly one 'pub fn unify_generics('"
     j = out.index(anchor_fn)
+    # What must NOT be true is specific and checkable: `pub` must not have been absorbed. (An earlier
+    # guard here tried to classify the preceding token and rejected a perfectly good injection point.)
     out = out[:j] + TAG_DECL + PRINT_FN + "\n" + out[j:]
+    assert "\npub static" not in out and "pub fn rebind18" not in out, \
+        "the injected block absorbed `pub` from unify_generics"
+    assert "pub fn unify_generics(" in out, "unify_generics lost its visibility"
 
     # guards
     assert out.count("REBIND18|") == 1
