@@ -1,8 +1,8 @@
 diff --git a/src/v1/stage0/src/cli_run.rs b/src/v1/stage0/src/cli_run.rs
-index 17a7e0e1fd31..ee6d9622a33a 100644
+index 17a7e0e1fd..08876d0a8a 100644
 --- a/src/v1/stage0/src/cli_run.rs
 +++ b/src/v1/stage0/src/cli_run.rs
-@@ -15267,16 +15267,33 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
+@@ -15267,16 +15267,35 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                      let mut lock = errors.lock().expect("parse error lock");
                      for d in fill.diagnostics.iter() {
                          let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
@@ -37,15 +37,17 @@ index 17a7e0e1fd31..ee6d9622a33a 100644
                          lock.push(format!(
                              "{}: {}",
 -                            located,
++                            // `Rc<SourceSpan>`, the authority's own parameter shape; see
++                            // module_path_index/index.rs for the same hand-off.
 +                            crate::v1_std_core::render_span_location(
-+                                (*span).clone(),
++                                span.clone(),
 +                                std::rc::Rc::new(source_indices),
 +                            ),
                              crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
                          ));
                      }
 diff --git a/src/v1/stage0/src/cli_run/emit_host.rs b/src/v1/stage0/src/cli_run/emit_host.rs
-index 6531c5e4de83..1b150b6a2000 100644
+index 6531c5e4de..1b150b6a20 100644
 --- a/src/v1/stage0/src/cli_run/emit_host.rs
 +++ b/src/v1/stage0/src/cli_run/emit_host.rs
 @@ -1147,8 +1147,12 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
@@ -85,10 +87,10 @@ index 6531c5e4de83..1b150b6a2000 100644
              .iter()
              .next()
 diff --git a/src/v1/stage0/src/declaration_index.rs b/src/v1/stage0/src/declaration_index.rs
-index 51a2fb4e7aad..0e9734323bc7 100644
+index 51a2fb4e7a..d860be5154 100644
 --- a/src/v1/stage0/src/declaration_index.rs
 +++ b/src/v1/stage0/src/declaration_index.rs
-@@ -3213,10 +3213,33 @@ pub fn render_finding(
+@@ -3213,10 +3213,36 @@ pub fn render_finding(
      let located = match finding.offset {
          Some(offset) => match std::fs::read_to_string(workspace.join(&finding.rel_path)) {
              Ok(content) => {
@@ -113,19 +115,22 @@ index 51a2fb4e7aad..0e9734323bc7 100644
 +                // is `Rc<NewlineIndex>`, so the index goes in as built. Wrapping it again is a
 +                // second pointer to the same fact, and the compiler says so.
 +                source_indices.insert(finding.rel_path.clone(), index);
++                // The authority's own signature takes the span as `Rc<SourceSpan>` -- every
++                // seed-emitted record parameter is `Rc`-wrapped, so the literal is handed over
++                // inside the same pointer the rest of the seed sees.
 +                crate::v1_std_core::render_span_location(
-+                    crate::v1_std_core::SourceSpan {
++                    std::rc::Rc::new(crate::v1_std_core::SourceSpan {
 +                        file: finding.rel_path.clone(),
 +                        start: offset,
 +                        end: offset,
-+                    },
++                    }),
 +                    std::rc::Rc::new(source_indices),
 +                )
              }
              Err(_) => finding.rel_path.clone(),
          },
 diff --git a/src/v1/stage0/src/module_path_index/index.rs b/src/v1/stage0/src/module_path_index/index.rs
-index 346123186921..f9942308be0f 100644
+index 3461231869..b7c5d3d557 100644
 --- a/src/v1/stage0/src/module_path_index/index.rs
 +++ b/src/v1/stage0/src/module_path_index/index.rs
 @@ -36,6 +36,10 @@ pub struct ModuleBindingRefusal {
@@ -139,7 +144,7 @@ index 346123186921..f9942308be0f 100644
  }
  
  impl ModuleBindingRefusal {
-@@ -43,14 +47,35 @@ impl ModuleBindingRefusal {
+@@ -43,14 +47,38 @@ impl ModuleBindingRefusal {
          diagnostic_to_span(self.diagnostic.clone())
      }
  
@@ -173,14 +178,17 @@ index 346123186921..f9942308be0f 100644
 -            span.start,
 -            span.end,
 +            "{}: {}",
++            // The authority takes the span as `Rc<SourceSpan>` (seed-emitted record
++            // parameters are `Rc`-wrapped), so the span is handed over as the pointer it already
++            // is -- dereferencing and cloning builds the wrong type.
 +            crate::v1_std_core::render_span_location(
-+                (*span).clone(),
++                span.clone(),
 +                std::rc::Rc::new(source_indices),
 +            ),
              diagnostic_to_message(self.diagnostic.clone())
          )
      }
-@@ -149,6 +174,7 @@ pub fn parse_module_binding(
+@@ -149,6 +177,7 @@ pub fn parse_module_binding(
              return Err(ModuleBindingRefusal {
                  source_path: key,
                  diagnostic: err.diagnostic.clone(),
@@ -189,7 +197,7 @@ index 346123186921..f9942308be0f 100644
          }
          // UNCHANGED, and still a conflation: see `module_declaration_line_present`.
 diff --git a/src/v1/stage0/src/target_invocation_host.rs b/src/v1/stage0/src/target_invocation_host.rs
-index 4c8a0e2e4a14..ff53224907a4 100644
+index 4c8a0e2e4a..ff53224907 100644
 --- a/src/v1/stage0/src/target_invocation_host.rs
 +++ b/src/v1/stage0/src/target_invocation_host.rs
 @@ -1158,9 +1158,11 @@ fn run_cli_wire_census(
