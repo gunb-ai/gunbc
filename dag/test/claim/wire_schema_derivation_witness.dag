@@ -1,0 +1,33 @@
+module test.claim.wire_schema_derivation_witness
+
+import std.types { String, List, Bool }
+import v2.std.decl_index { decl_facts, DeclFact }
+import v2.std.node_query { declared_field_list }
+import test.claim.wire_strict_reader_witness { read_authentication_declared }
+
+// THE ONE INHABITANCE CLAIM for wire_strict_reader_witness: the batched decl_facts pass over
+// [dag, src/v2] yields, for ReadAuthentication, the field list the differential witness supplies.
+// The pool read runs here once and not in every decode assertion (DESIGN 3).
+test fn derived_fields_of_read_authentication_are_the_supplied_list() -> Bool {
+  let hits = decl_facts(pool_roots: ["dag", "src/v2"]) |> filter(f => f.qualified_name == "gunbc.auth.approval_device_wire.ReadAuthentication")
+  count(hits) == 1 && all(hits, f => map(declared_field_list(payload: f.node), d => d.name as String) == read_authentication_declared)
+}
+
+fn ra_hits() -> List<DeclFact> {
+  decl_facts(pool_roots: ["dag", "src/v2"]) |> filter(f => f.qualified_name == "gunbc.auth.approval_device_wire.ReadAuthentication")
+}
+test fn probe_one_hit() -> Bool { count(ra_hits()) == 1 }
+test fn probe_three_fields() -> Bool { all(ra_hits(), f => count(declared_field_list(payload: f.node)) == 3) }
+test fn probe_children_one() -> Bool { all(ra_hits(), f => count(f.node.children) == 1) }
+test fn probe_children_0() -> Bool { all(ra_hits(), f => count(f.node.children) == 0) }
+test fn probe_fields_0() -> Bool { all(ra_hits(), f => count(declared_field_list(payload: f.node)) == 0) }
+test fn probe_children_1() -> Bool { all(ra_hits(), f => count(f.node.children) == 1) }
+test fn probe_fields_1() -> Bool { all(ra_hits(), f => count(declared_field_list(payload: f.node)) == 1) }
+test fn probe_children_2() -> Bool { all(ra_hits(), f => count(f.node.children) == 2) }
+test fn probe_fields_2() -> Bool { all(ra_hits(), f => count(declared_field_list(payload: f.node)) == 2) }
+test fn probe_children_3() -> Bool { all(ra_hits(), f => count(f.node.children) == 3) }
+test fn probe_fields_3() -> Bool { all(ra_hits(), f => count(declared_field_list(payload: f.node)) == 3) }
+test fn probe_children_4() -> Bool { all(ra_hits(), f => count(f.node.children) == 4) }
+test fn probe_fields_4() -> Bool { all(ra_hits(), f => count(declared_field_list(payload: f.node)) == 4) }
+test fn probe_children_5() -> Bool { all(ra_hits(), f => count(f.node.children) == 5) }
+test fn probe_fields_5() -> Bool { all(ra_hits(), f => count(declared_field_list(payload: f.node)) == 5) }
