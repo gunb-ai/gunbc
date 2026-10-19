@@ -111,3 +111,36 @@ test fn the_wire_scale_is_kept_and_an_overlong_number_refuses() -> Bool {
     OfferDecoded { offer: o } => decimal_is(d: o.inet_up_cost, units: 20, fraction_digits: 4)
   }) && !overlong_decoded()
 }
+
+// A HOSTILE EXPONENT REFUSES, IT DOES NOT HANG OR WIDEN (review 82479). `0e9223372036854775807` has a zero
+// mantissa, which never overflows, so an unbounded scaling loop would not return; `1e-999999999` names a
+// billion fraction digits. Both must refuse the page in bounded time.
+fn offer_body_with_min_bid(min_bid: String) -> String {
+  join(["{\"offers\":[{\"id\":1,\"machine_id\":1,\"gpu_name\":\"RTX PRO 6000 WS\",\"num_gpus\":1,\"compute_cap\":1200,\"verification\":\"verified\",\"geolocation\":\"US\",\"rentable\":true,\"rented\":false,\"min_bid\":", min_bid, ",\"dph_total\":0.3,\"storage_cost\":0.2,\"inet_up_cost\":0.002,\"inet_down_cost\":0.002,\"gpu_ram\":97887}]}"], "")
+}
+
+fn body_decodes(body: String) -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "VastOffersPage",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: body } }
+    )]),
+    subject: fn(_scope) {
+      match test.RestReplay.VastOffersPage() {
+        RestAnswered { answer: _ } => true
+        RestRefused { refusal: _ } => false
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic: _ } => false
+    WitnessInterrupted { at: _, route: _, state: _ } => false
+  }
+}
+
+test fn a_hostile_exponent_refuses_in_bounded_time() -> Bool {
+  !body_decodes(body: offer_body_with_min_bid(min_bid: "0e9223372036854775807"))
+    && !body_decodes(body: offer_body_with_min_bid(min_bid: "1e-999999999"))
+    && body_decodes(body: offer_body_with_min_bid(min_bid: "2.69e-1"))
+}

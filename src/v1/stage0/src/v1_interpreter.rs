@@ -21856,6 +21856,9 @@ pub(crate) fn json_container_depth(json: &serde_json::Value) -> usize {
     deepest
 }
 
+/// The largest decimal exponent an i64-unit decimal can carry: i64::MAX has 19 digits, 18 of them free.
+const EXACT_DECIMAL_MAX_DECIMAL_EXPONENT: u64 = 18;
+
 /// The exact `(units, fraction_digits)` of a JSON number's decimal text: `-?D+(.D+)?([eE][+-]?D+)?`.
 /// `units` is the signed mantissa digits and `fraction_digits` the count of digits after the point less
 /// the exponent; a negative scale is folded into `units`. `None` when the text is not that grammar or
@@ -21869,6 +21872,13 @@ fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
         Some(i) => (&rest[..i], rest[i + 1..].parse::<i64>().ok()?),
         None => (rest, 0),
     };
+    // The exponent is bounded BEFORE any scaling: an i64 holds at most 18 full decimal digits, so an
+    // exponent beyond that either overflows the units or names a scale no Int-unit decimal carries. Without
+    // the bound a zero mantissa (`0e9223372036854775807`) never overflows and the scaling loop below does
+    // not return, and `1e-999999999` would be accepted with a billion fraction digits (review 82479).
+    if exponent.unsigned_abs() > EXACT_DECIMAL_MAX_DECIMAL_EXPONENT {
+        return None;
+    }
     let (int_part, frac_part) = match mantissa.find('.') {
         Some(i) => (&mantissa[..i], &mantissa[i + 1..]),
         None => (mantissa, ""),
@@ -21882,6 +21892,9 @@ fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
     let digits = format!("{}{}", int_part, frac_part);
     let mut units: i64 = digits.parse::<i64>().ok()?;
     let mut fraction_digits: i64 = (frac_part.len() as i64).checked_sub(exponent)?;
+    if fraction_digits > EXACT_DECIMAL_MAX_DECIMAL_EXPONENT as i64 + 1 {
+        return None;
+    }
     while fraction_digits < 0 {
         units = units.checked_mul(10)?;
         fraction_digits += 1;
