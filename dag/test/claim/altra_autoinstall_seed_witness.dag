@@ -2286,6 +2286,47 @@ test fn the_shared_scan_refuses_reserved_characters_wherever_they_sit() -> Bool 
 // AND A PERMITTED PUNCTUATION MARK IS STILL ACCEPTED. Without this control the shared scan above could be
 // "tightened" into a refusal of all punctuation, which strands an operator whose only console is the BMC: a
 // generator that legitimately uses '.' or '~' in a salt would be refused by us and accepted by the board.
+// THE RESERVED LIST ITSELF IS THE TEST INPUT, NOT A HAND-PICKED CHARACTER. Earlier rounds tested upstream's
+// shared restriction with two characters written into fixtures, so the suite's coverage was a list of things
+// someone remembered, and deleting a member from crypt_shared_restriction.reserved_characters would have deleted
+// the only test for it. This does the differential instead, which is the only claim that survives the shelf
+// being changed: for every character the shelf CLAIMS is reserved, the observed scan must actually refuse it, and
+// it checks at two positions because upstream scans the whole setting (salt and digest alike) before dispatching
+// to the scheme — a rule that fired only on salts would be wrong and invisible.
+//
+// WHY IT EXCLUDES '$', CR AND LF, AND WHY THAT IS NOT A HOLE. Those three cannot be spliced into a setting
+// without destroying the string the splice is meant to test: '$' is the segment delimiter, so a candidate holding
+// one is a different setting than the one being adjudicated, and CR/LF cannot occur in a single-line candidate at
+// all. Their refusal is asserted where it can be stated — in the consuming module, whose salt character class and
+// segment-count arms name them — so this row does not re-check the impossible, but the comment is the audit trail
+// that says the omission was reasoned rather than forgotten.
+//
+// THE DENOMINATOR IS PINNED BECAUSE A SWEEP OVER AN EMPTY LIST SCORES PERFECTLY. list_length must equal the
+// refused tally, and a zero-length shelf is reported as a failure outright; without that, emptying the list —
+// deleting the entire alphabet rule from the shelf — would leave every fold at 0 == 0 and the suite green while
+// the module began accepting settings the board's crypt(3) refuses. That is the exact catastrophe this shelf
+// exists to prevent, so a vacuous pass here is the worst possible outcome of a test written to prevent it.
+test fn every_reserved_character_the_shelf_claims_is_actually_refused_in_both_positions() -> Bool {
+  let reserved = crypt_reserved_characters()
+  let testable = fold(reserved, init: 0, f: (n, r) =>
+    if (r as String) == "$" || (r as String) == "\\r" || (r as String) == "\\n" then n else n + 1)
+  let refused_in_digest = fold(reserved, init: 0, f: (n, r) =>
+    if (r as String) == "$" || (r as String) == "\\r" || (r as String) == "\\n" then n
+    else if cause_of(crypt_digest: "$6$saltsalt$" + (r as String) + "8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") is Present { value: _ } then n + 1 else n)
+  let refused_in_salt = fold(reserved, init: 0, f: (n, r) =>
+    if (r as String) == "$" || (r as String) == "\\r" || (r as String) == "\\n" then n
+    else if cause_of(crypt_digest: "$6$salt" + (r as String) + "salt$" + "8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") is Present { value: _ } then n + 1 else n)
+  testable > 0 && refused_in_digest == testable && refused_in_salt == testable
+}
+
+// THE ADMITTED SIDE IS SWEPT TOO. '~' is code 126, the last byte upstream's printable range admits. Asserting it
+// ADMITTED is what makes the other half of the rule testable: a shelf that quietly narrowed the range would
+// refuse this candidate here and accept it on the board, and that direction of error strands an operator whose
+// only console is the BMC — a hash generator using '~' is perfectly legal upstream and would be refused by us.
+test fn the_upper_end_of_the_printable_range_is_admitted_in_a_salt() -> Bool {
+  accepts(crypt_digest: "$6$~~~~~~~~$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+}
+
 test fn permitted_punctuation_in_the_salt_is_still_accepted() -> Bool {
   accepts(crypt_digest: "$6$~a.b_c-d+e$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
 }

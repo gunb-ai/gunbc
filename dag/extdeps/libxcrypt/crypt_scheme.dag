@@ -243,10 +243,24 @@ fn cost_field_is_well_formed(digits: String) -> Bool {
 // refuses to verify it. That surfaces as an install that reported success and a root account nobody can open, on
 // a machine whose only console is the BMC. So accepted means BOTH rules accept — see sha512_crypt_format_accepted.
 type CryptSharedRestriction = PrintableAsciiMinusReserved {
-  // The allowed alphabet, derived (not invented) below from the two halves of the upstream rule.
-  allowed_characters: List<NonEmptyStr>,
-  // The five characters the document names. Carried separately from allowed_characters so a reader can check the
-  // derivation instead of trusting it: allowed_characters is exactly the printable range minus this list.
+  // The five characters the document names, and the ONLY character list this record carries.
+  //
+  // WHY THERE IS NO ALLOWED-ALPHABET FIELD HERE. An earlier shape of this record carried, beside this list, an
+  // 89-entry list of the characters the rule admits. It was deleted rather than kept-and-checked, for three
+  // reasons that are each a rule of this repository:
+  //   1. The admission rule is already here, in the two halves the library itself tests: the printable range in
+  //      shared_restriction_character_is_printable (the byte <= 0x20 / >= 0x7f test), and this list for the
+  //      strcspn. A third field spelling their intersection is a second representation of one fact (DESIGN
+  //      section 3: "each fact lives in exactly one place"; section 5: a check that restates a constraint the
+  //      model carries is that constraint twice).
+  //   2. Nothing read it. The comments claimed a witness swept allowed == printable minus reserved; no such
+  //      sweep existed, so it was a row no fold reads — section 3c's dangling red, the one thing that is red
+  //      however well modelled.
+  //   3. It had already drifted: the transcription admitted "*", ":" and ";", three members of the reserved
+  //      half beside it, so one record asserted a character both allowed and refused. A copy that must be
+  //      swept to stay true is a copy that will be wrong between sweeps.
+  // FUTURE REQUIREMENT: a caller that needs the enumerated alphabet (a UI, a fuzzer seed corpus) derives it
+  // from these two halves at the call site; add a fn, never a field.
   reserved_characters: List<NonEmptyStr>,
   // Standing for the character rule itself. The rule is documented (crypt.5, the paragraph above the table), so
   // this is a citation and not a transcription — but it points at the document that states it, not the table row.
@@ -257,21 +271,12 @@ type CryptSharedRestriction = PrintableAsciiMinusReserved {
 }
 
 data crypt_shared_restriction: CryptSharedRestriction = PrintableAsciiMinusReserved {
-  // printable ASCII 0x21..0x7e (94), less the five reserved characters, giving 89. The count is stated in the
-  // comment so a reader can check the row by counting, and the witness sweeps the equation
-  // allowed == printable minus reserved rather than trusting it: an earlier transcription of this row admitted
-  // "*", ":" and ";" — three characters that are in the reserved half below — which made the two halves of one
-  // rule contradict each other, and a candidate carrying any of the three was admitted by this field while being
-  // refused by the list beside it. That drift is what the sweep exists to catch, and it is also why the scan
-  // below consults the reserved half for refusals and this half only for admissions.
-  allowed_characters: [
-    "\"", "#", "$", "%", "&", "'", "(", ")", "+", ",", "-", ".", "/",
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "<", "=", ">", "?", "@",
-    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V",
-    "W", "X", "Y", "Z", "[", "]", "^", "_", "`",
-    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v",
-    "w", "x", "y", "z", "{", "|", "}", "~",
-  ],
+  // The reserved five, transcribed from the crypt(5) sentence quoted in the header comment above. This is the
+  // only character list here: which characters are ALLOWED is not stored, because it is a consequence — the
+  // printable range, tested in shared_restriction_character_is_printable, minus this list. Storing the
+  // consequence beside its causes is how this row once came to admit "*", ":" and ";", which this very list
+  // refuses; the two halves of one rule contradicted each other and only a sweep of the derived copy would
+  // have noticed, and no sweep existed.
   reserved_characters: ["!", "*", ":", ";", "\\"],
   rule_standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
   ordering_authority: extdeps_libxcrypt_crypt_c_anchor,
@@ -300,7 +305,7 @@ data crypt_shared_restriction: CryptSharedRestriction = PrintableAsciiMinusReser
 fn shared_restriction_rejects(candidate: String) -> Bool {
   match crypt_shared_restriction {
     PrintableAsciiMinusReserved {
-      allowed_characters: _, reserved_characters: reserved, rule_standing: _, ordering_authority: _,
+      reserved_characters: reserved, rule_standing: _, ordering_authority: _,
     } => !(
       candidate |> chars |> all(c => shared_restriction_character_is_printable(code: c))
     )
@@ -317,13 +322,17 @@ fn shared_restriction_character_is_printable(code: Int) -> Bool {
   code >= 33 && code <= 126
 }
 
-// THE FIVE RESERVED CHARACTERS, exposed so the consuming module can name them in a refusal and so the witness can
-// sweep the derivation: allowed_characters must be exactly the printable range minus this list, and a row whose
-// two halves drift apart is a row that admits a byte upstream refuses.
+// THE FIVE RESERVED CHARACTERS, exposed for two named readers, both of which go RED if this list loses a member:
+// test.claim.altra_autoinstall_seed_witness's sweep drives EVERY member of this list through the scan at two
+// positions (salt and digest) and refuses to pass on an empty list, so dropping a character here is caught by the
+// rule itself rather than by which characters someone thought to write into a fixture; and the consuming module's
+// refusal names the character it caught, which is the difference between an operator re-deriving a hash and an
+// operator reading libxcrypt. The admitted side is swept too — the upper endpoint '~' is asserted admitted in a
+// salt — so narrowing the printable half is caught as well.
 fn crypt_reserved_characters() -> List<NonEmptyStr> {
   match crypt_shared_restriction {
     PrintableAsciiMinusReserved {
-      allowed_characters: _, reserved_characters: reserved, rule_standing: _, ordering_authority: _,
+      reserved_characters: reserved, rule_standing: _, ordering_authority: _,
     } => reserved
   }
 }

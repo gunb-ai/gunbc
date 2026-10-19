@@ -11,9 +11,15 @@ module gunbc.provisioning.altra_autoinstall_seed
 //
 // WHO CONSUMES THIS, declared per DESIGN 3c rather than left to be inferred.
 //   * CONSUMED IN THIS CHANGE: every refusal arm, both digest functions, the render, the audit, the selection
-//     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness (101 test fns at the
-//     time of writing, run by gunbc --claim-run; if that number and this sentence ever disagree, the module has
-//     grown a rule nothing exercises). Nothing here is exercised only by its own module.
+//     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness. Nothing here is
+//     exercised only by its own module. The roster and its verdicts are OBTAINED, NEVER QUOTED here (DESIGN
+//     section 6: name the instrument, never transcribe its output): the count of test fns is derived from the
+//     witness file by gunbc.frontend_eval.control's test_fns, which reads the module-scope `test fn ` lines the
+//     parser itself requires, and each one's verdict comes from the claim run, which reports one PASS or FAIL
+//     line per test fn — `gunbc run --source-root dag --source-root src/v2 --entry
+//     dag/test/claim/altra_autoinstall_seed_witness.dag --claim-run --function <the fn>`. A number written into
+//     this comment would be a second, rotting copy of a fact both of those produce on demand; if the two ever
+//     disagree, the module has grown a rule nothing exercises and the run says so, not this sentence.
 //   * CONSUMED IN A NAMED SIBLING CUT: gunbc.provisioning.provisioning_arm (cut 6, S5, gunb-ai/gunbc#14378)
 //     imports AltraAutoinstallSeedBinding, so the binding record is not waiting on its own — it already has a
 //     production importer on that branch, which is the answer to "a module nothing imports".
