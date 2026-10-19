@@ -1,0 +1,43 @@
+module test.claim.githooks_pre_push_emit_residual_census
+
+// THE ENUMERATING CLAIM FOR THE PRE-PUSH CONCAT RESIDUAL. The carrier rows it counts:
+//   - gunbc.local_tidy_spec.githooks_pre_push_emit_scaffold — the Scaffold registration binding
+//     gunbc.githooks.githooks_pre_push_emit.expected_githooks_pre_push_sh (dissolves_to
+//     RealizationDispatch), the single authority for the disposition surface; and
+//   - gunbc.githooks.githooks_pre_push_emit.githooks_pre_push_emit_concat_body_dissolution — the
+//     DissolutionCondition row naming the capability the cutover waits on: the
+//     gunbc.languages.bash grammar rows v2.workflow.bash_emit renders for shebang, comment,
+//     'set -euo pipefail', while-read, case/esac, [[ ]], $(( )), and >&2 fd redirection, after
+//     which the hook body is EMITTED from typed intent and the concat fragments deleted,
+//     byte-identically. The hook stays shell permanently — git executes it (census §1.A category
+//     (a)).
+//
+// WHY THIS FILE IMPORTS NEITHER MODULE. The rows' §3c typed consumer is the sibling claim
+// test.claim.githooks_pre_push_emit (witness_carrier_reader_reads_the_row), which imports them
+// and executes dissolution_description on the trigger text. Importing here too would make row
+// deletion a COMPILE error, not a claim failure — and a carrier whose removal breaks the build is
+// weaker evidence than one whose removal reddens a claim while every module still compiles. This
+// module therefore reads the rows through the declaration index only: delete either row, all
+// modules keep compiling, and this claim goes FAIL. The sibling module's own witnesses stay green
+// either way only because they import what the census lost — which is exactly why both halves
+// exist.
+
+import std.types { Bool, List, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.decl_index { decl_facts_at }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data githooks_pre_push_residual_census_pool_roots: List<String> = ["dag", "src/v2"]
+
+data githooks_pre_push_residual_census_rows: List<String> = [
+  "gunbc.local_tidy_spec.githooks_pre_push_emit_scaffold",
+  "gunbc.githooks.githooks_pre_push_emit.githooks_pre_push_emit_concat_body_dissolution"
+]
+
+// The concat body of expected_githooks_pre_push_sh is a COUNTED residual: exactly one fact per
+// carrier row, enumerated over the two-root pool the closure resolves through.
+test fn witness_concat_body_is_counted_residual() -> Bool {
+  all(githooks_pre_push_residual_census_rows(), qn =>
+    length(xs: decl_facts_at(pool_roots: githooks_pre_push_residual_census_pool_roots, qualified_name: qn)) == 1)
+}
