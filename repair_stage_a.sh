@@ -25,7 +25,6 @@ du -sh "$CARGO_TARGET_DIR" 2>/dev/null | sed 's/^/TARGET_CACHE /'
 nproc | sed 's/^/NPROC /'
 df -h /root 2>/dev/null | tail -1 | sed 's/^/DISK /'
 free -m 2>/dev/null | head -2 | tr '\n' ' ' | sed 's/^/MEM /;s/$/\n/'
-set 
 
 ROWS='collision_two_zero_arg_generic_calls_both_type
 collision_pair_still_refuses_when_instantiated_twice
