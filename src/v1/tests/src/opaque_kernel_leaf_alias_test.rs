@@ -43,6 +43,7 @@ fn alias_rhs_declaration(
 }
 
 const KERNEL_LEAF: (&str, &str) = ("kn.dag", "module kn\ntype String\n");
+const OPAQUE_NON_KERNEL: (&str, &str) = ("sy.dag", "module sy\ntype Symbol\n");
 const DECLARED: (&str, &str) = (
     "dc.dag",
     "module dc\ntype Base { x: Int }\ntype Hash = Base\n",
@@ -62,5 +63,14 @@ fn declared_target_alias_keeps_its_head() {
     assert_eq!(
         alias_rhs_declaration(&[KERNEL_LEAF, DECLARED], "dc", "Hash"),
         Some(("dc".to_string(), "Base".to_string()))
+    );
+}
+
+#[test]
+fn opaque_declaration_is_not_an_alias_of_itself_whatever_its_spelling() {
+    assert_eq!(
+        alias_rhs_declaration(&[OPAQUE_NON_KERNEL, DECLARED], "sy", "Symbol"),
+        None,
+        "an opaque declaration has no alias right-hand side, kernel-named or not"
     );
 }
