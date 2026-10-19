@@ -109,9 +109,11 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 //   - COUNTS AS CRITERIA. Completeness is `ledger_is_complete`, an identity join; row counts are printed
 //     as a CONSEQUENCE of the join, never compared to a number written in this file.
 //   - SILENT DROPS. A subject whose entry file is absent, or whose argv the harness refuses, is carried
-//     as a typed `KnownRedSubjectDefect` and printed, never filtered. One such row is real today: a
-//     schedule row whose entry suffix points at a file that does not exist, printed by
-//     `known_red_subject_defect_text` with the identity that named it.
+//     as a typed `KnownRedSubjectDefect` and printed, never filtered. A real one was found this way (a
+//     schedule row whose entry suffix pointed at a file that did not exist) and repaired in
+//     `v2.workflow.local_repo_wet_terminal` `local_repo_wet_schedule`; the arms stay live because the
+//     defect is the schedule's to grow into again, and `known_red_subject_defect_text` prints the
+//     identity that named it whenever it does.
 //   - A RECEIPT AGAINST A COMMIT IT DID NOT RUN ON. The head is read from the repository
 //     (`git.Inspect.HeadCommit`) and echoed into every printed row; it is never a parameter.
 //
