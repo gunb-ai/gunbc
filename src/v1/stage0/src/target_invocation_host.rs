@@ -5673,7 +5673,14 @@ mod registry_rows_identity_tests {
         format!("//{package}:{target_name}")
     }
 
-    fn read_rows() -> BTreeMap<String, RowReading> {
+    /// The rows are read ONCE per process: each read drives the wet interpreter over the whole
+    /// corpus, and both tests join against the same reading.
+    fn read_rows() -> &'static BTreeMap<String, RowReading> {
+        static ROWS: std::sync::OnceLock<BTreeMap<String, RowReading>> = std::sync::OnceLock::new();
+        ROWS.get_or_init(evaluate_rows)
+    }
+
+    fn evaluate_rows() -> BTreeMap<String, RowReading> {
         let reader = cli_run::workspace_root().join("dag/gunbc/instrument_targets.dag");
         let roots = cli_run::default_source_roots();
         let (graph, source_indices) =
@@ -5768,7 +5775,7 @@ mod registry_rows_identity_tests {
         let rows = read_rows();
         let registry = instrument_registry();
         assert_eq!(registry.len(), rows.len(), "label count differs");
-        let found = mismatches(&registry, &rows);
+        let found = mismatches(&registry, rows);
         assert!(
             found.is_empty(),
             "registry/rows drift:\n{}",
@@ -5791,7 +5798,7 @@ mod registry_rows_identity_tests {
             entry: "dag/gunbc/instruments/mutated.dag",
             function: "mutated",
         };
-        let found = mismatches(&registry, &rows);
+        let found = mismatches(&registry, rows);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(found[0].starts_with(&victim), "{found:?}");
         let at = registry
@@ -5800,7 +5807,7 @@ mod registry_rows_identity_tests {
             .expect("SelfHost arm");
         registry[at].1 = TargetProducer::V2NativeCli;
         assert_eq!(
-            mismatches(&registry, &rows).len(),
+            mismatches(&registry, rows).len(),
             2,
             "a kind change must also be named"
         );
