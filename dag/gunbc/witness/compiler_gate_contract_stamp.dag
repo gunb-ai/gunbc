@@ -902,7 +902,7 @@ type CompilerGateContractStampEvidenceSubject
   | SubjectCommitted          // the committed artifact, unchanged
   | SubjectRewritten          // its stamp member moved, as a contract-changing PR would
   | SubjectDemoted            // the member demoted into a step-level env, structurally absent
-  | SubjectForged(CompilerGateContractStampForgedForm)   // its member forged in exactly this way
+  | SubjectForged { form: CompilerGateContractStampForgedForm }   // member forged in exactly this way
 
 type CompilerGateContractStampEvidenceCase {
   label: String

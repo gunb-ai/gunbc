@@ -185,6 +185,63 @@ fail_marker="${GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL_MARKER:-${evidence_dir:-$tmpdi
 cleanup() { rm -f "$guard_template"; [ -n "$tmpdir" ] && rm -rf "$tmpdir"; }
 trap 'cleanup' EXIT
 
+// THE FORGER'S OWN TOOL, in the harness. It receives a FORM NAME from the model and the RESOLVED running
+// stamp, and writes the tree itself -- the same shape rewrite_stamp/demote_stamp already have. A byte
+// string from the model would be worse: two of these forms contain a single quote, and the shell
+// serializer single-quotes literal words, so the bytes would be re-parsed rather than quoted.
+// DERIVED, NOT RE-COPIED. The harness holds no second copy of the reader's rule (DESIGN §6, parallel
+// authority): the supported form is defined ONCE, in the model, by a content hash of fixed length. Here
+// the question is only "did the forger actually forge?" -- so the reference is the RUNNING value, which
+// the model guarantees is the supported form. Same length as that, and all lowercase hex, is the same
+// rule with no constant duplicated.
+stamp_literal_is_supported_form() {
+  local v="$1" ref="$2"
+  [ "${#v}" -eq "${#ref}" ] || return 1
+  case "$v" in
+    *[!0-9a-f]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+forge_stamp() {
+  form="$1"; base="$2"; src="$3"; dst="$4"
+  [ "${#base}" -gt 0 ] || bail "cannot forge a form from an empty running stamp"
+  case "$form" in
+    wrapped)    val="XYZ${base}XYZ" ;;
+    expression) val="\${{ '${base}' }}" ;;
+    quoted)     val="'${base}'" ;;
+    truncated)  val="${base%?}" ;;
+    extended)   val="${base}0" ;;
+    uppercased) val="$(printf '%s' "$base" | tr '0123456789abcdef' '0123456789ABCDEF')" ;;
+    duplicate)  val="$base" ;;
+    *) bail "unknown forged form '$form' (modelled: wrapped, expression, quoted, truncated, extended, uppercased, duplicate)" ;;
+  esac
+  case "$form" in
+    # THE FORGERY MUST ACTUALLY BE A FORGERY. If the written value happened to be the one supported
+    # form, the case would assert a refusal against a tree that legitimately pairs -- a tautology that
+    # reads as a passing test. `duplicate` is exempt: it forges by declaring twice, not by the value.
+    duplicate) : ;;
+    *)
+      if stamp_literal_is_supported_form "$val"; then
+        bail "forged form '$form' produced '$val', which is the supported form -- the case would prove nothing"
+      fi ;;
+  esac
+  # ALL THREE -v BINDINGS BEFORE THE PROGRAM, not after it. An -v that follows the program text is read
+  # as a FILE NAME: the first version of this bound new and form but left key= after the program, and awk
+  # then tried to open "-v" and "key=..." as inputs -- the same fused-`-v` shape this module already
+  # documents as a shipped defect, reintroduced by editing the invocation instead of reading it.
+  awk -v new="$val" -v form="$form" -v key="GUNBC_COMPILER_GATE_CONTRACT_STAMP" '
+    function die(m) { printf "FAIL: %s\n", m > "/dev/stderr"; exit 1 }
+    /^[ \t]*GUNBC_COMPILER_GATE_CONTRACT_STAMP:[ \t]*[0-9a-f]+[ \t]*$/ {
+      if (form == "duplicate") { print; placed++; print "  " key ": " new; placed++ }
+      else { sub(/:.*/, ": " new); placed++ }
+      next
+    }
+    { print }
+    END { if (placed != (form == "duplicate" ? 2 : 1)) die("expected exactly one workflow-level stamp member, wrote " placed " for form " form) }
+  ' "$src" > "$dst" || return 1
+}
+
 bail() { echo "FAIL: $*" >&2; exit 1; }
 command -v awk >/dev/null 2>&1 || bail "awk is required"
 [ -f "$committed" ] || bail "no committed workflow at $committed"
@@ -490,6 +547,9 @@ if [ "${1:-}" = "--case" ]; then
     demoted)   demote_stamp "$running" "$committed" "$tmpdir/demoted.yml" \
                  || bail "cannot build subject 'demoted'"
                tree="$tmpdir/demoted.yml" ;;
+    forged:*)  forge_stamp "${subject#forged:}" "$running" "$committed" "$tmpdir/forged.yml" \
+                 || bail "cannot build subject '$subject'"
+               tree="$tmpdir/forged.yml" ;;
     *) bail "unknown subject '$subject' (modelled: fixture, committed, rewritten, demoted)" ;;
   esac
 
