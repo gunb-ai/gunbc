@@ -913,7 +913,7 @@ fn runner_slot_unit_standing_wire(standing: RunnerSlotUnitStanding) -> String {
 //
 // WHETHER A TEMPLATE RELOAD WOULD REACH A LIVE CGROUP IS A SECOND, INDEPENDENT FACT (`reach`): it holds
 // for every loaded unit whether or not it owes a reload. A unit is Inert when its OWN show block says
-// LoadState=masked, ActiveState=inactive and no ControlGroup -- a reload applies limits to a running
+// LoadState is not 'loaded' (masked, not-found, ...), ActiveState=inactive and no ControlGroup -- a reload applies limits to a running
 // cgroup, and this unit has none. Derived once here, from that block alone (never from fabric or
 // retiree membership, and any missing key reads ReachesLiveCgroup); every cap-phase arm that asks
 // about exposure to the reload reads this field. Arms asking something else (retirement completion,
@@ -944,7 +944,8 @@ fn slot_reload_reach_for(unit: NonEmptyStr, show_stdout: String) -> SlotReloadRe
   if slot_unit_inert_in_show(unit: unit, show_stdout: show_stdout) { ReloadInert } else { ReachesLiveCgroup }
 }
 
-// MASKED, INACTIVE, NO CGROUP -- all three read from the unit's own block; any key missing is not inert.
+// NO LOADED CONFIG (LoadState is not "loaded": masked, not-found, ...), INACTIVE, NO CGROUP -- all three read
+// from the unit's own block; any key missing is not inert.
 fn slot_unit_inert_in_show(unit: NonEmptyStr, show_stdout: String) -> Bool {
   fold(split(s: show_stdout, delimiter: "\n\n"), init: false, f: (acc, b) => {
     let lines = map(split(s: b, delimiter: "\n"), l => trim(s: l))
@@ -962,7 +963,7 @@ fn slot_unit_inert_in_show(unit: NonEmptyStr, show_stdout: String) -> Bool {
                 Present { value: act } =>
                   match show_block_value(lines: lines, property: ControlGroup) {
                     Absent => false
-                    Present { value: cg } => trim(s: load) == (systemd_unit_load_state_masked_wire as String) && trim(s: act) == "inactive" && trim(s: cg) == ""
+                    Present { value: cg } => trim(s: load) != "loaded" && trim(s: act) == "inactive" && trim(s: cg) == ""
                   }
               }
           }
@@ -2087,11 +2088,11 @@ fn runner_host_cap_phase_text(phase: RunnerHostCapPhase) -> String {
   }
 }
 
-// THE AFFECTED POPULATION IS EVERY LOADED RUNNER INSTANCE, not only the declared sets: the template
-// reload reaches an instance nobody declared. Declared and retired units are ours to drain; a loaded
-// unit outside both is an EXTRA, which this route reads (caps, idleness) but never drains, activates or
+// THE AFFECTED POPULATION IS EVERY UNIT A RELOAD WOULD REACH, not only the declared sets: the template
+// reload reaches an instance nobody declared. Declared and retired units are ours to drain; a unit
+// outside both is an EXTRA, which this route reads (caps, idleness) but never drains, activates or
 // retires. An extra is a hazard exactly when the template reload would reach a live cgroup for it (`reach`,
-// derived once from its own show block): a masked, inactive, cgroupless extra has nothing to apply to.
+// derived once from its own show block): an extra with no loaded config, inactive and cgroupless has nothing to apply to.
 // The lifecycle standing never vetoes that fact: LoadState and ActiveState are independent, so a masked
 // but ACTIVE extra is reached however it is classified.
 fn runner_host_cap_extras(desired_units: List<NonEmptyStr>, retired_units: List<NonEmptyStr>, population: RunnerSlotPopulation) -> List<NonEmptyStr> {
