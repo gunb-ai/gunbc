@@ -20,7 +20,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // classes (.a.b), descendant chains, :hover/:focus-visible/:disabled/:last-child, ::before/::after,
 // and comma lists. The child combinator and attribute selectors do not occur and are not modeled.
 // gunbc.site.gunb_ai_css is the consumer. extdeps.languages.css.selectors keeps its older
-// single-subject rows for gunbc.site.gunb_ai_layout and gunb_ai_tokens.
+// single-subject rows, FROZEN: no new rows or consumers (this module is the model for new sheets).
+// Why it stays for now (DESIGN 3b, diverges with a stated reason): SelectorSubject has about 25 consumers
+// (site element library, gunb_ai_layout, and a dozen witnesses) outside this lane, and moving them is a
+// replacement migration of its own. Trigger: the follow-up that moves those consumers to SelectorList and
+// deletes extdeps.languages.css.selectors; complex_selector expresses every SelectorSubject shape
+// (ClassSelector, ElementSelector, PseudoSuffix; RawSelector rows are the migration's census).
 
 type TypeSelector
   = UniversalType

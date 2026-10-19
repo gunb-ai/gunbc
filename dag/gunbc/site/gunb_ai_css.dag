@@ -8,7 +8,7 @@ import std.render_repeat_string_bootstrap { repeat_string }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.site.markup { page_render_refusal_prefix }
 import extdeps.languages.css.values {
-  CssLengthUnit, Rem, Ch, CssDecimalLength, css_decimal_length_wire, css_hsl_wire,
+  CssLengthUnit, Px, Rem, Ch, CssDecimalLength, css_decimal_length_wire, css_hsl_wire,
   CssFontStack, CssFontFamily, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif,
   GenericMonospace, css_font_stack_wire, DoubleQuote, CssVarRef,
 }
@@ -18,7 +18,7 @@ import extdeps.languages.css.complex_selector {
   selector_list_wire, element_compound,
 }
 import extdeps.languages.css.expression {
-  CssValue, ValIdent, ValNumber, ValDimension, ValVar, DimPx, css_value_wire,
+  CssValue, ValIdent, ValNumber, ValLength, ValVar, css_value_wire,
 }
 import gunbc.design.gunb_ai_live_scale {
   LiveMeasure, live_measure_page, live_measure_wide, live_measure_prose, live_measure_title,
@@ -227,7 +227,7 @@ data html_items: List<SheetItem> = [
     sheet_expr(property: Background, value: sheet_var(name: "void")),
     sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
     sheet_expr(property: FontFamily, value: sheet_var(name: "font-sans")),
-    sheet_expr(property: FontSize, value: ValDimension { milli: 16000, unit: DimPx }),
+    sheet_expr(property: FontSize, value: ValLength { length: CssDecimalLength { milli: 16000, unit: Px } }),
     sheet_expr(property: LineHeight, value: ValNumber { milli: 1600 }),
     sheet_ident(property: WebkitFontSmoothing, ident: "antialiased"),
     sheet_ident(property: ColorScheme, ident: "dark"),

@@ -4,7 +4,7 @@ import std.types { String, Int, List, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.css.values {
-  CssVarRef, CssHsl, css_number_fraction_digits, css_var_ref_wire, css_hsl_wire,
+  CssVarRef, CssHsl, CssDecimalLength, css_decimal_length_wire, css_number_fraction_digits, css_var_ref_wire, css_hsl_wire,
 }
 import std.decimal { fixed_point_trimmed_wire }
 
@@ -23,28 +23,25 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // cubic-bezier calls, and one empty <string>. No hex colours, !important or var() fallbacks occur, so
 // none are modeled (a value outside this grammar is unwritable here, not a raw string).
 
-type CssDimensionUnit
-  = DimPx
-  | DimRem
-  | DimEm
-  | DimCh
-  | DimVw
-  | DimPercent
-  | DimSeconds
-  | DimDegrees
-  | DimFr
+// Lengths are values.dag CssDecimalLength (one unit authority); the non-length dimensions of CSS Values 4
+// section 5 that the sheet uses are one single-unit type each.
+type CssTimeUnit = Seconds | Milliseconds
 
-fn css_dimension_unit_token(u: CssDimensionUnit) -> String {
+type CssAngleUnit = Degrees | Radians | Gradians | Turns
+
+fn css_time_unit_token(u: CssTimeUnit) -> String {
   match u {
-    DimPx => "px"
-    DimRem => "rem"
-    DimEm => "em"
-    DimCh => "ch"
-    DimVw => "vw"
-    DimPercent => "%"
-    DimSeconds => "s"
-    DimDegrees => "deg"
-    DimFr => "fr"
+    Seconds => "s"
+    Milliseconds => "ms"
+  }
+}
+
+fn css_angle_unit_token(u: CssAngleUnit) -> String {
+  match u {
+    Degrees => "deg"
+    Radians => "rad"
+    Gradians => "grad"
+    Turns => "turn"
   }
 }
 
@@ -75,7 +72,10 @@ type CssValue
   = ValIdent { ident: String }
   | ValString { text: String }
   | ValNumber { milli: Int }
-  | ValDimension { milli: Int, unit: CssDimensionUnit }
+  | ValLength { length: CssDecimalLength }
+  | ValTime { milli: Int, unit: CssTimeUnit }
+  | ValAngle { milli: Int, unit: CssAngleUnit }
+  | ValFlex { milli: Int }
   | ValVar { reference: CssVarRef }
   | ValHsl { color: CssHsl }
   | ValCall { function: CssFunctionName, args: List<CssValue> }
@@ -90,36 +90,15 @@ fn css_operator_token(o: CssOperator) -> String {
   }
 }
 
-// CSS Values 4 section 5.1: a zero <length> may drop its unit, and the served sheet writes bare 0 for
-// zero lengths. Percentage, time, angle and flex units keep theirs (0s, 0deg, 0%, 0fr are not lengths).
-fn css_dimension_unit_is_length(u: CssDimensionUnit) -> Bool {
-  match u {
-    DimPx => true
-    DimRem => true
-    DimEm => true
-    DimCh => true
-    DimVw => true
-    DimPercent => false
-    DimSeconds => false
-    DimDegrees => false
-    DimFr => false
-  }
-}
-
-fn css_dimension_wire(milli: Int, unit: CssDimensionUnit) -> String {
-  if milli == 0 && css_dimension_unit_is_length(u: unit) {
-    "0"
-  } else {
-    join([fixed_point_trimmed_wire(value: milli, decimals: css_number_fraction_digits), css_dimension_unit_token(u: unit)], "")
-  }
-}
-
 fn css_value_wire(v: CssValue) -> String {
   match v {
     ValIdent { ident: i } => i
     ValString { text: t } => join(["\"", t, "\""], "")
     ValNumber { milli: m } => fixed_point_trimmed_wire(value: m, decimals: css_number_fraction_digits)
-    ValDimension { milli: m, unit: u } => css_dimension_wire(milli: m, unit: u)
+    ValLength { length: l } => css_decimal_length_wire(l: l)
+    ValTime { milli: m, unit: u } => join([fixed_point_trimmed_wire(value: m, decimals: css_number_fraction_digits), css_time_unit_token(u: u)], "")
+    ValAngle { milli: m, unit: u } => join([fixed_point_trimmed_wire(value: m, decimals: css_number_fraction_digits), css_angle_unit_token(u: u)], "")
+    ValFlex { milli: m } => join([fixed_point_trimmed_wire(value: m, decimals: css_number_fraction_digits), "fr"], "")
     ValVar { reference: r } => css_var_ref_wire(v: r)
     ValHsl { color: c } => css_hsl_wire(c: c)
     ValCall { function: f, args: a } => join([css_function_name_token(f: f), "(", join(map(a, x => css_value_wire(v: x)), ", "), ")"], "")
