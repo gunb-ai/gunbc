@@ -16,7 +16,7 @@ import gunbc.fleet.fleet_intent { ComputeHost }
 import product.host_identity { HostIdentity }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
+import std.dissolution { unbound_dissolution }
 
 type GeneratedArtifact
   = WitnessFloorYamlArtifact
@@ -499,7 +499,7 @@ fn artifact_producer_row(a: GeneratedArtifact) -> GeneratedArtifactProducerRow {
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "artifact_eq" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
+      reason: "KEYED-IDENTITY equality, not structural: the nullary arms are same-constructor tests, but AutoinstallUserDataArtifact compares spec.host, RunnerHostSudoersArtifact compares host as String and PlanArtifact compares plan.slug, each a key projection rather than the whole payload, so a derived == would change what two artifacts are 'the same' (landed unrostered in the land-red era, declared so the ratchet re-arms)",
+      dissolution: unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY: each payload-carrying GeneratedArtifact arm declares the key that identifies it as a declared identity on its payload type, so equality is the derived == over that declared key and the hand fold deletes with this row. Until a key is declared the fold is the only place that decision lives"),
     },
 ]
