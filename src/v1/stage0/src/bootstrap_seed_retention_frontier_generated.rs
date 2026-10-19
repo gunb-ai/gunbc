@@ -26,5 +26,13 @@ pub const SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES: &[&str] = &[
     "bootstrap_stage0_crate_layout_generated.rs",
     "bootstrap_seed_retention_frontier_generated.rs",
     "v1_interpreter_dispatch_generated.rs",
-    "main.rs"
+    "main.rs",
+    "emitted_closure_compile_host.rs",
+    "evaluation_budget_consequence_generated.rs",
+    "generated_artifact_boundary_host.rs",
+    "gunbc_file_transport_generated.rs",
+    "native_route_seed_boundary_generated.rs",
+    "partition_crate_boundary_host.rs",
+    "release_locus_seed_constants_generated.rs",
+    "target_invocation_host.rs"
 ];

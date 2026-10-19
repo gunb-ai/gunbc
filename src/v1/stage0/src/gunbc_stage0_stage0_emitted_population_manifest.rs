@@ -19,6 +19,24 @@ pub fn emitted_population_manifest_basename() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn self_host_frontier_verdict_passed_word() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "controls-passed".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn self_host_frontier_verdict_not_passed_word() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "controls-not-passed".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn emitted_population_manifest_line_prefix() -> String {
     thread_local! {
         static CACHED: String = {
