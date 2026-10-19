@@ -144,6 +144,7 @@ use self::HostOptionArmReading::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::FmLoweringRefusal::*;
 use self::FmArmAnalysis::*;
+use self::FieldStorage::*;
 use self::DyingLitShape::*;
 
 pub fn render_rust_applied_via_emit_info(
@@ -35968,6 +35969,50 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum FieldStorage {
+    StoredPromotedToSome,
+    StoredOptionalSlot,
+    StoredWrapped,
+    StoredDirectRc,
+}
+
+pub fn record_field_storage(
+    f_name: String,
+    f_value: Rc<Node>,
+    summary_name: String,
+    ctor_name: String,
+    scope: Rc<InferScope>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> FieldStorage {
+    if is_optional_struct_field(emit_info.clone(), summary_name.clone(), f_name.clone()) {
+        if is_already_optional(f_value.clone(), emit_info.clone(), scope.clone()) {
+            FieldStorage::StoredOptionalSlot
+        } else {
+            FieldStorage::StoredPromotedToSome
+        }
+    } else {
+        if (wrap_rust_record_field_value(
+            "__slot".to_string(),
+            std::option::Option::None,
+            scope.clone(),
+            emit_info.clone(),
+            shared_types.clone(),
+            ctor_name.clone(),
+            f_name.clone(),
+        ) == "__slot".to_string())
+        {
+            FieldStorage::StoredDirectRc
+        } else {
+            FieldStorage::StoredWrapped
+        }
+    }
+}
+
 pub fn emit_stored_record_field(
     f: Rc<Node>,
     resolved_type: Rc<Node>,
@@ -35997,17 +36042,22 @@ pub fn emit_stored_record_field(
             shared_types.clone(),
             emit_info.clone(),
         );
-        let needs_wrap =
-            (is_optional_struct_field(emit_info.clone(), summary_name.clone(), f_name.clone())
-                && (is_already_optional(f_value.clone(), emit_info.clone(), scope.clone())
-                    == false));
-        let field_val = if needs_wrap.clone() {
-            v1_rt::concat(
+        let field_val = match record_field_storage(
+            f_name.clone(),
+            f_value.clone(),
+            summary_name.clone(),
+            ctor_name.clone(),
+            scope.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+        ) {
+            FieldStorage::StoredPromotedToSome => v1_rt::concat(
                 v1_rt::concat("Some(".to_string(), val_str.clone()),
                 ")".to_string(),
-            )
-        } else {
-            val_str.clone()
+            ),
+            FieldStorage::StoredOptionalSlot => val_str.clone(),
+            FieldStorage::StoredWrapped => val_str.clone(),
+            FieldStorage::StoredDirectRc => val_str.clone(),
         };
         wrap_rust_record_field_value(
             field_val.clone(),
@@ -36151,8 +36201,13 @@ pub fn dying_literal_plan(
                 let f_name = crate::v1_std_core::field_init_node_name_at(f.clone(), si.clone());
 let f_value = crate::v1_std_core::field_init_node_value(f.clone());
 let stored = emit_stored_record_field(f.clone(), rt.clone(), Some(tn.clone()), tn.clone(), tn.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone());
-let slot_unwrapped = (wrap_rust_record_field_value("__slot".to_string(), std::option::Option::None, scope.clone(), emit_info.clone(), shared_types.clone(), tn.clone(), f_name.clone()) == "__slot".to_string());
-let inner_name = if slot_unwrapped.clone() {
+let direct_rc = match record_field_storage(f_name.clone(), f_value.clone(), tn.clone(), tn.clone(), scope.clone(), shared_types.clone(), emit_info.clone()) {
+    FieldStorage::StoredDirectRc => true,
+    FieldStorage::StoredPromotedToSome => false,
+    FieldStorage::StoredOptionalSlot => false,
+    FieldStorage::StoredWrapped => false,
+};
+let inner_name = if direct_rc.clone() {
                     plain_shared_struct_literal_name(f_value.clone(), scope.clone(), shared_types.clone(), emit_info.clone())
                 } else {
                     std::option::Option::None
@@ -45867,3 +45922,11 @@ pub struct HostOptionArmIsNot;
 pub struct HostOptionArmSpelledWithoutIdentity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HostOptionArmBindingAmbiguous;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StoredPromotedToSome;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StoredOptionalSlot;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StoredWrapped;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StoredDirectRc;
