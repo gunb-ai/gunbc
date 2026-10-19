@@ -256,6 +256,28 @@ test fn witness_frontier_stale_row_still_refuses() -> Bool {
   !self_host_frontier_holds(frontier: f)
 }
 
+// RED: a path repeated within one input is a refusal, never narrowed to its first row -- once in the
+// emitted population and once in the roster. Positive control: the same inputs without the repeat
+// hold (witness_frontier_control_classifies_every_standing).
+test fn witness_frontier_duplicate_path_in_an_input_refuses() -> Bool {
+  let duplicated_emitted = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: concat(frontier_emitted, [EmittedPopulationRow { crate_relative_path: "src/emitted_in_closure.rs", source_module: "fx.in_closure" }]),
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed
+  )
+  let duplicated_roster = self_host_frontier(
+    roster: concat(frontier_roster, [retained_host_binary(path: "src/bin/gamma.rs")]),
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed
+  )
+  !self_host_frontier_holds(frontier: duplicated_emitted)
+    && !self_host_frontier_holds(frontier: duplicated_roster)
+}
+
 fn report_has(lines: List<String>, pattern: String) -> Bool {
   any(xs: lines, predicate: fn(l) { string_contains(s: l, pattern: pattern) })
 }
