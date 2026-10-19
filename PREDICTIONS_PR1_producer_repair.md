@@ -73,3 +73,24 @@ rather than a claim because PR-1's own comparator run has not been taken at this
 No prediction about the 43/45 corpus conflicts, the Acc, or emission: none of that exists on this
 branch. A gate run here is expected to reproduce main's counts exactly; if it does not, the tree is
 contaminated and the run is void.
+
+## Merge-into-PR-1 pre-flight, measured before merging
+
+Main advanced 5 commits past PR-1's base (0316e966140 -> 891198514b8). Checked before merging
+rather than discovering it in the PR:
+
+- `git merge-tree` on pr1-producer-repair x origin/main returns rc=1 with
+  `[generated-artifact] GeneratedArtifactConcurrentDivergence: src/v1/stage0/src/v1_compiler_infer.rs`
+  -- and NOTHING else. That is the artifact driver refusing two different mirror outputs, not a
+  textual conflict, and it is resolved by regenerating from the merged tree. Never by line-merging a
+  generated file, and never by hand.
+- Main's only `04_infer.dag` change since the base is at line 18169 (`build_emit_graph_info`: a
+  trailing comma and a new `dying_base_sites: empty_map()` field). My patch is the call arm near
+  9268. Disjoint by hundreds of lines, so this is not a #14287-shaped silent semantic merge -- but the
+  deleted-symbol grep is still owed after the merge, because that class is invisible to a text
+  conflict.
+
+PREDICTION M6, written before the merge: the merged `.dag` carries BOTH main's `dying_base_sites`
+field and my `fresh_call_variables`, and the regenerated mirror's seed differs from both
+pre-merge seeds. If the regenerated mirror equals my pre-merge mirror byte-for-byte, the merge did
+not actually take main's `04_infer.dag` change and the merge is wrong, not lucky.
