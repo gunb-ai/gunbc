@@ -19,6 +19,8 @@ import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler,
   ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
   approval_broker_route_specs,
+  device_route_specs,
+  device_route_specs_over,
   approval_broker_route_table_build,
   approval_broker_respond,
   approval_broker_respond_as,
@@ -41,6 +43,7 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_status_url,
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT }
+import gunbc.auth.approval_device_wire { approval_device_routes, ApprovalDeviceRoute }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -445,4 +448,21 @@ test fn a_non_writer_may_still_render_the_confirmation_page() -> Bool {
     body: "",
   )
   r.status == 200 && string_contains(s: r.body, pattern: "APPROVE")
+}
+
+// THE SERVER CONSUMES THE ROUTE TABLE: the six device specs carry exactly the methods in
+// approval_device_routes, so there is one authority for the method. The RED changes the table's
+// methods and the served specs change with it; a copy of the method in this file would not.
+test fn device_served_methods_are_the_route_table_methods() -> Bool {
+  count(device_route_specs()) == 6
+    && count(device_route_specs() |> filter(s => s.method == POST)) == 6
+}
+
+test fn device_served_method_follows_a_changed_table_row() -> Bool {
+  count(device_route_specs_over(rows: approval_device_routes |> map(r => ApprovalDeviceRoute { path: r.path, path_is_prefix: r.path_is_prefix, method: PUT, request_body: r.request_body, request_media_type: r.request_media_type }))
+    |> filter(s => s.method == PUT)) == 6
+}
+
+test fn device_route_without_a_table_row_is_not_served() -> Bool {
+  count(device_route_specs_over(rows: [])) == 0
 }

@@ -48,12 +48,11 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_status_path_template,
   approval_broker_store_receipt_path_template,
   approval_broker_confirm_path_prefix,
-  approval_device_request_path_template,
-  approval_device_enrollment_path_template,
   approval_broker_listen_host,
   approval_broker_serving_base_url,
 }
-import gunbc.auth.approval_device_wire { approval_device_enrol_path, approval_device_redeem_path, approval_device_pending_path, approval_device_push_path }
+import gunbc.auth.approval_device_wire { approval_device_enrol_path, approval_device_redeem_path, approval_device_pending_path, approval_device_push_path, approval_device_request_path_prefix, approval_device_enrollment_path_prefix, approval_device_routes, ApprovalDeviceRoute }
+import std.list { first_where }
 import gunbc.auth.approval_device_routes {
   DeviceRouteResponse,
   device_enrol_response, device_redeem_response, device_pending_response, device_request_response, device_enrollment_readback_response, device_push_update_response,
@@ -145,6 +144,39 @@ type ApprovalBrokerHandler
 // the same four paths are also what the notification link is built from, what the front door
 // mounts, and what the boot client posts to -- four readers of one fact, and a path that is
 // spelled once per reader agrees until one of them moves.
+// A device route's method and path are read from approval_device_routes
+// (gunbc.auth.approval_device_wire), the one table that states them; this file binds only the
+// handler. A bound path with no row is omitted, which the eleven-route witness refuses.
+type DeviceRouteHandlerBinding {
+  path: NonEmptyStr
+  handler: ApprovalBrokerHandler
+}
+
+data device_route_handlers: List<DeviceRouteHandlerBinding> = [
+  DeviceRouteHandlerBinding { path: approval_device_enrol_path, handler: DeviceEnrolHandler },
+  DeviceRouteHandlerBinding { path: approval_device_redeem_path, handler: DeviceRedeemHandler },
+  DeviceRouteHandlerBinding { path: approval_device_pending_path, handler: DevicePendingHandler },
+  DeviceRouteHandlerBinding { path: approval_device_request_path_prefix, handler: DeviceRequestHandler },
+  DeviceRouteHandlerBinding { path: approval_device_enrollment_path_prefix, handler: DeviceEnrollmentReadbackHandler },
+  DeviceRouteHandlerBinding { path: approval_device_push_path, handler: DevicePushUpdateHandler },
+]
+
+fn device_route_raw(r: ApprovalDeviceRoute) -> String {
+  if r.path_is_prefix { join([r.path as String, "\{segment\}"], "") } else { r.path as String }
+}
+
+fn device_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
+  device_route_specs_over(rows: approval_device_routes)
+}
+
+fn device_route_specs_over(rows: List<ApprovalDeviceRoute>) -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
+  flat_map(device_route_handlers, b =>
+    match first_where(rows, r => r.path == b.path) {
+      Present { value: r } => [ServedRouteSpec { method: r.method, raw: device_route_raw(r: r), handler: b.handler }]
+      Absent => []
+    })
+}
+
 fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
   [
     ServedRouteSpec { method: GET, raw: site_favicon_path, handler: ApprovalSiteFaviconHandler },
@@ -153,13 +185,8 @@ fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>>
     ServedRouteSpec { method: POST, raw: approval_broker_submit_path as String, handler: ApprovalSubmitHandler },
     ServedRouteSpec { method: GET, raw: approval_broker_status_path_template as String, handler: ApprovalStatusHandler },
     ServedRouteSpec { method: POST, raw: approval_broker_store_receipt_path_template as String, handler: ApprovalStoreReceiptHandler },
-    ServedRouteSpec { method: POST, raw: approval_device_enrol_path as String, handler: DeviceEnrolHandler },
-    ServedRouteSpec { method: POST, raw: approval_device_redeem_path as String, handler: DeviceRedeemHandler },
-    ServedRouteSpec { method: POST, raw: approval_device_pending_path as String, handler: DevicePendingHandler },
-    ServedRouteSpec { method: POST, raw: approval_device_request_path_template as String, handler: DeviceRequestHandler },
-    ServedRouteSpec { method: POST, raw: approval_device_enrollment_path_template as String, handler: DeviceEnrollmentReadbackHandler },
-    ServedRouteSpec { method: POST, raw: approval_device_push_path as String, handler: DevicePushUpdateHandler },
   ]
+  |> concat(device_route_specs())
 }
 
 fn approval_broker_route_table_build() -> ServedRouteTableBuild<ApprovalBrokerHandler> {
