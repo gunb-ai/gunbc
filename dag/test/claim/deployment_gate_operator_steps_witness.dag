@@ -87,6 +87,9 @@ import gunbc.auth.deployment_gate_authorization {
   RejectingArmWasNotARejection,
   BothArmsOneDispatch,
   EvidenceFromAnotherEnvironment,
+  TrialArmsDifferOnRule,
+  TrialArmsDifferOnInstallation,
+  TrialArmsAddressDifferentRepositories,
   admit_reviewer_removal,
   NoApprovingReview,
   reviewer_removal_obstacle,
@@ -123,11 +126,15 @@ data sibling_env: NonEmptyStr = "gcp-iam-bootstrap"
 //
 // A mint that refuses returns no receipt, so an unobtainable arm is `Absent`; the admission then
 // refuses it, which is exactly what the tests below assert.
-fn review_path_for(run_id: Int) -> NonEmptyStr {
-  // Interpolated from the run, the way the route builds it; the mint reads the run id back out of the
-  // string rather than taking the caller's word for it.
-  "/repos/gunb-ai/gunbc/actions/runs/{run_id}/deployment_protection_rule"
-}
+// THE REPOSITORY THE CALL ADDRESSES. The mint used to take a `path` and test it with
+// `contains(run_id)`, which a path for another run, on another repository, or to another endpoint all
+// satisfied. It takes the pair instead and builds the route itself, so the mutations below are mutations
+// of what the call ADDRESSED — the only thing a caller can still get wrong from outside.
+data gate_owner: NonEmptyStr = "gunb-ai"
+data gate_repo: NonEmptyStr = "gunbc"
+data other_repo: NonEmptyStr = "someone-elses-fork"
+// would change WHICH endpoint is addressed if it were spliced into a route unexamined
+data hostile_repo: NonEmptyStr = "gunbc/../other"
 
 // THE IDENTITY, READ. ObservedGateInstallation is sole_constructor, so this file cannot write one any
 // more than it can write a receipt: the only way to hold it is to call the observation route with a
@@ -176,19 +183,102 @@ fn ownership_for(environment: NonEmptyStr) -> EnvironmentRuleOwnership {
   }
 }
 
+// THE SAME THREE PRODUCERS, PARAMETERISED, for the trial-arm reds below. They are not new fixture kinds:
+// each one is the canonical readback with ONE value moved — the rule the readback attributed, the
+// installation behind the identity, or the repository it was read from. A trial that differs on any of
+// them is two unrelated calls wearing one trial's clothes, and admitting it would let "approve on the
+// gate's rule A, reject on the gate's rule B" count as a witnessed trial.
+fn identity_with(
+  installation_id: Int,
+  repo: NonEmptyStr
+) -> ObservedGateInstallation? {
+  match observe_gate_installation(
+    owner: "gunb-ai",
+    repo: repo,
+    status: installation_readback_success_status,
+    wire: InstallationWireFields {
+      id: Present { value: installation_id },
+      app_id: Present { value: 1900000001 },
+      app_slug: Present { value: "gunbc-deployment-gate" },
+    },
+    claim: GateInstallationClaim {
+      installation_id: GitHubAppInstallationId { value: installation_id },
+      app_id: GitHubAppId { value: 1900000001 },
+    },
+  ) {
+    InstallationObserved { observed: o } => Present { value: o }
+    InstallationObservationRefused { because: _ } => none
+  }
+}
+
+fn ownership_from(
+  identity: ObservedGateInstallation,
+  environment: NonEmptyStr,
+  rule_id: Int
+) -> EnvironmentRuleOwnership {
+  observe_rule_ownership(
+    rules: [
+      EnabledDeploymentProtectionRule {
+        id: rule_id,
+        node_id: "DPPR_1",
+        enabled: true,
+        app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },
+      }
+    ],
+    environment_name: environment,
+    observed: identity,
+  )
+}
+
+// A receipt whose rule/installation/repository came from a readback OTHER than the canonical one, with
+// the mint's requested rule moved to match — otherwise every case would refuse on the rule check before
+// the arm check under test could be reached.
+fn receipt_with(
+  identity: ObservedGateInstallation?,
+  run_id: Int,
+  state: ReviewState,
+  environment: NonEmptyStr,
+  rule_id: Int
+) -> Optional<AcceptedRuleReviewReceipt> {
+  match identity {
+    Present { value: observed } =>
+      match mint_accepted_rule_review(
+        owner: gate_owner,
+        repo: observed.repo,
+        run_id: run_id,
+        environment_name: environment,
+        claimed: state,
+        review: DeploymentProtectionRuleReview {
+          environment_name: environment,
+          state: state,
+          comment: Present { value: "witness" },
+        },
+        status: 204,
+        ownership: ownership_from(identity: observed, environment: environment, rule_id: rule_id),
+        requested_rule_id: rule_id,
+      ) {
+        Accepted { receipt: r } => Present { value: r }
+        AcceptedReviewRefused { because: _ } => Absent
+      }
+    none => Absent
+  }
+}
+
 fn receipt_for(
   run_id: Int,
   state: ReviewState,
-  path: NonEmptyStr,
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
   environment: NonEmptyStr,
   owned_environment: NonEmptyStr,
   expected: HttpStatus,
 ) -> Optional<AcceptedRuleReviewReceipt> {
   match mint_accepted_rule_review(
+    owner: owner,
+    repo: repo,
     run_id: run_id,
     environment_name: environment,
     claimed: state,
-    path: path,
     review: DeploymentProtectionRuleReview {
       environment_name: environment,
       state: state,
@@ -214,7 +304,8 @@ fn receipt_on(
   receipt_for(
     run_id: run_id,
     state: state,
-    path: review_path_for(run_id: run_id),
+    owner: gate_owner,
+    repo: gate_repo,
     environment: environment,
     owned_environment: environment,
     expected: 204,
@@ -371,6 +462,119 @@ test fn the_ready_act_is_discharged_at_the_mint() -> Bool {
 // SAME dispatch, one arm witnessed on an environment nobody gates, an environment the removal is not
 // for. None is expressed as a hand-built record — they are inputs to the mints, because building the
 // record is exactly what this file is no longer allowed to do.
+// THE TRIAL IS ONE TRIAL OF ONE RULE, THROUGH ONE INSTALLATION, IN ONE REPOSITORY (the manager's
+// question, and the answer is: no, "approve on rule A, reject on rule B" is NOT a valid trial). More
+// than one rule can be enabled on a single environment, so answering one is no evidence the other
+// answers at all — and the removal is the act that WEAKENS the srv1 root boundary. Each case mints both
+// arms through the real producers with one value moved; nothing here is a hand-built record.
+test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_refused() -> Bool {
+  let canonical = identity_with(installation_id: 888800001, repo: gate_repo)
+  // APPROVE ON RULE A, REJECT ON RULE B. Both readbacks are real, both rules are enabled, both are
+  // attributed to this App: only the rule the trial was a trial OF differs.
+  (match admit_reviewer_removal(
+          approved: receipt_with(
+            identity: canonical,
+            run_id: 35447067113,
+            state: Approved,
+            environment: gate_env,
+            rule_id: 900000001,
+          ),
+          rejected: receipt_with(
+            identity: canonical,
+            run_id: 35447067114,
+            state: Rejected,
+            environment: gate_env,
+            rule_id: 900000002,
+          ),
+          environment_name: gate_env,
+        ) {
+          RemovalRefused {
+            missing: TrialArmsDifferOnRule { approved_rule_id: a, rejected_rule_id: r },
+          } => a == 900000001 && r == 900000002
+          RemovalRefused { missing: _ } => false
+          RemovalAdmitted { evidence: _ } => false
+        })
+    // THE ARMS ANSWERED THROUGH DIFFERENT INSTALLATIONS. Same repository, same rule; the identity
+    // readback behind one arm is another installation's, so nothing pins WHICH App answered.
+    && (match admit_reviewer_removal(
+          approved: receipt_with(
+            identity: canonical,
+            run_id: 35447067113,
+            state: Approved,
+            environment: gate_env,
+            rule_id: 900000001,
+          ),
+          rejected: receipt_with(
+            identity: identity_with(installation_id: 999900002, repo: gate_repo),
+            run_id: 35447067114,
+            state: Rejected,
+            environment: gate_env,
+            rule_id: 900000001,
+          ),
+          environment_name: gate_env,
+        ) {
+          RemovalRefused {
+            missing: TrialArmsDifferOnInstallation {
+              approved_installation_id: a,
+              rejected_installation_id: r,
+            },
+          } => a.value == 888800001 && r.value == 999900002
+          RemovalRefused { missing: _ } => false
+          RemovalAdmitted { evidence: _ } => false
+        })
+    // ONE RUN NUMBER, TWO REPOSITORIES. A run id is not unique across GitHub; the route is
+    // owner/repo-scoped, so these are two unrelated calls. Both names come back, because "which arm
+    // came from the wrong repository" is the actionable question.
+    && (match admit_reviewer_removal(
+          approved: receipt_with(
+            identity: canonical,
+            run_id: 35447067113,
+            state: Approved,
+            environment: gate_env,
+            rule_id: 900000001,
+          ),
+          rejected: receipt_with(
+            identity: identity_with(installation_id: 888800001, repo: other_repo),
+            run_id: 35447067114,
+            state: Rejected,
+            environment: gate_env,
+            rule_id: 900000001,
+          ),
+          environment_name: gate_env,
+        ) {
+          RemovalRefused {
+            missing: TrialArmsAddressDifferentRepositories {
+              approved_repository: a,
+              rejected_repository: r,
+            },
+          } => (a as String) == "gunb-ai/gunbc" && (r as String) == "gunb-ai/someone-elses-fork"
+          RemovalRefused { missing: _ } => false
+          RemovalAdmitted { evidence: _ } => false
+        })
+    // THE CONTROL: with one rule, one installation and one repository, the same pair IS admitted.
+    // Without this arm the three refusals above could be a fixture that never builds.
+    && (match admit_reviewer_removal(
+          approved: receipt_with(
+            identity: canonical,
+            run_id: 35447067113,
+            state: Approved,
+            environment: gate_env,
+            rule_id: 900000001,
+          ),
+          rejected: receipt_with(
+            identity: canonical,
+            run_id: 35447067114,
+            state: Rejected,
+            environment: gate_env,
+            rule_id: 900000001,
+          ),
+          environment_name: gate_env,
+        ) {
+          RemovalAdmitted { evidence: _ } => true
+          RemovalRefused { missing: _ } => false
+        })
+}
+
 test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused() -> Bool {
   let approve = approved_trial(run_id: 35447067113)
   // ONE DISPATCH DRESSED AS TWO TRIALS.
@@ -429,7 +633,6 @@ test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refuse
 // not happen the way the evidence claims. This is the discriminating red on the BINDING: mutate the run
 // id or the environment anywhere in the chain and the mint refuses instead of answering.
 test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
-  let good_path = review_path_for(run_id: 35447067113)
   let good = receipt_on(run_id: 35447067113, state: Approved, environment: gate_env)
   // the positive control FIRST: if the happy path stopped minting, the four mutations below would all
   // be "absent" for the wrong reason and this test would be green while proving nothing
@@ -439,7 +642,8 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
     && receipt_for(
          run_id: 35447067113,
          state: Approved,
-         path: "/repos/gunb-ai/gunbc/actions/runs/999/deployment_protection_rule",
+         owner: gate_owner,
+         repo: other_repo,
          environment: gate_env,
          owned_environment: gate_env,
          expected: 204,
@@ -449,7 +653,8 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
     && receipt_for(
          run_id: 35447067113,
          state: Approved,
-         path: good_path,
+         owner: gate_owner,
+         repo: gate_repo,
          environment: gate_env,
          owned_environment: gate_env,
          expected: 200,
@@ -460,7 +665,8 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
     && receipt_for(
          run_id: 35447067113,
          state: Approved,
-         path: good_path,
+         owner: gate_owner,
+         repo: gate_repo,
          environment: gate_env,
          owned_environment: sibling_env,
          expected: 204,
@@ -470,7 +676,8 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
     && receipt_for(
          run_id: 35447067113,
          state: Approved,
-         path: good_path,
+         owner: gate_owner,
+         repo: gate_repo,
          environment: sibling_env,
          owned_environment: sibling_env,
          expected: 204,

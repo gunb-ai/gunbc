@@ -45,6 +45,18 @@ import extdeps.ietf.http_semantics {
 import extdeps.external_authority { external_model_scope_citations }
 import extdeps.github.deployment_protection_rule {
   DeploymentProtectionRuleReview,
+  review_endpoint_path_built_for,
+  built_path_carries_every_pinned_anchor,
+  BuiltReviewPath,
+  BuiltReviewPathOk,
+  BuiltReviewPathRefused,
+  ReviewPathSegment,
+  OwnerSegment,
+  RepoSegment,
+  review_endpoint_prefix,
+  review_endpoint_runs_anchor,
+  review_endpoint_suffix,
+  review_endpoint_path,
   ReviewState,
   Approved,
   Rejected,
@@ -260,6 +272,94 @@ test fn a_review_without_an_environment_or_a_state_cannot_be_built() -> Bool {
 // The decision, as the value the body carries — not as a search for the word "state". Both arms are
 // constructible, so "the review said the opposite of what was tapped" is a mutation that can be
 // exercised rather than described.
+// THE ROUTE BUILDER, WHICH EXISTS BECAUSE A SUBSTRING CHECK DID NOT. The review mint used to accept a
+// path and test `path |> contains(run_id)`: the path for run 1234 satisfied a check for run 123, a path
+// on another repository satisfied it, and a path to a different endpoint whose digits happened to line up
+// satisfied it. Building the route is the repair, so the builder is what must be witnessed — the shape it
+// produces, the segments it refuses, and its agreement with the pinned template.
+test fn the_built_route_is_the_pinned_template_with_its_values_substituted() -> Bool {
+  match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc", run_id: 35447067113) {
+    BuiltReviewPathOk { path: built } =>
+      // every anchor the pinned template declares is present...
+      built_path_carries_every_pinned_anchor(path: built)
+        // ...and the whole route is upstream's, with the three values in their positions
+        && ((built as String)
+          == "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule")
+        // the template it was checked against really is the citation's route, braces and all
+        && ((review_endpoint_path as String)
+          == "/repos/{owner}/{repo}/actions/runs/{run_id}/deployment_protection_rule")
+    BuiltReviewPathRefused { hostile_segment: _ } => false
+  }
+    // A DIFFERENT RUN MOVES ONLY THE RUN-ID POSITION. Two routes differing somewhere else — a suffix
+    // appended, an anchor dropped — is exactly what the old substring check could not see.
+    && (match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc", run_id: 35447067114) {
+          BuiltReviewPathOk { path: other } =>
+            (other as String)
+              == "/repos/gunb-ai/gunbc/actions/runs/35447067114/deployment_protection_rule"
+          BuiltReviewPathRefused { hostile_segment: _ } => false
+        })
+    // THE SAME RUN ON A DIFFERENT REPOSITORY IS A DIFFERENT ROUTE — the fact that made "which repository
+    // did we address?" unanswerable when the path arrived from a caller.
+    && (match review_endpoint_path_built_for(owner: "gunb-ai", repo: "other-repo", run_id: 35447067113) {
+          BuiltReviewPathOk { path: other } =>
+            (other as String)
+              == "/repos/gunb-ai/other-repo/actions/runs/35447067113/deployment_protection_rule"
+          BuiltReviewPathRefused { hostile_segment: _ } => false
+        })
+}
+
+// A HOSTILE SEGMENT IS REFUSED, AND BY NAME, AND BY WHICH HALF IT IS. Splicing an owner or repo into a
+// route unexamined changes WHICH endpoint is called: "gunbc/../other" walks out of /repos/, and a
+// newline in a repository name ends the line of an HTTP request. Refusing with the offending value is the
+// difference between "your config is wrong" and a report somebody can act on.
+test fn the_builder_refuses_a_segment_that_would_change_which_endpoint_is_called() -> Bool {
+  match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc/../other", run_id: 35447067113) {
+    BuiltReviewPathRefused { hostile_segment: seg } =>
+      match seg {
+        RepoSegment { value: v } => (v as String) == "gunbc/../other"
+        OwnerSegment { value: _ } => false
+      }
+    BuiltReviewPathOk { path: _ } => false
+  }
+    // the owner half too, so the refusal is not an accident of one field
+    && (match review_endpoint_path_built_for(
+          owner: "gunb-ai/..",
+          repo: "gunbc",
+          run_id: 35447067113
+        ) {
+          BuiltReviewPathRefused { hostile_segment: seg } =>
+            match seg {
+              OwnerSegment { value: v } => (v as String) == "gunb-ai/.."
+              RepoSegment { value: _ } => false
+            }
+          BuiltReviewPathOk { path: _ } => false
+        })
+    // a run id that is not a positive number was never handed out upstream; a route built with one would
+    // answer 404 and be mistaken for "the run is gone"
+    && (match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc", run_id: 0) {
+          BuiltReviewPathRefused { hostile_segment: _ } => true
+          BuiltReviewPathOk { path: _ } => false
+        })
+}
+
+// THE ANCHOR ROWS ARE NOT DECORATION. If they were the same string as the builder's own literals the
+// check would be green by construction; they are separate rows transcribed from the pinned template, so
+// a builder that drifted is caught by an ABSENCE. These four routes are ones a drifted builder could
+// plausibly produce, and none of them may pass.
+test fn an_absent_anchor_fails_the_check_rather_than_passing_it() -> Bool {
+  built_path_carries_every_pinned_anchor(
+    path: "/repos/gunb-ai/gunbc/actions/runs/7/deployment_protection_rule"
+  )
+    // the review suffix missing: this is a run's actions route, not a rule-review route
+    && !built_path_carries_every_pinned_anchor(path: "/repos/gunb-ai/gunbc/actions/runs/7")
+    // the runs anchor missing: a path that reached the suffix by some other way
+    && !built_path_carries_every_pinned_anchor(
+      path: "/repos/gunb-ai/gunbc/actions/7/deployment_protection_rule"
+    )
+    // the /repos/ prefix missing: an enterprise or org-scoped route wearing the same tail
+    && !built_path_carries_every_pinned_anchor(path: "/orgs/gunb-ai/gunbc/deployment_protection_rule")
+}
+
 test fn the_review_carries_a_decision_and_it_can_be_a_refusal() -> Bool {
   review_decision(review: sanctioned_review()) == Approved
     && review_decision(review: DeploymentProtectionRuleReview {

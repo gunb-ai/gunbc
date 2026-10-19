@@ -75,14 +75,18 @@ data forged_identity: ObservedGateInstallation = ObservedGateInstallation {
   repo: "gunbc",
 }
 
-// (d'') THE FORGED RECEIPTS. The state, run id, rule and installation are fields a caller would love to
-// choose; the type exists so it cannot.
+// (d'') THE FORGED RECEIPTS. The state, run id, rule, installation and repository pair are fields a
+// caller would love to choose; the type exists so it cannot. Every field is filled on purpose: a literal
+// refused for MISSING fields would prove nothing about the seal, so what remains to refuse it is the
+// seal.
 data forged_approved_receipt: AcceptedRuleReviewReceipt = AcceptedRuleReviewReceipt {
   run_id: forged_run_id,
   environment_name: forged_environment,
   state: Approved,
   rule_id: 900000001,
   installation_id: forged_installation_id,
+  owner: "gunb-ai",
+  repo: "gunbc",
 }
 
 data forged_rejected_receipt: AcceptedRuleReviewReceipt = AcceptedRuleReviewReceipt {
@@ -91,6 +95,8 @@ data forged_rejected_receipt: AcceptedRuleReviewReceipt = AcceptedRuleReviewRece
   state: Rejected,
   rule_id: 900000001,
   installation_id: forged_installation_id,
+  owner: "gunb-ai",
+  repo: "gunbc",
 }
 
 // (d''') THE FORGED TRIAL PAIR: two receipts chosen to satisfy every check the removal mint performs,
@@ -109,15 +115,17 @@ data forged_ownership: EnvironmentRuleOwnership = OwnedByGateApp {
 }
 
 // (a) THE FORGED ACCEPTED REVIEW. Every input is one the caller wrote down: the run id, the environment,
-// the state it wants on the record, the path it hopes GitHub was called with, the 204 it hopes GitHub
-// sent, and an ownership it asserts. If this resolved, the removal admission downstream would be a
+// the state it wants on the record, the repository it hopes the call addressed, the 204 it hopes GitHub
+// sent, and an ownership it asserts. The path is no longer one of its arguments at all: the mint builds
+// that route itself, which is the difference between checking a path and being unable to lie about one. If this resolved, the removal admission downstream would be a
 // formality -- which is precisely the defect this probe keeps closed.
 fn forge_an_accepted_review() -> AcceptedReviewOutcome {
   mint_accepted_rule_review(
+    owner: "gunb-ai",
+    repo: "gunbc",
     run_id: forged_run_id,
     environment_name: forged_environment,
     claimed: Approved,
-    path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
     review: DeploymentProtectionRuleReview {
       environment_name: forged_environment,
       state: Approved,
@@ -138,8 +146,8 @@ fn forge_an_observed_installation() -> InstallationObservation {
     repo: "gunbc",
     status: 200,
     wire: InstallationWireFields {
-      id: Present { value: forged_installation_id },
-      app_id: Present { value: forged_app_id },
+      id: Present { value: 888800001 },
+      app_id: Present { value: 1900000001 },
       app_slug: Present { value: forged_app_slug },
     },
     claim: GateInstallationClaim {

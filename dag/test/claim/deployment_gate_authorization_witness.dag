@@ -120,6 +120,10 @@ import gunbc.auth.deployment_gate_authorization {
   ClaimDisagreesOnInstallation,
   OwnershipNotEstablished,
   RuleIsNotTheOneRequested,
+  RequestedRepositoryIsNotTheObservedRepository,
+  RouteSegmentsAreNotRouteSafe,
+  OwnerSegment,
+  RepoSegment,
   ClaimDisagreesOnApp,
   GateInstallationClaim,
   mint_accepted_rule_review,
@@ -130,7 +134,6 @@ import gunbc.auth.deployment_gate_authorization {
   AcceptedReviewRefusal,
   NotAcceptedStatus,
   BodyNamesAnotherEnvironment,
-  PathNotForThisRun,
   GateRunOutcomeCorroboration,
   corroborate_matches_receipt,
   mintable_installation_id,
@@ -346,15 +349,25 @@ fn unattributed_ownership() -> EnvironmentRuleOwnership {
   NotOwnedByGateApp { because: NoRuleBelongsToThisApp }
 }
 
+// THE REPOSITORY THE FIXTURES ADDRESS. Both halves arrive from configuration, which is why the mint
+// refuses to splice either into a route without looking at it.
+data gate_owner: NonEmptyStr = "gunb-ai"
+data gate_repo: NonEmptyStr = "gunbc"
+data other_repo: NonEmptyStr = "someone-elses-fork"
+// would change WHICH endpoint is addressed if it were spliced into a route unexamined
+data hostile_repo: NonEmptyStr = "gunbc/../other"
+
 // AN ACCEPTED REVIEW CALL, minted by the only producer. Every argument is what the answer route would
-// actually hold at the moment GitHub answers: the path built from the run, the body it posted, the
-// status it returned, and the sealed ownership that authorised the call.
+// actually hold at the moment GitHub answers: the repository addressed, the body it posted, the status
+// it returned, and the sealed ownership that authorised the call. THE PATH IS NOT AN ARGUMENT — the mint
+// builds that route, which is the difference between checking a path and being unable to lie about one.
 fn fx_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt? {
   match mint_accepted_rule_review(
+    owner: gate_owner,
+    repo: gate_repo,
     run_id: run_id,
     environment_name: gated_env,
     claimed: state,
-    path: "/repos/gunb-ai/gunbc/actions/runs/{run_id}/deployment_protection_rule",
     review: DeploymentProtectionRuleReview {
       environment_name: gated_env,
       state: state,
@@ -371,24 +384,27 @@ fn fx_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt? {
 
 // THE MINT PROBE: the one place in this file, besides fx_receipt, that is admitted to call the mint.
 // Every argument is passed through UNTOUCHED, so a test can hand the mint a body naming another
-// environment, a status GitHub does not accept, a path from another run, or an ownership that
-// attributes nothing, and read the mint's OWN refusal back rather than a fixture's opinion about it.
+// environment, a status GitHub does not accept, a repository it should not have addressed, or an
+// ownership that attributes nothing, and read the mint's OWN refusal back rather than a fixture's
+// opinion about it.
 // A foreign module is refused the identical call -- that is the fact the forged-evidence probe enrols.
 fn fx_mint_probe(
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
   run_id: Int,
   environment_name: NonEmptyStr,
   claimed: ReviewState,
-  path: NonEmptyStr,
   review: DeploymentProtectionRuleReview,
   status: HttpStatus,
   ownership: EnvironmentRuleOwnership,
   requested_rule_id: Int
 ) -> AcceptedReviewOutcome {
   mint_accepted_rule_review(
+    owner: owner,
+    repo: repo,
     run_id: run_id,
     environment_name: environment_name,
     claimed: claimed,
-    path: path,
     review: review,
     status: status,
     ownership: ownership,
@@ -1213,10 +1229,11 @@ test fn a_pair_witnessed_on_another_environment_unlocks_nothing_here() -> Bool {
 // BINDING: mutate the run id or the environment anywhere and nothing is approved.
 test fn the_mint_refuses_a_body_for_another_environment() -> Bool {
   match fx_mint_probe(
+    owner: gate_owner,
+    repo: gate_repo,
     run_id: 35447067113,
     environment_name: gated_env,
     claimed: Approved,
-    path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
     review: DeploymentProtectionRuleReview {
       environment_name: other_env,
       state: Approved,
@@ -1240,10 +1257,11 @@ test fn the_mint_refuses_a_body_for_another_environment() -> Bool {
 // is the red that keeps one status code from standing in for two different endpoints.
 test fn the_mint_refuses_a_status_it_does_not_accept() -> Bool {
   match fx_mint_probe(
+    owner: gate_owner,
+    repo: gate_repo,
     run_id: 35447067113,
     environment_name: gated_env,
     claimed: Approved,
-    path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
     review: DeploymentProtectionRuleReview {
       environment_name: gated_env,
       state: Approved,
@@ -1259,14 +1277,18 @@ test fn the_mint_refuses_a_status_it_does_not_accept() -> Bool {
   }
 }
 
-// A path that is not this run's. The endpoint template carries {run_id}; a caller that pasted another
-// run's path would be reviewing a deployment nobody tapped.
-test fn the_mint_refuses_a_path_from_another_run() -> Bool {
+// THE RIGHT RUN ON THE WRONG REPOSITORY. The mint used to check `path |> contains(run_id)`, which a path
+// on ANY repository satisfied — and a run number is not unique across GitHub, so gunb-ai/gunbc and some
+// other repository can each have a run 35447067113. The pair is now compared against the repository the
+// INSTALLATION AND RULE WERE READ BACK FOR, and all four names come out: which config is stale is the
+// only question left, and the refusal answers it.
+test fn the_mint_refuses_the_right_run_on_an_unread_repository() -> Bool {
   match fx_mint_probe(
+    owner: gate_owner,
+    repo: other_repo,
     run_id: 35447067113,
     environment_name: gated_env,
     claimed: Approved,
-    path: "/repos/gunb-ai/gunbc/actions/runs/999/deployment_protection_rule",
     review: DeploymentProtectionRuleReview {
       environment_name: gated_env,
       state: Approved,
@@ -1276,16 +1298,63 @@ test fn the_mint_refuses_a_path_from_another_run() -> Bool {
     ownership: minted_ownership(),
     requested_rule_id: 900000001,
   ) {
-    AcceptedReviewRefused { because: PathNotForThisRun { run_id: r } } => r == 35447067113
+    AcceptedReviewRefused {
+      because: RequestedRepositoryIsNotTheObservedRepository {
+        requested_owner: ro,
+        requested_repo: rr,
+        observed_owner: oo,
+        observed_repo: observed_repo_name,
+      },
+    } => (ro as String) == "gunb-ai"
+      && (rr as String) == "someone-elses-fork"
+      && (oo as String) == "gunb-ai"
+      && (observed_repo_name as String) == "gunbc"
     AcceptedReviewRefused { because: _ } => false
     Accepted { receipt: _ } => false
   }
 }
 
-// A receipt is minted only for the RULE THE CALLER MEANT. The ownership above is real and attributed;
-// it was read back for rule 900000001, so a caller asking to record an answer to rule 900000002 is
-// refused with both ids visible. The old model could not express this refusal at all — its ownership arm
-// emitted { claimed: 0, observed: 0 }, two constants where the model had no values.
+// A repository name that would change WHICH endpoint is addressed if it were spliced into a route
+// unexamined: refused by name, and the refusal says which half was hostile, because the operator has to
+// know whether their owner or their repo is the stale one.
+test fn the_mint_refuses_a_repository_it_cannot_put_in_a_route() -> Bool {
+  match fx_mint_probe(
+    owner: gate_owner,
+    repo: hostile_repo,
+    run_id: 35447067113,
+    environment_name: gated_env,
+    claimed: Approved,
+    review: DeploymentProtectionRuleReview {
+      environment_name: gated_env,
+      state: Approved,
+      comment: Present { value: "ok" },
+    },
+    status: 204,
+    ownership: minted_ownership(),
+    requested_rule_id: 900000001,
+  ) {
+    AcceptedReviewRefused { because: RouteSegmentsAreNotRouteSafe { hostile_segment: seg } } =>
+      match seg {
+        RepoSegment { value: v } => (v as String) == "gunbc/../other"
+        OwnerSegment { value: _ } => false
+      }
+    AcceptedReviewRefused { because: _ } => false
+    Accepted { receipt: _ } => false
+  }
+}
+
+// THE RECEIPT RECORDS WHAT WAS READ, NOT WHAT WAS ASKED FOR. The mint requires the caller's pair and the
+// observed pair to agree, and then writes the OBSERVED pair into the receipt — so a receipt cannot
+// survive as evidence for a repository that was never read, even if some third source named it.
+test fn the_receipt_carries_the_observed_repository_not_the_callers() -> Bool {
+  match fx_receipt(run_id: 35447067113, state: Approved) {
+    Present { value: receipt } =>
+      (receipt.owner as String) == "gunb-ai" && (receipt.repo as String) == "gunbc"
+    none => false
+  }
+}
+
+
 // WHAT THE CARRIERS BUY, MEASURED RATHER THAN ASSUMED, because the first version of this comment
 // claimed more than the checker does.
 //   CONSTRUCTION: handing an app id where an installation id belongs is REFUSED —
@@ -1314,12 +1383,17 @@ fn fx_claim_axes_are_field_typed() -> Bool {
   c.installation_id.value != c.app_id.value
 }
 
+// A receipt is minted only for the RULE THE CALLER MEANT. The ownership above is real and attributed;
+// it was read back for rule 900000001, so a caller asking to record an answer to rule 900000002 is
+// refused with both ids visible. The old model could not express this refusal at all — its ownership arm
+// emitted { claimed: 0, observed: 0 }, two constants where the model had no values.
 test fn the_mint_refuses_a_rule_that_is_not_the_one_read_back() -> Bool {
   match fx_mint_probe(
+    owner: gate_owner,
+    repo: gate_repo,
     run_id: 35447067113,
     environment_name: gated_env,
     claimed: Approved,
-    path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
     review: DeploymentProtectionRuleReview {
       environment_name: gated_env,
       state: Approved,
@@ -1341,10 +1415,11 @@ test fn the_mint_refuses_a_rule_that_is_not_the_one_read_back() -> Bool {
 // token would be minted from is readable only off a JOINED ownership — never off the operator's claim.
 test fn no_receipt_and_no_token_without_an_attributed_ownership() -> Bool {
   (match fx_mint_probe(
+         owner: gate_owner,
+         repo: gate_repo,
          run_id: 35447067113,
          environment_name: gated_env,
          claimed: Approved,
-         path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
          review: DeploymentProtectionRuleReview {
            environment_name: gated_env,
            state: Approved,

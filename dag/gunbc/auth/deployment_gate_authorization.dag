@@ -61,6 +61,12 @@ import extdeps.github.deployment_protection_rule {
   wait_minutes_as_seconds,
   wait_timer_maximum,
   rule_delivery_documented_guarantee,
+  review_endpoint_path_built_for,
+  built_path_carries_every_pinned_anchor,
+  BuiltReviewPath,
+  BuiltReviewPathOk,
+  BuiltReviewPathRefused,
+  ReviewPathSegment,
 }
 import extdeps.github.app {
   // THE ID CARRIERS, imported rather than re-declared here. A second `Int` for an installation id
@@ -715,6 +721,12 @@ fn observe_gate_installation(
 type ObservedRuleOwnership sole_constructor {
   rule_id: Int,
   environment_name: NonEmptyStr,
+  // THE REPOSITORY THE IDENTITY WAS READ FROM, carried down from the identity readback rather than
+  // re-typed by the caller. This is what lets the review mint refuse "the right run, the wrong
+  // repository": the pair it is asked to address is compared against the pair a read established, and a
+  // receipt can only ever record the observed pair.
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
   app_id: GitHubAppId,
   app_slug: NonEmptyStr,
   installation_id: GitHubAppInstallationId,
@@ -778,6 +790,8 @@ fn observe_rule_ownership(
             observation: ObservedRuleOwnership {
               rule_id: rule.id,
               environment_name: environment_name,
+              owner: observed.owner,
+              repo: observed.repo,
               app_id: observed.app_id,
               app_slug: observed.app_slug,
               installation_id: observed.installation_id,
@@ -860,6 +874,19 @@ type AcceptedRuleReviewReceipt sole_constructor {
   state: ReviewState,
   rule_id: Int,
   installation_id: GitHubAppInstallationId,
+  // THE REPOSITORY THE CALL WAS MADE AGAINST. The review endpoint's route IS owner/repo-scoped, so a
+  // receipt naming only a run id could have been minted against any repository hosting a run with that
+  // number. The trial pair below has to be able to say both arms addressed the same repository, and it
+  // can only do that if the receipt says which one.
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+}
+
+// THE PAIR AS ONE THING, for refusal text. owner and repo are separate fields because the route is built
+// from two segments; they are one label because a repository is named by both together, and a refusal
+// printing one alone would report a fragment.
+fn accepted_receipt_repository_label(receipt: AcceptedRuleReviewReceipt) -> NonEmptyStr {
+  concat((receipt.owner as String), concat("/", receipt.repo as String)) as NonEmptyStr
 }
 
 // WHAT THE MINT REFUSES, by name: not the 204 GitHub gives an accepted review; a body that does not
@@ -869,8 +896,28 @@ type AcceptedReviewRefusal =
   | NotAcceptedStatus { status: HttpStatus }
   // The ownership refusal, VERBATIM from the readback's join, not renamed at the mint.
   | OwnershipNotEstablished { because: OwnershipRefusalReason }
+  // The repository pair could not be turned into route segments, so no endpoint was addressable and
+  // nothing was accepted. Named with the segment that was hostile: "your config is wrong" is not
+  // actionable and "the repo is octocat/.." is.
+  | RouteSegmentsAreNotRouteSafe { hostile_segment: ReviewPathSegment }
+  // The route the mint assembled does not carry every anchor the pinned template declares. Only the
+  // builder can be at fault: the template is upstream's, transcribed once and cited.
+  | BuiltRouteDoesNotMatchThePinnedTemplate { route: NonEmptyStr }
+  // The readback attributed the rule for a different gate than the receipt would claim. Distinct from
+  // BodyNamesAnotherEnvironment, which is the CALLER's body disagreeing: this is GitHub's read.
+  | ReceiptEnvironmentIsNotTheObservedEnvironment {
+      observed_environment: NonEmptyStr,
+      claimed: NonEmptyStr,
+    }
+  // The repository the caller addressed is not the repository whose installation and rule were read
+  // back. All four names, because "which of my two configs is stale" is the question this answers.
+  | RequestedRepositoryIsNotTheObservedRepository {
+      requested_owner: NonEmptyStr,
+      requested_repo: NonEmptyStr,
+      observed_owner: NonEmptyStr,
+      observed_repo: NonEmptyStr,
+    }
   | BodyNamesAnotherEnvironment { body_environment: NonEmptyStr, claimed: NonEmptyStr }
-  | PathNotForThisRun { path: NonEmptyStr, run_id: Int }
   // THE OWNERSHIP MUTATIONS, at the mint rather than after the response. The arm that used to be
   // `OwnershipInstallationMismatch` never fired: the only way to this mint's ownership arm is
   // OwnedByGateApp, whose installation id already came from the observation, so there was no second
@@ -891,10 +938,11 @@ type AcceptedReviewOutcome
 // the answer route and the witnesses — a foreign module cannot obtain an AcceptedRuleReviewReceipt, so
 // it cannot hand one to the removal mint, which is the forgery this whole section exists to stop.
 fn mint_accepted_rule_review(
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
   run_id: Int,
   environment_name: NonEmptyStr,
   claimed: ReviewState,
-  path: NonEmptyStr,
   review: DeploymentProtectionRuleReview,
   status: HttpStatus,
   ownership: EnvironmentRuleOwnership,
@@ -932,9 +980,23 @@ fn mint_accepted_rule_review(
         claimed: environment_name,
       },
     }
-  } else if !(path |> contains((run_id as String))) {
-    AcceptedReviewRefused { because: PathNotForThisRun { path: path, run_id: run_id } }
   } else {
+    // THE PATH IS BUILT, NOT CHECKED. It used to arrive as an argument and be tested with
+    // `path |> contains(run_id as String)`, which accepted three things it appeared to refuse: the path
+    // for run 1234 satisfies "contains 123"; a path on another owner/repo satisfies it; and so does a
+    // path to another endpoint whose digits happen to line up. Building it from the pinned template
+    // leaves nothing to compare — a caller CANNOT hand this mint a path.
+    match review_endpoint_path_built_for(owner: owner, repo: repo, run_id: run_id) {
+      BuiltReviewPathRefused { hostile_segment: segment } => AcceptedReviewRefused {
+        because: RouteSegmentsAreNotRouteSafe { hostile_segment: segment },
+      }
+      BuiltReviewPathOk { path: built } =>
+        // The built route is checked against the PINNED TEMPLATE before anything is accepted, so a
+        // builder that drifted from upstream's route (dropped a segment, reordered the run id) refuses
+        // rather than minting a receipt for an endpoint nobody called.
+        if !built_path_carries_every_pinned_anchor(path: built) {
+          AcceptedReviewRefused { because: BuiltRouteDoesNotMatchThePinnedTemplate { route: built } }
+        } else
     match ownership {
       NotOwnedByGateApp { because: b } =>
         // The refusal the READBACK gave, carried rather than renamed: "no rule is enabled" and "the
@@ -952,10 +1014,26 @@ fn mint_accepted_rule_review(
               observed_rule_id: o.rule_id,
             },
           }
-        } else if o.environment_name != environment_name {
+        } else if (o.owner as String) != (owner as String) || (o.repo as String) != (repo as String) {
+          // THE RIGHT RUN ON THE WRONG REPOSITORY. The old check was `path |> contains(run_id)`, which
+          // was satisfied by a path on ANY repository, and a run number is not unique across GitHub —
+          // two repositories can each have a run 35447067113. The repository the identity was OBSERVED
+          // for is what the call has to address; the caller's pair is an assertion until it agrees.
           AcceptedReviewRefused {
-            because: BodyNamesAnotherEnvironment {
-              body_environment: o.environment_name,
+            because: RequestedRepositoryIsNotTheObservedRepository {
+              requested_owner: owner,
+              requested_repo: repo,
+              observed_owner: o.owner,
+              observed_repo: o.repo,
+            },
+          }
+        } else if o.environment_name != environment_name {
+          // The body named the environment the caller claims, and the body check above passed — so what
+          // disagrees is the READBACK: the rule was attributed for a different gate than the one being
+          // recorded. A different defect from the body one, needing a different name.
+          AcceptedReviewRefused {
+            because: ReceiptEnvironmentIsNotTheObservedEnvironment {
+              observed_environment: o.environment_name,
               claimed: environment_name,
             },
           }
@@ -967,9 +1045,14 @@ fn mint_accepted_rule_review(
               state: claimed,
               rule_id: o.rule_id,
               installation_id: o.installation_id,
+              // FROM THE OBSERVATION, not the caller. Above they must agree; below, only the read can
+              // say what the receipt claims.
+              owner: o.owner,
+              repo: o.repo,
             },
           }
         }
+    }
     }
   }
 }
@@ -1035,6 +1118,19 @@ type RemovalRefusalReason
   | RejectingArmWasNotARejection
   | BothArmsOneDispatch
   | EvidenceFromAnotherEnvironment
+  // THE SAME RULE, THE SAME INSTALLATION, THE SAME REPOSITORY. Without these, "approve on the gate's
+  // rule A, reject on the gate's rule B" counted as a witnessed trial: more than one rule CAN be
+  // enabled on one environment, and answering one is no evidence the other answers at all. Each of the
+  // three carries both sides, because the operator has to see which arm drifted.
+  | TrialArmsDifferOnRule { approved_rule_id: Int, rejected_rule_id: Int }
+  | TrialArmsDifferOnInstallation {
+      approved_installation_id: GitHubAppInstallationId,
+      rejected_installation_id: GitHubAppInstallationId,
+    }
+  | TrialArmsAddressDifferentRepositories {
+      approved_repository: NonEmptyStr,
+      rejected_repository: NonEmptyStr,
+    }
 
 type ReviewerRemovalAdmission
   = RemovalAdmitted { evidence: DeploymentGateTrialEvidence }
@@ -1083,6 +1179,33 @@ fn admit_reviewer_removal(
           RemovalRefused { missing: EvidenceFromAnotherEnvironment }
         } else if a.run_id == r.run_id {
           RemovalRefused { missing: BothArmsOneDispatch }
+        } else if a.rule_id != r.rule_id {
+          // One environment can carry more than one enabled rule. Approving one and rejecting another
+          // proves nothing about either, so the trial has to be a trial OF ONE RULE.
+          RemovalRefused {
+            missing: TrialArmsDifferOnRule {
+              approved_rule_id: a.rule_id,
+              rejected_rule_id: r.rule_id,
+            },
+          }
+        } else if a.installation_id.value != r.installation_id.value {
+          // The two arms answered through different installations, so the App that answered is not
+          // pinned by anything the trial witnessed.
+          RemovalRefused {
+            missing: TrialArmsDifferOnInstallation {
+              approved_installation_id: a.installation_id,
+              rejected_installation_id: r.installation_id,
+            },
+          }
+        } else if (a.owner as String) != (r.owner as String) || (a.repo as String) != (r.repo as String) {
+          // The same run NUMBER on two repositories: the route is owner/repo-scoped, so these are two
+          // unrelated calls wearing one trial's clothes.
+          RemovalRefused {
+            missing: TrialArmsAddressDifferentRepositories {
+              approved_repository: accepted_receipt_repository_label(receipt: a),
+              rejected_repository: accepted_receipt_repository_label(receipt: r),
+            },
+          }
         } else {
           // The sealed pair. Built HERE, inside the mint, from two receipts that passed — a caller
           // cannot supply one, and cannot supply the receipts either.

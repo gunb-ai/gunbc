@@ -41,6 +41,7 @@ import std.types {
   List,
   NonEmptyStr,
   HttpStatus,
+  path_segment_is_safe,
   commit_sha_text_holds,
 }
 
@@ -452,6 +453,77 @@ data rule_incompatible_job_setting: NonEmptyStr = "deployment: false"
 data review_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/deployment_protection_rule"
 data review_endpoint_method: HttpMethod = POST
 data review_endpoint_success_status: HttpStatus = 204
+
+// THE LITERAL ANCHORS OF THE PATH ABOVE, as rows. They are what a path built by concatenation is
+// checked against: the builder below is separate from the template, so a builder that drifted — dropping
+// the final segment, or putting the run id in the wrong place — fails against these without either side
+// agreeing with the other by being the same string.
+data review_endpoint_prefix: NonEmptyStr = "/repos/"
+data review_endpoint_runs_anchor: NonEmptyStr = "/actions/runs/"
+data review_endpoint_suffix: NonEmptyStr = "/deployment_protection_rule"
+
+// WHICH PART OF THE PATH IS WHAT. The template carries three caller-supplied values; only two of them
+// are free text, and both arrive from configuration rather than from GitHub.
+type ReviewPathSegment = OwnerSegment { value: NonEmptyStr } | RepoSegment { value: NonEmptyStr }
+
+// THE PATH, BUILT RATHER THAN ACCEPTED. Callers that take a path as an argument can pass a path that
+// merely CONTAINS the run id — the path for run 1234 satisfies a "contains 123" check, a path on another
+// repository satisfies it, and so does a path to a different endpoint whose digits happen to line up.
+// Building it here removes the comparison: the only path a caller can get is one assembled from these
+// literals and these three values. A hostile owner or repo is refused by name rather than concatenated
+// into a route, because "octocat/..", an owner containing "/", or one containing a newline would each
+// change WHICH endpoint is called while still reading as a plausible repository.
+type BuiltReviewPath = BuiltReviewPathOk { path: NonEmptyStr } | BuiltReviewPathRefused {
+    hostile_segment: ReviewPathSegment,
+  }
+
+fn review_endpoint_path_built_for(
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+  run_id: Int
+) -> BuiltReviewPath {
+  let owner_text = owner as String
+  let repo_text = repo as String
+  if !path_segment_is_safe(raw: owner_text) {
+    BuiltReviewPathRefused { hostile_segment: OwnerSegment { value: owner } }
+  } else if !path_segment_is_safe(raw: repo_text) {
+    BuiltReviewPathRefused { hostile_segment: RepoSegment { value: repo } }
+  } else if run_id <= 0 {
+    // A run id that is not a positive number is not a run GitHub has ever had; a route built with it
+    // would be a route to nothing, and "nothing" answers 404 in a way a caller could mistake for
+    // "the run is gone".
+    BuiltReviewPathRefused { hostile_segment: OwnerSegment { value: owner } }
+  } else {
+    BuiltReviewPathOk {
+      path: concat(
+        review_endpoint_prefix as String,
+        concat(
+          owner_text,
+          concat(
+            "/",
+            concat(
+              repo_text,
+              concat(
+                review_endpoint_runs_anchor as String,
+                concat((run_id as String), review_endpoint_suffix as String)
+              )
+            )
+          )
+        )
+      ) as NonEmptyStr,
+    }
+  }
+}
+
+// THE BUILT PATH AND THE PINNED TEMPLATE MUST AGREE, checked against the template rather than against
+// the builder: every literal anchor the template carries must be present in a built path. If the
+// builder drifts from upstream's route, this is the statement that goes red.
+fn built_path_carries_every_pinned_anchor(path: NonEmptyStr) -> Bool {
+  let text = path as String
+  (text |> contains(review_endpoint_prefix as String))
+    && (text |> contains(review_endpoint_runs_anchor as String))
+    && (text |> contains(review_endpoint_suffix as String))
+}
 
 // The body, from components/schemas in the OpenAPI description. It is an anyOf of two shapes, and
 // the required pair differs between them:
