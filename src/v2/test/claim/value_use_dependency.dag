@@ -1,0 +1,257 @@
+module v2.test.claim.value_use_dependency
+
+import std.algebra { Cons, Empty, fold_list }
+import extdeps.communication.medium { Lossless, Medium }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { Bool }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.value_use_dependency {
+  ValueUseDependencies,
+  value_use_disposition_count,
+  value_use_dispositions,
+  value_use_has_relation,
+  value_use_input_count,
+  value_use_no_edge_between,
+  value_use_no_duplicate_occurrences,
+  value_use_populations_disjoint,
+  value_use_record_count,
+  value_use_relation_count,
+  value_use_relation_count_for_use,
+  value_use_uses_named,
+  value_use_value_of_use,
+  value_use_view_is_data,
+  value_use_views
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE USE->VALUE DEPENDENCE resolve ALREADY DECIDED, READ BACK AS A RELATION
+// (v2.compiler.value_use_dependency). The subject is the DERIVATION'S ONE INTERFACE: given a resolved
+// program, which DataDependsOn rows does a use of a let-bound name produce? The claims run it over
+// authored source through the REAL FRONT END (v2.compiler.program_assembly assemble_program_from_ingest:
+// parse, normalize, resolve) — the same route v2.test.claim.parameter_reference takes to obtain a
+// ResolvedTree — because the fact under test is what resolve RECORDS for a real reference. A hand-built
+// tree would test the reading against a tree resolve never wrote.
+//
+// WHAT EACH CLAIM DISCRIMINATES (DESIGN section 3: a witness discriminates at one interface, and the
+// fixture is shaped so the failure mode named in the ruling is the thing that turns it red). The operator
+// ruling (gunbc.plans.demand_engine_program section 2.4, 2026-10-18) says a use of a let-bound name waits
+// on THAT binding's VALUE and on nothing else in the let's body, and that textual position creates no
+// dependency. So the fixture that matters is the one where the two readings DIFFER: two `let`s written one
+// after the other, where a position-based reading puts x's use behind y's value or y's use behind x's
+// value, and the value-based reading puts each use behind only its own value. vudd_a asserts the exact two
+// rows AND the absence of each cross edge: a derivation reading position, or emitting a sibling's value
+// as a source, fails it. vudd_b is the row Contains alone cannot express, and vudd_c is the derivation
+// that emits what a let body contains rather than what a use reads.
+//
+// EVERY ENTRY GETS A DISPOSITION, NEVER A SILENT SKIP (DESIGN section 5). vudd_e states the totaliser over
+// each fixture — relations + not-derived + inputs == the tree's own record count — and separately that the
+// populations are disjoint and duplicate-free, because a sum alone cannot tell an entry placed twice from
+// an entry dropped.
+//
+// THE CONSUMER IS A DECLARED FRONTIER, NOT A GAP HERE: A4 (v2.program's run reads these rows and the
+// hand-written program_run_dependencies row is deleted) is the production consumer named in the plan. No
+// claim here pretends a consumer exists yet.
+
+data vudd_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^vudd_artifact,
+  file_path: "src/v2/test/fixture/value_use_dependency.dag"
+}
+
+// THE FRONT END, ONE ROUTE FOR EVERY FIXTURE: authored text in, ResolvedTree out. A refused program
+// answers Absent, so a claim can never read a refusal as "no uses" or "no rows".
+fn vudd_assemble(src: String) -> Optional<ResolvedTree> {
+  match assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: vudd_artifact,
+        compilation_unit: ^vudd_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^vudd, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Accepted { value: resolved, diagnostics: _ } => optional_present(value: resolved)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+// FIXTURE A — TWO INDEPENDENT LETS, written one after the other. Each body mentions only a parameter, so
+// no value dependence exists between them: the only correct rows are x's value at x's use and y's value at
+// y's use. A position-based reading adds a cross edge, which the ruling forbids.
+data vudd_independent_source: String = "module vudd\n\nfn f(a: Int, b: Int) -> Int {\n  let x = a + 1\n  let y = b + 2\n  x + y\n}\n"
+
+// FIXTURE B — A REAL VALUE USE. y's body reads x, so a row must run from x's VALUE to the use of x that
+// lies inside y's value.
+data vudd_value_use_source: String = "module vudd\n\nfn f(a: Int) -> Int {\n  let x = a + 1\n  let y = x * 2\n  y\n}\n"
+
+// FIXTURE C — AN UNUSED BINDING. x's value is produced and never read, so no row may come from it; the
+// uses of the parameter `a` are inputs, not relations.
+data vudd_unused_source: String = "module vudd\n\nfn f(a: Int) -> Int {\n  let x = a + 1\n  a\n}\n"
+
+// THE DERIVATION, RUN ONCE PER FIXTURE BY THE CLAIMS THAT READ IT.
+fn vudd_derivation(src: String) -> Optional<ValueUseDependencies> {
+  match vudd_assemble(src: src) {
+    Absent => optional_absent()
+    Present { value: tree } => optional_present(value: value_use_dispositions(tree: tree))
+  }
+}
+
+// THE USE A FIXTURE WRITES, identified by the SPELLING in the source text: exactly one reference
+// occurrence bearing it, or the claim is not about a well-formed use. A claim states its expectation about
+// the program the author wrote rather than about a node position it guessed.
+fn vudd_use_of(src: String, name: String) -> Optional<Node> {
+  match vudd_assemble(src: src) {
+    Absent => optional_absent()
+    Present { value: tree } => match value_use_uses_named(tree: tree, name: name) {
+      Cons { head: only, tail: Empty } => optional_present(value: only)
+      _ => optional_absent()
+    }
+  }
+}
+
+// THE VALUE A USE READS, through resolve's own record for that use — never a second scope reading, which
+// is the thing this derivation replaces.
+fn vudd_value_read_by_use(src: String, name: String) -> Optional<Node> {
+  match vudd_assemble(src: src) {
+    Absent => optional_absent()
+    Present { value: tree } => match vudd_use_of(src: src, name: name) {
+      Absent => optional_absent()
+      Present { value: use } => value_use_value_of_use(tree: tree, use: use)
+    }
+  }
+}
+
+// EVERY ROW IS A DataDependsOn. A Contains edge in this output would mean the derivation was reading
+// structural containment rather than what a use reads.
+fn vudd_every_row_is_data(d: ValueUseDependencies) -> Bool {
+  fold_list(
+    xs: value_use_views(d: d),
+    empty: true,
+    cons: fn(acc, view) { acc && value_use_view_is_data(view: view) }
+  )
+}
+
+// (a) TWO INDEPENDENT LETS: exactly two rows, each a use behind its OWN value, and no row sourced inside
+// one value while dependent inside the other — in either direction. The count alone would let a derivation
+// that emitted x's value at both uses pass; the exact pair plus the two absent cross edges is what makes
+// the claim discriminate.
+test fn vudd_a_independent_lets_yield_exactly_two_rows_holds() -> Bool {
+  match vudd_derivation(src: vudd_independent_source) {
+    Absent => false
+    Present { value: d } =>
+      match vudd_use_of(src: vudd_independent_source, name: "x") {
+        Absent => false
+        Present { value: x_use } =>
+          match vudd_use_of(src: vudd_independent_source, name: "y") {
+            Absent => false
+            Present { value: y_use } =>
+              match vudd_value_read_by_use(src: vudd_independent_source, name: "x") {
+                Absent => false
+                Present { value: x_value } =>
+                  match vudd_value_read_by_use(src: vudd_independent_source, name: "y") {
+                    Absent => false
+                    Present { value: y_value } =>
+                      value_use_relation_count(d: d) == 2
+                        && value_use_has_relation(d: d, value: x_value, use: x_use)
+                        && value_use_has_relation(d: d, value: y_value, use: y_use)
+                        && value_use_no_edge_between(d: d, from_subtree: x_value, to_subtree: y_value)
+                        && value_use_no_edge_between(d: d, from_subtree: y_value, to_subtree: x_value)
+                        && vudd_every_row_is_data(d: d)
+                  }
+              }
+          }
+      }
+  }
+}
+
+// (b) A REAL VALUE USE: y's body reads x, so a row runs from x's VALUE to the use of x inside y's value,
+// and that use is read by exactly one row. This is the row v2.std.dependency's Contains edges alone cannot
+// express: the use is not a child of x's value, and x's value is not the use's parent.
+test fn vudd_b_value_use_inside_later_let_yields_row_holds() -> Bool {
+  match vudd_derivation(src: vudd_value_use_source) {
+    Absent => false
+    Present { value: d } =>
+      match vudd_use_of(src: vudd_value_use_source, name: "x") {
+        Absent => false
+        Present { value: x_use } =>
+          match vudd_value_read_by_use(src: vudd_value_use_source, name: "x") {
+            Absent => false
+            Present { value: x_value } =>
+              value_use_has_relation(d: d, value: x_value, use: x_use)
+                && value_use_relation_count_for_use(d: d, use: x_use) == 1
+                && vudd_every_row_is_data(d: d)
+          }
+      }
+  }
+}
+
+// (c) AN UNUSED BINDING YIELDS NO ROW: x's value is produced and never read. A derivation that emitted
+// whatever a let body contains, rather than what a use reads, produces a row here and fails.
+test fn vudd_c_unused_binding_yields_no_rows_holds() -> Bool {
+  match vudd_derivation(src: vudd_unused_source) {
+    Absent => false
+    Present { value: d } => value_use_relation_count(d: d) == 0 && vudd_every_row_is_data(d: d)
+  }
+}
+
+// THE PARAMETER USES OF THAT SAME FIXTURE LAND IN THE INPUT POPULATION: they have a row, so they are not a
+// silent skip, and no relation, because a parameter's producer is not a value inside a let body. Paired
+// with (c), the fixture holds both edges of the unused-binding rule — nothing from the unread value, and
+// still a disposition for the uses that are there.
+test fn vudd_c_parameter_uses_are_input_dispositions_holds() -> Bool {
+  match vudd_derivation(src: vudd_unused_source) {
+    Absent => false
+    Present { value: d } => value_use_relation_count(d: d) == 0 && value_use_input_count(d: d) > 0
+  }
+}
+
+// (e) DISPOSITION TOTALITY, per fixture: the three populations sum to the tree's own record count, no
+// occurrence is in two populations, and none appears twice. Stated per fixture, so one fixture's balance
+// cannot cover another's gap, and the record count is asked of the TREE rather than of the derivation.
+fn vudd_total_holds(src: String) -> Bool {
+  match vudd_assemble(src: src) {
+    Absent => false
+    Present { value: tree } =>
+      match vudd_derivation(src: src) {
+        Absent => false
+        Present { value: d } =>
+          value_use_record_count(tree: tree) > 0
+            && value_use_disposition_count(d: d) == value_use_record_count(tree: tree)
+            && value_use_populations_disjoint(d: d)
+            && value_use_no_duplicate_occurrences(d: d)
+      }
+  }
+}
+
+test fn vudd_e_independent_fixture_total_holds() -> Bool {
+  vudd_total_holds(src: vudd_independent_source)
+}
+
+test fn vudd_e_value_use_fixture_total_holds() -> Bool {
+  vudd_total_holds(src: vudd_value_use_source)
+}
+
+test fn vudd_e_unused_fixture_total_holds() -> Bool {
+  vudd_total_holds(src: vudd_unused_source)
+}
+
+test fn vudd_e_all_three_fixtures_together_holds() -> Bool {
+  vudd_total_holds(src: vudd_independent_source)
+    && vudd_total_holds(src: vudd_value_use_source)
+    && vudd_total_holds(src: vudd_unused_source)
+}

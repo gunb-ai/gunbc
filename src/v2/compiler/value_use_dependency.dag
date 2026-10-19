@@ -1,0 +1,558 @@
+module v2.compiler.value_use_dependency
+
+// WHAT A NAME USE WAITS ON. Authority: gunbc.plans.demand_engine_program section 2.4 (operator ruling
+// 2026-10-18): a use of a let-bound name depends on that binding's VALUE, and on nothing else in the
+// let's body; textual position creates no dependency. resolve already decided which binder answered
+// each reference and recorded it in ResolvedTree.occurrence_bindings (v2.compiler.resolve
+// OccurrenceBindingRecord); this module READS that record and turns its valued arm into a demand
+// relation. It decides nothing about scope: no name lookup, no frame walk, no second scope table.
+//
+// BESIDE Contains, never instead of it. v2.std.dependency dependency_lens emits only parent->child
+// Contains edges; the DataDependsOn rows here are derived BESIDE those edges (plan section 2.4), and
+// nothing here re-orients, edits or consumes Contains. The production consumer is the named later
+// change A4 (v2.program's run reads these rows and the hand-written program_run_dependencies row is
+// deleted) — a declared frontier, not a gap in this module.
+//
+// ONE DISPOSITION PER ENTRY, NEVER A SILENT SKIP (DESIGN section 5). The domain is the whole map, so
+// the fold runs over map_support_keys and each key lands in exactly one of three populations:
+// relations, not-derived rows, or input rows. Nothing in this module drops a key, so the three
+// lengths sum to the domain's length — the totaliser a claim states over each fixture.
+
+import std.algebra { Cons, Empty, contains, fold_list, int_total_order, is_empty, length, list_append, list_snoc_item, list_sort_by_key, map_lookup, map_support_keys }
+import std.occurrence_identity { OccurrenceId }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { Bool, List }
+import v2.std.dependency { DataDependsOn, DependencyView }
+import v2.std.integer { Int }
+import v2.std.node { Node, node_subtree_nodes, symbol_lexeme }
+import v2.std.provenance { node_occurrence_id_optional }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
+import v2.std.text { String }
+import v2.compiler.resolve {
+  BoundAmbient,
+  BoundByExpectedType,
+  BoundByGeneratedReference,
+  BoundByLexicalBinder,
+  BoundToDeclaration,
+  BoundToParameter,
+  BoundToTypeParameter,
+  LexicalDeclared,
+  LexicalOwedFormal,
+  LexicalUntyped,
+  LexicalValued,
+  OccurrenceBindingRecord,
+  ResolvedTree,
+  resolved_tree_lexical_binding
+}
+
+// A REFERENCE OCCURRENCE FOUND IN THE TREE, with the name it spells. resolve mints every reference it
+// records BY THAT REFERENCE'S OWN OCCURRENCE (v2.compiler.resolve resolved_reference_node /
+// lexical_reference_node), so a recorded key is read back by walking the tree and matching
+// node.occurrence_id: the tree already carries the keys, so no second index is introduced.
+type UseOccurrence {
+  node: Node
+  name: String
+}
+
+// THE RELATIONS POPULATION — one DataDependsOn row per use whose binding is valued. source = the
+// binding's VALUE node (what the use waits on); dependent = the reference occurrence's node;
+// usage_site = that same reference occurrence, because a usage edge's site is where the use happens
+// (DESIGN section 6), not the value's own position.
+type ValueUseRelation {
+  occurrence: OccurrenceId
+  view: DependencyView
+}
+
+// NOT DERIVED YET, NAMED. A lexical binder that is not a let's value carries no value node in its
+// record — LexicalDeclared is a member-edge type, LexicalOwedFormal an unpaid match-payload formal,
+// LexicalUntyped a binder with neither — so guessing a source would invent an edge the record does not
+// carry. The row names the occurrence and its standing, so the gap is countable and reachable.
+type ValueUseNotDerived {
+  occurrence: OccurrenceId
+  use: Optional<UseOccurrence>
+  standing_label: String
+}
+
+// INPUT, NOT AN IN-BODY PRODUCER. A parameter, a type parameter, a corpus declaration, an ambient
+// stopgap, an expected-type stopgap or a compiler-generated reference: the producer is not a value node
+// in a lexical body, so there is no use->value edge here. Returned rather than dropped, so its absence
+// from the relation list is a disposition and not a silent skip.
+type ValueUseInput {
+  occurrence: OccurrenceId
+  use: Optional<UseOccurrence>
+  disposition_label: String
+}
+
+// THE ONE RESULT: the three populations and nothing else. Every entry of the input tree's
+// occurrence_bindings is in exactly one of them.
+type ValueUseDependencies {
+  relations: List<ValueUseRelation>
+  not_derived: List<ValueUseNotDerived>
+  inputs: List<ValueUseInput>
+}
+
+// IS THIS NODE A USE OF A NAME, AND WHICH NAME? The three reference carriers resolve mints for a name
+// use, read by their own carriers (v2.std.qualified_name). A node that is none of them is not a use,
+// so it has no disposition to receive — which is why the fold asks this of the tree rather than
+// assuming every record key names a reference.
+fn value_use_reference(node: Node) -> Optional<UseOccurrence> {
+  match lexical_reference_label_optional(node: node) {
+    Present { value: label } =>
+      optional_present(value: UseOccurrence { node: node, name: symbol_lexeme(sym: label) })
+    Absent =>
+      match parameter_reference_path_optional(node: node) {
+        Present { value: path } =>
+          optional_present(value: UseOccurrence { node: node, name: value_use_path_text(path: path) })
+        Absent =>
+          match declaration_reference_path_optional(node: node) {
+            Present { value: path } =>
+              optional_present(value: UseOccurrence { node: node, name: value_use_path_text(path: path) })
+            Absent => optional_absent()
+          }
+      }
+  }
+}
+
+// THE SPELLING A REFERENCE CARRIES, as readable text for a row's name. A record's own `authored`
+// spelling is what a row prefers (value_use_row_name); this reads the carrier, used only where the
+// record carries none.
+fn value_use_path_text(path: QualifiedName) -> String {
+  value_use_path_fold(path: path)
+}
+
+fn value_use_path_fold(path: QualifiedName) -> String {
+  match path {
+    Empty => value_use_no_name()
+    Cons { head: h, tail: t } =>
+      if is_empty(xs: t) {
+        symbol_lexeme(sym: h)
+      } else {
+        concat(symbol_lexeme(sym: h), ".", value_use_path_fold(path: t))
+      }
+  }
+}
+
+fn value_use_no_name() -> String {
+  "(no spelling)"
+}
+
+// THE DISPOSITIONS, one per recorded occurrence binding. The fold's domain is the map's support — in
+// occurrence order, so a row list is reproducible — and every arm of value_use_dispose returns a
+// population, so no key can be missed and none can be counted twice.
+fn value_use_dispositions(tree: ResolvedTree) -> ValueUseDependencies {
+  fold_list(
+    xs: value_use_ordered_keys(tree: tree),
+    empty: ValueUseDependencies { relations: [], not_derived: [], inputs: [] },
+    cons: fn(acc, key) { value_use_dispose(acc: acc, tree: tree, key: key) }
+  )
+}
+
+// THE KEYS, IN OCCURRENCE ORDER — the map's support itself, so the domain is exactly the records'.
+fn value_use_ordered_keys(tree: ResolvedTree) -> List<OccurrenceId> {
+  list_sort_by_key(
+    xs: map_support_keys(m: tree.occurrence_bindings),
+    key: fn(id) { id.value },
+    order: int_total_order()
+  )
+}
+
+fn value_use_dispose(acc: ValueUseDependencies, tree: ResolvedTree, key: OccurrenceId) -> ValueUseDependencies {
+  match map_lookup(m: tree.occurrence_bindings, key: key) {
+    Present { value: record } => value_use_dispose_record(acc: acc, tree: tree, key: key, record: record)
+    // A key from the map's own support always has its record: map_lookup is total and the support is
+    // that map's (std.algebra). So this arm cannot be taken; the key stays unplaced rather than
+    // inventing a disposition for a record that does not exist.
+    Absent => acc
+  }
+}
+
+// ONE RECORD, ONE POPULATION. The use's node comes from the tree by the record's key; a key naming no
+// node in the tree still gets a row (with its use left Absent), so an entry can never vanish and a
+// phantom node can never become a relation's endpoint.
+fn value_use_dispose_record(
+  acc: ValueUseDependencies,
+  tree: ResolvedTree,
+  key: OccurrenceId,
+  record: OccurrenceBindingRecord
+) -> ValueUseDependencies {
+  match value_use_find(tree: tree, key: key) {
+    Present { value: use } => value_use_dispose_binding(acc: acc, key: key, record: record, located: optional_present(value: use))
+    Absent => value_use_dispose_binding(acc: acc, key: key, record: record, located: optional_absent())
+  }
+}
+
+// THE USE'S NODE, READ BACK FROM THE TREE BY ITS RECORDED KEY. The keys resolve records are
+// occurrences it minted for reference nodes it wrote into the tree, so a subtree walk finds the node a
+// key was minted for.
+fn value_use_find(tree: ResolvedTree, key: OccurrenceId) -> Optional<UseOccurrence> {
+  fold_list(
+    xs: node_subtree_nodes(root: tree.root),
+    empty: optional_absent(),
+    cons: fn(acc, n) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => match value_use_reference(node: n) {
+          Present { value: u } =>
+            if value_use_same_occurrence(a: u.node, id: key) {
+              optional_present(value: u)
+            } else {
+              optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      }
+    }
+  )
+}
+
+// THE SAME OCCURRENCE? Node identity is its occurrence (v2.std.node Node.occurrence_id), so two
+// distinct nodes with equal shape are never confused.
+fn value_use_same_occurrence(a: Node, id: OccurrenceId) -> Bool {
+  match node_occurrence_id_optional(node: a) {
+    Present { value: node_id } => value_use_occurrence_eq(a: node_id, b: id)
+    Absent => false
+  }
+}
+
+fn value_use_occurrence_eq(a: OccurrenceId, b: OccurrenceId) -> Bool {
+  a.value == b.value
+}
+
+// THE BINDING ARMS, matched exhaustively. BoundByLexicalBinder with LexicalValued is the one population
+// that yields a relation; every other arm yields a row naming why there is none. A use the tree did not
+// locate can never produce a relation, so the valued arm routes it to not-derived naming that fact —
+// an edge with an unknown endpoint would be an invention.
+fn value_use_dispose_binding(
+  acc: ValueUseDependencies,
+  key: OccurrenceId,
+  record: OccurrenceBindingRecord,
+  located: Optional<UseOccurrence>
+) -> ValueUseDependencies {
+  match record.binding {
+    BoundByLexicalBinder { binding: lexical } =>
+      match lexical.standing {
+        LexicalValued { node: value } =>
+          match located {
+            Present { value: use } =>
+              ValueUseDependencies {
+                relations: list_snoc_item(
+                  xs: acc.relations,
+                  item: ValueUseRelation { occurrence: key, view: value_use_relation(value: value, use: use.node) }
+                ),
+                not_derived: acc.not_derived,
+                inputs: acc.inputs
+              }
+            Absent =>
+              value_use_snoc_not_derived(
+                acc: acc,
+                key: key,
+                located: located,
+                standing_label: "LexicalValued:use_occurrence_not_located"
+              )
+          }
+        LexicalDeclared { node: _ } =>
+          value_use_snoc_not_derived(acc: acc, key: key, located: located, standing_label: "LexicalDeclared")
+        LexicalOwedFormal { field_type: _ } =>
+          value_use_snoc_not_derived(acc: acc, key: key, located: located, standing_label: "LexicalOwedFormal")
+        LexicalUntyped =>
+          value_use_snoc_not_derived(acc: acc, key: key, located: located, standing_label: "LexicalUntyped")
+      }
+    BoundToParameter { path: _ } =>
+      value_use_snoc_input(acc: acc, key: key, located: located, disposition_label: "BoundToParameter")
+    BoundToTypeParameter { canonical: _ } =>
+      value_use_snoc_input(acc: acc, key: key, located: located, disposition_label: "BoundToTypeParameter")
+    BoundToDeclaration { identity: _ } =>
+      value_use_snoc_input(acc: acc, key: key, located: located, disposition_label: "BoundToDeclaration")
+    BoundAmbient { table: _, identity: _ } =>
+      value_use_snoc_input(acc: acc, key: key, located: located, disposition_label: "BoundAmbient")
+    BoundByExpectedType { identity: _ } =>
+      value_use_snoc_input(acc: acc, key: key, located: located, disposition_label: "BoundByExpectedType")
+    BoundByGeneratedReference { identity: _ } =>
+      value_use_snoc_input(acc: acc, key: key, located: located, disposition_label: "BoundByGeneratedReference")
+  }
+}
+
+// THE RELATION. source is the value node — the thing the use waits on — never the binder, never the
+// enclosing let, never a sibling's value. dependent and usage_site are both the reference occurrence:
+// the use is where the waiting happens.
+fn value_use_relation(value: Node, use: Node) -> DependencyView {
+  DependencyView {
+    source: value,
+    dependent: use,
+    kind: DataDependsOn,
+    usage_site: use
+  }
+}
+
+// IS A VIEW ONE OF THE ROWS THIS MODULE PRODUCES? Every kind outside DataDependsOn is refused, so a
+// claim's total check cannot be satisfied by a Contains edge or any other kind.
+fn value_use_view_is_data(view: DependencyView) -> Bool {
+  view.kind == DataDependsOn
+}
+
+// THE THREE POPULATIONS' ARITIES, so a claim states totality without reaching into the record's fields.
+fn value_use_relation_count(d: ValueUseDependencies) -> Int {
+  length(xs: d.relations)
+}
+
+fn value_use_not_derived_count(d: ValueUseDependencies) -> Int {
+  length(xs: d.not_derived)
+}
+
+fn value_use_input_count(d: ValueUseDependencies) -> Int {
+  length(xs: d.inputs)
+}
+
+fn value_use_disposition_count(d: ValueUseDependencies) -> Int {
+  value_use_relation_count(d: d) + value_use_not_derived_count(d: d) + value_use_input_count(d: d)
+}
+
+// THE RECORD CENSUS THIS DERIVATION READS, counted through the tree's own authority (the same map the
+// fold's domain came from), so a claim compares dispositions to records without a count this module
+// kept for itself.
+fn value_use_record_count(tree: ResolvedTree) -> Int {
+  length(xs: map_support_keys(m: tree.occurrence_bindings))
+}
+
+// THE RELATION A CLAIM EXPECTS, asked as one judgment rather than a traversal a claim re-implements:
+// does a row read `value` at `use`?
+fn value_use_has_relation(d: ValueUseDependencies, value: Node, use: Node) -> Bool {
+  fold_list(
+    xs: d.relations,
+    empty: false,
+    cons: fn(acc, relation) { acc || value_use_relation_is(relation: relation, value: value, use: use) }
+  )
+}
+
+fn value_use_relation_is(relation: ValueUseRelation, value: Node, use: Node) -> Bool {
+  value_use_same_node(a: relation.view.source, b: value)
+    && value_use_same_node(a: relation.view.dependent, b: use)
+    && value_use_same_node(a: relation.view.usage_site, b: use)
+}
+
+// THE SAME NODE? Identity is the occurrence; a node with no occurrence can only be identical to another
+// with none if both are the same value, which structural equality decides.
+fn value_use_same_node(a: Node, b: Node) -> Bool {
+  match node_occurrence_id_optional(node: a) {
+    Present { value: aid } => match node_occurrence_id_optional(node: b) {
+      Present { value: bid } => value_use_occurrence_eq(a: aid, b: bid)
+      Absent => false
+    }
+    Absent => match node_occurrence_id_optional(node: b) {
+      Present { value: _ } => false
+      Absent => a == b
+    }
+  }
+}
+
+// HOW MANY RELATIONS READ THIS USE? At most one is correct — a use reads one binding — so this count is
+// what a claim demands is one rather than trusting a first-match search.
+fn value_use_relation_count_for_use(d: ValueUseDependencies, use: Node) -> Int {
+  fold_list(
+    xs: d.relations,
+    empty: 0,
+    cons: fn(acc, r) { if value_use_same_node(a: r.view.dependent, b: use) { acc + 1 } else { acc } }
+  )
+}
+
+// THE RELATIONS AS v2.std.dependency Rows: the module's List<DependencyView> output, so a consumer
+// (A4's v2.program run) reads the same rows the claim checks and never a parallel shape.
+fn value_use_views(d: ValueUseDependencies) -> List<DependencyView> {
+  fold_list(
+    xs: d.relations,
+    empty: [],
+    cons: fn(acc, r) { list_snoc_item(xs: acc, item: r.view) }
+  )
+}
+
+
+
+// IS `node` ONE OF THE NODES UNDER `root`? Structural containment, read by occurrence so two distinct
+// subtrees of equal shape cannot be confused.
+fn value_use_node_is_within(node: Node, root: Node) -> Bool {
+  contains(
+    xs: node_subtree_nodes(root: root),
+    item: node,
+    eq: fn(a, b) { value_use_same_node(a: a, b: b) }
+  )
+}
+
+// ARE THE THREE POPULATIONS DISJOINT? An occurrence in two of them is the double disposition the ruling
+// forbids, and the totaliser over counts would not catch it — an entry placed twice and another dropped
+// keep the sum. So a claim asks this separately of the occurrence lists.
+fn value_use_populations_disjoint(d: ValueUseDependencies) -> Bool {
+  value_use_no_shared(
+    a: value_use_relation_occurrences(d: d),
+    b: value_use_not_derived_occurrences(d: d)
+  )
+    && value_use_no_shared(
+      a: value_use_relation_occurrences(d: d),
+      b: value_use_input_occurrences(d: d)
+    )
+    && value_use_no_shared(
+      a: value_use_not_derived_occurrences(d: d),
+      b: value_use_input_occurrences(d: d)
+    )
+}
+
+fn value_use_no_shared(a: List<OccurrenceId>, b: List<OccurrenceId>) -> Bool {
+  fold_list(
+    xs: a,
+    empty: true,
+    cons: fn(acc, id) { acc && !value_use_occurrence_in(list: b, id: id) }
+  )
+}
+
+fn value_use_occurrence_in(list: List<OccurrenceId>, id: OccurrenceId) -> Bool {
+  contains(
+    xs: list,
+    item: id,
+    eq: fn(a, b) { value_use_occurrence_eq(a: a, b: b) }
+  )
+}
+
+// IS ANY OCCURRENCE IN A POPULATION MORE THAN ONCE? Together with disjointness and the totaliser this
+// makes "exactly one disposition per entry" a checked property: no duplicates, no overlap, no gap.
+fn value_use_no_duplicate_occurrences(d: ValueUseDependencies) -> Bool {
+  value_use_all_single(
+    xs: list_append(
+      left: list_append(
+        left: value_use_relation_occurrences(d: d),
+        right: value_use_not_derived_occurrences(d: d)
+      ),
+      right: value_use_input_occurrences(d: d)
+    )
+  )
+}
+
+fn value_use_all_single(xs: List<OccurrenceId>) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: true,
+    cons: fn(acc, id) { acc && value_use_occurrence_appears_once(list: xs, id: id) }
+  )
+}
+
+fn value_use_occurrence_appears_once(list: List<OccurrenceId>, id: OccurrenceId) -> Bool {
+  fold_list(
+    xs: list,
+    empty: 0,
+    cons: fn(n, other) { if value_use_occurrence_eq(a: other, b: id) { n + 1 } else { n } }
+  ) == 1
+}
+
+// NO EDGE FROM ONE VALUE TO A USE INSIDE ANOTHER. The judgment section 2.4 turns on: two `let`s whose
+// bodies mention only parameters must yield no relation from either value to a use inside the other.
+// Answering over whole subtrees means a claim states it without naming every node in either value.
+fn value_use_no_edge_between(d: ValueUseDependencies, from_subtree: Node, to_subtree: Node) -> Bool {
+  fold_list(
+    xs: d.relations,
+    empty: true,
+    cons: fn(acc, r) {
+      acc && !(value_use_node_is_within(node: r.view.source, root: from_subtree)
+        && value_use_node_is_within(node: r.view.dependent, root: to_subtree))
+    }
+  )
+}
+
+// EVERY REFERENCE OCCURRENCE SPELLING THIS NAME, in walk order. A claim asks for the uses a fixture
+// wrote, so an expectation is stated about the source text rather than about node positions.
+fn value_use_uses_named(tree: ResolvedTree, name: String) -> List<Node> {
+  fold_list(
+    xs: node_subtree_nodes(root: tree.root),
+    empty: [],
+    cons: fn(acc, n) {
+      match value_use_reference(node: n) {
+        Present { value: use } =>
+          if value_use_text_eq(a: use.name, b: name) {
+            list_snoc_item(xs: acc, item: n)
+          } else {
+            acc
+          }
+        Absent => acc
+      }
+    }
+  )
+}
+
+// THE VALUE A USE READS, read through resolve's own record for that use — never by a scope search. A
+// use whose recorded binding is not a valued `let` answers Absent, which is the same answer the
+// not-derived population gives for it.
+fn value_use_value_of_use(tree: ResolvedTree, use: Node) -> Optional<Node> {
+  match resolved_tree_lexical_binding(tree: tree, reference: use) {
+    Present { value: b } => match b.standing {
+      LexicalValued { node: value } => optional_present(value: value)
+      LexicalDeclared { node: _ } => optional_absent()
+      LexicalOwedFormal { field_type: _ } => optional_absent()
+      LexicalUntyped => optional_absent()
+    }
+    Absent => optional_absent()
+  }
+}
+
+
+
+// THE OCCURRENCES IN EACH POPULATION, so a claim can check the three are disjoint: an occurrence in two
+// of them would be the double disposition the ruling forbids.
+fn value_use_relation_occurrences(d: ValueUseDependencies) -> List<OccurrenceId> {
+  fold_list(
+    xs: d.relations,
+    empty: [],
+    cons: fn(acc, r) { list_snoc_item(xs: acc, item: r.occurrence) }
+  )
+}
+
+fn value_use_not_derived_occurrences(d: ValueUseDependencies) -> List<OccurrenceId> {
+  fold_list(
+    xs: d.not_derived,
+    empty: [],
+    cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.occurrence) }
+  )
+}
+
+fn value_use_input_occurrences(d: ValueUseDependencies) -> List<OccurrenceId> {
+  fold_list(
+    xs: d.inputs,
+    empty: [],
+    cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.occurrence) }
+  )
+}
+
+
+
+fn value_use_text_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+// THE ONE PLACE A POPULATION GROWS: the two snocs are here so no arm can append to the wrong list.
+fn value_use_snoc_not_derived(
+  acc: ValueUseDependencies,
+  key: OccurrenceId,
+  located: Optional<UseOccurrence>,
+  standing_label: String
+) -> ValueUseDependencies {
+  ValueUseDependencies {
+    relations: acc.relations,
+    not_derived: list_snoc_item(
+      xs: acc.not_derived,
+      item: ValueUseNotDerived { occurrence: key, use: located, standing_label: standing_label }
+    ),
+    inputs: acc.inputs
+  }
+}
+
+fn value_use_snoc_input(
+  acc: ValueUseDependencies,
+  key: OccurrenceId,
+  located: Optional<UseOccurrence>,
+  disposition_label: String
+) -> ValueUseDependencies {
+  ValueUseDependencies {
+    relations: acc.relations,
+    not_derived: acc.not_derived,
+    inputs: list_snoc_item(
+      xs: acc.inputs,
+      item: ValueUseInput { occurrence: key, use: located, disposition_label: disposition_label }
+    )
+  }
+}
