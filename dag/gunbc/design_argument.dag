@@ -161,7 +161,7 @@ data conformance_domains: List<ConformanceDomain> = [
     owns: "Exclusive or bounded use of a resource, and the authorization a privileged effect requires.",
     boundaries: [
       "A slot whose generation line is an audit trail keeps it whole; a slot whose only fact is its head uses the distinct windowed operations, a separate contract rather than a mode.",
-      "Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; its census classifies every current site by executing the selection.",
+      "Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; its census classifies every current site by executing the selection. The ghrunner whole-binary sudo grants are planned in [srv1-deploy-principal-split.md](docs/plans/srv1-deploy-principal-split.md).",
     ],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
