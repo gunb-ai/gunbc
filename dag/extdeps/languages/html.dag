@@ -63,8 +63,9 @@ data html_comment_trailing_dash_closes: Bool = true
 data html_doctype_open_sequence: NonEmptyStr = "<!DOCTYPE " as NonEmptyStr
 // The document type every HTML page in this repo declares. "html" is the only name a conforming
 // parser understands; anything else puts the document in quirks mode. std.markup's
-// doctype_name_hazard is what refuses a name that is not one bare token, and the Document arm of
-// fragment_hazard runs it on the way down, so a page cannot be serialized with a malformed declaration.
+// doctype_name_hazard is what refuses a name that is not one bare token, and it is called by
+// serialize_document_with -- the only place a doctype is ever spelled -- so a page cannot be
+// written with a malformed declaration.
 data html_doctype_name: NonEmptyStr = "html" as NonEmptyStr
 
 // The character that ends the token after "<!DOCTYPE" (HTML Living Standard §13.1.1, the "before the
@@ -392,11 +393,16 @@ type HtmlEmitResult
 // the author answers why it should not be generalized"). Second, the sentinel: `if hazard == ""` is a
 // string test standing in for a type test, so a check that ever returned "" passed.
 //
-// Both are answered from one place. std.markup's fragment_hazard walks a Fragment and consults the
-// MEDIUM for the language's comment grammar (comment_terminator, comment_trailing_dash_closes), so
-// HTML, JSX, Markdown and SVG are covered by filling in the medium's own rows — which is also why
-// html_medium_with now carries them, and why the emitter's close delimiter and the checker's
-// terminator come from the same module's data rather than two constants that can drift.
+// Both are answered from one place, and not as free functions any more: the checks live INSIDE the
+// emitter's arms. serialize_fragment_with consults the MEDIUM's CommentGrammar (terminator,
+// trailing_dash_closes) on the arm that writes a comment, and the raw-text arm reads the bracket
+// fields it is about to write with; serialize_document_with owns doctype_name_hazard. Review 82279 on
+// #14351 is why: written as a walk beside the emitter, a check was a call a route could omit -- and
+// serialize_jsx_fragment, serialize_jsx_component and the SVG document route had all omitted it. So
+// HTML, JSX, Markdown and SVG are covered by filling in the medium's own rows, which is also why
+// html_medium_with carries them and why the emitter's close delimiter and the check's terminator are
+// one row, not two constants that can drift.
+// What is left in this module is the SPELLINGS those rows feed and the guarded routes that add the URL pass.
 // The closed sum (HazardFree | HazardFound) replaces the empty-string convention.
 //
 // The order is preserved and still deliberate: the URL pass runs FIRST, because a comment body may

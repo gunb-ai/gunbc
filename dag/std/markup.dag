@@ -24,8 +24,9 @@ type Fragment
   // The body is emitted as-written, like a raw-text element's content: HTML defines no escape syntax
   // inside a comment ("comment state" consumes to the first "-->" and decodes nothing), so escaping
   // would corrupt it rather than protect it. What a body must never do is terminate early, and that
-  // is refused rather than filtered — see extdeps.languages.html comment_hazard, which every
-  // guarded route consults before serializing.
+  // is refused rather than filtered, by the arm that writes those bytes: serialize_fragment_with
+  // consults the medium's CommentGrammar before it emits open + body + close, so no route to a
+  // comment exists that does not check it (review 82279 on #14351).
   | MarkupComment { body: String }
 
 fn escape_text(s: String) -> String {
@@ -151,7 +152,7 @@ type MarkupMedium {
   // `document_declaration_allowed: Bool`, and JSX set the Bool false while STILL being forced to supply a
   // doctype keyword -- which its own comment then called "not applicable". That is a sum expressed as a
   // flag: the type admits an inhabitant that means "there is no such thing, here is a spelling for it",
-  // and fragment_hazard had to check the flag at runtime to recover the distinction the type threw away
+  // and the guard had to check the flag at runtime to recover the distinction the type threw away
   // (review 82209 on #14351). Now a medium that declares no document type has no doctype field to fill,
   // and the walk matches on the arm.
   document_grammar: DocumentGrammar
@@ -184,10 +185,13 @@ fn escape_text_for(mode: EscapeMode, s: String) -> String {
 // serialize_jsx_fragment / serialize_jsx_component called the serializer directly and would have reached a
 // seam labelled unreachable that in fact diverges). §5: "Stronger than catching a wrong state is making it
 // unwritable." A Fragment now CANNOT contain a document, so:
-//   - serialize_fragment_with is TOTAL (it returns String and has no refusal to skip and no divergent arm),
 //   - every Fragment walker loses the Document arm it had to carry -- those arms existed only because the
 //     type allowed the shape, so removing the shape removes them,
 //   - a document is serialized only through serialize_document_with, whose refusal is a typed result.
+// serialize_fragment_with is NOT total, and never was the safety: it returns MarkupSerializeResult because
+// two of its own arms check what they are about to write (a comment body against the medium's terminator,
+// raw-text content against its own close sequence). That is where these checks have to live -- review 82279
+// on #14351 found them in a walk beside the emitter, and three routes had simply not called the walk.
 // The keyword is the NAME after <!DOCTYPE ("html" selects standards mode); the "<!DOCTYPE " prefix is the
 // medium's spelling, so a document cannot carry its own punctuation. The name is NonEmptyStr: an empty
 // name is not a document type, and `MarkupDocument { doctype: "", .. }` fails to resolve (measured), so no
@@ -316,11 +320,6 @@ fn attr(name: String, value: String) -> Attribute {
   }
 }
 
-// THE ONLY WAY A DOCUMENT IS SERIALIZED. Returns a TYPED RESULT rather than a String for one reason: a
-// medium with NoDocumentGrammar has no spelling for a document-type declaration, so there is no string to
-// return, and the alternative (a labelled-unreachable seam) was measured to diverge. Review 82244 on
-// #14351: the guard lived on one route and the unguarded routes reached the seam. Here there is no route
-// around it -- serialize_fragment_with cannot be handed a document at all -- and the refusal is a value
 // THE ONLY WAY A DOCUMENT IS WRITTEN, and it owns every check that guards a doctype.
 //
 // A typed result rather than a String, for two reasons. A medium with NoDocumentGrammar has no spelling for
@@ -373,32 +372,32 @@ type MarkupHazard
   = HazardFree
   | HazardFound { reason: String }
 
-// ── ONE HAZARD WALKER, DRIVEN BY THE MEDIUM ─────────────────────────────────────────────────────
-// WHY IT LIVES HERE AND NOT BESIDE THE HTML ROWS. The first shape of this check existed once per
+// ── THE HAZARDS A SERIALIZER REFUSES ─────────────────────────────────────────────────────────────
+// WHY THESE LIVE HERE AND NOT BESIDE THE HTML ROWS. The first shape of this check existed once per
 // language (review 82181 on #14351): the HTML guarded route consulted a comment hazard and its JSX
 // sibling did not, so a comment body containing "*/" closed early and the remainder was parsed as
-// TSX, and a Document inside a JSX expression serialized as "<!DOCTYPE html>" where no parser reads
-// it — both came back JsxOk. That is §6b's repeated pattern left un-generalized: the two routes
-// answered their own language and the shared defect went unguarded. The walk is a fact about
-// Fragments and Media, not about HTML, so it is written once in the layer that owns both. A new
-// medium gets the check by carrying its comment grammar; it cannot forget to call it.
+// TSX — both came back JsxOk. That is §6b's repeated pattern left un-generalized. And as soon as the
+// check became one walk beside the emitter, review 82279 found the next hole: serialize_jsx_fragment,
+// serialize_jsx_component and the SVG document route never called the walk, so the check was still a
+// call a route could omit. Both shapes are answered by putting each check in the arm that writes the
+// bytes it protects, in the layer that owns Fragments and Media. A new medium gets coverage by filling
+// in its own grammar rows; there is no call to remember and no second copy to drift.
 //
-// THREE HAZARDS, ONE WALK:
-//   1. a comment body that holds the medium's terminator (or ends in a dash, where that closes),
-//   2. a doctype name that is not one bare token,
-//   3. a raw-text element whose content contains its own close sequence.
+// THREE HAZARDS, THREE CALL SITES, ALL IN THE EMITTER:
+//   1. comment_body_hazard — on the MarkupComment arm, before open + body + close is written;
+//   2. doctype_name_hazard — in serialize_document_with, the only place a doctype is spelled;
+//   3. the raw-text close check — on the arm that writes an element's raw children, built from the
+//      medium's own bracket fields rather than a hand-typed "</".
 // Each is refused rather than filtered: escaping cannot fix (1) — a comment decodes nothing — and
 // stripping the sequence would change what the comment says. (2) is refused because the tokenizer
 // reads ONE token after the keyword, so anything else changes how the document parses. (3) is
 // refused for the same reason <script> content is: the browser would end the element early.
 //
-// WHAT THIS FUNCTION NO LONGER DOES: it never asks whether the medium's terminator is empty. That
-// question was review 82209's second finding -- the closed sum (HazardFree | HazardFound) had retired
-// "" as a RETURN value while "" remained a legal INPUT, so the walk had to test for it at runtime.
-// CommentGrammar.terminator is NonEmptyStr, so there is no empty inhabitant to test for: the check is
-// gone because the state is gone, and the witness that pinned the refusal
-// (witness_a_medium_without_a_terminator_refuses_rather_than_passes) was deleted with it rather than
-// kept asserting a value the type no longer admits.
+// NONE OF THEM ASKS WHETHER A GRAMMAR FIELD IS EMPTY. That question was review 82209's second finding --
+// the closed sum (HazardFree | HazardFound) had retired "" as a RETURN value while "" remained a legal
+// INPUT, so the check had to test for it at runtime. CommentGrammar.terminator is NonEmptyStr, so there is
+// no empty inhabitant to test for: the check is gone because the state is gone, and the witness that used
+// to pin that refusal went with it, rather than staying to assert a value the type no longer admits.
 
 fn comment_body_hazard(body: String, grammar: CommentGrammar) -> MarkupHazard {
   if string_contains(s: body, pattern: grammar.terminator as String) {
