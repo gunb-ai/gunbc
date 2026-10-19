@@ -1,121 +1,238 @@
 module test.claim.swift_toolchain_pin_witness
 
 import std.types { Bool, String, NonEmptyStr }
-import std.algebra { string_contains }
+import std.algebra { is_empty }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.swift_toolchain {
-  SwiftToolchainArchiveRow,
+  SwiftToolchainArchive,
+  SwiftToolchainArchiveSubject,
+  SwiftToolchainVerifiedArchive,
+  SwiftToolchainUnverifiedArchive,
+  SwiftToolchainCandidate,
+  SwiftToolchainDistribution,
+  SwiftToolchainRefusal,
+  SignatureUnverified,
+  SignedByUnlistedKey,
+  DigestDiffersFromPin,
   Debian13,
-  Unverified,
+  Ubuntu2404,
   Verified,
+  Unverified,
+  CitedToAuthority,
   pinned_swift_toolchain,
-  swift_toolchain_declared_rows,
-  swift_toolchain_pinned_row,
-  swift_toolchain_pin_is_declared,
-  swift_toolchain_row_is_pinned,
-  swift_toolchain_archive_digest_width_is_right,
-  swift_toolchain_row_matches_pin,
+  swift_toolchain_declared_archives,
+  swift_toolchain_pinned_archive,
+  swift_toolchain_archive_subject,
+  swift_toolchain_archive_is_verified,
+  swift_toolchain_archive_url,
+  swift_toolchain_expected_size,
+  swift_toolchain_expected_digest,
+  swift_toolchain_signature_authority,
+  swift_toolchain_signing_key_fingerprint,
+  swift_toolchain_verification_order,
+  swift_toolchain_verify,
+  swift_toolchain_candidate_is_usable,
+  swift_toolchain_standing_cites_signature,
+  swift_toolchain_digest_is_a_known_refused_value,
+  swift_toolchain_refused_digest_from_fabricated_pin,
   swift_toolchain_runtime_dependency_closure,
+  swift_toolchain_typecheck_file_set,
+  swift_toolchain_test_file_set,
+  swift_toolchain_wire_fixture_path,
+  swift_toolchain_foundation_networking_gap_files,
   swift_toolchain_file_needs_foundation_networking,
+  swift_toolchain_file_is_in_typecheck_unit,
 }
 
-// WHAT THIS WITNESS HOLDS, AND WHY EACH CLAIM IS THE SHAPE IT IS.
+// WHAT THIS WITNESS HOLDS.
 //
-// The pin in extdeps.swift_toolchain is a claim about an artifact this repository does not build, so it
-// is worth only what the checks that refuse a self-inconsistent row are worth. The claims below are the
-// ones that make "pinned" mean something rather than merely read well: the pin is reachable only through
-// its own declaration, a row that does NOT satisfy that declaration is refused (the discriminating half,
-// since a predicate that never refuses would pass the green claim too), the declared-but-unverified rows
-// stay refused, and the FoundationNetworking gap is attributed to exactly the file the probe saw it in.
-//
-// NO CLAIM HERE ASSERTS THE DIGEST EQUALS A PARTICULAR STRING AND GETS TO BE GREEN FOR IT. The digest
-// value is a fact observed off two fetches, recorded in the module; what is witnessed is that the row
-// cannot be believed while it contradicts itself.
+// extdeps.swift_toolchain pins an artifact this repository does not build. Its claims are worth what the
+// checks that REFUSE are worth, so every claim below is paired with the state that would break it:
+//   - the pin is reachable only through the Verified arm (Absent would make the green claim red);
+//   - the URL is DERIVED, so the discriminating claim is that two subjects give two URLs and one subject
+//     cannot be given a contradicting URL at all -- there is no URL field to corrupt;
+//   - an unverified row is not a pin and has nowhere to put a guessed digest;
+//   - the typecheck unit is a ROW with the three files in compile order, and the gap is attributed to
+//     exactly the one file the probe observed it in.
+// No claim here is green merely because nothing in the corpus contradicts it; each constructs the
+// contradicting state as a fixture, because these states are authorable and must not be reachable.
 
-// The pin is reachable through its own declaration, and carries the size, URL, and digest width the
-// probe recorded. Absent is refused rather than treated as a row: a pin that stopped satisfying its own
-// predicate would make this red, which is what makes it a witness and not a restatement.
-test fn pinned_row_is_declared_and_well_formed() -> Bool {
-  match swift_toolchain_pinned_row() {
-    Present { value: row } =>
-      row.archive_size_bytes == 1122730813
-        && swift_toolchain_archive_digest_width_is_right(hex: row.archive_sha256_hex)
-        && row.url == "https://download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz"
-        && row.version == "6.4.1"
+// The pin is readable, and what it says matches what upstream SIGNED. ByteSize and Sha256Digest carry the
+// size and the digest, so this claim is about their VALUES; their well-formedness is not claimable because
+// it is not falsifiable at the type (byte_size takes a count, Sha256DigestHex is 64 lower hex). The
+// standing arm is claimed too: a Verified row that could drop the authority it was verified against is
+// the exact shape this pin previously had, so its presence is asserted rather than assumed.
+test fn pinned_archive_is_verified_and_cites_the_upstream_signature() -> Bool {
+  match swift_toolchain_pinned_archive() {
+    Present { value: a } =>
+      byte_size_count(b: swift_toolchain_expected_size(archive: a)) == 1122730813
+        && a.subject.distribution == Debian13
+        && swift_toolchain_expected_digest(archive: a).hex
+             == "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47"
+        && swift_toolchain_standing_cites_signature(standing: a.standing)
+        && swift_toolchain_signing_key_fingerprint == "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
     Absent => false
   }
 }
 
-// DISCRIMINATING: every mutation below must be REFUSED. A digest check that only ever ran on the good
-// row, or a predicate that accepted anything, turns this red while the claim above stays green.
-test fn a_row_that_disagrees_with_itself_is_refused() -> Bool {
-  let truncated_digest = SwiftToolchainArchiveRow {
-    distribution: Debian13
-    version: "6.4.1"
-    url: "https://download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz"
-    archive_size_bytes: 1122730813
-    archive_sha256_hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd31"
+// THE REFUSAL, SHOWN RATHER THAN ASSERTED -- and the discriminating half of this whole witness.
+//
+// Every candidate below is refused except the last. The first is the archive a wrong pin WOULD have
+// accepted, the second is the value this module previously pinned while claiming two fetches produced it,
+// and the third is a signature that never verified. The accepted candidate is the one gpg confirmed.
+// A verify function that ignored the signature, or compared against a caller-supplied expected value,
+// turns red here; a verify function that always returns Absent turns this red AND the green claim red,
+// which is why both directions are in one file.
+test fn verification_refuses_a_mismatched_archive_and_accepts_only_the_signed_one() -> Bool {
+  let signed_bytes = SwiftToolchainCandidate {
+    signature_verified: true
+    signing_key_fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+    observed_size: byte_size(count: 1122730813)
   }
-  let zero_size = SwiftToolchainArchiveRow {
-    distribution: Debian13
-    version: "6.4.1"
-    url: "https://download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz"
-    archive_size_bytes: 0
-    archive_sha256_hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313"
+  let the_previously_pinned_value = SwiftToolchainCandidate {
+    signature_verified: true
+    signing_key_fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    observed_digest: Sha256Digest { hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313" as Sha256DigestHex }
+    observed_size: byte_size(count: 1122730813)
   }
-  let url_names_another_distribution = SwiftToolchainArchiveRow {
-    distribution: Debian13
-    version: "6.4.1"
-    url: "https://download.swift.org/swift-6.4.1-release/ubuntu2404/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubuntu24.04.tar.gz"
-    archive_size_bytes: 1122730813
-    archive_sha256_hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313"
+  let unsigned_bytes = SwiftToolchainCandidate {
+    signature_verified: false
+    signing_key_fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+    observed_size: byte_size(count: 1122730813)
   }
-  let not_lowercase_hex = SwiftToolchainArchiveRow {
-    distribution: Debian13
-    version: "6.4.1"
-    url: "https://download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz"
-    archive_size_bytes: 1122730813
-    archive_sha256_hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd31G"
+  let signed_by_another_key = SwiftToolchainCandidate {
+    signature_verified: true
+    signing_key_fingerprint: "0000000000000000000000000000000000000000"
+    observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+    observed_size: byte_size(count: 1122730813)
   }
-  let all_zero_digest = SwiftToolchainArchiveRow {
-    distribution: Debian13
-    version: "6.4.1"
-    url: "https://download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz"
-    archive_size_bytes: 1122730813
-    archive_sha256_hex: "0000000000000000000000000000000000000000000000000000000000000000"
+  let truncated = SwiftToolchainCandidate {
+    signature_verified: true
+    signing_key_fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+    observed_size: byte_size(count: 1122730812)
   }
-  !swift_toolchain_pin_is_declared(row: truncated_digest)
-    && !swift_toolchain_pin_is_declared(row: zero_size)
-    && !swift_toolchain_pin_is_declared(row: url_names_another_distribution)
-    && !swift_toolchain_pin_is_declared(row: not_lowercase_hex)
-    && swift_toolchain_pin_is_declared(row: all_zero_digest) // well-formed hex of the right width: shape is believed, provenance is not
-    && swift_toolchain_pin_is_declared(row: pinned_swift_toolchain)
+  swift_toolchain_candidate_is_usable(candidate: signed_bytes)
+    && !swift_toolchain_candidate_is_usable(candidate: the_previously_pinned_value)
+    && !swift_toolchain_candidate_is_usable(candidate: unsigned_bytes)
+    && !swift_toolchain_candidate_is_usable(candidate: signed_by_another_key)
+    && !swift_toolchain_candidate_is_usable(candidate: truncated)
+    // The refusal NAMES the cause, so a run cannot report "digest mismatch" for a signature failure.
+    && match swift_toolchain_verify(candidate: unsigned_bytes) {
+         Present { value: SignatureUnverified { detail: _ } } => true
+         _ => false
+       }
+    && match swift_toolchain_verify(candidate: signed_by_another_key) {
+         Present { value: SignedByUnlistedKey { observed_fingerprint: f } } => f == "0000000000000000000000000000000000000000"
+         _ => false
+       }
+    && match swift_toolchain_verify(candidate: the_previously_pinned_value) {
+         // The pinned value must be the SIGNED one in the refusal text, not the fabricated one.
+         Present { value: DigestDiffersFromPin { observed: o, pinned: p } } =>
+           o == "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313"
+             && p == "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47"
+         _ => false
+       }
+    && swift_toolchain_digest_is_a_known_refused_value(
+         digest: Sha256Digest { hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313" as Sha256DigestHex })
 }
 
-// Of everything declared, exactly one row is a pin: the Debian 13 one. The Ubuntu rows name a URL but
-// carry no size and no digest, because nobody has fetched them on that distribution -- so they are
-// declared and NOT pinned. If someone filled a digest with a guess to make a rung pass, this goes red.
-test fn declared_rows_beyond_the_pin_stay_unverified() -> Bool {
-  swift_toolchain_declared_rows.filter(r => swift_toolchain_row_is_pinned(row: r)).count() == 1
-    && swift_toolchain_declared_rows.filter(r => !swift_toolchain_row_is_pinned(row: r)).count() == 2
-    && swift_toolchain_declared_rows.filter(
-         r => match r.verification { Unverified { reason } => string_contains(s: reason, pattern: "no fetch") Verified { archive } => false }
-       ).count() == 2
+// The signature is the gate, and it is FIRST. swift.org's own instruction is not to use the toolchain on
+// BAD signature, so a run that hashed first could report a digest mismatch for bytes that were never
+// upstream's and send a reader hunting for tampering. Claimed as an ORDER because the order is the
+// guarantee; a roster that put sha256 before gpg would keep every other claim green.
+test fn signature_is_verified_before_any_hash_is_compared() -> Bool {
+  swift_toolchain_verification_order == [
+    "fetch-archive",
+    "fetch-detached-signature",
+    "gpg-verify-signature-against-published-keyring",
+    "sha256-archive",
+    "compare-size",
+    "compare-digest",
+    "extract-and-use"
+  ]
+    && swift_toolchain_verification_order.filter(s => s == "gpg-verify-signature-against-published-keyring").count() == 1
+    && swift_toolchain_verification_order.filter(s => s == "sha256-archive").count() == 1
 }
 
-// Agreement is with the PIN's digest specifically: a caller-supplied digest that differs is refused even
-// when the row handed over is the genuine one, so a consumer cannot confirm its own expected value.
-test fn row_matches_pin_only_against_the_pin_digest() -> Bool {
-  swift_toolchain_row_matches_pin(row: pinned_swift_toolchain, expected_sha256_hex: pinned_swift_toolchain.archive_sha256_hex)
-    && !swift_toolchain_row_matches_pin(row: pinned_swift_toolchain, expected_sha256_hex: "0000000000000000000000000000000000000000000000000000000000000000")
+// DISCRIMINATING, AND IT IS THE DUPLICATION CHECK. The URL is a projection of the subject, so: the same
+// subject always yields the same URL (a stored URL could not promise that), a different distribution
+// yields a different URL (so the distribution really is subject material, not decoration), and the
+// derived URL is the one the archive was actually fetched from.
+test fn archive_url_is_derived_from_the_subject_and_not_stored_twice() -> Bool {
+  let debian = SwiftToolchainArchiveSubject {
+    distribution: Debian13
+    version: "6.4.1" as VersionIdentity
+  }
+  let ubuntu = SwiftToolchainArchiveSubject {
+    distribution: Ubuntu2404
+    version: "6.4.1" as VersionIdentity
+  }
+  swift_toolchain_archive_url(subject: debian).locator
+    == "download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz"
+    && swift_toolchain_archive_url(subject: debian).locator
+         == swift_toolchain_archive_url(subject: debian).locator
+    && swift_toolchain_archive_url(subject: debian).locator != swift_toolchain_archive_url(subject: ubuntu).locator
+    && swift_toolchain_archive_url(subject: swift_toolchain_archive_subject(archive: pinned_swift_toolchain)).locator
+         == swift_toolchain_archive_url(subject: debian).locator
 }
 
-// The gap the L1 probe actually observed, attributed narrowly: Wire.swift needs FoundationNetworking
-// brought in from outside; the other files in scope do not, and an unrelated path is not swept in. A
-// gap list widened to "everything" would pass the green half of a naive test and fail this one.
+// The two states carry different FIELDS, so an unverified row cannot be dressed as a pin. The red is
+// constructed: a Verified arm demands a ByteSize and a Sha256Digest, which is exactly what an
+// un-fetched archive does not have -- if this file could construct a Verified row with a placeholder
+// size and an all-zero digest and have it read back as the pin, that is the defect.
+test fn an_unverified_row_cannot_be_read_as_a_pin() -> Bool {
+  let declared_only: SwiftToolchainArchive = Unverified {
+    declared: SwiftToolchainUnverifiedArchive {
+      subject: SwiftToolchainArchiveSubject {
+        distribution: Ubuntu2404
+        version: "6.4.1" as VersionIdentity
+      }
+      reason: "no fetch observed"
+    }
+  }
+  let all_unverified = swift_toolchain_declared_archives.filter(r => !swift_toolchain_archive_is_verified(archive: r)).count()
+  let all_verified = swift_toolchain_declared_archives.filter(r => swift_toolchain_archive_is_verified(archive: r)).count()
+  !swift_toolchain_archive_is_verified(archive: declared_only)
+    && all_verified == 1
+    && all_unverified == 2
+    && match declared_only {
+         Verified { archive: a } => byte_size_count(b: a.observed_size) > 0
+         Unverified { declared: d } => !is_empty(xs: d.reason)
+       }
+}
+
+// The typecheck unit is a row, in compile order, and it is the THREE files together. This is the
+// structural half of the probe's first finding: checking Protocol.swift alone is a spurious red because
+// it reads Route from Wire.swift, so a set that drops Wire.swift would be a lie the label could tell.
+test fn typecheck_unit_is_one_ordered_row_of_the_three_files() -> Bool {
+  swift_toolchain_typecheck_file_set.count() == 3
+    && swift_toolchain_file_is_in_typecheck_unit(path: "apps/approve-ios/Approve/Protocol.swift")
+    && swift_toolchain_file_is_in_typecheck_unit(path: "apps/approve-ios/Approve/Wire.swift")
+    && swift_toolchain_file_is_in_typecheck_unit(path: "apps/approve-ios/Approve/EnrolmentMachine.swift")
+    && !swift_toolchain_file_is_in_typecheck_unit(path: "apps/approve-ios/Approve/DeviceKeys.swift")
+    && swift_toolchain_typecheck_file_set == [
+         "apps/approve-ios/Approve/Protocol.swift",
+         "apps/approve-ios/Approve/Wire.swift",
+         "apps/approve-ios/Approve/EnrolmentMachine.swift"
+       ]
+    && swift_toolchain_wire_fixture_path == "dag/test/fixture/approval_device_redemption/vectors.json"
+    && swift_toolchain_test_file_set == [
+         "apps/approve-ios/ApproveTests/ProtocolVectorTests.swift",
+         "apps/approve-ios/ApproveTests/EnrolmentMachineTests.swift"
+       ]
+}
+
+// The gap is attributed to exactly one file. Widening the list to "everything that imports Foundation"
+// would keep the instrument green while hiding which file actually needs the shim, which is the whole
+// reason the gap is data rather than prose.
 test fn foundation_networking_gap_names_only_wire() -> Bool {
-  swift_toolchain_file_needs_foundation_networking(path: "apps/approve-ios/Approve/Wire.swift")
+  swift_toolchain_foundation_networking_gap_files == ["apps/approve-ios/Approve/Wire.swift"]
+    && swift_toolchain_file_needs_foundation_networking(path: "apps/approve-ios/Approve/Wire.swift")
     && !swift_toolchain_file_needs_foundation_networking(path: "apps/approve-ios/Approve/Protocol.swift")
     && !swift_toolchain_file_needs_foundation_networking(path: "apps/approve-ios/Approve/EnrolmentMachine.swift")
-    && !swift_toolchain_file_needs_foundation_networking(path: "apps/approve-ios/Approve/DeviceKeys.swift")
     && swift_toolchain_runtime_dependency_closure.filter(closure => closure == "libncurses6").count() == 1
 }
