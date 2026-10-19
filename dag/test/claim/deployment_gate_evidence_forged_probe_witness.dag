@@ -103,19 +103,38 @@ test fn a_foreign_call_to_the_ownership_observation_is_refused() -> Bool {
   ) >= 1
 }
 
-// (d) AND THE LITERALS, still refused at the records. Kept as a separate red from (a)-(c) on purpose:
+// (d) AND THE LITERALS, still refused at the records. Kept as separate reds from (a)-(c) on purpose:
 // widening an admit_callers list would silence the admission refusals and leave these still biting.
+//
+// ONE TEST PER SEALED RECORD, not one test with both halves. They were a compound assertion, and the
+// manager's Q3 mutation (drop the seal from ObservedGateInstallation alone) was caught only because the
+// compound test happened to include it — a red that fires INCIDENTALLY is a red that will be blamed on
+// the wrong thing, or survive a future split. Each seal now owns its own named test, so "which seal is
+// load-bearing" has an answer in the test name.
 test fn a_forged_receipt_literal_is_refused_at_the_record() -> Bool {
   refusals(
     c: probe_census(),
     class: "SoleConstructorViolation",
     subject: "AcceptedRuleReviewReceipt",
   ) >= 1
+}
+
+// THE IDENTITY LITERAL, on its own. ObservedGateInstallation is the value that decides WHICH
+// installation a token is minted from; unsealing it lets a caller write down an installation id, hand it
+// to the token path, and never ask GitHub which App is installed on this repository. The probe writes
+// exactly that literal (forged_identity), and this test is the statement that it is refused.
+test fn a_forged_observed_installation_literal_is_refused_at_the_record() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "SoleConstructorViolation",
+    subject: "ObservedGateInstallation",
+  ) >= 1
+    // and the control proves the refusal belongs to the forgery: naming the type forges nothing
     && refusals(
-         c: probe_census(),
+         c: control_census(),
          class: "SoleConstructorViolation",
          subject: "ObservedGateInstallation",
-       ) >= 1
+       ) == 0
 }
 
 test fn a_forged_trial_pair_is_refused_at_the_record() -> Bool {

@@ -140,13 +140,18 @@ data hostile_repo: NonEmptyStr = "gunbc/../other"
 // more than it can write a receipt: the only way to hold it is to call the observation route with a
 // GitHub-shaped response body and a claim that agrees with it. That call is admitted to this fixture
 // and to no other module — see the probe, which is refused the same call.
-fn observed_identity() -> ObservedGateInstallation? {
+// THE IDENTITY READBACK, the only admitted route to an ObservedGateInstallation. The two values that
+// decide WHICH installation and WHICH repository are read are parameters, so the trial reds below can
+// vary them WITHOUT a second admitted caller being added: admission keys on the module and the
+// declaration's name, and the honest set of producers stays { this fixture, the stage-2 route }. A
+// fixture per case would have widened the seal for test convenience, which is the thing the seal is for.
+fn observed_identity(installation_id: Int, identity_repo: NonEmptyStr) -> ObservedGateInstallation? {
   match observe_gate_installation(
     owner: "gunb-ai",
-    repo: "gunbc",
+    repo: identity_repo,
     status: installation_readback_success_status,
     wire: InstallationWireFields {
-      id: Present { value: 888800001 },
+      id: Present { value: installation_id },
       app_id: Present { value: 1900000001 },
       app_slug: Present { value: "gunbc-deployment-gate" },
     },
@@ -164,13 +169,18 @@ fn observed_identity() -> ObservedGateInstallation? {
 // there is no literal for it here either: the fold produces it from an enabled rule attributed to the
 // identity read above. A refusal here (no identity, no enabled rule, a foreign App) makes every receipt
 // below refuse, which is the red that keeps this file from testing a claim it never earned.
-fn ownership_for(environment: NonEmptyStr) -> EnvironmentRuleOwnership {
-  match observed_identity() {
+fn ownership_for(
+  environment: NonEmptyStr,
+  installation_id: Int,
+  identity_repo: NonEmptyStr,
+  rule_id: Int
+) -> EnvironmentRuleOwnership {
+  match observed_identity(installation_id: installation_id, identity_repo: identity_repo) {
     Present { value: observed } =>
       observe_rule_ownership(
         rules: [
           EnabledDeploymentProtectionRule {
-            id: 900000001,
+            id: rule_id,
             node_id: "DPPR_1",
             enabled: true,
             app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },
@@ -183,87 +193,11 @@ fn ownership_for(environment: NonEmptyStr) -> EnvironmentRuleOwnership {
   }
 }
 
-// THE SAME THREE PRODUCERS, PARAMETERISED, for the trial-arm reds below. They are not new fixture kinds:
-// each one is the canonical readback with ONE value moved — the rule the readback attributed, the
-// installation behind the identity, or the repository it was read from. A trial that differs on any of
-// them is two unrelated calls wearing one trial's clothes, and admitting it would let "approve on the
-// gate's rule A, reject on the gate's rule B" count as a witnessed trial.
-fn identity_with(
-  installation_id: Int,
-  repo: NonEmptyStr
-) -> ObservedGateInstallation? {
-  match observe_gate_installation(
-    owner: "gunb-ai",
-    repo: repo,
-    status: installation_readback_success_status,
-    wire: InstallationWireFields {
-      id: Present { value: installation_id },
-      app_id: Present { value: 1900000001 },
-      app_slug: Present { value: "gunbc-deployment-gate" },
-    },
-    claim: GateInstallationClaim {
-      installation_id: GitHubAppInstallationId { value: installation_id },
-      app_id: GitHubAppId { value: 1900000001 },
-    },
-  ) {
-    InstallationObserved { observed: o } => Present { value: o }
-    InstallationObservationRefused { because: _ } => none
-  }
-}
-
-fn ownership_from(
-  identity: ObservedGateInstallation,
-  environment: NonEmptyStr,
-  rule_id: Int
-) -> EnvironmentRuleOwnership {
-  observe_rule_ownership(
-    rules: [
-      EnabledDeploymentProtectionRule {
-        id: rule_id,
-        node_id: "DPPR_1",
-        enabled: true,
-        app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },
-      }
-    ],
-    environment_name: environment,
-    observed: identity,
-  )
-}
-
-// A receipt whose rule/installation/repository came from a readback OTHER than the canonical one, with
-// the mint's requested rule moved to match — otherwise every case would refuse on the rule check before
-// the arm check under test could be reached.
-fn receipt_with(
-  identity: ObservedGateInstallation?,
-  run_id: Int,
-  state: ReviewState,
-  environment: NonEmptyStr,
-  rule_id: Int
-) -> Optional<AcceptedRuleReviewReceipt> {
-  match identity {
-    Present { value: observed } =>
-      match mint_accepted_rule_review(
-        owner: gate_owner,
-        repo: observed.repo,
-        run_id: run_id,
-        environment_name: environment,
-        claimed: state,
-        review: DeploymentProtectionRuleReview {
-          environment_name: environment,
-          state: state,
-          comment: Present { value: "witness" },
-        },
-        status: 204,
-        ownership: ownership_from(identity: observed, environment: environment, rule_id: rule_id),
-        requested_rule_id: rule_id,
-      ) {
-        Accepted { receipt: r } => Present { value: r }
-        AcceptedReviewRefused { because: _ } => Absent
-      }
-    none => Absent
-  }
-}
-
+// THE ONE ADMITTED PRODUCER OF RECEIPTS IN THIS FILE. Everything the mint is allowed to refuse is a
+// parameter — the repository the call ADDRESSED, the environment claimed and the one the readback saw,
+// the status GitHub returned, and (for the trial reds) the installation, the readback's repository and
+// the rule. The canonical values are supplied by receipt_on below, so the ordinary cases read as they
+// did before.
 fn receipt_for(
   run_id: Int,
   state: ReviewState,
@@ -272,6 +206,9 @@ fn receipt_for(
   environment: NonEmptyStr,
   owned_environment: NonEmptyStr,
   expected: HttpStatus,
+  installation_id: Int,
+  identity_repo: NonEmptyStr,
+  rule_id: Int,
 ) -> Optional<AcceptedRuleReviewReceipt> {
   match mint_accepted_rule_review(
     owner: owner,
@@ -285,17 +222,34 @@ fn receipt_for(
       comment: Present { value: "witness" },
     },
     status: expected,
-    ownership: ownership_for(environment: owned_environment),
-    requested_rule_id: 900000001,
+    ownership: ownership_for(
+      environment: owned_environment,
+      installation_id: installation_id,
+      identity_repo: identity_repo,
+      rule_id: rule_id,
+    ),
+    requested_rule_id: rule_id,
   ) {
     Accepted { receipt: r } => Present { value: r }
     AcceptedReviewRefused { because: _ } => Absent
   }
 }
 
+// THE CANONICAL VALUES, in one place: this App's installation, the repository the identity was read
+// from, and the gate's rule. Every ordinary case goes through here, so a case that varies one of them
+// says so explicitly at its call site.
+data canonical_installation_id: Int = 888800001
+data canonical_rule_id: Int = 900000001
+
 // THE WAY A RECEIPT IS OBTAINED: the path built from the run, the body naming the environment the call
 // releases, the status GitHub accepts for that call, and the ownership attributing an enabled rule to
 // the observed identity. Every argument below is one the caller had to earn.
+// THE TRIAL'S CANONICAL ARM: this App's installation, this repository, the gate's rule. Used wherever a
+// case varies something on the OTHER arm only, so "which arm drifted" is a single deliberate act.
+fn canonical_receipt(run_id: Int, state: ReviewState) -> Optional<AcceptedRuleReviewReceipt> {
+  receipt_on(run_id: run_id, state: state, environment: gate_env)
+}
+
 fn receipt_on(
   run_id: Int,
   state: ReviewState,
@@ -309,6 +263,9 @@ fn receipt_on(
     environment: environment,
     owned_environment: environment,
     expected: 204,
+    installation_id: canonical_installation_id,
+    identity_repo: gate_repo,
+    rule_id: canonical_rule_id,
   )
 }
 
@@ -468,22 +425,21 @@ test fn the_ready_act_is_discharged_at_the_mint() -> Bool {
 // answers at all — and the removal is the act that WEAKENS the srv1 root boundary. Each case mints both
 // arms through the real producers with one value moved; nothing here is a hand-built record.
 test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_refused() -> Bool {
-  let canonical = identity_with(installation_id: 888800001, repo: gate_repo)
   // APPROVE ON RULE A, REJECT ON RULE B. Both readbacks are real, both rules are enabled, both are
   // attributed to this App: only the rule the trial was a trial OF differs.
   (match admit_reviewer_removal(
-          approved: receipt_with(
-            identity: canonical,
-            run_id: 35447067113,
-            state: Approved,
-            environment: gate_env,
-            rule_id: 900000001,
-          ),
-          rejected: receipt_with(
-            identity: canonical,
+          approved: canonical_receipt(run_id: 35447067113, state: Approved),
+          rejected: receipt_for(
             run_id: 35447067114,
             state: Rejected,
+            owner: gate_owner,
+            repo: gate_repo,
             environment: gate_env,
+            owned_environment: gate_env,
+            expected: 204,
+            installation_id: canonical_installation_id,
+            identity_repo: gate_repo,
+            // a DIFFERENT enabled rule of the same App
             rule_id: 900000002,
           ),
           environment_name: gate_env,
@@ -497,19 +453,18 @@ test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_
     // THE ARMS ANSWERED THROUGH DIFFERENT INSTALLATIONS. Same repository, same rule; the identity
     // readback behind one arm is another installation's, so nothing pins WHICH App answered.
     && (match admit_reviewer_removal(
-          approved: receipt_with(
-            identity: canonical,
-            run_id: 35447067113,
-            state: Approved,
-            environment: gate_env,
-            rule_id: 900000001,
-          ),
-          rejected: receipt_with(
-            identity: identity_with(installation_id: 999900002, repo: gate_repo),
+          approved: canonical_receipt(run_id: 35447067113, state: Approved),
+          rejected: receipt_for(
             run_id: 35447067114,
             state: Rejected,
+            owner: gate_owner,
+            repo: gate_repo,
             environment: gate_env,
-            rule_id: 900000001,
+            owned_environment: gate_env,
+            expected: 204,
+            installation_id: 999900002,
+            identity_repo: gate_repo,
+            rule_id: canonical_rule_id,
           ),
           environment_name: gate_env,
         ) {
@@ -526,19 +481,20 @@ test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_
     // owner/repo-scoped, so these are two unrelated calls. Both names come back, because "which arm
     // came from the wrong repository" is the actionable question.
     && (match admit_reviewer_removal(
-          approved: receipt_with(
-            identity: canonical,
-            run_id: 35447067113,
-            state: Approved,
-            environment: gate_env,
-            rule_id: 900000001,
-          ),
-          rejected: receipt_with(
-            identity: identity_with(installation_id: 888800001, repo: other_repo),
+          approved: canonical_receipt(run_id: 35447067113, state: Approved),
+          rejected: receipt_for(
             run_id: 35447067114,
             state: Rejected,
+            owner: gate_owner,
+            repo: other_repo,
             environment: gate_env,
-            rule_id: 900000001,
+            // the readback behind this arm saw the OTHER repository, so the mint accepts: the pair the
+            // caller addressed and the pair that was read agree. It is the trial check that refuses.
+            owned_environment: gate_env,
+            expected: 204,
+            installation_id: canonical_installation_id,
+            identity_repo: other_repo,
+            rule_id: canonical_rule_id,
           ),
           environment_name: gate_env,
         ) {
@@ -551,23 +507,11 @@ test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_
           RemovalRefused { missing: _ } => false
           RemovalAdmitted { evidence: _ } => false
         })
-    // THE CONTROL: with one rule, one installation and one repository, the same pair IS admitted.
-    // Without this arm the three refusals above could be a fixture that never builds.
+    // THE CONTROL: one rule, one installation, one repository — the same pair IS admitted. Without it
+    // the three refusals above could be a mint that never produces a receipt.
     && (match admit_reviewer_removal(
-          approved: receipt_with(
-            identity: canonical,
-            run_id: 35447067113,
-            state: Approved,
-            environment: gate_env,
-            rule_id: 900000001,
-          ),
-          rejected: receipt_with(
-            identity: canonical,
-            run_id: 35447067114,
-            state: Rejected,
-            environment: gate_env,
-            rule_id: 900000001,
-          ),
+          approved: canonical_receipt(run_id: 35447067113, state: Approved),
+          rejected: canonical_receipt(run_id: 35447067114, state: Rejected),
           environment_name: gate_env,
         ) {
           RemovalAdmitted { evidence: _ } => true
@@ -647,6 +591,9 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
          environment: gate_env,
          owned_environment: gate_env,
          expected: 204,
+         installation_id: canonical_installation_id,
+         identity_repo: gate_repo,
+         rule_id: canonical_rule_id,
        )
          == Absent
     // A STATUS GITHUB DOES NOT ACCEPT FOR THIS CALL.
@@ -658,6 +605,9 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
          environment: gate_env,
          owned_environment: gate_env,
          expected: 200,
+         installation_id: canonical_installation_id,
+         identity_repo: gate_repo,
+         rule_id: canonical_rule_id,
        )
          == Absent
     // THE BODY RELEASES ANOTHER ENVIRONMENT while the caller claims srv1-production. This is the
@@ -670,6 +620,9 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
          environment: gate_env,
          owned_environment: sibling_env,
          expected: 204,
+         installation_id: canonical_installation_id,
+         identity_repo: gate_repo,
+         rule_id: canonical_rule_id,
        )
          == Absent
     // AND THE BODY AGAINST THE CLAIM ITSELF.
@@ -681,6 +634,9 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
          environment: sibling_env,
          owned_environment: sibling_env,
          expected: 204,
+         installation_id: canonical_installation_id,
+         identity_repo: gate_repo,
+         rule_id: canonical_rule_id,
        )
          != Absent
 }
