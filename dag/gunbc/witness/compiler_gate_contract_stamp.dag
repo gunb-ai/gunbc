@@ -577,25 +577,23 @@ fn compiler_gate_stamp_env_entries(entries: List<YamlKeyValue>) -> List<YamlKeyV
 }
 
 
-// THE THREE SPELLINGS A MAPPING KEY CAN ARRIVE IN, BUILT FROM THE KEY RATHER THAN SLICED APART.
+// THE KEY COMES TO US ALREADY DECODED, SO THE COMPARISON IS AGAINST THE BARE KEY -- AND THAT IS A
+// FACT ABOUT THE INGEST, NOT AN ASSUMPTION. extdeps.languages.yaml.ingest routes a chunk that starts
+// with a quote through yaml_quoted_key_entry, which decodes the key with yaml_quoted_scalar before it
+// ever builds the entry, and refuses the line outright if a quoted key does not close and sit directly
+// before `:`. So by the time this module sees a YamlKeyValue, `"KEY": deadbeef...` has arrived as the
+// key KEY, and a filter on the decoded key already counts it as a member.
 //
-// WHY COMPARISON INSTEAD OF STRIPPING. The first version peeled a quote layer off with substring() and
-// then compared, which is the decoder-invents-data move this module refuses on the value side, and it
-// also depends on a slicing primitive this dialect only exposes as a method call. Building the accepted
-// spellings -- bare, double-quoted, single-quoted -- and comparing makes the set of things recognised
-// explicit and closed: anything else, including a doubled quote or an unbalanced one, is simply not the
-// member. Over-recognising stays the safe direction (an extra recognised member is a refusal), but the
-// set is now written down instead of inferred by a peeling loop.
-fn compiler_gate_contract_stamp_key_is_the_member(key: String) -> Bool {
-  let bare = trim(s: key)
-  bare == compiler_gate_contract_stamp_env_key
-    || bare == concat(concat("\"", compiler_gate_contract_stamp_env_key), "\"")
-    || bare == concat(concat("'", compiler_gate_contract_stamp_env_key), "'")
-}
-
-
+// WHY THIS IS NOT A QUOTE-STRIPPING HELPER. An earlier version of this filter peeled a quote layer off
+// the key itself, on the belief that the ingest preserves quote characters. That belief was wrong, and
+// the wrongness is the interesting part: it made the model look like a second reader that had to be
+// repaired, when in truth only the emitted awk was blind -- awk sees the raw bytes, the model sees the
+// decoded entry, and the two readers have different inputs by construction. A strip would have added a
+// second decoder where the first one is already correct, which is §6's second authority free to disagree
+// (and it would have been a decoder that invents data, the exact move this module refuses on the value
+// side). The asymmetry is what the awk had to be fixed for; see compiler_gate_contract_stamp_awk_program.
 fn compiler_gate_stamp_matching_entries(entries: List<YamlKeyValue>) -> List<YamlKeyValue> {
-  filter(entries, kv => compiler_gate_contract_stamp_key_is_the_member(key: kv.key))
+  filter(entries, kv => trim(s: kv.key) == compiler_gate_contract_stamp_env_key)
 }
 
 // THE ONE SUPPORTED SCALAR FORM, and it is NOT DEFINED HERE. `lower_hex_16` is the predicate that
@@ -804,10 +802,22 @@ fn compiler_gate_contract_stamp_awk_program() -> String {
   // nothing after the colon (no colon-space) or `"KEY": deadbeefcafe0123` (a quoted key) was invisible to
   // the counter, so a workflow carrying one valid member and one competing one exited 0 as paired. Both
   // counterexamples were executed against this program and passed it. Recognition is therefore positional
-  // and spelling-blind -- leading whitespace is stripped, then the key with an optional single layer of
-  // either quote style must start the line and be followed by a colon -- and it is built from the SAME key
-  // the model compares against. Quote characters come from character codes rather than literals because a
-  // literal single quote would close the shell's single quoting around this program.
+  // and spelling-blind: leading whitespace is stripped, then the line must start with one of exactly three
+  // needles -- `KEY:`, `"KEY":`, `'KEY':` -- each built from the SAME key the model compares against.
+  //
+  // A QUOTED NEEDLE CARRIES BOTH QUOTES. The first version searched for `"KEY:` and matched nothing,
+  // because a quoted key is written `"KEY":` -- the CLOSING quote sits between the key and the colon. That
+  // version looked correct in review and was found only by running the emitted program under the fleet's
+  // awk, which is the difference between reading a guard and executing one. Quote characters come from
+  // character codes rather than literals because a literal single quote would close the shell's single
+  // quoting around this program.
+  //
+  // WHY THE MODEL DOES NOT NEED THE SAME TREATMENT, and this is not an asymmetry to be worried about: the
+  // two readers have DIFFERENT INPUTS. awk sees the raw bytes of the file; the model sees entries the YAML
+  // ingest has already decoded, and that ingest unquotes a quoted key (yaml_quoted_key_entry ->
+  // yaml_quoted_scalar) before the entry ever reaches this module. So the model's filter on the decoded
+  // key already counted a quoted-key member, and adding a quote-strip there would have created a second
+  // decoder where a correct one already runs -- §6's second authority, free to disagree in silence.
   //
   // THE COUNTER IS INCREMENTED BEFORE THE VALUE IS EXAMINED, so an ill-spelled or malformed second member
   // still registers as a second member. Reversing those two statements puts the defect straight back.
