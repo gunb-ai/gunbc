@@ -150,7 +150,7 @@ test fn swift_declaration_reference_emits_the_module_scoped_spelling_holds() -> 
       qn: qualified_name_from_dotted_string(dotted: "v2.test.drf_provider.DrfDeclared"),
       occurrence_id: OccurrenceSynthetic
     ),
-    expected: "Gunbc.v2_test_drf_provider.DrfDeclared"
+    expected: "Gunbc.v2.test.drf_provider.DrfDeclared"
   )
 }
 
@@ -202,4 +202,26 @@ test fn swift_target_carries_the_projection_edge_holds() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+// INJECTIVITY CONTROL: the pair a.b_c.N / a_b.c.N is exactly what a `_` joiner collides; each must
+// spell its own path, and the two spellings must differ.
+test fn swift_declaration_reference_spelling_is_injective_holds() -> Bool {
+  swift_te_is(node: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "a.b_c.N"), occurrence_id: OccurrenceSynthetic), expected: "Gunbc.a.b_c.N") &&
+  swift_te_is(node: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "a_b.c.N"), occurrence_id: OccurrenceSynthetic), expected: "Gunbc.a_b.c.N")
+}
+
+// DEPTH CONTROL: one layer and two layers of Optional spell differently (`T??` is not `T?`).
+test fn swift_nested_optional_keeps_its_depth_holds() -> Bool {
+  swift_te_is(
+    node: swift_te_applied(connective: Occupancy, items: [swift_te_atom(id: ^Optional), swift_te_atom(id: ^X)]),
+    expected: "Optional<Optional<X>>"
+  ) == false &&
+  swift_te_is(
+    node: swift_te_applied(
+      connective: Occupancy,
+      items: [swift_te_atom(id: ^Optional), swift_te_applied(connective: Occupancy, items: [swift_te_atom(id: ^Optional), swift_te_atom(id: ^X)])]
+    ),
+    expected: "Optional<X>"
+  ) == false
 }

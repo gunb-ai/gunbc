@@ -758,22 +758,22 @@ fn swift_operator_realizations_catalog_node() -> Node {
 fn swift_type_expression_projection() -> TargetTypeExpressionProjection {
   TargetTypeExpressionProjection {
     atom_form: TargetAtomTypeShape {
-      surface: ^swift_surface_type_atom,
+      surface: ^swift_decl_type_atom,
       ident_token: ^swift_token_ident
     },
     conj_form: TargetGenericApply {
-      surface: ^swift_surface_type_tuple,
+      surface: ^swift_decl_type_tuple,
       open: ^swift_token_lparen,
       separator: ^swift_token_comma,
       field_label_separator: optional_present(value: ^swift_token_colon),
       close: ^swift_token_rparen
     },
     disj_form: TargetSumTypeShape {
-      surface: ^swift_surface_type_sum,
+      surface: ^swift_decl_type_sum,
       variant_separator: ^swift_token_unwired_sum
     },
     arrow_form: TargetFunctionTypeShape {
-      surface: ^swift_surface_type_arrow,
+      surface: ^swift_decl_type_arrow,
       open: ^swift_token_lparen,
       close: ^swift_token_rparen,
       arrow: ^swift_token_arrow,
@@ -782,14 +782,14 @@ fn swift_type_expression_projection() -> TargetTypeExpressionProjection {
       param_list_separator: ^swift_token_comma
     },
     occupancy_form: TargetGenericApply {
-      surface: ^swift_surface_type_occupancy,
+      surface: ^swift_decl_type_occupancy,
       open: ^swift_token_lt,
       separator: ^swift_token_comma,
       field_label_separator: optional_absent(),
       close: ^swift_token_gt
     },
     instantiation_form: TargetGenericApply {
-      surface: ^swift_surface_type_generic_apply,
+      surface: ^swift_decl_type_generic_apply,
       open: ^swift_token_lt,
       separator: ^swift_token_comma,
       field_label_separator: optional_absent(),
@@ -799,18 +799,18 @@ fn swift_type_expression_projection() -> TargetTypeExpressionProjection {
   }
 }
 
-// A CORPUS DECLARATION REFERENCE IS SPELLED `Gunbc.<module>.<name>`: Swift qualifies a member by `.`
-// member access (TSPL, Language Reference > Expressions, `explicit-member-expression`), the root
-// names the Swift module the emission lands in, and the .dag module's dotted segments are joined by
-// `_` into one namespace identifier, the layout rust.dag's crate::<module>::<name> uses.
-// DECLARED ASSUMPTION: the closure-emit route (gunbc#12239) will render each .dag module's members
-// under one namespace of that name inside a Swift module `Gunbc`; that layout is not yet emitted, so
-// the root and joiner are the single row to edit when it lands.
+// A CORPUS DECLARATION REFERENCE IS SPELLED `Gunbc.<segment>.<segment>...<name>`: Swift qualifies a
+// member by `.` member access (TSPL, Language Reference > Expressions, `explicit-member-expression`),
+// the root names the Swift module the emission lands in, and every .dag module segment is its own
+// nested namespace, so the joiner is the scope separator itself. THAT IS INJECTIVE: a .dag identifier
+// contains no `.`, so no two distinct qualified names spell alike (a `_` joiner would collide a.b_c
+// with a_b.c; the claims construct that collision). The closure-emit route (gunbc#12239) renders
+// each module as nested namespaces under `Gunbc`; the root is the one row to edit if that layout moves.
 fn swift_declaration_reference_form() -> DeclarationReferenceForm {
   ModuleScopedPath {
     root_text: "Gunbc",
     scope_separator_text: ".",
-    module_segment_joiner: "_"
+    module_segment_joiner: "."
   }
 }
 
