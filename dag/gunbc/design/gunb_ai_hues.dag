@@ -1,7 +1,11 @@
 module gunbc.design.gunb_ai_hues
 
-import std.types { String }
+import std.types { String, Int, List }
+import std.optional { Optional, Absent, Present }
 import extdeps.color.srgb { Srgb8 }
+import extdeps.languages.css.values {
+  CssHsl, CssColorComponent, ComponentVar, ComponentPercent, CssVarRef, CssDecimal,
+}
 import gunbc.design.palette {
   Swatch, SwatchSet, SwatchSetProvenance, SwatchMember,
   swatch_filed, swatches_of, swatch_set_admissible,
@@ -86,3 +90,68 @@ fn gunb_ai_hues_admissible() -> Bool {
 // theme_chrome_black it is a row outside gunb_ai_hues, because it is not a --gunb-* role.
 // CONSUMER (§3c): gunbc.site.gunb_ai_mark reads it through gunbc.design.palette.swatch_paint.
 data seal_white: Swatch = Swatch { name: "seal-white", color: Srgb8 { r: 244, g: 239, b: 230 } }
+
+// THE LIVE RAMP AS PARAMETERS. The served stylesheet does not spell its colours as sRGB; it spells
+// four hue angles and two accent percentages once and writes every colour as hsl()/hsla() over
+// var(--hue-*) references, so retuning a family is one number. The rows below ARE those values
+// (read off the served assets/site.css :root block 2026-10-19), in the form the stylesheet needs.
+// They are not the Srgb8 swatches above: the swatches are the gunb_ai_tokens binding's one-time
+// projection, and the two disagree where the projection rounded or where gunb_ai_tokens chose a
+// different step. The disagreements are listed in the PR that introduced these rows; reconciling
+// them is a separate decision. CONSUMER (§3c): gunbc.site.gunb_ai_css.
+
+type HueParameter {
+  name: String
+  magnitude: Int
+}
+
+data live_hue_warm: HueParameter = HueParameter { name: "hue-warm", magnitude: 37 }
+data live_hue_moss: HueParameter = HueParameter { name: "hue-moss", magnitude: 134 }
+data live_hue_clay: HueParameter = HueParameter { name: "hue-clay", magnitude: 3 }
+data live_hue_brass: HueParameter = HueParameter { name: "hue-brass", magnitude: 43 }
+
+data live_accent_saturation: HueParameter = HueParameter { name: "accent-sat", magnitude: 36 }
+data live_accent_lightness: HueParameter = HueParameter { name: "accent-l", magnitude: 48 }
+
+type LiveColorToken {
+  name: String
+  color: CssHsl
+}
+
+fn live_var(name: String) -> CssColorComponent {
+  ComponentVar { reference: CssVarRef { name: name } }
+}
+
+fn live_pct(n: Int) -> CssColorComponent {
+  ComponentPercent { n: n }
+}
+
+fn live_color(hue: HueParameter, saturation: CssColorComponent, lightness: CssColorComponent) -> CssHsl {
+  CssHsl { hue: live_var(name: hue.name), saturation: saturation, lightness: lightness, alpha: Absent }
+}
+
+fn live_color_alpha(hue: HueParameter, saturation: CssColorComponent, lightness: CssColorComponent, milli: Int) -> CssHsl {
+  CssHsl { hue: live_var(name: hue.name), saturation: saturation, lightness: lightness, alpha: Present { value: CssDecimal { milli: milli } } }
+}
+
+data live_color_tokens: List<LiveColorToken> = [
+  LiveColorToken { name: "moss", color: live_color(hue: live_hue_moss, saturation: live_var(name: live_accent_saturation.name), lightness: live_var(name: live_accent_lightness.name)) },
+  LiveColorToken { name: "moss-dim", color: live_color(hue: live_hue_moss, saturation: live_var(name: live_accent_saturation.name), lightness: live_pct(n: 36)) },
+  LiveColorToken { name: "moss-subtle", color: live_color_alpha(hue: live_hue_moss, saturation: live_var(name: live_accent_saturation.name), lightness: live_var(name: live_accent_lightness.name), milli: 140) },
+  LiveColorToken { name: "clay", color: live_color(hue: live_hue_clay, saturation: live_var(name: live_accent_saturation.name), lightness: live_var(name: live_accent_lightness.name)) },
+  LiveColorToken { name: "clay-dim", color: live_color(hue: live_hue_clay, saturation: live_var(name: live_accent_saturation.name), lightness: live_pct(n: 36)) },
+  LiveColorToken { name: "clay-subtle", color: live_color_alpha(hue: live_hue_clay, saturation: live_var(name: live_accent_saturation.name), lightness: live_var(name: live_accent_lightness.name), milli: 140) },
+  LiveColorToken { name: "brass", color: live_color(hue: live_hue_brass, saturation: live_pct(n: 34), lightness: live_pct(n: 54)) },
+  LiveColorToken { name: "brass-dim", color: live_color(hue: live_hue_brass, saturation: live_pct(n: 28), lightness: live_pct(n: 40)) },
+  LiveColorToken { name: "brass-subtle", color: live_color_alpha(hue: live_hue_brass, saturation: live_pct(n: 34), lightness: live_pct(n: 54), milli: 130) },
+  LiveColorToken { name: "void", color: live_color(hue: live_hue_warm, saturation: live_pct(n: 0), lightness: live_pct(n: 5)) },
+  LiveColorToken { name: "void-up", color: live_color(hue: live_hue_warm, saturation: live_pct(n: 3), lightness: live_pct(n: 8)) },
+  LiveColorToken { name: "void-up2", color: live_color(hue: live_hue_warm, saturation: live_pct(n: 4), lightness: live_pct(n: 11)) },
+  LiveColorToken { name: "stone", color: live_color(hue: live_hue_warm, saturation: live_pct(n: 20), lightness: live_pct(n: 76)) },
+  LiveColorToken { name: "stone-dim", color: live_color(hue: live_hue_warm, saturation: live_pct(n: 12), lightness: live_pct(n: 55)) },
+  LiveColorToken { name: "stone-faint", color: live_color(hue: live_hue_warm, saturation: live_pct(n: 10), lightness: live_pct(n: 38)) },
+  LiveColorToken { name: "warm-white", color: live_color(hue: live_hue_warm, saturation: live_pct(n: 27), lightness: live_pct(n: 94)) },
+  LiveColorToken { name: "warm-white-dim", color: live_color(hue: live_hue_warm, saturation: live_pct(n: 18), lightness: live_pct(n: 87)) },
+  LiveColorToken { name: "border-dark", color: live_color_alpha(hue: live_hue_warm, saturation: live_pct(n: 20), lightness: live_pct(n: 76), milli: 80) },
+  LiveColorToken { name: "border-dark-strong", color: live_color_alpha(hue: live_hue_warm, saturation: live_pct(n: 20), lightness: live_pct(n: 76), milli: 160) },
+]

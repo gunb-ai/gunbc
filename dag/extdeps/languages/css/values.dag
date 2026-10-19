@@ -1,6 +1,7 @@
 module extdeps.languages.css.values
 
 import std.types { Int, String, Bool, List }
+import std.optional { Optional, Absent, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -77,6 +78,7 @@ type CssGenericFamily
   | GenericCursive
   | GenericFantasy
   | GenericSystemUi
+  | GenericUiMonospace
 
 fn css_generic_family_token(g: CssGenericFamily) -> String {
   match g {
@@ -86,6 +88,7 @@ fn css_generic_family_token(g: CssGenericFamily) -> String {
     GenericCursive => "cursive"
     GenericFantasy => "fantasy"
     GenericSystemUi => "system-ui"
+    GenericUiMonospace => "ui-monospace"
   }
 }
 
@@ -100,12 +103,26 @@ fn css_font_family_wire(f: CssFontFamily) -> String {
   }
 }
 
+// A <family-name> may be written as a string with either quote (css-syntax-3 §4.3.5 string tokens);
+// the single-quoted spelling above is this repository's canonical one, and the double-quoted
+// spelling below is the same family. The served stylesheet uses double quotes.
+fn css_font_family_wire_double_quoted(f: CssFontFamily) -> String {
+  match f {
+    NamedFamily { name: n } => join(["\"", n, "\""], "")
+    GenericFamily { kind: g } => css_generic_family_token(g: g)
+  }
+}
+
 type CssFontStack {
   families: List<CssFontFamily>
 }
 
 fn css_font_stack_wire(s: CssFontStack) -> String {
   join(map(s.families, f => css_font_family_wire(f: f)), ", ")
+}
+
+fn css_font_stack_wire_double_quoted(s: CssFontStack) -> String {
+  join(map(s.families, f => css_font_family_wire_double_quoted(f: f)), ", ")
 }
 
 // <var> = var( <custom-property-name> , <declaration-value>? ) — CSS Values and Units Level 4
@@ -120,4 +137,79 @@ type CssVarRef {
 
 fn css_var_ref_wire(v: CssVarRef) -> String {
   join(["var(--", v.name, ")"], "")
+}
+
+// <number> with a fractional part (CSS Values and Units Level 4 §4.1), carried as thousandths so the
+// magnitude stays an exact Int; the wire writes the shortest decimal that denotes it (0.4, 0.85, 56).
+// A fraction needing more than three places is not representable and is a different Int, never a
+// rounded one.
+type CssDecimal {
+  milli: Int
+}
+
+fn css_decimal_fraction_wire(frac: Int) -> String {
+  if frac % 100 == 0 {
+    to_string(frac / 100)
+  } else if frac % 10 == 0 {
+    join([if frac / 10 < 10 { "0" } else { "" }, to_string(frac / 10)], "")
+  } else {
+    join([if frac < 10 { "00" } else if frac < 100 { "0" } else { "" }, to_string(frac)], "")
+  }
+}
+
+fn css_decimal_wire(d: CssDecimal) -> String {
+  if d.milli % 1000 == 0 {
+    to_string(d.milli / 1000)
+  } else {
+    join([to_string(d.milli / 1000), ".", css_decimal_fraction_wire(frac: d.milli % 1000)], "")
+  }
+}
+
+// A length whose magnitude may be fractional (0.4rem). css_length_wire keeps the Int-valued form.
+type CssDecimalLength {
+  magnitude: CssDecimal
+  unit: CssLengthUnit
+}
+
+fn css_decimal_length_wire(l: CssDecimalLength) -> String {
+  if l.magnitude.milli == 0 {
+    "0"
+  } else {
+    join([css_decimal_wire(d: l.magnitude), css_length_unit_token(u: l.unit)], "")
+  }
+}
+
+// <hsl()> / <hsla()> (CSS Color Level 4 §7, legacy comma syntax). A component is a literal
+// percentage, a bare number, or a var() reference: `hsl(var(--hue-moss), var(--accent-sat), 48%)`
+// is how a hue family is parameterized once and reused. Alpha present selects the hsla() spelling.
+type CssColorComponent
+  = ComponentVar { reference: CssVarRef }
+  | ComponentPercent { n: Int }
+  | ComponentNumber { n: Int }
+
+fn css_color_component_wire(c: CssColorComponent) -> String {
+  match c {
+    ComponentVar { reference: r } => css_var_ref_wire(v: r)
+    ComponentPercent { n: n } => join([to_string(n), "%"], "")
+    ComponentNumber { n: n } => to_string(n)
+  }
+}
+
+type CssHsl {
+  hue: CssColorComponent
+  saturation: CssColorComponent
+  lightness: CssColorComponent
+  alpha: Optional<CssDecimal>
+}
+
+fn css_hsl_wire(c: CssHsl) -> String {
+  let channels = [
+    css_color_component_wire(c: c.hue),
+    css_color_component_wire(c: c.saturation),
+    css_color_component_wire(c: c.lightness),
+  ]
+  match c.alpha {
+    Absent => join(["hsl(", join(channels, ", "), ")"], "")
+    Present { value: a } => join(["hsla(", join(concat(channels, [css_decimal_wire(d: a)]), ", "), ")"], "")
+  }
 }

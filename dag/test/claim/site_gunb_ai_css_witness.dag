@@ -1,0 +1,82 @@
+module test.claim.site_gunb_ai_css_witness
+
+// §5 — the executed witness for gunbc.site.gunb_ai_css. render_sheet produces the bytes sheet_write
+// writes, and the parity claim compares them to dag/test/fixture/gunb_ai/live_site.css, a committed
+// copy of gunb.ai's served assets/site.css (fetched 2026-10-19). The oracle is outside this repo's
+// model, which is what stops the typed rows from agreeing with themselves.
+//
+// The sheet is built in slices: the render is a PREFIX of the served file until the last section
+// lands, so the parity claim is "served starts with render, and the render ends where a section
+// ends". Once the sheet is complete the prefix claim and the equality claim are the same claim.
+//
+// RUN: gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_css_witness.dag --claim-run
+//
+// Red controls are run against the compiler and reported in the PR body, not here.
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import std.optional { Absent, Present }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.css.values { CssDecimal, css_decimal_wire, css_hsl_wire }
+import gunbc.design.gunb_ai_hues { live_color_tokens }
+import gunbc.site.gunb_ai_css { render_sheet, SheetRender, SheetRendered, SheetRefused, sheet_live_color, decl_resolves }
+
+data served_sheet_path: String = "dag/test/fixture/gunb_ai/live_site.css"
+
+fn served_sheet() -> String {
+  let read = Filesystem.Read(path: served_sheet_path)
+  if read.success { read.content } else { "" }
+}
+
+fn rendered_sheet() -> String {
+  match render_sheet() {
+    SheetRendered { bytes: b } => b
+    SheetRefused { reason: _ } => ""
+  }
+}
+
+// The parity claim. The fixture is checked non-empty first (a missing file reads "" and a render
+// that is also "" would start it), and the render is checked non-empty for the same reason.
+test fn witness_generated_sheet_is_a_prefix_of_the_served_sheet() -> Bool {
+  string_contains(s: served_sheet(), pattern: "/* ╔══ TOKENS ")
+    && rendered_sheet() != ""
+    && served_sheet().starts_with(prefix: rendered_sheet())
+}
+
+// The render stops exactly where a section stops: the served bytes that follow it are the gap and
+// the next section's banner, so a render that merely stopped early inside the :root block is red.
+test fn witness_render_ends_at_a_section_boundary() -> Bool {
+  rendered_sheet().ends_with(suffix: "}\n")
+    && served_sheet().substring(start: rendered_sheet().length(), end: rendered_sheet().length() + 9) == "\n\n/* ╔══ R"
+}
+
+// Supplied values at the interface the decimal wire answers for: the shortest decimal denoting the
+// thousandths, so each digit-count branch is exercised by a served value.
+test fn witness_decimal_wire_is_the_shortest_decimal() -> Bool {
+  css_decimal_wire(d: CssDecimal { milli: 400 }) == "0.4"
+    && css_decimal_wire(d: CssDecimal { milli: 850 }) == "0.85"
+    && css_decimal_wire(d: CssDecimal { milli: 56000 }) == "56"
+    && css_decimal_wire(d: CssDecimal { milli: 140 }) == "0.14"
+    && css_decimal_wire(d: CssDecimal { milli: 80 }) == "0.08"
+    && css_decimal_wire(d: CssDecimal { milli: 5 }) == "0.005"
+    && css_decimal_wire(d: CssDecimal { milli: 2500 }) == "2.5"
+}
+
+// Every colour in the served :root block comes out of gunb_ai_hues, and the alpha-bearing ones are
+// spelled hsla (the alpha arm), the rest hsl.
+test fn witness_every_live_colour_token_is_in_the_served_sheet_as_its_wire() -> Bool {
+  all(live_color_tokens, t => string_contains(s: served_sheet(), pattern: join(["--", t.name, ":"], ""))
+    && string_contains(s: served_sheet(), pattern: css_hsl_wire(c: t.color)))
+}
+
+// A token the hues module does not carry is refused, not rendered empty.
+test fn witness_unknown_colour_token_does_not_resolve() -> Bool {
+  !decl_resolves(d: sheet_live_color(token: "no-such-colour")) && decl_resolves(d: sheet_live_color(token: "moss"))
+}
+
+test fn witness_render_is_not_refused() -> Bool {
+  match render_sheet() {
+    SheetRendered { bytes: _ } => true
+    SheetRefused { reason: _ } => false
+  }
+}
