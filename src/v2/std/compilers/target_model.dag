@@ -18,7 +18,7 @@ import v2.std.type_binder { cast_target_optional, type_annotation_optional, type
 import v2.std.node { positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, Occupancy, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node }
 import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import v2.std.node_query { declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
+import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional }
 import v2.std.host_transport { EmitHostRuntimeRow, TargetEmitHostRuntimeRow, configured_emit_host_runtime_row_from_target_row }
 import v2.std.integer { integer_decimal_magnitude_node_to_int }
@@ -179,6 +179,19 @@ fn fixed_tokens_of(classes: List<Symbol>) -> List<ConcreteSyntaxToken> {
     empty: Empty,
     cons: fn(acc, tc) { list_snoc_item(xs: acc, item: FixedToken { token_class: tc }) }
   )
+}
+
+// Whether the target realizes primitive calls through typed rows. A target without rows says
+// Unwired, so a primitive call on it refuses typed rather than looking up an empty list.
+type TargetPrimitiveRealizations
+  = PrimitiveRealizationsUnwired
+  | PrimitiveRealizationsWired { rows: List<TargetPrimitiveRealization> }
+
+// The target's realization catalogs a value expression is tokenized against: the operator rows
+// (a Node wire) and the typed primitive rows.
+type TargetRealizationCatalog {
+  operators: Node
+  primitives: TargetPrimitiveRealizations
 }
 
 type ProducedDeclSupport
@@ -912,6 +925,7 @@ type TargetModel {
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
   produced_decl_support: ProducedDeclSupport
+  primitive_realizations: TargetPrimitiveRealizations
 }
 
 fn target_model_declared_inhabitants(target: TargetModel) -> Outcome<Node> {
@@ -939,6 +953,7 @@ fn target_model_make_with_emit_transforms(
   runtime_row: TargetEmitHostRuntimeRow
 ) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: bundle,
     lex: lex,
@@ -2961,205 +2976,7 @@ fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
   )
 }
 
-// THE WIRE OF A PRIMITIVE-REALIZATION ROW. One row per primitive, edge-labelled in the same catalog Node the operator
-// rows live in (target_primitive_realization_row_edge beside target_operator_realization_row_edge): a target already
-// threads exactly one realization catalog to its emitter, so a second catalog parameter would be a second path.
-fn target_primitive_wire_malformed_diagnostic(wire: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^target_primitive_realization_wire_malformed,
-    at: node_locus(node: wire),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
 
-fn target_primitive_wire_atom_with(identity: Symbol, children: List<Edge>) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: identity } },
-    children: children,
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
-fn target_primitive_wire_label_node(label: TargetPrimitiveArgumentLabel) -> Node {
-  match label {
-    PrimitiveArgumentUnlabeled =>
-      target_model_type_atom_node(identity: ^target_primitive_label_unlabeled)
-    PrimitiveArgumentLabeled { label: name, separator_token: sep } =>
-      target_primitive_wire_atom_with(
-        identity: ^target_primitive_label_labeled,
-        children: [
-          target_model_named_edge(
-            name: ^target_primitive_label_field_name,
-            target: target_model_type_atom_node(identity: name)
-          ),
-          target_model_named_edge(
-            name: ^target_primitive_label_field_separator,
-            target: target_model_type_atom_node(identity: sep)
-          )
-        ]
-      )
-  }
-}
-
-fn target_primitive_wire_passing_node(passing: TargetPrimitiveArgumentPassing) -> Node {
-  match passing {
-    PrimitivePassByValue =>
-      target_model_type_atom_node(identity: ^target_primitive_passing_by_value)
-    PrimitivePassBySharedReference { prefix_token: t } =>
-      target_primitive_wire_atom_with(
-        identity: ^target_primitive_passing_shared_reference,
-        children: [
-          target_model_named_edge(
-            name: ^target_primitive_passing_field_prefix,
-            target: target_model_type_atom_node(identity: t)
-          )
-        ]
-      )
-  }
-}
-
-fn target_primitive_wire_argument_node(argument: TargetPrimitiveArgument) -> Node {
-  target_model_type_conj_node(
-    children: [
-      target_model_named_edge(
-        name: ^target_primitive_argument_field_label,
-        target: target_primitive_wire_label_node(label: argument.label)
-      ),
-      target_model_named_edge(
-        name: ^target_primitive_argument_field_passing,
-        target: target_primitive_wire_passing_node(passing: argument.passing)
-      )
-    ]
-  )
-}
-
-fn target_primitive_wire_form_node(form: TargetPrimitiveCallForm) -> Node {
-  match form {
-    PrimitiveFreeCall { callee: c } =>
-      target_primitive_wire_atom_with(
-        identity: ^target_primitive_form_free_call,
-        children: [
-          target_model_named_edge(
-            name: ^target_primitive_form_field_name,
-            target: target_model_type_atom_node(identity: c)
-          )
-        ]
-      )
-    PrimitiveMethodCall { method: m } =>
-      target_primitive_wire_atom_with(
-        identity: ^target_primitive_form_method_call,
-        children: [
-          target_model_named_edge(
-            name: ^target_primitive_form_field_name,
-            target: target_model_type_atom_node(identity: m)
-          )
-        ]
-      )
-    PrimitiveMemberPath { members: ms } =>
-      target_primitive_wire_atom_with(
-        identity: ^target_primitive_form_member_path,
-        children: fold(
-          ms,
-          init: Empty,
-          f: fn(acc, m) {
-            list_snoc_item(
-              xs: acc,
-              item: target_model_named_edge(
-                name: ^target_primitive_form_field_member,
-                target: target_model_type_atom_node(identity: m)
-              )
-            )
-          }
-        )
-      )
-  }
-}
-
-fn target_primitive_wire_result_node(result: TargetPrimitiveResult) -> Node {
-  match result {
-    PrimitiveResultAsReturned =>
-      target_model_type_atom_node(identity: ^target_primitive_result_as_returned)
-    PrimitiveResultInSharedHandle { constructor: c } =>
-      target_primitive_wire_atom_with(
-        identity: ^target_primitive_result_shared_handle,
-        children: [
-          target_model_named_edge(
-            name: ^target_primitive_result_field_constructor,
-            target: target_model_type_atom_node(identity: c)
-          )
-        ]
-      )
-  }
-}
-
-fn target_primitive_realization_node(row: TargetPrimitiveRealization) -> Node {
-  target_model_type_conj_node(
-    children: list_append(
-      left: [
-        target_model_named_edge(
-          name: ^target_primitive_realization_field_module,
-          target: target_model_type_atom_node(
-            identity: symbol_intern_lexeme(lexeme: row.primitive.module_path as String)
-          )
-        ),
-        target_model_named_edge(
-          name: ^target_primitive_realization_field_declaration,
-          target: target_model_type_atom_node(
-            identity: symbol_intern_lexeme(lexeme: row.primitive.decl_name as String)
-          )
-        ),
-        target_model_named_edge(
-          name: ^target_primitive_realization_field_form,
-          target: target_primitive_wire_form_node(form: row.form)
-        )
-      ],
-      right: list_append(
-        left: fold(
-          row.arguments,
-          init: Empty,
-          f: fn(acc, a) {
-            list_snoc_item(
-              xs: acc,
-              item: target_model_named_edge(
-                name: ^target_primitive_realization_field_argument,
-                target: target_primitive_wire_argument_node(argument: a)
-              )
-            )
-          }
-        ),
-        right: [
-          target_model_named_edge(
-            name: ^target_primitive_realization_field_result,
-            target: target_primitive_wire_result_node(result: row.result)
-          )
-        ]
-      )
-    )
-  )
-}
-
-// A target's realization catalog: its operator rows and its primitive rows in one Node, so the emitter keeps a single
-// catalog parameter. Each family is read by its own edge label; neither lookup sees the other's rows.
-fn target_realizations_catalog_node(operator_rows: List<Node>, primitive_rows: List<Node>) -> Node {
-  target_model_type_conj_node(
-    children: list_append(
-      left: target_operator_realizations_catalog_node(rows: operator_rows).children,
-      right: fold(
-        primitive_rows,
-        init: Empty,
-        f: fn(acc, row) {
-          list_snoc_item(
-            xs: acc,
-            item: target_model_named_edge(
-              name: ^target_primitive_realization_row_edge,
-              target: row
-            )
-          )
-        }
-      )
-    )
-  )
-}
 
 fn target_value_projection_field_missing_diagnostic(bundle: Node, field: Symbol) -> Diagnostic {
   Diagnostic {
@@ -6182,46 +5999,39 @@ fn target_callee_kind_symbol(kind: TargetCalleeKind) -> Symbol {
 }
 
 fn target_value_expr_callable_apply_kind_from_wire(wire: Node) -> Outcome<TargetCalleeKind> {
-  match fold(
-    wire.children,
-    init: optional_absent(),
-    f: fn(acc, edge) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match edge.label {
-            Authored { name: n } =>
-              if n == ^target_value_expr_field_callee_kind {
-                match edge.target.kind {
-                  TypeNode { connective: Atom { identity: id } } =>
-                    if id == ^target_callee_kind_primitive_row {
-                      optional_present(value: PrimitiveRowCallee)
-                    } else if id == ^target_callee_kind_declaration_reference {
-                      optional_present(value: DeclarationReferenceCallee)
-                    } else if id == ^target_callee_kind_local {
-                      optional_present(value: LocalCallee)
-                    } else {
-                      acc
-                    }
-                  TypeNode { connective: Conj } => acc
-                  TypeNode { connective: Disj } => acc
-                  TypeNode { connective: Arrow } => acc
-                  TypeNode { connective: Occupancy } => acc
-                  TypeNode { connective: Instantiation } => acc
-                  ComputationNode { behavior: _ } => acc
-                }
-              } else {
-                acc
-              }
-            StructuralLabel { label: _ } => acc
-            Positional => acc
-          }
-      }
+  match fold(wire.children, init: NamedChildMissing, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      StructuralLabel { label: _ } => acc
+      Authored { name: n } => child_lookup_step(acc: acc, hit: n == ^target_value_expr_field_callee_kind, target: e.target)
     }
-  ) {
-    Present { value: kind } => outcome_accepted(kind)
-    Absent =>
-      outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+  }) {
+    NamedChildFound { target: marker } =>
+      match marker.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          if id == ^target_callee_kind_primitive_row {
+            outcome_accepted(PrimitiveRowCallee)
+          } else if id == ^target_callee_kind_declaration_reference {
+            outcome_accepted(DeclarationReferenceCallee)
+          } else if id == ^target_callee_kind_local {
+            outcome_accepted(LocalCallee)
+          } else {
+            outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+          }
+        TypeNode { connective: Conj } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        TypeNode { connective: Disj } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        TypeNode { connective: Arrow } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        TypeNode { connective: Occupancy } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        TypeNode { connective: Instantiation } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        ComputationNode { behavior: _ } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+      }
+    NamedChildMissing => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+    NamedChildAmbiguous =>
+      outcome_rejected(Diagnostic {
+        reason: ^target_value_expr_callee_kind_marker_ambiguous,
+        at: node_locus(node: wire),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
   }
 }
 
@@ -6503,7 +6313,6 @@ fn target_operator_realization_catalog_wire_schema_valid(catalog: Node) -> Outco
               Positional => false
               Authored { name: n } =>
                 n == ^target_operator_realization_row_edge
-                || n == ^target_primitive_realization_row_edge
             }
           } else {
             false
@@ -6611,302 +6420,6 @@ fn target_operator_realization_catalog_lookup_otherwise(catalog: Node) -> Outcom
   )
 }
 
-// Variants are atoms carrying named children, which find_named_child (Conj/Computation roots only) cannot read.
-fn target_primitive_wire_find_child(root: Node, name: Symbol) -> Outcome<Node> {
-  match target_primitive_wire_named_targets(wire: root, name: name) {
-    Cons { head: only, tail: Empty } => outcome_accepted(only)
-    _ => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: root))
-  }
-}
-
-fn target_primitive_wire_atom_identity(wire: Node) -> Outcome<Symbol> {
-  match wire.kind {
-    TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
-    TypeNode { connective: Conj } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: wire))
-    TypeNode { connective: Disj } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: wire))
-    TypeNode { connective: Arrow } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: wire))
-    TypeNode { connective: Occupancy } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: wire))
-    TypeNode { connective: Instantiation } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: wire))
-    ComputationNode { behavior: _ } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: wire))
-  }
-}
-
-fn target_primitive_wire_named_atom(wire: Node, name: Symbol) -> Outcome<Symbol> {
-  bind_outcome(
-    o: target_primitive_wire_find_child(root: wire, name: name),
-    f: fn(child) { target_primitive_wire_atom_identity(wire: child) }
-  )
-}
-
-fn target_primitive_wire_named_targets(wire: Node, name: Symbol) -> List<Node> {
-  fold(
-    wire.children,
-    init: Empty,
-    f: fn(acc, e) {
-      match e.label {
-        Authored { name: n } =>
-          if n == name { list_snoc_item(xs: acc, item: e.target) } else { acc }
-        StructuralLabel { label: _ } => acc
-        Positional => acc
-      }
-    }
-  )
-}
-
-fn target_primitive_label_from_wire(wire: Node) -> Outcome<TargetPrimitiveArgumentLabel> {
-  bind_outcome(
-    o: target_primitive_wire_atom_identity(wire: wire),
-    f: fn(id) {
-      if id == ^target_primitive_label_unlabeled {
-        outcome_accepted(PrimitiveArgumentUnlabeled)
-      } else if id == ^target_primitive_label_labeled {
-        bind_outcome(
-          o: target_primitive_wire_named_atom(wire: wire, name: ^target_primitive_label_field_name),
-          f: fn(name) {
-            bind_outcome(
-              o: target_primitive_wire_named_atom(wire: wire, name: ^target_primitive_label_field_separator),
-              f: fn(sep) {
-                outcome_accepted(PrimitiveArgumentLabeled { label: name, separator_token: sep })
-              }
-            )
-          }
-        )
-      } else {
-        outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: wire))
-      }
-    }
-  )
-}
-
-fn target_primitive_passing_from_wire(wire: Node) -> Outcome<TargetPrimitiveArgumentPassing> {
-  bind_outcome(
-    o: target_primitive_wire_atom_identity(wire: wire),
-    f: fn(id) {
-      if id == ^target_primitive_passing_by_value {
-        outcome_accepted(PrimitivePassByValue)
-      } else if id == ^target_primitive_passing_shared_reference {
-        bind_outcome(
-          o: target_primitive_wire_named_atom(wire: wire, name: ^target_primitive_passing_field_prefix),
-          f: fn(prefix) { outcome_accepted(PrimitivePassBySharedReference { prefix_token: prefix }) }
-        )
-      } else {
-        outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: wire))
-      }
-    }
-  )
-}
-
-fn target_primitive_argument_from_wire(wire: Node) -> Outcome<TargetPrimitiveArgument> {
-  bind_outcome(
-    o: target_primitive_wire_find_child(root: wire, name: ^target_primitive_argument_field_label),
-    f: fn(label_wire) {
-      bind_outcome(
-        o: target_primitive_label_from_wire(wire: label_wire),
-        f: fn(label) {
-          bind_outcome(
-            o: target_primitive_wire_find_child(root: wire, name: ^target_primitive_argument_field_passing),
-            f: fn(passing_wire) {
-              bind_outcome(
-                o: target_primitive_passing_from_wire(wire: passing_wire),
-                f: fn(passing) {
-                  outcome_accepted(TargetPrimitiveArgument { label: label, passing: passing })
-                }
-              )
-            }
-          )
-        }
-      )
-    }
-  )
-}
-
-fn target_primitive_arguments_from_wire(row: Node) -> Outcome<List<TargetPrimitiveArgument>> {
-  fold(
-    target_primitive_wire_named_targets(wire: row, name: ^target_primitive_realization_field_argument),
-    init: Accepted { value: Empty, diagnostics: None },
-    f: fn(acc, argument_wire) {
-      bind_outcome(
-        o: acc,
-        f: fn(arguments) {
-          bind_outcome(
-            o: target_primitive_argument_from_wire(wire: argument_wire),
-            f: fn(argument) { outcome_accepted(list_snoc_item(xs: arguments, item: argument)) }
-          )
-        }
-      )
-    }
-  )
-}
-
-fn target_primitive_form_from_wire(wire: Node) -> Outcome<TargetPrimitiveCallForm> {
-  bind_outcome(
-    o: target_primitive_wire_atom_identity(wire: wire),
-    f: fn(id) {
-      if id == ^target_primitive_form_free_call {
-        bind_outcome(
-          o: target_primitive_wire_named_atom(wire: wire, name: ^target_primitive_form_field_name),
-          f: fn(callee) { outcome_accepted(PrimitiveFreeCall { callee: callee }) }
-        )
-      } else if id == ^target_primitive_form_method_call {
-        bind_outcome(
-          o: target_primitive_wire_named_atom(wire: wire, name: ^target_primitive_form_field_name),
-          f: fn(method) { outcome_accepted(PrimitiveMethodCall { method: method }) }
-        )
-      } else if id == ^target_primitive_form_member_path {
-        bind_outcome(
-          o: fold(
-            target_primitive_wire_named_targets(wire: wire, name: ^target_primitive_form_field_member),
-            init: Accepted { value: Empty, diagnostics: None },
-            f: fn(acc, member_wire) {
-              bind_outcome(
-                o: acc,
-                f: fn(members) {
-                  bind_outcome(
-                    o: target_primitive_wire_atom_identity(wire: member_wire),
-                    f: fn(member) { outcome_accepted(list_snoc_item(xs: members, item: member)) }
-                  )
-                }
-              )
-            }
-          ),
-          f: fn(members) { outcome_accepted(PrimitiveMemberPath { members: members }) }
-        )
-      } else {
-        outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: wire))
-      }
-    }
-  )
-}
-
-fn target_primitive_result_from_wire(wire: Node) -> Outcome<TargetPrimitiveResult> {
-  bind_outcome(
-    o: target_primitive_wire_atom_identity(wire: wire),
-    f: fn(id) {
-      if id == ^target_primitive_result_as_returned {
-        outcome_accepted(PrimitiveResultAsReturned)
-      } else if id == ^target_primitive_result_shared_handle {
-        bind_outcome(
-          o: target_primitive_wire_named_atom(wire: wire, name: ^target_primitive_result_field_constructor),
-          f: fn(constructor) { outcome_accepted(PrimitiveResultInSharedHandle { constructor: constructor }) }
-        )
-      } else {
-        outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: wire))
-      }
-    }
-  )
-}
-
-fn target_primitive_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool> {
-  match row.kind {
-    TypeNode { connective: Conj } =>
-      if name_occurrences(name: ^target_primitive_realization_field_module, children: row.children) != 1 {
-        outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: row))
-      } else if name_occurrences(name: ^target_primitive_realization_field_declaration, children: row.children) != 1 {
-        outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: row))
-      } else if name_occurrences(name: ^target_primitive_realization_field_form, children: row.children) != 1 {
-        outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: row))
-      } else if name_occurrences(name: ^target_primitive_realization_field_result, children: row.children) != 1 {
-        outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: row))
-      } else {
-        match fold(
-          row.children,
-          init: true,
-          f: fn(acc, edge) {
-            if acc {
-              match edge.label {
-                Authored { name: n } =>
-                  n == ^target_primitive_realization_field_module
-                  || n == ^target_primitive_realization_field_declaration
-                  || n == ^target_primitive_realization_field_form
-                  || n == ^target_primitive_realization_field_argument
-                  || n == ^target_primitive_realization_field_result
-                StructuralLabel { label: _ } => false
-                Positional => false
-              }
-            } else {
-              false
-            }
-          }
-        ) {
-          true => outcome_accepted(true)
-          false => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: row))
-        }
-      }
-    TypeNode { connective: Atom { identity: _ } } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: row))
-    TypeNode { connective: Disj } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: row))
-    TypeNode { connective: Arrow } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: row))
-    TypeNode { connective: Occupancy } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: row))
-    TypeNode { connective: Instantiation } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: row))
-    ComputationNode { behavior: _ } => outcome_rejected(target_primitive_wire_malformed_diagnostic(wire: row))
-  }
-}
-
-fn target_primitive_realization_from_wire_row(row: Node) -> Outcome<TargetPrimitiveRealization> {
-  bind_outcome(
-    o: target_primitive_realization_row_wire_schema_valid(row: row),
-    f: fn(_) {
-      bind_outcome(
-        o: target_primitive_wire_named_atom(wire: row, name: ^target_primitive_realization_field_module),
-        f: fn(module_path) {
-          bind_outcome(
-            o: target_primitive_wire_named_atom(wire: row, name: ^target_primitive_realization_field_declaration),
-            f: fn(decl_name) {
-              bind_outcome(
-                o: target_primitive_wire_find_child(root: row, name: ^target_primitive_realization_field_form),
-                f: fn(form_wire) {
-                  bind_outcome(
-                    o: target_primitive_form_from_wire(wire: form_wire),
-                    f: fn(form) {
-                      bind_outcome(
-                        o: target_primitive_arguments_from_wire(row: row),
-                        f: fn(arguments) {
-                          bind_outcome(
-                            o: target_primitive_wire_find_child(root: row, name: ^target_primitive_realization_field_result),
-                            f: fn(result_wire) {
-                              bind_outcome(
-                                o: target_primitive_result_from_wire(wire: result_wire),
-                                f: fn(result) {
-                                  outcome_accepted(
-                                    TargetPrimitiveRealization {
-                                      primitive: decl_ref(
-                                        module_path: symbol_lexeme(sym: module_path),
-                                        decl_name: symbol_lexeme(sym: decl_name)
-                                      ),
-                                      form: form,
-                                      arguments: arguments,
-                                      result: result
-                                    }
-                                  )
-                                }
-                              )
-                            }
-                          )
-                        }
-                      )
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
-    }
-  )
-}
-
-fn target_primitive_realization_row_names(row: Node, primitive: DeclarationRef) -> Bool {
-  match target_primitive_wire_named_atom(wire: row, name: ^target_primitive_realization_field_module) {
-    Accepted { value: module_path, diagnostics: _ } =>
-      match target_primitive_wire_named_atom(wire: row, name: ^target_primitive_realization_field_declaration) {
-        Accepted { value: decl_name, diagnostics: _ } =>
-          module_path == symbol_intern_lexeme(lexeme: primitive.module_path as String)
-          && decl_name == symbol_intern_lexeme(lexeme: primitive.decl_name as String)
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
 
 // A PRIMITIVE WITH NO ROW REFUSES, typed and located at the call that names it. The catalog is the target's whole
 // statement of how it spells primitives, so absence is not a bare call (that was the seed-fact escape: the text was
@@ -6927,14 +6440,27 @@ fn target_primitive_realization_ambiguous_diagnostic(at: Node) -> Diagnostic {
   }
 }
 
-fn target_primitive_realization_catalog_lookup_step(
-  acc: PassingCandidateFold<Node>,
-  row_node: Node,
+fn target_primitive_realizations_unwired_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_primitive_realizations_unwired,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_primitive_realization_names(row: TargetPrimitiveRealization, primitive: DeclarationRef) -> Bool {
+  (row.primitive.module_path as String) == (primitive.module_path as String)
+  && (row.primitive.decl_name as String) == (primitive.decl_name as String)
+}
+
+fn target_primitive_realization_lookup_step(
+  acc: PassingCandidateFold<TargetPrimitiveRealization>,
+  row: TargetPrimitiveRealization,
   primitive: DeclarationRef
-) -> PassingCandidateFold<Node> {
-  if target_primitive_realization_row_names(row: row_node, primitive: primitive) {
+) -> PassingCandidateFold<TargetPrimitiveRealization> {
+  if target_primitive_realization_names(row: row, primitive: primitive) {
     match acc {
-      NoPassingCandidate => OnePassingCandidate { candidate: row_node }
+      NoPassingCandidate => OnePassingCandidate { candidate: row }
       OnePassingCandidate { candidate: _ } => ManyPassingCandidates
       ManyPassingCandidates => ManyPassingCandidates
     }
@@ -6943,36 +6469,26 @@ fn target_primitive_realization_catalog_lookup_step(
   }
 }
 
-fn target_primitive_realization_catalog_lookup(
-  catalog: Node,
+// The rows are typed end to end: a target without them says Unwired and a primitive call on it refuses typed, so
+// the only causes here are the three a reader of the target can act on (unwired, missing, ambiguous).
+fn target_primitive_realization_lookup(
+  primitives: TargetPrimitiveRealizations,
   primitive: DeclarationRef,
   at: Node
 ) -> Outcome<TargetPrimitiveRealization> {
-  bind_outcome(
-    o: target_operator_realization_catalog_wire_schema_valid(catalog: catalog),
-    f: fn(_) {
+  match primitives {
+    PrimitiveRealizationsUnwired => outcome_rejected(target_primitive_realizations_unwired_diagnostic(at: at))
+    PrimitiveRealizationsWired { rows: rows } =>
       match fold(
-        catalog.children,
+        rows,
         init: NoPassingCandidate,
-        f: fn(acc, e) {
-          match e.label {
-            Authored { name: n } =>
-              if n == ^target_primitive_realization_row_edge {
-                target_primitive_realization_catalog_lookup_step(acc: acc, row_node: e.target, primitive: primitive)
-              } else {
-                acc
-              }
-            StructuralLabel { label: _ } => acc
-            Positional => acc
-          }
-        }
+        f: fn(acc, row) { target_primitive_realization_lookup_step(acc: acc, row: row, primitive: primitive) }
       ) {
         NoPassingCandidate => outcome_rejected(target_primitive_realization_missing_diagnostic(at: at))
-        OnePassingCandidate { candidate: row_node } => target_primitive_realization_from_wire_row(row: row_node)
+        OnePassingCandidate { candidate: row } => Accepted { value: row, diagnostics: None }
         ManyPassingCandidates => outcome_rejected(target_primitive_realization_ambiguous_diagnostic(at: at))
       }
-    }
-  )
+  }
 }
 
 fn target_value_expr_primitive_apply_operation_from_wire(wire: Node) -> Outcome<CanonicalOperation> {
@@ -7165,7 +6681,7 @@ fn target_operator_shape_emit_primitive_apply_tokens(
 fn target_value_expression_primitive_apply_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_primitive_apply_wire_schema_valid(wire: expr.node),
@@ -7178,7 +6694,7 @@ fn target_value_expression_primitive_apply_to_concrete_tokens(
             f: fn(bindings) {
               bind_outcome(
                 o: target_operator_realization_catalog_lookup(
-                  catalog: catalog,
+                  catalog: catalog.operators,
                   canonical_op: canonical_op
                 ),
                 f: fn(operator_row) {
@@ -7641,7 +7157,7 @@ fn bind_let_statement_sequenced_tokens(
 fn target_value_expression_bind_let_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_bind_let_wire_schema_valid(wire: expr.node),
@@ -7786,7 +7302,7 @@ fn statement_sequenced_block_construct_guard(
 fn target_value_expression_loop_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -7806,7 +7322,7 @@ fn target_value_expression_loop_to_concrete_tokens(
 fn target_value_expression_loop_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_loop_wire_schema_valid(wire: expr.node),
@@ -7973,7 +7489,7 @@ fn target_value_expr_record_construct_field_slots_from_wire(
 fn target_value_expr_record_construct_field_tokens(
   slots: List<TargetValueExprFieldInitSlot>,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match fold(
     slots,
@@ -8038,7 +7554,7 @@ fn target_value_expr_record_construct_field_tokens(
 fn target_value_expression_record_construct_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_record_construct_wire_schema_valid(wire: expr.node),
@@ -8524,7 +8040,7 @@ fn target_value_expr_field_access_field_from_wire(wire: Node) -> Outcome<Symbol>
 fn target_value_expression_field_access_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_field_access_wire_schema_valid(wire: expr.node),
@@ -8771,7 +8287,7 @@ fn concrete_syntax_tokens_snoc_fixed(
 fn target_value_expr_match_arm_tokens(
   arms: List<TargetValueExprMatchArmSlot>,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match fold(
     arms,
@@ -8960,7 +8476,7 @@ fn target_value_expr_is_source_bool_literal_atom(
 fn target_value_expression_match_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -8980,7 +8496,7 @@ fn target_value_expression_match_to_concrete_tokens(
 fn target_value_expression_match_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_match_wire_schema_valid(wire: expr.node),
@@ -9183,7 +8699,7 @@ fn conditional_delimited_tokens(
 fn target_value_expression_conditional_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_conditional_wire_schema_valid(wire: expr.node),
@@ -9334,7 +8850,7 @@ fn target_value_expr_callable_apply_args_from_wire(
 fn target_value_expr_tokenize_intersperse(
   exprs: List<TargetValueExpression>,
   projection: TargetValueExpressionProjection,
-  catalog: Node,
+  catalog: TargetRealizationCatalog,
   separator: Symbol
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   fold(
@@ -9403,7 +8919,7 @@ fn target_primitive_arguments_to_tokens(
   args: List<TargetValueExpression>,
   row: TargetPrimitiveRealization,
   projection: TargetValueExpressionProjection,
-  catalog: Node,
+  catalog: TargetRealizationCatalog,
   separator: Symbol,
   at: Node
 ) -> Outcome<List<ConcreteSyntaxToken>> {
@@ -9465,7 +8981,7 @@ fn target_primitive_call_to_concrete_tokens(
   row: TargetPrimitiveRealization,
   args: List<TargetValueExpression>,
   projection: TargetValueExpressionProjection,
-  catalog: Node,
+  catalog: TargetRealizationCatalog,
   at: Node
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match row.form {
@@ -9568,12 +9084,12 @@ fn target_value_expression_primitive_row_call_to_concrete_tokens(
   callee: Symbol,
   args: List<TargetValueExpression>,
   projection: TargetValueExpressionProjection,
-  catalog: Node,
+  catalog: TargetRealizationCatalog,
   at: Node
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
-    o: target_primitive_realization_catalog_lookup(
-      catalog: catalog,
+    o: target_primitive_realization_lookup(
+      primitives: catalog.primitives,
       primitive: primitive_contract_declaration_ref(head: callee),
       at: at
     ),
@@ -9607,7 +9123,7 @@ fn target_value_expression_ordinary_apply_to_concrete_tokens(
   callee: Symbol,
   args: List<TargetValueExpression>,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_tokenize_intersperse(
@@ -9649,7 +9165,7 @@ fn target_value_expression_ordinary_apply_to_concrete_tokens(
 fn target_value_expression_callable_apply_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_callable_apply_callee_from_wire(wire: expr.node),
@@ -9769,7 +9285,7 @@ fn target_value_expr_closure_param_tokens(
 fn target_value_expression_closure_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -9789,7 +9305,7 @@ fn target_value_expression_closure_to_concrete_tokens(
 fn target_value_expression_closure_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_closure_tokens_from_wire(wire: expr.node, field: ^target_value_expr_field_closure_value_open),
@@ -9812,7 +9328,7 @@ fn target_value_expression_closure_to_concrete_tokens_inner(
 fn target_value_expression_closure_plain_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_closure_params_from_wire(wire: expr.node),
@@ -9882,7 +9398,7 @@ fn target_value_expression_closure_plain_tokens(
 fn target_value_expression_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match expr.kind {
     TargetValueExprBindingRef =>
@@ -14680,6 +14196,7 @@ fn target_model_with_produced_scaffold(
   scaffold: TargetBodiedArrowStatementScaffold
 ) -> TargetModel {
   TargetModel {
+    primitive_realizations: target.primitive_realizations,
     produced_decl_support: target.produced_decl_support,
     bundle: target_model_bundle_replace_edge_target(
       bundle: target.bundle,
@@ -14733,6 +14250,7 @@ fn target_model_augment_use_site_ownership_catalog(
           Present { value: catalog } =>
             outcome_accepted(
               TargetModel {
+                primitive_realizations: target.primitive_realizations,
                 produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
@@ -14789,6 +14307,7 @@ fn target_model_augment_value_semantics_carriers(
           Present { value: carriers_node } =>
             outcome_accepted(
               TargetModel {
+                primitive_realizations: target.primitive_realizations,
                 produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
@@ -17275,11 +16794,14 @@ fn target_value_expression_tokens_from_target(
       bundle: target.bundle,
       name: ^target_model_edge_operator_realizations
     ),
-    f: fn(catalog) {
+    f: fn(operators) {
       target_value_expression_to_concrete_tokens(
         expr: expr,
         projection: projection,
-        catalog: catalog
+        catalog: TargetRealizationCatalog {
+          operators: operators,
+          primitives: target.primitive_realizations
+        }
       )
     }
   )

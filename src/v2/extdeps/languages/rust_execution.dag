@@ -14,7 +14,7 @@ import v2.extdeps.languages.rust_fixtures {
 import std.types { Map }
 import std.algebra { empty_map }
 import v2.std.compilers.lexing { LexRules, VoidLexRules }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetBodiedArrowStatementScaffold,
   TargetModel,
@@ -41,6 +41,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // field initializers eagerly. Preserve the runtime row when execution needs it.
 fn rust_execution_runtime_target(runtime_row: TargetEmitHostRuntimeRow) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: target_model_type_conj_node(children: []),
     lex: VoidLexRules,
@@ -76,6 +77,7 @@ fn rust_execution_bodied_target(
   runtime_row: TargetEmitHostRuntimeRow
 ) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: target_model_type_conj_node(children: [
       target_model_named_edge(

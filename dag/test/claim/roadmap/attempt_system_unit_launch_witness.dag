@@ -12,7 +12,7 @@ import extdeps.systemd {
 }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.roadmap_dashboard_instance {
-  WorkerIsServiceUser,
+  WorkerIsServiceUser, dashboard_instance_worker_user,
   HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
   public_builtin_dashboard_instances, dashboard_instance_for_id,
   DashboardInstanceForId, DashboardInstanceIdUnknown,
@@ -441,6 +441,8 @@ test fn the_launcher_derives_the_exit_hook_from_the_attempt_identity() -> Bool {
   }
 }
 
+// User= is the instance WORKER user (WorkerIdentity arm), not the service user: on the srv1 lab the worker is the
+// dedicated account (#14246), and the launcher refuses any User= other than dashboard_instance_worker_user.
 test fn the_launcher_derives_the_user_and_paths_from_the_attempt_identity() -> Bool {
   let inst = srv1_lab_dashboard_instance()
   let node = "n1"
@@ -448,7 +450,7 @@ test fn the_launcher_derives_the_user_and_paths_from_the_attempt_identity() -> B
   match attempt_system_unit_start_facts_for_request(instance: inst, request: claim_request(node_id: node, attempt_key: key)) {
     AttemptSystemUnitStartUnderivable { reason: _ } => false
     AttemptSystemUnitStartDerived { facts } =>
-      (facts.user as String) == (inst.directory_owner.user as String)
+      (facts.user as String) == (dashboard_instance_worker_user(instance: inst) as String)
         && facts.attempt_worktree == dispatch_worktree_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
         && facts.stdout_path == dispatch_attempt_worker_log_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
         && facts.working_directory == dispatch_pane_working_directory(provider: GunbcHarnessProvider, instance: inst, worktree_path: facts.attempt_worktree)
