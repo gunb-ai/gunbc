@@ -478,7 +478,7 @@ test fn both_arms_of_both_differentials_actually_compiled() -> Bool {
     effect_admission_source(forged_binding: forged_effect_admission_binding),
     effect_admission_source(forged_binding: no_forged_binding),
   ]
-  all(all_arms, s =>
+  all_arms |> all(s =>
     census_count_at_key(
       rows: census_rows_or_refuse(source: s),
       diagnostic_class: "CENSUS-NOT-RUNNABLE",
@@ -496,7 +496,7 @@ test fn the_sanctioned_route_inside_the_fixture_admits_its_own_effect() -> Bool 
     commit_proof_source(forged_binding: no_forged_binding),
     effect_admission_source(forged_binding: no_forged_binding),
   ]
-  all(arms, s =>
+  arms |> all(s =>
     census_count_at_key(
       rows: census_rows_or_refuse(source: s),
       diagnostic_class: "TypeNotFound",
@@ -543,7 +543,7 @@ test fn the_ordering_fact_is_admitted_over_its_sealed_route() -> Bool {
   match enrolment_persist_before_effect_standing() {
     PersistBeforeEffectAdmitted { basis: basis } =>
       (basis as String) == declaration_ref_display_key(ref: enrolment_persist_before_effect_gate_ref)
-        && any(enrolment_persist_before_effect_basis_refs(), r => declaration_ref_eq(a: r, b: enrolment_persist_proof_route_ref))
+        && (enrolment_persist_before_effect_basis_refs() |> any(r => declaration_ref_eq(a: r, b: enrolment_persist_proof_route_ref)))
     PersistBeforeEffectBasisMissing { missing: _ } => false
   }
 }
@@ -553,5 +553,5 @@ test fn the_ordering_fact_is_admitted_over_its_sealed_route() -> Bool {
 test fn the_enrolment_state_generator_frontier_row_is_registered_in_the_closure() -> Bool {
   let rows = approve_ios_enrolment_state_generator_frontier_rows
   (1 == list_length(items: rows))
-    && any(rows, r => any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: r.subject)))
+    && (rows |> any(r => census_closure_frontier_rows() |> any(c => frontier_subject_eq(a: c.subject, b: r.subject))))
 }

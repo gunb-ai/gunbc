@@ -577,10 +577,10 @@ type EnrolmentOrderingStanding
 
 fn enrolment_persist_before_effect_standing() -> EnrolmentOrderingStanding {
   let refs = enrolment_persist_before_effect_basis_refs()
-  let has_door = any(refs, r => declaration_ref_eq(a: r, b: enrolment_persist_proof_route_ref))
-  let has_binding = any(refs, r => declaration_ref_eq(a: r, b: enrolment_persist_before_effect_gate_ref))
-  let has_evidence = any(refs, r => declaration_ref_eq(a: r, b: enrolment_commit_proof_ref))
-    && any(refs, r => declaration_ref_eq(a: r, b: enrolment_effect_admission_proof_ref))
+  let has_door = refs |> any(r => declaration_ref_eq(a: r, b: enrolment_persist_proof_route_ref))
+  let has_binding = refs |> any(r => declaration_ref_eq(a: r, b: enrolment_persist_before_effect_gate_ref))
+  let has_evidence = (refs |> any(r => declaration_ref_eq(a: r, b: enrolment_commit_proof_ref)))
+    && (refs |> any(r => declaration_ref_eq(a: r, b: enrolment_effect_admission_proof_ref)))
   if has_door && has_binding && has_evidence {
     PersistBeforeEffectAdmitted { basis: enrolment_persist_before_effect_basis }
   } else {
