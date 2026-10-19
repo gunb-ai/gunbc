@@ -404,3 +404,58 @@ Files: `dag/std/graph.dag` (and its mirror) and the partition call sites.
 - P1.4: one closure worklist.
 - P1.8: the census service view.
 - P1.7: exit teardown.
+
+## 5a. Amendments to wave 1 (side-chat review of §4 at `35ca4ead3c9`)
+
+A lane's pin is its §5 brief **plus** its amendment below, both read at this commit's sha.
+
+- **A.** P0.1 needs an **outer** timing boundary. `CompileRun.wall_ms` is sampled before the locals finish dropping, and output materialization and diagnostic rendering happen in the caller. Time the whole CLI invocation as well, and keep unattributed time visible.
+- **B.** Remove the demand from the compile route, but keep every annotation-producing interface truthful. Returning an empty graph from an interface that promises complete annotations is a contract change, not a deletion.
+- **C.** P0.3's saving is **unmeasured**: the record-field scan survives through `collect_value_ref_names` → `record_lit_ref_names` and the body type-surface route. For P0.4, the overlapping signature-name and argument-classification walks have different child-slot coverage, so any later sharing needs explicit projections. Do not substitute one collector for another.
+- **D.** Report aggregate counts, not per-argument logs, and treat these as bounded subitems:
+  1. `unify_generics` with an **empty generic roster** still walks type trees. That is a proven no-op; return the unchanged substitution at that boundary.
+  2. Argument/formal correspondence (labels, positional ranks, reserved formals, inverse searches) is rebuilt across rounds, application planning and duplicate checks. Keep full-signature and value-slot identities distinct, and keep the two duplicate checks distinct.
+  3. `split_sig_params` classifies twice.
+  4. Second-round inference: which demands actually changed. Diagnose this one only; reusing results needs a proof.
+  5. `expand_nominal_alias_rhs_by_name` builds `structural` and then returns `resolved` on its ordinary arm.
+  6. `resolve_nominal_alias_rhs` builds a second transformed value only to read its diagnostics.
+  7. `formal_code_point_view` classifies text twice per call.
+  8. `build_type_env` rebuilds kernel indices, interning, Optional/Bool and the variant index per module. Find one prepared kernel context per equivalent view. The ordered cycle-key list is also computed three times.
+- **E.** Reuse the existing `std.graph` `CallGraphAdjacencyViews`, which builds forward and reverse together, across reach queries. The caller already deduplicates targets. Preserve direction, start-node exclusion, and cycle/refusal behavior.
+- **F.** Single-occurrence names are not enough. Compute reachability from the declared roots (CLI, interpreter, test/claim, roster, script, host-dispatch, qualified indirect entries). Find dead **groups** (self- and mutually-recursive), dead types/data/constants, and dead interpreter and host-adapter code. Include the mirrors, exports, manifests, crate membership and registrations each deletion touches. Every candidate ends as *retained for a named consumer*, *deleted*, or *unresolved with a named question*. Don't add `#[test]`s to `module_path_index` expecting them to execute; its retained test module is not enrolled.
+
+## 6. Backlog additions (not yet assigned)
+
+- **P1.5 expanded (record emission):**
+  1. Delete the shape-only fallback search that cannot succeed after a failed hint-aware search. Keep the anonymous helper's resolved-node fallback.
+  2. Keep the complete zero/one/many selection result instead of re-searching to tell absence from ambiguity.
+  3. Index the remaining field-shape queries per type-summary population, returning every match.
+  4. Share the constructor decision across admission, import planning and rendering.
+  - Steps 1–2 can start now.
+- **P1.1 split.**
+  - P1.1a: compute each admitted key once, preserving selector, canonical comparison, multiplicity and ties. The census counts lowering variants, not just generated sites.
+  - P1.1b: define canonical structural-key ordering (`CanonicalOrdKey` admits only strings, ints and bools today) before the annotation key changes.
+- **P1.2 precondition.** Inventory every output and refusal of `module_path_index` (identifier span, malformed heads, unterminated bodies, moduleless input). The header is not guaranteed to be on line 1. Assign each to locate, read-admission or a declared whole-corpus validation. Preserving every whole-pool validation is incompatible with eliminating every whole-pool read, so choose.
+- **Authored-import planning.** Variant-parent decisions, a name's defining module, and a remote parent's representative are each recomputed. Carry the binding decisions and group once. Preserve scope, re-exports, marker/variant classification and ambiguity.
+- **Rendering.**
+  - `collect_type_node_realized_surface_names` renders a type to Rust and then re-tokenizes the string. A larger contract would have rendering carry its references; coordinate it with the constructor decision.
+  - `dying_literal_plan` renders a field before choosing the branch that ignores it. That is a local deletion.
+- **P2.9 does not wait for P2.8.** `authored_name_at` reads `ident_span` and the source map, not occurrence identity. The design question is authored versus structural name (`with_authored_identity`). Replacing it with `node.name` changes nominal-alias behavior. Start that contract brief now.
+- **P2.8 refined.** Keep three things separate: immutable node identity, source provenance, and query context. The role belongs to the query's identity, not the node's. `OccurrenceProjected` requires a cause, so it cannot represent every synthetic node.
+- **P2.2/P2.3 additions.**
+  - Don't keep every module's prepared tokens resident at once; fuse or release each one when its consumer finishes.
+  - Carry the source-index map forward, since `compile_to_resolved_with_options` rebuilds it.
+  - Define the parsed product's identity and lifetime.
+- **P1.7 split.**
+  - Lifetime and terminal cleanup: `main.rs` `Verdict::apply` already flushes and calls `_exit` on another route. In-process callers still need normal release.
+  - Diagnostic output: measure formatting, writes and blocking separately; 10 ms log gaps are not 10 ms of printing. `render_one_diagnostic` recomputes the location.
+- **CI envelope.** The seed build, emitted cargo builds and controls each need a disposition. Both closures must stay fresh, so ordinary cargo reuse is fine but sharing a product is not.
+- **P2.13.** Add one supported profiling recipe. When this doc is deleted, move its unfinished items to the maintained backlog.
+- **Specimen families**, enrolled through a route that actually executes:
+  - annotations and ordering;
+  - loading and parsing;
+  - records and imports;
+  - calls and aliases;
+  - names and graph identity;
+  - effects, graph and finalization.
+- **Generated output.** One integration owner regenerates mirrors from the merged authorities. Never hand-merge generated Rust.
