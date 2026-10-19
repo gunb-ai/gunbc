@@ -79,6 +79,15 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // code in it opens a file: the claims' truth depends on the checkout, so a green run means the
 // subject module as COMMITTED was seen, not that a string was echoed back. It is also why the
 // positive control below is load-bearing rather than decorative.
+//
+// WHY A GREEN RUN HERE CANNOT BE AN ARTIFACT OF AN UNRESOLVED NAME. This file was once shipped
+// calling two accessors it did not import, which is the shape that house history says passes green
+// forever. It does not pass here, and that was MEASURED rather than assumed: an undefined callee
+// substituted at the conflation site stops the whole run with `function '...' not found in scope`,
+// and an unresolved module import stops it with `unresolved import: module '...' not found`. Both
+// refused the run instead of reporting the claim as passing. So the claims below fail loudly if a
+// name stops resolving, and the conflation claim is reported as having evaluated (its step count is
+// non-trivial) rather than merely as present.
 
 // A ground for a cited figure: the datasheet that publishes the ceiling, the same locator
 // `extdeps/gpu/nvidia.dag` carries for the RTX PRO 6000 Workstation figures.
