@@ -630,7 +630,7 @@ test fn a_settlement_that_failed_keeps_the_owned_target_and_refuses_located() ->
   let kept = Filesystem.Read(path: join([owned_cargo_target_dir(base_root: root_path, owner: "owned"), "/artifact"], "")).success
   let removed = shell.Remove.RecursiveForce(path: root_path)
   removed.success && kept
-    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "is KEPT") && string_contains(s: doc, pattern: "/owned/target")  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
+    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "is KEPT") && string_contains(s: doc, pattern: owned_cargo_target_dir(base_root: root_path, owner: "owned"))  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
 }
 
 // ── THE PRODUCTION SERVE-OR-PRODUCE DECISION, EXECUTED (side-chat review at 41a107ce81) ──────────
