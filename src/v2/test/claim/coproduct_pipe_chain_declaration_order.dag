@@ -1,0 +1,90 @@
+module v2.test.claim.coproduct_pipe_chain_declaration_order
+
+import std.algebra { Cons, Empty }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Absent, Present }
+import std.types { List }
+import v2.std.compilers.sugar { sugar_all_coproduct_variants, sugar_variants_to_disj_edges }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.test.claim.coproduct_fixture { cpf_standing_disj }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node { Atom, Authored, Conj, Edge, EdgeLabel, Node, Symbol, TypeNode }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS sugar_all_coproduct_variants, the collector that lowers a `type X = A | B | C ...`
+// pipe chain, with the chain's SEQUENCE NODES SUPPLIED at that boundary (DESIGN section 3: a witness
+// discriminates at one interface; the real parser is not re-run here). The chain shape is the one
+// v2.extdeps.languages.dag parses: a sequence whose left is the head variant and whose right is a
+// spine of sequences (pipe-token sequence, rest), ended by an empty Conj. The expected list is the
+// DECLARATION order. The collector used to append each tail variant after its recursion, so a 5-arm
+// chain read Active, Beta, Zed, Revoked, Pending -- this claim goes red on that arm.
+//
+// INHABITANCE OWED (section 3 pairing obligation): this claim supplies the chain; the claim that the
+// real ingest produces this shape is the door walk of a 5-arm source (receipt on the PR that carries
+// it), not asserted here.
+
+fn cpo_atom(name: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn cpo_empty() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn cpo_sequence(left: Node, right: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left },
+      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn cpo_variant(name: Symbol) -> Node {
+  cpo_sequence(left: cpo_atom(name: name), right: cpo_empty())
+}
+
+fn cpo_spine_cons(variant: Node, rest: Node) -> Node {
+  cpo_sequence(left: cpo_sequence(left: cpo_atom(name: ^dag_token_pipe), right: variant), right: rest)
+}
+
+fn cpo_chain() -> Node {
+  cpo_sequence(
+    left: cpo_variant(name: ^Active),
+    right: cpo_spine_cons(
+      variant: cpo_variant(name: ^Pending),
+      rest: cpo_spine_cons(
+        variant: cpo_variant(name: ^Revoked),
+        rest: cpo_spine_cons(
+          variant: cpo_variant(name: ^Zed),
+          rest: cpo_spine_cons(variant: cpo_variant(name: ^Beta), rest: cpo_empty())
+        )
+      )
+    )
+  )
+}
+
+fn cpo_labels(edges: List<Edge>) -> List<EdgeLabel> {
+  map(edges, e => e.label)
+}
+
+// The lowered Disj arm labels, in order, EQUAL the shared fixture's: the output shape of this claim is
+// the input shape of the Swift emit claim.
+test fn coproduct_pipe_chain_lowers_to_the_shared_fixture_arms_holds() -> Bool {
+  match sugar_variants_to_disj_edges(variants: sugar_all_coproduct_variants(captured: cpo_chain())) {
+    Accepted { value: edges, diagnostics: _ } => cpo_labels(edges: edges) == cpo_labels(edges: cpf_standing_disj().children)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn coproduct_pipe_chain_reversed_tail_is_not_the_fixture_order_holds() -> Bool {
+  match sugar_variants_to_disj_edges(variants: sugar_all_coproduct_variants(captured: cpo_chain())) {
+    Accepted { value: edges, diagnostics: _ } => cpo_labels(edges: edges) != [ Authored { name: ^Active }, Authored { name: ^Beta }, Authored { name: ^Zed }, Authored { name: ^Revoked }, Authored { name: ^Pending } ]
+    Rejected { diagnostics: _ } => false
+  }
+}
+
