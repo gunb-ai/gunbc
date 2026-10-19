@@ -412,8 +412,12 @@ fn remove_scratch(s: BootstrapScratch) -> Bool {
 // observation that shows it — no operator re-runs anything to learn which of the facts was wrong,
 // and "could not observe" never reaches CI as a bare false. A Bool return would discard the payload
 // the verdict types carry, which is what §3c calls a declaration whose consumer is missing.
+fn a_cause_was_refused(cause: String) -> Bool {
+  cause != ""
+}
+
 fn join_refusals(causes: List<String>) -> String {
-  join(filter(causes, (cause) => cause != ""), "; ")
+  join(filter(xs: causes, predicate: a_cause_was_refused), "; ")
 }
 
 fn refusal_or_success(refusals: List<String>) -> ProcessExit {
