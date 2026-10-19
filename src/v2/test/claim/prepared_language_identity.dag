@@ -21,8 +21,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // BESIDE the model it was derived from, so the assembly reads one model and its own preparation.
 // BOUNDARY: the model and its preparation in, the assembled outcome out. THE RED: a frame whose
 // language model is a DIFFERENT model must not receive the shared dag preparation -- it holds its own,
-// and the same source assembles differently under it. Deleting the pairing (the assembly taking a
-// preparation of a fixed model) accepts the source under the go preparation and reds the second claim.
+// and the same source assembles differently under it. The claim reds if the assembly reads a fixed dag
+// model instead of the carried preparation (mutation run: it FAILS). It does NOT red on a hand-built
+// mismatched PreparedLanguage: that state is writable (see the comment on the type) and is a declared
+// gap, not a covered one.
 // THE PAIRING OBLIGATION (DESIGN section 3): assemble_program_from_ingest, the route that prepares per
 // call, stays the production route for every caller that holds one assembly, and a third claim asserts
 // the carried form reaches the same verdict as it, so supplying the preparation never removes the last

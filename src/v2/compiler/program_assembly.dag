@@ -549,10 +549,12 @@ fn program_assembly_ingest_scope(ingest: SourceRootIngest) -> SourceRefListDiges
 // THE PREPARED LANGUAGE: A MODEL AND THE PREPARATION OF THAT SAME MODEL, ONE VALUE. A claim frame that
 // assembles many sources under one language model builds the model and prepares its grammar and lex
 // rules once, here, and carries the value as an ordinary argument to every assembly (DESIGN section 2,
-// step 1: a shared-state ancestor carries the first value; no cache, no served value). The preparation
-// is a field BESIDE the model it was derived from and `prepare_language` is its only constructor, so
-// a frame cannot hand an assembly preparation derived from a different model: the pairing is unwritable
-// rather than checked.
+// step 1: a shared-state ancestor carries the first value; no cache, no served value).
+// THE PAIRING HOLDS BY CONVENTION, NOT BY CONSTRUCTION: the record has public fields, so a mismatched
+// model and preparation is still writable by hand; `prepare_language` is the only constructor this
+// corpus uses. What the assembly guarantees is that it reads ONLY the carried preparation and `model`
+// (never a fixed dag model), which prepared_language_identity executes. Making the record opaque is
+// the next rung and waits on an opaque-constructor capability.
 type PreparedLanguage {
   model: LanguageModel,
   grammar: PreparedGrammar,
