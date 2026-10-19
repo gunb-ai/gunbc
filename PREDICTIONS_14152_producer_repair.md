@@ -181,3 +181,38 @@ report the collision row as a fixture limit -- NOT as evidence for the freshness
 would then rest only on the escape asymmetry (seed consumed in place at :11775 vs substituted type
 escaping at :9272). If MORE than one row fails, the mutant is not isolated and the comparison is
 void; I will say so rather than keep the favourable row.
+
+## AMENDMENT 6 (12:20Z): the name-keyed mutant passes every row -- the fixture cannot expose sharing
+
+All nine rows at the mutant `786e30feb1ffb74708e1cb439a38c9f1b869d239` (`probe/mut-namekeyed`,
+`REPAIR_MARKS 2`, `FOLD_REFS 41`, mirror `3e62363f58c07132`), one `--exact` invocation each, release
+profile, verdicts from each run's own `test result:` summary line:
+
+| row | verdict |
+|---|---|
+| collision_two_zero_arg_generic_calls_both_type | PASS 65.19s |
+| the eight fold rows | PASS, 0.00s each (fold-level; no std compile) |
+
+AMENDMENT 5 predicted the collision row would **FAIL** at the mutant. It PASSED. So the mutation is
+undetected by every row I have, and the honest conclusion is the one AMENDMENT 5 pre-declared:
+**this harness cannot expose call-site sharing.** The collision row is therefore an accept control
+only, at all three trees (pre-repair, shipped repair, mutant) -- it proves the repair does not break
+a program that must type, and nothing more.
+
+Why, mechanically: the row asserts zero HARD diagnostics, and the fold's unsettled arms REPLACE a
+binding rather than fixing it. With name-keyed ids both calls do share `K`/`V`, but when the second
+call's settled `Map(String,Int)` meets the first call's `Map(Int,Int)`-constrained binding the arm
+replaces instead of conflicting, so no hard diagnostic is produced to observe. Sharing is real in the
+mutant and invisible in the harness.
+
+Consequences I will carry into the PR body and to stern-bat-401:
+1. The freshness requirement from msg_78d4eb21 is SATISFIED BY CONSTRUCTION (per-call-site ids
+   `g@file:start-end`), and its justification is the reading, not this row: the seed at
+   04_infer.dag:11775 is consumed in place, whereas the substituted type at :9272 escapes into the
+   body environment, which is what makes name-keying unsafe. I am not going to describe the collision
+   row as evidence for it.
+2. Making it discriminating would need the two calls' variable identities printed or a fold call with
+   deliberately shared ids -- instrumentation, not a fixture. I will offer that to my manager as a
+   decision rather than build it unasked.
+3. No row regressed at the mutant, so nothing about the shipped repair is contradicted; but the
+   mutant is also not refuted by the suite, and I will say that instead of implying it was.
