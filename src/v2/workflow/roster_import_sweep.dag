@@ -669,9 +669,13 @@ fn roster_escape_replacement(text: String) -> String {
 
 fn roster_unescape_replacement(text: String) -> String {
   roster_join_exact(
-    xs: list_map(xs: split(s: text, delimiter: "\\\\"), f: fn(part) { roster_join_exact(xs: split(s: part, delimiter: "\\n"), sep: "\n") }),
+    xs: list_map(xs: split(s: text, delimiter: "\\\\"), f: fn(part) { roster_unescape_newlines(part: part) }),
     sep: "\\"
   )
+}
+
+fn roster_unescape_newlines(part: String) -> String {
+  roster_join_exact(xs: split(s: part, delimiter: "\\n"), sep: "\n")
 }
 
 // split's inverse: every part kept, the separator between each adjacent pair, so empty parts (a leading or doubled
