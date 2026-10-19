@@ -10,6 +10,7 @@ import gunbc.instruments.fabric_ci_fci1_live_actuator { Fci1LiveContext, fci1_li
 import gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator {
   Fci1UnitBound, Fci1UnitBounded, Fci1UnitUnbounded,
   Fci1UnitCommandBuilt, Fci1UnitCommandRefused, fci1_unit_command,
+  Fci1BoundedControlsAccepted, fci1_verdict_line,
 }
 
 // The bounded actuator's unit argv is built by evaluating fci1_unit_command, with no systemd. A record
@@ -69,4 +70,8 @@ test fn the_live_unit_argv_adds_the_runtime_directory_only_when_named() -> Bool 
     }
     _ => false
   }
+
+test fn the_accepted_verdict_line_names_systemd_and_both_memory_bounds() -> Bool {
+  fci1_verdict_line(verdict: Fci1BoundedControlsAccepted { systemd: "systemd 255", memory_max: 7, memory_high: 5 })
+    == "FCI1BoundedExecutionControlsAccepted|systemd=systemd 255|memory_max=7|memory_high=5"
 }
