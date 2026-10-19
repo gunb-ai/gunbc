@@ -5,6 +5,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import std.logic { Bool }
+import std.optional { Optional, Present, Absent }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonArray, JsonObject, JsonString, JsonKeyValue }
 import extdeps.languages.json.parse { json_field, FieldRead, FieldAbsent, FieldMalformed }
 
@@ -203,8 +204,8 @@ data wire_strict_reader_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "WireSumArm"),
-    reason: "a sum arm's wire spelling is a literal on the arm, not a row of one per-arm spelling table in VariantNaming (ruling B2, L6 absorbs EnrolmentRefusalKind and OutcomeName.all)",
-    dissolution: unbound_dissolution(description: "feature:variant-naming-spelling-table -- std.serialization VariantNaming carries a total, injective per-arm spelling table and WireSumArm.wire_tag is read from it"),
+    reason: "a sum arm's wire spelling is a literal on the arm, not read from the *_wire match fn that is the spelling authority for the sum (ruling C3b; L6 absorbs EnrolmentRefusalKind and OutcomeName.all)",
+    dissolution: unbound_dissolution(description: "feature:variant-naming-spelling-fn-reference -- VariantNaming holds a DeclarationRef to the sum's spelling fn, which needs a new VariantNaming arm and so a regenerated seed mirror (src/v1/stage0/src/std_serialization.rs, rust_wire_serde matches, v1_interpreter), and WireSumArm.wire_tag is read through that reference"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "v2.std.node_query", decl_name: "field_default_reading"),
@@ -212,3 +213,16 @@ data wire_strict_reader_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "feature:wire-swift-generator-switch -- the Wire.swift generator emits a field's default from the declared field list, which needs a literal default as a value and refuses a source-text default; that generator is the first production reader of field_default_reading"),
   ),
 ]
+
+// INJECTIVITY OF A SPELLING FN (ruling C3b): an exhaustive match over a closed coproduct is already a
+// per-arm spelling table and total by construction; the one property the compiler does not give it
+// is that two arms are not spelled alike. Given the spellings of every arm in declaration order, this
+// names the first spelling an earlier arm already used.
+fn first_repeated_spelling(spellings: List<String>) -> Optional<String> {
+  fold(spellings, init: Absent, f: fn(acc, s) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if count(filter(spellings, t => t == s)) > 1 { Present { value: s } } else { Absent }
+    }
+  })
+}

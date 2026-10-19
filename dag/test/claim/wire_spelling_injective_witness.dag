@@ -1,0 +1,69 @@
+module test.claim.wire_spelling_injective_witness
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.optional { Present, Absent }
+import v2.std.decl_index { decl_facts, DeclFact }
+import v2.std.node_query { coproduct_arm_list_from_node }
+import gunbc.auth.wire_strict_reader { first_repeated_spelling }
+import extdeps.apple.apns { ApnsDevelopment, ApnsProduction }
+import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, proposed_decision_name }
+import gunbc.auth.approval_device_wire {
+  MobileIos, MobileAndroid, platform_wire, enrolment_refusal_kinds, enrolment_refusal_wire_label,
+  EnrolmentStandingActive, EnrolmentStandingRevoked, enrolment_standing_wire, apns_environment_wire,
+}
+
+// THE GENERIC INJECTIVITY CLAIM over every nullary sum spelled by a *_wire match fn. Totality is the
+// compiler's (an exhaustive match); distinctness is checked here. The arm lists are supplied, and ONE
+// inhabitance claim joins each to the declaration's arm count so a new arm cannot be left unlisted.
+fn platform_spellings() -> List<String> {
+  map([MobileIos, MobileAndroid], p => platform_wire(p: p) as String)
+}
+
+fn refusal_spellings() -> List<String> {
+  map(enrolment_refusal_kinds(), k => enrolment_refusal_wire_label(k: k) as String)
+}
+
+fn standing_spellings() -> List<String> {
+  map([EnrolmentStandingActive, EnrolmentStandingRevoked], s => enrolment_standing_wire(s: s) as String)
+}
+
+fn apns_spellings() -> List<String> {
+  map([ApnsDevelopment, ApnsProduction], e => apns_environment_wire(e: e) as String)
+}
+
+fn decision_spellings() -> List<String> {
+  map([ProposeApprove, ProposeDeny], d => proposed_decision_name(d: d) as String)
+}
+
+fn no_repeat(xs: List<String>) -> Bool {
+  match first_repeated_spelling(spellings: xs) { Present { value: _ } => false  Absent => true }
+}
+
+test fn every_nullary_wire_spelling_is_injective() -> Bool {
+  no_repeat(xs: platform_spellings()) && no_repeat(xs: refusal_spellings()) && no_repeat(xs: standing_spellings())
+    && no_repeat(xs: apns_spellings()) && no_repeat(xs: decision_spellings())
+}
+
+// RED: a fixture fn that spells two arms alike is named.
+test fn a_fixture_spelling_two_arms_alike_is_refused() -> Bool {
+  match first_repeated_spelling(spellings: ["ios", "android", "ios"]) { Present { value: v } => v == "ios"  Absent => false }
+}
+
+// The inhabitance claim: each supplied arm list is exactly the declared arm count.
+test fn supplied_arm_lists_cover_the_declared_arms() -> Bool {
+  let facts = decl_facts(pool_roots: ["dag", "src/v2"])
+  arms_of(facts: facts, name: "gunbc.auth.approval_device_wire.MobilePlatform") == count(platform_spellings())
+    && arms_of(facts: facts, name: "gunbc.auth.approval_device_wire.EnrolmentRefusalWire") == count(refusal_spellings())
+    && arms_of(facts: facts, name: "gunbc.auth.approval_device_wire.EnrolmentStandingWire") == count(standing_spellings())
+    && arms_of(facts: facts, name: "extdeps.apple.apns.ApnsEnvironment") == count(apns_spellings())
+    && arms_of(facts: facts, name: "gunbc.auth.approval_capability.ProposedDecision") == count(decision_spellings())
+}
+
+// RED: a one-short list is not the declared arm count.
+test fn a_short_arm_list_is_not_the_declared_arms() -> Bool {
+  arms_of(facts: decl_facts(pool_roots: ["dag", "src/v2"]), name: "gunbc.auth.approval_device_wire.EnrolmentRefusalWire") != count(refusal_spellings()) - 1
+}
+
+fn arms_of(facts: List<DeclFact>, name: String) -> Int {
+  fold(filter(facts, f => f.qualified_name == name), init: -1, f: fn(acc, f) { count(coproduct_arm_list_from_node(node: f.node)) })
+}
