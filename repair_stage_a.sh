@@ -17,6 +17,15 @@ CARGO_TIMEOUT="${CARGO_TIMEOUT:-1320}"   # 22 min, inside the 45 min runner cap
 export CARGO_PROFILE_DEV_DEBUG=0
 export CARGO_PROFILE_DEV_OPT_LEVEL=0
 export CARGO_INCREMENTAL=0
+# Reuse a persisted target dir if the runner keeps its filesystem between dispatches (it
+# does sync an existing repo). A cold dependency build is what ate the last 45 minutes.
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/root/gunbc_target_14152}"
+mkdir -p "$CARGO_TARGET_DIR"
+du -sh "$CARGO_TARGET_DIR" 2>/dev/null | sed 's/^/TARGET_CACHE /'
+nproc | sed 's/^/NPROC /'
+df -h /root 2>/dev/null | tail -1 | sed 's/^/DISK /'
+free -m 2>/dev/null | head -2 | tr '\n' ' ' | sed 's/^/MEM /;s/$/\n/'
+set 
 
 ROWS='collision_two_zero_arg_generic_calls_both_type
 collision_pair_still_refuses_when_instantiated_twice
