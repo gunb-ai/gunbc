@@ -1,10 +1,11 @@
 module gunbc.ci.ci_deploy_sudoers
 
 import std.types { String, NonEmptyStr, List, Bool }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { fold_list, list_flat_map }
 import std.list { distinct_by_key }
-import extdeps.sudo.elevation { sudo_elevate_argv }
-import extdeps.exec.command { argv_words }
+import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_command }
+import extdeps.exec.command { argv_words, ArgvCommand }
 import extdeps.sudo.visudo { visudo_check_command }
 import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits,
@@ -38,6 +39,7 @@ import gunbc.ci.ci_deploy_access {
   deploy_access_sudoers_line,
   posix_sudo_grant_to_privileged,
 }
+import extdeps.tools.gnu_coreutils { coreutils_install_mode_flag }
 import gunbc.fleet.fleet_posix_accounts {
   PosixSudoGrant,
   SudoVisudo,
@@ -179,6 +181,10 @@ fn deploy_sudoers_post_install_roster_probe_stmts(access: DeployAccess) -> List<
 // visudo and install are read from gunbc.fleet.fleet_posix_accounts ci_runner_sudo_binary_path, the same
 // rows ci_runner_sudoers_install_binaries names, so what this step spends and what the pre-install
 // gate demands cannot drift apart.
+data deploy_sudoers_install_stmts_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: deploy_sudoers_install_stmts is the bash body of the deploy preamble, shadowed by the typed gunbc.host.host_effect_realize live_deploy_apply_preamble_on_host (live on the retract route). DISSOLVES WHEN the apply route takes live_deploy_apply_preamble_on_host: the ONE apply PR switches the apply root and deletes this function. NOT satisfied by the typed preamble existing, nor by a claim comparing the two bodies." as NonEmptyStr,
+)
+
 fn deploy_sudoers_install_stmts(access: DeployAccess) -> List<Node> {
   let visudo = ci_runner_sudo_binary_path(b: SudoVisudo) as String
   let install = ci_runner_sudo_binary_path(b: SudoInstall) as String
@@ -186,10 +192,26 @@ fn deploy_sudoers_install_stmts(access: DeployAccess) -> List<Node> {
   concat(
     [
       deploy_sudoers_elevated(command: [visudo, "-cf"], tail: [deploy_sudoers_stage_word()]),
-      deploy_sudoers_elevated(command: [install, "-m", "0440"], tail: [deploy_sudoers_stage_word(), bash_build_word_lit(text: dropin)]),
+      deploy_sudoers_elevated(command: [install, coreutils_install_mode_flag as String, deploy_sudoers_file_mode as String], tail: [deploy_sudoers_stage_word(), bash_build_word_lit(text: dropin)]),
       bash_build_command_from_lits(lits: argv_words(command: visudo_check_command(file: dropin))),
     ],
     deploy_sudoers_post_install_roster_probe_stmts(access: access)
+  )
+}
+
+// THE SAME INSTALL, AS A TYPED ARGV — the sibling of deploy_sudoers_install_stmts for the typed route
+// (gunbc.host.host_effect_realize live_deploy_apply_preamble_on_host). Both read deploy_sudoers_file_mode
+// and coreutils_install_mode_flag, so the `0440` policy is spelled ONCE in this module and neither route
+// can drift or be loosened by a caller. The mode is a local constant, not a parameter: a caller that could
+// pass a mode could pass 0666. Program identity is argv_command's sealed constructor (this module is a
+// named caller), so nothing here can carry a shell metacharacter, and no argv is ever rejoined into a
+// string to be re-parsed.
+data deploy_sudoers_file_mode: NonEmptyStr = "0440"
+
+fn deploy_sudoers_install_argv(stage: String, dropin: String) -> ArgvCommand {
+  let install = ci_runner_sudo_binary_path(b: SudoInstall) as String
+  sudo_elevate_command(
+    command: [install, coreutils_install_mode_flag as String, deploy_sudoers_file_mode as String, stage, dropin],
   )
 }
 
