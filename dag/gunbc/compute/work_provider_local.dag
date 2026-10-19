@@ -1027,10 +1027,11 @@ type OutputsReturn
 // execution reported and invents no cause. Absent install is likewise a refusal, never a hole:
 // nothing staged is nothing returned. A reading is data, so the refusal has an executing control
 // that supplies one. The step is asked from exactly ONE place -- compute_capture_verdict_continue --
-// which production's executions fold calls once per output and the hermetic fold folds over a
-// supplied list: one decision authority, reached both ways. The executions themselves stay in
-// compute_capture_executions, the only producer of readings; it performs effects and never decides a
-// verdict of its own.
+// which production's route (compute_return_outputs) and the hermetic fold
+// (compute_return_outputs_over_readings) both run through: one decision authority, reached both
+// ways. The executions themselves live in compute_capture_pair_of_output, the only producer of
+// readings; the continuation calls it only when the verdict so far is a success, so effects never
+// run after a refusal and no fold beside the continuation matches the verdict sum to decide.
 type ComputeOutputCapturePair {
   declared: DeclaredOutput
   // What `git hash-object <output>` reported.
@@ -1046,33 +1047,70 @@ type ComputeOutputCapturePair {
 // no_declared_outputs_is_the_empty_return_never_a_refusal drives this same row.
 data capture_verdict_over_no_outputs: OutputsReturn = OutputsReturned { outputs: [] }
 
-// ONE CONTINUATION OF THE CAPTURE, THE WHOLE LIST RULE IN ONE PLACE: given the verdict reached so
-// far and the readings of ONE more declared output, produce the next verdict. The match on the sum
-// IS the refusal decision -- the ONLY site that reads an OutputsMismatch to decide anything -- so
-// nothing else may re-match it to derive a Bool: a second check of a fact this sum already carries
-// is a second place to disagree (DESIGN 3). A refusal propagates unchanged (nothing after a refusal
-// adds anything); a success asks the step to append. The executions fold uses THIS as its
-// effect-stop: when continuing produces a refusal, that refusal is what it carries, and the
-// iteration after a refusal returns it untouched -- so a refusal stops the effects by being the
-// accumulator, not by a predicate re-reading it.
-// THIS is what production's executions fold calls once per output (compute_capture_executions) and
-// what the hermetic fold below folds over a whole supplied list -- so order and stop-at-first-
-// refusal are one rule with one copy, not two folds where only one is tested (DESIGN 3).
-fn compute_capture_verdict_continue(verdict: OutputsReturn, pair: ComputeOutputCapturePair) -> OutputsReturn {
+// ONE CONTINUATION OF THE CAPTURE -- THE RULE, IN ITS ONE COPY. Given the verdict reached so far
+// and a SUPPLIER of the next declared output's readings, produce the next verdict. The match below
+// is the ONLY site in the capture that reads an OutputsReturn to decide anything (DESIGN 3, 4b): on
+// a refusal it propagates the verdict unchanged and NEVER ASKS FOR READINGS -- which is what stops
+// the effects, without any second stop-test beside the sum; on a success it asks for the readings
+// and lets the step decide.
+// The readings are supplied by a function, not pre-built, because production's readings ARE the
+// effects: `readings_of` is where git hash-object and the install run, and the continuation calls
+// it only from the success arm. So the capture has one decision site over its own verdict sum,
+// production and the hermetic controls both run through it, and no fold beside it may match that
+// sum to decide whether to keep going (that second match is the defect this shape forbids).
+fn compute_capture_verdict_continue(verdict: OutputsReturn, readings_of: fn(List<WorkOutput>) -> ComputeOutputCapturePair) -> OutputsReturn {
   match verdict {
     OutputsMismatch { detail } => OutputsMismatch { detail: detail }
-    OutputsReturned { outputs } =>
+    OutputsReturned { outputs } => {
+      let pair = readings_of(outputs)
       compute_output_capture_step(declared: pair.declared.path, returned: outputs, hash: pair.hash, install: pair.install)
+    }
   }
 }
 
-// THE CAPTURE'S RULE OVER READINGS ALREADY TAKEN: fold the ONE continuation over the list. What
-// the hermetic controls drive (the executions cannot run hermetically -- compute_exec reaches the
-// refused transport); production drives the SAME continuation, one output at a time, between its
-// effects. Not a parallel decision: every verdict this fold returns is a verdict the continuation
-// -- production's own -- returned.
+// ONE DECLARED OUTPUT'S READINGS, TAKEN BY RUNNING THE TWO EXECUTIONS IN ORDER. Hash it with git in
+// the workspace; the install into the staging path runs ONLY once that succeeded, and the hash's
+// failure hands the step an install reading that was never run (Absent -- std.optional's absence,
+// not a fabricated cause). THE ONLY PRODUCER OF READINGS, and the only place the capture performs
+// effects. Called by the continuation, from its success arm, so it never runs after a refusal.
+fn compute_capture_pair_of_output(instance: HostDashboardInstance, layout: ComputeLayout, d: DeclaredOutput) -> ComputeOutputCapturePair {
+  let rel = d.path
+  let src = join([match d.root { CheckoutRoot => layout.checkout  TargetRoot => layout.target_dir }, "/", rel], "")
+  let dst = compute_staged_path(layout: layout, declared: rel)
+  match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: layout.checkout, args: ["hash-object", src]) {
+    ComputeExecFailed { exit_code, stdout, stderr } =>
+      ComputeOutputCapturePair { declared: d, hash: ComputeExecFailed { exit_code: exit_code, stdout: stdout, stderr: stderr }, install: Absent }
+    ComputeExecOk { stdout, stderr } =>
+      match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: layout.checkout, args: ["-m", "0755", src, dst]) {
+        ComputeExecFailed { exit_code, stdout: install_stdout, stderr: install_stderr } =>
+          ComputeOutputCapturePair { declared: d, hash: ComputeExecOk { stdout: stdout, stderr: stderr }, install: Present { value: ComputeExecFailed { exit_code: exit_code, stdout: install_stdout, stderr: install_stderr } } }
+        ComputeExecOk { stdout: install_stdout, stderr: install_stderr } =>
+          ComputeOutputCapturePair { declared: d, hash: ComputeExecOk { stdout: stdout, stderr: stderr }, install: Present { value: ComputeExecOk { stdout: install_stdout, stderr: install_stderr } } }
+      }
+  }
+}
+
+// THE CAPTURE, THE ROUTE EVERY CALLER USES. Fold the declared outputs through THE ONE CONTINUATION,
+// supplying each output's readings as the effectful function the continuation asks for. An absent
+// or unreadable output is a mismatch, never a success with a hole.
+// COST SHAPE (DESIGN 6): one continuation call and one readings-supplier call per declared output,
+// on the previous verdict -- no accumulated readings list re-folded, no verdict computed twice for
+// one input. WHAT HERMETIC CONTROLS CANNOT REACH: the effects themselves (compute_exec ->
+// WitnessBin.Run, refused by the envelope; no mock arm may be added -- operator ruling
+// 2026-08-23). The hermetic rows in test.claim.compute.output_capture_absence_witness therefore
+// drive the SAME continuation -- production's own decision site -- with readings supplied as data.
+fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> OutputsReturn {
+  fold(declared, init: capture_verdict_over_no_outputs, f: (verdict, d) =>
+    compute_capture_verdict_continue(verdict: verdict, readings_of: (outs) => compute_capture_pair_of_output(instance: instance, layout: layout, d: d)))
+}
+
+// THE CAPTURE'S RULE OVER READINGS ALREADY TAKEN: fold THE SAME continuation over a supplied list,
+// each output's readings handed over as data. What the hermetic controls drive -- not a parallel
+// decision: every verdict this fold returns is one the continuation, production's own decision
+// site, returned.
 fn compute_return_outputs_over_readings(pairs: List<ComputeOutputCapturePair>) -> OutputsReturn {
-  fold(pairs, init: capture_verdict_over_no_outputs, f: (acc, p) => compute_capture_verdict_continue(verdict: acc, pair: p))
+  fold(pairs, init: capture_verdict_over_no_outputs, f: (acc, p) =>
+    compute_capture_verdict_continue(verdict: acc, readings_of: (outs) => p))
 }
 
 // ONE OUTPUT'S VERDICT, PURE: the capture's decision for one declared output, from its two
@@ -1098,66 +1136,6 @@ fn compute_output_capture_step(
         OutputsReturned { outputs: concat(returned, [WorkOutput { declared: declared, blob: trim(s: stdout) }]) }
     }
   }
-}
-
-// THE CAPTURE: the executions, in order, stopping when the capture has refused. Hash each declared
-// output with git in the workspace, and -- only once that succeeded -- install it into the staging
-// path. This fold performs the effects and NOTHING ELSE DECIDES: after each output it hands the
-// readings to THE ONE CONTINUATION (compute_capture_verdict_continue) and carries that verdict as
-// its accumulator; the refusal itself is what stops the next output's effects (the match above
-// carries it, and the continuation is the only site that reads the sum to decide).
-// Order, stop-at-first-refusal, and the per-output verdict all live in the continuation -- not
-// duplicated here as a second fold (review 4: two copies of one rule, one tested) and not re-tested
-// here as an exit-code check of this site's own (a builder-owned stop is the second decision site).
-// COST SHAPE (DESIGN 6): one continuation call per declared output, on the previous verdict -- no
-// accumulated readings list re-folded, no verdict computed twice for one input. WHAT HERMETIC
-// CONTROLS CANNOT REACH: the effects themselves (compute_exec -> WitnessBin.Run, refused by the
-// envelope; no mock arm may be added -- operator ruling 2026-08-23). The hermetic rows in
-// test.claim.compute.output_capture_absence_witness drive the SAME continuation (folded over a
-// supplied list), the SAME predicate, and the seed row; the reachability rows pin that this fold --
-// production's -- is what calls them.
-// The count and order of executions are what they were before readings became data: an output's
-// install is reached only after that output hashed successfully, and nothing executes after a
-// refusal.
-fn compute_capture_executions(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> OutputsReturn {
-  fold(declared, init: capture_verdict_over_no_outputs, f: (verdict, d) =>
-    match verdict {
-      // The capture has refused: nothing further executes, and the refusal carries on unchanged.
-      // There is no Bool stop to consult -- the refusal IS the accumulator, and the match that
-      // recognises it is the continuation's, the only site that reads the sum to decide anything.
-      OutputsMismatch { detail } => OutputsMismatch { detail: detail }
-      OutputsReturned { outputs: _ } => {
-        let rel = d.path
-        let src = join([match d.root { CheckoutRoot => layout.checkout  TargetRoot => layout.target_dir }, "/", rel], "")
-        let dst = compute_staged_path(layout: layout, declared: rel)
-        match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: layout.checkout, args: ["hash-object", src]) {
-          ComputeExecFailed { exit_code, stdout, stderr } =>
-            compute_capture_verdict_continue(
-              verdict: verdict,
-              pair: ComputeOutputCapturePair { declared: d, hash: ComputeExecFailed { exit_code: exit_code, stdout: stdout, stderr: stderr }, install: Absent }
-            )
-          ComputeExecOk { stdout, stderr } =>
-            match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: layout.checkout, args: ["-m", "0755", src, dst]) {
-              ComputeExecFailed { exit_code, stdout: install_stdout, stderr: install_stderr } =>
-                compute_capture_verdict_continue(
-                  verdict: verdict,
-                  pair: ComputeOutputCapturePair { declared: d, hash: ComputeExecOk { stdout: stdout, stderr: stderr }, install: Present { value: ComputeExecFailed { exit_code: exit_code, stdout: install_stdout, stderr: install_stderr } } }
-                )
-              ComputeExecOk { stdout: install_stdout, stderr: install_stderr } =>
-                compute_capture_verdict_continue(
-                  verdict: verdict,
-                  pair: ComputeOutputCapturePair { declared: d, hash: ComputeExecOk { stdout: stdout, stderr: stderr }, install: Present { value: ComputeExecOk { stdout: install_stdout, stderr: install_stderr } } }
-                )
-            }
-        }
-      }
-    })
-}
-
-// THE CAPTURE ROUTE: run the executions and return the verdict they stopped on. The route itself
-// decides nothing -- an absent or unreadable output is a mismatch, never a success with a hole.
-fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> OutputsReturn {
-  compute_capture_executions(instance: instance, layout: layout, declared: declared)
 }
 
 // THE STAGING DIRECTORY sits beside the store root, so a staged file and the root share a filesystem

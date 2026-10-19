@@ -22,14 +22,23 @@ module test.claim.compute.output_capture_absence_witness
 // THE RULE HAS ONE COPY. compute_output_capture_step decides one output's verdict;
 // compute_capture_verdict_continue is the one list rule (a refusal propagates unchanged, a success
 // appends) and the ONLY site that asks the step; production's effectful fold
-// (compute_capture_executions) calls the continuation once per declared output between its effects,
-// and compute_return_outputs_over_readings folds THE SAME continuation over a supplied list --
-// which is what these rows drive. No second fold re-decides order or stop (DESIGN 3).
+// (compute_return_outputs) runs it once per declared output, handing the continuation the effectful
+// readings producer, and compute_return_outputs_over_readings folds THE SAME continuation over a
+// supplied list -- which is what these rows drive. No second site matches the verdict sum to decide
+// anything (DESIGN 3, 4b).
 //
 // WHAT THIS FILE CANNOT DO, said plainly: the capture's EFFECTS cannot run here -- compute_exec
 // reaches gunbc.WitnessBin.Run, which the hermetic envelope refuses, and no mock arm may be added.
 // So these rows control the capture's DECISIONS on supplied readings, and pin the ROUTE's shape
 // with the compiler-reflected call walk at the bottom. No row here runs systemd-run or git.
+//
+// THE SHAPE THAT MAKES ONE RULE POSSIBLE: compute_capture_verdict_continue matches the verdict sum
+// ONCE -- on a refusal it propagates WITHOUT calling the readings supplier (which is where
+// production's effects live), on a success it asks for readings and lets the step decide. There is
+// no fold-side match of the sum anywhere: a second match beside the continuation -- production
+// deciding keep-going by re-reading its own accumulator -- would be an untested copy of the stop
+// rule, and the reachability rows cannot see it (reachability sees calls, not state). That is why
+// the supplier is a FUNCTION and the rows below count calls.
 //
 // THE REDs THIS FILE KILLS, each of which must FAIL when planted (see the PR witness output):
 //  - replacing the step's failed-hash arm with `OutputsReturned` -- capture ACCEPTING an absent
@@ -38,8 +47,8 @@ module test.claim.compute.output_capture_absence_witness
 //  - forking the verdict inside the continuation (deciding it there instead of asking the step)
 //    turns the inhabittance rows red while every behavior row stays green: behavior-identical code
 //    that no longer flows through the tested authority is caught by inhabittance, not by output;
-//  - giving the executions fold its own exit-code stop beside the accumulator turns the shared-edge
-//    row red -- deleting the integration must fail a control (DESIGN 3).
+//  - making the continuation call its readings supplier on a REFUSAL (the second-match defect in
+//    another form: effects would run after a refusal) turns the supplier-is-never-asked row red.
 
 import std.types { Bool, Int, String, List }
 import std.algebra { string_contains, length, list_map }
@@ -57,7 +66,7 @@ import v2.std.fn_index { FnArrowDecl, call_reachable_decls_from_root, fn_arrow_d
 // ── supplied readings ─────────────────────────────────────────────────────────────────────────
 //
 // These are SUPPLIED INPUTS in the shape compute_exec hands the capture (work_provider_local.dag
-// compute_capture_executions builds exactly these from its two executions). Nothing below relabels
+// compute_capture_pair_of_output builds exactly these from its two executions). Nothing below relabels
 // them: the refusal detail must carry the exit code and stderr the reading actually holds.
 
 // The reading `git hash-object <path>` gives when <path> is not there -- exit 128, git's own
@@ -184,8 +193,8 @@ test fn a_present_output_with_both_readings_ok_is_returned_with_its_trimmed_blob
 // order and stop-at-first-refusal are tested HERE and nowhere else: this is the copy that runs.
 
 test fn the_continuation_appends_a_present_output_to_the_verdict_so_far() -> Bool {
-  let first = compute_capture_verdict_continue(verdict: capture_verdict_over_no_outputs, pair: pair_of(plan_output(), present_hash_reading, install_ok))
-  let second = compute_capture_verdict_continue(verdict: first, pair: pair_of(model_output(), present_hash_reading, install_ok))
+  let first = compute_capture_verdict_continue(verdict: capture_verdict_over_no_outputs, readings_of: (outs) => pair_of(plan_output(), present_hash_reading, install_ok))
+  let second = compute_capture_verdict_continue(verdict: first, readings_of: (outs) => pair_of(model_output(), present_hash_reading, install_ok))
   length(xs: returned_outputs(r: second)) == 2
     && returned_shape(outputs: returned_outputs(r: second)) == join(["target/out/plan.json=", returned_blob_hex, "|target/out/model.bin=", returned_blob_hex], "")
 }
@@ -193,8 +202,8 @@ test fn the_continuation_appends_a_present_output_to_the_verdict_so_far() -> Boo
 // FAILS IF THE CONTINUATION IGNORES AN EARLIER REFUSAL: nothing collected for a LATER output may
 // survive it (no flattening to a partial success).
 test fn the_continuation_propagates_an_earlier_refusal_and_adds_nothing_after_it() -> Bool {
-  let refused = compute_capture_verdict_continue(verdict: capture_verdict_over_no_outputs, pair: pair_of(plan_output(), absent_hash_reading_for(rel: "target/out/plan.json"), install_never_run))
-  let after = compute_capture_verdict_continue(verdict: refused, pair: pair_of(model_output(), present_hash_reading, install_ok))
+  let refused = compute_capture_verdict_continue(verdict: capture_verdict_over_no_outputs, readings_of: (outs) => pair_of(plan_output(), absent_hash_reading_for(rel: "target/out/plan.json"), install_never_run))
+  let after = compute_capture_verdict_continue(verdict: refused, readings_of: (outs) => pair_of(model_output(), present_hash_reading, install_ok))
   match after {
     OutputsMismatch { detail } =>
       string_contains(s: detail, pattern: "target/out/plan.json")
@@ -291,13 +300,15 @@ test fn production_reaches_the_same_capture_fold() -> Bool {
   reached_contains(entry: "compute_return_outputs", fn_name: "compute_output_capture_step")
 }
 
-// PRODUCTION RUNS THE TESTED CONTINUATION, NOT A COPY OF IT: the route reaches the executions, the
-// executions reach the continuation (never the step directly -- if the executions ever inline their
-// own verdict, this edge changes and this row goes red, and the rows above stop describing
-// production), and the continuation asks the step.
+// PRODUCTION RUNS THE TESTED CONTINUATION, NOT A COPY OF IT: compute_spawn_and_collect reaches
+// compute_return_outputs (the one capture name -- no second name to check), that route reaches the
+// continuation, the continuation reaches the step, and the route hands the continuation the
+// effectful readings producer. If the route ever inlines its own verdict, or matches its own
+// accumulator instead of continuing, these edges change and this row goes red.
 test fn the_capture_runs_through_the_shared_continuation() -> Bool {
-  reached_contains(entry: "compute_spawn_and_collect", fn_name: "compute_capture_executions")
-    && reached_contains(entry: "compute_capture_executions", fn_name: "compute_capture_verdict_continue")
+  reached_contains(entry: "compute_spawn_and_collect", fn_name: "compute_return_outputs")
+    && reached_contains(entry: "compute_return_outputs", fn_name: "compute_capture_verdict_continue")
+    && reached_contains(entry: "compute_return_outputs", fn_name: "compute_capture_pair_of_output")
     && reached_contains(entry: "compute_capture_verdict_continue", fn_name: "compute_output_capture_step")
 }
 
