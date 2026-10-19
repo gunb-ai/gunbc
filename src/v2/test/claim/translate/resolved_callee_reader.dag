@@ -12,7 +12,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Atom, Node, TypeNode, node_synthetic }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String }
+import std.types { Bool, List, String }
 import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -31,8 +31,12 @@ fn rcr_locus() -> Node {
 }
 
 fn rcr_json(source: String, id: Symbol, file: String, entry: String) -> String {
+  rcr_json_with(ingest: [nds_read(source: source, id: id, file: file)], entry: entry)
+}
+
+fn rcr_json_with(ingest: List<DagSourceReadWitness>, entry: String) -> String {
   match emit_closure_from_ingest_located(
-    ingest: [nds_read(source: source, id: id, file: file)],
+    ingest: ingest,
     entry: qualified_name_from_dotted_string(dotted: entry),
     entry_locus: rcr_locus(),
     target: rust_target_model()
@@ -54,4 +58,26 @@ data rcr_p1_source: String = "module v2.test.rcr_p1\n\nfn f(x: Int) -> Int { x }
 test fn rcr_a_call_with_a_parameter_argument_spells_the_crate_rooted_path() -> Bool {
   rcr_json(source: rcr_p1_source, id: ^rcr_p1_read, file: "src/v2/test/fixture/rcr/p1.dag", entry: "v2.test.rcr_p1")
     == "{\"entry\": \"v2.test.rcr_p1\", \"members\": [\"v2.test.rcr_p1\"], \"modules\": [{\"module\": \"v2.test.rcr_p1\", \"emitted\": \"fn f(x: i32) -> i32 { x }\\n\\nfn g(y: i32) -> i32 { crate::v2_test_rcr_p1::f(y) }\\n\\n\"}]}"
+}
+
+data rcr_primitives_source: String = "module std.primitives\n\ntype PrimitiveContract {\n  name: String\n}\n\ndata string_length_contract: PrimitiveContract = {\n  name: \"string_length\"\n}\n"
+
+data rcr_s1_source: String = "module v2.test.rcr_s1\n\nfn g(s: String) -> Int { string_length(s: s) }\n"
+
+// THE ROUTE TO THE PRIMITIVE ROW IS CLOSED AT INFER (review 82831). A source call resolved by the real resolver to
+// std.primitives.string_length_contract never reaches target_transform_resolved_callee: infer refuses it with
+// infer_reason_primitive_without_declared_signature_authority (v2.compiler.infer
+// infer_primitive_without_signature_refusal) because no .dag authority declares a primitive's type signature. So no
+// source-driven inhabitance claim for PrimitiveRowCallee is constructible yet; this claim pins the refusal and its
+// trigger: when infer carries primitive signatures it goes red, and the claim to write then is the one asserting
+// `string_length(&s)` through this same door. The row path itself is exercised at its own interface by
+// v2.test.claim.emit.rust_primitive_realization_emit with the contract-declaration callee the resolver marks.
+test fn rcr_a_source_primitive_call_is_refused_before_emit_until_infer_has_a_signature() -> Bool {
+  rcr_json_with(
+    ingest: [
+      nds_read(source: rcr_primitives_source, id: ^rcr_primitives_read, file: "src/v2/test/fixture/rcr/primitives.dag"),
+      nds_read(source: rcr_s1_source, id: ^rcr_s1_read, file: "src/v2/test/fixture/rcr/s1.dag")
+    ],
+    entry: "v2.test.rcr_s1"
+  ) == "emit_refused"
 }

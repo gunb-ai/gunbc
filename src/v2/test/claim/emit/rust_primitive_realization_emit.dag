@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rust_primitive_string_length_call() -> TargetValueExpression {
   target_value_expression_callable_apply(
-    callee: ^string_length,
+    callee: ^string_length_contract,
     kind: PrimitiveRowCallee,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
   )

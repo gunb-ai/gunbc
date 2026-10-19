@@ -28,7 +28,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, uri_scheme_inhabitants }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.decl_ref { DeclarationRef, decl_ref }
-import v2.std.primitive_contract_ref { primitive_contract_declaration_ref, primitive_contract_qualified_name }
+import v2.std.primitive_contract_ref { primitive_contract_declaration_ref_of_leaf, primitive_contract_path_is_contract }
 
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
@@ -6069,7 +6069,7 @@ fn target_transform_resolved_callee(body: Node, target: TargetModel) -> Outcome<
                 target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: child)
               )
             Present { value: leaf } =>
-              if path == primitive_contract_qualified_name(head: leaf) {
+              if primitive_contract_path_is_contract(path: path) {
                 outcome_accepted(TargetResolvedCallee { callee: leaf, kind: PrimitiveRowCallee })
               } else {
                 bind_outcome(
@@ -9090,7 +9090,7 @@ fn target_value_expression_primitive_row_call_to_concrete_tokens(
   bind_outcome(
     o: target_primitive_realization_lookup(
       primitives: catalog.primitives,
-      primitive: primitive_contract_declaration_ref(head: callee),
+      primitive: primitive_contract_declaration_ref_of_leaf(leaf: callee),
       at: at
     ),
     f: fn(row) {
