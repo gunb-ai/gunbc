@@ -70,6 +70,7 @@ import gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall { 
 import gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall { argument_shape_undecided_at_a_declared_position_stall }
 import gunbc.guarantee_stall.information_retrieval_transport_cannot_report_status_stall { information_retrieval_transport_cannot_report_status_stall }
 import gunbc.guarantee_stall.module_cited_only_in_annotation_prose_stall { module_cited_only_in_annotation_prose_stall }
+import gunbc.guarantee_stall.approve_ios_linux_swift_receipt_not_dispatchable_stall { approve_ios_linux_swift_receipt_not_dispatchable_stall }
 import gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall { joint_claim_join_private_corpus_unindexed_stall }
 import gunbc.guarantee_stall.coercion_two_algebras_answer_one_question_stall { coercion_two_algebras_answer_one_question_stall }
 import gunbc.guarantee_stall.text_carrier_render_not_keyed_on_identity_stall { text_carrier_render_not_keyed_on_identity_stall }
@@ -256,7 +257,8 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   filesystem_read_outcome_node_grain_census_stall,
   authored_record_field_list_standing_for_type_population_stall,
   native_step_trip_awaits_fleet_job_cgroup_stall,
-  compute_cold_reserve_durable_commit_stall,
+  compute_cold_reserve_durable_commit_stall,,
+  approve_ios_linux_swift_receipt_not_dispatchable_stall
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

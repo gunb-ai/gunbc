@@ -4,6 +4,7 @@ import std.types { Bool, String, NonEmptyStr }
 import std.algebra { is_empty }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.version { VersionIdentity }
 import extdeps.swift_toolchain {
   SwiftToolchainArchive,
   SwiftToolchainArchiveSubject,
@@ -15,6 +16,7 @@ import extdeps.swift_toolchain {
   SignatureUnverified,
   SignedByUnlistedKey,
   DigestDiffersFromPin,
+  SizeDiffersFromPin,
   Debian13,
   Ubuntu2404,
   Verified,
@@ -29,8 +31,9 @@ import extdeps.swift_toolchain {
   swift_toolchain_expected_size,
   swift_toolchain_expected_digest,
   swift_toolchain_signature_authority,
+  swift_toolchain_signature_authority_for,
+  swift_toolchain_signature_url,
   swift_toolchain_signing_key_fingerprint,
-  swift_toolchain_verification_order,
   swift_toolchain_verify,
   swift_toolchain_candidate_is_usable,
   swift_toolchain_standing_cites_signature,
@@ -146,22 +149,79 @@ test fn verification_refuses_a_mismatched_archive_and_accepts_only_the_signed_on
          digest: Sha256Digest { hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313" as Sha256DigestHex })
 }
 
-// The signature is the gate, and it is FIRST. swift.org's own instruction is not to use the toolchain on
-// BAD signature, so a run that hashed first could report a digest mismatch for bytes that were never
-// upstream's and send a reader hunting for tampering. Claimed as an ORDER because the order is the
-// guarantee; a roster that put sha256 before gpg would keep every other claim green.
-test fn signature_is_verified_before_any_hash_is_compared() -> Bool {
-  swift_toolchain_verification_order == [
-    "fetch-archive",
-    "fetch-detached-signature",
-    "gpg-verify-signature-against-published-keyring",
-    "sha256-archive",
-    "compare-size",
-    "compare-digest",
-    "extract-and-use"
-  ]
-    && swift_toolchain_verification_order.filter(s => s == "gpg-verify-signature-against-published-keyring").count() == 1
-    && swift_toolchain_verification_order.filter(s => s == "sha256-archive").count() == 1
+// THE ORDER OF VERIFICATION, MEASURED THROUGH THE GATE RATHER THAN DESCRIBED BESIDE IT. A candidate that
+// fails every check at once is refused as the FIRST failure the gate reaches, so the sequence signature ->
+// key -> digest -> size is observable as the ARMS these come back in. This replaces a List<NonEmptyStr> of
+// step names whose only reader was a claim string-matching it -- and which already disagreed with the gate
+// (it put compare-size before compare-digest). If the gate's order is edited, one of these three arms
+// changes and this claim goes red; the roster could not do that, because nothing followed it.
+test fn the_gate_refuses_in_the_order_its_checks_are_written() -> Bool {
+  let bad_every_way = SwiftToolchainCandidate {
+    signature_verified: false
+    signing_key_fingerprint: "0000000000000000000000000000000000000000"
+    observed_digest: Sha256Digest { hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313" as Sha256DigestHex }
+    observed_size: byte_size(count: 1)
+  }
+  let wrong_key_and_wrong_bytes = SwiftToolchainCandidate {
+    signature_verified: true
+    signing_key_fingerprint: "0000000000000000000000000000000000000000"
+    observed_digest: Sha256Digest { hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313" as Sha256DigestHex }
+    observed_size: byte_size(count: 1)
+  }
+  let signed_by_the_right_key_and_wrong_bytes = SwiftToolchainCandidate {
+    signature_verified: true
+    signing_key_fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    observed_digest: Sha256Digest { hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313" as Sha256DigestHex }
+    observed_size: byte_size(count: 1)
+  }
+  // Signature first: swift.org says do not use the toolchain on a BAD signature, so an archive that is
+  // unsigned AND hashes wrong is refused for the signature. Hashing first would report DigestDiffersFromPin
+  // here and send a reader hunting for tampering in bytes that were never upstream's to begin with.
+  match swift_toolchain_verify(candidate: bad_every_way) {
+    Present { value: SignatureUnverified { detail: _ } } => true
+    _ => false
+  }
+  // Then the key: a signature that verified is checked against the listed fingerprint before any hash.
+  && match swift_toolchain_verify(candidate: wrong_key_and_wrong_bytes) {
+       Present { value: SignedByUnlistedKey { observed_fingerprint: f } } => f == "0000000000000000000000000000000000000000"
+       _ => false
+     }
+  // Then digest before size: these bytes are BOTH the wrong digest and the wrong size, and the refusal that
+  // comes back is the digest one. Swapping the two checks in the gate -- which the deleted roster claimed
+  // was already the case -- turns this red. A truncated fetch is still reported as a size refusal, but only
+  // when the digest matched, which the truncated candidate in the refusal claim above covers.
+  && match swift_toolchain_verify(candidate: signed_by_the_right_key_and_wrong_bytes) {
+       Present { value: DigestDiffersFromPin { observed: o, pinned: _ } } =>
+         o.hex == "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313"
+       _ => false
+     }
+}
+
+// THE .sig AUTHORITY IS A PROJECTION OF THE SUBJECT, NOT A SECOND URL THAT CAN DRIFT. It used to be typed
+// by hand beside a derived archive URL: a bumped pin kept citing the signature of 6.4.1/debian13, so the
+// standing claim stayed green while pointing at a file the run did not verify. Discriminating: the locator
+// must be exactly the archive locator plus ".sig" for ANY subject, and for a distribution nobody pinned --
+// hand-typed, both directions go red.
+test fn the_signature_authority_follows_the_subject_it_verifies() -> Bool {
+  let debian = SwiftToolchainArchiveSubject {
+    distribution: Debian13
+    version: "6.4.1" as VersionIdentity
+  }
+  let ubuntu = SwiftToolchainArchiveSubject {
+    distribution: Ubuntu2404
+    version: "6.4.1" as VersionIdentity
+  }
+  swift_toolchain_signature_authority_for(subject: debian).uri.locator
+    == concat(swift_toolchain_archive_url(subject: debian).locator, ".sig")
+  && swift_toolchain_signature_authority_for(subject: ubuntu).uri.locator
+    == concat(swift_toolchain_archive_url(subject: ubuntu).locator, ".sig")
+  // The authority the pin cites IS this projection of the pin's own subject, so the standing cannot name an
+  // archive other than the one it claims to have verified.
+  && swift_toolchain_signature_authority.uri.locator
+    == swift_toolchain_signature_url(subject: swift_toolchain_archive_subject(archive: pinned_swift_toolchain)).locator
+  // And a different subject yields a different authority -- the function really consumes the subject.
+  && swift_toolchain_signature_authority_for(subject: ubuntu).uri.locator
+    != swift_toolchain_signature_authority_for(subject: debian).uri.locator
 }
 
 // DISCRIMINATING, AND IT IS THE DUPLICATION CHECK. The URL is a projection of the subject, so: the same

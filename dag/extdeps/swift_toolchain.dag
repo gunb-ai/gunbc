@@ -193,12 +193,18 @@ fn swift_toolchain_archive_is_verified(archive: SwiftToolchainArchive) -> Bool {
 // a reader can re-run (fetch the .sig, import the published keys, `gpg --verify`), not at a receipt
 // whose text I would have to be trusted. The refused-value row below keeps the fabricated digest as a
 // fixture so the refusal is demonstrated rather than asserted.
+// WHICH ARTIFACT, SPOKE ONCE. The pinned subject lives here and nowhere else: the pin's own subject field
+// and the URL of the .sig its standing cites are both projections of this row. Spelling the version and
+// distribution a second time beside the pin is what let a bumped pin go on citing the signature of the
+// release it no longer was.
+data swift_toolchain_pinned_subject: SwiftToolchainArchiveSubject = SwiftToolchainArchiveSubject {
+  distribution: Debian13
+  version: "6.4.1" as VersionIdentity
+}
+
 data pinned_swift_toolchain: SwiftToolchainArchive = Verified {
   archive: SwiftToolchainVerifiedArchive {
-    subject: SwiftToolchainArchiveSubject {
-      distribution: Debian13
-      version: "6.4.1" as VersionIdentity
-    }
+    subject: swift_toolchain_pinned_subject
     observed_size: byte_size(count: 1122730813)
     expected_identity: Sha256Digest {
       hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex
@@ -209,17 +215,29 @@ data pinned_swift_toolchain: SwiftToolchainArchive = Verified {
   }
 }
 
-// THE AUTHORITY A READER CAN RE-RUN. Three URIs and the key the signature must be made by: the signature
-// file beside the archive, the keyring swift.org tells you to import, and the instructions that define
-// what a good signature means. `gpg --verify` on the pair either reports Good signature from the Swift 6.x
-// Release Signing Key or the archive is not to be used -- there is no third answer in which our own
-// measurements settle it.
-data swift_toolchain_signature_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz.sig"
-  }
+// THE AUTHORITIES A READER CAN RE-RUN: the signature file beside the archive, the keyring swift.org tells
+// you to import, and the instructions that define what a good signature means. `gpg --verify` on the pair
+// either reports Good signature from the Swift 6.x Release Signing Key or the archive is not to be used --
+// there is no third answer in which our own measurements settle it.
+//
+// THE .sig IS NOT A SECOND URL. It is the archive URL with `.sig` appended, so it is DERIVED from the
+// same subject the archive is derived from: bump the pin's version or distribution and the authority the
+// standing cites moves with it. It was hand-typed before, which meant a bumped pin kept "citing the
+// signature" of 6.4.1/debian13 -- the check passed while pointing somewhere other than what it verified.
+fn swift_toolchain_signature_authority_for(subject: SwiftToolchainArchiveSubject) -> ExternalAuthority {
+  ExternalAuthority { uri: swift_toolchain_signature_url(subject: subject) }
 }
+
+fn swift_toolchain_signature_url(subject: SwiftToolchainArchiveSubject) -> Uri {
+  let archive = swift_toolchain_archive_url(subject: subject)
+  Uri { scheme: archive.scheme, locator: concat(archive.locator, ".sig") }
+}
+
+// The authority the CURRENT PIN is verified against -- one call, no literals. Named rather than inlined at
+// the standing because the standing, the refusal text, and any reader's `gpg --verify` command all have to
+// mean the same file, and a second spelling of it is what drifted.
+data swift_toolchain_signature_authority: ExternalAuthority = swift_toolchain_signature_authority_for(
+  subject: swift_toolchain_pinned_subject)
 
 data swift_toolchain_signing_keyring_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -278,20 +296,17 @@ fn swift_toolchain_archive_matches_pin(digest: Sha256Digest, size: ByteSize) -> 
     && swift_toolchain_size_matches_pin(size: size)
 }
 
-// THE ORDER OF VERIFICATION, AS DATA. swift.org's instructions make the signature the gate ("If gpg
-// fails to verify and reports BAD signature, do not use the downloaded toolchain"), so signature is
-// checked BEFORE any hash. Recording the order matters because the failure modes differ and a run that
-// hashes first can report "digest mismatch" for an archive that was never upstream's to begin with,
-// sending a reader to look for tampering where there is none.
-data swift_toolchain_verification_order: List<NonEmptyStr> = [
-  "fetch-archive",
-  "fetch-detached-signature",
-  "gpg-verify-signature-against-published-keyring",
-  "sha256-archive",
-  "compare-size",
-  "compare-digest",
-  "extract-and-use"
-]
+// THE ORDER OF VERIFICATION LIVES IN ONE PLACE: `verify_against`, which checks signature, then key, then
+// digest, then size, and returns the FIRST refusal it reaches. It used to be spelled a second time here as
+// a List<NonEmptyStr> of step names -- and the two copies already disagreed, that list put compare-size
+// before compare-digest while the gate does the reverse, and its only reader was a claim string-matching
+// the list. A roster that nothing follows is a second representation of a fact the code already carries
+// (DESIGN section 3), so the list is gone. WHAT STILL HOLDS, AND IS CLAIMED THROUGH THE GATE RATHER THAN
+// BESIDE IT: swift.org's instructions make the signature the gate ("If gpg fails to verify and reports BAD
+// signature, do not use the downloaded toolchain"), so signature precedes every hash. That order is
+// observable without a roster, because an archive that is unsigned AND hashes wrong is refused as
+// SignatureUnverified, not DigestDiffersFromPin -- swap the gate's order and that claim turns red. Same
+// shape for digest-before-size. That is the order measured, where the list was only the order described.
 
 // A candidate archive, as measured by a run: what the signature check said and what the bytes hashed to.
 // Held as a record so the instrument reports the same three facts every time and cannot report a subset.
