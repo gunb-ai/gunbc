@@ -200,6 +200,22 @@ def main():
         for l in between[:4]:
             L.append(f"- {l}")
         L.append("")
+    L.append("### Per-file refusal counts, current head (replaces the earlier table)\n")
+    L.append("The earlier per-file table measured a head that has since been superseded and its log "
+             "is no longer on hand, so it is dropped rather than carried forward. These counts come "
+             "from the same identity JSON the hard test reads, at the head this section measures:\n")
+    for c in ("self-host", "v2-native-cli"):
+        d = hard[c]
+        per = {}
+        for k, n in d["post_identities"].items():
+            per[eval(k)[0]] = per.get(eval(k)[0], 0) + n
+        L.append(f"**{c}** ({sum(per.values())} diagnostics in {len(per)} files):\n")
+        L.append("| file | diagnostics |")
+        L.append("| --- | --- |")
+        for f, n in sorted(per.items(), key=lambda kv: (-kv[1], kv[0])):
+            L.append(f"| `{f}` | {n} |")
+        L.append("")
+
     L.append("### Rows, one invocation each\n")
     L.append("Per-row `--exact` runs with their own bound: the crate pins `RUST_TEST_THREADS=1` and "
              "every `compile_to_resolved` row recompiles the std closure, so one crate-filtered run "
