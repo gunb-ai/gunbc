@@ -222,3 +222,35 @@ Consequences I will carry into the PR body and to stern-bat-401:
    decision rather than build it unasked.
 3. No row regressed at the mutant, so nothing about the shipped repair is contradicted; but the
    mutant is also not refuted by the suite, and I will say that instead of implying it was.
+
+## AMENDMENT 7 (12:40Z, parent msg_e210f391 ruling (b)): probe predictions, fixed before the probe runs
+
+Parent ruled: freshness needs a RED, not a reading; use the probe once to separate the two readings
+of AMENDMENT 6, then land a PERMANENT fold-level control that calls `unify_generics` directly with two
+`Map(TypeVariable)` actuals -- shared id `K` bound to two different concrete Maps (must refuse, or must
+not cross-bind: state which is correct) and distinct per-site ids (must accept) -- such that the
+name-keyed mutant fails it. If the fold itself cannot distinguish them, say so and record it as the
+limit. Also: drop the old 76 table, keep only the artifact-backed two-closure table.
+
+PROBE (new rows, capture mode: they PRINT and do not assert, because asserting a value I have not
+measured would be the guess I am here to avoid). Both compile COLLISION_SOURCE (two `empty_map()` calls
+in one body) and walk the resolved tree for the type-variable ids the compiler minted.
+
+P1 -- ids at the SHIPPED repair (`81824abfa3c`): each call's `K`/`V` carries a `@file:start-end` suffix,
+so the two calls' ids DIFFER (four distinct ids, two per call, the two spans distinct).
+P2 -- ids at the MUTANT (`786e30feb1...`, `probe/mut-namekeyed`): the ids are the bare declared names,
+so the two calls SHARE them (`K` and `V` appear twice each, i.e. two distinct ids for four positions).
+If P2 instead shows distinct ids, the mutant did not take effect in the compiled tree and the whole
+AMENDMENT 6 conclusion ("the fixture cannot expose sharing") is VOID, not a limit -- because then no
+compiler ever produced the sharing the rows were supposed to fail on. That distinction matters and I
+will check the mirror seed on the mutant run before interpreting it.
+
+FOLD CAPTURE (same dispatch, `unify_generics` called directly, hand-built nodes, 0.00s rows):
+F1 shared-id shape -- `T` bound to `Map(K, V)`, then bound to `Map(Int, Int)`, then `Map(String, Int)`,
+   where K and V are the BARE declared names.
+F2 distinct-id shape -- identical except the leaves are `K@src/v2/std/text.dag:1-2` / `V@...`.
+My reading predicts BOTH accept, i.e. the fold compares head and shape and does not inspect leaf
+identity, so the fold CANNOT distinguish shared from distinct. If so, the permanent rows cannot test
+"shared vs distinct" through `unify_generics` at all, and I will record that as the limit exactly as
+parent instructed rather than shipping a row that asserts a distinction the fold does not make. If
+instead one of F1/F2 refuses, the fold does have a leaf-identity path, and the permanent RED goes there.
