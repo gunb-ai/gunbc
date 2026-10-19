@@ -856,6 +856,11 @@ data gunbc_ci_flex_pass_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "pass",
 }
 
+data gunbc_ci_flex_template_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/product/fabric/flex_vast_template_control.dag",
+  function: "ensure",
+}
+
 data gunbc_ci_r2_cache_object_read_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
   function: "run_cache_object_read",
@@ -1366,6 +1371,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_cache_object_read_mint_target,
     gunbc_ci_hetzner_cloud_server_read_target,
     gunbc_ci_flex_pass_target,
+    gunbc_ci_flex_template_ensure_target,
     gunbc_ci_branch_run_grant_request_target,
     gunbc_ci_branch_run_grant_apply_target,
     gunbc_ci_branch_run_grant_await_target,
@@ -2869,6 +2875,16 @@ fn gunbc_ci_flex_pass_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_flex_pass_target.entry,
     function: gunbc_ci_flex_pass_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_flex_template_ensure_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_flex_template_ensure_target.entry,
+    function: gunbc_ci_flex_template_ensure_target.function,
     claim_run: false,
     receipt_rel: none
   )

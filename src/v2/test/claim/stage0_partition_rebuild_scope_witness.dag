@@ -6,6 +6,7 @@ import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
   generated_partition_crate_rows
 }
+import gunbc.source_layout { layout_module_storage_path }
 import gunbc.stage0_partition_rebuild_scope {
   ChangedMirrorUnlocatable,
   ExecutableAssemblyNotCovered,
@@ -30,7 +31,12 @@ import gunbc.stage0_partition_rebuild_scope {
   stage0_partition_rebuild_excluded_today,
   stage0_partition_rebuild_packages_today,
   stage0_partition_rebuild_release_scope_empty_today,
-  stage0_next_pass_executable_assembly
+  stage0_next_pass_executable_assembly,
+  regen_convergence_bound_exceeded,
+  stage0_stage_rebuild_is_whole_compiler,
+  regen_convergence_generation_bound,
+  stage0_partition_authority_storage_path,
+  stage0_partition_move_explained_by_changed_paths
 }
 
 // THE DISCRIMINATING REDS THIS FILE HOLDS OPEN, each one a state the selector must not enter.
@@ -514,4 +520,61 @@ test fn witness_shell_partition_duplicate_owner_refuses_holds() -> Bool {
     unlocatable: [],
     host_shell_modules: ["v1_rt"]
   )) == "partition-rebuild: RebuildScopeRefused MirrorHasMultipleOwningPackages mirror=v1_rt.rs packages=[v1-stage0-runtime, v1-compiler]"
+}
+
+// THE PARTITION MOVE IS EXPLAINED ONLY BY ITS OWN AUTHORITY. The positive names the authority's
+// storage path (derived from its module name by the storage policy); the discriminating reds are
+// a change that moves other files, and an empty path set (unobserved or no change), neither of
+// which may explain a moved partition mirror.
+test fn witness_partition_move_explained_by_authority_path_holds() -> Bool {
+  match stage0_partition_authority_storage_path() {
+    Absent => false
+    Present { value: path } => stage0_partition_move_explained_by_changed_paths(changed_paths: ["README.md", path])
+  }
+}
+
+test fn witness_partition_move_unexplained_without_authority_path_holds() -> Bool {
+  !stage0_partition_move_explained_by_changed_paths(changed_paths: ["dag/gunbc/stage0/stage0_crate_layout_generated.dag", "src/v1/stage0/src/gunbc_stage0_stage0_crate_partition_generated.rs"])
+    && !stage0_partition_move_explained_by_changed_paths(changed_paths: [])
+}
+
+test fn witness_authority_storage_path_is_derived_holds() -> Bool {
+  stage0_partition_authority_storage_path() == Present { value: "dag/gunbc/stage0/stage0_crate_partition_generated.dag" }
+}
+
+// THE ROUND BOUND refuses at the declared row, one past the last admitted ordinal.
+test fn witness_regen_round_bound_is_declared_row_holds() -> Bool {
+  !regen_convergence_bound_exceeded(generation_ordinal: 5) && regen_convergence_bound_exceeded(generation_ordinal: 6)
+}
+
+// The shell crate root is owned by the shell package: a lib.rs change derives a scope instead of
+// refusing MirrorHasNoOwningPackage (the measured positive-arm refusal).
+test fn witness_shell_crate_root_has_an_owner_holds() -> Bool {
+  match stage0_partition_rebuild_decision_today(changed_mirrors: ["lib.rs"], unlocatable: [], host_shell_modules: ["lib"]) {
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: _, executable_assembly: _ } => count(o) == 1
+    _ => false
+  }
+}
+
+// ONE bound serves progress admission and loop termination: the getter the host passes to
+// regen_admit_generation_progress is the very quantity the termination predicate compares.
+test fn witness_regen_bound_getter_and_predicate_agree_holds() -> Bool {
+  !regen_convergence_bound_exceeded(generation_ordinal: regen_convergence_generation_bound() - 1)
+    && regen_convergence_bound_exceeded(generation_ordinal: regen_convergence_generation_bound())
+}
+
+// A stage that installs boundary files is whole-compiler by what it installs; one carrying none
+// keeps the route its mirrors derive (the partitioned route is not widened).
+test fn witness_boundary_carrying_stage_is_whole_compiler_holds() -> Bool {
+  stage0_stage_rebuild_is_whole_compiler(boundary_files: ["src/v1/stage0_std_core/lib.rs"])
+    && !stage0_stage_rebuild_is_whole_compiler(boundary_files: [])
+}
+
+// The mapping honours the per-namespace root: v2 elides its namespace under src/v2, every other
+// namespace keeps its full name under dag/ (the local copy this replaced ignored root(v2)).
+test fn witness_layout_module_storage_path_honours_namespace_root_holds() -> Bool {
+  layout_module_storage_path(module: "v2.std.node") == Present { value: "src/v2/std/node.dag" }
+    && layout_module_storage_path(module: "gunbc.source_layout") == Present { value: "dag/gunbc/source_layout.dag" }
+    && layout_module_storage_path(module: "v2") == Absent
+    && layout_module_storage_path(module: "gunbc") == Absent
 }
