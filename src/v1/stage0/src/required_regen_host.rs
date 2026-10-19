@@ -3514,6 +3514,19 @@ fn rebuild_scope_decision(
     .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
 }
 
+/// The modules the host shell crate declares PLUS the shell's own root, read from the same file:
+/// the rebuild-scope fold owns a mirror through this declaration alone, so the root file is a
+/// fact this read supplies (its stem), not a spelling the fold recognises.
+fn host_shell_scope_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
+    let mut modules = super::emitted_closure_compile_host::closure_modules(lib_rs)?;
+    let root = lib_rs
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or_else(|| format!("refusal: shell root {} has no file stem", lib_rs.display()))?;
+    modules.push(root.to_string());
+    Ok(modules)
+}
+
 fn stage_rebuild_is_whole_compiler(
     source_roots: &[String],
     boundary_files: &[String],
@@ -5401,8 +5414,7 @@ fn install_convergence_stage(
     // The generated shell declares the emitted modules not owned by a partition.
     // Read the same declaration surface convergence_surface_roles uses for seed
     // membership; missing partition ownership alone must never imply shell ownership.
-    let declared_shell_modules =
-        super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
     let actuation = partition_rebuild_actuation(source_roots, basenames, &declared_shell_modules)?;
     let partition_move = if actuation.partition_generation_move {
         Some(admit_derived_partition_move(source_roots, workspace)?)
@@ -6558,8 +6570,7 @@ pub fn run_regen_round_cost(
         drained_marks,
     )
     .map_err(|cause| cause.to_string())?;
-    let declared_shell_modules =
-        super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
     let rendered = render_round_cost_receipt(
         source_roots,
         &host,

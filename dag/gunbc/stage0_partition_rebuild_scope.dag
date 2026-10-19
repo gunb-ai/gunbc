@@ -1,7 +1,7 @@
 module gunbc.stage0_partition_rebuild_scope
 
 import std.types { String, List, Bool, Int }
-import gunbc.source_layout { layout_default_tree, layout_tree_directory }
+import gunbc.source_layout { layout_module_storage_path }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
@@ -311,9 +311,9 @@ fn rebuild_scope_owners_of_mirror(
     |> filter(row => stage0_partition_row_is_module_bearing_package(row: row))
     |> filter(row => row.modules |> any(m => rebuild_scope_mirror_of_module(module_basename: m) == mirror))
     |> map(row => row.package_name)
-  // lib.rs is the host shell crate's own root, the file that declares host_shell_modules: it is
-  // owned by the shell package by construction, not by an allow-list entry.
-  if mirror == "lib.rs" || host_shell_modules |> any(m => rebuild_scope_mirror_of_module(module_basename: m) == mirror) {
+  // The host shell crate's own root file is among host_shell_modules: the host reads it from the
+  // lib.rs it already reads for the declared modules, so no spelling is recognised here.
+  if host_shell_modules |> any(m => rebuild_scope_mirror_of_module(module_basename: m) == mirror) {
     concat(partition_owners, [stage0_host_shell_package_name()])
   } else {
     partition_owners
@@ -649,21 +649,19 @@ fn stage0_partition_rebuild_decision_line_today(
 // over diff text. A partition-generation mirror may move without WholeCompilerRebuildRequired
 // only when the authority its rows are decoded from is itself among the change's paths: the
 // mirror moved because its authority moved and not because something drifted. The authority's
-// identity is the module it is declared as; its storage path is derived from that name by the
-// storage policy gunbc.source_layout (module a.b.c lives at <root>/a/b/c.dag), not written a
-// second time. An empty or unobserved path set explains nothing: the host refuses typed.
+// identity is the module it is declared as; its storage path is derived from that name by
+// gunbc.source_layout layout_module_storage_path, not written a second time. An empty or unobserved path set explains nothing: the host refuses typed.
 data stage0_partition_authority_module: String = "gunbc.stage0.stage0_crate_partition_generated"
 
-fn stage0_partition_authority_storage_path() -> String {
-  concat(
-    layout_tree_directory(tree: layout_default_tree()),
-    "/",
-    concat(replace(s: stage0_partition_authority_module, from: ".", to: "/"), ".dag")
-  )
+fn stage0_partition_authority_storage_path() -> Optional<String> {
+  layout_module_storage_path(module: stage0_partition_authority_module)
 }
 
 fn stage0_partition_move_explained_by_changed_paths(changed_paths: List<String>) -> Bool {
-  rebuild_scope_list_has(items: changed_paths, item: stage0_partition_authority_storage_path())
+  match stage0_partition_authority_storage_path() {
+    Absent => false
+    Present { value: path } => rebuild_scope_list_has(items: changed_paths, item: path)
+  }
 }
 
 // A STAGE THAT CARRIES BOUNDARY FILES MOVES THE PARTITION CRATES. The boundary files the built
