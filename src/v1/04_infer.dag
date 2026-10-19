@@ -107,7 +107,7 @@ import v1.compiler.infer_types {
   bare_map_node, bare_set_node,
   callable_inferred,
   normalize_access_type_node,
-  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, alias_identity_in_judgment, alias_names_identity_in_judgment,
+  node_type_shape, node_type_compatible, optional_application_payload, node_type_equals, prefer_specific_type, alias_identity_in_judgment, alias_names_identity_in_judgment,
   is_declared_container_alias_spelling, structural_carrier_template_name,
   is_product_type,
   node_type_deps,
@@ -3167,6 +3167,18 @@ fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, scope: Infe
 fn inhabited_join_types(types: List<Node>, scope: InferScope) -> List<Node> {
   let kept = types |> filter(t => !arm_is_bare_declaration_of_sibling(t: t, siblings: types, scope: scope))
   if kept |> count == 0 { types } else { kept }
+}
+
+// THE SAME RULE ONE LAYER DOWN: two std.optional applications whose payloads are a bare declaration and a sibling that
+// inhabits it join as the application carrying the sibling payload (`optional_present(value: Empty)` beside `Optional<List<Int>>`).
+fn optional_payload_inhabited_join(joined: List<Node>, left: Node, right: Node, scope: InferScope) -> List<Node> {
+  if joined |> count == 2 && type_is_optional(n: left) && type_is_optional(n: right) {
+    let lp = optional_application_payload(n: left)
+    let rp = optional_application_payload(n: right)
+    if arm_is_bare_declaration_of_sibling(t: lp, siblings: [rp], scope: scope) { [right] }
+    else if arm_is_bare_declaration_of_sibling(t: rp, siblings: [lp], scope: scope) { [left] }
+    else { joined }
+  } else { joined }
 }
 
 // A FOLD INIT THAT IS A BARE DECLARATION FIXES NO ELEMENT TYPE: the fold's expected result, when it
@@ -9861,7 +9873,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let sibling_else_rt = resolved_type(n: else_typed)
           let then_rt = if then_lowered { sibling_else_rt } else { sibling_then_rt }
           let else_rt = if else_lowered { sibling_then_rt } else { sibling_else_rt }
-          let inhabited_branch_types = inhabited_join_types(types: [then_rt, else_rt], scope: scope)
+          let inhabited_branch_types = optional_payload_inhabited_join(joined: inhabited_join_types(types: [then_rt, else_rt], scope: scope), left: then_rt, right: else_rt, scope: scope)
           let branch_declaration_yields = inhabited_branch_types |> count == 1
           let unified = match inhabited_branch_types |> first {
             Present { value: only } => if branch_declaration_yields { only } else { prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices) }

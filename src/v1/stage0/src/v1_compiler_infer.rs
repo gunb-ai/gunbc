@@ -259,9 +259,10 @@ pub use crate::v1_compiler_infer_types::{
     method_receiver_element_node, node_is_collection, node_is_element_collection,
     node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
     node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
-    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    structural_carrier_template_name, subtraction_refinement_of, template_return_has_variables,
-    template_return_is_receiver_self, KernelTypeBuild, TextJudgment, TextNotAskedReason,
+    optional_application_payload, prefer_specific_type, resolve_type_variables_from_template,
+    resolved_type, structural_carrier_template_name, subtraction_refinement_of,
+    template_return_has_variables, template_return_is_receiver_self, KernelTypeBuild, TextJudgment,
+    TextNotAskedReason,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
@@ -4402,6 +4403,42 @@ pub fn inhabited_join_types(types: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> 
         } else {
             kept.clone()
         }
+    }
+}
+
+pub fn optional_payload_inhabited_join(
+    joined: Rc<Vec<Rc<Node>>>,
+    left: Rc<Node>,
+    right: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<Node>>> {
+    if ((((joined.clone().len() as i64) == 2)
+        && crate::v1_std_core::type_is_optional(left.clone()))
+        && crate::v1_std_core::type_is_optional(right.clone()))
+    {
+        {
+            let lp = crate::v1_compiler_infer_types::optional_application_payload(left.clone());
+            let rp = crate::v1_compiler_infer_types::optional_application_payload(right.clone());
+            if arm_is_bare_declaration_of_sibling(
+                lp.clone(),
+                Rc::new(vec![rp.clone()]),
+                scope.clone(),
+            ) {
+                Rc::new(vec![right.clone()])
+            } else {
+                if arm_is_bare_declaration_of_sibling(
+                    rp.clone(),
+                    Rc::new(vec![lp.clone()]),
+                    scope.clone(),
+                ) {
+                    Rc::new(vec![left.clone()])
+                } else {
+                    joined.clone()
+                }
+            }
+        }
+    } else {
+        joined.clone()
     }
 }
 
@@ -15385,8 +15422,13 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     } else {
                         sibling_else_rt.clone()
                     };
-                    let inhabited_branch_types = inhabited_join_types(
-                        Rc::new(vec![then_rt.clone(), else_rt.clone()]),
+                    let inhabited_branch_types = optional_payload_inhabited_join(
+                        inhabited_join_types(
+                            Rc::new(vec![then_rt.clone(), else_rt.clone()]),
+                            scope.clone(),
+                        ),
+                        then_rt.clone(),
+                        else_rt.clone(),
                         scope.clone(),
                     );
                     let branch_declaration_yields =
