@@ -135,6 +135,16 @@ while :; do
     fi
   done
   stamp "regen round $round installed=$installed"
+  # What did the emitter actually say, and WHAT moved? A merge of two fixed points should install
+  # nothing; anything else needs naming rather than accepting. The emit log is the only place that
+  # says whether a change is a declared divergence (the normal case) or real drift, and it lives in
+  # the runner's /tmp and dies with the dispatch unless it is echoed here.
+  grep -aE "first_generation_equal|candidate=|declared_divergent|FAIL generated surface|admitted edges" \
+    "$LOGS/regen_$round.log" 2>/dev/null | tail -6 | sed 's/^/RR /'
+  git diff --stat -- src/v1/stage0/src/ 2>/dev/null | tail -4 | sed 's/^/MOVED /'
+  for f in $(git status --porcelain | sed -E 's/^.{3}//' | grep '\.rs$'); do
+    echo "MOVED_DETAIL $f ours_vs_candidate_lines=$(diff <(git show HEAD:"$f" 2>/dev/null) "$f" 2>/dev/null | grep -c '^[<>]') ours_vs_main_lines=$(diff <(git show "$MAIN":"$f" 2>/dev/null) "$f" 2>/dev/null | grep -c '^[<>]')"
+  done
   [ "$installed" -eq 0 ] && { echo "CONVERGED after $round round(s)"; break; }
   [ $round -ge 4 ] && { echo "FATAL not converged after $round rounds -- do not ship a half-regenerated tree"; exit 6; }
 done
@@ -190,8 +200,9 @@ Regenerated, not merged. Rounds to a fixed point; the last round installed nothi
 echo "REGEN_COMMIT $(git rev-parse HEAD)"
 echo "MERGED_HEAD $(git rev-parse HEAD)"
 
-tar czf "$LOGS/changed.tgz" -C "$D/repo" \
-  src/v1/stage0/src/v1_compiler_infer.rs src/v1/stage0/src/v1_compiler_emit_rust.rs \
-  src/v1/04_infer.dag 2>/dev/null
+MIRROR_FILES=$(git status --porcelain | sed -E 's/^.{3}//' | grep '^src/v1/stage0/src/.*\.rs$')
+[ -n "$MIRROR_FILES" ] || MIRROR_FILES="src/v1/stage0/src/v1_compiler_infer.rs src/v1/stage0/src/v1_compiler_emit_rust.rs"
+tar czf "$LOGS/changed.tgz" -C "$D/repo" $MIRROR_FILES src/v1/04_infer.dag 2>/dev/null
+echo "TARRED: $MIRROR_FILES"
 echo "BEGIN-LOG changed.tgz"; base64 -w0 "$LOGS/changed.tgz"; echo; echo "END-LOG changed.tgz"
 stamp "ALLDONE"
