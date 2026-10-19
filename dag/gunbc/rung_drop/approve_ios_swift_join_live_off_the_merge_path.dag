@@ -4,27 +4,26 @@ import std.types { List, NonEmptyStr, String }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// THE DROP. gunbc.approve_ios_swift_join is exercised on the merge path over SUPPLIED listings
-// (test.claim.approve_ios_swift_join_witness: positive control, stray-file RED, double-account RED).
-// The inhabitance claim that the listing a real producer emits has that shape reads the HEAD tree
-// through git.Inspect.ListTreePathsAtRevision, which the hermetic per-PR envelope has no route for;
-// a live witness file would be a changed witness the floor refuses without a terminal verdict (the
-// same measured cause as gunbc.rung_drop v1_consumer_census_live_population_off_the_merge_path).
-// It exists and runs as gunbc.approve_ios_swift_join_live approve_ios_swift_join_live_report.
+// THE DROP. Nothing on the required path evaluates a witness (DESIGN Building: v1_required_lanes_withdrawn),
+// so BOTH the supplied-listing controls (test.claim.approve_ios_swift_join_witness: positive control,
+// stray-file RED, double-account RED) and the live report are MANUALLY executed, not on the required path.
+// The live report reads the observed HEAD tree through git.Inspect.ListTreePathsAtRevision and joins it,
+// refusing a committed stray file. It runs as
+//   gunbc run --entry dag/gunbc/approve_ios_swift_join_live.dag --function approve_ios_swift_join_live_report
 data approve_ios_swift_join_live_off_the_merge_path_identities: List<String> = [
   "gunbc.approve_ios_swift_join_live::approve_ios_swift_join_live_report",
 ]
 
 data approve_ios_swift_join_live_off_the_merge_path: RungDrop = RungDrop {
   identity: "approve_ios_swift_join_live_off_the_merge_path" as NonEmptyStr,
-  subject: "the join of the real apps/approve-ios Swift tree to registered artifacts or retained rows, executed on the merge path",
+  subject: "the join of the real apps/approve-ios Swift tree to registered artifacts or retained rows, unaccounted by any required-path step",
   declared: "2026-10-19",
   standing: Standing,
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
-    reason: ReplacementStaged { replacement: "gunbc.approve_ios_swift_join_live approve_ios_swift_join_live_report reads the HEAD tree and joins it; the merge path executes the join only over supplied listings" },
+    reason: ReplacementStaged { replacement: "gunbc.approve_ios_swift_join_live approve_ios_swift_join_live_report reads the HEAD tree and joins it; the supplied-listing controls and this report are manually executed, not on the required path" },
     population: approve_ios_swift_join_live_off_the_merge_path_identities,
-    restoration_trigger: "a merge-blocking step that executes approve_ios_swift_join_live_report against the real tree -- mock_response coverage for git.Inspect.HeadCommit and git.Inspect.ListTreePathsAtRevision sufficient for the floor to admit a live witness over a planted tree, or a wet lane on the required path executing it. NOT retired by the supplied-listing witness, which exercises the join and not the tree; not retired by the operator running the report.",
+    restoration_trigger: "a required-path step that evaluates witnesses and executes approve_ios_swift_join_live_report against the real tree (the capability: the required path judging a witness over git-observed input), restoring MechanicallyPreventable for the approve-ios Swift population. NOT retired by the supplied-listing witness, which exercises the join and not the tree; not retired by the operator running the report.",
   }
 }

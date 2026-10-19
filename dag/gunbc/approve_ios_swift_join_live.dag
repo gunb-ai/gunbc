@@ -14,7 +14,10 @@ import gunbc.approve_ios_swift_join { swift_join_is_clean, is_approve_ios_swift 
 // the hermetic per-PR envelope has no route for, so it is an operator instrument and not a floor
 // claim: gunbc.rung_drop approve_ios_swift_join_live_off_the_merge_path declares that.
 //   gunbc run --entry dag/gunbc/approve_ios_swift_join_live.dag --function approve_ios_swift_join_live_report
-// PAIRED REDS, same route: a planted stray path appended to the REAL listing must refuse.
+// The report judges the OBSERVED tree only: nothing is appended to what git returned. A clean
+// checkout exits 0; a revision whose committed tree holds an unaccounted apps/approve-ios swift file
+// refuses, naming the observed revision. Run it at a clean revision and at a scratch commit adding a
+// stray file (never pushed); the receipt pins the code revision and the observed revision separately.
 
 fn head_tree_paths() -> List<String> {
   let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
@@ -23,11 +26,10 @@ fn head_tree_paths() -> List<String> {
 }
 
 fn approve_ios_swift_join_live_report() -> ProcessExit {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
   let tree = head_tree_paths()
   let swift = length(filter(tree, p => is_approve_ios_swift(path: p)))
-  let clean = swift_join_is_clean(tree: tree)
-  let stray_refused = !swift_join_is_clean(tree: concat(tree, ["apps/approve-ios/Approve/Stray.swift"]))
   if swift == 0 { exit_failure(reason: "UNOBSERVED: no apps/approve-ios swift file in the HEAD listing") }
-  else if clean && stray_refused { ExitSuccess }
-  else { exit_failure(reason: concat("RED: real tree clean=", to_string(clean))) }
+  else if swift_join_is_clean(tree: tree) { ExitSuccess }
+  else { exit_failure(reason: concat("RED: observed tree at ", concat(head.sha as String, " holds an unaccounted apps/approve-ios swift file"))) }
 }
