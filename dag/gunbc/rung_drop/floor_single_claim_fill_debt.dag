@@ -42,9 +42,11 @@ import v2.workflow.floor_pure_producer_share { SingleClaimFillDebtModule, fill_d
 // A DECLARED FRONTIER, NOT IMPLICIT (warm-wolf-570, 2026-10-19): an ACTIVE row whose claim identity no
 // module declares is UNCHECKED today. A text join found three such rows at this change (one renamed claim,
 // two deleted claims, fixed here), so the hole is real, not hypothetical. A pure derivation has no
-// discovered-claim input, so the executing route is a source row in gunbc.claim_coverage_census, whose RED is
-// those three rows before their fix. Its trigger is gunbc.claim_coverage_census landing (PR 14368) with its
-// label route executed; until then this check is unexecuted.
+// discovered-claim input, so the executing route is a cover-side classifier row in gunbc.claim_coverage_census
+// that reports StaleEnrolled for an active debt claim outside S1 (every discovered test fn at identity grain),
+// whose RED is those three rows before their fix. Its trigger is sunny-ibex-149's S1 universe landing in that
+// fold with the StaleEnrolled standing and the label route executed (gunbc.claim_coverage_census itself landed
+// in PR 14368 without S1); until then this check is unexecuted.
 data floor_single_claim_fill_debt_population: List<String> = fill_debt_drop_population(debt: floor_single_claim_fill_debt)
 
 // One population row per ACTIVE member, led by the claim identity so the join is a prefix match at
