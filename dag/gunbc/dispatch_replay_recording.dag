@@ -44,7 +44,12 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // A RECORDING IS A COMPLETED ATTEMPT'S END STATE, CAPTURED BY THE CONTROLLER (the replay executor, DESIGN 3 pairing
 // obligation). A recording is the receipt that a real worker emitted this shape: its base, the tree it left, and
 // how its unit ended. A hand-authored fixture would owe a separate claim that a real worker emits that shape;
-// a recording owes none, which is why the replay executor takes recordings and nothing else.
+// a recording owes none ONCE recording_capture runs, which is why the replay executor takes recordings and nothing else.
+//
+// DECLARED FRONTIER: recording_capture has no executing consumer in this change. Until a belt step after the result
+// commit (or an instrument entry) calls it and a witness runs that route, a recording can only be written by hand,
+// and the 'owes none' claim above is NOT yet established. Trigger: the follow-up PR that binds capture to a
+// completed attempt's belt step. Until then the lab operator writes a recording by calling recording_capture directly.
 //
 // WHERE IT LIVES: refs/gunbc/recordings/<RecordingId> in the controller's repository, a commit whose tree is the
 // result tree and whose single parent is the base. The existing refs/gunbc/ consumers are named single refs
