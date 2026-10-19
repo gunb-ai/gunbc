@@ -55,10 +55,6 @@ data html_comment_close_sequence: NonEmptyStr = " -->" as NonEmptyStr
 // comment escapes into the document. Feeds BOTH the guard and CommentGrammar.terminator, so the
 // emitter and the checker read the same grammar and cannot disagree about what ends a comment.
 data html_comment_terminator: NonEmptyStr = "-->" as NonEmptyStr
-
-// Whether a body ENDING in "-" closes this medium's comment. True here: the emitter's own close
-// delimiter contributes a "-", so "--" + that "-" reaches the comment end state.
-data html_comment_trailing_dash_closes: Bool = true
 // "<!DOCTYPE " with the trailing space the tokenizer requires between keyword and name.
 data html_doctype_open_sequence: NonEmptyStr = "<!DOCTYPE " as NonEmptyStr
 // The document type every HTML page in this repo declares. "html" is the only name a conforming
@@ -336,7 +332,6 @@ fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
       open: html_comment_open_sequence,
       close: html_comment_close_sequence,
       terminator: html_comment_terminator,
-      trailing_dash_closes: html_comment_trailing_dash_closes,
     },
     document_grammar: DeclaresDocument {
       open: html_doctype_open_sequence,
@@ -394,8 +389,8 @@ type HtmlEmitResult
 // string test standing in for a type test, so a check that ever returned "" passed.
 //
 // Both are answered from one place, and not as free functions any more: the checks live INSIDE the
-// emitter's arms. serialize_fragment_with consults the MEDIUM's CommentGrammar (terminator,
-// trailing_dash_closes) on the arm that writes a comment, and the raw-text arm reads the bracket
+// emitter's arms. serialize_fragment_with consults the MEDIUM's CommentGrammar (its close and its
+// terminator) on the arm that writes a comment, and the raw-text arm reads the bracket
 // fields it is about to write with; serialize_document_with owns doctype_name_hazard. Review 82279 on
 // #14351 is why: written as a walk beside the emitter, a check was a call a route could omit -- and
 // serialize_jsx_fragment, serialize_jsx_component and the SVG document route had all omitted it. So

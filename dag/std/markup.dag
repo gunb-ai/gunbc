@@ -2,7 +2,6 @@ module std.markup
 
 import std.layout { DocLine, LayoutProtocol, render }
 import std.types { NonEmptyStr }
-import std.error_primitives { pure_dag_seam_unreachable_string }
 
 
 type EscapeContext = TextContext | AttributeContext | UrlContext
@@ -103,12 +102,6 @@ type CommentGrammar {
   open: NonEmptyStr
   close: NonEmptyStr
   terminator: NonEmptyStr
-  // True for HTML and XML, whose tokenizer reaches the comment end state from "--" and takes the third
-  // "-" from the emitter's own close delimiter; false for JSX, where "- */}" is an ordinary comment. A
-  // genuine per-language Bool -- it hides no sum, which is why it survives where
-  // document_declaration_allowed did not: there is no third state to express, and no field is left over
-  // when it is false.
-  trailing_dash_closes: Bool
 }
 
 type DocumentGrammar
@@ -384,7 +377,9 @@ type MarkupHazard
 // in its own grammar rows; there is no call to remember and no second copy to drift.
 //
 // THREE HAZARDS, THREE CALL SITES, ALL IN THE EMITTER:
-//   1. comment_body_hazard — on the MarkupComment arm, before open + body + close is written;
+//   1. comment_body_hazard — on the MarkupComment arm, before open + body + close is written; both of
+//      its tests read CommentGrammar.close and .terminator, so there is no per-language flag to set
+//      correctly and no rule to keep in sync with the rows the emitter already uses;
 //   2. doctype_name_hazard — in serialize_document_with, the only place a doctype is spelled;
 //   3. the raw-text close check — on the arm that writes an element's raw children, built from the
 //      medium's own bracket fields rather than a hand-typed "</".
@@ -399,35 +394,40 @@ type MarkupHazard
 // no empty inhabitant to test for: the check is gone because the state is gone, and the witness that used
 // to pin that refusal went with it, rather than staying to assert a value the type no longer admits.
 
+// WHY THESE TWO TESTS AND NOT A THIRD. Both read the medium's own rows, and nothing else:
+//   1. The close must actually contain the terminator. If it does not, no body can be safe -- the
+//      emitter would open a comment that never closes, and the whole rest of the document becomes
+//      comment text. That is a defect in the MEDIUM, so it is refused as one, on every body.
+//   2. The body must not contain the terminator. If it does, the comment ends inside the body and the
+//      remainder is parsed as markup.
+//
+// NO DASH RULE. This function used to also refuse any body ending in "-" under a Bool field
+// `trailing_dash_closes`, justified as: the emitter's own close contributes a '-', so "--" + that '-'
+// reaches the tokenizer's comment end state. Review 82417 on #14351 caught that the premise is false for
+// the row it cited -- html_comment_close_sequence is " -->", which begins with a space, so a body ending
+// in "-" emits "- -->" and the only "-->" in it is the close. Checked against the comment state machine of
+// HTML §13.1.1 (the same section several comments in this module already cite): over every body up to
+// length 5 from the alphabet { -, /, >, *, space, }, x } in the four shipped media (HTML, XML, JSX, raw),
+// these two tests agree with the tokenizer on all 18,144 bodies, and the dash rule refused 1,944 bodies
+// the tokenizer accepts. Refusing more than the evidence supports is §4d's cost, paid here by any comment
+// that ends in a dash -- an em-dash, a bullet, a date.
+//
+// WHAT WAS KEPT FROM THE REVIEW'S WORDING. It proposed "whether concat(body, close) contains terminator
+// anywhere before the real close". That formulation was measured too, and it is wrong in the other
+// direction: for the JSX medium the terminator "*/" occurs inside the close " */}" at an index before the
+// close ends, so it refuses EVERY JSX comment, including the empty body. So the occurrence is looked for
+// in the body, which is where a body can add one, and the close is asked only the question it can answer
+// about itself.
 fn comment_body_hazard(body: String, grammar: CommentGrammar) -> MarkupHazard {
-  if string_contains(s: body, pattern: grammar.terminator as String) {
+  if !string_contains(s: grammar.close as String, pattern: grammar.terminator as String) {
+    HazardFound { reason: join(["the comment close sequence '", grammar.close as String, "' of this medium does not contain its terminator '", grammar.terminator as String, "' — no body could close this comment, so nothing may be emitted through it; fix the medium's rows"], "") }
+  } else if string_contains(s: body, pattern: grammar.terminator as String) {
     HazardFound { reason: join(["markup comment body contains the comment terminator '", grammar.terminator as String, "' — refusing to serialize (the remainder would be parsed as markup); restructure the comment"], "") }
-  } else if grammar.trailing_dash_closes && ends_with(s: body, suffix: "-") {
-    // "--" before the delimiter's own "-" also reaches the tokenizer's comment end state, so a body
-    // ending in a dash closes early even with no terminator in the middle. The remedy differs from the
-    // case above (shorten the body vs remove a sequence from it), so the reason differs. Read from the
-    // grammar, never hardcoded: witness_medium_grammar_decides_the_dash_rule reds if this line stops
-    // consulting the field.
-    HazardFound { reason: join(["markup comment body ends in '-' — adjacent to the close delimiter this forms an abrupt '", grammar.terminator as String, "' close; restructure the comment"], "") }
   } else {
     HazardFree
   }
 }
 
-// A <!DOCTYPE> name is a production, not free text: the tokenizer reads at most ONE token after the
-// keyword, so a name holding whitespace or an angle bracket makes the declaration swallow text and the
-// document parse in the wrong mode (a page can silently land in quirks mode).
-//
-// WHICH CHARACTERS, AND WHERE THEY COME FROM. Review 82268 on #14351: this read "<", ">" and " " as
-// literals inside std/, which is twice wrong -- which characters end that token is a fact about the
-// tokenizer of the language that declares a doctype (§4: "a new target language is rows in
-// extdeps/languages/, never an edit to the fold"), and the two angle brackets were a SECOND home for a
-// spelling the medium already carries, since MarkupBracket.tag_open / tag_close are what
-// serialize_fragment_with writes for every tag. So the brackets are READ off the bracket, and the
-// whitespace boundary rides DocumentGrammar.DeclaresDocument, the same way CommentGrammar carries
-// `terminator`. No language's character is spelled as a literal in this module.
-//
-// NO EMPTINESS CHECK on the name: NonEmptyStr has no empty inhabitant (measured against the checker), so
 // A <!DOCTYPE> name is a production, not free text: the tokenizer reads at most ONE token after the
 // keyword, so a name holding whitespace or an angle bracket makes the declaration swallow text and the
 // document parse in the wrong mode (a page can silently land in quirks mode).

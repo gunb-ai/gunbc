@@ -26,16 +26,22 @@ import test.fixture.markup_render { render_html, render_markup, render_jsx }
 //   C1  std.markup's MarkupComment arm: replace medium.comment_grammar.open with the literal "<!-- ".
 //       witness_comment_delimiters_come_from_the_medium goes red (the JSX-shaped medium renders <!--).
 //   C2  std.markup comment_body_hazard: return HazardFree unconditionally.
-//       witness_comment_terminator_is_refused, witness_comment_trailing_dash_is_refused,
-//       witness_guarded_route_refuses_a_self_terminating_comment, the JSX route claim and
-//       witness_comment_in_a_document_still_checked_for_early_close go red.
+//       witness_comment_terminator_is_refused, witness_guarded_route_refuses_a_self_terminating_comment,
+//       the JSX route claim, witness_comment_in_a_document_still_checked_for_early_close,
+//       witness_medium_grammar_decides_the_comment_check and witness_broken_close_names_both_rows go red.
+//       (witness_comment_trailing_dash_is_accepted STAYS green under this mutation, correctly: it asserts
+//       what the tokenizer accepts, and a check that always passes certainly accepts it. The claims above
+//       are the ones that hold the refusal in place.)
 //   C6  std.markup serialize_document_with: drop the NoDocumentGrammar arm (treat every grammar as
 //       declaring, e.g. reuse the DeclaresDocument keyword branch unconditionally).
 //       witness_a_document_medium_refuses_to_write_a_document goes red. The pair claim
 //       witness_a_declaring_medium_writes_the_document stays green, which is why both exist.
-//   C7  std.markup comment_body_hazard: ignore grammar.trailing_dash_closes (always apply the rule).
-//       witness_medium_grammar_decides_the_dash_rule goes red -- the claim that the dash rule is read
-//       from the grammar rather than hardcoded in the walker.
+//   C7  std.markup comment_body_hazard: drop the first test (the one that asks whether the close sequence
+//       contains its own terminator), so an unsatisfiable medium is serialized anyway.
+//       witness_medium_grammar_decides_the_comment_check and witness_broken_close_names_both_rows go red.
+//       This is the control for the arm that replaced the Bool review 82417 removed: no per-language flag
+//       is consulted anywhere, so the only way to make the check language-sensitive again is to stop
+//       reading the medium -- which these two claims then catch.
 //   C9  std.markup CommentGrammar's fields: drop NonEmptyStr for String on `terminator`. The empty
 //       value becomes expressible again, and the DELETED claim above would be needed once more; the
 //       checker refusing `terminator: ""` is the measurement that the construction holds. Verified by
@@ -69,7 +75,7 @@ import extdeps.languages.html {
 }
 import std.markup {
   HazardFree, HazardFound,
-  comment_body_hazard,
+  comment_body_hazard, CommentGrammar,
   serialize_document_with, Serialized, Rejected,
 }
 import extdeps.uri_validation { find_first_rejected_url }
@@ -105,12 +111,11 @@ data jsx_like_medium: MarkupMedium = MarkupMedium {
   // The comment grammar of THIS adversarial medium, spelled the way JSX spells it. The medium exists to
   // prove the serializer has no HTML delimiter hidden in it (witness_comment_delimiters_come_from_the_
   // medium), so its delimiters are deliberately unlike HTML's -- and its terminator is what lets the same
-  // medium be asked whether a comment closed early (witness_medium_grammar_decides_the_dash_rule).
+  // medium be asked whether a comment closed early (witness_medium_grammar_decides_the_comment_check).
   comment_grammar: CommentGrammar {
     open: "{/* ",
     close: " */}",
     terminator: "*/",
-    trailing_dash_closes: false,
   },
   // Declares a doctype ON PURPOSE, unlike the real JSX medium: a claim serializes a Document through this
   // medium to show the keyword comes from the medium too. The real jsx_markup_medium says NoDocumentGrammar.
@@ -191,29 +196,63 @@ test fn witness_comment_terminator_is_refused() -> Bool {
     })
 }
 
-test fn witness_comment_trailing_dash_is_refused() -> Bool {
-  // "--" before the delimiter's own "-" also closes a comment, so a body ending in "-" is refused even
-  // though it contains no " -->" anywhere. Read from the medium: the same body is fine in a medium
-  // whose comment grammar has no abrupt-close state (witness_medium_grammar_decides_the_dash_rule).
-  match comment_body_hazard(body: "trailing dash-", grammar: html_markup_medium().comment_grammar) {
-    HazardFound { reason: _ } => true
-    HazardFree => false
-  }
+// A TRAILING DASH IS NOT A HAZARD. This claim used to assert the opposite -- it demanded a refusal of
+// "trailing dash-" -- and it was green, because the check consulted a Bool that said HTML closes on a
+// trailing dash. Review 82417 on #14351: the Bool's stated premise was that the emitter's own close
+// contributes a "-" making a third for "-->", but html_comment_close_sequence is " -->", which begins with a
+// space, so "- -->" contains exactly one "-->": the close. Walked through the comment state machine of HTML
+// §13.1.1 (the section this module already cites for the doctype rule), the body is accepted. So the claim
+// was pinning an over-refusal, and the ONLY thing that would have caught a return of that rule was this
+// line being red. §4d: "Do not over-generalize a prohibition."
+//
+// Bodies ending in a dash are ordinary prose: an em-dash, a bullet, a truncated date. The list is the
+// tokenizer's own neighbourhood, not a sample.
+test fn witness_comment_trailing_dash_is_accepted() -> Bool {
+  all(["trailing dash-", "-", "--", "---", "note--", "a-"], b =>
+    match comment_body_hazard(body: b, grammar: html_markup_medium().comment_grammar) {
+      HazardFree => true
+      HazardFound { reason: _ } => false
+    })
 }
 
-// The dash rule is a fact about the MEDIUM, not about the walker: the identical body in a medium that
-// declares comment_trailing_dash_closes = false must be accepted. Without this pair, the flag could be
-// ignored by the walk (hardcoded to refuse) and every claim above would stay green — the medium's
-// grammar would be decoration.
-test fn witness_medium_grammar_decides_the_dash_rule() -> Bool {
-  let body = "trailing dash-"
-  match comment_body_hazard(body: body, grammar: jsx_like_medium.comment_grammar) {
-    HazardFree =>
-      match comment_body_hazard(body: body, grammar: html_markup_medium().comment_grammar) {
-        HazardFound { reason: _ } => true
-        HazardFree => false
-      }
+// THE GRAMMAR'S OWN ROWS DECIDE, with no per-language flag to set correctly. Two media, two questions,
+// both answered from CommentGrammar.close and .terminator:
+//   - a well-formed medium accepts a body its tokenizer survives (HTML accepts "trailing dash-");
+//   - a medium whose close sequence cannot contain its terminator is refused on EVERY body, because that
+//     emitter would open a comment nothing closes -- the rest of the document becomes comment text. That
+//     is a defect in the medium, refused as one, and it is the arm a flag could never have expressed.
+// Without the second half, the medium's rows would be decoration: an adversarial grammar would be
+// serialized happily, which is the same silent-pass shape review 82181 found for JSX.
+test fn witness_medium_grammar_decides_the_comment_check() -> Bool {
+  let accepted = match comment_body_hazard(body: "trailing dash-", grammar: html_markup_medium().comment_grammar) {
+    HazardFree => true
     HazardFound { reason: _ } => false
+  }
+  let broken = CommentGrammar {
+    open: "<!-- ",
+    close: " ~~ ",
+    terminator: "-->",
+  }
+  let refused_everywhere = all(["", "harmless", "-"], b =>
+    match comment_body_hazard(body: b, grammar: broken) {
+      HazardFound { reason: _ } => true
+      HazardFree => false
+    })
+  accepted && refused_everywhere
+}
+
+// The medium-defect refusal is LOCATED, not a shrug (§5): it names the close sequence and the terminator
+// it fails to contain, so the fix is obvious from the diagnostic alone.
+test fn witness_broken_close_names_both_rows() -> Bool {
+  let broken = CommentGrammar {
+    open: "<!-- ",
+    close: " ~~ ",
+    terminator: "-->",
+  }
+  match comment_body_hazard(body: "x", grammar: broken) {
+    HazardFound { reason: r } =>
+      string_contains(s: r, pattern: "~~") && string_contains(s: r, pattern: html_comment_terminator as String)
+    HazardFree => false
   }
 }
 

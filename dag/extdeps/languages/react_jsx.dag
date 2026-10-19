@@ -61,10 +61,6 @@ data jsx_comment_close_sequence: NonEmptyStr = " */}" as NonEmptyStr
 // writes " */}", the checker must look for "*/". Both rows sit here, in JSX's own module, because both
 // are facts about JSX.
 data jsx_comment_terminator: NonEmptyStr = "*/" as NonEmptyStr
-// A body ending in "-" does NOT close a JSX comment: "- */}" is an ordinary comment in JSX, whose
-// comment grammar has no abrupt-close state. Contrast the HTML medium, where the same shape reaches
-// the tokenizer's comment end state. This is the per-language fact the medium field exists for.
-data jsx_comment_trailing_dash_closes: Bool = false
 
 fn jsx_markup_medium() -> MarkupMedium {
   MarkupMedium {
@@ -81,7 +77,6 @@ fn jsx_markup_medium() -> MarkupMedium {
       open: jsx_comment_open_sequence,
       close: jsx_comment_close_sequence,
       terminator: jsx_comment_terminator,
-      trailing_dash_closes: jsx_comment_trailing_dash_closes,
     },
     // NO doctype field exists to fill. The previous shape had `doctype_open: html_doctype_open_sequence`
     // beside `document_declaration_allowed: false`, i.e. the medium was forced to carry a spelling its own

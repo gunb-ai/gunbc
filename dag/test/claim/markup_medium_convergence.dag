@@ -78,7 +78,6 @@ fn md_medium_underscore() -> MarkupMedium {
       open: "<!-- ",
       close: " -->",
       terminator: "-->",
-      trailing_dash_closes: true,
     },
     document_grammar: DeclaresDocument {
     open: "<!DOCTYPE ",
@@ -120,7 +119,6 @@ fn single_quote_medium() -> MarkupMedium {
       open: "<!-- ",
       close: " -->",
       terminator: "-->",
-      trailing_dash_closes: true,
     },
     document_grammar: DeclaresDocument {
     open: "<!DOCTYPE ",
