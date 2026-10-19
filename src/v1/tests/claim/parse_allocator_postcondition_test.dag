@@ -1,0 +1,117 @@
+module v1.tests.claim.parse_allocator_postcondition_test
+
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import std.types { String, List, Int, Bool }
+import std.algebra { FreeMonoid, Empty, Cons }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table, ParseWithTableResult }
+import v1.std.core { build_newline_index, empty_intern_table }
+
+// v1-interface-cull-audit P1.3 (lane N): the parser allocator postcondition.
+// Every parse result carries an allocator advanced past every identity it constructed.
+// Before this lane, parse_expr_loop(_no_brace) and the statements/arguments/parameters folds
+// re-scanned their growing tree on every iteration to rescue a context whose producer had not
+// published -- quadratic in a left-associated chain. The walks are deleted on the strength of
+// the postcondition; these controls are what keeps it true. A producer that stops publishing
+// its minted identities re-introduces id COLLISIONS (a later mint reuses an unpublishing
+// child's id), and collision is exactly what a strictly-increasing sorted id list rules out.
+//
+// They import v1.compiler.parse, so no witness under dag/test/claim can call them, and they
+// run on no required path. Direct execution is evidence they HOLD; it is not evidence CI runs
+// them.
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//     --entry src/v1/tests/claim/parse_allocator_postcondition_test.dag \
+//     --function <test fn>
+
+data postcondition_fixture_file: String = "zqxalloc_fixture.dag"
+
+fn parse_chain_source(source: String) -> ParseWithTableResult {
+  parse_with_table(
+    tokens: tokenize(source: source, file: postcondition_fixture_file, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), postcondition_fixture_file, build_newline_index(file: postcondition_fixture_file, source: source)),
+    intern_table: empty_intern_table(),
+  )
+}
+
+fn parsed_ok(parsed: ParseWithTableResult) -> Bool {
+  match parsed.result.error {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// The published occurrence ids, ascending. Published == present in the transport index the
+// result carries: the same rows downstream binding consumes, so the control reads the parser's
+// own answer, never a hand-built one.
+fn published_ids(parsed: ParseWithTableResult) -> List<Int> {
+  parsed.occurrence_transport.index.entries |> map(e => e.projection.occurrence.value)
+}
+
+fn sorted_ascending(xs: List<Int>) -> Bool {
+  match xs {
+    Empty => true
+    Cons { head: h, tail: t } => match t {
+      Empty => true
+      Cons { head: h2, tail: _ } => h < h2 && sorted_ascending(xs: t)
+    }
+  }
+}
+
+// THE POSTCONDITION, stated once: every published id sits below the result's allocator cursor.
+// A context that was never advanced past a constructed identity hands that identity's id to the
+// next mint, so ids stop being distinct; strict increase after sorting is the collision oracle,
+// and the cursor bound is the postcondition itself.
+fn postcondition_holds(parsed: ParseWithTableResult) -> Bool {
+  let ids = published_ids(parsed: parsed) |> sort_by(x => x)
+  parsed_ok(parsed: parsed)
+    && (ids |> all(id => id >= 0 && id < parsed.occurrence_allocator.next_id))
+    && sorted_ascending(xs: ids)
+}
+
+// 1 + 2 + 3 + ... + terms parses to a left-associated spine of `terms - 1` binary nodes, each
+// built by ONE iteration of parse_expr_loop: the shape whose re-scan the P1.3 walks made
+// quadratic. Terms count is an argument so the cost-shape reading and the postcondition run on
+// the same producer.
+fn chain_terms(upto: Int) -> List<Int> {
+  chain_terms_loop(acc: [], next: 1, upto: upto)
+}
+
+fn chain_terms_loop(acc: List<Int>, next: Int, upto: Int) -> List<Int> {
+  if next > upto { acc } else { chain_terms_loop(acc: concat(acc, [next]), next: next + 1, upto: upto) }
+}
+
+fn chain_source(terms: Int) -> String {
+  concat(
+    "module zqxalloc.user\n\ndata zqx_chain: Int = ",
+    chain_terms(upto: terms) |> fold(init: "", f: (s, k) => if s == "" { to_string(k) } else { concat(s, " + ", to_string(k)) }),
+    "\n"
+  )
+}
+
+// The chain's published ids, rendered for the before/after reading (P1.3 asks: occurrence ids
+// and transport identical across the deletion). Run with --function; the PR diff compares two
+// dumps of THIS function, old parser vs regenerated parser.
+fn chain_dump_ids(terms: Int) -> String {
+  let parsed = parse_chain_source(source: chain_source(terms: terms))
+  published_ids(parsed: parsed) |> fold(init: "", f: (s, k) => concat(s, to_string(k), "\n"))
+}
+
+test fn long_left_associated_chain_postcondition() -> Bool {
+  postcondition_holds(parsed: parse_chain_source(source: chain_source(terms: 200)))
+}
+
+// The same postcondition over the three sibling folds whose rescue walks were deleted:
+// parameters (parse_param_list_acc), arguments (parse_arg_list_acc) and statements
+// (parse_stmts_acc via the block below). One module, all three families, mints interleaved
+// with fold iterations -- an unpublishing producer here collides inside the fold, not at the
+// module edge.
+data fold_fixture_source: String = "module zqxalloc.user\n\nfn zqx_fold(a: Int, b: Int, c: Int) -> Int \{\n  let x = zqx_g(a, b, c) + zqx_g(c, b, a)\n  let y = x + x + x\n  y\n\}\n"
+
+test fn parameters_arguments_statements_postcondition() -> Bool {
+  postcondition_holds(parsed: parse_chain_source(source: fold_fixture_source))
+}
+
+// Control for the deletion itself: the fold parses must agree with the pre-deletion dumps.
+// Identical output of chain_dump_ids(terms: N) before and after the regen (N = 40, 200) is
+// recorded in the PR as the transport-identity specimen.
