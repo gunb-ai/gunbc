@@ -1,0 +1,35 @@
+module gunbc.rung_drop.partition_moving_heal_at_the_timeout_limit
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP for heal convergence of a partition-moving change (DESIGN 4b(3)). Operator
+// ruling relayed by clever-crane-830 on gunbc#14353: the heal timeout is not raised, and a heal that
+// times out is an ACCEPTED, VISIBLE failure. Heal pushes nothing, and the author regenerates locally.
+//
+// Measured: heal run 39288503502 over the specimen (gunbc#14317) took 88m16s of its 90m limit with the
+// converge step at 75m07s; the non-moving baseline run 39284218586 took 32m40s. The worst case, boundary
+// drift that first appears after the mirrors converge (an extra rebuild and regen), exceeds 90m.
+//
+// WHAT IS LOST IS THE CLAIM THAT ONE LOOP CONVERGES WITHIN HEAL, FOR THIS POPULATION ONLY. The loop
+// still converges (bounded, refusing with per-round records); only heal's wall time can end it first.
+data partition_moving_heal_at_the_timeout_limit: RungDrop = RungDrop {
+  identity: "partition_moving_heal_at_the_timeout_limit" as NonEmptyStr,
+
+  subject: "heal converging a partition-moving change within its 90m timeout: the loop converges, but heal's wall time can end it first, in which case nothing is pushed",
+
+  declared: "2026-10-19",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "incremental per-stage rebuilds in the mirror loop, so a stage rebuilds only what the installed mirrors changed" },
+    population: [
+      "partition-moving changes (a change that moves partition_generated.rs, such as adding a seed module) run under gunbc.heal_workflow",
+    ],
+    restoration_trigger: "THE CAPABILITY: incremental per-stage rebuilds in the mirror loop, landed AND MEASURED on a partition-moving heal run (the saving is measured before it is claimed), with that heal finishing inside its limit with stated margin."
+  }
+}
