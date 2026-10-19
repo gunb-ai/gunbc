@@ -60,10 +60,13 @@ module test.claim.compute.output_capture_absence_wet_witness
 //   2. gunbc.ci.ci_layer_roots witness_exclusion_frontier -- pattern
 //      "output_capture_absence_wet_witness.dag", classification LocalRepoWetLane, so hermetic
 //      discovery does not claim a file whose effects it cannot serve.
-//   3. v2.workflow.floor_route_gap -- one expectation per identity, operation DirWithTemplate,
-//      ground NoMockResponse: what the hermetic route refuses on, read from the same refusal the
-//      sibling rows record ("the hermetic route has no arm for DirWithTemplate (operation declares
-//      no mock_response)"), which is the operation shell.Mktemp.Dir resolves to.
+//   3. v2.workflow.floor_route_gap (floor_route_gap_expectation_chunk_45) -- one expectation per
+//      identity, operation DirWithTemplate, ground NoMockResponse: what the hermetic route refuses
+//      on, read from THESE identities by the hermetic claim run itself
+//      (`gunbc run --claim-run --dry-run --function <row>` reports HermeticHostEffectRefused {
+//      operation: "DirWithTemplate", ground: NoMockResponse }), which is the operation the case root
+//      is created through. Not copied from a sibling: copying is what chunk_21's header records as
+//      producing floor_route_gap_expectation_mismatch.
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.algebra { length, string_contains, trim }
@@ -87,7 +90,12 @@ import gunbc.compute.work_provider_local {
   compute_return_outputs,
   compute_staged_path,
 }
-import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
+import gunbc.roadmap.roadmap_execution_contract {
+  AttemptStateDirectoryCapability,
+  GitWorkspaceCapability,
+}
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
+import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   IsolatedJobToolchainHomes,
@@ -294,10 +302,33 @@ fn setup_failed(cause: String) -> WetCaptureCase {
   }
 }
 
+
 // THE CASE, EXECUTED. write_output=true puts the declared output on disk inside the production
 // checkout path; false leaves it unwritten. second_output_present adds a SECOND, present declared
 // output AFTER the absent one, so only a stop at the first refusal can keep its install from
 // running.
+// THE ONE BOOTSTRAP CALL, and it exists for exactly one reason that is a fact about production's
+// helper rather than a convenience: compute_ensure_dir launches `install -d` with `workdir` set to
+// the instance's REPO ROOT, so it cannot create the repo root itself -- measured on the runner, the
+// call succeeds with an existing workdir and fails with repo_root before anything has made it. In
+// the fleet, the repo root is created by the provisioner before any compute work runs; a wet case
+// that builds its own host has to make that one directory. Everything BELOW it -- the layout's
+// checkout, target and staging trees -- then goes through production's own compute_ensure_dir,
+// unchanged. Same program, same capability lookup, same mode, same argument builder as that helper;
+// only the launched-from directory differs, and only for this call. A refusal returns false.
+fn compute_ensure_dir_from(instance: HostDashboardInstance, root: String, path: String) -> Bool {
+  let install = compute_program(instance: instance, cap: AttemptStateDirectoryCapability)
+  let dir_mode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
+  match compute_exec(
+    program: install,
+    workdir: root,
+    args: coreutils_install_directories_arguments(mode: dir_mode, paths: [path]),
+  ) {
+    ComputeExecOk { stdout: _, stderr: _ } => true
+    ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
+  }
+}
+
 fn wet_capture_case(write_output: Bool, second_output_present: Bool) -> WetCaptureCase {
   let root = shell.Mktemp.DirWithTemplate(template: witness_root_template).path as String
   let instance = witness_instance(temp_root: root)
@@ -310,10 +341,27 @@ fn wet_capture_case(write_output: Bool, second_output_present: Bool) -> WetCaptu
   let dirs_ready = match layout_opt {
     Absent => false
     Present { value: layout } =>
-      compute_ensure_dir(instance: instance, path: layout.checkout)
+      compute_ensure_dir_from(instance: instance, root: root, path: instance.repo_root as String)
+        && compute_ensure_dir(instance: instance, path: layout.checkout)
         && compute_ensure_dir(instance: instance, path: layout.target_dir)
         && compute_ensure_dir(instance: instance, path: layout.staging_dir)
+        && compute_ensure_dir(instance: instance, path: join([layout.checkout, "/out/captured"], ""))
   }
+  // THE LAYOUT'S OWN DIRECTORIES, created by production's own helper over the same paths
+  // compute_spawn_and_collect creates (checkout, target_dir, staging_dir), after ONE bootstrap call
+  // that only makes the instance's repo root -- which the fleet's provisioner creates before any
+  // compute work, and which compute_ensure_dir cannot make for itself because it launches `install
+  // -d` from there (see compute_ensure_dir_from; both facts were measured on the runner, not
+  // assumed). Every result is checked and a refusal names itself below. Nothing here fabricates a
+  // directory the route would not have made: the helper, the capability, the mode and the argument
+  // builder are production's.
+  //
+  // The last path above is the directory a BUILD makes for its own artifact: the route never
+  // creates an output's directory (compute_spawn_and_collect ensures the layout's own trees, the
+  // build writes its declared outputs, and the capture only READS them afterwards), so a built
+  // work-unit has that parent directory and the layout helpers do not create it. It is made here by
+  // production's own compute_ensure_dir, which works unmodified now that repo_root exists.
+  //
   // One named failure, not a silent false. The checkout DIRECTORY exists by here (dirs_ready came
   // from compute_ensure_dir over the layout's own paths), so when a declared output is absent,
   // git's refusal is about the missing FILE -- which is what the absent claim is about -- and not
@@ -414,6 +462,7 @@ fn wet_capture_case(write_output: Bool, second_output_present: Bool) -> WetCaptu
     }
   }
 }
+
 
 // (1) THE PRESENT CLAIM, EXECUTED WET. Production's own route returns the declared output and its
 // blob equals git hash-object's OWN stdout -- four live readings of the same bytes agreeing: the
