@@ -89,7 +89,7 @@ fn read_in_place(s: IamBootstrapResource) -> BootstrapSubjectObservation {
 }
 
 fn delta_pools() -> List<IamBootstrapResource> {
-  filter(roster_subjects(roster: delta_roster), s => match s { BootstrapPool { pool: _ } => true  BootstrapProject => false  BootstrapAccount { account: _ } => false  BootstrapSecret { secret: _ } => false })
+  filter(roster_subjects(roster: delta_roster), s => match s { BootstrapPool { pool: _ } => true  BootstrapProject => false  BootstrapAccount { account: _ } => false  BootstrapSecret { secret: _ } => false  BootstrapBucket { bucket: _ } => false })
 }
 
 fn same_subject(a: IamBootstrapResource, b: IamBootstrapResource) -> Bool {
