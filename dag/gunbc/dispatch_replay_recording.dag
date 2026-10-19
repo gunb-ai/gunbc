@@ -142,6 +142,12 @@ fn recording_id_decode(text: String) -> RecordingIdDecode {
               Present { value: status } =>
                 if string_length(s: result_word) == 0 {
                   RecordingIdMalformed { text: text, reason: "the manager result part is empty" }
+                } else if status < 0 || status > 255 {
+                  RecordingIdMalformed { text: text, reason: "the exit status is outside 0..255, which no process exit can carry" }
+                } else if status == replay_refusal_exit_code {
+                  RecordingIdMalformed { text: text, reason: "the exit status is the replay refusal code, which an exit record could not tell from a refused replay" }
+                } else if !recording_exit_pair_reproducible(status: status, result: service_result_of_wire(word: result_word)) {
+                  RecordingIdMalformed { text: text, reason: "the manager result does not follow from the exit status, so replaying by exiting could not reproduce it" }
                 } else {
                   RecordingIdDecoded {
                     id: RecordingId {
@@ -178,8 +184,13 @@ fn recording_exit_pair_reproducible(status: Int, result: ServiceResult) -> Bool 
   }
 }
 
+// The exit code a replay REFUSAL exits with. The exit record keeps only the status, so a recording that carried this
+// status would read the same downstream as a refused replay; capture refuses such a recording, typed.
+data replay_refusal_exit_code: Int = 78
+
 type RecordingCaptureRefusal
   = RecordingCaptureExitSignaled
+  | RecordingCaptureExitCollidesWithReplayRefusal { status: Int }
   | RecordingCaptureExitPairNotReproducible { status: Int, manager_result: String }
   | RecordingCaptureObjectUnusable { object: String, detail: String }
   | RecordingCaptureAlreadyRecorded { ref_name: String }
@@ -244,7 +255,9 @@ fn recording_capture(repo_root: String, base_sha: String, result_commit: String,
   match exit.end {
     AttemptProcessSignaled { signal: _ } => RecordingCaptureRefused { cause: RecordingCaptureExitSignaled }
     AttemptProcessExitedWith { status } =>
-      if !recording_exit_pair_reproducible(status: status, result: exit.result) {
+      if status == replay_refusal_exit_code {
+        RecordingCaptureRefused { cause: RecordingCaptureExitCollidesWithReplayRefusal { status: status } }
+      } else if !recording_exit_pair_reproducible(status: status, result: exit.result) {
         RecordingCaptureRefused {
           cause: RecordingCaptureExitPairNotReproducible { status: status, manager_result: recording_manager_result_word(result: exit.result) },
         }

@@ -7,7 +7,7 @@ import extdeps.git
 import extdeps.git.plumbing { GitWorktreeAt, GitRepositoryAddress }
 import gunbc.dispatch_replay_recording {
   RecordingId, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed,
-  recording_ref_of, recording_peel_to_tree_suffix, recording_replay_admission, RecordingReplayAdmitted, RecordingReplayBaseMismatch,
+  recording_ref_of, replay_refusal_exit_code, recording_peel_to_tree_suffix, recording_replay_admission, RecordingReplayAdmitted, RecordingReplayBaseMismatch,
 }
 
 // THE REPLAY WORKER: what the replay executor runs inside the same transient unit, as the same gunbc-worker
@@ -29,7 +29,7 @@ fn replay_recorded_exit(id: RecordingId) -> ProcessExit {
 }
 
 fn replay_refused(reason: String) -> ProcessExit {
-  ExitFailure { code: 78, reason: join(["replay refused: ", reason], "") }
+  ExitFailure { code: replay_refusal_exit_code, reason: join(["replay refused: ", reason], "") }
 }
 
 fn replay_worker_cli(worktree: String, repo_root: String, recording_id: String) -> ProcessExit {

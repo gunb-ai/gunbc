@@ -101,3 +101,16 @@ test fn the_replay_request_word_and_kind_are_explicit() -> Bool {
     && (match dispatch_cli_to_provider_kind(provider: ReplayDispatchProvider) { DispatchExecutorHasNoVendorKind { executor: _ } => true  DispatchProviderKindIs { kind: _ } => false })
     && !recording_exit_pair_reproducible(status: 0, result: ServiceResultExitCode)
 }
+
+// THE ONE ADMISSION: decode refuses what a unit that ended by exiting could not have produced. Mutation: drop any
+// of the three decode checks (range, refusal code, exit pair) and the matching assertion goes red.
+test fn decode_refuses_an_unreplayable_exit_status_or_pair() -> Bool {
+  let b = base_a
+  let t = tree_t
+  (match recording_id_decode(text: join([b, ".", t, ".78.exit-code"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".256.exit-code"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".0.exit-code"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".3.success"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".0.oom-kill"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".0.success"], "")) { RecordingIdDecoded { id: _ } => true  RecordingIdMalformed { text: _, reason: _ } => false })
+}
