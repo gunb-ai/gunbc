@@ -77,7 +77,7 @@ fn row_is_below_ceiling(r: RecurringFailureMode) -> Bool {
     RungRead { found_at: _, standing: s } =>
       match s {
         AtCeiling { rung: _, ceiling_reason: _ } => false
-        BelowCeiling { current: _, ceiling: _, blocker: _, trigger: _ } => true
+        BelowCeiling { current: _, ceiling: _, blocker: _, trigger_capability: _ } => true
       }
   }
 }
@@ -98,7 +98,7 @@ fn unread_cause_labels() -> List<String> {
 }
 
 fn unread_cause_row(label: String) -> String {
-  concat("unread ", concat(label, concat(" ", concat(to_string(value: recurring_failure_mode_roster |> filter(r => row_unread_cause_is(r: r, label: label)) |> count), "\n"))))
+  count_case_row(identity: concat("census_unread_", label), n: recurring_failure_mode_roster |> filter(r => row_unread_cause_is(r: r, label: label)) |> count)
 }
 
 // SUPPLIED VALUES AT THE ONE INTERFACE standing_admission decides (DESIGN section 3, a witness
@@ -179,16 +179,34 @@ fn case_row(c: RfmRungCase) -> String {
   concat("case ", concat(c.identity, concat(if c.held { " held" } else { " not_held" }, concat(" observed=", concat(c.observed, "\n")))))
 }
 
+// THE COUNTS ARE REPORTED AS `case` ROWS THAT HOLD BY CONSTRUCTION, because the claim-program report
+// admits only a roster line and case rows. They carry no budget: no count here is compared with a
+// literal (DESIGN section 5), and a case that can only hold is a report, not a check.
+fn count_case_row(identity: String, n: Int) -> String {
+  concat("case ", concat(identity, concat(" held observed=", concat(to_string(value: n), "\n"))))
+}
+
+fn census_identities() -> List<String> {
+  ["census_rows", "census_read", "census_below_ceiling"]
+}
+
+fn census_roster_line() -> String {
+  concat(
+    concat(census_identities() |> join(separator: ","), ","),
+    unread_cause_labels() |> map(l => concat("census_unread_", l)) |> join(separator: ","),
+  )
+}
+
 fn census_rows() -> String {
-  let rows = concat("rows ", concat(to_string(value: recurring_failure_mode_roster |> count), "\n"))
-  let read = concat("read ", concat(to_string(value: recurring_failure_mode_roster |> filter(r => !row_is_unread(r: r)) |> count), "\n"))
-  let below = concat("below_ceiling ", concat(to_string(value: recurring_failure_mode_roster |> filter(r => row_is_below_ceiling(r: r)) |> count), "\n"))
+  let rows = count_case_row(identity: "census_rows", n: recurring_failure_mode_roster |> count)
+  let read = count_case_row(identity: "census_read", n: recurring_failure_mode_roster |> filter(r => !row_is_unread(r: r)) |> count)
+  let below = count_case_row(identity: "census_below_ceiling", n: recurring_failure_mode_roster |> filter(r => row_is_below_ceiling(r: r)) |> count)
   concat(rows, concat(read, concat(below, unread_cause_labels() |> map(l => unread_cause_row(label: l)) |> join(separator: ""))))
 }
 
 fn native_claim_report() -> NativeClaimReport {
   let cases = rfm_rung_cases()
-  let roster = concat("roster ", concat(rfm_rung_expected_identities() |> join(separator: ","), "\n"))
+  let roster = concat("roster ", concat(rfm_rung_expected_identities() |> join(separator: ","), concat(",", concat(census_roster_line(), "\n"))))
   let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
   let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
   NativeClaimReport { stdout: concat(roster, concat(census_rows(), cases |> map(c => case_row(c: c)) |> join(separator: ""))), terminal: terminal }

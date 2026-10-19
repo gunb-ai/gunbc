@@ -245,9 +245,10 @@ fn standing_admission(subject: String, s: RungStanding) -> StandingAdmission {
     AtCeiling { rung: _, ceiling_reason: _ } => StandingAdmitted
     BelowCeiling { current: c, ceiling: k, blocker: _, trigger_capability: t } =>
       if rung_position_index(p: c) < guarantee_rung_index(r: k) {
-        match trigger_capability_admission(subject: subject, capability: t) {
+        let admission = trigger_capability_admission(subject: subject, capability: t)
+        match admission {
           TriggerAdmitted => StandingAdmitted
-          refused => StandingTriggerRefused { subject: subject, admission: refused }
+          _ => StandingTriggerRefused { subject: subject, admission: admission }
         }
       } else {
         StandingNotBelowCeiling { subject: subject }
