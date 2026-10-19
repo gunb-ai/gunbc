@@ -2098,7 +2098,7 @@ fn runner_host_cap_extras(desired_units: List<NonEmptyStr>, retired_units: List<
   match population {
     SlotPopulationUnobservable { reason: _ } => []
     SlotPopulationObserved { units: us } =>
-      map(filter(us, r => !any(desired_units, d => (d as String) == (r.unit as String)) && !any(retired_units, d => (d as String) == (r.unit as String)) && (match r.reach { ReachesLiveCgroup => true ReloadInert => false }))), r => r.unit)
+      map(filter(us, r => !any(desired_units, d => (d as String) == (r.unit as String)) && !any(retired_units, d => (d as String) == (r.unit as String)) && (match r.reach { ReachesLiveCgroup => true ReloadInert => false })), r => r.unit)
   }
 }
 
