@@ -74,6 +74,11 @@ import gunbc.host.host_boot_attempt_admission { boot_attempt_slot_root }
 // re-typing the path. Until then the drift is real -- moving the state directory today requires
 // finding three unrelated string sites, and missing one produces a lease that guards a directory
 // nothing else uses.
+// WHERE THE RENDERED gunbc-ghrunner.sudoers IS INSTALLED ON A HOST: one fact, read by the fci1 sha256
+// probe and by gunbc.fleet.fleet_host_grant_coverage (which reads the installed drop-in to tell a
+// rendered grant from one installed by hand).
+data runner_host_sudoers_install_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrunner"
+
 data gunbc_fleet_converge_state_dir: NonEmptyStr = fleet_converge_state_root
 
 // THE TWO SERVICE TRANSITIONS ARE GRANTED PER UNIT AND SEPARATELY, one enable line and one start
