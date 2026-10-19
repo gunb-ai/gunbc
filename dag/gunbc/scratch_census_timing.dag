@@ -110,3 +110,36 @@ fn p3_10() -> CliWireResponse { probe_n(stage: 3, n: 10) }
 fn p1_30() -> CliWireResponse { probe_n(stage: 1, n: 30) }
 fn p2_30() -> CliWireResponse { probe_n(stage: 2, n: 30) }
 fn p3_30() -> CliWireResponse { probe_n(stage: 3, n: 30) }
+
+// A constant-size input: one tiny distinct module text per call. If the per-call wall is the same as for
+// real files, the cost is in the call, not in the file.
+fn tiny_one(env: AcquisitionEnv, i: Int) -> Int {
+  let text = concat("module m", concat(to_string(i), "\n"))
+  match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: concat("m", to_string(i))), prepared: env.lex) {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse_module_prepared(tokens: tokens, prepared: env.grammar) {
+        Rejected { diagnostics: _ } => 0
+        Accepted { value: artifact, diagnostics: _ } =>
+          match test_marker_content(tree: artifact.tree) {
+            Rejected { diagnostics: _ } => 0
+            Accepted { value: _, diagnostics: _ } => 1
+          }
+      }
+  }
+}
+
+fn tiny_loop(env: AcquisitionEnv, i: Int, n: Int, acc: Int) -> Int {
+  if i >= n { acc } else { tiny_loop(env: env, i: i + 1, n: n, acc: acc + tiny_one(env: env, i: i)) }
+}
+
+fn tiny_n(n: Int) -> CliWireResponse {
+  match acquisition_env(layout: repository_storage_layout(), bindings: governed_bindings()) {
+    AcquisitionEnvUnprepared { diagnostics: _ } => done(text: "unprepared")
+    AcquisitionEnvReady { env: env } => done(text: concat("tiny ok=", to_string(tiny_loop(env: env, i: 0, n: n, acc: 0))))
+  }
+}
+
+fn q_1() -> CliWireResponse { tiny_n(n: 1) }
+fn q_10() -> CliWireResponse { tiny_n(n: 10) }
+fn q_40() -> CliWireResponse { tiny_n(n: 40) }
