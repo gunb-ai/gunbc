@@ -310,7 +310,9 @@ fn rebuild_scope_owners_of_mirror(
     |> filter(row => stage0_partition_row_is_module_bearing_package(row: row))
     |> filter(row => row.modules |> any(m => rebuild_scope_mirror_of_module(module_basename: m) == mirror))
     |> map(row => row.package_name)
-  if host_shell_modules |> any(m => rebuild_scope_mirror_of_module(module_basename: m) == mirror) {
+  // lib.rs is the host shell crate's own root, the file that declares host_shell_modules: it is
+  // owned by the shell package by construction, not by an allow-list entry.
+  if mirror == "lib.rs" || host_shell_modules |> any(m => rebuild_scope_mirror_of_module(module_basename: m) == mirror) {
     concat(partition_owners, [stage0_host_shell_package_name()])
   } else {
     partition_owners
