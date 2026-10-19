@@ -682,10 +682,13 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
 // pre-repair code passed and it is what is passed here; only the ABSENCE disjunct is deleted.
 fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String, node: Node) -> List<ResolvedFormal> {
   let tp_names = fn_type_param_names(item: node, source_indices: type_env.source_indices)
+  // A callable candidate's header parameters belong to the callable, which this caller cannot name
+  // as a declaring type; the binder carries no identity rather than one minted from a guess.
   let declaration_env = census_declaration_type_env(
     census: type_env.symbol_index,
     module_path: owner_module_path,
     tp_names: tp_names,
+    owner_decl_name: Absent,
     source_indices: type_env.source_indices
   )
   let declaration_generic_names = borrowed_generic_param_names(

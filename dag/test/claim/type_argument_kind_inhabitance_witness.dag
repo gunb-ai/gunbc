@@ -184,3 +184,88 @@ test fn a_generic_function_not_misusing_its_parameter_still_compiles() -> Bool {
   type_param_value_position_blocking_count(source: generic_fn_positive_source()) == 0
     && compile_dag_rust_emit_check(generic_fn_positive_source(), "src/kindprobe_pos_generic_fn.rs", [], [])
 }
+
+// ================================================================================================
+// THE FORWARDED-PARAMETER TIER: A PARAMETER OF THE ENCLOSING DECLARATION, USED AS A TYPE ARGUMENT.
+// Class rows: gunbc.recurring_failure_mode.kind_wall_receives_a_de_identified_type_argument and
+// .type_variable_means_both_declared_generic_and_inference_variable.
+//
+// WHAT THESE FOUR ROWS EXIST FOR. Until this PR, an argument that was a bound type parameter was
+// ADMITTED because it was a type variable (arm 1) or because its bare name resolved to a binder
+// (arm 4). Neither arm read a kind. So a parameter declared `Other` could be forwarded into a slot
+// whose kind is `WidthResolution`, and nothing refused it: the silent widen DESIGN section 5 bans,
+// and the defect PR #14327 deleted on the v2 side (`ArgumentTypeParameterUnjudged => acc`). The
+// judgment now reads the kind the parameter's own declaration gives it and compares the two kinds
+// by the declaration EACH ONE RESOLVES TO.
+//
+// WHY THE POSITIVE IS THE LOAD-BEARING ROW AND IS RED ON MAIN. Matching-kind forwarding is the
+// obligation PR #14327 left named and unproduced: a parameter declared Quantity forwarded into a
+// Quantity slot MUST be admitted, or the wall is a refusal machine. On main it is refused, because
+// the binder the seed installed for a declaration's own parameters (`nominal_type_binding`, deleted
+// here) carried no inferred type at all, so neither arm could see a parameter and the wall answered
+// KindNotInhabited. That is what these rows measure: main refuses the one case that must pass, and
+// this head admits it while still refusing the three that must not.
+//
+// THE THREE NEGATIVES ARE NOT GREEN ON MAIN FOR THE RIGHT REASON, and being told so is the point of
+// running the revert in the PR. On main they refuse because nothing was ever recognized; with THIS
+// PR'S REPAIR ALONE (the binder routed through env_with_type_variable_bindings, the judgment
+// reverted to arm 1's old `if arg_is_type_var { KindInhabited }` and arm 4 restored) all three are
+// ADMITTED, so each row goes red. That revert run is the discriminating evidence that the refusals
+// come from the judgment and not from the fixture failing to reach resolve.
+//
+// EVERY FIXTURE MUST REACH RESOLVE, and no row here is greenable by a parse refusal: a fixture that
+// never got to resolve yields ZERO rows of TypeArgumentKindMismatch, which fails each negative's
+// `>= 1` and fails the positive's emit check as well. CensusNotRunnable answers -1, which fails
+// both polarities. So a broken fixture is red on all five arms, never silently satisfied.
+//
+// THE GEOMETRY IS A TYPE DECLARATION'S OWN PARAMETER, deliberately. v1 indexes a type declaration's
+// header parameters; an fn header's binder conjunct at its declaring path is the gap PR #14327 filed
+// as gunbc.recurring_failure_mode.fn_type_parameter_header_is_never_indexed, and an fn-header forward
+// is refused there as ForwardedParameterUnidentified. Asserting the positive over an fn header would
+// therefore witness a different, still-open defect rather than this judgment.
+
+fn forward_same_kind_source() -> String {
+  "module kindprobe.pos_forward\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\ntype Box<T: WidthResolution> {\n  value: Width<T>\n}\n\n"
+}
+
+// THE MATCHING-KIND POSITIVE. `T` is Box's own parameter, declared `WidthResolution`, forwarded into
+// Width's slot of that same kind. MUST ADMIT: zero rows of the class, and the module emits.
+test fn a_forwarded_parameter_declaring_the_slots_kind_is_admitted() -> Bool {
+  kind_mismatch_blocking_count(source: forward_same_kind_source()) == 0
+    && compile_dag_rust_emit_check(forward_same_kind_source(), "src/kindprobe_pos_forward.rs", [], [])
+}
+
+fn forward_other_kind_source() -> String {
+  "module kindprobe.neg_forward_kind\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Other\n  = Left\n  | Right\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\nfn uses_width(w: Width<StaticWidthIndex>) -> Int {\n  1\n}\n\ntype Box<T: Other> {\n  value: Width<T>\n}\n\n"
+}
+
+// THE DIFFERENT-KIND NEGATIVE. `T` is declared `Other`; the slot demands `WidthResolution`. MUST
+// REFUSE, and it refuses at the judgment (ForwardedParameterKindUnresolved is impossible here -- both
+// kinds resolve; the two declaring positions simply differ).
+test fn a_forwarded_parameter_declaring_a_different_kind_must_refuse() -> Bool {
+  kind_mismatch_blocking_count(source: forward_other_kind_source()) >= 1
+}
+
+fn forward_unkinded_source() -> String {
+  "module kindprobe.neg_forward_unkinded\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\nfn uses_width(w: Width<StaticWidthIndex>) -> Int {\n  1\n}\n\ntype Box<T> {\n  value: Width<T>\n}\n\n"
+}
+
+// THE UNKINDED NEGATIVE. `T` declares no kind at all, so inhabiting `WidthResolution` cannot be shown.
+// MUST REFUSE, with its own cause (ForwardedParameterUnkinded) rather than the different-kind one:
+// an unknown is not a mismatch, and collapsing them would hide which link in the chain was missing.
+test fn a_forwarded_unkinded_parameter_must_refuse() -> Bool {
+  kind_mismatch_blocking_count(source: forward_unkinded_source()) >= 1
+}
+
+fn forward_lookalike_kind_source() -> String {
+  "module kindprobe.neg_forward_lookalike\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Lookalike\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\nfn uses_width(w: Width<StaticWidthIndex>) -> Int {\n  1\n}\n\ntype Box<T: Lookalike> {\n  value: Width<T>\n}\n\n"
+}
+
+// THE IDENTITY ROW, and the reason the comparison is by resolved declaration. `Lookalike` declares
+// EXACTLY the arm names `WidthResolution` declares. Any check that compared kinds by spelling, or by
+// the set of inhabitant names a kind admits, would ADMIT this forward -- that is the spelling
+// fallback the operator's 2026-10-15 ruling refuses, and the reason this row is separate from the
+// different-kind row above: `Other` could be refused by a shape or name proxy, `Lookalike` cannot.
+test fn a_forwarded_parameter_whose_kind_only_looks_like_the_slots_kind_must_refuse() -> Bool {
+  kind_mismatch_blocking_count(source: forward_lookalike_kind_source()) >= 1
+}

@@ -9,7 +9,7 @@ import std.types { SourceSpan, is_kernel_type, is_container_type }
 import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent, KernelMinted, CorpusDeclared, TextRepresentation, HostText, CodePointSequence, NotText, TextRepresentationUnidentified }
 import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
-import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import std.decl_ref { decl_ref, decl_type_parameter_ref, DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.operator_realization { OperandDeclaration }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
@@ -1540,11 +1540,22 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
   )
 }
 
-fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> TypeEnv {
+// THE ONE PRODUCER OF A PARAMETER BINDER, and the only writer of a parameter's binder IDENTITY.
+// owner_decl_name is the declaration that DECLARES these parameters; with it the minted node's
+// declaration is the type-parameter reference (module, declaration, parameter) read from that
+// position, so a reader asking "which parameter of which declaration is this?" gets a carrier it can
+// resolve, never a spelling to match. A caller that cannot name the owning declaration passes Absent
+// and the binder carries no identity: absence is the honest shape, never a reference minted from a
+// guess. Absence is not inert -- the kind wall answers a named refusal for an unidentified forward.
+fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>, owner_decl_name: String?) -> TypeEnv {
   fold(tp_names, init: env, f: (e, tp_name) =>
+    let binder_declaration = match owner_decl_name {
+      Present { value: d } => Present { value: decl_type_parameter_ref(module_path: e.module_path, decl_name: d, parameter: tp_name) }
+      Absent => none
+    }
     let tp_binding = TypeBinding {
       name: tp_name,
-      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: binder_declaration, expr_data: NoExprData },
       provenance: SubValueUnknown, alias_rhs: none
     }
     let shadowed = effective_visible_binding(str_bindings: e.str_bindings, parents: e.parents, name: tp_name)
@@ -1572,7 +1583,10 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
 // completed symbol census are declaration authority. Build the same owner-position environment
 // for every signature fact recovered from that declaration; a caller environment is not a
 // substitute for this value.
-fn census_declaration_type_env(census: SymbolIndex, module_path: String, tp_names: List<String>, source_indices: Map<String, NewlineIndex>) -> TypeEnv {
+// owner_decl_name is the declaration that DECLARES tp_names; it travels to the one binder producer so
+// each minted binder carries its own identity. The census route has no materialized module env, so
+// this is where that fact enters.
+fn census_declaration_type_env(census: SymbolIndex, module_path: String, tp_names: List<String>, owner_decl_name: String?, source_indices: Map<String, NewlineIndex>) -> TypeEnv {
   let base = TypeEnv {
     module_path: module_path,
     bindings: empty_map(),
@@ -1589,7 +1603,7 @@ fn census_declaration_type_env(census: SymbolIndex, module_path: String, tp_name
     unit_variant_index: empty_map(),
     unit_variant_index_observed: false
   }
-  env_with_type_variable_bindings(env: base, tp_names: tp_names)
+  env_with_type_variable_bindings(env: base, tp_names: tp_names, owner_decl_name: owner_decl_name)
 }
 
 // THE EXACT PATH, AT ANY CONSUMER (relocated from v1.compiler.emit_rust, XL-0N). A type reference

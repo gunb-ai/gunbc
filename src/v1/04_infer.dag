@@ -15755,7 +15755,7 @@ fn census_binding_is_borrowable_fn_sig(binding: TypeBinding, source_indices: Map
 
 fn census_qualify_sig_return_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
   let node = binding.resolved
-  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
+  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: [], owner_decl_name: Absent, source_indices: source_indices)
   TypeBinding {
     name: binding.name,
     resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: empty_map())),
@@ -15768,7 +15768,7 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
     let node = binding.resolved
     match node.inferred {
       Present { value: Resolved { node: raw_ret } } =>
-        let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: tp_names, source_indices: source_indices)
+        let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: tp_names, owner_decl_name: Absent, source_indices: source_indices)
         let ret_result = resolve_node(n: raw_ret, env: env, module_name: module_path)
         if (ret_result.diagnostics |> count) == 0 {
           let preserved = preserve_nominal_brand_on_resolve(identity: raw_ret, structural: ret_result.resolved, brand_name: authored_name_at(source_indices: source_indices, node: raw_ret), source_indices: source_indices)
@@ -15823,7 +15823,7 @@ fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, c
     init: map_insert(empty_map(), binding.name, true),
     f: (acc, nm) => map_insert(acc, nm, true)
   )
-  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: param_names, source_indices: source_indices)
+  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: param_names, owner_decl_name: Absent, source_indices: source_indices)
   TypeBinding {
     name: binding.name,
     resolved: qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded),
@@ -15838,7 +15838,7 @@ fn census_qualify_leaf_binding(binding: TypeBinding, module_path: String, census
     init: map_insert(empty_map(), binding.name, true),
     f: (acc, nm) => map_insert(acc, nm, true)
   )
-  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
+  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: [], owner_decl_name: Absent, source_indices: source_indices)
   TypeBinding {
     name: binding.name,
     resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: excluded)),
@@ -15880,7 +15880,7 @@ fn census_upgrade_type_expr(raw: Node, env: TypeEnv, module_path: String, source
 }
 
 fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> Node {
-  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
+  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: [], owner_decl_name: Absent, source_indices: source_indices)
   let ops2 = item.children |> map(c =>
     match c.inferred {
       Present { value: Resolved { node: raw_out } } =>
@@ -16183,11 +16183,33 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   )
 
   let param_bindings_seed: Map<Int, TypeBinding> = empty_map()
+  // A declaration's own type parameters are bound by THE ONE AUTHORITY for parameter binders,
+  // env_with_type_variable_bindings (v1.std.env), reached through census_declaration_type_env --
+  // the same route census_upgrade_type_decl_binding already takes. This fold used to insert
+  // nominal_type_binding for these names, whose resolved node carries inferred: none; the kind wall
+  // (v1.compiler.resolve type_arg_kind_inhabitance) requires InferredNode::TypeVariable to admit a
+  // forwarded parameter, so the de-identified leaf made every `Measure<Q: Quantity, ...>`-shaped
+  // application refuse, and the marked binder that env_with_type_variable_bindings mints died
+  // inside resolve_item_types without ever reaching this module env. There is exactly one
+  // producer of a parameter binder now; no second registry.
+  // The Absent arm binds nothing, which leaves the name unbound: the kind wall then refuses rather
+  // than admitting, so an unreachable arm cannot become an admission. It is unreachable by
+  // construction because the authority inserts one binding for every name it is handed, and
+  // param_names is computed with the same authored_name_at the authority folds over.
   let param_bindings = fold(module_items(n: module.module), init: param_bindings_seed, f: (acc, item) =>
     let is_type_decl = match map_get(local_bindings, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id) { Present { value: _ } => true  Absent => false }
     if item.params |> count > 0 && is_type_decl && item.body == none {
+      let param_names = item.params |> map(p => authored_name_at(source_indices: source_indices, node: p))
+      // The owner is read from the item being folded, at the position that declares its header, and
+      // travels to the one binder producer. Nothing downstream re-derives it from a spelling.
+      let owner_name = authored_name_at(source_indices: source_indices, node: item)
+      let param_env = census_declaration_type_env(census: symbol_index, module_path: module_name_str, tp_names: param_names, owner_decl_name: Present { value: owner_name }, source_indices: source_indices)
       let result = fold(item.params, init: acc, f: (pacc, p) =>
-        map_insert(pacc, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: p)).id, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: p)))
+        let pname = authored_name_at(source_indices: source_indices, node: p)
+        match map_get(param_env.str_bindings, pname) {
+          Present { value: tp_binding } => map_insert(pacc, intern(table: intern_table, s: pname).id, tp_binding)
+          Absent => acc
+        }
       )
       result
     } else { acc }

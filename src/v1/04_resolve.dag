@@ -1,6 +1,6 @@
 module v1.compiler.infer_resolve
 
-import std.decl_ref { DeclarationRef, decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter }
+import std.decl_ref { DeclarationRef, decl_ref, decl_type_parameter_name, decl_type_parameter_ref, declaration_ref_is_type_parameter }
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan, container_param_name }
@@ -111,6 +111,51 @@ fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env
                   },
                   module_name: module_name
                 )]
+              ForwardedParameterUnidentified =>
+                [make_error_node(
+                  diagnostic: TypeArgumentKindMismatch {
+                    type_name: type_name, param_name: param_name, kind_name: kind_name,
+                    supplied: concat("(forwarded argument '", type_arg_display_spelling(n: arg, env: env), "' carries no type-parameter declaration, so its kind is unknown and nothing is admitted)"),
+                    span: arg.span
+                  },
+                  module_name: module_name
+                )]
+              ForwardedParameterOwnerUnresolved =>
+                [make_error_node(
+                  diagnostic: TypeArgumentKindMismatch {
+                    type_name: type_name, param_name: param_name, kind_name: kind_name,
+                    supplied: concat("(the declaration said to own the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' did not resolve to one declaring module, so its kind could not be read)"),
+                    span: arg.span
+                  },
+                  module_name: module_name
+                )]
+              ForwardedParameterNotDeclaredByOwner =>
+                [make_error_node(
+                  diagnostic: TypeArgumentKindMismatch {
+                    type_name: type_name, param_name: param_name, kind_name: kind_name,
+                    supplied: concat("('", type_arg_display_spelling(n: arg, env: env), "' is not a parameter of the declaration its binder names, so no kind was declared for it)"),
+                    span: arg.span
+                  },
+                  module_name: module_name
+                )]
+              ForwardedParameterUnkinded =>
+                [make_error_node(
+                  diagnostic: TypeArgumentKindMismatch {
+                    type_name: type_name, param_name: param_name, kind_name: kind_name,
+                    supplied: concat("(the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' declares no kind, so it cannot be shown to inhabit '", kind_name, "')"),
+                    span: arg.span
+                  },
+                  module_name: module_name
+                )]
+              ForwardedParameterKindUnresolved =>
+                [make_error_node(
+                  diagnostic: TypeArgumentKindMismatch {
+                    type_name: type_name, param_name: param_name, kind_name: kind_name,
+                    supplied: concat("(a kind on the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' did not resolve to a single declaring position, so the two kinds could not be compared)"),
+                    span: arg.span
+                  },
+                  module_name: module_name
+                )]
             }
         }
     }
@@ -133,6 +178,14 @@ type KindInhabitance
   = KindInhabited
   | KindNotInhabited
   | KindDeclarationUnresolved
+  // A forwarded parameter is JUDGED, never deferred: each unknown answers with its own cause, and
+  // none of them admits. See forwarded_parameter_kind_matches for why an unjudged forward is the
+  // widen this replaces.
+  | ForwardedParameterUnidentified
+  | ForwardedParameterOwnerUnresolved
+  | ForwardedParameterNotDeclaredByOwner
+  | ForwardedParameterUnkinded
+  | ForwardedParameterKindUnresolved
 
 // WHAT THIS CHECKS, AND WHAT IT DELIBERATELY DOES NOT. The NAMED half is identity-keyed against the
 // kind's declared alias target, so a kind naming PointerWidth cannot be satisfied by an unrelated
@@ -153,7 +206,11 @@ fn type_arg_kind_inhabitance(arg: Node, kind_node: Node, env: TypeEnv, module_na
     Present { value: inf } => is_type_variable(inferred: inf)
     Absent => false
   }
-  if arg_is_type_var { KindInhabited }
+  // ARM 1, SPLIT. A type variable used to be admitted here on being a type variable, which let a
+  // parameter declared Quantity satisfy a Scale slot. It is now judged on the kind its own declaration
+  // gives it. A variable with no parameter carrier answers ForwardedParameterUnidentified: being an
+  // inference unknown is not evidence of inhabiting anything, and this arm admits nobody.
+  if arg_is_type_var { forwarded_parameter_kind_matches(arg: arg, slot_kind_node: kind_node, env: env, module_name: module_name) }
   else if expr_literal_int_optional(expr: arg) != none { KindInhabited }
   else {
     match lookup_type_by_name(env: env, name: authored_name(env: env, node: kind_node)) {
@@ -163,7 +220,10 @@ fn type_arg_kind_inhabitance(arg: Node, kind_node: Node, env: TypeEnv, module_na
         if kind_decl.children |> any(c => node_authored_or_own_name(n: c, env: env) == arg_name) { KindInhabited }
         else if kind_names_admissible_inhabitant(kind_decl: kind_decl, arg_name: arg_name, env: env) { KindInhabited }
         else if kind_inhabitant_matches_resolved(kind_node: kind_node, arg: arg, env: env, module_name: module_name) { KindInhabited }
-        else if type_arg_name_is_bound_generic_parameter(name: arg_name, env: env) { KindInhabited }
+        // THE NAME-KEYED ADMIT IS GONE. This arm used to answer KindInhabited for any bare name that
+        // resolved to a type-variable binder, judging nothing; a forwarded parameter now arrives on
+        // arm 1 carrying the authority's binder and is judged there. Re-adding an admit here would
+        // resurrect the widen.
         else { KindNotInhabited }
     }
   }
@@ -236,17 +296,86 @@ fn node_authored_or_own_name(n: Node, env: TypeEnv) -> String {
   if a == "" { n.name } else { a }
 }
 
-// An argument spelled as a bare name that is not an admitted inhabitant may still be a generic
-// parameter of the ENCLOSING declaration (`fn f<N>(x: Compose<UInt, MachineWidth<N>>)`), which
-// reaches this position as a plain leaf rather than as an inferred type variable. Admitting it here
-// is the same deferral the type-variable arm makes, for the same reason.
-fn type_arg_name_is_bound_generic_parameter(name: String, env: TypeEnv) -> Bool {
-  match lookup_type_by_name(env: env, name: name) {
-    Absent => false
-    Present { value: bound } =>
-      match bound.inferred {
-        Present { value: inf } => is_type_variable(inferred: inf)
-        Absent => false
+// A FORWARDED PARAMETER IS JUDGED ON THE KIND ITS OWN DECLARATION SAYS IT HAS, against the kind the
+// slot requires, and the two kinds are compared by the DECLARATION EACH ONE RESOLVES TO -- never by
+// matching a spelling to a name. This is the v1 counterpart of the judgment v2.compiler.resolve
+// gained in PR #14327, written with the only lookups v1 has, and it mirrors the shape of
+// applied_arg_is_width_resolution_position directly below: a kind is resolved in the module that
+// DECLARES the thing carrying it, through the symbol index, and identity is source location.
+//
+// WHY THE OLD ARMS HAD TO GO. Arm 1 of type_arg_kind_inhabitance admitted any argument whose inferred
+// type was a TypeVariable, and arm 4 admitted any bare name that resolved to such a binder. Neither
+// read a kind. So once a declaration's own parameters carried the authority's binder (v1.compiler.infer
+// build_type_env, routed through env_with_type_variable_bindings), a parameter declared Quantity could
+// be forwarded into a Scale slot and be admitted without any check -- the silent widen DESIGN section 5
+// forbids, and the exact defect #14327 deleted on the v2 side (ArgumentTypeParameterUnjudged => acc).
+//
+// EVERY UNKNOWN REFUSES, each with its own cause, so a future producer cannot land a defer-and-admit:
+// the carrier is absent or not a parameter; the owner declaration is not in the index or is not the
+// module the carrier names; the owner declares no such parameter; the parameter has no declared kind;
+// or either kind cannot be resolved to a single declaring position.
+fn forwarded_parameter_kind_matches(arg: Node, slot_kind_node: Node, env: TypeEnv, module_name: String) -> KindInhabitance {
+  match arg.declaration {
+    Absent => ForwardedParameterUnidentified
+    Present { value: carrier } =>
+      if !declaration_ref_is_type_parameter(ref: carrier) { ForwardedParameterUnidentified }
+      else {
+        match decl_type_parameter_name(ref: carrier) {
+          Absent => ForwardedParameterUnidentified
+          Present { value: parameter_name } =>
+            // The owner is found in the module the CARRIER names, and the row reached must be that
+            // module's own: a same-named declaration living elsewhere is not this parameter's owner.
+            let owner_qualified = concat(carrier.module_path as String, ".", carrier.decl_name as String)
+            match symbol_index_lookup(index: env.symbol_index, qualified_name: owner_qualified) {
+              Absent => ForwardedParameterOwnerUnresolved
+              Present { value: owner_decl } =>
+                match map_get(env.symbol_index.file_modules, owner_decl.span.file) {
+                  Absent => ForwardedParameterOwnerUnresolved
+                  Present { value: owner_module } =>
+                    if owner_module != (carrier.module_path as String) { ForwardedParameterOwnerUnresolved }
+                    else {
+                      match owner_decl.params |> filter(param =>
+                          authored_name_at(source_indices: env.source_indices, node: param) == parameter_name)
+                          |> first {
+                        Absent => ForwardedParameterNotDeclaredByOwner
+                        Present { value: binder } =>
+                          match find_property(props: binder.properties, prop_name: type_param_kind_property_name(), source_indices: env.source_indices) {
+                            Absent => ForwardedParameterUnkinded
+                            Present { value: binder_kind_node } =>
+                              match kind_declaring_position(kind_node: binder_kind_node, declaring_module: owner_module, env: env) {
+                                Absent => ForwardedParameterKindUnresolved
+                                Present { value: binder_kind_decl } =>
+                                  match kind_declaring_position(kind_node: slot_kind_node, declaring_module: module_name, env: env) {
+                                    Absent => ForwardedParameterKindUnresolved
+                                    Present { value: slot_kind_decl } =>
+                                      if slot_kind_decl.span.file == binder_kind_decl.span.file
+                                        && slot_kind_decl.span.start == binder_kind_decl.span.start
+                                        && slot_kind_decl.span.end == binder_kind_decl.span.end {
+                                        KindInhabited
+                                      } else { KindNotInhabited }
+                                  }
+                              }
+                          }
+                      }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// THE POSITION A KIND NAME DENOTES, in the module that DECLARES the thing carrying the annotation --
+// the same resolution the width position performs, reached by the same index. Absent covers both "no
+// such declaration" and "no module recorded for the file it was found in", so a caller cannot read an
+// unresolved kind as a judgment either way.
+fn kind_declaring_position(kind_node: Node, declaring_module: String, env: TypeEnv) -> Node? {
+  match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(declaring_module, ".", authored_name(env: env, node: kind_node))) {
+    Absent => Absent
+    Present { value: kind_decl } =>
+      match map_get(env.symbol_index.file_modules, kind_decl.span.file) {
+        Absent => Absent
+        Present { value: _ } => Present { value: kind_decl }
       }
   }
 }
@@ -1529,7 +1658,12 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       [make_error_node(diagnostic: InternalError { message: concat(concat(concat("the name '", dup), concat("' is bound twice in the header of '", authored_name_at(source_indices: env.source_indices, node: item))), "': either a type parameter is repeated (`type Pair<T, T>`), or a value parameter shares a type parameter's name (`fn f<T>(T: T)`). A type parameter's identity is (owner, name), so one header may bind a name once. Rename one of them."), span: item.span }, module_name: module_name)]
     Absent => []
   }
-  let env = env_with_type_variable_bindings(env: env, tp_names: tp_names)
+  // MEASURED, this local binder never reaches the kind wall: fn_type_param_names admits only a header
+  // parameter whose type expression is its own bare name, so a typed parameter such as
+  // `left: Measure<Q, S, M>` contributes nothing here and the wall reads the module-env binder
+  // instead. Passing Absent therefore keeps that binder identity-free rather than minting a reference
+  // from a name that does not own it; the owner-named route is census_declaration_type_env.
+  let env = env_with_type_variable_bindings(env: env, tp_names: tp_names, owner_decl_name: Absent)
   let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
   let resolved_params = map(param_results, pr => pr.param)
   let param_diags = flat_map(param_results, pr => pr.diagnostics)

@@ -88,6 +88,17 @@ fn decl_type_parameter_ref(module_path: String, decl_name: String, parameter: St
   }
 }
 
+// THE PARAMETER'S OWN NAME, read from the carrier and never from a spelling, for a judgment that
+// must check a reference names THIS parameter of THIS declaration. Absent for a reference that is
+// not a type parameter — absence is the refusal, not a default.
+fn decl_type_parameter_name(ref: DeclarationRef) -> String? {
+  match ref.field {
+    TypeParameter { name: parameter } => Present { value: parameter as String }
+    WholeDeclaration => Absent
+    NamedField { field_name: _ } => Absent
+  }
+}
+
 fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
   match a {
     WholeDeclaration =>
