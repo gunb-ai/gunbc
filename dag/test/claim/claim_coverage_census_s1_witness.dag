@@ -27,6 +27,7 @@ import gunbc.claim_coverage_census_s1 {
   classify_rows, derive_executed, s1_uncovered, s1_census_lines,
   s1_block, s1_exit_held, s1_exit_did_not_hold, s1_exit_unread
 }
+import gunbc.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
 
 // The fixture corpus: two claims of module `m` over `m.dag` and one of module `other` over `other.dag`.
 // The module is a fixture token and the identity is its exact `module.function` spelling -- the same shape
@@ -562,4 +563,43 @@ test fn an_unattributable_required_job_label_prints_beside_clean_standings() -> 
   let block = s1_block(s1: S1Composed { census: census, notes: [note] }, head: "fixturehead")
   line_names(lines: block.lines, needle: "REQUIRED-JOB LABEL UNBOUND")
     && block.exit_code == s1_exit_held
+}
+
+// THE PAIRING OBLIGATION ON THE REAL PRODUCER (DESIGN 3, required by nimble-badger-800's verification
+// and warm-wolf-570). EVERY claim above injects its own fixtures, which is what lets them assert the three
+// exits over a population a test controls -- and it is also why none of them can discharge the corpus-level
+// control: deleting an ActiveFillDebt member from `v2.workflow.floor_pure_producer_share` left all of them
+// passing, because the real list reaches the census only through `s1_all_classifier_rows()`. A fixture that
+// never touches the thing it claims to classify proves only that the fixture is self-consistent. So exactly
+// one claim here reads the REAL carriers and asserts, by identity, that a named active member of the real
+// fill-debt list arrives as an identity-grain cover row of the fill-debt carrier. Delete that member from
+// src/v2/workflow/floor_pure_producer_share.dag and this claim fails -- the corpus-level RED, in the witness
+// rather than only in the live instrument.
+//
+// THE MEMBER IS NAMED, NOT COUNTED (DESIGN 5): no cardinality of the real list is asserted, so the carriers
+// may grow or shrink without this claim going stale for the wrong reason. The member is one whose module and
+// claim are both declared at this head, so the claim tests the carrier and not a stale row; the stale rows
+// have their own pair of claims above, and the same join decides both.
+test fn the_real_fill_debt_carrier_yields_its_named_active_member_as_an_identity_cover_row() -> Bool {
+  let named = "v2.test.claim.compiler.literal_elaboration.lel_route_runs_on_the_real_path"
+  let rows = s1_all_classifier_rows()
+  any(rows, row => row.carrier == fill_debt_carrier && classifier_member_text(row: row) == named)
+    && any(rows, row => match row.member {
+         IdentityMember { identity: identity } => identity == named && row.cover
+         _ => false
+       })
+}
+
+// THE SAME OBLIGATION FOR A DROP, WHICH IS THE POPULATION WITH NO GRAIN AT ALL. A rung_drop population is
+// `List<String>`, so this asserts on the real roster that a member the drops actually declare reaches the
+// census as a member row of ITS OWN drop's carrier -- located, not paraphrased. The drop is untouched by
+// this PR (no amendment to reach exit 0); this claim only makes the census owe the roster something, so a
+// drop that stopped contributing rows at all is a witness failure and not a silent shrink.
+test fn a_real_rung_drop_member_arrives_under_its_own_drop_carrier() -> Bool {
+  let rows = s1_all_classifier_rows()
+  any(rows, row => string_contains(s: row.carrier, pattern: "gunbc.rung_drop.") && row.cover)
+    && any(rows, row => match row.member {
+         DeclaredMember { text: text } => text != "" && string_contains(s: row.carrier, pattern: "gunbc.rung_drop.")
+         _ => false
+       })
 }
