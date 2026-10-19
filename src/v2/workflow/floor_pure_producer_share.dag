@@ -1056,7 +1056,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "bcn_if_arm_cast_carries_its_target", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "bcn_infer_admits_int_to_int", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "bcn_infer_refuses_int_to_bool", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "bcn_let_in_value_cast_carries_its_target", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_let_in_value_cast_carries_its_target", standing: RetiredFillDebt { disposition: ClaimDeleted } },
       SingleClaimFillDebtClaim { claim: "bcn_let_value_cast_carries_its_target", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "bcn_match_arm_cast_carries_its_target", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "bcn_refinement_of_a_refinement_widens_one_step", standing: ActiveFillDebt },
@@ -1261,7 +1261,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "kvr_a_declared_bool_return_holding_a_bool_is_accepted_and_decided_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "kvr_a_declared_bool_return_holding_an_int_refuses_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "kvr_a_named_calls_bool_formal_is_counted_not_judged_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "kvr_a_named_calls_bool_formal_is_counted_not_judged_holds", standing: RetiredFillDebt { disposition: ClaimDeleted } },
       SingleClaimFillDebtClaim { claim: "kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds", standing: ActiveFillDebt }
     ]
   },
@@ -1589,7 +1589,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.type_param_binder_frame",
     claims: [
-      SingleClaimFillDebtClaim { claim: "tpb_emitter_refuses_a_generic_arrow", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_emitter_refuses_a_generic_arrow_where_rows_declare_no_type_params", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "tpb_every_declared_type_param_is_a_binder", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "tpb_generic_alias_carries_its_binders", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "tpb_generic_alias_param_shadowing_a_visible_name_refuses", standing: ActiveFillDebt },
