@@ -2424,6 +2424,7 @@ fn rust_closure_crate_decl_support(base: ProducedDeclSupport) -> ProducedDeclSup
 fn rust_closure_crate_target_model() -> TargetModel {
   let base = rust_target_model()
   TargetModel {
+    primitive_realizations: base.primitive_realizations,
     produced_decl_support: rust_closure_crate_decl_support(base: base.produced_decl_support),
     bundle: base.bundle,
     lex: ModeledLexRules { root: rust_production_lex_rules_with(extra: [rust_visibility_public_lex_rule()]) },
