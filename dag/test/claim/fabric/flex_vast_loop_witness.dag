@@ -378,8 +378,8 @@ fn w_wet_charges_state(c: FlexChargesStanding) -> FlexPassRefusal? {
 
 // ---- ISOLATION OF THE CEILING: ctrl's spend on the shared account is not ours, and a row whose owner is
 // unread is never assumed not ours. $49 of ctrl-bidder charges plus $5 unlabelled plus $10 of ours stays under
-// the $50 ceiling with an hour's reservation (a fold summing every row sees $64 and refuses); $45 unlabelled
-// plus $1 of ours refuses, naming the unattributed $45 (a fold that drops unlabelled rows sees $1 and admits).
+// the $50 ceiling with an hour's reservation (a fold summing every row sees $64 and refuses); $49 unlabelled
+// plus $1 of ours refuses, naming the unattributed $49 (a fold that drops unlabelled rows sees $1 and admits).
 fn w_charge_row(units: Int, label: String?, source: String) -> VastAiCharge {
   VastAiCharge {
     start: 1, end: 2, type: "instance", source: source, description: "spent",
@@ -405,7 +405,7 @@ test fn foreign_charges_do_not_count_and_unattributed_charges_do() -> Bool {
     w_charge_row(units: 10, label: Present { value: "gunbc-flex" }, source: "instance-3"),
   ]))
   let unattributed_over = w_wet_charges_state(c: w_charges_rows(rows: [
-    w_charge_row(units: 45, label: none, source: "instance-2"),
+    w_charge_row(units: 49, label: none, source: "instance-2"),
     w_charge_row(units: 1, label: Present { value: "gunbc-flex" }, source: "instance-3"),
   ]))
   let ours_over = w_wet_charges_state(c: w_charges_rows(rows: [
@@ -417,7 +417,7 @@ test fn foreign_charges_do_not_count_and_unattributed_charges_do() -> Bool {
     Present { value: _ } => false
   } && match unattributed_over {
     Present { value: FlexPassCreateRefused { refusal: FlexRefusedBudgetCeiling { spent: o, unattributed: u, reservation: _, ceiling: _ } } } =>
-      (money_amount_micro_count(m: o) == 1000000) && (money_amount_micro_count(m: u) == 45000000)
+      (money_amount_micro_count(m: o) == 1000000) && (money_amount_micro_count(m: u) == 49000000)
     _ => false
   } && match ours_over {
     Present { value: FlexPassCreateRefused { refusal: FlexRefusedBudgetCeiling { spent: _, unattributed: _, reservation: _, ceiling: _ } } } => true
@@ -656,3 +656,4 @@ test fn the_selected_flex_recipe_has_an_unresolved_template_until_its_served_id_
     _ => false
   }
 }
+
