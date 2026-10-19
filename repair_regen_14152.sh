@@ -17,7 +17,7 @@ D=/tmp/repair_regen
 LOGS=/tmp/repair_regen_logs
 INFER_DAG=src/v1/04_infer.dag
 MIRROR=src/v1/stage0/src/v1_compiler_infer.rs
-CARGO_TIMEOUT="${CARGO_TIMEOUT:-1200}"
+CARGO_TIMEOUT="${CARGO_TIMEOUT:-2400}"
 
 say(){ echo "=== $* ==="; }
 seed(){ sha256sum "$1" | cut -c1-16; }
@@ -86,10 +86,9 @@ fi
 say "REGENERATE mirrors from the patched .dag (fixed point)"
 # Build flags only, cannot change a test outcome; debuginfo is the dominant term for a crate
 # this size and the previous dispatch spent its whole 45-minute budget in a cold build.
-export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=0 CARGO_INCREMENTAL=0
-timeout -k 30 "$CARGO_TIMEOUT" bash "$D/instr/instruments/regen_full.sh" >"$LOGS/regen.log" 2>&1
+timeout -k 30 "$CARGO_TIMEOUT" bash "$D/instr/instruments/regen_write.sh" >"$LOGS/regen.log" 2>&1
 echo "REGEN_RC=$?"
-grep -E "HEAD=|RR_EXIT|RC_EXIT|SEED|installed|round|CONVERGED|REGEN_FULL_DONE|candidates:|unmerged|FATAL" "$LOGS/regen.log" | tail -20 | sed 's/^/REGEN /'
+grep -E "HEAD=|RR_EXIT|SEED_|installed=|CONVERGED|ROUND|REGEN_WRITE_DONE|NO_CANDIDATE_DIR|unmerged|FATAL|TARGET_CACHE" "$LOGS/regen.log" | tail -24 | sed 's/^/REGEN /'
 tail -25 "$LOGS/regen.log" | sed 's/^/REGEN_TAIL /'
 sha256sum "$MIRROR" | sed 's/^/SEED_AFTER_REGEN /'
 if [ "$(seed "$MIRROR")" = "$(seed "$LOGS/mirror.before")" ]; then
