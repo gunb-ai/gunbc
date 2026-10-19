@@ -16,6 +16,15 @@ import v2.compiler.self_host.seed_retention_frontier {
   seed_retention_roster_paths_unique,
   undeclared_reason_rows
 }
+import v2.compiler.self_host.seed_retention_frontier {
+  ControlsNotPassed,
+  ControlsPassed,
+  EmittedPopulationRow,
+  frontier_count_where,
+  frontier_undeclared_reason_count,
+  self_host_frontier,
+  self_host_frontier_holds
+}
 import std.algebra { length }
 import v2.std.text { String }
 
@@ -154,4 +163,93 @@ test fn witness_declared_and_undeclared_populations_are_both_nonempty() -> Bool 
 
 test fn witness_top_level_src_basenames_are_nonempty() -> Bool {
   length(xs: seed_retention_frontier_top_level_src_basenames()) > 0
+}
+
+data frontier_observed: List<String> = [
+  "src/alpha.rs",
+  "src/bin/gamma.rs",
+  "src/emitted_in_closure.rs",
+  "src/emitted_outside_closure.rs"
+]
+
+data frontier_emitted: List<EmittedPopulationRow> = [
+  EmittedPopulationRow { crate_relative_path: "src/emitted_in_closure.rs", source_module: "fx.in_closure" },
+  EmittedPopulationRow { crate_relative_path: "src/emitted_outside_closure.rs", source_module: "fx.outside_closure" }
+]
+
+data frontier_roster: List<SeedRetentionFrontierRow> = [
+  retained_reason_undeclared(path: "src/alpha.rs", cause: SeedRetainedIntrinsicSource),
+  retained_host_binary(path: "src/bin/gamma.rs")
+]
+
+data frontier_closure: List<String> = ["fx.in_closure"]
+
+// Positive control: one SelfEmitted (module in the executed closure, controls passed), one
+// EmittedUnexecuted (module no control reached), two SeedRetained, nothing unclassified; one of the
+// two retained rows has no reason and is COUNTED, not refused.
+test fn witness_frontier_control_classifies_every_standing() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed
+  )
+  (frontier_count_where(frontier: f, wanted: 0) == 1)
+    && (frontier_count_where(frontier: f, wanted: 1) == 1)
+    && (frontier_count_where(frontier: f, wanted: 2) == 2)
+    && (frontier_count_where(frontier: f, wanted: 3) == 0)
+    && (frontier_undeclared_reason_count(frontier: f) == 1)
+    && self_host_frontier_holds(frontier: f)
+}
+
+// RED: the retention row for src/alpha.rs deleted -> Unclassified, and the frontier refuses.
+test fn witness_frontier_deleted_retention_row_is_unclassified() -> Bool {
+  let f = self_host_frontier(
+    roster: [retained_host_binary(path: "src/bin/gamma.rs")],
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed
+  )
+  (frontier_count_where(frontier: f, wanted: 3) == 1)
+    && !self_host_frontier_holds(frontier: f)
+}
+
+// RED: the module removed from the executed closure -> SelfEmitted moves to EmittedUnexecuted.
+test fn witness_frontier_module_outside_executed_closure_is_unexecuted() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: [],
+    controls: ControlsPassed
+  )
+  (frontier_count_where(frontier: f, wanted: 0) == 0)
+    && (frontier_count_where(frontier: f, wanted: 1) == 2)
+    && self_host_frontier_holds(frontier: f)
+}
+
+// RED: controls not passed -> CargoGreen alone is not execution; nothing is SelfEmitted.
+test fn witness_frontier_failed_controls_emit_nothing() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsNotPassed
+  )
+  frontier_count_where(frontier: f, wanted: 0) == 0
+}
+
+// RED: a roster row whose path the tree no longer holds stays a refusal in the frontier.
+test fn witness_frontier_stale_row_still_refuses() -> Bool {
+  let f = self_host_frontier(
+    roster: probe_roster,
+    observed_crate_rust_paths: ["src/alpha.rs", "src/bin/gamma.rs"],
+    emitted: [],
+    executed_closure_modules: [],
+    controls: ControlsPassed
+  )
+  !self_host_frontier_holds(frontier: f)
 }

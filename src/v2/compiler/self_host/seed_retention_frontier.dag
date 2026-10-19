@@ -2,8 +2,19 @@ module v2.compiler.self_host.seed_retention_frontier
 
 import std.types { List }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, dissolution_is_bound, unbound_dissolution }
 import std.algebra { length, list_map }
+import std.optional { Absent, Present }
+import v2.compiler.self_host.emitter_producer_provenance {
+  BuildGreen,
+  BehavioralProbeUnbound,
+  CargoGreen,
+  ProducerEmissionReceipt,
+  SourceProduced,
+  V1SeedEmitter,
+  cssl_harness_realized_closure,
+  mint_producer_emission_receipt
+}
 import v2.std.integer { Int }
 import v2.std.text { String }
 
@@ -467,4 +478,181 @@ fn cited_reason_authorities() -> List<DeclarationRef> {
       }
     }
   )
+}
+
+// THE DERIVED SELF-HOST FRONTIER (DESIGN section 7). A file is self-emitted or seed-retained, and
+// which one is READ from two facts the producers already hold, never authored: the population
+// compile_stage0() emitted (one row per file, with the module it came from) and whether the
+// self-host step's controls PASSED over the import closure that contains that module. CargoGreen
+// alone is not enough: an emitted file whose module no executed control reached is
+// EmittedUnexecuted, which is the specification-without-execution state DESIGN section 5 names.
+// Precedence is emitted first, then retention row, then refusal, so a file is never counted twice;
+// a retention row on an emitted path remains the census's RosteredPathIsCompared refusal.
+//
+// The producer here is the seed (compile_stage0 is v1 emit_rust), so the receipt is minted as
+// V1SeedEmitter over cssl_harness_realized_closure through the single mint, with no behavioral
+// probe bound; a refused mint is Unclassified (loud), never EmittedUnexecuted.
+
+type EmittedPopulationRow {
+  crate_relative_path: String
+  source_module: String
+}
+
+type FrontierControlsVerdict
+  = ControlsPassed
+  | ControlsNotPassed
+
+type FrontierStanding
+  = SelfEmitted { crate_relative_path: String, source_module: String, receipt: ProducerEmissionReceipt }
+  | EmittedUnexecuted { crate_relative_path: String, source_module: String }
+  | SeedRetained { row: SeedRetentionFrontierRow }
+  | Unclassified { crate_relative_path: String }
+
+type SelfHostFrontier {
+  standings: List<FrontierStanding>
+  stale_rows: List<SeedRetentionCensusRow>
+}
+
+fn emitted_row_for_path(rows: List<EmittedPopulationRow>, path: String) -> List<EmittedPopulationRow> {
+  filter(xs: rows, predicate: fn(row) { row.crate_relative_path == path })
+}
+
+fn retention_row_for_path(
+  roster: List<SeedRetentionFrontierRow>,
+  path: String
+) -> List<SeedRetentionFrontierRow> {
+  filter(xs: roster, predicate: fn(row) { row.crate_relative_path == path })
+}
+
+fn frontier_emitted_standing(
+  row: EmittedPopulationRow,
+  executed_closure_modules: List<String>,
+  controls: FrontierControlsVerdict
+) -> FrontierStanding {
+  let executed = path_in(path: row.source_module, paths: executed_closure_modules)
+  match controls {
+    ControlsNotPassed => EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
+    ControlsPassed =>
+      if executed {
+        match mint_producer_emission_receipt(
+          module_path: row.source_module,
+          producer: V1SeedEmitter,
+          qualifications: [SourceProduced, CargoGreen],
+          build_result: BuildGreen,
+          behavioral_probe: BehavioralProbeUnbound,
+          realized_closure: cssl_harness_realized_closure
+        ) {
+          Present { value: receipt } => SelfEmitted {
+            crate_relative_path: row.crate_relative_path,
+            source_module: row.source_module,
+            receipt: receipt
+          }
+          Absent => Unclassified { crate_relative_path: row.crate_relative_path }
+        }
+      } else {
+        EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
+      }
+  }
+}
+
+fn frontier_path_standing(
+  roster: List<SeedRetentionFrontierRow>,
+  emitted: List<EmittedPopulationRow>,
+  executed_closure_modules: List<String>,
+  controls: FrontierControlsVerdict,
+  path: String
+) -> FrontierStanding {
+  match emitted_row_for_path(rows: emitted, path: path) {
+    Cons { head: row, tail: _ } => frontier_emitted_standing(
+      row: row,
+      executed_closure_modules: executed_closure_modules,
+      controls: controls
+    )
+    Empty => match retention_row_for_path(roster: roster, path: path) {
+      Cons { head: row, tail: _ } => SeedRetained { row: row }
+      Empty => Unclassified { crate_relative_path: path }
+    }
+  }
+}
+
+fn self_host_frontier(
+  roster: List<SeedRetentionFrontierRow>,
+  observed_crate_rust_paths: List<String>,
+  emitted: List<EmittedPopulationRow>,
+  executed_closure_modules: List<String>,
+  controls: FrontierControlsVerdict
+) -> SelfHostFrontier {
+  let census = seed_retention_census(
+    roster: roster,
+    observed_crate_rust_paths: observed_crate_rust_paths,
+    compared_crate_rust_paths: []
+  )
+  SelfHostFrontier {
+    standings: list_map(
+      xs: observed_crate_rust_paths,
+      f: fn(path) {
+        frontier_path_standing(
+          roster: roster,
+          emitted: emitted,
+          executed_closure_modules: executed_closure_modules,
+          controls: controls,
+          path: path
+        )
+      }
+    ),
+    stale_rows: census.stale_rows
+  }
+}
+
+fn frontier_count_where(frontier: SelfHostFrontier, wanted: Int) -> Int {
+  fold(
+    frontier.standings,
+    init: 0,
+    f: fn(acc, standing) {
+      acc + (match standing {
+        SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => if wanted == 0 { 1 } else { 0 }
+        EmittedUnexecuted { crate_relative_path: _, source_module: _ } => if wanted == 1 { 1 } else { 0 }
+        SeedRetained { row: _ } => if wanted == 2 { 1 } else { 0 }
+        Unclassified { crate_relative_path: _ } => if wanted == 3 { 1 } else { 0 }
+      })
+    }
+  )
+}
+
+// A refusal is exactly Unclassified or a stale row. ReasonNotYetDeclared and unbound dissolutions
+// are COUNTED below standard, never refusals (DESIGN section 4b(2)).
+fn self_host_frontier_holds(frontier: SelfHostFrontier) -> Bool {
+  (frontier_count_where(frontier: frontier, wanted: 3) == 0)
+    && (length(xs: frontier.stale_rows) == 0)
+}
+
+fn frontier_retained_rows(frontier: SelfHostFrontier) -> List<SeedRetentionFrontierRow> {
+  fold(
+    frontier.standings,
+    init: [],
+    f: fn(acc, standing) {
+      match standing {
+        SeedRetained { row: row } => concat(acc, [row])
+        SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => acc
+        EmittedUnexecuted { crate_relative_path: _, source_module: _ } => acc
+        Unclassified { crate_relative_path: _ } => acc
+      }
+    }
+  )
+}
+
+fn frontier_undeclared_reason_count(frontier: SelfHostFrontier) -> Int {
+  length(xs: filter(xs: frontier_retained_rows(frontier: frontier), predicate: fn(row) { row_reason_is_undeclared(row: row) }))
+}
+
+fn row_dissolution_is_unbound(row: SeedRetentionFrontierRow) -> Bool {
+  match row.reason {
+    ReasonDeclaredHere { detail: _, dissolution: d } => !dissolution_is_bound(condition: d)
+    ReasonDeclaredElsewhere { authority: _ } => false
+    ReasonNotYetDeclared => false
+  }
+}
+
+fn frontier_unbound_dissolution_count(frontier: SelfHostFrontier) -> Int {
+  length(xs: filter(xs: frontier_retained_rows(frontier: frontier), predicate: fn(row) { row_dissolution_is_unbound(row: row) }))
 }
