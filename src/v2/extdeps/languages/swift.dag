@@ -807,6 +807,7 @@ data swift_produced_decl_render_rows: ProducedDeclRenderRows = ProducedDeclRende
     ProducedSignatureFixed { token_class: ^swift_token_lbrace }
   ],
   param_layout: [
+    ProducedParamFixed { token_class: ^swift_token_underscore },
     ProducedParamName { token_class: ^swift_token_ident },
     ProducedParamFixed { token_class: ^swift_token_colon },
     ProducedParamType
@@ -969,6 +970,7 @@ fn swift_lex_rules() -> LexRuleSet {
       swift_lex_rule(token_class: ^swift_token_rbracket, text: "]"),
       swift_lex_rule(token_class: ^swift_token_comma, text: ","),
       swift_lex_rule(token_class: ^swift_token_colon, text: ":"),
+      swift_lex_rule(token_class: ^swift_token_underscore, text: "_"),
       swift_lex_rule(token_class: ^swift_token_dot, text: "."),
       swift_lex_rule(token_class: ^swift_token_semicolon, text: ";")
     ],
@@ -995,7 +997,8 @@ fn swift_emit_lex_rules() -> LexRuleSet {
         swift_lex_rule(token_class: ^swift_token_lbrace, text: " { "),
         swift_lex_rule(token_class: ^swift_token_rbrace, text: " }"),
         swift_lex_rule(token_class: ^swift_token_comma, text: ", "),
-        swift_lex_rule(token_class: ^swift_token_colon, text: ": ")
+        swift_lex_rule(token_class: ^swift_token_colon, text: ": "),
+        swift_lex_rule(token_class: ^swift_token_underscore, text: "_ ")
       ],
       right: swift_lex_rules().rules
     ),
