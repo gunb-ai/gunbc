@@ -6244,7 +6244,11 @@ fn target_transform_resolved_callee(body: Node, target: TargetModel) -> Outcome<
                 outcome_accepted(TargetResolvedCallee { callee: leaf, primitive: true })
               } else {
                 bind_outcome(
-                  o: type_expression_projection_from_target(target: target),
+                  o: match type_expression_projection_from_target(target: target) {
+                    Accepted { value: projection, diagnostics: d } => Accepted { value: projection, diagnostics: d }
+                    Rejected { diagnostics: _ } =>
+                      outcome_rejected(target_declaration_reference_form_absent_diagnostic(node: child))
+                  },
                   f: fn(projection) {
                     bind_outcome(
                       o: target_type_expr_declaration_reference_emitted(
