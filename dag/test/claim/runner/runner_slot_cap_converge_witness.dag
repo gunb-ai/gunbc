@@ -591,3 +591,10 @@ test fn a_non_fabric_masked_inactive_cgroupless_extra_stays_inert() -> Bool {
   let show = masked_show_reload(load: "masked", active: "inactive", cgroup: "", reload: "no")
   length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 0
 }
+
+// RED: a not-found extra that is inactive but still holds a cgroup is reached, and withholds by unit name.
+test fn a_non_fabric_not_found_inactive_extra_with_a_cgroup_withholds() -> Bool {
+  let show = masked_show_reload(load: "not-found", active: "inactive", cgroup: "/system.slice/x", reload: "no")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 1
+    && plan_withheld_naming(p: extras_plan_with(extra_show: show, as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
