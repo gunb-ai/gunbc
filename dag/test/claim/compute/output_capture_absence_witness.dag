@@ -7,7 +7,8 @@ module test.claim.compute.output_capture_absence_witness
 // success with a hole. Before this witness NO control executed that refusal: the capture runs
 // inside compute_spawn_and_collect, whose neighbours execute systemd-run and the host transport,
 // and the hermetic envelope refuses that transport (no mock_response for operation Run; adding a
-// mock arm is forbidden -- operator ruling 2026-08-23). Measured on origin/main 6ae9b3b959: 0
+// mock arm is forbidden -- operator ruling of 2026-08-23, relayed in the task brief; no
+// gunbc.design_ruling symbol carries it). Measured on origin/main 6ae9b3b959: 0
 // dag/test rows touched the capture, its carriers, or its verdicts.
 //
 // WHAT MAKES THE REFUSAL CONTROLLABLE. For one declared output the capture runs two executions --
@@ -15,9 +16,9 @@ module test.claim.compute.output_capture_absence_witness
 // ComputeOutputCaptureReadings: NotHashed (the absent-output case; exit code and stderr as the
 // execution reported them), NotStored, Stored (git's content identity). The three arms are the
 // only outcomes the effectful producer can build -- the install runs only after a successful hash
-// -- so there is no impossible state to fabricate and no arm that checks for one (DESIGN 4b:
-// correctness by construction; DESIGN 5: an unknown is never an absent, and a refusal names the
-// cause its execution reported). A reading is data, so a control SUPPLIES the one an absent output
+// -- so there is no impossible state to fabricate and no arm that checks for one (DESIGN 5:
+// correctness by construction, not validation; DESIGN 4b rung 4: no constructor for the invalid
+// state; and an unknown is never an absent -- a refusal names the cause its execution reported). A reading is data, so a control SUPPLIES the one an absent output
 // produces, and the real step -- not a copy -- refuses it.
 //
 // THE RULE HAS ONE COPY. compute_output_capture_step decides one output's verdict;

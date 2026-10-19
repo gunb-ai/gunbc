@@ -1027,7 +1027,8 @@ type OutputsReturn
 // The two failure arms are not one arm because their causes come from DIFFERENT executions and
 // name different failures; the two shapes the pair could otherwise hold -- hashed-but-never-
 // installed, and install-run-though-hashing-failed -- have NO CONSTRUCTOR here, so the step needs
-// no arm to reject them (DESIGN 4b: correctness by construction, not validation; DESIGN 5).
+// arm to reject them (DESIGN 5: correctness by construction, not validation; DESIGN 4b rung 4:
+// the invalid state has no constructor in the canonical model).
 type ComputeOutputCaptureReadings
   = NotHashed { exit_code: Int, stderr: String }
   | NotStored { exit_code: Int, stderr: String }
@@ -1112,8 +1113,9 @@ fn compute_capture_readings_of_output(instance: HostDashboardInstance, layout: C
 // COST SHAPE (DESIGN 6): one continuation call and one producer call per declared output, on the
 // previous verdict -- no accumulated readings list re-folded, no verdict computed twice for one
 // input. WHAT HERMETIC CONTROLS CANNOT REACH: the effects themselves (compute_exec ->
-// WitnessBin.Run, refused by the envelope; no mock arm may be added -- operator ruling
-// 2026-08-23). The hermetic rows in test.claim.compute.output_capture_absence_witness therefore
+// WitnessBin.Run, refused by the envelope -- no mock_response for operation Run -- and no new mock
+// arm may be added (operator ruling of 2026-08-23, relayed in the task brief; no gunbc.design_ruling
+// symbol carries it). The hermetic rows in test.claim.compute.output_capture_absence_witness therefore
 // drive the SAME continuation and step -- production's own decision sites -- with readings supplied
 // as data.
 fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> OutputsReturn {
