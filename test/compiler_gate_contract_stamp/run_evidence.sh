@@ -222,7 +222,7 @@ forge_stamp() {
     # reads as a passing test. `duplicate` is exempt: it forges by declaring twice, not by the value.
     duplicate) : ;;
     *)
-      if stamp_literal_is_supported_form "$val"; then
+      if stamp_literal_is_supported_form "$val" "$base"; then
         bail "forged form '$form' produced '$val', which is the supported form -- the case would prove nothing"
       fi ;;
   esac
