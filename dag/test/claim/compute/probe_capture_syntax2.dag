@@ -1,0 +1,35 @@
+module test.claim.compute.probe_capture_syntax2
+
+import std.types { Bool, Int, String, List }
+
+// THROWAWAY SYNTAX PROBE 2 (deleted before merge): can a SUM ARM be used as a FIELD TYPE -- the
+// shape review 7 asks for (HashFailed { hash } | Hashed { hash_ok, install }) -- and does the step
+// match it back? Mirrors ComputeExec / the capture readings exactly.
+
+type ProbeExec
+  = ProbeExecOk { stdout: String, stderr: String }
+  | ProbeExecFailed { exit_code: Int, stdout: String, stderr: String }
+
+// The exact shape requested: arms of ProbeExec as field types.
+type ProbeReadings
+  = ProbeHashFailed { hash: ProbeExecFailed }
+  | ProbeHashed { hash: ProbeExecOk, install: ProbeExec }
+
+fn probe_step(r: ProbeReadings) -> String {
+  match r {
+    ProbeHashFailed { hash } => join(["hashed refused ", to_string(value: hash.exit_code), ": ", hash.stderr], "")
+    ProbeHashed { hash, install } => match install {
+      ProbeExecFailed { exit_code, stdout: _, stderr } => join(["install refused ", to_string(value: exit_code), ": ", stderr], "")
+      ProbeExecOk { stdout: _, stderr: _ } => trim(s: hash.stdout)
+    }
+  }
+}
+
+test fn w_arm_as_field_type_failed() -> Bool {
+  probe_step(r: ProbeHashFailed { hash: ProbeExecFailed { exit_code: 128, stdout: "", stderr: "no such file" } }) == "hashed refused 128: no such file"
+}
+
+test fn w_arm_as_field_type_hashed_and_install() -> Bool {
+  probe_step(r: ProbeHashed { hash: ProbeExecOk { stdout: " abc ", stderr: "" }, install: ProbeExecOk { stdout: "", stderr: "" } }) == "abc"
+    && probe_step(r: ProbeHashed { hash: ProbeExecOk { stdout: " abc ", stderr: "" }, install: ProbeExecFailed { exit_code: 1, stdout: "", stderr: "ro fs" } }) == "install refused 1: ro fs"
+}
