@@ -3472,6 +3472,28 @@ test fn the_transport_sums_place_every_wire_name_on_exactly_one_side() -> Bool {
       IpmiCommandTransportAbsent { detail: _ } => true
       _ => false
     })
+    // THE WIRE CASES ABOVE MUST ALSO HOLD THROUGH THE WALK, not only through the direct wire parser. The
+    // two rows below were caught by the falsification sweep: mutating last-dash-I-wins, or the walk's
+    // "no plugin claims this name" flag, left the claim green, because every transport decision this claim
+    // made went through ipmi_command_interface_from_wire and none went through in_band_command_from_argv.
+    // A transport rule proven only on the direct parser is a rule the walk can break silently -- the walk is
+    // what the gates actually call.
+    // LAST -I WINS: ipmitool reassigns intfname on every -I (lib/ipmi_main.c case 'I'), so the last one is
+    // the transport. An early in-band name must not launder a later out-of-band one: these words name open
+    // then lanplus, and the result is the OUT-OF-BAND arm naming lanplus. Had the first -I won, this would be
+    // the in-band arm and go red -- which is exactly the mutation that previously slipped past.
+    && (match in_band_command_from_argv(argv_words: ["-I", "open", "-I", "lanplus", "user", "list", "1"]) {
+      IpmiCommandNotInBand { wire: w, why_not_in_band: _ } => w == "lanplus"
+      _ => false
+    })
+    // AN -I NAME NO PLUGIN CLAIMS, REFUSED BY THE WALK ITSELF (not only by the direct parser): ipmi_intf_load
+    // returns NULL for a name with no matching entry, so the invocation aborts before any channel is read.
+    // The walk reaches this through its transport_unrecognized flag; a walk that stopped setting it would fall
+    // through to the no--I arm and this conjunct would go red rather than agree.
+    && (match in_band_command_from_argv(argv_words: ["-I", "nosuchintf", "user", "list", "1"]) {
+      IpmiCommandUnrecognised { wire: w } => w == "nosuchintf"
+      _ => false
+    })
 }
 
 // THE WALK AND ITS CLAIMS READ ONE TABLE. The option rows are data (ipmi_option_word_effect), and the
