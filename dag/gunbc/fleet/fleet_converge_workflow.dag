@@ -24,7 +24,7 @@ import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
 import gunbc.live_deploy.desired { prod_role_actuated_realization }
-import extdeps.github.expressions { Expression, ContextAccess, Github, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, interpolate, serialize_expression }
+import extdeps.github.expressions { Expression, ContextAccess, Github, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, LogicalNot, FunctionCall, Cancelled, interpolate, serialize_expression }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, WorkspaceAllocationOnly, LiveDeploy }
 import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
@@ -5004,9 +5004,28 @@ data fleet_converge_gcp_iam_approved_if: String = join(["(", fleet_converge_gcp_
 // success or skipped admits it, by enumeration: a failed apply did not land its cells, and a CANCELLED
 // apply -- displaced in the shared concurrency group by a later dispatch -- may have landed some of them
 // with no readback, so the converge does not run over either (warm-crane-219's review).
-data fleet_converge_gcp_iam_job_if: String = join([
-  "!cancelled() && needs.", fleet_converge_release_bins_job_id as String, ".result == 'success' && (needs.", fleet_converge_gcp_iam_bootstrap_job_id as String,
-  ".result == 'success' || needs.", fleet_converge_gcp_iam_bootstrap_job_id as String, ".result == 'skipped') && (", fleet_converge_any_mode_step_if(modes: [GcpIamConverge, BranchRunGrant]), ")"], "")
+// THE GATE IS A TYPED EXPRESSION TREE (extdeps.github.expressions), serialized by the one renderer, never
+// joined from operator fragments (review 82749): the apply job's and the converge's gates decide whether
+// iam-bootstrap and iam-converge write IAM policy.
+fn needs_result_is(job: NonEmptyStr, result: String) -> Expression {
+  Equals { left: ContextAccess { context: Needs, path: [job as String, "result"] }, right: StringLiteral { value: result } }
+}
+
+data fleet_converge_gcp_iam_job_gate: Expression = LogicalAnd {
+  left: LogicalAnd {
+    left: LogicalAnd {
+      left: LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } },
+      right: needs_result_is(job: fleet_converge_release_bins_job_id, result: "success"),
+    },
+    right: LogicalOr {
+      left: needs_result_is(job: fleet_converge_gcp_iam_bootstrap_job_id, result: "success"),
+      right: needs_result_is(job: fleet_converge_gcp_iam_bootstrap_job_id, result: "skipped"),
+    },
+  },
+  right: LogicalOr { left: fleet_converge_dispatch_mode_is(mode: GcpIamConverge), right: fleet_converge_dispatch_mode_is(mode: BranchRunGrant) },
+}
+
+data fleet_converge_gcp_iam_job_if: String = serialize_expression(expression: fleet_converge_gcp_iam_job_gate)
 
 fn fleet_converge_branch_run_grant_env(with_converge_token: Bool) -> List<YamlKeyValue> {
   concat(
@@ -5758,9 +5777,19 @@ data fleet_converge_gcp_iam_bootstrap_request_job_id: NonEmptyStr = "gcp-iam-boo
 
 data fleet_converge_gcp_iam_bootstrap_job_id: NonEmptyStr = "gcp-iam-bootstrap-apply" as NonEmptyStr
 
-data fleet_converge_gcp_iam_bootstrap_step_if: String = fleet_converge_mode_step_if(mode: GcpIamConverge)
+data fleet_converge_gcp_iam_bootstrap_step_gate: Expression = fleet_converge_dispatch_mode_is(mode: GcpIamConverge)
 
-data fleet_converge_gcp_iam_bootstrap_apply_job_if: String = join([fleet_converge_gcp_iam_bootstrap_step_if, " && needs.", fleet_converge_gcp_iam_bootstrap_request_job_id as String, ".outputs.", gcp_iam_bootstrap_delta_approved_output, " == 'true'"], "")
+data fleet_converge_gcp_iam_bootstrap_step_if: String = serialize_expression(expression: fleet_converge_gcp_iam_bootstrap_step_gate)
+
+data fleet_converge_gcp_iam_bootstrap_apply_job_gate: Expression = LogicalAnd {
+  left: fleet_converge_gcp_iam_bootstrap_step_gate,
+  right: Equals {
+    left: ContextAccess { context: Needs, path: [fleet_converge_gcp_iam_bootstrap_request_job_id as String, "outputs", gcp_iam_bootstrap_delta_approved_output] },
+    right: StringLiteral { value: "true" },
+  },
+}
+
+data fleet_converge_gcp_iam_bootstrap_apply_job_if: String = serialize_expression(expression: fleet_converge_gcp_iam_bootstrap_apply_job_gate)
 
 fn fleet_converge_gcp_iam_bootstrap_permissions() -> WorkflowPermissions {
   WorkflowPermissions { contents: Present { value: PermRead }, pull_requests: none, issues: none, actions: Present { value: PermRead }, id_token: Present { value: PermWrite } }

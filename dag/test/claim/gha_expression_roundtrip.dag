@@ -294,3 +294,11 @@ test fn witness_tighter_operand_is_not_grouped() -> Bool {
   serialize_expression(expression: LogicalOr { left: LogicalAnd { left: a, right: b }, right: c }) == "github.a && github.b || github.c"
     && serialize_expression(expression: LogicalAnd { left: Equals { left: a, right: b }, right: c }) == "github.a == github.b && github.c"
 }
+
+// THE UNARY `!` (github_expression_operators_authority): it binds tighter than comparison, so an atom
+// operand renders bare and a comparison operand is grouped; under `&&` it needs no group.
+test fn witness_logical_not_renders_with_upstream_precedence() -> Bool {
+  serialize_expression(expression: LogicalNot { operand: extdeps.github.expressions.FunctionCall { function: Cancelled, args: [] } }) == "!cancelled()"
+    && serialize_expression(expression: LogicalNot { operand: Equals { left: ContextAccess { context: Github, path: ["sha"] }, right: StringLiteral { value: "x" } } }) == "!(github.sha == 'x')"
+    && serialize_expression(expression: LogicalAnd { left: LogicalNot { operand: extdeps.github.expressions.FunctionCall { function: Cancelled, args: [] } }, right: StringLiteral { value: "y" } }) == "!cancelled() && 'y'"
+}
