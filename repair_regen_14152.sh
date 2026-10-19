@@ -10,7 +10,14 @@
 # lane). Prints every number it relies on; a missing marker is FATAL, not a silent pass.
 set -u
 export PATH="/opt/cargo/bin:/usr/local/bin:/usr/local/sbin:$PATH"
-SHA="${1:?usage: repair_regen_14152.sh <sha>}"
+SHA="${1:?usage: repair_regen_14152.sh <sha> [mutate|none]}"
+# MUTATE=none is the shipped repair; name-keyed/withdrawn are the two mutations that must each
+# turn a specific accept row red (patch_producer_instantiate.py header). They are how the repair
+# is shown to be doing the work, rather than the rows passing for some other reason. Pass "none"
+# explicitly -- the argument is positional because env-prefix args do not survive ctrl-build's
+# arg join (they become the -c command string).
+MUTATE="${2:-none}"
+[ "$MUTATE" = none ] && MUTATE=""
 URL=https://github.com/gunb-ai/gunbc
 INSTR_REF="scratch/rebind-census"
 D=/tmp/repair_regen
@@ -44,7 +51,22 @@ sha256sum "$INFER_DAG" "$MIRROR" | sed 's/^/SEED_BEFORE /'
 cp "$MIRROR" "$LOGS/mirror.before"
 
 say "apply the producer patch (fresh call-site-keyed variables)"
-python3 "$D/instr/patch_producer_instantiate.py" "$D/repo" || { echo "FATAL patch"; exit 1; }
+MP=""
+[ -n "$MUTATE" ] && MP="--mutate $MUTATE"
+echo "MUTATE=${MUTATE:-none}"
+python3 "$D/instr/patch_producer_instantiate.py" $MP "$D/repo" || { echo "FATAL patch"; exit 1; }
+# The mutation must actually be in the tree. A mutation that silently no-ops measures the
+# shipped repair and reports it as the mutant -- which would look like the mutant passing, and
+# would be reported as a fixture limit instead of a harness failure.
+if [ "$MUTATE" = name-keyed ]; then
+  grep -q 'map_insert(acc, g, type_variable_node(id: g))' "$INFER_DAG" \
+    || { echo "FATAL mutation name-keyed did not land"; exit 7; }
+  grep -q 'type_variable_node(id: concat(g, "@", span.file' "$INFER_DAG" \
+    && { echo "FATAL mutation name-keyed left the shipped id expression"; exit 7; }
+elif [ "$MUTATE" = withdrawn ]; then
+  grep -q 'fresh_call_variables' "$INFER_DAG" \
+    && { echo "FATAL mutation withdrawn left the seed"; exit 7; }
+fi
 
 say "LOCAL SYNTAX + DIAGNOSTIC-NEUTRALITY GATE (abort here, not after a 45-minute build)"
 # A malformed patch cost one full dispatch (a `let` inside `match sig { ... }` -> expected
