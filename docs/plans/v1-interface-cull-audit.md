@@ -111,8 +111,8 @@ Known blind spots before anything is deleted:
 |---|---|---|
 | `02_parse.dag` | 32 | `first_child_or_self`, a family of `is_*_shape` predicates (`is_and_shape`, `is_plus_shape`, …) |
 | `05_emit_rust.dag` | 18 | `apply_clone`, `apply_deref_clone`, `apply_field_clone`, `emit_mock_prop_setup`, `emit_unrealizable_shell_channel`, `has_complex_variants`, `is_simple_disj`, … |
-| `expected_red_roster_join.dag` | 10 | the whole `expected_red_roster_join_*` report surface; the module looks dead |
-| `trace.dag` | 8 | `capture_repro`, `replay_trace`, `format_trace`, `trace_push_*`, …; the module looks dead |
+| `expected_red_roster_join.dag` | 10 | the `expected_red_roster_join_*` report functions are individually dead, but **the module is live**: `cli_run.rs` and `required_floor_runner.rs` use its types and `classify_verdict` (lane F) |
+| `trace.dag` | 8 | `capture_repro`, `replay_trace`, …; **zero importers**, confirmed by lane F; deleted in F batch 1 |
 | `05_emit.dag` | 7 | `classify_tco_expr`, `derive_module_imports`, `unwrap_single_field_product`, … |
 | `04_env.dag` | 6 | `scope_push`, `scope_lookup`, `empty_scope`, … |
 | `00_core.dag` | 6 | `has_service_config`, `service_config_rate_limit`, `transport_has_argv`, … |
