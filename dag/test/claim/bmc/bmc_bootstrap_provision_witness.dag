@@ -1,6 +1,9 @@
 module test.claim.bmc.bmc_bootstrap_provision_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import extdeps.cloud.gcp.gcp { gcp_service_api_id, GcpSecretManager, GcpServiceUsage }
+import gunbc.assimilate.bmc_bootstrap_provision { bmc_required_gcp_apis, bmc_assimilate_service_deps }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
