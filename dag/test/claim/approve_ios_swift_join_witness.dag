@@ -7,7 +7,7 @@ import gunbc.approve_ios_swift_join { swift_join_is_clean, swift_join_findings, 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // The listing is supplied: the files that exist today under apps/approve-ios/Approve, plus the
-// generated ones. The real-tree route is observed by approve_ios_swift_join_live_witness.
+// generated ones. The real-tree route is observed by gunbc.approve_ios_swift_join_live approve_ios_swift_join_live_report.
 fn real_listing() -> List<String> {
   [
     "apps/approve-ios/Approve/ApproveApp.swift", "apps/approve-ios/Approve/AppState.swift",
