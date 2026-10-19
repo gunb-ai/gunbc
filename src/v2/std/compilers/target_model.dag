@@ -9361,7 +9361,10 @@ fn target_primitive_call_to_concrete_tokens(
                     list_append(
                       left: list_append(
                         left: list_append(
-                          left: rt,
+                          left: list_append(
+                            left: Cons { head: FixedToken { token_class: projection.callable_apply_form.open }, tail: rt },
+                            right: Cons { head: FixedToken { token_class: projection.callable_apply_form.close }, tail: Empty }
+                          ),
                           right: Cons {
                             head: FixedToken { token_class: projection.field_access_form.dot },
                             tail: Cons {

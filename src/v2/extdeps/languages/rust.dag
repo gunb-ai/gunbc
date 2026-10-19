@@ -1,6 +1,8 @@
 module v2.extdeps.languages.rust
 import std.types { List, Map }
 import std.decl_ref { decl_ref }
+import v2.std.primitive_contract_ref { primitive_contract_declaration_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.error_primitives { Never }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
@@ -145,6 +147,9 @@ import v2.std.compilers.target_model {
   PrimitiveArgumentUnlabeled,
   PrimitivePassBySharedReference,
   PrimitiveFreeCall,
+  PrimitiveMethodCall,
+  PrimitivePassByValue,
+  TargetPrimitiveArgumentPassing,
   PrimitiveResultAsReturned,
   target_primitive_realization_node,
   target_realizations_catalog_node,
@@ -1269,12 +1274,12 @@ fn rust_coerce_operator_realization_row() -> Node {
 }
 
 // Rust's spelling of std.primitives contracts. Mirrors the frozen v1 `rt_function_registry` (callee = bridge_name,
-// shared-reference prefix = passes_by_ref, handle wrap = wraps_result); that registry retires when the seed stops
-// reading it.
-fn rust_primitive_by_shared_reference_row(name: String) -> TargetPrimitiveRealization {
+// shared-reference prefix = passes_by_ref, handle wrap = wraps_result). Retirement is the declared frontier
+// rust_primitive_realization_seed_spelling_dissolve_on, enforced meanwhile by the differential witness.
+fn rust_primitive_by_shared_reference_row(head: Symbol) -> TargetPrimitiveRealization {
   TargetPrimitiveRealization {
-    primitive: decl_ref(module_path: "std.primitives", decl_name: concat(name, "_contract", "")),
-    form: PrimitiveFreeCall { callee: symbol_intern_lexeme(lexeme: name) },
+    primitive: primitive_contract_declaration_ref(head: head),
+    form: PrimitiveFreeCall { callee: head },
     arguments: [
       TargetPrimitiveArgument {
         label: PrimitiveArgumentUnlabeled,
@@ -1285,9 +1290,39 @@ fn rust_primitive_by_shared_reference_row(name: String) -> TargetPrimitiveRealiz
   }
 }
 
-fn rust_primitive_realization_rows() -> List<TargetPrimitiveRealization> {
-  [rust_primitive_by_shared_reference_row(name: "string_length")]
+// A method-call primitive: the first call argument is the receiver (parenthesized by the emitter, so any receiver
+// expression binds), the rest are `arguments`.
+fn rust_primitive_method_row(head: Symbol, arguments: List<TargetPrimitiveArgument>) -> TargetPrimitiveRealization {
+  TargetPrimitiveRealization {
+    primitive: primitive_contract_declaration_ref(head: head),
+    form: PrimitiveMethodCall { method: head },
+    arguments: arguments,
+    result: PrimitiveResultAsReturned
+  }
 }
+
+fn rust_primitive_unlabeled_argument(passing: TargetPrimitiveArgumentPassing) -> TargetPrimitiveArgument {
+  TargetPrimitiveArgument { label: PrimitiveArgumentUnlabeled, passing: passing }
+}
+
+// The primitives the Swift Protocol closure reaches. to_string and map are spelled in frozen seed Rust outside
+// rt_function_registry and rust_simple_method_specs, so the differential witness covers string_length and join only.
+fn rust_primitive_realization_rows() -> List<TargetPrimitiveRealization> {
+  [
+    rust_primitive_by_shared_reference_row(head: ^string_length),
+    rust_primitive_method_row(
+      head: ^join,
+      arguments: [rust_primitive_unlabeled_argument(passing: PrimitivePassBySharedReference { prefix_token: ^rust_token_amp })]
+    ),
+    rust_primitive_method_row(head: ^to_string, arguments: []),
+    rust_primitive_method_row(
+      head: ^map,
+      arguments: [rust_primitive_unlabeled_argument(passing: PrimitivePassByValue)]
+    )
+  ]
+}
+
+data rust_primitive_realization_seed_spelling_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the frozen v1 seed no longer reads rt_function_registry and rust_simple_method_specs (extdeps.languages.rust.emit) and no longer special-cases to_string and map in v1_compiler_emit_rust; those rows then dissolve into rust_primitive_realization_rows, and the differential witness v2.test.claim.emit.rust_primitive_seed_differential is deleted with them")
 
 fn rust_operator_realizations_catalog_node() -> Node {
   target_realizations_catalog_node(primitive_rows: list_map(xs: rust_primitive_realization_rows(), f: fn(r) { target_primitive_realization_node(row: r) }), operator_rows: [
