@@ -378,14 +378,18 @@ fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVeri
   }
 }
 
-// Does a verified row's standing cite the signature authority? Asked as a function because the standing
-// is a coproduct, and comparing coproduct values field-by-field at a call site is how one arm's payload
-// gets compared while another's is silently ignored.
-fn swift_toolchain_standing_cites_signature(standing: CitedFigureStanding) -> Bool {
-  match standing {
+// Does THIS ROW cite the signature of THIS ROW's subject? The row is the argument, not just its standing,
+// and that is the whole content of the question. Comparing a row's standing against the .sig of whatever
+// happens to be pinned instead admits a row for Ubuntu 24.04 that copies the Debian 13 citation: right
+// number of fields, signature of a release it is not, and the drift this module exists to prevent walks
+// back in through the one door that was supposed to be locked. Asked as a function because the standing is
+// a coproduct, and comparing coproduct values field-by-field at a call site is how one arm's payload gets
+// compared while another's is silently ignored.
+fn swift_toolchain_standing_cites_signature(archive: SwiftToolchainVerifiedArchive) -> Bool {
+  let expected = swift_toolchain_signature_authority_for(subject: archive.subject)
+  match archive.standing {
     CitedToAuthority { authority: a } =>
-      a.uri.locator == swift_toolchain_signature_authority.uri.locator
-        && a.uri.scheme == swift_toolchain_signature_authority.uri.scheme
+      a.uri.locator == expected.uri.locator && a.uri.scheme == expected.uri.scheme
     TranscribedUncited { read_obligation: _ } => false
     ObservedByReceipt { observed: _ } => false
   }
@@ -440,7 +444,7 @@ fn swift_toolchain_archive_as_pin(archive: SwiftToolchainArchive) -> SwiftToolch
     // Not enough to be `Verified`: a row reads as a pin only when its standing points at the signature
     // file of the very subject it describes. An uncited row yields nothing, so it cannot travel as a pin.
     Verified { archive: a } =>
-      if swift_toolchain_standing_cites_signature(standing: a.standing) {
+      if swift_toolchain_standing_cites_signature(archive: a) {
         Present { value: a }
       } else {
         Absent
