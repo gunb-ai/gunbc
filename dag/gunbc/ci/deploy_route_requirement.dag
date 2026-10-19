@@ -58,7 +58,7 @@ data deploy_route_requirement_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "gunbc.ci.deploy_route_requirement", decl_name: "srv1_observed_job_tenancy"),
     reason: "srv1's job uid is shared between pull request jobs and dispatched deploy runs, so the deploy route cannot be switched to the administrator edge without leaving root reachable through the in-run key agent",
     dissolution: unbound_dissolution(
-      description: "NAMED CAPABILITY: a runner label whose slots take only main-pinned dispatches, with the host readback of that label and uid modeled as an observation. SUFFICIENT FOR replacing srv1_observed_job_tenancy with a read of that observation and deploy_route_switch_admitted answering true for srv1_deploy_route_requirement; a per-job microvm migration also retires it" as NonEmptyStr,
+      description: "NAMED CAPABILITY: a runner label whose slots take only main-pinned dispatches, with the host readback of that group and uid (gunbc.ci.deploy_slot_tenancy DeploySlotReading) produced from the live org groups and the slot unit. SUFFICIENT FOR replacing srv1_observed_job_tenancy with deploy_slot_observed_tenancy over that read and deploy_route_switch_admitted answering true for srv1_deploy_route_requirement; a per-job microvm migration also retires it" as NonEmptyStr,
     ),
   ),
 ]
