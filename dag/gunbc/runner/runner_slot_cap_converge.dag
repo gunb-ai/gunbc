@@ -5,7 +5,7 @@ import std.optional { Absent, Present }
 import std.algebra { trim }
 import std.measure { ByteSize, byte_size_count }
 import extdeps.systemd { MemoryMax, MemorySwapMax, MemoryHigh, TasksMax, ControlGroup, systemd_unit_property_wire, SystemdUnitProperty }
-import extdeps.systemd.systemctl { systemctl_show_properties_argv }
+import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_mask_argv, systemctl_unmask_argv, systemctl_enable_argv, systemctl_start_argv, systemctl_stop_argv, systemctl_daemon_reload_argv, systemctl_argv_reloads_manager }
 import extdeps.tools.grep { grep_nonempty_lines_in_tree_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
 import extdeps.linux.cgroup_v2_memory {
@@ -113,10 +113,12 @@ fn slot_cap_cgroup_value_readable(reading: String?) -> Bool {
 }
 
 // ONLY an empty ControlGroup (a unit with no cgroup: stopped) is a separately established no-cgroup
-// state. A unit that HAS a cgroup owes complete, parseable readings of both files.
+// state, and a stopped unit whose LOADED caps are stale is NeedRestart (its next start would run them). A unit that HAS a cgroup owes complete, parseable readings of both files.
 fn slot_cap_standing(live: SlotCapLive, desired: RunnerSlotDesired) -> SlotCapStanding {
   if trim(s: live.control_group) == "" {
-    SlotCapsStopped
+    if slot_cap_unit_view_at_desired(live: live, desired: desired) { SlotCapsStopped } else {
+      SlotCapsNeedRestart { detail: join(["stopped, and the unit's loaded caps are not the desired ones: MemoryMax=", live.unit_memory_max, " MemorySwapMax=", live.unit_swap_max, " MemoryHigh=", live.unit_memory_high, " TasksMax=", live.unit_tasks_max], "") }
+    }
   } else if !slot_cap_cgroup_value_readable(reading: live.cgroup_memory_max) || !slot_cap_cgroup_value_readable(reading: live.cgroup_swap_max) {
     SlotCapsUnread { cause: join(["the unit has cgroup ", live.control_group, " but memory.max/memory.swap.max are missing or malformed: memory.max=", match live.cgroup_memory_max { Absent => "<missing>" Present { value: v } => trim(s: v) }, " memory.swap.max=", match live.cgroup_swap_max { Absent => "<missing>" Present { value: v } => trim(s: v) }], "") }
   } else {
@@ -194,24 +196,66 @@ type SlotCapUnitStanding {
   standing: SlotCapStanding
 }
 
-// `files_differ` is the cap FILES' own standing (observed through the existing file route), so settled
-// means files AND live limits. `extras` are loaded runner instances outside the declared sets: they get
-// the template reload too, but are never drained, activated or retired by this route, so a bracket that
-// would be needed withholds, naming them.
-fn host_cap_plan(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, files_differ: Bool, extras: List<NonEmptyStr>) -> HostCapPlan {
+// THE CAP FILES' OWN STANDING, observed through the existing file route. A file plan that could not be
+// made (HostFileActionRefused) is Unreadable, never a difference: an unread file must not authorise a
+// drain, write and reload.
+type CapFilesState
+  = CapFilesSettled
+  | CapFilesDiffer
+  | CapFilesUnreadable { cause: String }
+
+// THE STEPS THE BRACKET SENDS, as argv, built by the same constructors the actuator uses: the drain's
+// mask and stop, the activation's unmask, enable and start, and the route's one daemon-reload. Whether
+// any of them reloads the manager is read off the argv (systemctl_argv_reloads_manager), so a pending
+// unit-file change is a hazard exactly when a step in the bracket would load it.
+fn host_cap_bracket_steps(unit: NonEmptyStr) -> List<List<String>> {
+  [systemctl_mask_argv(unit: unit), systemctl_stop_argv(unit: unit), systemctl_unmask_argv(unit: unit), systemctl_enable_argv(unit: unit), systemctl_start_argv(unit: unit), systemctl_daemon_reload_argv()]
+}
+
+fn host_cap_bracket_reloads(unit: NonEmptyStr) -> Bool {
+  any(host_cap_bracket_steps(unit: unit), argv => systemctl_argv_reloads_manager(argv: argv))
+}
+
+// WHEN THE PHASE PROCEEDS (ruling of clever-crane-830, narrow scope): a cap differs AND every
+// precondition holds -- every cap-file observation readable, no incomplete retiree, no loaded extra, no
+// pending unit-file change (NeedDaemonReload on any observed instance; an instance reports the template's
+// drop-ins), every affected slot idle. Then one bracket drains every slot (the mask reloads are harmless
+// because nothing is pending), writes, reloads once, activates and reads back. Everything else that is
+// not already at desired is Withheld, typed and named, and a withheld host BARS every other reload site:
+// a stale or hand-placed lower-cap file would otherwise load through an unrelated reload.
+// `pending_reload` is true when any observed instance owes a reload or was not read.
+fn host_cap_plan(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, files: CapFilesState, extras: List<NonEmptyStr>, pending_reload: Bool, retirement_cause: String?) -> HostCapPlan {
   let problems = filter(map(standings, x => match host_cap_standing_problem(unit: x.unit, s: x.standing) { Present { value: v } => v Absent => "" }), v => v != "")
   if length(problems) > 0 {
     HostCapsWithheld { cause: join(problems, "; ") }
-  } else if !files_differ && !any(standings, x => host_cap_standing_differs(s: x.standing)) {
-    HostCapsLeaveInPlace
-  } else if length(extras) > 0 {
-    HostCapsWithheld { cause: concat("loaded runner instances outside the declared sets would receive the template reload and are not drained or activated by this route: ", join(map(extras, x => x as String), " ")) }
   } else {
-    match gate {
-      HostCapsAllIdle => HostCapsDrainWriteRestart
-      HostCapsBusy { busy: b, unproven: u } => HostCapsWithheld {
-        cause: join(["the cap drop-ins are template-level, so write + reload reaches every running slot; no write and no reload while a job may be live. busy=", join(map(b, x => x as String), " "), " idleness-unproven=", join(map(u, x => x as String), " ")], ""),
-      }
+    match files {
+      CapFilesUnreadable { cause: c } => HostCapsWithheld { cause: concat("the cap files could not be observed: ", c) }
+      CapFilesSettled => host_cap_plan_settled_files(standings: standings, gate: gate, files_differ: false, extras: extras, pending_reload: pending_reload, retirement_cause: retirement_cause)
+      CapFilesDiffer => host_cap_plan_settled_files(standings: standings, gate: gate, files_differ: true, extras: extras, pending_reload: pending_reload, retirement_cause: retirement_cause)
+    }
+  }
+}
+
+fn host_cap_plan_settled_files(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, files_differ: Bool, extras: List<NonEmptyStr>, pending_reload: Bool, retirement_cause: String?) -> HostCapPlan {
+  if !files_differ && !any(standings, x => host_cap_standing_differs(s: x.standing)) {
+    HostCapsLeaveInPlace
+  } else {
+    match retirement_cause {
+      Present { value: why } => HostCapsWithheld { cause: concat("a surplus slot has not retired, so the host is not quiescent: ", why) }
+      Absent =>
+        if pending_reload && any(map(standings, x => x.unit), u => host_cap_bracket_reloads(unit: u)) {
+          HostCapsWithheld { cause: "a unit-file change is pending reload (or an instance could not be read), and every drain step reloads the manager: it would load before the other slots are drained" }
+        } else if length(extras) > 0 {
+          HostCapsWithheld { cause: concat("loaded runner instances outside the declared sets would receive the template reload and are not drained or activated by this route: ", join(map(extras, x => x as String), " ")) }
+        } else {
+          match gate {
+            HostCapsAllIdle => HostCapsDrainWriteRestart
+            HostCapsBusy { busy: b, unproven: u } => HostCapsWithheld {
+              cause: join(["the cap drop-ins are template-level, so write + reload reaches every running slot; no write and no reload while a job may be live. busy=", join(map(b, x => x as String), " "), " idleness-unproven=", join(map(u, x => x as String), " ")], ""),
+            }
+          }
+        }
     }
   }
 }

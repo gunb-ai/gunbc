@@ -999,3 +999,35 @@ fn systemctl_start_command(unit: NonEmptyStr) -> ArgvCommand {
     ),
   )
 }
+
+// WHICH SYSTEMCTL CALLS RELOAD THE MANAGER. systemctl(1): `mask`, `unmask`, `enable` and `disable` reload
+// the manager's configuration implicitly after changing the unit files unless `--no-reload` is given, so
+// a drain's mask is itself a daemon-reload and loads every unit-file change pending on disk at that
+// moment. The reload is also what makes a mask INHIBIT (the manager does not see the symlink until it
+// reloads), so `--no-reload` would not establish the inhibition the drain exists for. This effect is read
+// off the argv a route is about to send, so "this step is harmless because nothing is pending" is a
+// checked precondition on the steps actually built, not a comment.
+type SystemctlManagerEffect
+  = ManagerReloadedImplicitly
+  | ManagerReloadedExplicitly
+  | ManagerNotReloaded
+
+fn systemctl_argv_manager_effect(argv: List<String>) -> SystemctlManagerEffect {
+  if any(argv, w => w == "daemon-reload") {
+    ManagerReloadedExplicitly
+  } else if any(argv, w => w == "--no-reload") {
+    ManagerNotReloaded
+  } else if any(argv, w => w == "mask" || w == "unmask" || w == "enable" || w == "disable") {
+    ManagerReloadedImplicitly
+  } else {
+    ManagerNotReloaded
+  }
+}
+
+fn systemctl_argv_reloads_manager(argv: List<String>) -> Bool {
+  match systemctl_argv_manager_effect(argv: argv) {
+    ManagerReloadedImplicitly => true
+    ManagerReloadedExplicitly => true
+    ManagerNotReloaded => false
+  }
+}
