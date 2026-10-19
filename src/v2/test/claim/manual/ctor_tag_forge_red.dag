@@ -1,0 +1,14 @@
+module v2.test.claim.manual.ctor_tag_forge_red
+
+// RED: a tag must not be mintable outside std. `ConstructorTag` is `sole_constructor`, so a
+// construction outside dag/std/primitives.dag refuses -- that is what makes the tag
+// non-forgeable without a string discriminant anyone could write.
+
+import std.primitives { ConstructorTag }
+
+type ProbeFg = F0 | F1 { a: Int }
+
+test fn constructing_a_tag_outside_std_must_refuse() -> Bool {
+  let forged = ConstructorTag { accepts: fn(_w) { true } }
+  true
+}
