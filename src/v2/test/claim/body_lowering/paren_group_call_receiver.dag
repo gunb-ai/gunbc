@@ -1,0 +1,70 @@
+module v2.test.claim.body_lowering.paren_group_call_receiver
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Hash, content_hash }
+import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PARENTHESISED GROUP IS TRANSPARENT TO WHAT IT GROUPS (C5-H). `(f(x)).m()` is the group `(f(x))`
+// as the head of a postfix chain; the group's inner call reached body_lower_paren_group_lowered
+// still raw, neither read could see it, and the module was refused paren_group_unread
+// (std.effect_grant verb_of_label). The rule lives at the group, once, so the depth of nesting
+// and the postfix kind (method, field) are not cases.
+//
+// THE ROUTE, not only the verdict: a grouped receiver normalizes to the SAME tree as the ungrouped
+// receiver, which is the only spelling that already front-ended; a reading that dropped the group's
+// inner or lowered it differently cannot satisfy that.
+fn normalized_hash(tag: String, text: String) -> Optional<Hash> {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: tree, diagnostics: _ } => Present { value: content_hash(n: tree.root) }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn normalized_ok(tag: String, text: String) -> Bool {
+  match normalized_hash(tag: tag, text: text) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn same_tree(a: Optional<Hash>, b: Optional<Hash>) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => x == y
+      }
+  }
+}
+
+data prelude: String = "module probe.group\n\ntype R {\n  a: Int\n}\n\nfn g(x: Int) -> R {\n  R { a: x }\n}\n\nfn h(x: Int) -> Int {\n  x\n}\n\n"
+
+data grouped_method_source: String = prelude + "fn f(x: Int) -> Int {\n  (h(x: x)).abs()\n}\n"
+data ungrouped_method_source: String = prelude + "fn f(x: Int) -> Int {\n  h(x: x).abs()\n}\n"
+data grouped_field_source: String = prelude + "fn f(x: Int) -> Int {\n  (g(x: x)).a\n}\n"
+data ungrouped_field_source: String = prelude + "fn f(x: Int) -> Int {\n  g(x: x).a\n}\n"
+data nested_group_source: String = prelude + "fn f(x: Int) -> Int {\n  ((g(x: x))).a\n}\n"
+data grouped_infix_source: String = prelude + "fn f(x: Int) -> Int {\n  (x + 1).abs()\n}\n"
+
+test fn a_grouped_call_receiver_is_the_ungrouped_receiver_method_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "gm", text: grouped_method_source), b: normalized_hash(tag: "um", text: ungrouped_method_source))
+}
+
+test fn a_grouped_call_receiver_is_the_ungrouped_receiver_field_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "gf", text: grouped_field_source), b: normalized_hash(tag: "uf", text: ungrouped_field_source))
+}
+
+test fn a_doubly_grouped_call_receiver_is_the_ungrouped_receiver_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "ng", text: nested_group_source), b: normalized_hash(tag: "uf2", text: ungrouped_field_source))
+}
+
+// The shapes that front-ended before keep front-ending.
+test fn a_grouped_infix_receiver_still_front_ends_holds() -> Bool {
+  normalized_ok(tag: "gi", text: grouped_infix_source)
+}
