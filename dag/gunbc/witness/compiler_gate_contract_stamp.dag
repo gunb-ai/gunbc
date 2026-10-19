@@ -179,6 +179,48 @@ fn compiler_gate_invocation_contract_material() -> String {
   join(compiler_gate_invocation_contract_canonical_rows(), "|")
 }
 
+// THE SAME THREE REFUSALS AND THE SAME HASH, OVER ANY ROW LIST. Without this parameterisation the only
+// way to ask "what would the stamp be if the contract gained a field?" is to write a second derivation,
+// and a second derivation is a second authority that can be wrong in private. The witness asks the real
+// function about a real modified row list; nothing recomputes the hash by hand.
+fn compiler_gate_contract_stamp_derivation_from_rows(rows: List<String>) -> CompilerGateContractStampDerivation {
+  // CANONICALISED HERE, AT THE HASH. Sorting is part of what makes a contract the same contract under a
+  // reordering, so it belongs with the hashing rather than with each caller -- otherwise a caller that
+  // forgot to sort would get a different stamp for an unchanged contract, and the reordering control in
+  // the witness could not be expressed at all.
+  let ordered = sort_by(rows, f => f)
+  if length(ordered) == 0 {
+    CompilerGateContractStampNotDerived {
+      reason: "the invocation contract declares no rows, so nothing would be promised and nothing could be refused"
+    }
+  } else if fold(
+    ordered,
+    init: false,
+    f: fn(any_empty, row) { any_empty || string_length(s: row) == 0 }
+  ) {
+    CompilerGateContractStampNotDerived {
+      reason: "a declared contract row is empty, so two different contracts could hash alike"
+    }
+  } else if string_contains(s: join(ordered, "|"), pattern: "${{") {
+    CompilerGateContractStampNotDerived {
+      reason: "a contract row carries a GitHub expression, so the stamp would not be a literal and could not be compared"
+    }
+  } else {
+    CompilerGateContractStampDerived {
+      stamp: content_hash_of_value(value: join(ordered, "|"))
+    }
+  }
+}
+
+// THE STAMP RENDERED FROM ANY ROW LIST -- one step, through the same derivation, so a witness comparing
+// two stamps is comparing two runs of THIS function and not of two functions.
+fn compiler_gate_contract_stamp_value_from_rows(rows: List<String>) -> String {
+  match compiler_gate_contract_stamp_derivation_from_rows(rows: rows) {
+    CompilerGateContractStampDerived { stamp: stamp } => serialize_content_hash(hash: stamp)
+    CompilerGateContractStampNotDerived { reason: _ } => "refused"
+  }
+}
+
 // -------------------------------------------------------------------------------------- DERIVED OR REFUSE
 //
 // The value is a function of the declared rows and nothing else, so no author can pin a stamp that
@@ -189,28 +231,12 @@ type CompilerGateContractStampDerivation
   = CompilerGateContractStampDerived { stamp: ContentHash }
   | CompilerGateContractStampNotDerived { reason: String }
 
+// THE DERIVATION THE GATE USES, over the rows the module actually declares. The three refusals and the
+// hash live in compiler_gate_contract_stamp_derivation_from_rows, which this calls -- there is exactly
+// one implementation of "hash a contract", so the witness that asks about a modified contract is asking
+// the same function, not a copy that could have drifted.
 fn compiler_gate_contract_stamp_derivation() -> CompilerGateContractStampDerivation {
-  if length(compiler_gate_invocation_contract_canonical_rows()) == 0 {
-    CompilerGateContractStampNotDerived {
-      reason: "the invocation contract declares no rows, so nothing would be promised and nothing could be refused"
-    }
-  } else if fold(
-    compiler_gate_invocation_contract_canonical_rows(),
-    init: false,
-    f: fn(any_empty, row) { any_empty || string_length(s: row) == 0 }
-  ) {
-    CompilerGateContractStampNotDerived {
-      reason: "a declared contract row is empty, so two different contracts could hash alike"
-    }
-  } else if string_contains(s: compiler_gate_invocation_contract_material(), pattern: "${{") {
-    CompilerGateContractStampNotDerived {
-      reason: "a contract row carries a GitHub expression, so the stamp would not be a literal and could not be compared"
-    }
-  } else {
-    CompilerGateContractStampDerived {
-      stamp: content_hash_of_value(value: compiler_gate_invocation_contract_material())
-    }
-  }
+  compiler_gate_contract_stamp_derivation_from_rows(rows: compiler_gate_invocation_contract_canonical_rows())
 }
 
 fn compiler_gate_contract_stamp_is_derived() -> Bool {
