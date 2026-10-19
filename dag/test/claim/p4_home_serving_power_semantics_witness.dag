@@ -74,7 +74,16 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
     && !(string_contains(s: t, pattern: ".dag:")
       || string_contains(s: t, pattern: ".rs:")
       || string_contains(s: t, pattern: ".py:")
-      || string_contains(s: t, pattern: "DESIGN.md:"))
+      || string_contains(s: t, pattern: "DESIGN.md:")
+      // Stripped-citation DEBRIS. Deleting a `path:line` is only half an edit: the husk it
+      // leaves (" ()", " at.", "at/.") is the same positional defect wearing different
+      // clothes, and an earlier head of this PR shipped 12 of them. Policing the citation
+      // but not its residue would be a guard that passes the bug it was written for.
+      || string_contains(s: t, pattern: " ()")
+      || string_contains(s: t, pattern: "at/.")
+      || string_contains(s: t, pattern: " at.")
+      || string_contains(s: t, pattern: "are at/")
+      || string_contains(s: t, pattern: "there at/"))
 }
 
 // ── DESIGN §6: "Name the instrument, never transcribe its output ... a transcribed number
