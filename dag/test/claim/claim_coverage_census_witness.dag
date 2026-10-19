@@ -2,12 +2,15 @@ module test.claim.claim_coverage_census_witness
 
 import std.types { String, Bool, List }
 import std.process { ExitFailure }
+import std.optional { Absent, Present }
+import gunbc.rung_drop.v1_required_lanes_withdrawn { v1_required_lanes_withdrawn }
 import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 import gunbc.claim_coverage_census {
-  ClaimSource, ExecutesScheduleOf, ExecutesNoClaims, ClaimExecutorRow, ClaimCoverageInputs,
+  ClaimSource, ClaimExecutorRow, ClaimCoverageInputs,
   ClaimCoverageHeld, ClaimCoverageDidNotHold, claim_coverage, claim_coverage_standing, undeclared,
 }
+import gunbc.emitted_subject_build_gate { emitted_subject_build_rows, emitted_subject_build_label_text }
 import gunbc.claim_coverage_census_live { claim_sources, claim_executors, claim_coverage_census_exit }
 
 // THE FOLD DISCRIMINATES AT ONE INTERFACE (DESIGN section 3): sources and executors are SUPPLIED, so
@@ -15,15 +18,15 @@ import gunbc.claim_coverage_census_live { claim_sources, claim_executors, claim_
 // and that nothing executes it today -- is the last two claims, which run the live entry.
 
 fn wet_source(ids: List<String>) -> ClaimSource {
-  ClaimSource { source_id: "wet", enrolled: ids, declaring_drop: "d" }
+  ClaimSource { source_id: "wet", enrolled: ids, executed_by_label: Present { value: "//t:wet" }, declaring_drop: Present { value: v1_required_lanes_withdrawn } }
 }
 
 fn job_running_wet() -> ClaimExecutorRow {
-  ClaimExecutorRow { job_id: "j", subjects: [ExecutesScheduleOf { source_id: "wet" }] }
+  ClaimExecutorRow { job_id: "j", executed_labels: ["//t:build", "//t:wet"] }
 }
 
 fn job_running_nothing() -> ClaimExecutorRow {
-  ClaimExecutorRow { job_id: "j", subjects: [ExecutesNoClaims { reason: "builds only" }] }
+  ClaimExecutorRow { job_id: "j", executed_labels: ["//t:build"] }
 }
 
 // POSITIVE CONTROL: a source a required job executes is fully covered and the census holds.
@@ -48,7 +51,7 @@ test fn a_source_no_required_job_executes_lists_each_identity_uncovered() -> Boo
 
 // Coverage is per source: executing one source never covers a sibling's identities.
 test fn executing_one_source_does_not_cover_another() -> Bool {
-  let other = ClaimSource { source_id: "other", enrolled: ["o.x"], declaring_drop: "" }
+  let other = ClaimSource { source_id: "other", enrolled: ["o.x"], executed_by_label: Absent, declaring_drop: Absent }
   let c = claim_coverage(inputs: ClaimCoverageInputs { sources: [wet_source(ids: ["m.a"]), other], jobs: [job_running_wet()] })
   c.covered == ["m.a"] && (c.uncovered |> map(u => u.identity)) == ["o.x"] && (undeclared(c: c) |> count) == 1
 }
@@ -56,7 +59,7 @@ test fn executing_one_source_does_not_cover_another() -> Bool {
 // An uncovered identity whose source names no declaring drop is undeclared.
 test fn an_uncovered_identity_with_no_declaring_drop_is_undeclared() -> Bool {
   let declared = claim_coverage(inputs: ClaimCoverageInputs { sources: [wet_source(ids: ["m.a"])], jobs: [] })
-  let bare = claim_coverage(inputs: ClaimCoverageInputs { sources: [ClaimSource { source_id: "wet", enrolled: ["m.a"], declaring_drop: "" }], jobs: [] })
+  let bare = claim_coverage(inputs: ClaimCoverageInputs { sources: [ClaimSource { source_id: "wet", enrolled: ["m.a"], executed_by_label: Absent, declaring_drop: Absent }], jobs: [] })
   (undeclared(c: declared) |> count) == 0 && (undeclared(c: bare) |> count) == 1
 }
 
@@ -77,4 +80,11 @@ test fn the_live_entry_exits_one_while_the_wet_lane_has_no_executor() -> Bool {
     CliWirePrintable { bytes: _, exit: _ } => false
     CliWireUnprintable { cause: _ } => false
   }
+}
+
+// INHABITANCE, THE ROUTE: the live executor roster is the labels of the rows the required workflow
+// renders its steps from, so a step added there joins the census with no edit to the roster.
+test fn the_live_executor_labels_are_the_required_workflow_step_labels() -> Bool {
+  let want = emitted_subject_build_rows() |> map(r => emitted_subject_build_label_text(row: r))
+  (want |> count) > 0 && (claim_executors() |> map(j => j.executed_labels)) == [want]
 }

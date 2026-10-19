@@ -1,6 +1,8 @@
 module gunbc.claim_coverage_census
 
 import std.types { String, Bool, List, Int }
+import std.optional { Optional, Absent, Present }
+import gunbc.rung_drop { RungDrop }
 import extdeps.languages.json.emit { serialize_json_string }
 
 // FOR EVERY CLAIM A SOURCE ENROLS, DOES A REQUIRED JOB EXECUTE IT?
@@ -16,9 +18,10 @@ import extdeps.languages.json.emit { serialize_json_string }
 // source of enrolled claims is a ClaimSource row in gunbc.claim_coverage_census_live, never another
 // instrument.
 //
-// EXECUTION IS A DERIVED RELATION, NOT AN AUTHORED LIST OF COVERED IDENTITIES. A required job
-// declares the claim subjects its steps execute (ExecutesScheduleOf names a source whose executor
-// the job runs; ExecutesNoClaims names what the job does instead). An identity is covered exactly
+// EXECUTION IS A DERIVED RELATION, NOT AN AUTHORED LIST OF COVERED IDENTITIES. A required job's
+// executed instruments are READ from its step rows (`gunbc.emitted_subject_build_gate`
+// `emitted_subject_build_rows`, the one authority `gunbc.witness.compiler_gate_workflow` renders its
+// `gunbc test` steps from); a source names the instrument label that executes it, or none. An identity is covered exactly
 // when some required job executes its source, and the source's own completeness join
 // (`local_repo_wet_join`) is what makes that statement hold at identity grain. A source no job
 // executes is uncovered by identity; the count is the length of a list the receipt also prints.
@@ -29,18 +32,16 @@ import extdeps.languages.json.emit { serialize_json_string }
 type ClaimSource {
   source_id: String
   enrolled: List<String>
-  // The gunbc.rung_drop identity that declares this source's non-execution, or the empty string
-  // when none does. An uncovered identity with no declaring drop is UNDECLARED and is named so.
-  declaring_drop: String
+  // The instrument label whose `gunbc test` run executes this source's claims; Absent when no
+  // instrument does. A source is executed exactly when a required job's steps run that label.
+  executed_by_label: Optional<String>
+  // The declared drop that accounts for this source's non-execution; Absent is UNDECLARED.
+  declaring_drop: Optional<RungDrop>
 }
-
-type ClaimExecutorSubject
-  = ExecutesScheduleOf { source_id: String }
-  | ExecutesNoClaims { reason: String }
 
 type ClaimExecutorRow {
   job_id: String
-  subjects: List<ClaimExecutorSubject>
+  executed_labels: List<String>
 }
 
 type ClaimCoverageInputs {
@@ -51,7 +52,7 @@ type ClaimCoverageInputs {
 type UncoveredClaim {
   source_id: String
   identity: String
-  declaring_drop: String
+  declaring_drop: Optional<RungDrop>
 }
 
 type ClaimCoverage {
@@ -64,28 +65,24 @@ type ClaimCoverageStanding
   = ClaimCoverageHeld
   | ClaimCoverageDidNotHold { uncovered: List<UncoveredClaim> }
 
-fn executes_source(s: ClaimExecutorSubject, source_id: String) -> Bool {
-  match s {
-    ExecutesScheduleOf { source_id: id } => id == source_id
-    ExecutesNoClaims { reason: _ } => false
+fn job_executes_label(row: ClaimExecutorRow, label: String) -> Bool {
+  row.executed_labels |> filter(l => l == label) |> count > 0
+}
+
+fn source_is_executed(inputs: ClaimCoverageInputs, s: ClaimSource) -> Bool {
+  match s.executed_by_label {
+    Absent => false
+    Present { value: label } => inputs.jobs |> filter(j => job_executes_label(row: j, label: label)) |> count > 0
   }
-}
-
-fn job_executes_source(row: ClaimExecutorRow, source_id: String) -> Bool {
-  row.subjects |> filter(s => executes_source(s: s, source_id: source_id)) |> count > 0
-}
-
-fn source_is_executed(inputs: ClaimCoverageInputs, source_id: String) -> Bool {
-  inputs.jobs |> filter(j => job_executes_source(row: j, source_id: source_id)) |> count > 0
 }
 
 fn claim_coverage(inputs: ClaimCoverageInputs) -> ClaimCoverage {
   let enrolled = inputs.sources |> fold(init: [], f: fn(acc, s) { concat(acc, s.enrolled) })
   let covered = inputs.sources
-    |> filter(s => source_is_executed(inputs: inputs, source_id: s.source_id))
+    |> filter(s => source_is_executed(inputs: inputs, s: s))
     |> fold(init: [], f: fn(acc, s) { concat(acc, s.enrolled) })
   let uncovered = inputs.sources
-    |> filter(s => !source_is_executed(inputs: inputs, source_id: s.source_id))
+    |> filter(s => !source_is_executed(inputs: inputs, s: s))
     |> fold(init: [], f: fn(acc, s) {
       concat(acc, s.enrolled |> map(i => UncoveredClaim { source_id: s.source_id, identity: i, declaring_drop: s.declaring_drop }))
     })
@@ -96,8 +93,18 @@ fn claim_coverage_standing(c: ClaimCoverage) -> ClaimCoverageStanding {
   if (c.uncovered |> count) == 0 { ClaimCoverageHeld {} } else { ClaimCoverageDidNotHold { uncovered: c.uncovered } }
 }
 
+fn drop_identity_text(d: Optional<RungDrop>) -> String {
+  match d {
+    Absent => "UNDECLARED"
+    Present { value: r } => r.identity as String
+  }
+}
+
 fn undeclared(c: ClaimCoverage) -> List<UncoveredClaim> {
-  c.uncovered |> filter(u => u.declaring_drop == "")
+  c.uncovered |> filter(u => match u.declaring_drop {
+    Absent => true
+    Present { value: _ } => false
+  })
 }
 
 // THE RECEIPT: one JSON object per line. A summary whose counts are lengths of lists printed
@@ -112,6 +119,6 @@ fn claim_coverage_receipt_lines(c: ClaimCoverage) -> List<String> {
     concat(concat(concat(concat(concat(
       "{\"kind\":\"uncovered\",\"source\":", serialize_json_string(s: u.source_id)),
       ",\"identity\":"), serialize_json_string(s: u.identity)),
-      ",\"declaring_drop\":"), concat(serialize_json_string(s: u.declaring_drop), "}")))
+      ",\"declaring_drop\":"), concat(serialize_json_string(s: drop_identity_text(d: u.declaring_drop)), "}")))
   concat([summary], lines)
 }

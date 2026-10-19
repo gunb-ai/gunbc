@@ -6,9 +6,12 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
+import std.optional { Absent, Present }
+import gunbc.rung_drop.v1_required_lanes_withdrawn { v1_required_lanes_withdrawn }
+import gunbc.emitted_subject_build_gate { emitted_subject_build_rows, emitted_subject_build_label_text }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_required_job_id }
 import gunbc.claim_coverage_census {
-  ClaimSource, ClaimExecutorSubject, ExecutesNoClaims, ClaimExecutorRow, ClaimCoverageInputs,
+  ClaimSource, ClaimExecutorRow, ClaimCoverageInputs,
   ClaimCoverageHeld, ClaimCoverageDidNotHold,
   claim_coverage, claim_coverage_standing, claim_coverage_receipt_lines,
 }
@@ -26,21 +29,22 @@ fn claim_sources() -> List<ClaimSource> {
     ClaimSource {
       source_id: "local_repo_wet_schedule",
       enrolled: local_repo_wet_schedule() |> map(c => witness_identity_qualified_name(identity: c.identity)),
-      declaring_drop: "v1_required_lanes_withdrawn"
+      executed_by_label: Absent,
+      declaring_drop: Present { value: v1_required_lanes_withdrawn }
     }
   ]
 }
 
-// THE EXECUTOR ROSTER: the required job and the claim subjects its steps execute. `witnesses` emits
-// and builds two products and runs `gunbc test` over their instruments; no step runs a scheduled
-// claim, so its subject is ExecutesNoClaims. The row that restores the wet lane's execution is an
-// ExecutesScheduleOf subject here (trigger of v1_required_lanes_withdrawn: the native binary
-// executes the schedule on a required job with its host effects bounded).
+// THE EXECUTOR ROSTER IS READ, NOT AUTHORED: the required job and the instrument labels its steps
+// run, from `emitted_subject_build_rows` -- the same rows `gunbc.witness.compiler_gate_workflow`
+// renders its `gunbc test` steps from. A step added there joins this census; no edit here. The
+// wet schedule's `executed_by_label` is Absent because no instrument executes it; restoring the
+// capability (trigger 1a of v1_required_lanes_withdrawn) is a label on that source AND a row there.
 fn claim_executors() -> List<ClaimExecutorRow> {
   [
     ClaimExecutorRow {
       job_id: compiler_gate_required_job_id,
-      subjects: [ExecutesNoClaims { reason: "emits and builds the self-host and v2-native-cli products and runs their instruments; no step executes a scheduled claim" }]
+      executed_labels: emitted_subject_build_rows() |> map(r => emitted_subject_build_label_text(row: r))
     }
   ]
 }
