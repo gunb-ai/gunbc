@@ -6504,26 +6504,7 @@ fn borrowed_callable_call_type(gnode: Node, typed_args: List<Node>, scope: Infer
     BorrowedCallType { ret: base, diagnostics: [] }
   } else {
     let value_params = gnode.params |> filter(p => !param_is_generic_decl(p: p, source_indices: source_indices))
-    // A DECLARED GENERIC RETURN TYPE IS INSTANTIATED AT EACH USE, like every other generic call.
-    // A callable whose parameters are ALL generic (std.algebra's `fn empty_map<K, V>() -> Map<K, V>`)
-    // contributes no value parameter, so the fold below never runs, its subst stays empty, and
-    // substitute_generics short-circuits on `if map_is_empty(subst) { n }` -- which returned the
-    // callee's DECLARED return type literally, with children still named K and V. Those are Map's
-    // OWN formal parameters, not this call's types, and the caller's fold then refused any later
-    // binding of the same variable against them (`type variable A bound as
-    // Map(Primitive(K),Primitive(V)) (first argument)`): 39 of the 46 rows in that family are that
-    // one node, dag/std/algebra.dag:73644-73647, surfacing in 15 different callee modules.
-    // The seed is the SAME shape the record-literal instantiation already uses for an
-    // un-instantiated owner parameter (this file, unbound_owner_param_variables), so no new
-    // instantiation mechanism is introduced. A slot an argument does solve is overwritten: the
-    // seeded variable is the callee's own parameter name, so the fold's first arm
-    // (binding_is_unsettled_formal_annotation) replaces it with the settled actual, leaving the
-    // solved path exactly as it was. A slot nothing solves stays a variable, which is what
-    // binding_has_type_variable_leaf already treats as unsettled.
-    let unsettled_slot_variables = fold(tp_names, init: empty_map(), f: (acc, slot) =>
-      map_insert(acc, slot, type_variable_node(id: slot))
-    )
-    let unified = fold(value_params |> enumerate, init: UnifyGenericsAcc { subst: unsettled_slot_variables, diagnostics: [] }, f: (acc, pair) =>
+    let unified = fold(value_params |> enumerate, init: UnifyGenericsAcc { subst: empty_map(), diagnostics: [] }, f: (acc, pair) =>
       let formal_raw = param_node_type_expr(n: pair.second)
       let param_name = authored_name_at(source_indices: source_indices, node: pair.second)
       let matched_arg = match typed_args |> filter(ta => arg_has_name(arg: ta, name: param_name, source_indices: source_indices)) |> first {
