@@ -34,7 +34,7 @@ import gunbc.auth.heal_publisher_provision {
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
-  iam_bootstrap_resource_key, iam_bootstrap_capability_bindings, iam_bootstrap_trust_bindings,
+  iam_bootstrap_resource_key, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_trust_bindings,
   iam_bootstrap_deny_policy_id, iam_bootstrap_attachment_point,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
   IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match,
@@ -63,8 +63,8 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // files one approval and applies as iam-bootstrap), never by rerunning this ceremony. What only this
 // ceremony writes: the services, the custom roles, the deny policies, the project cells, and the
 // trust roots -- the converge job's and the bootstrap delta job's pools, providers and accounts and
-// who may become each -- none of which iam-bootstrap may touch (gunbc.auth.gcp_iam_bootstrap_delta_route
-// trust_root_subject, root_ceremony_subject).
+// who may become each -- none of which iam-bootstrap may touch (gunbc.auth.gcp_iam_bootstrap_model
+// iam_bootstrap_cell_owner: the ceremony folds iam_bootstrap_root_ceremony_bindings and nothing else).
 // Trust is last. Existing mismatched roles, providers and deny policies refuse instead of being
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
 type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
@@ -104,7 +104,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("deny principal serviceAccount:", iam_converge_service_account as String),
     concat("deny permissions ", join(iam_converge_denied_permissions, ",")),
     "Target bootstrap creates only bare pools/accounts; target providers and workload trust remain approval-gated.",
-    concat("Bound secrets created bare (no version) when absent; grant-set accessor cells remain approval-gated: ", join(map(iam_bootstrap_bound_secrets(), x => x as String), ",")),
+    concat("Root cells only (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_root_ceremony_bindings); every target, grant-set and custody cell is the approval-gated delta's. Root secrets created bare (no version) when absent: ", join(map(iam_bootstrap_bound_secrets(), x => x as String), ",")),
     bootstrap_authority_dependency_plan(),
     concat("Empty pool initialization requires the separately confirmed exclusive window: GUNBC_IAM_BOOTSTRAP_POOL_WINDOW=", iam_bootstrap_pool_window),
     "Initializer: declared empty pool only -> one journaled publication -> exact independent readback with etag -> normal CAS updates. Uncertain publication is never replayed.",
@@ -113,7 +113,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("The grant targets ", iam_bootstrap_operator_member, " after verified Google subject ", iam_bootstrap_operator_subject, "; retry cannot renew or republish it."),
   ]
   let roles = map(iam_bootstrap_roles, r => join(["role ", iam_bootstrap_role_name(role: r) as String, " permissions=", join(iam_bootstrap_role_permissions(role: r), ",")], ""))
-  let cells = map(iam_bootstrap_capability_bindings() + iam_bootstrap_trust_bindings(), b => join([
+  let cells = map(iam_bootstrap_root_ceremony_bindings() + iam_bootstrap_trust_bindings(), b => join([
     "binding ", iam_bootstrap_resource_key(resource: b.resource), " ", cell_preimage(c: b.cell),
   ], ""))
   let input_refusals = dedicated_federation_input_refusals(federations: iam_bootstrap_identity_federations())
@@ -523,7 +523,7 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
       }
     })
     BootstrapAuthorityCleanup => iam_bootstrap_authority_converge(token: token, withdrawing: true)
-    BootstrapCapabilities => fold(iam_bootstrap_capability_bindings(), init: "", f: (prior, binding) => if prior != "" { prior } else { iam_bootstrap_ensure_binding(binding: binding, token: token) })
+    BootstrapCapabilities => fold(iam_bootstrap_root_ceremony_bindings(), init: "", f: (prior, binding) => if prior != "" { prior } else { iam_bootstrap_ensure_binding(binding: binding, token: token) })
     BootstrapProbeAuthority => iam_bootstrap_probe_authority_converge(token: token, withdrawing: false)
     BootstrapPrivilegeReadback => iam_bootstrap_privilege_readback(token: token)
     BootstrapProbeCleanup => iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
@@ -613,7 +613,7 @@ fn iam_bootstrap_check_probe(resource: IamBootstrapResource, requested: List<Str
 }
 
 fn iam_bootstrap_positive_probes(token: Secret) -> String {
-  fold(filter(iam_bootstrap_capability_bindings(), b => b.cell.member == concat("serviceAccount:", iam_converge_service_account as String)), init: "", f: (prior, binding) => {
+  fold(filter(iam_bootstrap_root_ceremony_bindings(), b => b.cell.member == concat("serviceAccount:", iam_converge_service_account as String)), init: "", f: (prior, binding) => {
     if prior != "" { prior } else { match filter(iam_bootstrap_roles, role => (iam_bootstrap_role_name(role: role) as String) == binding.cell.role).first() {
       Absent => "apply binding has no declared custom role"
       Present { value: role } => iam_bootstrap_check_probe(resource: binding.resource, requested: iam_bootstrap_role_permissions(role: role), expected: iam_bootstrap_role_permissions(role: role), token: token)
@@ -952,7 +952,7 @@ fn iam_bootstrap_operator_readback(token: Secret) -> String {
 data iam_bootstrap_pool_window: String = "exclusive-pool-policy-initialization-20260929"
 
 fn iam_bootstrap_pool_initial_cells(pool: NonEmptyStr) -> List<GcpIamBindingCell> {
-  map(filter(iam_bootstrap_capability_bindings(), binding => binding.resource == BootstrapPool { pool: pool }), binding => binding.cell)
+  map(filter(iam_bootstrap_root_ceremony_bindings(), binding => binding.resource == BootstrapPool { pool: pool }), binding => binding.cell)
 }
 
 fn iam_bootstrap_pool_seedable(audit_configured: Bool, bindings: List<GcpBinding>?, etag: String?, version: Int?) -> Bool {

@@ -34,7 +34,7 @@ fn trust_root_ceremony_entry(ceremony: TrustRootCeremony) -> String {
 
 type TrustRootCell { secret: NonEmptyStr, cell: GcpIamBindingCell, ceremony: TrustRootCeremony }
 
-type CeremonyTrustRootSecret { secret: NonEmptyStr, reason: NonEmptyStr, ceremony: TrustRootCeremony }
+type CeremonyTrustRootSecret { secret: NonEmptyStr, reason: NonEmptyStr }
 
 data approval_mac_root_reason: NonEmptyStr = "an approval-loop MAC key: whoever rebinds its readers can mint or forge the approval that gates the converge and the bootstrap delta themselves" as NonEmptyStr
 
@@ -48,8 +48,8 @@ data gate_app_root_reason: NonEmptyStr = "a GitHub App private key that may answ
 
 fn ceremony_trust_root_secrets() -> List<CeremonyTrustRootSecret> {
   map([approval_mac_key_secret_ref, approval_submission_mac_key_secret_ref, approval_store_receipt_mac_key_secret_ref], r =>
-    CeremonyTrustRootSecret { secret: r.secret, reason: approval_mac_root_reason, ceremony: ApprovalMacKeyProvision })
-    + [CeremonyTrustRootSecret { secret: gunbai_ci_app_pem_secret.secret, reason: gate_app_root_reason, ceremony: OrgAdminAppKeyAccessConverge }]
+    CeremonyTrustRootSecret { secret: r.secret, reason: approval_mac_root_reason })
+    + [CeremonyTrustRootSecret { secret: gunbai_ci_app_pem_secret.secret, reason: gate_app_root_reason }]
 }
 
 fn ceremony_trust_root_secret(secret: NonEmptyStr) -> Bool {

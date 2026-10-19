@@ -154,6 +154,7 @@ data iam_converge_secret_policy_role_permissions: List<String> = [
 
 data iam_observe_role_permissions: List<String> = [
   "iam.workloadIdentityPools.get",
+  "iam.workloadIdentityPools.getIamPolicy",
   "iam.workloadIdentityPoolProviders.get",
   "iam.workloadIdentityPoolProviders.list",
   "iam.serviceAccounts.get",

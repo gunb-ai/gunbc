@@ -25,10 +25,10 @@ import gunbc.auth.gcp_iam_converge {
   PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable,
 }
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
-import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ceremony_trust_root_secret }
+import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, trust_root_ceremony_entry }
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
-  iam_bootstrap_resource_key, iam_bootstrap_identity_federations,
+  iam_bootstrap_resource_key, iam_bootstrap_identity_federations, iam_bootstrap_cell_owner, BootstrapCellOwner, RootCeremonyOwned, DeltaOwned,
 }
 import gunbc.auth.gcp_iam_bootstrap { iam_bootstrap_read_policy, iam_bootstrap_write_policy, BootstrapPolicyWritten, BootstrapPolicyWriteRefused }
 import gunbc.auth.gcp_iam_bootstrap_delta {
@@ -62,31 +62,30 @@ data bootstrap_delta_privileged_effect: PrivilegedEffect = PrivilegedEffect {
 }
 
 // ── What a delta may and may not ask for ─────────────────────────────────────────────────────
-// THE TRUST ROOTS ARE NEVER A DELTA SUBJECT: the trust-root secrets (gunbc.auth.gcp_iam_trust_roots), the three accounts (also walled by the tag-conditioned
-// deny, gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_delta_deny_rules) and the two pools whose
-// principal sets reach them (walled only here: pools take no tags). The ceremony writes them once.
-// RED STUB: today every root-cell refusal names the bootstrap ceremony as the repair.
-fn root_cell_repair_ceremony(b: IamBootstrapBinding) -> TrustRootCeremony {
-  IamBootstrapApply
-}
-
-fn trust_root_subject(s: IamBootstrapResource) -> Bool {
-  match s {
-    BootstrapAccount { account } => any([iam_converge_service_account, iam_observe_service_account, iam_bootstrap_service_account], a => (a as String) == (account as String))
-    BootstrapPool { pool } => any([gcp_iam_observe_dedicated_federation().pool_id, gcp_iam_bootstrap_wif_pool_id], p => (p as String) == (pool as String))
-    BootstrapProject => false
-    BootstrapSecret { secret } => ceremony_trust_root_secret(secret: secret)
+// A ROOT CELL IS NEVER A DELTA CELL. Ownership is one relation over cells
+// (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_cell_owner): the project, the three own-trust
+// identities' pools and accounts, every cell on a trust-root secret, and every cell another ceremony
+// names exactly are root cells. The accounts are also walled by the tag-conditioned deny
+// (iam_bootstrap_delta_deny_rules); the pools only here, since pools take no tags.
+fn root_cell_repair_ceremony(b: IamBootstrapBinding) -> TrustRootCeremony? {
+  match iam_bootstrap_cell_owner(b: b) {
+    RootCeremonyOwned { ceremony } => Present { value: ceremony }
+    DeltaOwned => none
   }
 }
 
-// THE PROJECT'S CELLS ARE THE ROOT CEREMONY'S: iam-bootstrap is denied the project's own setIamPolicy.
-fn root_ceremony_subject(s: IamBootstrapResource) -> Bool {
-  match s {
-    BootstrapProject => true
-    BootstrapAccount { account: _ } => false
-    BootstrapPool { pool: _ } => false
-    BootstrapSecret { secret: _ } => false
-  }
+// ONE MISSING ROOT CELL WITH THE CEREMONY THAT REPAIRS IT.
+type RootCellMissing { subject: IamBootstrapResource, binding: IamBootstrapBinding, ceremony: TrustRootCeremony }
+
+fn missing_root_cells(s: SubjectNotBootstrapped) -> List<RootCellMissing> {
+  flat_map(s.missing, b => match root_cell_repair_ceremony(b: b) {
+    Present { value: c } => [RootCellMissing { subject: s.subject, binding: b, ceremony: c }]
+    Absent => []
+  })
+}
+
+fn root_cell_missing_text(m: RootCellMissing) -> String {
+  join([iam_bootstrap_resource_key(resource: m.subject), " ", m.binding.cell.role, " to ", m.binding.cell.member, ": repair with ", trust_root_ceremony_entry(ceremony: m.ceremony)], "")
 }
 
 type BootstrapDeltaRequestBody {
@@ -99,14 +98,13 @@ type BootstrapDeltaRequestBody {
 // the repair instead of meeting an absent identity as a raw authentication failure.
 type BootstrapDeltaRequestable
   = BootstrapDeltaRequestAdmitted { body: BootstrapDeltaRequestBody }
-  | RootCeremonyCellsMissing { root_subjects: List<SubjectNotBootstrapped> }
+  | RootCeremonyCellsMissing { cells: List<RootCellMissing> }
   | BootstrapDeltaUnrequestable { reasons: List<String> }
 
 fn bootstrap_delta_requestable(subjects: List<SubjectNotBootstrapped>) -> BootstrapDeltaRequestable {
-  let roots = filter(subjects, s => trust_root_subject(s: s.subject))
-  let ceremony = filter(subjects, s => root_ceremony_subject(s: s.subject))
+  let roots = flat_map(subjects, s => missing_root_cells(s: s))
   if count(subjects) == 0 { BootstrapDeltaUnrequestable { reasons: ["the delta is empty; there is nothing to approve"] } }
-  else if count(roots) > 0 || count(ceremony) > 0 { RootCeremonyCellsMissing { root_subjects: roots + ceremony } } else { BootstrapDeltaRequestAdmitted { body: BootstrapDeltaRequestBody { subjects: subjects } } }
+  else if count(roots) > 0 { RootCeremonyCellsMissing { cells: roots } } else { BootstrapDeltaRequestAdmitted { body: BootstrapDeltaRequestBody { subjects: subjects } } }
 }
 
 // ── The consent preimage, the digest and the request ─────────────────────────────────────────

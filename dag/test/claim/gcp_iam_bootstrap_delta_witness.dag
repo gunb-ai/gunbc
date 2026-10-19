@@ -34,11 +34,11 @@ fn bound_policy(cells: List<IamBootstrapBinding>) -> GcpPolicy {
 }
 
 // THE OBSERVATION A FULLY BOOTSTRAPPED SUBJECT GIVES: its policy carrying its roster cells where the
-// observer reads policies, an answer where it reads only the subject, nothing where it holds nothing.
+// observer reads policies (pools, accounts, secrets), nothing where it holds nothing (the project).
 fn bound_observation(r: List<IamBootstrapBinding>, s: IamBootstrapResource) -> BootstrapSubjectObservation {
   BootstrapSubjectObservation { subject: s, reading: match s {
     BootstrapProject => SubjectUnobservable
-    BootstrapPool { pool: _ } => SubjectAnswered
+    BootstrapPool { pool: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
     BootstrapAccount { account: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
     BootstrapSecret { secret: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: r, subject: s)) }
   } }
@@ -64,8 +64,8 @@ fn same_cells(a: List<IamBootstrapBinding>, b: List<IamBootstrapBinding>) -> Boo
 
 fn the_one_subject(d: BootstrapDelta) -> SubjectNotBootstrapped? {
   match d {
-    BootstrapDeltaRequired { subjects, unverified: _ } => if count(subjects) == 1 { subjects.first() } else { none }
-    BootstrapObserved { unverified: _ } => none
+    BootstrapDeltaRequired { subjects, root_residual: _ } => if count(subjects) == 1 { subjects.first() } else { none }
+    BootstrapObserved { root_residual: _ } => none
     BootstrapDeltaRefused { reasons: _ } => none
   }
 }
@@ -84,8 +84,8 @@ fn secret_cells(r: List<IamBootstrapBinding>, secret: NonEmptyStr) -> List<IamBo
 // ── The whole roster, one pass ───────────────────────────────────────────────────────────────
 
 // EVERY DECLARED SUBJECT BOUND IS OBSERVED, NOT CONVERGED BLINDLY: the delta covers every secret,
-// account, pool and the project; it requires nothing; and the cells it could not see (pool policies,
-// the project) are carried as unverified rather than counted as present.
+// account, pool and the project; it requires nothing; and the one subject it cannot see (the project,
+// all of whose cells are the root ceremony's) is carried as a typed root residual, never as present.
 test fn the_whole_bound_roster_is_observed_in_one_pass() -> Bool {
   let subjects = roster_subjects(roster: roster)
   let kinds_present = any(subjects, s => match s { BootstrapSecret { secret: _ } => true  _ => false })
@@ -93,8 +93,8 @@ test fn the_whole_bound_roster_is_observed_in_one_pass() -> Bool {
     && any(subjects, s => match s { BootstrapPool { pool: _ } => true  _ => false })
     && any(subjects, s => match s { BootstrapProject => true  _ => false })
   match bootstrap_delta_over(roster: roster, observations: map(subjects, s => bound_observation(r: roster, s: s))) {
-    BootstrapObserved { unverified } => kinds_present && count(unverified) > 0
-      && all(unverified, b => match b.resource { BootstrapPool { pool: _ } => true  BootstrapProject => true  _ => false })
+    BootstrapObserved { root_residual } => kinds_present && count(root_residual) > 0
+      && all(root_residual, b => match b.resource { BootstrapProject => true  _ => false })
     _ => false
   }
 }
@@ -106,7 +106,7 @@ test fn a_bound_secret_is_a_noop() -> Bool {
   let foreign = IamBootstrapBinding { resource: s, cell: GcpIamBindingCell { role: "roles/secretmanager.viewer", member: "user:someone@example.com", condition: none } }
   let reading = SubjectPolicyRead { policy: bound_policy(cells: secret_cells(r: roster, secret: first_custody_secret) + [foreign]) }
   match bootstrap_delta_over(roster: roster, observations: observations_with(r: roster, subject: s, reading: reading)) {
-    BootstrapObserved { unverified: _ } => true
+    BootstrapObserved { root_residual: _ } => true
     _ => false
   }
 }

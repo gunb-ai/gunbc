@@ -17,7 +17,7 @@ import gunbc.auth.gcp_iam_converge { same_key_set }
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapRole, BootstrapObservePool, BootstrapObserveAccount, BootstrapObserveSecret, iam_bootstrap_role_permissions,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
-  iam_bootstrap_capability_bindings, iam_bootstrap_resource_key,
+  iam_bootstrap_capability_bindings, iam_bootstrap_resource_key, delta_owned,
 }
 
 // ── WHICH ROSTERED BOOTSTRAP CELLS THE OBSERVER CANNOT SEE IN PLACE ──────────────────────────
@@ -30,8 +30,8 @@ import gunbc.auth.gcp_iam_bootstrap_model {
 // bootstrapped": the delta is the roster minus what the observer reads, so nothing here lists a subject.
 //
 // WHAT THE OBSERVER CAN TELL is a consequence of where it is bound, read from its own roles rather than
-// restated: iam-observe holds getIamPolicy on accounts and secrets, only get on pools, and nothing on
-// the project. An absent resource answers NOT_FOUND only to a caller that can read its parent's
+// restated: iam-observe holds getIamPolicy on pools, accounts and secrets (resource-local, bound by the
+// delta on a target and by the root ceremony on its own identities), and nothing on the project. An absent resource answers NOT_FOUND only to a caller that can read its parent's
 // children (extdeps.cloud.gcp.errors gcp_absent_resource_answer, google.aip.dev/211), and
 // iam-observe holds nothing on the project, so a PERMISSION_DENIED it sees is "absent OR unbound": a
 // typed cannot-tell, never a raw 403 and never a guess at either.
@@ -94,11 +94,15 @@ type SubjectNotBootstrapped {
   missing: List<IamBootstrapBinding>
 }
 
-// A CELL THE OBSERVER CANNOT READ IS NOT CLAIMED EITHER WAY: a pool's policy and the project's lie
-// outside iam-observe's reach, so their cells are carried as unverified, never as converged.
+// NO CELL IS DROPPED AS "NOTHING TO DO". Every delta cell is read in place or classified missing; the
+// observer reads every pool, account and secret policy it is asked about. The one subject it holds
+// nothing on is the project, whose cells are all the root ceremony's (gunbc.auth.gcp_iam_bootstrap_model
+// iam_bootstrap_cell_owner): they are carried as a typed root residual, never as converged and never as
+// requestable. An unread subject carrying a DELTA cell refuses the whole delta (section 5: no absorbing
+// fallback).
 type BootstrapDelta
-  = BootstrapObserved { unverified: List<IamBootstrapBinding> }
-  | BootstrapDeltaRequired { subjects: List<SubjectNotBootstrapped>, unverified: List<IamBootstrapBinding> }
+  = BootstrapObserved { root_residual: List<IamBootstrapBinding> }
+  | BootstrapDeltaRequired { subjects: List<SubjectNotBootstrapped>, root_residual: List<IamBootstrapBinding> }
   | BootstrapDeltaRefused { reasons: List<String> }
 
 fn binding_subject_key(b: IamBootstrapBinding) -> String {
@@ -116,7 +120,7 @@ fn subject_cells(roster: List<IamBootstrapBinding>, subject: IamBootstrapResourc
 
 type SubjectClassification
   = SubjectEstablished
-  | SubjectUnverified { cells: List<IamBootstrapBinding> }
+  | SubjectRootResidual { cells: List<IamBootstrapBinding> }
   | SubjectMissing { classified: SubjectNotBootstrapped }
   | SubjectRefused { reason: String }
 
@@ -129,13 +133,10 @@ fn classify_bootstrap_subject(roster: List<IamBootstrapBinding>, o: BootstrapSub
       if count(missing) == 0 { SubjectEstablished }
       else { SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectUnbound, missing: missing } } }
     }
-    SubjectAnswered => match observer_reach(subject: o.subject) {
-      ObserverReadsSubjectOnly => SubjectUnverified { cells: cells }
-      ObserverReadsPolicy => SubjectRefused { reason: concat(key, ": answered without its policy, though the observer reads policies here") }
-      ObserverHoldsNothing => SubjectRefused { reason: concat(key, ": answered to an observer that holds nothing on it") }
-    }
+    SubjectAnswered => SubjectRefused { reason: concat(key, ": answered without its policy, so its cells are unverifiable; refusing rather than counting them converged") }
     SubjectUnobservable => match observer_reach(subject: o.subject) {
-      ObserverHoldsNothing => SubjectUnverified { cells: cells }
+      ObserverHoldsNothing => if all(cells, b => !delta_owned(b: b)) { SubjectRootResidual { cells: cells } }
+        else { SubjectRefused { reason: concat(key, ": unobservable, yet it carries a delta cell; refusing rather than dropping it") } }
       ObserverReadsSubjectOnly => SubjectRefused { reason: concat(key, ": not observed, though the observer is bound on it") }
       ObserverReadsPolicy => SubjectRefused { reason: concat(key, ": not observed, though the observer is bound on it") }
     }
@@ -158,12 +159,12 @@ fn bootstrap_delta_over(roster: List<IamBootstrapBinding>, observations: List<Bo
     BootstrapDeltaRefused { reasons: ["the subject observations are not exactly the bootstrap roster's subjects"] }
   } else {
     let classes = map(observations, o => classify_bootstrap_subject(roster: roster, o: o))
-    let refusals = flat_map(classes, c => match c { SubjectRefused { reason } => [reason]  SubjectEstablished => []  SubjectUnverified { cells: _ } => []  SubjectMissing { classified: _ } => [] })
-    let missing = flat_map(classes, c => match c { SubjectMissing { classified } => [classified]  SubjectEstablished => []  SubjectUnverified { cells: _ } => []  SubjectRefused { reason: _ } => [] })
-    let unverified = flat_map(classes, c => match c { SubjectUnverified { cells } => cells  SubjectEstablished => []  SubjectMissing { classified: _ } => []  SubjectRefused { reason: _ } => [] })
+    let refusals = flat_map(classes, c => match c { SubjectRefused { reason } => [reason]  SubjectEstablished => []  SubjectRootResidual { cells: _ } => []  SubjectMissing { classified: _ } => [] })
+    let missing = flat_map(classes, c => match c { SubjectMissing { classified } => [classified]  SubjectEstablished => []  SubjectRootResidual { cells: _ } => []  SubjectRefused { reason: _ } => [] })
+    let residual = flat_map(classes, c => match c { SubjectRootResidual { cells } => cells  SubjectEstablished => []  SubjectMissing { classified: _ } => []  SubjectRefused { reason: _ } => [] })
     if count(refusals) > 0 { BootstrapDeltaRefused { reasons: refusals } }
-    else if count(missing) > 0 { BootstrapDeltaRequired { subjects: missing, unverified: unverified } }
-    else { BootstrapObserved { unverified: unverified } }
+    else if count(missing) > 0 { BootstrapDeltaRequired { subjects: missing, root_residual: residual } }
+    else { BootstrapObserved { root_residual: residual } }
   }
 }
 
@@ -195,8 +196,11 @@ fn observe_bootstrap_subject(subject: IamBootstrapResource, token: Secret) -> Bo
   let reading = match subject {
     BootstrapProject => SubjectUnobservable
     BootstrapPool { pool } =>
-      match gcp.IamAdmin.GetWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool) {
-        RestAnswered { answer: _ } => SubjectAnswered
+      match gcp.IamAdmin.GetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool) {
+        RestAnswered { answer: r } => match r.etag {
+          Present { value: e } => SubjectPolicyRead { policy: gcp_policy_from_wire(bindings: r.bindings, etag: e, version: r.version) }
+          Absent => SubjectUnreadable { cause: "the pool policy read carries no etag" }
+        }
         RestRefused { refusal } => subject_reading_of_refusal(refusal: refusal)
       }
     BootstrapAccount { account } =>

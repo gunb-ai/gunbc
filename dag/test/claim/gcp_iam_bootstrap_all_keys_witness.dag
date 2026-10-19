@@ -16,10 +16,12 @@ import gunbc.assimilate.bmc_wif_delegation_chain { bmc_wif_signed_grants, bmc_wi
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import gunbc.auth.secret_access_grant { SecretAccessGrant, GrantPrincipal, Signed, Unsigned, signed_grants_only, grant_is_signed }
 import gunbc.auth.gcp_secret_access { GrantMemberResolved, GrantMemberUnresolved }
-import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge, ceremony_trust_root_secrets }
+import gunbc.auth.gcp_iam_trust_roots { TrustRootCell, fleet_member_root_cells, TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge, ceremony_trust_root_secrets }
 import gunbc.auth.approval_mac_key_provision { approval_mac_key_ceremony_rows }
 import gunbc.fleet.org_actions_converge { org_admin_app_key_ceremony_grant }
-import gunbc.auth.gcp_iam_bootstrap_model { SecretIamOwner, BootstrapRostered, CeremonyTrustRoot, secret_iam_owner }
+import gunbc.auth.gcp_iam_bootstrap_model { SecretIamOwner, BootstrapRostered, CeremonyTrustRoot, secret_iam_owner, secret_iam_root_cells, iam_bootstrap_root_ceremony_bindings, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in }
+import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant }
 import gunbc.auth.gcp_iam_converge { gcp_iam_converge_grant_set_secrets }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -70,7 +72,7 @@ test fn every_declared_secret_is_rostered_or_a_ceremony_trust_root() -> Bool {
 
 // THE TRUST ROOTS ARE EXACTLY THE APPROVAL LOOP'S MAC KEYS AND THE UNDECIDED GATE APP'S KEY.
 test fn the_ceremony_trust_roots_are_the_approval_mac_keys_and_the_gate_app_key() -> Bool {
-  let roots = filter(declared_secrets(), s => match secret_iam_owner(secret: s as NonEmptyStr) { Present { value: o } => match o { CeremonyTrustRoot { reason: _, ceremony: _ } => true  BootstrapRostered => false }  Absent => false })
+  let roots = filter(declared_secrets(), s => match secret_iam_owner(secret: s as NonEmptyStr) { Present { value: o } => match o { CeremonyTrustRoot { reason: _ } => true  BootstrapRostered => false }  Absent => false })
   count(roots) == 4
     && all(["approval-capability-mac-key", "approval-submission-mac-key", "approval-store-receipt-mac-key", "ci-github-app-private-key"], k => any(roots, r => r == k))
 }
@@ -81,21 +83,52 @@ fn report_uncovered_secrets() -> ProcessExit {
   if count(u) == 0 { ExitSuccess } else { exit_failure(reason: concat("uncovered declared secrets (no SecretIamOwner arm): ", join(u, ", "))) }
 }
 
-// EACH ROOT'S CEREMONY BINDS IT: the root's accessor cell is among the grants of the ceremony its arm
-// names, so a ceremony that stops binding a root turns this red rather than leaving a reason with no
-// binder.
-fn ceremony_binds(ceremony: TrustRootCeremony, secret: String) -> Bool {
+// EACH ROOT CELL IS BOUND BY THE CEREMONY ITS RELATION NAMES, at CELL grain: one secret may carry cells
+// from several ceremonies (the submission MAC key's fleet accessor cell is ApprovalMacKeyProvision's,
+// iam-observe's read of it is IamBootstrapApply's), and the join compares (secret, role, member,
+// condition) exactly, so a ceremony binding another cell on the same secret does not count.
+type CeremonyCell { secret: String, cell: GcpIamBindingCell }
+
+// The fleet member's cells for a ceremony's declared grant, through the one resolution the trust-root
+// relation also reads (gunbc.auth.gcp_iam_trust_roots fleet_member_root_cells); the rows differ.
+fn as_ceremony_cells(ts: List<TrustRootCell>) -> List<CeremonyCell> {
+  map(ts, t => CeremonyCell { secret: t.secret as String, cell: t.cell })
+}
+
+fn ceremony_cells(ceremony: TrustRootCeremony) -> List<CeremonyCell> {
   match ceremony {
-    ApprovalMacKeyProvision => any(approval_mac_key_ceremony_rows, r => (r.target.secret as String) == secret)
-    OrgAdminAppKeyAccessConverge => (org_admin_app_key_ceremony_grant().target.secret as String) == secret
+    ApprovalMacKeyProvision => as_ceremony_cells(ts: flat_map(approval_mac_key_ceremony_rows, r => fleet_member_root_cells(grant: fleet_accessor_grant(row: r), ceremony: ApprovalMacKeyProvision)))
+    OrgAdminAppKeyAccessConverge => as_ceremony_cells(ts: fleet_member_root_cells(grant: org_admin_app_key_ceremony_grant(), ceremony: OrgAdminAppKeyAccessConverge))
+    IamBootstrapApply => flat_map(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
+      BootstrapSecret { secret } => [CeremonyCell { secret: secret as String, cell: b.cell }]
+      BootstrapProject => []
+      BootstrapPool { pool: _ } => []
+      BootstrapAccount { account: _ } => []
+    })
   }
 }
 
+fn ceremony_binds(ceremony: TrustRootCeremony, secret: String, cell: GcpIamBindingCell) -> Bool {
+  any(ceremony_cells(ceremony: ceremony), c => c.secret == secret && gcp_cell_in(c: cell, xs: [c.cell]))
+}
+
 test fn every_ceremony_trust_root_is_bound_by_the_ceremony_its_arm_names() -> Bool {
+  let roots = secret_iam_root_cells()
   count(ceremony_trust_root_secrets()) == 4
-    && all(ceremony_trust_root_secrets(), t => ceremony_binds(ceremony: t.ceremony, secret: t.secret as String))
-    && !ceremony_binds(ceremony: OrgAdminAppKeyAccessConverge, secret: "approval-capability-mac-key")
-    && !ceremony_binds(ceremony: ApprovalMacKeyProvision, secret: "ci-github-app-private-key")
+    && count(filter(roots, t => match t.ceremony { ApprovalMacKeyProvision => true  _ => false })) == 3
+    && count(filter(roots, t => match t.ceremony { OrgAdminAppKeyAccessConverge => true  _ => false })) == 1
+    && count(filter(roots, t => match t.ceremony { IamBootstrapApply => true  _ => false })) > 0
+    && all(roots, t => ceremony_binds(ceremony: t.ceremony, secret: t.secret as String, cell: t.cell))
+    && all(roots, t => any(ceremony_trust_root_secrets(), r => (r.secret as String) == (t.secret as String)))
+}
+
+// THE JOIN IS AT CELL GRAIN: the same secret under another role, or another member, is not bound by
+// the ceremony that binds the root cell; and one secret carries cells of two ceremonies.
+test fn the_binder_join_compares_the_exact_cell() -> Bool {
+  let roots = secret_iam_root_cells()
+  all(roots, t => !ceremony_binds(ceremony: t.ceremony, secret: t.secret as String, cell: GcpIamBindingCell { role: "roles/secretmanager.admin", member: t.cell.member, condition: t.cell.condition })
+    && !ceremony_binds(ceremony: t.ceremony, secret: t.secret as String, cell: GcpIamBindingCell { role: t.cell.role, member: "serviceAccount:someone-else@gunbai-secrets.iam.gserviceaccount.com", condition: t.cell.condition }))
+    && any(roots, a => any(roots, b => (a.secret as String) == (b.secret as String) && match a.ceremony { ApprovalMacKeyProvision => match b.ceremony { IamBootstrapApply => true  _ => false }  _ => false }))
 }
 
 // ── AN UNSIGNED GRANT REACHES NO GRANT SET (the BMC declarer's own signoff selection) ──────────

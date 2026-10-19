@@ -1,7 +1,7 @@
 module test.claim.gcp_iam_bootstrap_delta_route_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpIamBindingCell, gcp_cells_bindings, gcp_cell_in, gcp_policy_cells }
 import gunbc.auth.gcp_iam_converge { PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, iam_converge_service_account, gcp_iam_observe_dedicated_federation }
@@ -10,9 +10,9 @@ import gunbc.auth.gcp_iam_bootstrap_model { BootstrapProject, BootstrapPool, Boo
 import gunbc.auth.gcp_iam_bootstrap_delta { SubjectNotBootstrapped, SubjectUnbound, SubjectAbsentOrUnboundCannotTell }
 import gunbc.auth.gcp_iam_trust_roots { ceremony_trust_root_secrets }
 import gunbc.auth.gcp_iam_bootstrap_delta_route {
-  BootstrapDeltaRequestBody, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, RootCeremonyCellsMissing, bootstrap_delta_requestable,
+  BootstrapDeltaRequestBody, BootstrapDeltaRequestable, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, RootCeremonyCellsMissing, bootstrap_delta_requestable,
   BootstrapCellsWrite, WriteBootstrapCells, BootstrapCellsAlreadyPresent, BootstrapCellsRefused, bootstrap_cells_write,
-  approved_subjects, bootstrap_delta_preimage, trust_root_subject,
+  approved_subjects, bootstrap_delta_preimage, root_cell_repair_ceremony,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -72,16 +72,25 @@ test fn a_refused_or_missing_approval_applies_nothing() -> Bool {
   count(approved_subjects(admitted: false, b: body)) == 0 && count(approved_subjects(admitted: true, b: body)) == 1
 }
 
-// THE TRUST ROOTS AND THE PROJECT ARE NEVER REQUESTABLE; an ordinary secret is.
+// THE TRUST ROOTS AND THE PROJECT ARE NEVER REQUESTABLE; an ordinary secret is. Each missing root cell
+// is refused with the ceremony that repairs it, one entry per cell.
+fn is_root_cell(b: IamBootstrapBinding) -> Bool {
+  match root_cell_repair_ceremony(b: b) { Present { value: _ } => true  Absent => false }
+}
+
+fn refused_cells(r: BootstrapDeltaRequestable) -> Int {
+  match r { RootCeremonyCellsMissing { cells } => count(cells)  BootstrapDeltaRequestAdmitted { body: _ } => -1  BootstrapDeltaUnrequestable { reasons: _ } => -1 }
+}
+
 test fn trust_roots_and_project_cells_are_unrequestable() -> Bool {
   let roots = [
     BootstrapAccount { account: iam_bootstrap_service_account }, BootstrapAccount { account: iam_converge_service_account },
     BootstrapPool { pool: gcp_iam_bootstrap_wif_pool_id }, BootstrapPool { pool: gcp_iam_observe_dedicated_federation().pool_id },
   ]
-  all(roots, r => trust_root_subject(s: r)
-    && match bootstrap_delta_requestable(subjects: [subject_of(s: r, cells: [converge_cell])]) { RootCeremonyCellsMissing { root_subjects: rs } => count(rs) == 1  _ => false })
-    && (match bootstrap_delta_requestable(subjects: [subject_of(s: BootstrapProject, cells: [converge_cell])]) { RootCeremonyCellsMissing { root_subjects: _ } => true  _ => false })
-    && (match bootstrap_delta_requestable(subjects: [subject_of(s: r_secret(), cells: [converge_cell]), subject_of(s: BootstrapAccount { account: iam_bootstrap_service_account }, cells: [converge_cell])]) { RootCeremonyCellsMissing { root_subjects: rs } => count(rs) == 1  _ => false })
+  all(roots, r => is_root_cell(b: IamBootstrapBinding { resource: r, cell: converge_cell })
+    && refused_cells(r: bootstrap_delta_requestable(subjects: [subject_of(s: r, cells: [converge_cell])])) == 1)
+    && refused_cells(r: bootstrap_delta_requestable(subjects: [subject_of(s: BootstrapProject, cells: [converge_cell])])) == 1
+    && refused_cells(r: bootstrap_delta_requestable(subjects: [subject_of(s: r_secret(), cells: [converge_cell]), subject_of(s: BootstrapAccount { account: iam_bootstrap_service_account }, cells: [converge_cell, observe_cell])])) == 2
     && (match bootstrap_delta_requestable(subjects: body.subjects) { BootstrapDeltaRequestAdmitted { body: _ } => true  _ => false })
 }
 
@@ -93,11 +102,11 @@ fn r_secret() -> IamBootstrapResource { BootstrapSecret { secret: secret } }
 test fn trust_root_secrets_are_unrequestable() -> Bool {
   let roots = map(ceremony_trust_root_secrets(), t => BootstrapSecret { secret: t.secret })
   count(roots) == 4
-    && !trust_root_subject(s: r_secret())
+    && !is_root_cell(b: IamBootstrapBinding { resource: r_secret(), cell: converge_cell })
     && (match bootstrap_delta_requestable(subjects: [subject_of(s: r_secret(), cells: [converge_cell])]) { BootstrapDeltaRequestAdmitted { body: _ } => true  _ => false })
-    && all(roots, r => trust_root_subject(s: r)
-      && (match bootstrap_delta_requestable(subjects: [subject_of(s: r, cells: [converge_cell])]) { RootCeremonyCellsMissing { root_subjects: rs } => count(rs) == 1  _ => false })
-      && (match bootstrap_delta_requestable(subjects: [subject_of(s: r_secret(), cells: [converge_cell]), subject_of(s: r, cells: [converge_cell])]) { RootCeremonyCellsMissing { root_subjects: rs } => count(rs) == 1  _ => false }))
+    && all(roots, r => is_root_cell(b: IamBootstrapBinding { resource: r, cell: converge_cell })
+      && refused_cells(r: bootstrap_delta_requestable(subjects: [subject_of(s: r, cells: [converge_cell])])) == 1
+      && refused_cells(r: bootstrap_delta_requestable(subjects: [subject_of(s: r_secret(), cells: [converge_cell]), subject_of(s: r, cells: [converge_cell])])) == 1)
 }
 
 // CONSENT IS TO EXACTLY THE CELLS: one cell more or less is a different preimage.

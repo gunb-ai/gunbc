@@ -7,7 +7,7 @@ import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.gcp_iam_bootstrap_model {
   BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_matches, iam_bootstrap_role_name, iam_bootstrap_role_permissions,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
-  iam_bootstrap_capability_bindings, iam_bootstrap_resource_key, iam_bootstrap_binding,
+  iam_bootstrap_capability_bindings, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_resource_key, iam_bootstrap_binding,
   BootstrapSecret, BootstrapProject, BootstrapApplyRole, BootstrapObserveSecret, IamBootstrapBinding,
   iam_bootstrap_identity_federations, iam_bootstrap_bound_secrets, BootstrapPool, BootstrapAccount,
 }
@@ -395,7 +395,7 @@ test fn the_resource_id_syntax_holds_at_its_boundaries() -> Bool {
 // bare when absent. The two named secrets were absent on 2026-10-14 and would have refused it.
 test fn every_secret_the_capabilities_stage_binds_is_created_bare() -> Bool {
   let bare = map(iam_bootstrap_bound_secrets(), s => s as String)
-  all(iam_bootstrap_capability_bindings(), b => match b.resource {
+  all(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
     BootstrapSecret { secret } => any(bare, s => s == (secret as String))
     BootstrapProject => true
     BootstrapPool { pool: _ } => true

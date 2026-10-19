@@ -8,7 +8,7 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // every account and pool in the project, and neither deny nor allow conditions can name these
 // resources, so the five trust roots -- iam-converge, iam-observe and iam-bootstrap, and the two pools
 // whose principal sets reach them -- are kept out of every delta only by the route's refusal
-// (gunbc.auth.gcp_iam_bootstrap_delta_route trust_root_subject). Denial conditions recognize resource
+// (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_cell_owner). Denial conditions recognize resource
 // tags (https://cloud.google.com/iam/docs/deny-overview, read 2026-10-18) and service accounts take
 // tags while workload identity pools are not listed
 // (https://cloud.google.com/resource-manager/docs/tags/tags-supported-services, read 2026-10-18), so the

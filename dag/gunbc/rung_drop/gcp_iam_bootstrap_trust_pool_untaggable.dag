@@ -10,7 +10,7 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // 2026-10-18) and workload identity pools are not on the tag-supported list
 // (https://cloud.google.com/resource-manager/docs/tags/tags-supported-services, read 2026-10-18), so no
 // credential-layer wall can name them; the route's refusal (gunbc.auth.gcp_iam_bootstrap_delta_route
-// trust_root_subject) is the whole guard. Its trigger is a platform capability this repository cannot
+// iam_bootstrap_cell_owner) is the whole guard. Its trigger is a platform capability this repository cannot
 // supply, which is why it is not folded into the account drop.
 data gcp_iam_bootstrap_trust_pool_untaggable: RungDrop = RungDrop {
   identity: "gcp_iam_bootstrap_trust_pool_untaggable" as NonEmptyStr,

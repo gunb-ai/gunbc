@@ -11,7 +11,7 @@ import gunbc.auth.gcp_iam_bootstrap_delta {
   BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused, observe_bootstrap_delta, subject_not_bootstrapped_text,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route {
-  BootstrapDeltaRequestBody, BootstrapDeltaRequestable, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, RootCeremonyCellsMissing, bootstrap_delta_requestable,
+  BootstrapDeltaRequestBody, BootstrapDeltaRequestable, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, RootCeremonyCellsMissing, root_cell_missing_text, bootstrap_delta_requestable,
   BootstrapDeltaRequest, BootstrapDeltaRequested, BootstrapDeltaRequestRefused, bootstrap_delta_request, apply_approved_subjects,
 }
 
@@ -48,11 +48,11 @@ fn bootstrap_delta_step(delta: BootstrapDelta) -> BootstrapDeltaStep {
   match run_attempt() {
     Absent => BootstrapStepRefused { reason: "GITHUB_RUN_ID is unset; this entry runs only as the fleet-converge job" }
     Present { value: attempt } => match delta {
-      BootstrapObserved { unverified: _ } => BootstrapNothingToDo
+      BootstrapObserved { root_residual: _ } => BootstrapNothingToDo
       BootstrapDeltaRefused { reasons } => BootstrapStepRefused { reason: concat("the delta refuses, nothing requested: ", join(reasons, "; ")) }
-      BootstrapDeltaRequired { subjects, unverified: _ } => match bootstrap_delta_requestable(subjects: subjects) {
+      BootstrapDeltaRequired { subjects, root_residual: _ } => match bootstrap_delta_requestable(subjects: subjects) {
         BootstrapDeltaUnrequestable { reasons } => BootstrapStepRefused { reason: concat("not requestable: ", join(reasons, "; ")) }
-        RootCeremonyCellsMissing { root_subjects } => BootstrapStepRefused { reason: concat("ROOT CEREMONY CELLS MISSING: a trust-root or project cell the first-time root ceremony owns is not established (before the first ceremony, or drift after it), so nothing is requested and no iam-bootstrap token is minted. Repair: run the first-time root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) and read it back; then the delta is requestable. Missing: ", join(map(root_subjects, s => subject_not_bootstrapped_text(s: s)), " || ")) }
+        RootCeremonyCellsMissing { cells } => BootstrapStepRefused { reason: concat("ROOT CEREMONY CELLS MISSING: a cell a trust-root ceremony owns is not established (before its first run, or drift after it), so nothing is requested and no iam-bootstrap token is minted. Each missing cell names the ceremony that repairs it; run that ceremony and read it back, then the delta is requestable. Missing: ", join(map(cells, c => root_cell_missing_text(m: c)), " || ")) }
         BootstrapDeltaRequestAdmitted { body } => match bootstrap_delta_request(b: body, attempt: attempt) {
           BootstrapDeltaRequestRefused { reason } => BootstrapStepRefused { reason: reason }
           BootstrapDeltaRequested { request } => BootstrapStepRequest { request: request }

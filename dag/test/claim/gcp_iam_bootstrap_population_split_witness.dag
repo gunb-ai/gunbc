@@ -102,7 +102,7 @@ test fn the_observer_reads_every_delta_pools_policy() -> Bool {
 test fn an_answered_pool_without_its_policy_is_never_nothing_to_do() -> Bool {
   all(delta_pools(), p => {
     let obs = map(roster_subjects(roster: delta_roster), s => if same_subject(a: s, b: p) { BootstrapSubjectObservation { subject: s, reading: SubjectAnswered } } else { read_in_place(s: s) })
-    match bootstrap_delta_over(roster: delta_roster, observations: obs) { BootstrapObserved { unverified: _ } => false  BootstrapDeltaRequired { subjects: _, unverified: _ } => true  BootstrapDeltaRefused { reasons: _ } => true }
+    match bootstrap_delta_over(roster: delta_roster, observations: obs) { BootstrapObserved { root_residual: _ } => false  BootstrapDeltaRequired { subjects: _, root_residual: _ } => true  BootstrapDeltaRefused { reasons: _ } => true }
   })
 }
 
@@ -115,8 +115,8 @@ test fn a_pool_missing_its_provider_role_cell_surfaces_exactly_that_cell() -> Bo
     let kept = filter(cells, b => b.cell.role != provider_role)
     let obs = map(roster_subjects(roster: delta_roster), s => if same_subject(a: s, b: p) { BootstrapSubjectObservation { subject: s, reading: SubjectPolicyRead { policy: bound_policy(cells: kept) } } } else { read_in_place(s: s) })
     count(kept) == count(cells) - 1 && match bootstrap_delta_over(roster: delta_roster, observations: obs) {
-      BootstrapDeltaRequired { subjects: ss, unverified: _ } => count(ss) == 1 && all(ss, x => same_subject(a: x.subject, b: p) && count(x.missing) == 1 && all(x.missing, m => m.cell.role == provider_role))
-      BootstrapObserved { unverified: _ } => false
+      BootstrapDeltaRequired { subjects: ss, root_residual: _ } => count(ss) == 1 && all(ss, x => same_subject(a: x.subject, b: p) && count(x.missing) == 1 && all(x.missing, m => m.cell.role == provider_role))
+      BootstrapObserved { root_residual: _ } => false
       BootstrapDeltaRefused { reasons: _ } => false
     }
   })
@@ -134,5 +134,5 @@ fn same_ceremony(a: TrustRootCeremony, b: TrustRootCeremony) -> Bool {
 
 test fn each_root_cell_names_its_own_repairing_ceremony() -> Bool {
   count(ceremony_trust_root_cells()) == 4
-    && all(ceremony_trust_root_cells(), t => same_ceremony(a: root_cell_repair_ceremony(b: IamBootstrapBinding { resource: BootstrapSecret { secret: t.secret }, cell: t.cell }), b: t.ceremony))
+    && all(ceremony_trust_root_cells(), t => match root_cell_repair_ceremony(b: IamBootstrapBinding { resource: BootstrapSecret { secret: t.secret }, cell: t.cell }) { Present { value: c } => same_ceremony(a: c, b: t.ceremony)  Absent => false })
 }
