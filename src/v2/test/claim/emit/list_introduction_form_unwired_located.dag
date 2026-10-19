@@ -227,3 +227,31 @@ test fn rust_renders_a_list_introduction_as_a_vec_literal_holds() -> Bool {
     ListIntroductionRustUnreached => false
   }
 }
+
+test fn dbg_r_unreached() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustUnreached => true _ => false }
+}
+
+test fn dbg_r_a() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "vec![") _ => false }
+}
+
+test fn dbg_r_b() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "vec! [") _ => false }
+}
+
+test fn dbg_r_c() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "1, 2") _ => false }
+}
+
+test fn dbg_r_d() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "1,2") _ => false }
+}
+
+test fn dbg_r_e() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "1 , 2") _ => false }
+}
+
+test fn dbg_r_f() -> Bool {
+  match list_introduction_rust_probe() { ListIntroductionRustText { text: x } => string_contains(s: x, pattern: "]") _ => false }
+}
