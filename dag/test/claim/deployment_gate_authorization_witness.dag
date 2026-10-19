@@ -78,11 +78,19 @@ import gunbc.auth.deployment_gate_authorization {
   operator_webhook_receiver,
   admit_reviewer_removal,
   DeploymentGateTrialEvidence,
-  broker_may_answer,
-  ownership_names_environment,
-  answer_refusal_from_settlement,
-  AnswerRefusal,
-  RunAlreadyConcluded,
+  broker_answer_decision,
+  BrokerAnswerVerdict,
+  BrokerMayAnswer,
+  BrokerRefused,
+  BrokerAnswerRefusal,
+  broker_answer_refusal_name,
+  RecordRunIdIsNotTheFiledRun,
+  TheRunHasConcluded,
+  WaitNamesAnotherEnvironment,
+  TheWaitIsHeldByAHumanReviewer,
+  RuleOwnershipNotEstablished,
+  OwnershipWasReadForAnotherEnvironment,
+  TapBindsAnotherRequest,
   capability_binds_request,
   review_answers_capability,
   review_matches_decision,
@@ -423,12 +431,48 @@ fn an_in_flight_run() -> WorkflowRunRecord {
   run_record(run_id: 35447067113, settled: false, failed: false)
 }
 
-fn an_answerable_broker_call() -> Bool {
-  broker_may_answer(
+// THE VERDICT'S NAME, as a fixture rather than a predicate over the sum: it goes through the decision
+// and reads whichever check refused, so a test that expects one refusal cannot be satisfied by another.
+// "BrokerMayAnswer" is the string the answer produces, never a value the model can forge.
+fn refusal_name_for(
+  wait: PendingDeploymentWait,
+  run: WorkflowRunRecord,
+  claim: GateRequestClaim,
+  capability: ApprovalCapability,
+  ownership: EnvironmentRuleOwnership
+) -> NonEmptyStr {
+  match broker_answer_decision(
+    wait: wait,
+    run: run,
+    claim: claim,
+    capability: capability,
+    ownership: ownership
+  ) {
+    BrokerMayAnswer => "BrokerMayAnswer"
+    BrokerRefused { because: b } => broker_answer_refusal_name(refusal: b)
+  }
+}
+
+fn refusal_name_for_a_broker_call(
+  wait: PendingDeploymentWait,
+  run: WorkflowRunRecord,
+  claim: GateRequestClaim,
+  ownership: EnvironmentRuleOwnership
+) -> NonEmptyStr {
+  refusal_name_for(
+    wait: wait,
+    run: run,
+    claim: claim,
+    capability: gate_capability(decision: ProposeApprove),
+    ownership: ownership
+  )
+}
+
+fn answerable_refusal_name() -> NonEmptyStr {
+  refusal_name_for_a_broker_call(
     wait: an_answerable_wait(),
     run: an_in_flight_run(),
     claim: gate_claim,
-    capability: gate_capability(decision: ProposeApprove),
     ownership: minted_ownership()
   )
 }
@@ -443,19 +487,21 @@ fn an_answerable_broker_call() -> Bool {
 // answers 204 for a wrong-environment review exactly as happily as for a right one — the response
 // cannot tell them apart, which is why the check is before the call.
 test fn a_wait_for_another_environment_is_never_answered() -> Bool {
-  an_answerable_broker_call()
-    && !broker_may_answer(
+  answerable_refusal_name() == "BrokerMayAnswer"
+    // The refusal is pinned to the CHECK, not just to a "no": a Bool turned this, the run mutation, the
+    // human-wait and the ownership refusal into the same reported fact.
+    && refusal_name_for_a_broker_call(
          wait: waiting_on(
            environment_name: other_env, named: [] as List<PendingDeploymentReviewer>
          ),
          run: an_in_flight_run(),
          claim: gate_claim,
-         capability: gate_capability(decision: ProposeApprove),
          ownership: minted_ownership()
        )
+       == "WaitNamesAnotherEnvironment"
     // The claim pointing at srv1 while the wait names something else is the same refusal from the
     // other side, and the ungated environment must be refused too rather than treated as harmless.
-    && !broker_may_answer(
+    && refusal_name_for_a_broker_call(
          wait: an_answerable_wait(),
          run: an_in_flight_run(),
          claim: GateRequestClaim {
@@ -465,9 +511,9 @@ test fn a_wait_for_another_environment_is_never_answered() -> Bool {
            request_revision: gate_claim.request_revision,
            attempt: gate_claim.attempt,
          },
-         capability: gate_capability(decision: ProposeApprove),
          ownership: minted_ownership()
        )
+       == "WaitNamesAnotherEnvironment"
 }
 
 // THE RUN MUTATION, AND THE SELF-COMPARISON IT REPLACES. verified_run_id: Int beside claim.run_id: Int
@@ -476,45 +522,48 @@ test fn a_wait_for_another_environment_is_never_answered() -> Bool {
 // GitHub's record does not carry is refused — and a concluded run is refused INSIDE the fold rather
 // than by a second call the integrator has to remember.
 test fn a_run_the_submission_did_not_file_is_never_answered() -> Bool {
-  an_answerable_broker_call()
-    && !broker_may_answer(
+  answerable_refusal_name() == "BrokerMayAnswer"
+    && refusal_name_for_a_broker_call(
          wait: an_answerable_wait(),
          run: run_record(run_id: 35447067114, settled: false, failed: false),
          claim: gate_claim,
-         capability: gate_capability(decision: ProposeApprove),
          ownership: minted_ownership()
        )
-    && !broker_may_answer(
+       == "RecordRunIdIsNotTheFiledRun"
+    // The two settled arms refuse for the CONCLUSION, and the conclusion is carried out of the refusal:
+    // "the gate went unanswered because the run failed" and "because it succeeded" are different facts,
+    // and a Bool made them one.
+    && refusal_name_for_a_broker_call(
          wait: an_answerable_wait(),
          run: run_record(run_id: 35447067113, settled: true, failed: false),
          claim: gate_claim,
-         capability: gate_capability(decision: ProposeApprove),
          ownership: minted_ownership()
        )
-    && !broker_may_answer(
+       == "TheRunHasConcluded"
+    && refusal_name_for_a_broker_call(
          wait: an_answerable_wait(),
          run: run_record(run_id: 35447067113, settled: true, failed: true),
          claim: gate_claim,
-         capability: gate_capability(decision: ProposeApprove),
          ownership: minted_ownership()
        )
+       == "TheRunHasConcluded"
 }
 
 // A wait that names a HUMAN is a required-reviewer wait, and an App answering it is the
 // double-authority this whole change exists to remove. It is refused rather than answered-and-left-
 // waiting, because posting it would look like a broker failure and read like a policy question.
 test fn a_wait_that_names_a_human_is_not_answered_by_the_app() -> Bool {
-  !broker_may_answer(
+  refusal_name_for_a_broker_call(
     wait: waiting_on(
       environment_name: gated_env,
       named: [UserReviewer { login: "mtcollins1" }] as List<PendingDeploymentReviewer>
     ),
     run: an_in_flight_run(),
     claim: gate_claim,
-    capability: gate_capability(decision: ProposeApprove),
     ownership: minted_ownership()
   )
-    && an_answerable_broker_call()
+    == "TheWaitIsHeldByAHumanReviewer"
+    && answerable_refusal_name() == "BrokerMayAnswer"
 }
 
 // THE TAP'S OWN BINDING: escalation, revision and attempt are the capability's authenticated claims,
@@ -700,18 +749,17 @@ test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
           NotOwnedByGateApp { because: _ } => true
           OwnedByGateApp { observation: _ } => false
         })
-    && !broker_may_answer(
+    && refusal_name_for_a_broker_call(
          wait: an_answerable_wait(),
          run: an_in_flight_run(),
          claim: gate_claim,
-         capability: gate_capability(decision: ProposeApprove),
          ownership: unattributed_ownership()
        )
-    && !broker_may_answer(
+       == "RuleOwnershipNotEstablished"
+    && refusal_name_for_a_broker_call(
          wait: an_answerable_wait(),
          run: an_in_flight_run(),
          claim: gate_claim,
-         capability: gate_capability(decision: ProposeApprove),
          ownership: observe_rule_ownership_for(
            rules: [
              EnabledDeploymentProtectionRule {
@@ -724,10 +772,30 @@ test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
            environment_name: gated_env,
          )
        )
-    && ownership_names_environment(
-         ownership: minted_ownership(), environment: gated_env
+       == "RuleOwnershipNotEstablished"
+    // The environment the rule was READ FOR is checked, not merely that some rule is ours. Everything
+    // else lines up — the wait and the filing both name the other gate, so the wait check passes — and
+    // the only thing out of place is that the rule readback was taken for srv1. That is a distinct
+    // refusal from "the wait names another environment", and the Bool had one name for both.
+    && (match minted_ownership() {
+          OwnedByGateApp { observation: o } => o.environment_name == gated_env
+          NotOwnedByGateApp { because: _ } => false
+        })
+    && refusal_name_for_a_broker_call(
+         wait: waiting_on(
+           environment_name: other_env, named: [] as List<PendingDeploymentReviewer>
+         ),
+         run: run_record(run_id: gate_run_id, settled: false, failed: false),
+         claim: GateRequestClaim {
+           run_id: gate_claim.run_id,
+           environment: other_env,
+           escalation_id: gate_claim.escalation_id,
+           request_revision: gate_claim.request_revision,
+           attempt: gate_claim.attempt,
+         },
+         ownership: minted_ownership()
        )
-    && !ownership_names_environment(ownership: minted_ownership(), environment: other_env)
+       == "OwnershipWasReadForAnotherEnvironment"
 }
 
 // ---------------------------------------------------------------------------
@@ -745,21 +813,44 @@ test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
 // A concluded run is not answered: its deployment has settled, and a review now changes nothing while
 // looking like it did. Both arms of GitHub's own settlement sum are exercised, so "we did not look" is
 // a value rather than a skipped call.
+// THE CONCLUSION SURVIVES THE REFUSAL, which is what the sum is for. A Bool said "no" to both settled
+// arms and threw the conclusion away, so "refused a run that succeeded" and "refused a run that failed"
+// were the same reported fact — and they are different facts, one of which means the gate was never
+// answered by anyone. The fields are read through the decision itself, so there is no second copy of the
+// routing in the test to agree with the model by construction.
 test fn a_concluded_run_is_never_answered() -> Bool {
-  match answer_refusal_from_settlement(settlement: RunSettlementInFlight) {
-    none => true
-    Present { value: _ } => false
-  }
-    // THE CONCLUSION SURVIVES THE REFUSAL. A Bool said "no" to both settled arms and threw the
-    // conclusion away, so "refused a run that succeeded" and "refused a run that failed" were the same
-    // reported fact — and they are different facts, one of which means the gate was never answered.
-    && (match answer_refusal_from_settlement(settlement: RunSettled { conclusion: RunSuccess }) {
-          Present { value: RunAlreadyConcluded { conclusion: c } } => c == RunSuccess
-          none => false
+  (match broker_answer_decision(
+    wait: an_answerable_wait(),
+    run: run_record(run_id: gate_run_id, settled: true, failed: false),
+    claim: gate_claim,
+    capability: gate_capability(decision: ProposeApprove),
+    ownership: minted_ownership()
+  ) {
+    BrokerRefused { because: TheRunHasConcluded { conclusion: c } } => c == RunSuccess
+    BrokerRefused { because: _ } => false
+    BrokerMayAnswer => false
+  })
+    && (match broker_answer_decision(
+          wait: an_answerable_wait(),
+          run: run_record(run_id: gate_run_id, settled: true, failed: true),
+          claim: gate_claim,
+          capability: gate_capability(decision: ProposeApprove),
+          ownership: minted_ownership()
+        ) {
+          BrokerRefused { because: TheRunHasConcluded { conclusion: c } } => c == RunFailure
+          BrokerRefused { because: _ } => false
+          BrokerMayAnswer => false
         })
-    && (match answer_refusal_from_settlement(settlement: RunSettled { conclusion: RunFailure }) {
-          Present { value: RunAlreadyConcluded { conclusion: c } } => c == RunFailure
-          none => false
+    // And the in-flight arm really is the one that answers.
+    && (match broker_answer_decision(
+          wait: an_answerable_wait(),
+          run: an_in_flight_run(),
+          claim: gate_claim,
+          capability: gate_capability(decision: ProposeApprove),
+          ownership: minted_ownership()
+        ) {
+          BrokerMayAnswer => true
+          _ => false
         })
 }
 

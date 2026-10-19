@@ -351,48 +351,144 @@ fn capability_decision(capability: ApprovalCapability) -> ProposedDecision {
 //   THE TAP — the capability's own authenticated escalation, revision and attempt.
 // A wait naming any human reviewer is refused too: that is a required-reviewer wait, and an App has no
 // business answering it.
-fn broker_may_answer(
+// EACH CHECK IS ITS OWN TOTAL FUNCTION OVER THE UPSTREAM VALUES, returning a refusal or nothing. A
+// check that could only answer true/false is how the reasons went missing the first time; each of these
+// either names what it refused, with the values it saw, or says nothing.
+fn refusal_from_the_run_record(
+  run: WorkflowRunRecord,
+  claim: GateRequestClaim
+) -> Optional<BrokerAnswerRefusal> {
+  if run.run_id != claim.run_id {
+    // The run being polled is not the run the workflow filed: the wait and the tap belong to different
+    // dispatches. This is the RUN mutation, and it is caught on GitHub's record rather than on an id the
+    // caller typed — taking `verified_run_id: Int` beside `claim.run_id: Int` let a caller "verify" the
+    // run by passing the claim's own number through.
+    Present {
+      value: RecordRunIdIsNotTheFiledRun {
+        record_run_id: run.run_id,
+        filed_run_id: claim.run_id,
+      },
+    }
+  } else {
+    match workflow_run_settlement(record: run) {
+      RunSettlementInFlight => none
+      // A concluded run's deployment has settled; a review posted now changes nothing while looking like
+      // it did. GitHub's own sum carries the conclusion, and it is carried out of here too — "the gate
+      // was never answered because the run failed" and "because it succeeded" are different facts.
+      RunSettled { conclusion: c } => Present { value: TheRunHasConcluded { conclusion: c } }
+    }
+  }
+}
+
+fn refusal_from_the_wait(
+  wait: PendingDeploymentWait,
+  claim: GateRequestClaim
+) -> Optional<BrokerAnswerRefusal> {
+  if pending_wait_environment_name(wait: wait) != claim.environment {
+    // The ENVIRONMENT mutation. The review endpoint answers 204 for a wrong-environment review exactly
+    // as happily as for a right one, so the only place this can be enforced is before the call.
+    Present {
+      value: WaitNamesAnotherEnvironment {
+        waiting_environment: pending_wait_environment_name(wait: wait),
+        filed_environment: claim.environment,
+      },
+    }
+  } else if pending_wait_carries_a_human_reviewer(wait: wait) {
+    // A wait naming users or teams is a required-reviewer wait, and an App answering it is the
+    // double-authority this whole change exists to remove.
+    Present { value: TheWaitIsHeldByAHumanReviewer }
+  } else {
+    none
+  }
+}
+
+fn refusal_from_the_ownership(
+  ownership: EnvironmentRuleOwnership,
+  wait: PendingDeploymentWait,
+  claim: GateRequestClaim
+) -> Optional<BrokerAnswerRefusal> {
+  match ownership {
+    OwnedByGateApp { observation: o } =>
+      if o.installation_id <= 0 {
+        // The arm that authorises a token refuses to authorise one it cannot name an installation for.
+        Present { value: RuleOwnershipNotEstablished { because: ObservedIdentityIsNotTheRuleOwner } }
+      } else if o.environment_name != pending_wait_environment_name(wait: wait) {
+        // The rule was READ BACK for a different environment than the one waiting. "The rule is ours"
+        // and "the rule is ours FOR THIS GATE" are different claims, and only the second one means
+        // anything about this job.
+        Present {
+          value: OwnershipWasReadForAnotherEnvironment {
+            read_for_environment: o.environment_name,
+            filed_environment: claim.environment,
+          },
+        }
+      } else {
+        none
+      }
+    NotOwnedByGateApp { because: b } =>
+      // The reason the READBACK gave, not a restatement of it: empty list, nothing enabled, no rule for
+      // this App, or the observed identity is not the owner — four different operator situations, and a
+      // Bool turned all four into "no".
+      Present { value: RuleOwnershipNotEstablished { because: b } }
+  }
+}
+
+fn refusal_from_the_tap(
+  capability: ApprovalCapability,
+  claim: GateRequestClaim
+) -> Optional<BrokerAnswerRefusal> {
+  if (capability.claims.escalation_id as String) == (claim.escalation_id as String)
+    && (capability.claims.request_revision as String) == (claim.request_revision as String)
+    && capability.claims.attempt == claim.attempt {
+    none
+  } else {
+    // Both sides, because "the tap did not match the filing" is only actionable if you can see what each
+    // side claimed. The capability's are the authenticated ones; the claim's are the workflow's word.
+    Present {
+      value: TapBindsAnotherRequest {
+        tapped_escalation_id: capability.claims.escalation_id,
+        tapped_request_revision: capability.claims.request_revision,
+        tapped_attempt: capability.claims.attempt,
+        filed_escalation_id: claim.escalation_id,
+        filed_request_revision: claim.request_revision,
+        filed_attempt: claim.attempt,
+      },
+    }
+  }
+}
+
+// THE ORDER IS THE FUNCTION: the checks run in upstream's order of authority and the FIRST refusal is
+// the one reported, so "which check actually said no" is a fact rather than a guess. A list built in a
+// different order would report a later problem first, which is why the order lives here rather than in
+// each caller.
+fn first_answer_refusal(refusals: List<BrokerAnswerRefusal?>) -> BrokerAnswerRefusal? {
+  fold(refusals, init: none, f: (acc, refusal) => match acc {
+    Present { value } => Present { value: value }
+    none => refusal
+  })
+}
+
+// THE PRE-ANSWER CHECK. Nothing about the run is taken on trust: the caller supplies GitHub's OWN record
+// of the run, GitHub's own wait projection, and the ownership the readbacks attributed — the three names
+// of the gate (what is waiting, what the workflow filed, what the rule readback says is ours) have to be
+// one value, and the tap's authenticated claims have to bind the same request.
+fn broker_answer_decision(
   wait: PendingDeploymentWait,
   run: WorkflowRunRecord,
   claim: GateRequestClaim,
   capability: ApprovalCapability,
   ownership: EnvironmentRuleOwnership
-) -> Bool {
-  run.run_id == claim.run_id
-    && (match answer_refusal_from_settlement(settlement: workflow_run_settlement(record: run)) {
-          none => true
-          Present { value: _ } => false
-        })
-    && pending_wait_environment_name(wait: wait) == claim.environment
-    // THE OWNERSHIP SUM, CONSUMED WHERE IT IS CONSUMED. `rule_ownership_is_established` used to answer
-    // this with true/false beside `ownership_names_environment`, which asked the same question of the
-    // same value and already refused the NotOwned arm — a second predicate over one sum is a second
-    // authority over it (§3), and the Bool version threw the typed `because:` away. One match, and the
-    // environment it names is the one that has to agree.
-    && (match ownership {
-          OwnedByGateApp { observation: o } =>
-            // The environment the RULE was read for, not merely the one the caller claims. And the
-            // installation this arm authorises a token from is the one in the observation, which only
-            // the join in observe_rule_ownership can produce — a stale configured claim never reaches
-            // this arm because the fold refused to attribute the rule to it.
-            o.environment_name == pending_wait_environment_name(wait: wait)
-              && o.installation_id > 0
-          NotOwnedByGateApp { because: _ } => false
-        })
-    && !pending_wait_carries_a_human_reviewer(wait: wait)
-    && capability_binds_request(capability: capability, claim: claim)
-}
-
-// The third of the three names. A refusal that names no environment CANNOT name this one, so the
-// unchecked-readback arm falls out of the same match — there is no "unknown environment" value to paper
-// over a missing read, and no empty string pretending to be a name.
-fn ownership_names_environment(
-  ownership: EnvironmentRuleOwnership,
-  environment: NonEmptyStr
-) -> Bool {
-  match ownership {
-    OwnedByGateApp { observation: o } => o.environment_name == environment
-    NotOwnedByGateApp { because: _ } => false
+) -> BrokerAnswerVerdict {
+  match first_answer_refusal(
+    refusals: [
+      refusal_from_the_run_record(run: run, claim: claim),
+      refusal_from_the_wait(wait: wait, claim: claim),
+      refusal_from_the_ownership(ownership: ownership, wait: wait, claim: claim),
+      refusal_from_the_tap(capability: capability, claim: claim),
+    ]
+  ) {
+    Present { value: because } => BrokerRefused { because: because }
+    none => BrokerMayAnswer
   }
 }
 
@@ -403,14 +499,58 @@ fn ownership_names_environment(
 // "We refused a run that had already concluded" and "we refused a run that had already FAILED" are
 // different facts to record, and a Bool cannot tell them apart — so the conclusion survives in the
 // refusal instead of being matched away.
-type AnswerRefusal = RunAlreadyConcluded { conclusion: RunConclusion }
+// EVERY WAY THE BROKER REFUSES, as the value it is. `broker_may_answer: -> Bool` composed five checks
+// that each produce a typed reason and then dropped every one of them: `Present { value: _ } => false`,
+// `NotOwnedByGateApp { because: _ } => false`. The module's own comments argued the refusals should be
+// inspectable; the signature made them not be. That is the predicate-dissolution shape this file has now
+// removed three times, and here it was worst, because this is the one answer an operator cannot re-check
+// after the fact: a 204 says nothing about which check ran, so if the broker refuses, the refusal this
+// sum carries is the only surviving record of why the job is still waiting.
+//
+// THE ORDER IS THE CHECKS' ORDER, so the reason reported is the first thing that was actually wrong.
+type BrokerAnswerRefusal
+  = RecordRunIdIsNotTheFiledRun { record_run_id: Int, filed_run_id: Int }
+  | TheRunHasConcluded { conclusion: RunConclusion }
+  | WaitNamesAnotherEnvironment { waiting_environment: NonEmptyStr, filed_environment: NonEmptyStr }
+  | TheWaitIsHeldByAHumanReviewer
+  | RuleOwnershipNotEstablished { because: OwnershipRefusalReason }
+  | OwnershipWasReadForAnotherEnvironment {
+      read_for_environment: NonEmptyStr,
+      filed_environment: NonEmptyStr,
+    }
+  | TapBindsAnotherRequest {
+      tapped_escalation_id: NonEmptyStr,
+      tapped_request_revision: NonEmptyStr,
+      tapped_attempt: AttemptIdentity,
+      filed_escalation_id: NonEmptyStr,
+      filed_request_revision: NonEmptyStr,
+      filed_attempt: AttemptIdentity,
+    }
 
-fn answer_refusal_from_settlement(settlement: RunSettlement) -> Optional<AnswerRefusal> {
-  match settlement {
-    RunSettlementInFlight => none
-    RunSettled { conclusion: c } => Present { value: RunAlreadyConcluded { conclusion: c } }
+fn broker_answer_refusal_name(refusal: BrokerAnswerRefusal) -> NonEmptyStr {
+  match refusal {
+    RecordRunIdIsNotTheFiledRun { record_run_id: _, filed_run_id: _ } => "RecordRunIdIsNotTheFiledRun"
+    TheRunHasConcluded { conclusion: _ } => "TheRunHasConcluded"
+    WaitNamesAnotherEnvironment { waiting_environment: _, filed_environment: _ } =>
+      "WaitNamesAnotherEnvironment"
+    TheWaitIsHeldByAHumanReviewer => "TheWaitIsHeldByAHumanReviewer"
+    RuleOwnershipNotEstablished { because: _ } => "RuleOwnershipNotEstablished"
+    OwnershipWasReadForAnotherEnvironment { read_for_environment: _, filed_environment: _ } =>
+      "OwnershipWasReadForAnotherEnvironment"
+    TapBindsAnotherRequest {
+      tapped_escalation_id: _,
+      tapped_request_revision: _,
+      tapped_attempt: _,
+      filed_escalation_id: _,
+      filed_request_revision: _,
+      filed_attempt: _,
+    } => "TapBindsAnotherRequest"
   }
 }
+
+// TOTAL, so "no reason" cannot be one of them: an arm that says false without saying which check said
+// it is the Bool again, wearing a sum's clothes.
+type BrokerAnswerVerdict = BrokerMayAnswer | BrokerRefused { because: BrokerAnswerRefusal }
 
 // ---------------------------------------------------------------------------
 // 5b. WHAT THE BROKER'S IDENTITY IS ESTABLISHED FROM
