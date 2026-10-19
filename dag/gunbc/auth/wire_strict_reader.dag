@@ -217,14 +217,20 @@ data wire_strict_reader_frontier_rows: List<FrontierRow> = [
 // INJECTIVITY OF A SPELLING FN (ruling C3b): an exhaustive match over a closed coproduct is already a
 // per-arm spelling table and total by construction; the one property the compiler does not give it
 // is that two arms are not spelled alike. Given the spellings of every arm in declaration order, this
-// names the first spelling an earlier arm already used.
+// names the first spelling that an EARLIER arm already used, carrying the spellings seen so far.
+type SpellingScan { seen: List<String>, repeated: Optional<String> }
+
 fn first_repeated_spelling(spellings: List<String>) -> Optional<String> {
-  fold(spellings, init: Absent, f: fn(acc, s) {
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent => if count(filter(spellings, t => t == s)) > 1 { Present { value: s } } else { Absent }
+  fold(spellings, init: SpellingScan { seen: [], repeated: Absent }, f: fn(acc, s) {
+    match acc.repeated {
+      Present { value: _ } => acc
+      Absent => if wire_name_listed(allowed: acc.seen, k: s) {
+        SpellingScan { seen: acc.seen, repeated: Present { value: s } }
+      } else {
+        SpellingScan { seen: concat(acc.seen, [s]), repeated: Absent }
+      }
     }
-  })
+  }).repeated
 }
 
 // B3/B4 POLICY ROWS (rulings B3 admitted arms, B4 admitted values). A row names a wire subject, the

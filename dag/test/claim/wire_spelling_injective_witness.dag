@@ -49,21 +49,31 @@ test fn a_fixture_spelling_two_arms_alike_is_refused() -> Bool {
   match first_repeated_spelling(spellings: ["ios", "android", "ios"]) { Present { value: v } => v == "ios"  Absent => false }
 }
 
-// The inhabitance claim: each supplied arm list is exactly the declared arm count.
+// RED: the first spelling an EARLIER arm already used is named, not the first one that merely occurs twice.
+test fn the_named_spelling_is_the_first_repeat_in_declaration_order() -> Bool {
+  match first_repeated_spelling(spellings: ["a", "b", "b", "a"]) { Present { value: v } => v == "b"  Absent => false }
+}
+
+// The inhabitance claim: each supplied arm list is exactly the declared arm count of exactly one declaration.
 test fn supplied_arm_lists_cover_the_declared_arms() -> Bool {
   let facts = decl_facts(pool_roots: ["dag", "src/v2"])
-  arms_of(facts: facts, name: "gunbc.auth.approval_device_wire.MobilePlatform") == count(platform_spellings())
-    && arms_of(facts: facts, name: "gunbc.auth.approval_device_wire.EnrolmentRefusalWire") == count(refusal_spellings())
-    && arms_of(facts: facts, name: "gunbc.auth.approval_device_wire.EnrolmentStandingWire") == count(standing_spellings())
-    && arms_of(facts: facts, name: "extdeps.apple.apns.ApnsEnvironment") == count(apns_spellings())
-    && arms_of(facts: facts, name: "gunbc.auth.approval_capability.ProposedDecision") == count(decision_spellings())
+  covers(facts: facts, name: "gunbc.auth.approval_device_wire.MobilePlatform", spellings: platform_spellings())
+    && covers(facts: facts, name: "gunbc.auth.approval_device_wire.EnrolmentRefusalWire", spellings: refusal_spellings())
+    && covers(facts: facts, name: "gunbc.auth.approval_device_wire.EnrolmentStandingWire", spellings: standing_spellings())
+    && covers(facts: facts, name: "extdeps.apple.apns.ApnsEnvironment", spellings: apns_spellings())
+    && covers(facts: facts, name: "gunbc.auth.approval_capability.ProposedDecision", spellings: decision_spellings())
 }
 
-// RED: a one-short list is not the declared arm count.
-test fn a_short_arm_list_is_not_the_declared_arms() -> Bool {
-  arms_of(facts: decl_facts(pool_roots: ["dag", "src/v2"]), name: "gunbc.auth.approval_device_wire.EnrolmentRefusalWire") != count(refusal_spellings()) - 1
+// RED: the same comparison refuses a list one arm short, a list one arm long, and an undeclared name.
+test fn the_cover_comparison_refuses_a_list_that_is_not_the_declared_arms() -> Bool {
+  let facts = decl_facts(pool_roots: ["dag", "src/v2"])
+  let refusal = "gunbc.auth.approval_device_wire.EnrolmentRefusalWire"
+  !covers(facts: facts, name: refusal, spellings: filter(refusal_spellings(), x => x != "code_not_issued"))
+    && !covers(facts: facts, name: refusal, spellings: concat(refusal_spellings(), ["extra"]))
+    && !covers(facts: facts, name: "gunbc.auth.approval_device_wire.NoSuchSum", spellings: refusal_spellings())
 }
 
-fn arms_of(facts: List<DeclFact>, name: String) -> Int {
-  fold(filter(facts, f => f.qualified_name == name), init: -1, f: fn(acc, f) { count(coproduct_arm_list_from_node(node: f.node)) })
+fn covers(facts: List<DeclFact>, name: String, spellings: List<String>) -> Bool {
+  let hits = filter(facts, f => f.qualified_name == name)
+  count(hits) == 1 && all(hits, f => count(coproduct_arm_list_from_node(node: f.node)) == count(spellings))
 }
