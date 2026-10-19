@@ -63,7 +63,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 // and the host's single writer is the dispatching workflow's concurrency group. A durable store for the
 // hold is the trigger to inhabit the whole carrier.
 
-type AdmissionClosure = AdmissionMaskOnly
+type AdmissionClosure = | AdmissionMaskOnly
 
 data runner_host_cap_admission_closure: AdmissionClosure = AdmissionMaskOnly
 
