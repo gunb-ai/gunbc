@@ -66,6 +66,7 @@ type SlotCapStanding
   | SlotCapsNeedRestart { detail: String }
   | SlotCapsReadingsDisagree { detail: String }
   | SlotCapsUnread { cause: String }
+  | SlotCapsStopped
 
 // systemd prints an unbounded memory property as `infinity`; the cgroup file prints `max`. Either is
 // "no limit", and neither equals a byte count.
@@ -97,7 +98,33 @@ fn slot_cap_cgroup_view_at_desired(live: SlotCapLive, desired: RunnerSlotDesired
     && slot_cap_cgroup_value_is(reading: live.cgroup_swap_max, bytes: desired.memory_swap_max)
 }
 
+// A PRESENT, PARSEABLE cgroup reading: `max` or a byte count. Missing and malformed are the same
+// refusal, never a "differs": an unread value must not authorise a drain, write and reload.
+fn slot_cap_cgroup_value_readable(reading: String?) -> Bool {
+  match reading {
+    Absent => false
+    Present { value: body } =>
+      match parse_cgroup_memory_limit(body: body) {
+        CgroupMemoryLimited { bytes: _ } => true
+        CgroupMemoryUnlimited => true
+        CgroupMemoryLimitUnparseable { body: _ } => false
+      }
+  }
+}
+
+// ONLY an empty ControlGroup (a unit with no cgroup: stopped) is a separately established no-cgroup
+// state. A unit that HAS a cgroup owes complete, parseable readings of both files.
 fn slot_cap_standing(live: SlotCapLive, desired: RunnerSlotDesired) -> SlotCapStanding {
+  if trim(s: live.control_group) == "" {
+    SlotCapsStopped
+  } else if !slot_cap_cgroup_value_readable(reading: live.cgroup_memory_max) || !slot_cap_cgroup_value_readable(reading: live.cgroup_swap_max) {
+    SlotCapsUnread { cause: join(["the unit has cgroup ", live.control_group, " but memory.max/memory.swap.max are missing or malformed: memory.max=", match live.cgroup_memory_max { Absent => "<missing>" Present { value: v } => trim(s: v) }, " memory.swap.max=", match live.cgroup_swap_max { Absent => "<missing>" Present { value: v } => trim(s: v) }], "") }
+  } else {
+    slot_cap_standing_readable(live: live, desired: desired)
+  }
+}
+
+fn slot_cap_standing_readable(live: SlotCapLive, desired: RunnerSlotDesired) -> SlotCapStanding {
   let unit_ok = slot_cap_unit_view_at_desired(live: live, desired: desired)
   let cgroup_ok = slot_cap_cgroup_view_at_desired(live: live, desired: desired)
   if cgroup_ok && unit_ok {
@@ -148,6 +175,7 @@ fn host_cap_standing_problem(unit: NonEmptyStr, s: SlotCapStanding) -> String? {
     SlotCapsNeedRestart { detail: _ } => none
     SlotCapsReadingsDisagree { detail: d } => Present { value: join([unit as String, ": the unit and the cgroup disagree: ", d], "") }
     SlotCapsUnread { cause: c } => Present { value: join([unit as String, ": the live caps were not read: ", c], "") }
+    SlotCapsStopped => none
   }
 }
 
@@ -157,6 +185,7 @@ fn host_cap_standing_differs(s: SlotCapStanding) -> Bool {
     SlotCapsAtDesired => false
     SlotCapsReadingsDisagree { detail: _ } => false
     SlotCapsUnread { cause: _ } => false
+    SlotCapsStopped => false
   }
 }
 
@@ -165,12 +194,18 @@ type SlotCapUnitStanding {
   standing: SlotCapStanding
 }
 
-fn host_cap_plan(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate) -> HostCapPlan {
+// `files_differ` is the cap FILES' own standing (observed through the existing file route), so settled
+// means files AND live limits. `extras` are loaded runner instances outside the declared sets: they get
+// the template reload too, but are never drained, activated or retired by this route, so a bracket that
+// would be needed withholds, naming them.
+fn host_cap_plan(standings: List<SlotCapUnitStanding>, gate: HostCapIdleGate, files_differ: Bool, extras: List<NonEmptyStr>) -> HostCapPlan {
   let problems = filter(map(standings, x => match host_cap_standing_problem(unit: x.unit, s: x.standing) { Present { value: v } => v Absent => "" }), v => v != "")
   if length(problems) > 0 {
     HostCapsWithheld { cause: join(problems, "; ") }
-  } else if !any(standings, x => host_cap_standing_differs(s: x.standing)) {
+  } else if !files_differ && !any(standings, x => host_cap_standing_differs(s: x.standing)) {
     HostCapsLeaveInPlace
+  } else if length(extras) > 0 {
+    HostCapsWithheld { cause: concat("loaded runner instances outside the declared sets would receive the template reload and are not drained or activated by this route: ", join(map(extras, x => x as String), " ")) }
   } else {
     match gate {
       HostCapsAllIdle => HostCapsDrainWriteRestart
@@ -269,6 +304,12 @@ type SlotCapRead
   = SlotCapReadOk { live: SlotCapLive }
   | SlotCapReadRefused { reason: String }
 
+// THE PROCESS OUTCOME IS KEPT: a refused exec or a nonzero exit is a failed read, decided before any
+// stdout is looked at, so a grep that printed rows and then failed can never read as a standing.
+type SlotCapCgroupRead
+  = SlotCapCgroupReadStdout { stdout: String }
+  | SlotCapCgroupReadFailed { reason: String }
+
 fn read_slot_cap_live_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotCapRead
 {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: slot_cap_show_properties)) {
@@ -283,19 +324,24 @@ fn read_slot_cap_live_over(target: SshTarget, context: FleetSshExecutionContext,
         }
         // An inactive unit has an empty ControlGroup and no cgroup directory: nothing to read, and its
         // cgroup readings stay absent, which is NeedsRestart rather than a fabricated value.
-        let cgroup_stdout = if trim(s: cg) == "" { "" } else {
+        let cgroup_stdout = if trim(s: cg) == "" { SlotCapCgroupReadStdout { stdout: "" } } else {
           match typed_argv_exec_over_fleet_ssh(
             target: target,
             context: context,
             argv: grep_nonempty_lines_in_tree_argv(file_names: slot_cap_cgroup_files, root: retirement_cgroup_unescaped_root(control_group: cg) as NonEmptyStr),
           ) {
-            TypedArgvExecRefused { reason: _ } => ""
-            TypedArgvExecConverged { result: g } => g.stdout
+            TypedArgvExecRefused { reason: why } => SlotCapCgroupReadFailed { reason: why }
+            TypedArgvExecConverged { result: g } =>
+              if g.success { SlotCapCgroupReadStdout { stdout: g.stdout } } else { SlotCapCgroupReadFailed { reason: join(["cgroup grep exit=", to_string(g.exit_code), " ", trim(s: g.stderr)], "") } }
           }
         }
-        match slot_cap_live_of_show(show_stdout: shown.stdout, cgroup_stdout: cgroup_stdout) {
-          Absent => SlotCapReadRefused { reason: "systemctl show returned no complete cap block for the unit" }
-          Present { value: live } => SlotCapReadOk { live: live }
+        match cgroup_stdout {
+          SlotCapCgroupReadFailed { reason: why } => SlotCapReadRefused { reason: why }
+          SlotCapCgroupReadStdout { stdout: out } =>
+            match slot_cap_live_of_show(show_stdout: shown.stdout, cgroup_stdout: out) {
+              Absent => SlotCapReadRefused { reason: "systemctl show returned no complete cap block for the unit" }
+              Present { value: live } => SlotCapReadOk { live: live }
+            }
         }
       }
   }
@@ -338,6 +384,7 @@ fn activate_and_read_back_slot_caps_over(target: SshTarget, context: FleetSshExe
       SlotCapsNeedRestart { detail: d } => SlotCapsRefused { unit: unit, step: "live-readback", reason: concat("the restarted slot's cgroup does not show the desired caps: ", d) }
       SlotCapsReadingsDisagree { detail: d } => SlotCapsRefused { unit: unit, step: "live-readback", reason: d }
       SlotCapsUnread { cause: c } => SlotCapsRefused { unit: unit, step: "live-readback", reason: c }
+      SlotCapsStopped => SlotCapsRefused { unit: unit, step: "live-readback", reason: "the unit has no cgroup after activation" }
     }
   }
 }

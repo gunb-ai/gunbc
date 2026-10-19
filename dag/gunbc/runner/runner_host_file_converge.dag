@@ -2026,12 +2026,41 @@ fn runner_host_cap_phase_text(phase: RunnerHostCapPhase) -> String {
   }
 }
 
+// THE AFFECTED POPULATION IS EVERY LOADED RUNNER INSTANCE, not only the declared sets: the template
+// reload reaches an instance nobody declared. Declared and retired units are ours to drain; a loaded
+// unit outside both is an EXTRA, which this route reads (caps, idleness) but never drains, activates or
+// retires.
+fn runner_host_cap_extras(subject: RunnerHostFileSubject, population: RunnerSlotPopulation) -> List<NonEmptyStr> {
+  match population {
+    SlotPopulationUnobservable { reason: _ } => []
+    SlotPopulationObserved { units: us } =>
+      map(filter(us, r => !any(subject.desired_units, d => (d as String) == (r.unit as String)) && !any(subject.retired_units, d => (d as String) == (r.unit as String)) && (match r.standing { SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => true SlotTeardownEffective => true SlotReloadPending => true SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => true SlotAllocationNotEffective { detail: _ } => true SlotFabricMemberNotARunner { load_state: _ } => true SlotFabricMemberRunsARunner => true SlotUnitUnread => true })), r => r.unit)
+  }
+}
+
+// THE CAP FILES ARE OBSERVED THROUGH THE EXISTING FILE ROUTE FIRST. Settled means files AND live limits,
+// so a missing, stale or wrong-mode drop-in is a difference even when the live caps match.
+fn runner_host_cap_files_differ(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, privilege: RunnerHostPrivilegeStanding) -> Bool {
+  any(map(runner_host_cap_files(), f => runner_host_file_result(subject: subject, context: context, mode: RunnerHostFilesObserveOnly, privilege: privilege, file: f)), r => !(match r.planned.action { HostFileLeaveInPlace => true HostFileWrite => false HostFileActionRefused { reason: _ } => false }))
+}
+
+fn runner_host_cap_phase_withheld(phase: RunnerHostCapPhase) -> Bool {
+  match phase {
+    CapPhaseWithheld { cause: _ } => true
+    CapPhaseNotOwed => false
+    CapPhaseRan { files: _, reload: _, slots: _ } => false
+  }
+}
+
 // ORDER, HOST-WIDE (ruling of clever-crane-830): the drop-ins are template-level, so write + daemon-reload
-// re-applies the caps to every running instance and can OOM-kill a busy slot's job. Therefore: the
-// retirement gate, then EVERY slot's live caps and idleness are read with no mutation. One busy or
-// unproven slot (or an unreadable or disagreeing reading) refuses the WHOLE host, no write, no reload.
-// Caps all at desired are left in place. Otherwise every slot is drained and masked, the files are
-// written, the manager reloaded, every slot activated, and each one's live cgroup read back.
+// re-applies the caps to every running instance and can OOM-kill a busy slot's job. This phase runs
+// FIRST, before any ordinary write or reload. The retirement gate, then EVERY loaded instance's live caps
+// and idleness and the cap files' own standing are read with no mutation. One busy or unproven slot, an
+// unreadable or disagreeing reading, or an unexpected loaded instance refuses the WHOLE host: no write,
+// no reload, and a withheld phase BARS the later reload sites too (a pending lower-cap file would
+// otherwise be loaded by an unrelated reload). Files and live caps both at desired are left in place.
+// Otherwise every declared slot is drained and masked, the files are written, the manager reloaded,
+// every slot activated, and each one's live cgroup read back.
 fn run_runner_host_cap_phase(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -2047,9 +2076,11 @@ fn run_runner_host_cap_phase(
         Present { value: why } => CapPhaseWithheld { cause: why }
         Absent => {
           let desired = gunbc_runner_slot_desired()
-          let standings = read_host_cap_standings_over(target: subject.target, context: context, units: subject.desired_units, desired: desired)
-          let gate = read_host_idleness_over(target: subject.target, context: context, units: subject.desired_units)
-          match host_cap_plan(standings: standings, gate: gate) {
+          let extras = runner_host_cap_extras(subject: subject, population: population)
+          let affected = concat(subject.desired_units, extras)
+          let standings = read_host_cap_standings_over(target: subject.target, context: context, units: affected, desired: desired)
+          let gate = read_host_idleness_over(target: subject.target, context: context, units: affected)
+          match host_cap_plan(standings: standings, gate: gate, files_differ: runner_host_cap_files_differ(subject: subject, context: context, privilege: privilege), extras: extras) {
             HostCapsWithheld { cause: c } => CapPhaseWithheld { cause: c }
             HostCapsLeaveInPlace => CapPhaseRan {
               files: [],
@@ -2180,9 +2211,22 @@ fn run_runner_host_files(
   // reloaded, so a fresh host has the unit fragment before a slot is activated and converges in one
   // pass; then the slots are actuated; only then is the CPU drop-in written, gated on every actuation
   // having settled, so no host carries the committed-width quota over fewer running slots.
+  let residue_observed = observe_retired_residue(subject: subject, context: context, residue: ctrl_jobserver_retired_residue)
+  let early_expect = runner_slot_expectation(per_slot: per_slot, fragment_delivered: runner_host_files_deliver_fragment(files: files), residue_absent: match residue_observed {
+    ResidueAbsent => true
+    ResiduePresent { unit_known: _, present: _ } => false
+    ResidueUnobservable { cause: _ } => false
+  })
+  // THE CAP PHASE RUNS BEFORE ANY WRITE OR RELOAD: the template reload is host-wide, so every reload
+  // below is barred when the phase withholds.
+  let cap_phase = match mode {
+    RunnerHostFilesObserveOnly => CapPhaseNotOwed
+    RunnerHostFilesApply => run_runner_host_cap_phase(subject: subject, context: context, mode: mode, privilege: privilege, population: observe_runner_slot_population(subject: subject, context: context, expect: early_expect))
+  }
+  let reload_barred = runner_host_cap_phase_withheld(phase: cap_phase)
   let unit_files = filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String))
   let unit_results = map(unit_files, f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
-  let pre_reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results)
+  let pre_reload = if reload_barred { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD); no daemon-reload may reach running slots" } } else { runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results) }
   let admission = match mode {
     RunnerHostFilesObserveOnly => ActuationAdmitted
     RunnerHostFilesApply => runner_host_actuation_admission(results: unit_results, pre_reload: pre_reload)
@@ -2194,19 +2238,14 @@ fn run_runner_host_files(
   let gated = runner_host_cpu_dropin_gate(files: files, withheld: withheld, actuations: actuations, admission: admission)
   let cpu_results = map(filter(gated.files, f => (f.path as String) == (gunbc_runner_per_slot_cpu_dropin_path as String)), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
   let results = concat(unit_results, cpu_results)
-  let residue_observed = observe_retired_residue(subject: subject, context: context, residue: ctrl_jobserver_retired_residue)
   let fragment_delivered = runner_host_files_deliver_fragment(files: gated.files)
   let expect = runner_slot_expectation(per_slot: per_slot, fragment_delivered: fragment_delivered, residue_absent: match residue_observed {
     ResidueAbsent => true
     ResiduePresent { unit_known: _, present: _ } => false
     ResidueUnobservable { cause: _ } => false
   })
-  let cap_phase = match mode {
-    RunnerHostFilesObserveOnly => CapPhaseNotOwed
-    RunnerHostFilesApply => run_runner_host_cap_phase(subject: subject, context: context, mode: mode, privilege: privilege, population: observe_runner_slot_population(subject: subject, context: context, expect: expect))
-  }
   let before = observe_runner_slot_population(subject: subject, context: context, expect: expect)
-  let reload = runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before)
+  let reload = if reload_barred && runner_slot_population_owes_reload(population: before) { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD); no daemon-reload may reach running slots" } } else if reload_barred { ManagerReloadNotOwed } else { runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before) }
   let slots = match reload {
     ManagerReloaded => observe_runner_slot_population(subject: subject, context: context, expect: expect)
     ManagerReloadNotOwed => before

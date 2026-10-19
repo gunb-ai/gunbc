@@ -24,6 +24,7 @@ import gunbc.runner.runner_slot_cap_converge {
   SlotIdleReading,
   host_cap_idle_gate,
   host_cap_plan,
+  SlotCapsStopped,
   SlotCapOutcome,
   SlotCapsLeftInPlace,
   SlotCapsRestartedAndRead,
@@ -36,6 +37,9 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_cap_files,
   runner_host_cap_retirement_gate,
   runner_host_cap_gate_cause,
+  runner_host_cap_phase_withheld,
+  CapPhaseWithheld,
+  CapPhaseNotOwed,
   RunnerSlotPopulation,
   SlotPopulationObserved,
   SlotPopulationUnobservable,
@@ -98,6 +102,8 @@ test fn a_differing_cap_row_on_an_idle_host_drains_writes_and_restarts() -> Bool
   plan_drains(p: host_cap_plan(
     standings: [standing_of(u: unit(n: "01"), live: old_shape_live()), standing_of(u: unit(n: "02"), live: old_shape_live())],
     gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), idle_of(u: unit(n: "02"))]),
+    files_differ: false,
+    extras: [],
   ))
 }
 
@@ -106,9 +112,9 @@ test fn a_differing_cap_row_on_an_idle_host_drains_writes_and_restarts() -> Bool
 // an unproven-idle slot is the same refusal.
 test fn one_busy_slot_means_no_write_and_no_reload_for_the_host() -> Bool {
   let standings = [standing_of(u: unit(n: "01"), live: old_shape_live()), standing_of(u: unit(n: "02"), live: old_shape_live())]
-  plan_withheld_naming(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), busy_of(u: unit(n: "02"))])), needle: "actions-runner@srv3-02.service")
-    && !plan_drains(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), busy_of(u: unit(n: "02"))])))
-    && plan_withheld_naming(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), SlotIdleReading { unit: unit(n: "02"), activity: SlotActivityUnobserved { cause: "no attribution" as NonEmptyStr } }])), needle: "actions-runner@srv3-02.service")
+  plan_withheld_naming(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), busy_of(u: unit(n: "02"))]), files_differ: false, extras: []), needle: "actions-runner@srv3-02.service")
+    && !plan_drains(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), busy_of(u: unit(n: "02"))]), files_differ: false, extras: []))
+    && plan_withheld_naming(p: host_cap_plan(standings: standings, gate: host_cap_idle_gate(readings: [idle_of(u: unit(n: "01")), SlotIdleReading { unit: unit(n: "02"), activity: SlotActivityUnobserved { cause: "no attribution" as NonEmptyStr } }]), files_differ: false, extras: []), needle: "actions-runner@srv3-02.service")
 }
 
 // Positive: identical caps are left in place whatever the activity, so nothing is drained, written,
@@ -117,6 +123,8 @@ test fn identical_caps_are_left_in_place() -> Bool {
   plan_leaves(p: host_cap_plan(
     standings: [standing_of(u: unit(n: "01"), live: at_desired_live()), standing_of(u: unit(n: "02"), live: at_desired_live())],
     gate: host_cap_idle_gate(readings: [busy_of(u: unit(n: "01")), idle_of(u: unit(n: "02"))]),
+    files_differ: false,
+    extras: [],
   ))
     && slot_cap_outcome_settled(o: SlotCapsLeftInPlace { unit: unit(n: "01") })
 }
@@ -133,7 +141,7 @@ test fn a_readback_mismatch_refuses() -> Bool {
     cgroup_memory_max: Present { value: concat(to_string(byte_size_count(b: desired().memory_max)), "\n") },
     cgroup_swap_max: Present { value: "0\n" },
   }
-  plan_withheld_naming(p: host_cap_plan(standings: [standing_of(u: unit(n: "01"), live: disagree)], gate: HostCapsAllIdle), needle: "disagree")
+  plan_withheld_naming(p: host_cap_plan(standings: [standing_of(u: unit(n: "01"), live: disagree)], gate: HostCapsAllIdle, files_differ: false, extras: []), needle: "disagree")
     && !slot_cap_outcome_settled(o: SlotCapsRefused { unit: unit(n: "01"), step: "live-readback", reason: "x" })
 }
 
@@ -170,4 +178,73 @@ test fn caps_wait_for_the_retirees() -> Bool {
   (match runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: [retired_unit()], population: done)) { Absent => true Present { value: _ } => false })
     && (match runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: [retired_unit()], population: pending)) { Absent => false Present { value: _ } => true })
     && (match runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: [retired_unit()], population: SlotPopulationUnobservable { reason: "ssh" })) { Absent => false Present { value: _ } => true })
+}
+
+fn all_idle() -> HostCapIdleGate { host_cap_idle_gate(readings: [idle_of(u: unit(n: "01"))]) }
+fn one_old() -> List<SlotCapUnitStanding> { [standing_of(u: unit(n: "01"), live: old_shape_live())] }
+fn one_at() -> List<SlotCapUnitStanding> { [standing_of(u: unit(n: "01"), live: at_desired_live())] }
+
+// RED (review 5566883083, 1): an extra loaded instance outside the declared sets gets the template
+// reload too, and this route never drains or activates it, so a needed bracket withholds, naming it.
+test fn an_extra_loaded_instance_withholds_the_host() -> Bool {
+  plan_withheld_naming(p: host_cap_plan(standings: one_old(), gate: all_idle(), files_differ: false, extras: [unit(n: "99")]), needle: "actions-runner@srv3-99.service")
+    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), gate: all_idle(), files_differ: true, extras: [unit(n: "99")]), needle: "actions-runner@srv3-99.service")
+}
+
+// RED (review, 1): a withheld cap phase is what bars the later reload sites.
+test fn a_withheld_cap_phase_bars_the_reload() -> Bool {
+  runner_host_cap_phase_withheld(phase: CapPhaseWithheld { cause: "busy" }) && !runner_host_cap_phase_withheld(phase: CapPhaseNotOwed)
+}
+
+// RED (review, 3): live caps matching does not settle a missing, stale or wrong-mode cap file.
+test fn matching_live_caps_do_not_settle_a_differing_cap_file() -> Bool {
+  plan_drains(p: host_cap_plan(standings: one_at(), gate: all_idle(), files_differ: true, extras: []))
+    && plan_leaves(p: host_cap_plan(standings: one_at(), gate: all_idle(), files_differ: false, extras: []))
+}
+
+fn live_with(cg: String, mm: String?, sw: String?) -> SlotCapLive {
+  SlotCapLive {
+    unit_memory_max: to_string(byte_size_count(b: desired().memory_max)),
+    unit_swap_max: "0",
+    unit_memory_high: to_string(byte_size_count(b: desired().memory_high)),
+    unit_tasks_max: to_string(desired().tasks_max),
+    control_group: cg,
+    cgroup_memory_max: mm,
+    cgroup_swap_max: sw,
+  }
+}
+
+fn is_unread(s: SlotCapStanding) -> Bool { match s { SlotCapsUnread { cause: _ } => true SlotCapsAtDesired => false SlotCapsNeedRestart { detail: _ } => false SlotCapsReadingsDisagree { detail: _ } => false SlotCapsStopped => false } }
+fn is_stopped(s: SlotCapStanding) -> Bool { match s { SlotCapsStopped => true SlotCapsAtDesired => false SlotCapsNeedRestart { detail: _ } => false SlotCapsReadingsDisagree { detail: _ } => false SlotCapsUnread { cause: _ } => false } }
+
+// RED (review, 2): a unit that HAS a cgroup owes both readable files. Missing or malformed is Unread
+// (refuses), never NeedRestart (which would authorise drain, write and reload).
+test fn missing_or_malformed_cgroup_files_are_unread_not_a_difference() -> Bool {
+  let cg = "/system.slice/actions-runner@srv3-01.service"
+  let full = concat(to_string(byte_size_count(b: desired().memory_max)), "\n")
+  is_unread(s: slot_cap_standing(live: live_with(cg: cg, mm: none, sw: none), desired: desired()))
+    && is_unread(s: slot_cap_standing(live: live_with(cg: cg, mm: Present { value: full }, sw: none), desired: desired()))
+    && is_unread(s: slot_cap_standing(live: live_with(cg: cg, mm: Present { value: "garbage\n" }, sw: Present { value: "0\n" }), desired: desired()))
+}
+
+// Positive: only an EMPTY ControlGroup from a successful show is the stopped state; and a show with no
+// ControlGroup field at all is not a reading (live_of_show is Absent, the read refuses).
+test fn only_an_empty_control_group_field_is_stopped() -> Bool {
+  let present_empty = "MemoryMax=100\nMemorySwapMax=0\nMemoryHigh=90\nTasksMax=16384\nControlGroup=\n"
+  let field_missing = "MemoryMax=100\nMemorySwapMax=0\nMemoryHigh=90\nTasksMax=16384\n"
+  (match slot_cap_live_of_show(show_stdout: present_empty, cgroup_stdout: "") { Present { value: l } => is_stopped(s: slot_cap_standing(live: l, desired: desired())) Absent => false })
+    && (match slot_cap_live_of_show(show_stdout: field_missing, cgroup_stdout: "") { Present { value: _ } => false Absent => true })
+}
+
+// Keying controls: an escaped path (systemd `\x2d`) and a sibling near-match (srv3-01 vs srv3-010) never
+// answer for the slot.
+test fn the_cgroup_row_ignores_a_sibling_near_match_and_reads_the_escaped_path() -> Bool {
+  let show = "MemoryMax=100\nMemorySwapMax=0\nMemoryHigh=90\nTasksMax=16384\nControlGroup=/system.slice/system-actions\\x2drunner.slice/actions-runner@srv3-01.service\n"
+  let out = "/sys/fs/cgroup/system.slice/system-actions\\x2drunner.slice/actions-runner@srv3-010.service/memory.max:5\n/sys/fs/cgroup/system.slice/system-actions\\x2drunner.slice/actions-runner@srv3-010.service/memory.swap.max:5\n/sys/fs/cgroup/system.slice/system-actions\\x2drunner.slice/actions-runner@srv3-01.service/memory.max:100\n/sys/fs/cgroup/system.slice/system-actions\\x2drunner.slice/actions-runner@srv3-01.service/memory.swap.max:0\n"
+  match slot_cap_live_of_show(show_stdout: show, cgroup_stdout: out) {
+    Absent => false
+    Present { value: l } =>
+      (match l.cgroup_memory_max { Present { value: v } => v == "100" Absent => false })
+        && (match l.cgroup_swap_max { Present { value: v } => v == "0" Absent => false })
+  }
 }
