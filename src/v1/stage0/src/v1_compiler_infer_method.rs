@@ -80,61 +80,6 @@ pub fn algebra_param_templates(method: String) -> Rc<Vec<Rc<AlgebraTypeTemplate>
     }
 }
 
-pub fn algebra_method_closed_over_receiver(method: String) -> bool {
-    {
-        let templates = Rc::new({
-            let mut __result = Vec::new();
-            for p in crate::std_algebra::all_algebra_profiles().iter().cloned() {
-                __result.extend(
-                    (*Rc::new({
-                        let mut __result = Vec::new();
-                        for t in crate::std_algebra::algebra_templates_for_profile(p.clone())
-                            .iter()
-                            .cloned()
-                        {
-                            if (t.name.clone() == method.clone()) {
-                                __result.push(t);
-                            }
-                        }
-                        __result
-                    }))
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
-        (((templates.clone().len() as i64) > 0) && {
-            let mut __all = true;
-            for t in templates.iter().cloned() {
-                if !((((t.param_types.clone().len() as i64) > 0)
-                    && match (*t.return_type.clone()).clone() {
-                        AlgebraTypeTemplate::ReceiverSelf => true,
-                        _ => false,
-                    })
-                    && {
-                        let mut __all = true;
-                        for pt in t.param_types.clone().iter().cloned() {
-                            if !(match (*pt.clone()).clone() {
-                                AlgebraTypeTemplate::ReceiverSelf => true,
-                                _ => false,
-                            }) {
-                                __all = false;
-                                break;
-                            }
-                        }
-                        __all
-                    })
-                {
-                    __all = false;
-                    break;
-                }
-            }
-            __all
-        })
-    }
-}
-
 pub fn algebra_param_templates_in(
     profile: AlgebraProfile,
     method: String,

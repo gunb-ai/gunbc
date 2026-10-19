@@ -287,7 +287,8 @@ fn empty_emit_scope() -> InferScope {
     lambda_param_provenance: empty_map(),
     caller_decl_name: "",
     in_flight_lambda_param_names: [],
-    enclosing_declared_type_param_names: []
+    enclosing_declared_type_param_names: [],
+    fn_return_expected: none
   }
 }
 
@@ -304,7 +305,8 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     lambda_param_provenance: empty_map(),
     caller_decl_name: "",
     in_flight_lambda_param_names: [],
-    enclosing_declared_type_param_names: []
+    enclosing_declared_type_param_names: [],
+    fn_return_expected: none
   }
 }
 

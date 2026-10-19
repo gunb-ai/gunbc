@@ -3580,14 +3580,14 @@ pub fn node_type_deps(
     })
 }
 
-pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Option<Rc<Node>> {
+pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
     match (*lit.clone()).clone() {
-        LiteralValue::LitStr { value: _, .. } => Some(string_type()),
-        LiteralValue::LitInt { value: _, .. } => Some(int_type()),
-        LiteralValue::LitFloat { value: _, .. } => Some(float_type()),
-        LiteralValue::LitBool { value: _, .. } => Some(bool_type()),
-        LiteralValue::LitNull => std::option::Option::None,
-        LiteralValue::LitSymbol { value: _, .. } => Some(string_type()),
+        LiteralValue::LitStr { value: _, .. } => string_type(),
+        LiteralValue::LitInt { value: _, .. } => int_type(),
+        LiteralValue::LitFloat { value: _, .. } => float_type(),
+        LiteralValue::LitBool { value: _, .. } => bool_type(),
+        LiteralValue::LitNull => type_variable_node("none".to_string()),
+        LiteralValue::LitSymbol { value: _, .. } => string_type(),
     }
 }
 

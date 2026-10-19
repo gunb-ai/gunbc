@@ -18178,7 +18178,8 @@ fn shell_argv_emit_scope(env: TypeEnv, registry: Map<String, ItemInfo>) -> Infer
     lambda_param_provenance: empty.lambda_param_provenance,
     caller_decl_name: empty.caller_decl_name,
     in_flight_lambda_param_names: empty.in_flight_lambda_param_names,
-    enclosing_declared_type_param_names: empty.enclosing_declared_type_param_names
+    enclosing_declared_type_param_names: empty.enclosing_declared_type_param_names,
+    fn_return_expected: empty.fn_return_expected
   }
 }
 
