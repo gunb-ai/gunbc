@@ -3495,10 +3495,45 @@ fn admit_candidate_manifest(
     Ok(admitted)
 }
 
-/// THE DECLARED ROUND LIMIT. A partition-moving change converges in a handful of generations
-/// (install, rebuild, confirm); a loop past this bound is a cycle or an authority that disagrees with
-/// its projection, and it REFUSES with the per-generation record rather than running on.
-const REGEN_CONVERGENCE_MAX_GENERATIONS: usize = 6;
+/// Evaluate one decision function of the rebuild-scope module. The host effects the answer; the
+/// decision lives in `gunbc.stage0_partition_rebuild_scope`.
+fn rebuild_scope_decision(
+    source_roots: &[String],
+    function: &str,
+    args: Vec<(Option<String>, ModelValue)>,
+) -> Result<ModelValue, String> {
+    use crate::v1_interpreter::{self, ExecutionMode};
+    let entry = round_cost_entry(source_roots)?;
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so {function} has no decider: {e}")
+    })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
+    })
+    .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+}
+
+fn regen_convergence_bound_exceeded(
+    source_roots: &[String],
+    generation_ordinal: usize,
+) -> Result<bool, String> {
+    match rebuild_scope_decision(
+        source_roots,
+        "regen_convergence_bound_exceeded",
+        vec![(
+            Some("generation_ordinal".to_string()),
+            ModelValue::Int(generation_ordinal as i64),
+        )],
+    )? {
+        ModelValue::Bool(value) => Ok(value),
+        other => Err(format!(
+            "refusal: regen_convergence_bound_exceeded returned {} instead of Bool",
+            other.type_label_public()
+        )),
+    }
+}
 
 fn regen_convergence_journal_path(workspace: &Path) -> PathBuf {
     workspace.join(REGEN_CONVERGENCE_JOURNAL_REL)
@@ -4470,39 +4505,49 @@ fn partition_rebuild_actuation(
     })
 }
 
-/// THE DIFF PATH OF THE PARTITION AUTHORITY THE ROWS ARE READ FROM: module
-/// `gunbc.stage0.stage0_crate_partition_generated` under the name-to-path rule, the same file
-/// `emitted_tree_packages` decodes. Not a second roster: the path is the module's storage.
-const PARTITION_AUTHORITY_DAG_PATH: &str = "dag/gunbc/stage0/stage0_crate_partition_generated.dag";
-
 /// A partition move is ADMITTED only when it is DERIVED, never asserted (no flag, no input, no
 /// allow-list). Two conjuncts, both read from the tree and the change, neither from the mirror:
-///   1. the partition authority the rows are decoded from is in THIS change's own diff, so the
-///      mirror moved because its authority moved and not because something drifted;
+///   1. the partition authority the rows are decoded from is among THIS change's typed changed
+///      paths (the decision is `stage0_partition_move_explained_by_changed_paths`), so the mirror
+///      moved because its authority moved and not because something drifted;
 ///   2. the boundary files the move needs are RENDERED FROM THE CANDIDATE TREE'S ROWS, not the
 ///      predecessor's compiled-in ones.
 /// The converse equality (the built seed's own compiled-in rows project to these same bytes) is
 /// checked after the build by `admit_built_seed_partition_projection`. Anything else keeps the
 /// typed `WholeCompilerRebuildRequired` refusal.
 fn admit_derived_partition_move(
+    source_roots: &[String],
     workspace: &Path,
 ) -> Result<crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome, String> {
-    let diff = super::required_floor_runner::floor_git_diff_range().map_err(|e| {
-        format!(
-            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the change's diff \
-             could not be read, so the move cannot be derived from it: {e}"
-        )
-    })?;
-    let names_authority = diff.lines().any(|line| {
-        line.strip_prefix("diff --git ")
-            .map(|rest| rest.ends_with(&format!("b/{PARTITION_AUTHORITY_DAG_PATH}")))
-            .unwrap_or(false)
-    });
-    if !names_authority {
-        return Err(format!(
-            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the partition \
-             mirror moved but {PARTITION_AUTHORITY_DAG_PATH} is not in this change's diff"
-        ));
+    let (changed, _departed) = super::required_floor_runner::floor_git_diff_name_status_range()
+        .map_err(|e| {
+            format!(
+                "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the change's diff \
+                 could not be read, so the move cannot be derived from it: {e}"
+            )
+        })?;
+    let explained = match rebuild_scope_decision(
+        source_roots,
+        "stage0_partition_move_explained_by_changed_paths",
+        vec![(
+            Some("changed_paths".to_string()),
+            model_string_list(&changed),
+        )],
+    )? {
+        ModelValue::Bool(value) => value,
+        other => {
+            return Err(format!(
+            "refusal: stage0_partition_move_explained_by_changed_paths returned {} instead of Bool",
+            other.type_label_public()
+        ))
+        }
+    };
+    if !explained {
+        return Err(
+            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the partition mirror \
+             moved but its authority is not among this change's changed paths"
+                .to_string(),
+        );
     }
     let packages = emitted_tree_packages(workspace)?;
     let outcome = crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(
@@ -5272,7 +5317,7 @@ fn install_convergence_stage(
         super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
     let actuation = partition_rebuild_actuation(source_roots, basenames, &declared_shell_modules)?;
     let partition_move = if actuation.partition_generation_move {
-        Some(admit_derived_partition_move(workspace)?)
+        Some(admit_derived_partition_move(source_roots, workspace)?)
     } else {
         None
     };
@@ -6057,11 +6102,11 @@ pub fn run_regen_round_cost(
         round_records.push(format!(
             "generation {generation_ordinal}: first_generation_equal=false drifted={drifted:?}"
         ));
-        if generation_ordinal >= REGEN_CONVERGENCE_MAX_GENERATIONS {
+        if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
             restore_regen_convergence_journal(&workspace)?;
             return Err(format!(
-                "RegenConvergenceBoundExceeded: no fixed point within {REGEN_CONVERGENCE_MAX_GENERATIONS} \
-                 generations; checkpoint restored; nothing is published -- {}",
+                "RegenConvergenceBoundExceeded: no fixed point within the declared bound \
+                 (regen_convergence_max_generations) at generation {generation_ordinal}; checkpoint restored; nothing is published -- {}",
                 round_records.join("; ")
             ));
         }
