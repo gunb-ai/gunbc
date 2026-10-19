@@ -304,13 +304,24 @@ fn lab_write_set_covers_every_declared_class(instance: HostDashboardInstance) ->
   let writes = lab_commit_write_paths(instance: instance)
   all(dashboard_git_worker_commit_write_set, t =>
     trim(s: t) != ""
-      && {
-        // The class must instantiate to a real path INSIDE the repository. A template the claim does not
-        // know instantiates to the empty string, and without this leg the empty string would match itself
-        // in the list it produced -- the claim would report full coverage for a class it never wrote.
-        let row = lab_repo_write_row(git: git, template: t, key: "dispatch-attempt-claim-1" as NonEmptyStr)
-        starts_with(s: row, prefix: concat(git, "/")) && any(writes, w => w == row)
-      })
+      // EVERY class must instantiate to a real path INSIDE the repository. A template the claim does not
+      // know instantiates to the empty string, and without this leg the empty string would match itself
+      // in the list it produced -- the claim would report full coverage for a class it never wrote.
+      && lab_repo_write_row_is_a_real_written_path(
+        git: git, writes: writes, template: t,
+      ))
+}
+
+// THE INSTANTIATED ROW, JUDGED WHERE IT CAN BE NAMED: inside the repository, and present in the write-set
+// the claim built. Named rather than inlined because the judgment needs the instantiated row twice, and a
+// second call to the instantiator is a second place for the key to be spelled.
+fn lab_repo_write_row_is_a_real_written_path(
+  git: String,
+  writes: List<String>,
+  template: String,
+) -> Bool {
+  let row = lab_repo_write_row(git: git, template: template, key: "dispatch-attempt-claim-1" as NonEmptyStr)
+  starts_with(s: row, prefix: concat(git, "/")) && any(writes, w => w == row)
 }
 
 // NO REPOSITORY-LEVEL ROW WITHOUT A MODEL CLASS -- otherwise the claim could invent a path and widen what
