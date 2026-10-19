@@ -1,6 +1,6 @@
 module test.claim.repository_bootstrap_wet_witness
 
-import std.types { String, Bool, FilePath, GitRef }
+import std.types { String, Bool, Int, FilePath, GitRef }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.optional { Present, Absent }
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
@@ -37,9 +37,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // CHARTER 2 MIGRATION (2026-10-19): the fixture and the read-back probes no longer mint shell
 // scripts through gunbc.retained_shell_script. The repository is authored by the shared plumbing-
 // level builder (test.fixture.bootstrap_repository_fixture, the same op chain gunbc.devboot.build
-// publishes with), and each read-back fact is one typed op with its own arm: git.Inspect.HeadCommitIn
-// for HEAD, git.Core.TrackedWorktreeDiffFromInRepo for the worktree-vs-candidate-tree difference (the same op the production post-check calls), Filesystem.Read for
-// tracked bytes, shell.Test.IsFile for presence. The file now mints NOTHING through the bridge: its
+// publishes with), and each read-back fact is one typed op with its own verdict arms:
+// git.Inspect.HeadCommitIn for HEAD, git.Core.TrackedWorktreeDiffFromInRepo for the worktree-vs-
+// candidate-tree difference (the same op the production post-check calls), Filesystem.Read for
+// tracked bytes and for .git/HEAD absence. The file now mints NOTHING through the bridge: its
 // retained_runtime import is gone, taking two of Charter 2's fifteen witness sites with it.
 
 type BootstrapScratch {
@@ -101,15 +102,48 @@ fn run_bootstrap(s: BootstrapScratch) -> ProcessExit {
   )
 }
 
-// THE READ-BACK, ONE TYPED OP PER FACT. The old witness ran `test "$(git rev-parse HEAD)" = ...`,
-// `git diff --quiet HEAD --` and `cat` through the retained shell bridge, so a probe that could not
-// run was indistinguishable from a probe that ran and said no — `.success` alone carried both, and
-// a failure inside the script string read as mere falsity. Each fact below is its own typed op with
-// its own arms; the witness keeps one Bool per probe (the contract the two tests consume), and the
-// arms never collapse: an op that could not observe is that arm, never the "clean"/"absent" arm.
+// THE READ-BACK, ONE TYPED OP PER FACT AND ONE VERDICT TYPE PER OP. The old witness ran
+// `test "$(git rev-parse HEAD)" = ...`, `git diff --quiet HEAD --` and `cat` through the retained
+// shell bridge, so a probe that could not run was indistinguishable from a probe that ran and said
+// no — `.success` alone carried both, and a failure inside the script string read as mere falsity.
+// The replacement does not repeat that collapse one level up: each observation gets a three-way
+// verdict type whose unreadable arm CARRIES THE OP'S OWN FAILURE (stderr, exit code, error kind),
+// so "could not observe" is a value no assertion accepts — never the clean arm, never the wrong
+// arm, never false-by-accident (§5: unknown never reads as absent). The wet probes call the op and
+// hand its row to the classifier; the pure test below drives the SAME classifier functions with
+// supplied observations and asserts the arms stay distinct, so a classifier that folded unreadable
+// into wrong-mode would fail there and not here (review 82489's discipline on #14413).
+
+// HEAD read back by the op the production readback itself uses. Unreadable (git exit 128 on a
+// non-repository) is its own arm carrying stderr: a repository that never became one must not be
+// describable as merely "HEAD is not the candidate".
+type HeadReadback
+  = HeadAtCandidate { observed: String }
+  | HeadWrong { observed: String }
+  | HeadUnreadable { stderr: String }
+
+fn head_readback_verdict(head_success: Bool, head_sha: String, head_stderr: String, expected: String) -> HeadReadback {
+  if !head_success {
+    HeadUnreadable { stderr: head_stderr }
+  } else if trim(s: head_sha) == expected {
+    HeadAtCandidate { observed: trim(s: head_sha) }
+  } else {
+    HeadWrong { observed: trim(s: head_sha) }
+  }
+}
+
 fn probe_head_matches(repo: String, expected: String) -> Bool {
   let head = git.Inspect.HeadCommitIn(repository_path: repo)
-  head.success && trim(s: head.sha) == expected
+  match head_readback_verdict(
+    head_success: head.success,
+    head_sha: head.sha,
+    head_stderr: head.stderr,
+    expected: expected,
+  ) {
+    HeadAtCandidate { observed: _ } => true
+    HeadWrong { observed: _ } => false
+    HeadUnreadable { stderr: _ } => false
+  }
 }
 
 // `git diff --quiet HEAD --` (tracked worktree vs HEAD's tree) is git.Core.TrackedWorktreeDiffFromInRepo,
@@ -117,19 +151,230 @@ fn probe_head_matches(repo: String, expected: String) -> Bool {
 // so the witness compares against the same reading it audits rather than a second spelling. The
 // treeish is the candidate oid, not the string HEAD: the probe runs after the transition, and naming
 // the oid means "worktree equals THIS revision's tree" — the claim the stall names — instead of
-// "worktree equals whatever HEAD says", which a wrong HEAD would satisfy vacuously.
+// "worktree equals whatever HEAD says", which a wrong HEAD would satisfy vacuously. A non-zero exit
+// (unborn HEAD, unreadable tree, broken repo) is the unreadable arm with the code and stderr, never
+// the clean arm and never a bare false.
+type WorktreeReadback
+  = WorktreeCleanAgainstCandidate
+  | WorktreeDiffers { differing_paths: String }
+  | WorktreeUnreadable { exit_code: Int, stderr: String }
+
+fn worktree_readback_verdict(diff_exit_code: Int, diff_paths_nul: String, diff_stderr: String) -> WorktreeReadback {
+  if diff_exit_code != 0 {
+    WorktreeUnreadable { exit_code: diff_exit_code, stderr: diff_stderr }
+  } else if trim(s: diff_paths_nul) == "" {
+    WorktreeCleanAgainstCandidate
+  } else {
+    WorktreeDiffers { differing_paths: trim(s: diff_paths_nul) }
+  }
+}
+
 fn probe_worktree_matches_candidate(repo: String, candidate: String) -> Bool {
   let diff = git.Core.TrackedWorktreeDiffFromInRepo(repository_path: repo, treeish: candidate as GitRef)
-  diff.exit_code == 0 && trim(s: diff.paths_nul) == ""
+  match worktree_readback_verdict(
+    diff_exit_code: diff.exit_code,
+    diff_paths_nul: diff.paths_nul,
+    diff_stderr: diff.stderr,
+  ) {
+    WorktreeCleanAgainstCandidate => true
+    WorktreeDiffers { differing_paths: _ } => false
+    WorktreeUnreadable { exit_code: _, stderr: _ } => false
+  }
+}
+
+// Tracked bytes, read through the typed file op. The unreadable arm carries the op's own error and
+// error kind, so a missing or unreadable file is that arm — not "wrong bytes", not falsity.
+type BytesReadback
+  = BytesAsExpected
+  | BytesWrong { observed: String }
+  | BytesUnreadable { error: String, error_kind: String }
+
+fn bytes_readback_verdict(
+  read_success: Bool,
+  read_content: String,
+  read_error: String,
+  read_error_kind: String,
+  expected: String,
+) -> BytesReadback {
+  if !read_success {
+    BytesUnreadable { error: read_error, error_kind: read_error_kind }
+  } else if read_content == expected {
+    BytesAsExpected
+  } else {
+    BytesWrong { observed: read_content }
+  }
 }
 
 fn probe_file_bytes(path: String, expected: String) -> Bool {
   let read = Filesystem.Read(path: path)
-  read.success && read.content == expected
+  match bytes_readback_verdict(
+    read_success: read.success,
+    read_content: read.content,
+    read_error: read.error,
+    read_error_kind: read.error_kind,
+    expected: expected,
+  ) {
+    BytesAsExpected => true
+    BytesWrong { observed: _ } => false
+    BytesUnreadable { error: _, error_kind: _ } => false
+  }
 }
 
-fn probe_file_absent(path: String) -> Bool {
-  !shell.Test.IsFile(path: path as FilePath).is_file
+// NOT-INITIALIZED, read through the typed file op on .git/HEAD rather than `test -f .git`: a
+// bare-repository marker is a DIRECTORY, and shell.Test.IsFile would answer "not a file" — reading
+// an initialized repository as untouched. .git/HEAD is what init creates first, so its absence
+// (error kind not_found) is the only value that says nothing was initialized; any other error kind
+// is the unreadable arm and fails the witness rather than passing it.
+type GitHeadFileReadback
+  = GitHeadFileAbsent
+  | GitHeadFilePresent { content: String }
+  | GitHeadFileUnreadable { error: String, error_kind: String }
+
+fn git_head_file_readback_verdict(read_success: Bool, read_content: String, read_error: String, read_error_kind: String) -> GitHeadFileReadback {
+  if read_success {
+    GitHeadFilePresent { content: read_content }
+  } else if read_error_kind == "not_found" {
+    GitHeadFileAbsent
+  } else {
+    GitHeadFileUnreadable { error: read_error, error_kind: read_error_kind }
+  }
+}
+
+fn probe_not_initialized(git_head_path: String) -> Bool {
+  let read = Filesystem.Read(path: git_head_path)
+  match git_head_file_readback_verdict(
+    read_success: read.success,
+    read_content: read.content,
+    read_error: read.error,
+    read_error_kind: read.error_kind,
+  ) {
+    GitHeadFileAbsent => true
+    GitHeadFilePresent { content: _ } => false
+    GitHeadFileUnreadable { error: _, error_kind: _ } => false
+  }
+}
+
+// THE ARMS STAY DISTINCT, HERMETICALLY. Same discipline review 82489 imposed on #14413: the wet
+// probes' power to refuse an unreadable observation cannot be asserted only by the wet tests that
+// can never reach the unreadable case, so these classifier functions are driven directly with
+// supplied observations and each pair of states must land in DIFFERENT named arms. Every expected
+// arm is spelled; the catch-all returns false, so a classifier that folded Unreadable into Wrong (or
+// into clean/absent) makes this test fail rather than pass vacuously. It has no ops at all, so it
+// executes under hermetic discovery and its verdict line is evidence in its own right.
+test fn readback_verdicts_keep_unreadable_distinct_from_wrong() -> Bool {
+  let head_wrong = head_readback_verdict(
+    head_success: true,
+    head_sha: "1111111111111111111111111111111111111111",
+    head_stderr: "",
+    expected: "0000000000000000000000000000000000000000",
+  )
+  let head_unknown = head_readback_verdict(
+    head_success: false,
+    head_sha: "0000000000000000000000000000000000000000",
+    head_stderr: "fatal: not a git repository",
+    expected: "0000000000000000000000000000000000000000",
+  )
+  let head_ok = head_readback_verdict(
+    head_success: true,
+    head_sha: " 0000000000000000000000000000000000000000\n",
+    head_stderr: "",
+    expected: "0000000000000000000000000000000000000000",
+  )
+  let head_arms = match head_wrong {
+    HeadWrong { observed: "1111111111111111111111111111111111111111" } => true
+    _ => false
+  } && match head_unknown {
+    HeadUnreadable { stderr: "fatal: not a git repository" } => true
+    _ => false
+  } && match head_ok {
+    HeadAtCandidate { observed: "0000000000000000000000000000000000000000" } => true
+    _ => false
+  }
+  let worktree_differs = worktree_readback_verdict(
+    diff_exit_code: 0,
+    diff_paths_nul: "tracked",
+    diff_stderr: "",
+  )
+  let worktree_unknown = worktree_readback_verdict(
+    diff_exit_code: 128,
+    diff_paths_nul: "",
+    diff_stderr: "fatal: ambiguous argument",
+  )
+  let worktree_ok = worktree_readback_verdict(
+    diff_exit_code: 0,
+    diff_paths_nul: " ",
+    diff_stderr: "",
+  )
+  let worktree_arms = match worktree_differs {
+    WorktreeDiffers { differing_paths: "tracked" } => true
+    _ => false
+  } && match worktree_unknown {
+    WorktreeUnreadable { exit_code: 128, stderr: "fatal: ambiguous argument" } => true
+    _ => false
+  } && match worktree_ok {
+    WorktreeCleanAgainstCandidate => true
+    _ => false
+  }
+  let bytes_wrong = bytes_readback_verdict(
+    read_success: true,
+    read_content: "stray",
+    read_error: "",
+    read_error_kind: "",
+    expected: "candidate-bytes",
+  )
+  let bytes_unknown = bytes_readback_verdict(
+    read_success: false,
+    read_content: "",
+    read_error: "Permission denied",
+    read_error_kind: "permission_denied",
+    expected: "candidate-bytes",
+  )
+  let bytes_ok = bytes_readback_verdict(
+    read_success: true,
+    read_content: "candidate-bytes",
+    read_error: "",
+    read_error_kind: "",
+    expected: "candidate-bytes",
+  )
+  let bytes_arms = match bytes_wrong {
+    BytesWrong { observed: "stray" } => true
+    _ => false
+  } && match bytes_unknown {
+    BytesUnreadable { error: "Permission denied", error_kind: "permission_denied" } => true
+    _ => false
+  } && match bytes_ok {
+    BytesAsExpected => true
+    _ => false
+  }
+  let git_head_present = git_head_file_readback_verdict(
+    read_success: true,
+    read_content: "ref: refs/heads/main",
+    read_error: "",
+    read_error_kind: "",
+  )
+  let git_head_absent = git_head_file_readback_verdict(
+    read_success: false,
+    read_content: "",
+    read_error: "No such file or directory",
+    read_error_kind: "not_found",
+  )
+  let git_head_unknown = git_head_file_readback_verdict(
+    read_success: false,
+    read_content: "",
+    read_error: "Is a directory",
+    read_error_kind: "other",
+  )
+  let git_head_arms = match git_head_present {
+    GitHeadFilePresent { content: "ref: refs/heads/main" } => true
+    _ => false
+  } && match git_head_absent {
+    GitHeadFileAbsent => true
+    _ => false
+  } && match git_head_unknown {
+    GitHeadFileUnreadable { error: "Is a directory", error_kind: "other" } => true
+    _ => false
+  }
+  head_arms && worktree_arms && bytes_arms && git_head_arms
 }
 
 fn remove_scratch(s: BootstrapScratch) -> Bool {
@@ -164,7 +409,7 @@ test fn a_root_holding_content_without_a_repository_still_refuses_and_is_not_ini
     Present { value: s } => {
       let outcome = run_bootstrap(s: s)
       let untouched = probe_file_bytes(path: concat(s.repo, "/stray-file"), expected: "stray")
-        && probe_file_absent(path: concat(s.repo, "/.git"))
+        && probe_not_initialized(git_head_path: concat(s.repo, "/.git/HEAD"))
       let cleaned = remove_scratch(s: s)
       match outcome { ExitFailure { reason: _ } => untouched && cleaned  ExitSuccess => false }
     }
