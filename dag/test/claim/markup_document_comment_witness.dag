@@ -45,6 +45,11 @@ import test.fixture.markup_render { render_html, render_markup, render_jsx }
 //       and witness_nested_element_cannot_close_a_raw_text_element go red -- one per skipped arm.
 //   C13 std.markup serialize_fragment_with Element arm: move the raw-text test BEFORE serialize_children
 //       (i.e. test the raw child list rather than the emitted bytes). Same two claims go red.
+//   C14 std.markup serialize_fragment_with Element arm: build child_medium WITHOUT the EscapeRaw override,
+//       i.e. escape raw-text children. witness_plain_text_cannot_close_its_own_raw_text_element goes red:
+//       the close sequence arrives as "&lt;/script" and the substring test finds nothing. That is a silent
+//       widen -- the guard still runs and reports clean -- so it needs its own claim, which is why the
+//       plain-text case is asserted here even though it predates this PR.
 //   C7  std.markup comment_body_hazard: drop the first test (the one that asks whether the close sequence
 //       contains its own terminator), so an unsatisfiable medium is serialized anyway.
 //       witness_medium_grammar_decides_the_comment_check and witness_broken_close_names_both_rows go red.
@@ -277,6 +282,30 @@ test fn witness_every_swept_escape_body_is_refused() -> Bool {
 test fn witness_comment_body_cannot_close_a_raw_text_element() -> Bool {
   let inside = MarkupComment { body: "</script><img src=x onerror=alert(1)>" }
   let root = Element { tag: "script", attributes: [], children: [inside] }
+  match try_serialize_html_document(doc: document_with_root(root: root)) {
+    EmitRejected { reason: r } => string_contains(s: r, pattern: "</script")
+    EmitOk { html: _ } => false
+  }
+}
+
+// THE GUARD'S OWN CASE, stated before the two that review 82504 motivated. Nothing in the repo claimed it:
+// no file asserted that PLAIN text holding "</script>" inside a <script> element is refused, so the guard
+// could have been deleted outright and every witness stayed green -- and I had just moved its input from the
+// raw child text to the serialized children, which is the one edit that could have quietly broken it. If
+// serialization had escaped "<" (it does not: child_medium sets EscapeRaw precisely so raw-text bytes reach
+// the guard un-escaped), "</script" would have become "&lt;/script", the substring test would have found
+// nothing, and the refusal would have evaporated with no claim to notice.
+
+// THE GUARD'S OWN CASE, and until now the only case nobody claimed: PLAIN text holding the close sequence
+// inside a raw-text element. It predates the two below, and it is the reason the guard exists. My fix moved
+// the guard's input from the raw child list to the SERIALIZED children, which is exactly the edit that could
+// have silenced it -- if raw-text children were serialized with escaping, "</script" would have arrived as
+// "&lt;/script", the substring test would have matched nothing, and the refusal would have evaporated with
+// no witness to notice. They are serialized with EscapeRaw (child_medium above) precisely so the bytes reach
+// this check as written; this claim is what pins that choice rather than trusting the comment that explains it.
+test fn witness_plain_text_cannot_close_its_own_raw_text_element() -> Bool {
+  let payload = FragmentText { content: "var x = 1; </script><img src=x onerror=alert(1)>" }
+  let root = Element { tag: "script", attributes: [], children: [payload] }
   match try_serialize_html_document(doc: document_with_root(root: root)) {
     EmitRejected { reason: r } => string_contains(s: r, pattern: "</script")
     EmitOk { html: _ } => false
