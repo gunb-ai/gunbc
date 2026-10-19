@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_f
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
-import v2.std.node { ComputationNode, Edge, Node, Positional, Transform }
+import v2.std.node { ComputationNode, Edge, Node, Positional, Symbol, Transform, symbol_eq }
 import v2.std.qualified_name { declaration_reference_node }
 import v2.std.runtime { RuntimeAggregate, RuntimeFieldValue, RuntimePrimitive, RuntimeValue }
 import std.algebra { Cons, Empty, list_snoc_item }
@@ -113,4 +113,119 @@ test fn list_literal_eval_is_reached_holds() -> Bool {
     Present { value: _ } => true
     Absent => false
   }
+}
+
+fn lie_reason_is(wanted: Symbol) -> Bool {
+  match lie_eval(list: lie_forward) {
+    Present { value: Rejected { diagnostics: ds } } => symbol_eq(a: ds.head.reason, b: wanted)
+    _ => false
+  }
+}
+
+test fn lie_reason_eval_rejected_argument_arity_excess() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_argument_arity_excess)
+}
+
+test fn lie_reason_eval_rejected_argument_bind_absent() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_argument_bind_absent)
+}
+
+test fn lie_reason_eval_rejected_bind_body_absent() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_bind_body_absent)
+}
+
+test fn lie_reason_eval_rejected_bind_key_absent() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_bind_key_absent)
+}
+
+test fn lie_reason_eval_rejected_bind_value_absent() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_bind_value_absent)
+}
+
+test fn lie_reason_eval_rejected_branch_argument_absent() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_branch_argument_absent)
+}
+
+test fn lie_reason_eval_rejected_callee_absent() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_callee_absent)
+}
+
+test fn lie_reason_eval_rejected_canonical_mismatch() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_canonical_mismatch)
+}
+
+test fn lie_reason_eval_rejected_effect_io_roundtrip_arity() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_effect_io_roundtrip_arity)
+}
+
+test fn lie_reason_eval_rejected_effect_io_unbound() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_effect_io_unbound)
+}
+
+test fn lie_reason_eval_rejected_effect_io_write_payload_mismatch() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_effect_io_write_payload_mismatch)
+}
+
+test fn lie_reason_eval_rejected_function_value_body() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_function_value_body)
+}
+
+test fn lie_reason_eval_rejected_grounding_node_mismatch() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_grounding_node_mismatch)
+}
+
+test fn lie_reason_eval_rejected_grounding_not_derived() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_grounding_not_derived)
+}
+
+test fn lie_reason_eval_rejected_inhabitance_mismatch() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_inhabitance_mismatch)
+}
+
+test fn lie_reason_eval_rejected_invalid_node() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_invalid_node)
+}
+
+test fn lie_reason_eval_rejected_parameter_reference_unbound() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_parameter_reference_unbound)
+}
+
+test fn lie_reason_eval_rejected_pending_children() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_pending_children)
+}
+
+test fn lie_reason_eval_rejected_projected_field_absent_from_value() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_projected_field_absent_from_value)
+}
+
+test fn lie_reason_eval_rejected_projection_receiver_absent() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_projection_receiver_absent)
+}
+
+test fn lie_reason_eval_rejected_projection_receiver_not_aggregate() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_projection_receiver_not_aggregate)
+}
+
+test fn lie_reason_eval_rejected_resolved_type_mismatch() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_resolved_type_mismatch)
+}
+
+test fn lie_reason_eval_rejected_roundtrip_precondition() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_roundtrip_precondition)
+}
+
+test fn lie_reason_eval_rejected_runtime_binding_lookup_miss() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_runtime_binding_lookup_miss)
+}
+
+test fn lie_reason_eval_rejected_runtime_value_node_unrepresentable() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_runtime_value_node_unrepresentable)
+}
+
+test fn lie_reason_eval_rejected_type_node() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_type_node)
+}
+
+test fn lie_reason_eval_rejected_unsupported_callee() -> Bool {
+  lie_reason_is(wanted: ^eval_rejected_unsupported_callee)
 }
