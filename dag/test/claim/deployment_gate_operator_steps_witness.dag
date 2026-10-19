@@ -64,6 +64,7 @@ import gunbc.auth.deployment_gate_operator_steps {
   rule_enablement_step,
   deployment_gate_operator_steps,
   all_steps_are_fleet_once,
+  reviewer_removal_act_identity,
 }
 import gunbc.auth.deployment_gate_authorization {
   mint_accepted_rule_review,
@@ -171,7 +172,22 @@ data hostile_repo: NonEmptyStr = "gunbc/../other"
 // vary them WITHOUT a second admitted caller being added: admission keys on the module and the
 // declaration's name, and the honest set of producers stays { this fixture, the stage-2 route }. A
 // fixture per case would have widened the seal for test convenience, which is the thing the seal is for.
-fn observed_identity(installation_id: Int, identity_repo: NonEmptyStr) -> ObservedGateInstallation? {
+fn observed_identity(installation_id: Int, identity_repo: NonEmptyStr) -> ObservedGateInstallation?
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "ownership_with_enabled"
+    ),
+
+  ]
+{
   match observe_gate_installation(
     owner: "gunb-ai",
     repo: identity_repo,
@@ -203,7 +219,54 @@ fn ownership_for(
   installation_id: Int,
   identity_repo: NonEmptyStr,
   rule_id: Int
-) -> EnvironmentRuleOwnership {
+) -> EnvironmentRuleOwnership
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "receipt_for"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_fixture"
+    ),
+  ]
+{
+  ownership_with_enabled(
+    environment: environment,
+    installation_id: installation_id,
+    identity_repo: identity_repo,
+    rule_id: rule_id,
+    enabled: true,
+  )
+}
+
+// The same read with the ENABLED axis exposed: switching the App's rule off is exactly what "the rule
+// no longer stands" means upstream, and the ownership read must be able to say it.
+fn ownership_with_enabled(
+  environment: NonEmptyStr,
+  installation_id: Int,
+  identity_repo: NonEmptyStr,
+  rule_id: Int,
+  enabled: Bool
+) -> EnvironmentRuleOwnership
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "ownership_for"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_disabled_rule"
+    ),
+  ]
+{
   match observed_identity(installation_id: installation_id, identity_repo: identity_repo) {
     Present { value: observed } =>
       observe_rule_ownership(
@@ -211,7 +274,7 @@ fn ownership_for(
           EnabledDeploymentProtectionRule {
             id: rule_id,
             node_id: "DPPR_1",
-            enabled: true,
+            enabled: enabled,
             app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },
           }
         ],
@@ -238,7 +301,29 @@ fn receipt_for(
   installation_id: Int,
   identity_repo: NonEmptyStr,
   rule_id: Int,
-) -> Optional<AcceptedRuleReviewReceipt> {
+) -> Optional<AcceptedRuleReviewReceipt>
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_refused"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "receipt_on"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_mint_refuses_to_answer_for_a_binding_it_was_not_given"
+    ),
+  ]
+{
   match mint_accepted_rule_review(
     owner: owner,
     repo: repo,
@@ -278,7 +363,21 @@ data canonical_rule_id: Int = 900000001
 // the observed identity. Every argument below is one the caller had to earn.
 // THE TRIAL'S CANONICAL ARM: this App's installation, this repository, the gate's rule. Used wherever a
 // case varies something on the OTHER arm only, so "which arm drifted" is a single deliberate act.
-fn canonical_receipt(run_id: Int, state: ReviewState) -> Optional<AcceptedRuleReviewReceipt> {
+fn canonical_receipt(run_id: Int, state: ReviewState) -> Optional<AcceptedRuleReviewReceipt>
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_refused"
+    ),
+  ]
+{
   receipt_on(run_id: run_id, state: state, environment: gate_env)
 }
 
@@ -286,7 +385,41 @@ fn receipt_on(
   run_id: Int,
   state: ReviewState,
   environment: NonEmptyStr
-) -> Optional<AcceptedRuleReviewReceipt> {
+) -> Optional<AcceptedRuleReviewReceipt>
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "approved_trial"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "canonical_receipt"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "rejected_trial"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_mint_refuses_to_answer_for_a_binding_it_was_not_given"
+    ),
+  ]
+{
   receipt_for(
     run_id: run_id,
     state: state,
@@ -301,11 +434,47 @@ fn receipt_on(
   )
 }
 
-fn approved_trial(run_id: Int) -> Optional<AcceptedRuleReviewReceipt> {
+fn approved_trial(run_id: Int) -> Optional<AcceptedRuleReviewReceipt>
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "admitted_pair"
+    ),
+  ]
+{
   receipt_on(run_id: run_id, state: Approved, environment: gate_env)
 }
 
-fn rejected_trial(run_id: Int) -> Optional<AcceptedRuleReviewReceipt> {
+fn rejected_trial(run_id: Int) -> Optional<AcceptedRuleReviewReceipt>
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "admitted_pair"
+    ),
+  ]
+{
   receipt_on(run_id: run_id, state: Rejected, environment: gate_env)
 }
 
@@ -315,7 +484,42 @@ fn rejected_trial(run_id: Int) -> Optional<AcceptedRuleReviewReceipt> {
 // (SoleConstructorViolation), which is the executed red
 // gunbc.test.probe.deployment_gate_evidence_forged_probe enrolls. So the only way to get an admitted
 // admission is to hand the mint what two readbacks returned and see whether it admits.
-fn admitted_pair() -> ReviewerRemovalAdmission {
+fn admitted_pair() -> ReviewerRemovalAdmission
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "ready_act"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_ready_act_is_discharged_at_the_mint"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_removal_act_is_admitted_only_by_a_typed_prerequisite"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "historical_evidence_does_not_outlive_the_rule"
+    ),
+
+  ]
+{
   admit_reviewer_removal(
     approved: approved_trial(run_id: 35447067113),
     rejected: rejected_trial(run_id: 35447067114),
@@ -330,20 +534,191 @@ fn admitted_pair_on(
   approved: Optional<AcceptedRuleReviewReceipt>,
   rejected: Optional<AcceptedRuleReviewReceipt>,
   boundary: DeploymentGateBoundary
-) -> ReviewerRemovalAdmission {
+) -> ReviewerRemovalAdmission
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2): this forwards to the sealed admission,
+  // so an open proxy here is a second door to it. Its only consumer is the boundary red below.
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on"
+    ),
+  ]
+{
   admit_reviewer_removal(approved: approved, rejected: rejected, boundary: boundary)
+}
+
+// THE CURRENT READ THE ACT NOW REQUIRES (side chat, blocker 3). THE NAME IS THE ONE THE SEALED MINT
+// ADMITS: observe_removal_boundary_standing is confined to the broker's answer route and to exactly the
+// witness declarations named in its admit_callers, keyed on (module, decl_name) -- so this file cannot
+// grow a second door to a standing, and a foreign module cannot obtain one at all. Everything the read
+// depends on is a PARAMETER, so a stale read, a read about another rule, or a read taken after the
+// reviewer was already removed is expressible WITHOUT constructing a sealed record by hand.
+fn standing_fixture(
+  environment: NonEmptyStr,
+  installation_id: Int,
+  identity_repo: NonEmptyStr,
+  rule_id: Int,
+  reviewer_present: Bool,
+  main_only: Bool
+) -> RemovalBoundaryStandingObservation
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_for_trial"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "historical_evidence_does_not_outlive_the_rule"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_no_reviewer"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_no_branch_rule"
+    ),
+  ]
+{
+  observe_removal_boundary_standing(
+    ownership: ownership_for(
+      environment: environment,
+      installation_id: installation_id,
+      identity_repo: identity_repo,
+      rule_id: rule_id,
+    ),
+    protection: protection_read(
+      environment: environment,
+      reviewer_present: reviewer_present,
+      main_only: main_only,
+    ),
+  )
+}
+
+// THE CURRENT STATE OF THE BOUNDARY, AS READ. Built from the shape gunbc.auth.github_deployment_environment
+// already owns for an environment's protection, with the two properties the standing's mint inspects as
+// PARAMETERS -- so "the reviewer is already gone" and "the branch rule disappeared" are writable facts,
+// not sealed records nobody can build.
+fn protection_read(
+  environment: NonEmptyStr,
+  reviewer_present: Bool,
+  main_only: Bool
+) -> GitHubEnvironmentProtectionSettings {
+  GitHubEnvironmentProtectionSettings {
+    name: environment as String,
+    deployment_branch_policy: if main_only {
+      SelectedBranchesAndTags {
+        rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }],
+      }
+    } else {
+      // the branch rule is gone: the environment is reachable from any ref, which is the boundary
+      // having ALREADY been weakened
+      AllBranchesAndTags
+    },
+    reviewer_requirement: if reviewer_present { RequiredReviewers } else { NoRequiredReviewers },
+  }
+}
+
+// THE READ THAT MATCHES THE CANONICAL TRIAL: the rule and the installation the receipts were minted
+// against, this repository, and a protection that still carries both properties.
+fn standing_for_trial() -> RemovalBoundaryStandingObservation
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "ready_act"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_ready_act_is_discharged_at_the_mint"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_removal_act_is_admitted_only_by_a_typed_prerequisite"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "historical_evidence_does_not_outlive_the_rule"
+    ),
+
+  ]
+{
+  standing_fixture(
+    environment: gate_env,
+    installation_id: canonical_installation_id,
+    identity_repo: gate_repo,
+    rule_id: canonical_rule_id,
+    reviewer_present: true,
+    main_only: true,
+  )
+}
+
+// NO READ AT ALL. For the calls whose admission already refuses: the honest value, rather than a
+// stand-in that would let a Blocked be cited as "the standing was checked".
+fn standing_never_read() -> RemovalBoundaryStandingObservation {
+  StandingRefused {
+    because: OwnershipWasNotEstablished { because: ReadbackCarriedNoRules },
+  }
 }
 
 // THE ACT, THROUGH THE ONLY ROUTE THAT HAS ONE. `reviewer_removal_step` used to be a `data` row here and
 // in the module, which is blocker 3: the act that weakens srv1's boundary sat in a public row, so a
 // consumer could read it without ever producing an admission. Everything that used to read the row now
 // reads it OUT OF the decision, which is the only place it exists.
-fn ready_act() -> HumanIntervention? {
+fn ready_act() -> HumanIntervention?
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_gate_rows_point_at_the_boundary_environment"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_gate_rows_refuse_a_drifted_environment_name"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_last_field_is_the_one_that_weakens_the_gate"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_removal_is_not_collapsed_into_the_enablement"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "the_witnessed_states_are_githubs_own"
+    ),
+  ]
+{
   match reviewer_removal_act_for(
     boundary: srv1_deployment_gate_boundary,
     admission: admitted_pair(),
+    standing: standing_for_trial(),
   ) {
-    ReviewerRemovalReady { intervention: i, evidence: _ } => Present { value: i }
+    ReviewerRemovalReady { admitted: a } => Present { value: a.intervention }
     ReviewerRemovalBlocked { missing: _ } => none
   }
 }
@@ -379,7 +754,7 @@ test fn each_field_of_the_sequence_holds_the_act_its_name_promises() -> Bool {
     // frontier nothing has been witnessed, so the honest value is a Blocked naming the mint's reason. A
     // Ready act sitting in a published row is exactly the shape that used to be reachable.
     && (match deployment_gate_operator_steps.reviewer_removal {
-          ReviewerRemovalReady { intervention: _, evidence: _ } => false
+          ReviewerRemovalReady { admitted: _ } => false
           ReviewerRemovalBlocked { missing: NoApprovingReview } => true
           ReviewerRemovalBlocked { missing: _ } => false
         })
@@ -438,13 +813,196 @@ test fn the_last_field_is_the_one_that_weakens_the_gate() -> Bool {
 //   (b) a genuine pair on the sibling lane's environment does NOT;
 //   (c) a genuine pair in another repository does NOT, even naming srv1-production.
 // Each wrong case must refuse TYPED, naming both sides, and must not fall back to the constant act.
+// HISTORICAL EVIDENCE DOES NOT OUTLIVE THE RULE (side chat, blocker 3). The trial pair proves the rule
+// worked WHEN THE TRIAL RAN. Approve on A, reject on B, then switch the App rule off -- or replace it
+// with another rule id, or move it to another installation, or remove the reviewer by hand -- and the
+// old admission must not still yield the act that weakens the boundary. Five cases, one per arm the side
+// chat named, plus the honest one so the four cannot be green because nothing is ever Ready:
+//   (a) the rule is no longer enabled                    -> Blocked (via the standing's own mint)
+//   (b) a DIFFERENT rule id is the one enabled now        -> Blocked, naming all three ids
+//   (c) the standing is about another installation        -> Blocked, naming all three
+//   (d) the human reviewer has already been removed       -> Blocked at the mint
+//   (e) the main-only branch rule has gone                -> Blocked at the mint
+//   (f) all current                                      -> Ready
+//
+// (a), (d) and (e) are refused by the standing's MINT rather than by the act function, which is where
+// they belong: a standing that fails them cannot exist, so the act function has nothing to re-check
+// (R1/§4b: no unreachable re-validation of a construction downstream). The act function's job is to
+// CARRY THAT CAUSE INTO ITS OWN DECISION rather than flatten it: "the rule is off", "the reviewer is
+// already gone" and "the branch rule has gone" are three different repairs, and a decision that said
+// only "no standing" would make the operator re-derive which one -- and would leave the typed refusal
+// the mint gives with no consumer at all.
+test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
+  // (a) THE RULE IS DISABLED NOW. The sealed ownership read requires enabled AND attributed, so a rule
+  // switched off arrives as NoEnabledRule rather than as a standing -- which is the point: there is no
+  // value of type CurrentRemovalBoundaryStanding that means "the rule is off", so the act function can
+  // never be handed one.
+  (match reviewer_removal_act_for(
+         boundary: srv1_deployment_gate_boundary,
+         admission: admitted_pair(),
+         standing: standing_disabled_rule(),
+       ) {
+         ReviewerRemovalReady { admitted: _ } => false
+         ReviewerRemovalBlocked {
+           missing: StandingWasNotRead {
+             because: OwnershipWasNotEstablished {
+               because: NoEnabledRule,
+             },
+           },
+         } => true
+         ReviewerRemovalBlocked { missing: _ } => false
+       })
+    // (b) A DIFFERENT RULE IS THE ONE ENABLED NOW: the trial answered rule 900000001, the environment
+    // now answers 900000002. Refusing here is what "the rule was replaced" means in this model.
+    && (match reviewer_removal_act_for(
+           boundary: srv1_deployment_gate_boundary,
+           admission: admitted_pair(),
+           standing: standing_fixture(
+             environment: gate_env,
+             installation_id: canonical_installation_id,
+             identity_repo: gate_repo,
+             rule_id: 900000002,
+             reviewer_present: true,
+             main_only: true,
+           ),
+         ) {
+           ReviewerRemovalReady { admitted: _ } => false
+           ReviewerRemovalBlocked {
+             missing: ActStandingDisagreesOnRule {
+               standing_rule_id: now_rule,
+               approved_rule_id: a_rule,
+               rejected_rule_id: r_rule,
+             },
+           } => now_rule == 900000002 && a_rule == canonical_rule_id && r_rule == canonical_rule_id
+           ReviewerRemovalBlocked { missing: _ } => false
+         })
+    // (c) THE STANDING IS ABOUT ANOTHER INSTALLATION: a different App installation now owns an enabled
+    // rule on the same environment. The trial's gate is not the gate that is standing.
+    && (match reviewer_removal_act_for(
+           boundary: srv1_deployment_gate_boundary,
+           admission: admitted_pair(),
+           standing: standing_fixture(
+             environment: gate_env,
+             installation_id: 888800002,
+             identity_repo: gate_repo,
+             rule_id: canonical_rule_id,
+             reviewer_present: true,
+             main_only: true,
+           ),
+         ) {
+           ReviewerRemovalReady { admitted: _ } => false
+           ReviewerRemovalBlocked {
+             missing: ActStandingDisagreesOnInstallation {
+               standing_installation_id: now_i,
+               approved_installation_id: a_i,
+               rejected_installation_id: r_i,
+             },
+           } => now_i.value == 888800002
+             && a_i.value == canonical_installation_id
+             && r_i.value == canonical_installation_id
+           ReviewerRemovalBlocked { missing: _ } => false
+         })
+    // (d) THE HUMAN REVIEWER IS ALREADY GONE. There is no act to perform, and issuing one is how a
+    // second removal gets waved through. Refused where the standing is MADE.
+    && (match reviewer_removal_act_for(
+           boundary: srv1_deployment_gate_boundary,
+           admission: admitted_pair(),
+           standing: standing_no_reviewer(),
+         ) {
+           ReviewerRemovalReady { admitted: _ } => false
+           ReviewerRemovalBlocked {
+             missing: StandingWasNotRead {
+               because: RequiredReviewerIsNoLongerPresent { environment: named },
+             },
+           } => named == gate_env
+           ReviewerRemovalBlocked { missing: _ } => false
+         })
+    // (e) THE MAIN-ONLY BRANCH RULE HAS GONE: the environment is reachable from any ref, so the
+    // boundary has already been weakened and nothing may be removed against it until it is repaired.
+    && (match reviewer_removal_act_for(
+           boundary: srv1_deployment_gate_boundary,
+           admission: admitted_pair(),
+           standing: standing_no_branch_rule(),
+         ) {
+           ReviewerRemovalReady { admitted: _ } => false
+           ReviewerRemovalBlocked {
+             missing: StandingWasNotRead {
+               because: BranchPolicyIsNoLongerMainOnly { environment: named },
+             },
+           } => named == gate_env
+           ReviewerRemovalBlocked { missing: _ } => false
+         })
+    // (f) THE CONTROL: everything current yields the act. Without this the five above could be green
+    // because the act is never issued at all.
+    && (match reviewer_removal_act_for(
+           boundary: srv1_deployment_gate_boundary,
+           admission: admitted_pair(),
+           standing: standing_for_trial(),
+         ) {
+           ReviewerRemovalReady { admitted: a } =>
+             a.boundary.environment_name == gate_env
+               && a.evidence.approved.run_id == 35447067113
+           ReviewerRemovalBlocked { missing: _ } => false
+         })
+}
+
+// THE STANDING VARIANTS THE RED NEEDS, each built through the one admitted door with its facts changed.
+fn standing_disabled_rule() -> RemovalBoundaryStandingObservation
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "historical_evidence_does_not_outlive_the_rule"
+    ),
+  ]
+{
+  observe_removal_boundary_standing(
+    ownership: ownership_with_enabled(
+      environment: gate_env,
+      installation_id: canonical_installation_id,
+      identity_repo: gate_repo,
+      rule_id: canonical_rule_id,
+      enabled: false,
+    ),
+    protection: protection_read(
+      environment: gate_env,
+      reviewer_present: true,
+      main_only: true,
+    ),
+  )
+}
+
+fn standing_no_reviewer() -> RemovalBoundaryStandingObservation {
+  standing_fixture(
+    environment: gate_env,
+    installation_id: canonical_installation_id,
+    identity_repo: gate_repo,
+    rule_id: canonical_rule_id,
+    reviewer_present: false,
+    main_only: true,
+  )
+}
+
+fn standing_no_branch_rule() -> RemovalBoundaryStandingObservation {
+  standing_fixture(
+    environment: gate_env,
+    installation_id: canonical_installation_id,
+    identity_repo: gate_repo,
+    rule_id: canonical_rule_id,
+    reviewer_present: true,
+    main_only: false,
+  )
+}
+
 test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> Bool {
   // (a) THE HONEST PAIR, THE HONEST BOUNDARY: the act exists and names that subject.
   (match reviewer_removal_act_for(
          boundary: srv1_deployment_gate_boundary,
          admission: admitted_pair(),
+         standing: standing_for_trial(),
        ) {
-         ReviewerRemovalReady { intervention: i, evidence: e } =>
+         ReviewerRemovalReady { admitted: a } =>
+           let i = a.intervention
+           let e = a.evidence
            (i.subject as String).contains(gate_env as String)
              && (i.subject as String).contains("gunb-ai/gunbc")
              && e.boundary.environment_name == gate_env
@@ -459,8 +1017,9 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
              rejected: receipt_on(run_id: 35447067114, state: Rejected, environment: sibling_env),
              boundary: sibling_boundary,
            ),
+           standing: standing_for_trial(),
          ) {
-           ReviewerRemovalReady { intervention: _, evidence: _ } => false
+           ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
              missing: ActAddressedAnotherEnvironment {
                expected_environment: wanted,
@@ -475,8 +1034,9 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
     && (match reviewer_removal_act_for(
            boundary: fork_boundary,
            admission: admitted_pair(),
+           standing: standing_for_trial(),
          ) {
-           ReviewerRemovalReady { intervention: _, evidence: _ } => false
+           ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
              missing: ActAddressedAnotherRepository {
                expected_repository: wanted_repo,
@@ -496,6 +1056,72 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
 // not performable; an admission MINTED THROUGH THE CALL admits it. If the prerequisite were prose
 // again, neither clause would be a fact anyone could break — the instruction already contained the
 // words APPROVING and REJECTING and proved nothing.
+// THE ACT NAMES ITS OWN SUBJECT, IN ITS IDENTITY AND IN ITS ROUTE. Two defects lived here.
+//
+// (1) The identity was "…reviewer-removal." ++ environment ONLY. Environments are PER-REPOSITORY
+// objects, so this repository's srv1-production and a fork's srv1-production shared one intervention
+// identity -- and two acts that must be discharged separately cannot share an identity. The repository
+// half is in the name now, so the census is asserted against a fork carrying the SAME environment name,
+// which is exactly the case the old key could not tell apart.
+//
+// (2) The readback route was joined with concat("/", readback) while the readback itself began with
+// "/environments/", printing "…/gunbc//environments/srv1-production" in the instructions an operator
+// follows -- a route no GitHub API answers. So the printed route is checked for the doubled slash, and
+// for the readback spelled exactly once.
+//
+// The identity census is taken on THE BUILDER'S OWN OUTPUT (side chat ruling, R1: exercise a
+// construction at its builder rather than re-validating it downstream); the route is read off the act
+// the admitted branch actually issued, because that is the text an operator copies.
+test fn the_removal_act_names_its_subject_in_its_identity_and_in_its_route() -> Bool {
+  let srv1_identity = (reviewer_removal_act_identity(
+    boundary: srv1_deployment_gate_boundary,
+  ) as String)
+  let fork_identity = (reviewer_removal_act_identity(boundary: fork_boundary) as String)
+  let sibling_identity = (reviewer_removal_act_identity(
+    boundary: sibling_boundary,
+  ) as String)
+  let expected_identity = concat(
+    "github.deployment-rule.reviewer-removal.",
+    concat("gunb-ai/gunbc", concat("/", gate_env as String)),
+  )
+  let expected_route = concat(
+    "GET /repos/gunb-ai/gunbc/environments/",
+    gate_env as String,
+  )
+  // THE HONEST ACT EXISTS AND SAYS THE RIGHT THING, so nothing below can be green because no act was
+  // ever issued.
+  (match reviewer_removal_act_for(
+         boundary: srv1_deployment_gate_boundary,
+         admission: admitted_pair(),
+         standing: standing_for_trial(),
+       ) {
+         ReviewerRemovalReady { admitted: a } =>
+           let i = a.intervention
+           let route_text = i.instruction as String
+           // BOTH HALVES OF THE SUBJECT, in the act's own words.
+           (i.subject as String).contains("gunb-ai/gunbc")
+             && (i.subject as String).contains(gate_env as String)
+             // THE PRINTED ROUTE IS ONE A GITHUB API ANSWERS: one slash at the join, and the readback
+             // spelled exactly once in the instruction.
+             && route_text.contains(expected_route as String)
+             && !(route_text.contains("//environments/"))
+             && !(route_text.contains("gunbc//"))
+         ReviewerRemovalBlocked { missing: _ } => false
+       })
+    // THE IDENTITY IS THE WHOLE SUBJECT, in the order the route uses its parts.
+    && srv1_identity == (expected_identity as String)
+    // A SIBLING ENVIRONMENT IN THE SAME REPOSITORY gets its own identity, so discharging one lane's act
+    // cannot close out the other's.
+    && sibling_identity != srv1_identity
+    // A DIFFERENT REPOSITORY CARRYING THE SAME ENVIRONMENT NAME gets its own identity. THIS is the
+    // regression the old key permitted: same environment string, same identity, one discharge closing
+    // two acts.
+    && fork_identity != srv1_identity
+    // ...and the fork's identity names THE FORK, so the act that unlocks it is not filed under this
+    // repository's name.
+    && fork_identity.contains("gunb-ai/someone-elses-fork")
+}
+
 test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
   // stage 1: nothing has been witnessed, so nothing is performable, and the refusal is TYPED — the
   // reason the mint gave, not a Bool that threw it away (review 82571 dissolved the Bool helper that
@@ -503,8 +1129,11 @@ test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
   (match reviewer_removal_act_for(
          boundary: srv1_deployment_gate_boundary,
          admission: reviewer_removal_admission,
+         // The frontier refuses at the admission, so the standing is never consulted; passing a read
+         // that did not happen keeps the refusal honest about which axis is empty.
+         standing: standing_never_read(),
        ) {
-         ReviewerRemovalReady { intervention: _, evidence: _ } => false
+         ReviewerRemovalReady { admitted: _ } => false
          ReviewerRemovalBlocked { missing: NoApprovingReview } => true
          ReviewerRemovalBlocked { missing: _ } => false
        })
@@ -512,8 +1141,11 @@ test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
     && (match reviewer_removal_act_for(
            boundary: srv1_deployment_gate_boundary,
            admission: admitted_pair(),
+           standing: standing_for_trial(),
          ) {
-           ReviewerRemovalReady { intervention: i, evidence: e } =>
+           ReviewerRemovalReady { admitted: a } =>
+             let i = a.intervention
+             let e = a.evidence
              (i.identity as String).contains(gate_env as String)
                && e.approved.run_id == 35447067113
                && e.rejected.run_id == 35447067114
@@ -529,8 +1161,10 @@ test fn the_ready_act_is_discharged_at_the_mint() -> Bool {
   match reviewer_removal_act_for(
     boundary: srv1_deployment_gate_boundary,
     admission: admitted_pair(),
+    standing: standing_for_trial(),
   ) {
-    ReviewerRemovalReady { intervention: i, evidence: _ } =>
+    ReviewerRemovalReady { admitted: a } =>
+    let i = a.intervention
       match i.completion_evidence {
         DischargedAt { evidence: ref } =>
           (ref.module_path as String) == "gunbc.auth.deployment_gate_authorization"

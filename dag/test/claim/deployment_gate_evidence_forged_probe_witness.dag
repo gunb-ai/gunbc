@@ -60,7 +60,7 @@ fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
 // THE CONTROL: names the sealed records and the sealed mints, calls nothing, writes no literal. If
 // THIS reads a violation, everything the probe reports would be about importing the module rather
 // than about forging.
-data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, admit_reviewer_removal }\nimport gunbc.auth.deployment_gate_operator_steps { build_reviewer_removal_act }\nfn label() -> String { \"control names the sealed records and the sealed mints, and forges nothing\" }\n"
+data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, observe_removal_boundary_standing, admit_reviewer_removal, RemovalBoundaryStandingObservation }\nimport gunbc.auth.deployment_gate_operator_steps { build_reviewer_removal_act, AdmittedReviewerRemovalAct, ReviewerRemovalStepDecision, ReviewerRemovalReady, RemovalAdmitted, RemovalRefused }\nimport gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }\nimport test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }\nfn label() -> String { \"control names the sealed records and the sealed mints, and forges nothing\" }\n"
 
 test fn a_source_that_only_names_the_gate_types_forges_no_evidence() -> Bool {
   refusals(c: control_census(), class: "SoleConstructorViolation", subject: "AcceptedRuleReviewReceipt") == 0
@@ -125,6 +125,92 @@ test fn naming_the_removal_act_builder_forges_nothing() -> Bool {
     class: "ConstructorCallAdmissionRefused",
     subject: "build_reviewer_removal_act",
   ) == 0
+}
+
+// (f) THE HAND-BUILT READY DECISION (side chat, blocker 1). Before this round the ready arm was a sum
+// over an open HumanIntervention, so any module holding genuine evidence could write Ready itself and
+// skip reviewer_removal_act_for's boundary comparison entirely. The payload is now a sealed record, so
+// the literal is refused AT THE RECORD; the intervention inside it is deliberately an open record, which
+// is what makes this a statement about the act rather than about the intervention.
+test fn a_hand_built_ready_decision_is_refused_at_the_sealed_act() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "SoleConstructorViolation",
+    subject: "AdmittedReviewerRemovalAct",
+  ) >= 1
+}
+
+// THE CONTROL FOR (f): naming the sealed act and the decision sum, writing no literal. Without this the
+// red above would be a statement about importing the steps module.
+test fn naming_the_sealed_act_forges_nothing() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "SoleConstructorViolation",
+    subject: "AdmittedReviewerRemovalAct",
+  ) == 0
+}
+
+// (g) THE WITNESS PROXIES (side chat, blocker 2). The mints were confined while the helpers that
+// FORWARD TO THEM were open, so the confine could never be accused: nobody had to call a mint. Each
+// proxy is counted at its OWN subject so a missing confine names which door was left open, and the
+// control below names all of them without calling any.
+test fn a_foreign_call_through_the_receipt_proxy_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "receipt_for",
+  ) >= 1
+}
+
+test fn a_foreign_call_through_the_trial_proxy_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "admitted_pair",
+  ) >= 1
+}
+
+test fn a_foreign_call_through_the_act_proxy_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "ready_act",
+  ) >= 1
+}
+
+// (h) THE STANDING'S DOOR (blocker 3's mint). A standing is what converts historical evidence into a
+// licence to weaken a boundary, so obtaining one must be as hard as obtaining a receipt.
+test fn a_foreign_call_to_the_standing_mint_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "observe_removal_boundary_standing",
+  ) >= 1
+}
+
+// THE CONTROL FOR (g) AND (h): the control source imports every one of those four names and calls
+// nothing, so a nonzero at any of them cannot be an import artifact.
+test fn naming_the_proxies_and_the_standing_mint_forges_nothing() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "receipt_for",
+  ) == 0
+    && refusals(
+         c: control_census(),
+         class: "ConstructorCallAdmissionRefused",
+         subject: "admitted_pair",
+       ) == 0
+    && refusals(
+         c: control_census(),
+         class: "ConstructorCallAdmissionRefused",
+         subject: "ready_act",
+       ) == 0
+    && refusals(
+         c: control_census(),
+         class: "ConstructorCallAdmissionRefused",
+         subject: "observe_removal_boundary_standing",
+       ) == 0
 }
 
 // (d) AND THE LITERALS, still refused at the records. Kept as separate reds from (a)-(c) on purpose:

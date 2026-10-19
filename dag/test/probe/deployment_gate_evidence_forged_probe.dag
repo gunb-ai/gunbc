@@ -51,11 +51,22 @@ import gunbc.auth.deployment_gate_authorization {
   srv1_deployment_gate_boundary,
   RemovalAdmitted,
   RemovalRefused,
+  observe_removal_boundary_standing,
+  RemovalBoundaryStandingObservation,
 }
 // THE ACT BUILDER LIVES IN THE STEPS MODULE, which is the point: the confined producer is the module
 // that owns the act, and this probe is foreign to it.
-import gunbc.auth.deployment_gate_operator_steps { build_reviewer_removal_act }
-import std.human_intervention { HumanIntervention }
+import gunbc.auth.deployment_gate_operator_steps { build_reviewer_removal_act,
+  ReviewerRemovalStepDecision,
+  ReviewerRemovalReady,
+  AdmittedReviewerRemovalAct }
+import std.human_intervention { HumanIntervention, HumanInterventionIdentity, FleetOnce, DischargedAt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }
+// THE WITNESS HELPERS ARE MODULES LIKE ANY OTHER, and that is the point of blocker 2: a witness proxy
+// that forwards to a sealed mint is a door, and a door has to be confined too or the mint's confine is
+// decor. This probe is foreign to the witness module, so every call below must be refused at the callee.
+import test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }
 import extdeps.github.deployment_protection_rule {
   Approved,
   Rejected,
@@ -221,4 +232,87 @@ fn forge_the_removal_act() -> HumanIntervention? {
       Present { value: build_reviewer_removal_act(boundary: srv1_deployment_gate_boundary) }
     RemovalRefused { missing: _ } => none
   }
+}
+
+// (f)-(h) THE CHAIN, END TO END, FROM OUTSIDE (side chat, blockers 1 and 2). The forgery the side chat
+// spelled out was: proxy receipts -> admitted trial -> HAND-BUILT Ready -> arbitrary intervention.
+//
+// ONE FORGERY PER FUNCTION, on purpose. This repository has already measured that a sealed-literal
+// diagnostic can fail to be emitted when an unadmitted CALL shares the function: a file that mixed them
+// could report the call and silently drop the literal, and the red would be cited as covering both.
+// So the sealed literals below take their sealed inputs as PARAMETERS (no call in sight), and the
+// proxy/mint calls live in functions of their own with no literals at all.
+
+// (f) THE HAND-BUILT READY DECISION (blocker 1). ReviewerRemovalStepDecision is a public sum, so the
+// variant is nameable by anyone; what confines it is that its payload is a SEALED RECORD, so the
+// literal below is refused at the record and a Ready decision cannot be written without the mint this
+// module does not own. The intervention is a plain HumanIntervention literal on purpose -- that record
+// is open by design (four of the five acts are harmless instructions, and sealing them would be
+// re-invention), so the test proves the intervention alone buys nothing: it cannot reach Ready.
+fn forge_the_admitted_act(evidence: DeploymentGateTrialEvidence) -> ReviewerRemovalStepDecision {
+  ReviewerRemovalReady {
+    admitted: AdmittedReviewerRemovalAct {
+      intervention: HumanIntervention {
+        identity: "forged.by.a.foreign.module" as HumanInterventionIdentity,
+        frequency: FleetOnce,
+        subject: "forged" as NonEmptyStr,
+        instruction: "forged by a module that never called the gate" as NonEmptyStr,
+        completion_evidence: DischargedAt {
+          evidence: DeclarationRef {
+            module_path: "gunbc.auth.deployment_gate_authorization",
+            decl_name: "admit_reviewer_removal",
+            field: WholeDeclaration,
+          },
+        }
+      },
+      evidence: evidence,
+      boundary: srv1_deployment_gate_boundary,
+    },
+  }
+}
+
+// (g) THE WITNESS PROXIES, CALLED FROM OUTSIDE (blocker 2). receipt_for and ready_act forward to sealed
+// mints, so while they were OPEN the mints' confine was unreachable by accusation: a foreign module
+// never had to call a mint, so nothing refused. Each call is its own function for the same
+// one-forger-per-function reason, and each is counted at ITS OWN subject.
+fn forge_through_the_receipt_proxy() -> Int {
+  match receipt_for(
+    run_id: 35447067113,
+    state: Approved,
+    owner: "gunb-ai",
+    repo: "gunbc",
+    environment: "srv1-production",
+    owned_environment: "srv1-production",
+    expected: 204,
+    installation_id: 888800001,
+    identity_repo: "gunbc",
+    rule_id: 900000001,
+  ) {
+    Present { value: _ } => 1
+    none => 0
+  }
+}
+
+fn forge_through_the_trial_proxy() -> Int {
+  match admitted_pair() {
+    RemovalAdmitted { evidence: _ } => 1
+    RemovalRefused { missing: _ } => 0
+  }
+}
+
+fn forge_through_the_act_proxy() -> Int {
+  match ready_act() {
+    Present { value: _ } => 1
+    none => 0
+  }
+}
+
+// (h) THE STANDING'S OWN DOOR, FROM OUTSIDE (blocker 3's mint). A standing is what turns historical
+// evidence into a licence, so it must be as hard to obtain as the receipts. Inputs are parameters: this
+// function contains a call to a confined mint and no sealed literal.
+fn forge_the_standing(
+  ownership: EnvironmentRuleOwnership,
+  protection: GitHubEnvironmentProtectionSettings
+) -> RemovalBoundaryStandingObservation {
+  observe_removal_boundary_standing(ownership: ownership, protection: protection)
 }

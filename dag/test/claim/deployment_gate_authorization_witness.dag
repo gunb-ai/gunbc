@@ -246,7 +246,21 @@ fn fx_wire() -> InstallationWireFields {
 // THE OBSERVED IDENTITY, minted by the only producer — the installation readback route. It is admitted
 // to this witness because the witness carries a real response; a FOREIGN module is refused the call
 // entirely, which is the red the probe enrols.
-fn fx_observed_installation() -> ObservedGateInstallation? {
+fn fx_observed_installation() -> ObservedGateInstallation?
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "observe_rule_ownership_for"
+    ),
+  ]
+{
   match observe_gate_installation(
     owner: "gunb-ai",
     repo: "gunbc",
@@ -266,7 +280,25 @@ fn fx_observation_probe(
   status: HttpStatus,
   wire: InstallationWireFields,
   claim: GateInstallationClaim
-) -> InstallationObservation {
+) -> InstallationObservation
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "a_readback_whose_app_is_not_the_claimed_app_is_refused_on_the_app_axis"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_identity_readback_refuses_by_name_and_by_status"
+    ),
+  ]
+{
   observe_gate_installation(
     owner: "gunb-ai",
     repo: "gunbc",
@@ -415,7 +447,33 @@ test fn the_identity_readback_refuses_by_name_and_by_status() -> Bool {
 fn observe_rule_ownership_for(
   rules: List<EnabledDeploymentProtectionRule>,
   environment_name: NonEmptyStr
-) -> EnvironmentRuleOwnership {
+) -> EnvironmentRuleOwnership
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "an_unestablished_or_mismatched_ownership_never_answers"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "minted_ownership"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "ownership_is_minted_only_from_an_enabled_rule_attributed_to_this_app"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_ownership_reason_the_readback_gave_is_the_reason_the_broker_reports"
+    ),
+  ]
+{
   match fx_observed_installation() {
     Present { value: observed } =>
       observe_rule_ownership(
@@ -426,7 +484,77 @@ fn observe_rule_ownership_for(
 }
 
 // What a READBACK minted: an enabled rule on the gated environment, attributed to the gate App.
-fn minted_ownership() -> EnvironmentRuleOwnership {
+fn minted_ownership() -> EnvironmentRuleOwnership
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "a_concluded_run_is_never_answered"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "a_run_the_submission_did_not_file_is_never_answered"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "a_wait_for_another_environment_is_never_answered"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "a_wait_that_names_a_human_is_not_answered_by_the_app"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "an_unestablished_or_mismatched_ownership_never_answers"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "answerable_refusal_name"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "fx_receipt"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "no_receipt_and_no_token_without_an_attributed_ownership"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_mint_refuses_a_body_for_another_environment"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_mint_refuses_a_repository_it_cannot_put_in_a_route"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_mint_refuses_a_rule_that_is_not_the_one_read_back"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_mint_refuses_a_status_it_does_not_accept"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_mint_refuses_the_right_run_on_an_unread_repository"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_receipt_state_is_the_bodys_and_never_the_callers"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "when_several_checks_would_refuse_the_first_one_in_order_is_reported"
+    ),
+  ]
+{
   observe_rule_ownership_for(
     rules: [
       EnabledDeploymentProtectionRule {
@@ -456,7 +584,45 @@ data hostile_repo: NonEmptyStr = "gunbc/../other"
 // actually hold at the moment GitHub answers: the repository addressed, the body it posted, the status
 // it returned, and the sealed ownership that authorised the call. THE PATH IS NOT AN ARGUMENT — the mint
 // builds that route, which is the difference between checking a path and being unable to lie about one.
-fn fx_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt? {
+fn fx_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt?
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "a_pair_witnessed_on_another_environment_unlocks_nothing_here"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "an_approving_arm_dressed_as_the_rejecting_arm_is_refused"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "nothing_witnessed_is_admitted_neither_nor_left_unnamed"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "one_dispatch_dressed_as_two_trials_is_refused"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_honest_pair_is_admitted_and_carries_the_receipts_it_was_built_from"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_receipt_carries_the_observed_repository_not_the_callers"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_receipt_state_is_the_bodys_and_never_the_callers"
+    ),
+  ]
+{
   match mint_accepted_rule_review(
     owner: gate_owner,
     repo: gate_repo,
@@ -493,7 +659,45 @@ fn fx_mint_probe(
   status: HttpStatus,
   ownership: EnvironmentRuleOwnership,
   requested_rule_id: Int
-) -> AcceptedReviewOutcome {
+) -> AcceptedReviewOutcome
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "no_receipt_and_no_token_without_an_attributed_ownership"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_mint_refuses_a_body_for_another_environment"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_mint_refuses_a_repository_it_cannot_put_in_a_route"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_mint_refuses_a_rule_that_is_not_the_one_read_back"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_mint_refuses_a_status_it_does_not_accept"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_mint_refuses_the_right_run_on_an_unread_repository"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_receipt_state_is_the_bodys_and_never_the_callers"
+    ),
+  ]
+{
   mint_accepted_rule_review(
     owner: owner,
     repo: repo,
@@ -590,7 +794,29 @@ fn refusal_name_for_a_broker_call(
   )
 }
 
-fn answerable_refusal_name() -> NonEmptyStr {
+fn answerable_refusal_name() -> NonEmptyStr
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
+  // could call the helper and obtain a sealed record without ever being named by the mint. The
+  // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
+  // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
+  // proxies is what makes the chain close end to end, because admission is enforced with no
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "a_run_the_submission_did_not_file_is_never_answered"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "a_wait_for_another_environment_is_never_answered"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "a_wait_that_names_a_human_is_not_answered_by_the_app"
+    ),
+  ]
+{
   refusal_name_for_a_broker_call(
     wait: an_answerable_wait(),
     run: an_in_flight_run(),
@@ -1558,6 +1784,15 @@ test fn the_mint_refuses_a_rule_that_is_not_the_one_read_back() -> Bool {
 //   (b) the same forgery from the other direction is refused too (intended Approved, body Rejected);
 //   (c) when the intention agrees with the body the receipt's state IS the body's — the ordinary path
 //       still works, so (a) and (b) cannot be passing because nothing mints at all.
+//
+// ONE MUTATION THIS RED CANNOT KILL, AND WHY THAT IS NOT A GAP. Replacing the receipt's
+// `state: review_decision(review: review)` with `state: intended` is BEHAVIOURALLY EQUIVALENT while the
+// guard stands: the guard refuses every case where the two differ, so the assignment is only reached when
+// they are equal. It was measured green, correctly. What that proves is the property the side chat asked
+// for -- the caller's word is not the authority on the record -- because the only way the caller's word
+// could reach the receipt is by first deleting the guard, and that mutation IS killed, by (a) and (b)
+// demanding the named refusal. The two mutations that together restore the original forgery (guard
+// deleted AND `state: intended`) are killed by (a)/(b) alone.
 test fn the_receipt_state_is_the_bodys_and_never_the_callers() -> Bool {
   // (a) body says Approved, caller wants it recorded as Rejected.
   (match fx_mint_probe(
@@ -1578,8 +1813,13 @@ test fn the_receipt_state_is_the_bodys_and_never_the_callers() -> Bool {
          AcceptedReviewRefused {
            because: IntendedDecisionIsNotWhatTheBodySaid { intended: i, stated: s_ },
          } => i == Rejected && s_ == Approved
-         // the other permitted outcome is an APPROVED receipt; a Rejected one is the forgery
-         Accepted { receipt: r } => r.state == Approved
+         // THE REFUSAL IS REQUIRED, not merely permitted. The side chat's control ("either refuses by the
+         // named arm or mints APPROVED") is a minimum, and accepting the disjunction here made the red
+         // blind to deleting the guard: with no guard the mint returns Accepted{Approved}, which satisfies
+         // the disjunction while leaving the named arm dead code. Minting is proved separately, by (c),
+         // with an intention that AGREES with the body -- so requiring the refusal here costs nothing and
+         // buys the only check that the diagnostic exists at all.
+         Accepted { receipt: _ } => false
          AcceptedReviewRefused { because: _ } => false
        })
     // (b) the mirror: caller wants Approved, the body said Rejected. Same refusal, opposite directions,
@@ -1602,7 +1842,7 @@ test fn the_receipt_state_is_the_bodys_and_never_the_callers() -> Bool {
            AcceptedReviewRefused {
              because: IntendedDecisionIsNotWhatTheBodySaid { intended: i, stated: s_ },
            } => i == Approved && s_ == Rejected
-           Accepted { receipt: r } => r.state == Rejected
+           Accepted { receipt: _ } => false
            AcceptedReviewRefused { because: _ } => false
          })
     // (c) THE CONTROL: an honest caller gets a receipt, and its state came from the body. Without this

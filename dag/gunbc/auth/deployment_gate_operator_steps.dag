@@ -55,6 +55,14 @@ import gunbc.auth.deployment_gate_authorization {
   srv1_deployment_gate_boundary,
   boundary_repository_label,
   reviewer_removal_admission,
+  // THE CURRENT READ THE ACT CONSUMES (blocker 3). The refusal arms below are matched as constructor
+  // patterns of the scrutinee's sum and need no import; these two are named in TYPE position, so they do.
+  RemovalBoundaryStandingObservation,
+  CurrentRemovalBoundaryStanding,
+  StandingRefused,
+  OwnershipWasNotEstablished,
+  OwnershipRefusalReason,
+  ReadbackCarriedNoRules,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
@@ -147,19 +155,50 @@ data rule_enablement_step: HumanIntervention = HumanIntervention {
 // string that was never compared to anything -- so the act a consumer read could describe a boundary
 // that the evidence behind it had nothing to do with. Identity, subject and instruction are now assembled
 // FROM the boundary the pair was admitted against, which is the same value the sealed evidence carries.
+// THE ADMITTED ACT, AS A SEALED RECORD. Why a record and not the sum's own fields (side chat, blocker 1):
+// `ReviewerRemovalReady { intervention: HumanIntervention, evidence: DeploymentGateTrialEvidence }` made
+// the ready decision CONSTRUCTIBLE BY ANYONE WHO COULD SEE IT. Sealing a SUM confines nothing - that is a
+// corpus fact this repository established for itself
+// (test.claim.sole_constructor_completeness_audit_probe, f13_variant_construction_refuses) - so even
+// marking the variant would have left `ReviewerRemovalReady { intervention: <whatever I want>, evidence: e }`
+// writable in any module holding a genuine pair. That is the bypass the side chat named: the boundary
+// comparison in reviewer_removal_act_for and the assembly of the act's words would both have been skipped,
+// not merely disfavoured, and with blocker 2's open proxies the whole chain was reachable end to end.
+//
+// A sealed RECORD with one mint is what confines: the constructor is refused for a foreign module, and the
+// only mint is reviewer_removal_act_for, below, after every check has passed and with the boundary it
+// compared stored INSIDE the value. An act that exists has been through the checks, by construction rather
+// than by convention.
+type AdmittedReviewerRemovalAct sole_constructor {
+  intervention: HumanIntervention,
+  evidence: DeploymentGateTrialEvidence,
+  // THE SUBJECT THE CHECKS WERE RUN AGAINST, carried out of the checks instead of re-spelled by a
+  // consumer. The act IS the record of a completed check, so it attests what was checked.
+  boundary: DeploymentGateBoundary,
+}
+
 type ReviewerRemovalStepDecision
-  = ReviewerRemovalReady {
-    intervention: HumanIntervention,
-    evidence: DeploymentGateTrialEvidence,
-  }
+  = ReviewerRemovalReady { admitted: AdmittedReviewerRemovalAct }
   | ReviewerRemovalBlocked { missing: RemovalRefusalReason }
+
+// THE READY ARM IS READ AS `admitted`, and the sealed record's fields are read directly -- sealing
+// confines CONSTRUCTION, not reading, which is the same split the sealed ObservedRuleOwnership already
+// relies on. Deliberately NO accessor trio (intervention()/evidence()/boundary()): a declaration whose
+// only reader is a witness is dangling (§3c), and field reads need no help.
 
 fn reviewer_removal_act_identity(boundary: DeploymentGateBoundary) -> HumanInterventionIdentity {
   // ONE CAST PER LINE, in `let`s. The chained form `(<expr>\n as NonEmptyStr) as HumanInterventionIdentity`
   // was measured to fail the parser ("expected RParen, found Ident") when the cast wrapped onto the next
   // line: the dialect does not continue a parenthesised expression across a line break before `as`.
+  // THE IDENTITY NAMES THE WHOLE SUBJECT, not just its environment half. It used to be
+  // "...reviewer-removal." ++ environment, which is unique per environment NAME -- and environments are
+  // per-repository objects, so this repository's srv1-production and a fork's srv1-production would have
+  // been the SAME intervention identity in whatever ledger keys on it. Two acts that must be separately
+  // discharged cannot share an identity.
+  let repo_text = boundary_repository_label(boundary: boundary) as String
+  let env_text = boundary.environment_name as String
   let stem = "github.deployment-rule.reviewer-removal."
-  let text = concat(stem, boundary.environment_name as String)
+  let text = concat(stem, concat(repo_text, concat("/", env_text)))
   let branded = (text as NonEmptyStr)
   branded as HumanInterventionIdentity
 }
@@ -193,7 +232,10 @@ fn build_reviewer_removal_act(boundary: DeploymentGateBoundary) -> HumanInterven
   let subject = (subject_text as NonEmptyStr)
   // THE READBACK, AS PART OF THE ACT'S OWN WORDS: the operator is told to prove the branch rule survived,
   // with the real route spelled out. Built as its own let so the URL reads in one piece.
-  let readback = concat("/environments/",
+  // THE ROUTE SAYS WHAT TO READ, spelled once. It was joined with concat("/", readback) while also
+  // starting with "/environments/", which produced "gunbc//environments/srv1-production" -- a route no
+  // GitHub API answers, printed in the instructions an operator follows. One leading slash, one joiner.
+  let readback = concat("environments/",
     concat(env_text,
       concat(" must still report deployment_branch_policy \{protected_branches:false, custom_branch_policies:true\} with exactly one branch rule named main. If that readback comes back without the branch rule, the boundary has been weakened twice -- restore it before anything else runs.")))
   let instruction_text = concat("On the environment ",
@@ -228,11 +270,26 @@ fn build_reviewer_removal_act(boundary: DeploymentGateBoundary) -> HumanInterven
 // and returned a constant row. Now the sealed boundary and the asked-for boundary are compared before any
 // act exists, and a mismatch is a typed Blocked with both sides named -- not a Bool, not a silent
 // fallback to the constant.
+// THE ACT, AS A FUNCTION OF WHAT WAS WITNESSED, WHAT IS BEING ASKED ABOUT, AND WHAT IS TRUE NOW.
+//
+// THREE ARGUMENTS, EACH KILLING A DIFFERENT FORGERY (side chat, blockers 2 and 3):
+//  - `admission` proves two ACCEPTED CALLS happened, on one subject, in one dispatch each. Historical.
+//  - `boundary`  is the subject being asked about, compared against the sealed pair, so a pair
+//                witnessed on gcp-iam-bootstrap cannot issue srv1's act (blocker 2).
+//  - `standing`  is a SEALED FRESH READ taken immediately before this call (blocker 3). Without it,
+//                approve on rule A + reject on rule B, then switch the App rule off in the GitHub UI,
+//                and the old admission still yielded Ready. A trial proves the rule worked THEN; it is
+//                not a licence that outlives the rule it was earned under. The standing is sealed and
+//                its mint requires the rule enabled, the human reviewer present and the branch policy
+//                main-only, so EXISTING AT ALL is the proof and nothing below re-checks those
+//                properties (R1/§4b: no unreachable re-validation of a construction).
 fn reviewer_removal_act_for(
   boundary: DeploymentGateBoundary,
-  admission: ReviewerRemovalAdmission
+  admission: ReviewerRemovalAdmission,
+  standing: RemovalBoundaryStandingObservation
 ) -> ReviewerRemovalStepDecision {
   match admission {
+    RemovalRefused { missing: missing } => ReviewerRemovalBlocked { missing: missing }
     RemovalAdmitted { evidence: evidence } =>
       if evidence.boundary.environment_name != boundary.environment_name {
         ReviewerRemovalBlocked {
@@ -250,12 +307,63 @@ fn reviewer_removal_act_for(
           },
         }
       } else {
-        ReviewerRemovalReady {
-          intervention: build_reviewer_removal_act(boundary: boundary),
-          evidence: evidence,
+        // THE CURRENT READ IS CONSUMED HERE, not passed through. Compared against BOTH receipts, not
+        // one: the pair IS the trial, and a standing that matches only the approving arm is a standing
+        // about something else.
+        match standing {
+          StandingRefused { because: because } =>
+            ReviewerRemovalBlocked { missing: StandingWasNotRead { because: because } }
+          StandingRead { standing: now } =>
+            if now.ownership.rule_id != evidence.approved.rule_id
+              || now.ownership.rule_id != evidence.rejected.rule_id {
+              ReviewerRemovalBlocked {
+                missing: ActStandingDisagreesOnRule {
+                  standing_rule_id: now.ownership.rule_id,
+                  approved_rule_id: evidence.approved.rule_id,
+                  rejected_rule_id: evidence.rejected.rule_id,
+                },
+              }
+            } else if now.ownership.installation_id != evidence.approved.installation_id
+              || now.ownership.installation_id != evidence.rejected.installation_id {
+              ReviewerRemovalBlocked {
+                missing: ActStandingDisagreesOnInstallation {
+                  standing_installation_id: now.ownership.installation_id,
+                  approved_installation_id: evidence.approved.installation_id,
+                  rejected_installation_id: evidence.rejected.installation_id,
+                },
+              }
+            } else if now.ownership.environment_name != evidence.approved.environment_name
+              || now.ownership.environment_name != evidence.rejected.environment_name {
+              ReviewerRemovalBlocked {
+                missing: ActStandingDisagreesOnEnvironment {
+                  standing_environment: now.ownership.environment_name,
+                  approved_environment: evidence.approved.environment_name,
+                  rejected_environment: evidence.rejected.environment_name,
+                },
+              }
+            } else if (now.ownership.owner as String) != boundary.repository.owner
+              || (now.ownership.repo as String) != boundary.repository.name {
+              ReviewerRemovalBlocked {
+                missing: ActStandingDisagreesOnRepository {
+                  standing_repository: concat(now.ownership.owner as String,
+                    concat("/", now.ownership.repo as String)),
+                  expected_repository: boundary_repository_label(boundary: boundary),
+                },
+              }
+            } else {
+              // EVERY CHECK HAS PASSED, AND NOTHING BELOW THEM CAN BE REARRANGED INTO A BYPASS: the
+              // sealed record is minted here and nowhere else, so a Ready decision a consumer reads out
+              // of the sequence carries inside it the boundary these checks compared.
+              ReviewerRemovalReady {
+                admitted: AdmittedReviewerRemovalAct {
+                  intervention: build_reviewer_removal_act(boundary: boundary),
+                  evidence: evidence,
+                  boundary: boundary,
+                },
+              }
+            }
         }
       }
-    RemovalRefused { missing: missing } => ReviewerRemovalBlocked { missing: missing }
   }
 }
 
@@ -292,9 +400,17 @@ data deployment_gate_operator_steps: DeploymentGateOperatorSequence = Deployment
   rule_enablement: rule_enablement_step,
   // The frontier's honest value: nothing has been witnessed, so the act that weakens the boundary is
   // Blocked by the mint's own reason, on the boundary this design gates.
+  // The frontier's honest value on both axes: nothing has been WITNESSED (the sealed admission refuses)
+  // and nothing has been READ NOW (the standing was never taken). The admission refuses first, so the
+  // standing is not even consulted here -- but passing a standing that did not happen is not an option
+  // either, because a Blocked that hides "nobody read the current state" behind "no trial" would let
+  // stage 2 mistake an unread environment for an untested one.
   reviewer_removal: reviewer_removal_act_for(
     boundary: srv1_deployment_gate_boundary,
     admission: reviewer_removal_admission,
+    standing: StandingRefused {
+      because: OwnershipWasNotEstablished { because: ReadbackCarriedNoRules },
+    },
   ),
 }
 
@@ -321,8 +437,8 @@ fn all_steps_are_fleet_once(steps: DeploymentGateOperatorSequence) -> Bool {
 // arm, where an act really does exist and must be once-per-fleet.
 fn removal_act_frequency_is_fleet_once(decision: ReviewerRemovalStepDecision) -> Bool {
   match decision {
-    ReviewerRemovalReady { intervention: i, evidence: _ } =>
-      human_intervention_frequency_eq(a: i.frequency, b: FleetOnce)
+    ReviewerRemovalReady { admitted: a } =>
+      human_intervention_frequency_eq(a: a.intervention.frequency, b: FleetOnce)
     ReviewerRemovalBlocked { missing: _ } => true
   }
 }

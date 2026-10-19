@@ -98,7 +98,12 @@ import extdeps.github.actions_runs {
 }
 import extdeps.github.github { Repository }
 import gunbc.repository { gunbc_repository }
-import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
+import gunbc.auth.github_deployment_environment {
+  srv1_production_environment_name,
+  GitHubEnvironmentProtectionSettings,
+  environment_protection_requires_reviewers,
+  environment_protection_restricts_to_main,
+}
 import gunbc.auth.approval_capability {
   ApprovalCapability,
   ProposedDecision,
@@ -777,6 +782,14 @@ fn observe_rule_ownership(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "ownership_for"
     ),
+    // THE ENABLED AXIS IS A PARAMETER NOW, so ownership_for forwards to ownership_with_enabled and the
+    // CALL of this mint moved to that helper. Admission is enforced with no same-module exemption
+    // (v2.compiler.infer), so every link in a witness chain has to be named -- naming only the outer
+    // helper is what made the mint reachable through a helper nobody audited.
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "ownership_with_enabled"
+    ),
   ]
 {
   if (rules |> count) == 0 {
@@ -946,9 +959,11 @@ type AcceptedReviewOutcome
   | AcceptedReviewRefused { because: AcceptedReviewRefusal }
 
 // THE ONLY MINT. Every argument is a fact the caller had to earn, and the join re-checks them against
-// each other rather than trusting any one: the path must be built from the run, the body must release
-// the claimed environment with the claimed state, the status must be the 204 only, and the sealed
-// ownership must attribute an enabled rule to the OBSERVED installation. admit_callers confines it to
+// each other rather than trusting any one: the path must be BUILT from the run, the body must release the
+// environment the caller named, the status must be the 204 only, and the sealed ownership must attribute an
+// enabled rule to the OBSERVED installation. NOTE WHAT IS NOT IN THAT LIST: the DECISION. No argument of
+// the caller's can say what was approved or rejected -- the body's own state is the only source of the
+// receipt (below), because a caller that could name it could mint a rejection that never happened. admit_callers confines it to
 // the answer route and the witnesses — a foreign module cannot obtain an AcceptedRuleReviewReceipt, so
 // it cannot hand one to the removal mint, which is the forgery this whole section exists to stop.
 fn mint_accepted_rule_review(
@@ -1167,6 +1182,104 @@ fn boundary_label(boundary: DeploymentGateBoundary) -> NonEmptyStr {
     concat(" (environment ", concat(boundary.environment_name as String, ")"))) as NonEmptyStr
 }
 
+// THE STANDING THE ACT CONSUMES, AS A SEALED FRESH READ (side chat, blocker 3).
+//
+// THE DEFECT: reviewer_removal_act_for took only (boundary, admission). Approve on rule A, reject on
+// rule B, then the App rule is DISABLED in the GitHub UI or replaced by a different rule id, and the
+// old admission still yielded a Ready act -- because the trial pair proves the rule worked WHEN THE
+// TRIAL RAN, and nothing in the admission says anything about now. An admission is historical evidence,
+// and historical evidence was being spent as if it were current authority.
+//
+// THE FIX IS A SECOND, INDEPENDENT READ, taken immediately before the removal and sealed so that
+// existing at all means it passed: the rule is still enabled and attributed to the observed App, a human
+// required-reviewer is STILL PRESENT (typed, not a string that might say so), and the main-only branch
+// policy is STILL PRESENT. The act is issued only when this read agrees with the historical pair about
+// which rule, which installation, which repository and which environment they are both talking about.
+//
+// WHY THE REVIEWER/BRANCH CHECKS LIVE AT THIS MINT AND NOT IN THE ACT FUNCTION. They are properties of
+// the read itself: a CurrentRemovalBoundaryStanding that failed them cannot be constructed, so a consumer
+// holding one has nothing left to re-check, and re-checking them downstream would be exactly the
+// unreachable re-validation of a construction the side chat made me delete one round ago (R1, §4b).
+type StandingRefusalReason
+  = OwnershipWasNotEstablished { because: OwnershipRefusalReason }
+  // The human required-reviewer is gone. If the reviewer has already been removed, there is no act to
+  // perform, and answering as if there were one is how a second removal gets waved through -- and it is
+  // also the state in which the App gate is the ONLY thing left, which is the configuration this whole
+  // design refuses to reach except by the witnessed route.
+  | RequiredReviewerIsNoLongerPresent { environment: NonEmptyStr }
+  // The main-only deployment-branch rule is gone. The environment is now reachable from any ref, so the
+  // boundary has ALREADY been weakened and no removal may be issued against it until it is repaired.
+  | BranchPolicyIsNoLongerMainOnly { environment: NonEmptyStr }
+
+type CurrentRemovalBoundaryStanding sole_constructor {
+  // THE RULE AND THE INSTALLATION, AS READ NOW, by the same sealed door the trial used.
+  ownership: ObservedRuleOwnership,
+  // THE PROTECTION, AS READ NOW. Reusing GitHubEnvironmentProtectionSettings and the two predicates
+  // gunbc.auth.github_deployment_environment already owns, rather than minting a parallel "is the
+  // reviewer there" boolean that could disagree with them (§2, §3).
+  protection: GitHubEnvironmentProtectionSettings,
+}
+
+type RemovalBoundaryStandingObservation
+  = StandingRead { standing: CurrentRemovalBoundaryStanding }
+  | StandingRefused { because: StandingRefusalReason }
+
+// THE ONLY DOOR TO A STANDING READ. Admitted to the broker's answer route and to the witnesses that
+// exercise it; a foreign module cannot produce one, which is what stops a Ready act being reached
+// without a current read.
+fn observe_removal_boundary_standing(
+  ownership: EnvironmentRuleOwnership,
+  protection: GitHubEnvironmentProtectionSettings
+) -> RemovalBoundaryStandingObservation
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_answer",
+      decl_name: "answer_pending_environment_gate"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_fixture"
+    ),
+    // THE DISABLED-RULE CASE BUILDS ITS OBSERVATION THROUGH THIS DOOR TOO. It is not a second door: it
+    // can only produce a STANDING THAT REFUSES, because the ownership read inside it says the rule is
+    // switched off. Naming it keeps the "the rule no longer stands" RED honest -- the case is reached by
+    // an upstream read, not by writing a variant literal.
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_disabled_rule"
+    ),
+  ]
+{
+  match ownership {
+    NotOwnedByGateApp { because: because } => StandingRefused {
+      because: OwnershipWasNotEstablished { because: because },
+    }
+    OwnedByGateApp { observation: observation } =>
+      // NO FOURTH ARM FOR "THE RULE IS DISABLED", and the absence is deliberate.
+      // observe_rule_ownership already requires enabled AND attributed to the observed App, so a rule
+      // that has been switched off arrives here as NotOwnedByGateApp { because: NoEnabledRule } and is
+      // refused by the arm above. An arm below for the same state could never fire, and §4b is the rule
+      // that says an arm which cannot fire is worse than no arm at all: it is cited as coverage while
+      // asserting a state forbidden nowhere it runs.
+      if !environment_protection_requires_reviewers(settings: protection) {
+        StandingRefused {
+          because: RequiredReviewerIsNoLongerPresent { environment: observation.environment_name },
+        }
+      } else if !environment_protection_restricts_to_main(settings: protection) {
+        StandingRefused {
+          because: BranchPolicyIsNoLongerMainOnly { environment: observation.environment_name },
+        }
+      } else {
+        StandingRead {
+          standing: CurrentRemovalBoundaryStanding {
+            ownership: observation,
+            protection: protection,
+          },
+        }
+      }
+  }
+}
+
 // THE TRIALS THAT COUNT: two ACCEPTED CALLS — one approve, one reject — both on the environment whose
 // reviewer is about to be removed, on DIFFERENT runs. One dispatch cannot show that the broker refuses
 // when it should, which is the half of the gate that stops being tested the moment the human reviewer
@@ -1237,6 +1350,38 @@ type RemovalRefusalReason
   | ActAddressedAnotherRepository {
       expected_repository: NonEmptyStr,
       witnessed_repository: NonEmptyStr,
+    }
+
+  // THE TRIAL IS HISTORICAL AND THE CURRENT READ DISAGREES WITH IT (side chat, blocker 3). A standing is
+  // only minted when the rule is enabled, the human reviewer is present and the branch policy is main-only,
+  // so these four arms are about AGREEMENT with what the trial proved, not about re-proving the standing:
+  // the standing is sealed, and re-checking its own properties downstream would be the unreachable
+  // re-validation of a construction that §4b forbids.
+  //
+  // NO STANDING WAS READ, or the read refused. This arm CARRIES THE CAUSE rather than flattening it:
+  // "the App's rule is switched off", "the human reviewer is already gone" and "the main-only branch rule
+  // has gone" are three different repairs for the operator, and a report that says only "no standing"
+  // makes the operator re-derive which one. It is also what gives StandingRefusalReason's payloads a
+  // consumer -- a typed refusal nobody can read out of a decision is a second name for silence (§5).
+  | StandingWasNotRead { because: StandingRefusalReason }
+  | ActStandingDisagreesOnRule {
+      standing_rule_id: Int,
+      approved_rule_id: Int,
+      rejected_rule_id: Int,
+    }
+  | ActStandingDisagreesOnInstallation {
+      standing_installation_id: GitHubAppInstallationId,
+      approved_installation_id: GitHubAppInstallationId,
+      rejected_installation_id: GitHubAppInstallationId,
+    }
+  | ActStandingDisagreesOnEnvironment {
+      standing_environment: NonEmptyStr,
+      approved_environment: NonEmptyStr,
+      rejected_environment: NonEmptyStr,
+    }
+  | ActStandingDisagreesOnRepository {
+      standing_repository: NonEmptyStr,
+      expected_repository: NonEmptyStr,
     }
   // THERE IS NO "ARMS ADDRESS DIFFERENT REPOSITORIES" ARM ANY MORE, and that is deliberate rather than
   // an oversight: with each arm compared against the boundary's repository, two arms that both match it
