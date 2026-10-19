@@ -23,8 +23,8 @@ import extdeps.swift_toolchain {
   Unverified,
   CitedToAuthority,
   pinned_swift_toolchain,
-  swift_toolchain_declared_archives,
   swift_toolchain_pinned_archive,
+  swift_toolchain_archive_as_pin,
   swift_toolchain_archive_subject,
   swift_toolchain_archive_is_verified,
   swift_toolchain_archive_url,
@@ -39,13 +39,6 @@ import extdeps.swift_toolchain {
   swift_toolchain_standing_cites_signature,
   swift_toolchain_digest_is_a_known_refused_value,
   swift_toolchain_refused_digest_from_fabricated_pin,
-  swift_toolchain_runtime_dependency_closure,
-  swift_toolchain_typecheck_file_set,
-  swift_toolchain_test_file_set,
-  swift_toolchain_wire_fixture_path,
-  swift_toolchain_foundation_networking_gap_files,
-  swift_toolchain_file_needs_foundation_networking,
-  swift_toolchain_file_is_in_typecheck_unit,
 }
 
 // WHAT THIS WITNESS HOLDS.
@@ -125,7 +118,13 @@ test fn verification_refuses_a_mismatched_archive_and_accepts_only_the_signed_on
     && !swift_toolchain_candidate_is_usable(candidate: truncated)
     // The refusal NAMES the cause, so a run cannot report "digest mismatch" for a signature failure.
     && match swift_toolchain_verify(candidate: unsigned_bytes) {
-         Present { value: SignatureUnverified { detail: _ } } => true
+         // The refusal carries the authorities a reader needs to fix it, read out of the rows rather than
+         // retyped at the call site: keyring to import, instructions that define a good signature. Drop the
+         // rows' contents and this goes red -- that is those rows' consumer.
+         Present { value: SignatureUnverified { detail: d, keyring: k, instructions: i } } =>
+           !is_empty(xs: d)
+             && k.uri.locator == "swift.org/keys/all-keys.asc"
+             && i.uri.locator == "swift.org/install/linux/tarball/"
          _ => false
        }
     && match swift_toolchain_verify(candidate: signed_by_another_key) {
@@ -178,7 +177,7 @@ test fn the_gate_refuses_in_the_order_its_checks_are_written() -> Bool {
   // unsigned AND hashes wrong is refused for the signature. Hashing first would report DigestDiffersFromPin
   // here and send a reader hunting for tampering in bytes that were never upstream's to begin with.
   match swift_toolchain_verify(candidate: bad_every_way) {
-    Present { value: SignatureUnverified { detail: _ } } => true
+    Present { value: SignatureUnverified { detail: d, keyring: _, instructions: _ } } => !is_empty(xs: d)
     _ => false
   }
   // Then the key: a signature that verified is checked against the listed fingerprint before any hash.
@@ -246,10 +245,12 @@ test fn archive_url_is_derived_from_the_subject_and_not_stored_twice() -> Bool {
          == swift_toolchain_archive_url(subject: debian).locator
 }
 
-// The two states carry different FIELDS, so an unverified row cannot be dressed as a pin. The red is
-// constructed: a Verified arm demands a ByteSize and a Sha256Digest, which is exactly what an
-// un-fetched archive does not have -- if this file could construct a Verified row with a placeholder
-// size and an all-zero digest and have it read back as the pin, that is the defect.
+// THE PIN BOUNDARY, DRIVEN FROM BOTH SIDES. The rule "a verified row can be read as a pin, an unverified
+// row cannot" lives in one function (swift_toolchain_archive_as_pin) and is exercised here rather than
+// asserted: an unverified row built here yields NOTHING, the real pin yields its typed archive, and the
+// fields an unverified row is missing are exactly the ones the verified arm carries. The red is
+// constructed -- a Verified row with a placeholder size and an all-zero digest, or a rule that hands out
+// the unverified row, turns this red.
 test fn an_unverified_row_cannot_be_read_as_a_pin() -> Bool {
   let declared_only: SwiftToolchainArchive = Unverified {
     declared: SwiftToolchainUnverifiedArchive {
@@ -260,45 +261,24 @@ test fn an_unverified_row_cannot_be_read_as_a_pin() -> Bool {
       reason: "no fetch observed"
     }
   }
-  let all_unverified = swift_toolchain_declared_archives.filter(r => !swift_toolchain_archive_is_verified(archive: r)).count()
-  let all_verified = swift_toolchain_declared_archives.filter(r => swift_toolchain_archive_is_verified(archive: r)).count()
-  !swift_toolchain_archive_is_verified(archive: declared_only)
-    && all_verified == 1
-    && all_unverified == 2
-    && match declared_only {
-         Verified { archive: a } => byte_size_count(b: a.observed_size) > 0
-         Unverified { declared: d } => !is_empty(xs: d.reason)
-       }
-}
-
-// The typecheck unit is a row, in compile order, and it is the THREE files together. This is the
-// structural half of the probe's first finding: checking Protocol.swift alone is a spurious red because
-// it reads Route from Wire.swift, so a set that drops Wire.swift would be a lie the label could tell.
-test fn typecheck_unit_is_one_ordered_row_of_the_three_files() -> Bool {
-  swift_toolchain_typecheck_file_set.count() == 3
-    && swift_toolchain_file_is_in_typecheck_unit(path: "apps/approve-ios/Approve/Protocol.swift")
-    && swift_toolchain_file_is_in_typecheck_unit(path: "apps/approve-ios/Approve/Wire.swift")
-    && swift_toolchain_file_is_in_typecheck_unit(path: "apps/approve-ios/Approve/EnrolmentMachine.swift")
-    && !swift_toolchain_file_is_in_typecheck_unit(path: "apps/approve-ios/Approve/DeviceKeys.swift")
-    && swift_toolchain_typecheck_file_set == [
-         "apps/approve-ios/Approve/Protocol.swift",
-         "apps/approve-ios/Approve/Wire.swift",
-         "apps/approve-ios/Approve/EnrolmentMachine.swift"
-       ]
-    && swift_toolchain_wire_fixture_path == "dag/test/fixture/approval_device_redemption/vectors.json"
-    && swift_toolchain_test_file_set == [
-         "apps/approve-ios/ApproveTests/ProtocolVectorTests.swift",
-         "apps/approve-ios/ApproveTests/EnrolmentMachineTests.swift"
-       ]
-}
-
-// The gap is attributed to exactly one file. Widening the list to "everything that imports Foundation"
-// would keep the instrument green while hiding which file actually needs the shim, which is the whole
-// reason the gap is data rather than prose.
-test fn foundation_networking_gap_names_only_wire() -> Bool {
-  swift_toolchain_foundation_networking_gap_files == ["apps/approve-ios/Approve/Wire.swift"]
-    && swift_toolchain_file_needs_foundation_networking(path: "apps/approve-ios/Approve/Wire.swift")
-    && !swift_toolchain_file_needs_foundation_networking(path: "apps/approve-ios/Approve/Protocol.swift")
-    && !swift_toolchain_file_needs_foundation_networking(path: "apps/approve-ios/Approve/EnrolmentMachine.swift")
-    && swift_toolchain_runtime_dependency_closure.filter(closure => closure == "libncurses6").count() == 1
+  // One side of the boundary: nothing to hand out, not a zero-filled stand-in.
+  match swift_toolchain_archive_as_pin(archive: declared_only) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // The other side: the pin yields the typed archive, and the carriers that make it meaningful are there
+  // -- a positive size and a digest that is the value the signature was checked against.
+  && match swift_toolchain_archive_as_pin(archive: pinned_swift_toolchain) {
+       Present { value: a } =>
+         byte_size_count(b: swift_toolchain_expected_size(archive: a)) == 1122730813
+           && swift_toolchain_expected_digest(archive: a).hex
+                == "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47"
+           && swift_toolchain_standing_cites_signature(standing: a.standing)
+       Absent => false
+     }
+  // And the unverified row says why it is unverified, because a bare absence of evidence is not a record.
+  && match declared_only {
+       Unverified { declared: d } => !is_empty(xs: d.reason)
+       Verified { archive: _ } => false
+     }
 }

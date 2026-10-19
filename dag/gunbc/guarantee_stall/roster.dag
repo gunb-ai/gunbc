@@ -257,7 +257,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   filesystem_read_outcome_node_grain_census_stall,
   authored_record_field_list_standing_for_type_population_stall,
   native_step_trip_awaits_fleet_job_cgroup_stall,
-  compute_cold_reserve_durable_commit_stall,,
+  compute_cold_reserve_durable_commit_stall,
   approve_ios_linux_swift_receipt_not_dispatchable_stall
 ]
 

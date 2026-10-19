@@ -27,15 +27,21 @@ import extdeps.version { VersionIdentity }
 // WHAT READS THIS MODULE TODAY, STATED HONESTLY. The claims in
 // dag/test/claim/swift_toolchain_pin_witness.dag are the only consumers right now, and they are
 // interpreter-executed (claim_batch --entry, or gunbc test with the target naming a claim FUNCTION).
-// The rosters below -- verification order, the typecheck/test file sets, the runtime dependency closure,
-// the FoundationNetworking gap -- are read by those claims and by NOTHING ELSE, because no
-// //gunbc/instruments:approve-ios-linux-swift exists yet: `gunbc test <label>` realizes an instrument
-// only through the hand-written Rust `instrument_registry` and its `match` on producers
-// (src/v1/stage0/src/target_invocation_host.rs), and that arm is outside a .dag PR's authority. The rows
-// are therefore the CONTRACT the instrument must be written against, not evidence that it runs -- and
-// until the arm exists, the L1 receipts in this PR's body are run by hand and are receipts of a hand
-// run, not of a label. Naming that here is the point: rows no one reads are a parallel representation,
-// and the fix is either the reader or the rows, never a comment claiming the reader.
+// THERE ARE NO PROCEDURE ROWS HERE, AND THAT IS A DECISION WITH A REASON. An earlier version of this
+// module carried a verification-order list, a typecheck file set, a test file set, a runtime dependency
+// closure and a FoundationNetworking gap list, each "for the instrument". No instrument can exist from a
+// .dag PR: `gunbc test <label>` realizes an instrument only through the hand-written Rust
+// `instrument_registry` and its `match` on producers (src/v1/stage0/src/target_invocation_host.rs) and
+// never consults gunbc.instrument_targets or gunbc.target_binding -- and the operator ruled the seed is
+// not to be grown for this lane. So those rows had exactly one reader: a claim that string-matched them.
+// A claim that echoes a row does not consume it, and the claim language has no way to read a file or run a
+// process, so no claim could ever have followed them. They are deleted; DESIGN 3c (name the consumer and
+// the executing route) is the reason. WHAT REMAINS HERE IS WHAT A CLAIM CAN EXERCISE: the pin, the
+// signature authorities, and the gate -- driven with candidates and asserted on the named refusal it
+// returns. The procedure facts those rows used to hold (which files, which suite, which fixture, which
+// gap file) now live in gunbc.guarantee_stall.approve_ios_linux_swift_receipt_not_dispatchable_stall,
+// where they are the population and trigger of a DECLARED stall: the run is by hand, that is admitted,
+// and the row says what would have to be dispatchable to stop needing a person.
 //
 // WHY A DISTRIBUTION IS PART OF THE SUBJECT, NOT A FOOTNOTE ON THE VERSION. swift.org ships the same
 // version per distribution with no guarantees across them: the tarballs differ in content and in loader
@@ -52,20 +58,22 @@ import extdeps.version { VersionIdentity }
 //
 // DECLARED IS NOT PINNED, AND THE TYPES SAY SO. An archive nobody has fetched is recorded as
 // SwiftToolchainUnverifiedRow, which has NO size field and NO digest field -- so it cannot be read as a
-// pin, and there is no empty string standing in for a number. That is what makes the Ubuntu rows
-// useful (they name where a future runner should fetch from) without letting an unverified row travel as
-// a verified one.
+// pin, and there is no empty string standing in for a number. A row for a release nobody fetched is
+// therefore a statement about a future fetch, never something that can travel as a verified one.
 //
 // THE TRANSPORT GAP, RECORDED NOT SILENTLY PATCHED. On swift-corelibs-foundation the HTTP transport
 // types (URLRequest, URLResponse, HTTPURLResponse, URLSession) live in a separate FOUNDATIONNETWORKING
 // module; on Apple platforms they are inside Foundation. apps/approve-ios/Approve/Wire.swift imports
 // only Foundation and uses all four, so on Linux it does not compile unedited (observed: 8 typecheck
-// errors, all at those uses in the transport functions). The instrument reaches green only by ADDING a
+// errors, all at those uses in the transport functions). The hand run reaches green only by ADDING a
 // separate harness-owned file that re-exports that module: no shipped file is edited and the iOS build
-// is untouched, but the instrument must name the added file and must not let it grow into a place where
-// behavior is patched. Protocol.swift and EnrolmentMachine.swift typecheck against Foundation alone;
+// is untouched, and the added file stays a harness file -- its existence IS the declared gap, and it must
+// never become the place where behavior is patched. Protocol.swift and EnrolmentMachine.swift typecheck against Foundation alone;
 // Protocol.swift still cannot be typechecked on its own, because it reads `Route`, declared in
-// Wire.swift -- so the three are ONE unit (see swift_toolchain_typecheck_file_set).
+// Wire.swift -- so the three are ONE unit, compiled together as the module Approve. That file set is a
+// fact about a hand run, not a row: nothing in the seed dispatches the run (see the guarantee_stall row
+// gunbc.guarantee_stall.approve_ios_linux_swift_receipt_not_dispatchable_stall, which carries it), and a
+// row a claim only echoes is a second place to keep a list nobody reads.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -267,35 +275,6 @@ data swift_toolchain_signing_key_fingerprint: NonEmptyStr = "52BB7E3DE28A71BE22E
 // fetch logs; nobody should have to take that comparison on trust.
 data swift_toolchain_refused_digest_from_fabricated_pin: NonEmptyStr = "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313"
 
-// The digest a candidate archive must equal, derived from the pin rather than re-typed at the call site:
-// an instrument that compares against a literal it carried itself could carry a different literal.
-fn swift_toolchain_digest_matches_pin(digest: Sha256Digest) -> Bool {
-  match swift_toolchain_pinned_archive() {
-    // Absent refuses rather than answering: an unverifiable pin accepts nothing.
-    Absent => false
-    Present { value: a } => content_hash_eq_cryptographic(
-      left: digest, right: swift_toolchain_expected_digest(archive: a))
-  }
-}
-
-// The size a candidate archive must equal. Held separate from the digest check on purpose: a fetch whose
-// size disagrees has been truncated, and reporting that as "wrong digest" would send a reader to look for
-// tampering when the pipe is what closed.
-fn swift_toolchain_size_matches_pin(size: ByteSize) -> Bool {
-  match swift_toolchain_pinned_archive() {
-    Absent => false
-    Present { value: a } => byte_size_count(b: size) == byte_size_count(b: swift_toolchain_expected_size(archive: a))
-  }
-}
-
-// Whether a candidate archive is the pinned one. THIS IS NOT THE VERIFICATION -- it is one half of it, and
-// naming it separately is what keeps "the hash matched" from being reported as "the toolchain was
-// verified". Signature first, then digest, then size; see the instrument.
-fn swift_toolchain_archive_matches_pin(digest: Sha256Digest, size: ByteSize) -> Bool {
-  swift_toolchain_digest_matches_pin(digest: digest)
-    && swift_toolchain_size_matches_pin(size: size)
-}
-
 // THE ORDER OF VERIFICATION LIVES IN ONE PLACE: `verify_against`, which checks signature, then key, then
 // digest, then size, and returns the FIRST refusal it reaches. It used to be spelled a second time here as
 // a List<NonEmptyStr> of step names -- and the two copies already disagreed, that list put compare-size
@@ -322,8 +301,17 @@ type SwiftToolchainCandidate {
 // reader to three different places, and the last of those is the one that used to be confused with the
 // others -- a hash that differed from a PIN THAT WAS ITSELF WRONG was reported as if the archive were
 // suspect.
+// A refusal is the ONLY thing this module says to a human, so a refusal carries what the reader needs to
+// re-run rather than making them hunt for it: the signature refusals name the keyring to import and the
+// instructions that define "good signature", both read from the authority rows below. That is those rows'
+// consumer -- the gate itself, on the path a mismatched archive actually takes -- and it is why the hint
+// cannot drift from the authority: there is no second place to type it.
 type SwiftToolchainRefusal
-  = SignatureUnverified { detail: NonEmptyStr }
+  = SignatureUnverified {
+      detail: NonEmptyStr
+      keyring: ExternalAuthority
+      instructions: ExternalAuthority
+    }
   | SignedByUnlistedKey { observed_fingerprint: NonEmptyStr }
   | DigestDiffersFromPin { observed: Sha256Digest, pinned: Sha256Digest }
   | SizeDiffersFromPin { observed: ByteSize, pinned: ByteSize }
@@ -352,7 +340,11 @@ fn swift_toolchain_verify(candidate: SwiftToolchainCandidate) -> SwiftToolchainR
 fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVerifiedArchive) -> SwiftToolchainRefusal? {
   if !candidate.signature_verified {
     Present {
-      value: SignatureUnverified { detail: "gpg did not report a Good signature; swift.org's instructions forbid using the toolchain" }
+      value: SignatureUnverified {
+        detail: "gpg did not report a Good signature; swift.org's instructions forbid using the toolchain"
+        keyring: swift_toolchain_signing_keyring_authority
+        instructions: swift_toolchain_verification_instructions_authority
+      }
     }
   } else if candidate.signing_key_fingerprint != swift_toolchain_signing_key_fingerprint {
     Present { value: SignedByUnlistedKey { observed_fingerprint: candidate.signing_key_fingerprint } }
@@ -405,30 +397,6 @@ fn swift_toolchain_digest_is_a_known_refused_value(digest: Sha256Digest) -> Bool
   digest.hex == swift_toolchain_refused_digest_from_fabricated_pin
 }
 
-// Declared rows for distributions a runner might move to. Neither is verified, and neither can become
-// one without a fetch supplying a size and a digest -- there is no field here to fill in with a guess.
-data swift_toolchain_declared_archives: List<SwiftToolchainArchive> = [
-  pinned_swift_toolchain,
-  Unverified {
-    declared: SwiftToolchainUnverifiedArchive {
-      subject: SwiftToolchainArchiveSubject {
-        distribution: Ubuntu2404
-        version: "6.4.1" as VersionIdentity
-      }
-      reason: "no fetch of this archive has been observed on an Ubuntu 24.04 runner, so neither its size nor its digest is known"
-    }
-  },
-  Unverified {
-    declared: SwiftToolchainUnverifiedArchive {
-      subject: SwiftToolchainArchiveSubject {
-        distribution: Ubuntu2204
-        version: "6.4.1" as VersionIdentity
-      }
-      reason: "no fetch of this archive has been observed on an Ubuntu 22.04 runner, so neither its size nor its digest is known"
-    }
-  }
-]
-
 // The pin, readable only as a verified archive. A caller gets the typed row or nothing -- there is no
 // path by which an unverified row is handed out as a pin.
 fn swift_toolchain_pinned_archive() -> SwiftToolchainVerifiedArchive? {
@@ -448,51 +416,3 @@ fn swift_toolchain_expected_digest(archive: SwiftToolchainVerifiedArchive) -> Sh
   archive.expected_identity
 }
 
-// Runtime closures the archive needs beyond the base image. Named because a run that skips them fails at
-// `swift --version` with a missing-library error that reads like a corrupt download, and because a run
-// installing a different closure is not the run this pin was observed on.
-data swift_toolchain_runtime_dependency_closure: List<NonEmptyStr> = [
-  "libncurses6",
-  "libcurl4",
-  "libxml2",
-  "libedit2",
-  "libsqlite3-0",
-  "libz3-4"
-]
-
-// THE TYPECHECK UNIT, AS A ROW. The three files are checked TOGETHER as one module because Protocol.swift
-// reads `Route`, which Wire.swift declares: typechecking them separately is a spurious red on
-// Protocol.swift and a green on a file whose counterpart was never looked at. Storing the set is what
-// keeps that from being a habit the runner has to remember. Paths are repo-relative, in order, and the
-// instrument compiles exactly this list.
-data swift_toolchain_typecheck_file_set: List<NonEmptyStr> = [
-  "apps/approve-ios/Approve/Protocol.swift",
-  "apps/approve-ios/Approve/Wire.swift",
-  "apps/approve-ios/Approve/EnrolmentMachine.swift"
-]
-
-// The XCTest units run against the fixture, and the fixture itself, as rows for the same reason: the
-// instrument must not be free to run a smaller set and report the same label.
-data swift_toolchain_test_file_set: List<NonEmptyStr> = [
-  "apps/approve-ios/ApproveTests/ProtocolVectorTests.swift",
-  "apps/approve-ios/ApproveTests/EnrolmentMachineTests.swift"
-]
-
-data swift_toolchain_wire_fixture_path: NonEmptyStr = "dag/test/fixture/approval_device_redemption/vectors.json"
-
-// The transport gap as data a rung names rather than prose it restates: the shipped files whose Linux
-// compile depends on FoundationNetworking being brought in from outside. Exactly one file, because
-// exactly one file was observed to need it.
-data swift_toolchain_foundation_networking_gap_files: List<NonEmptyStr> = [
-  "apps/approve-ios/Approve/Wire.swift"
-]
-
-fn swift_toolchain_file_needs_foundation_networking(path: NonEmptyStr) -> Bool {
-  swift_toolchain_foundation_networking_gap_files.any(candidate => candidate == path)
-}
-
-// Whether a file is part of the typecheck unit. The instrument asks this rather than re-listing the set,
-// so a file added to the set is compiled by every consumer of the label.
-fn swift_toolchain_file_is_in_typecheck_unit(path: NonEmptyStr) -> Bool {
-  swift_toolchain_typecheck_file_set.any(candidate => candidate == path)
-}

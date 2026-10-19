@@ -38,13 +38,13 @@ data approve_ios_linux_swift_receipt_not_dispatchable_stall: GuaranteeStall = Gu
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: [
-      "apps/approve-ios/Approve/{Protocol,Wire,EnrolmentMachine}.swift typechecked as the one module Approve (the three files are one unit: Route is declared in Wire.swift, so Protocol.swift alone does not resolve)",
-      "apps/approve-ios/ApproveTests/{ProtocolVectorTests,EnrolmentMachineTests}.swift executed through swift-corelibs-xctest against dag/test/fixture/approval_device_redemption/vectors.json",
+      "apps/approve-ios/Approve/Protocol.swift, Wire.swift and EnrolmentMachine.swift typechecked as the one module Approve (the three files are one unit: Route is declared in Wire.swift, so Protocol.swift alone does not resolve)",
+      "apps/approve-ios/ApproveTests/ProtocolVectorTests.swift and EnrolmentMachineTests.swift executed through swift-corelibs-xctest against dag/test/fixture/approval_device_redemption/vectors.json",
       "the fetch-then-verify step over extdeps.swift_toolchain's pinned archive (swift-6.4.1-RELEASE, debian13): signature against the published keyring, then digest and size against the pin"
     ] },
   // The capability, not its owner. SUFFICIENT FOR is written so a substitute cannot retire the row: a
   // hand run whose output is pasted into a label's report, or a label that typechecks one file at a time,
   // retires nothing, because the thing missing is that the machine runs the sequence -- including the
   // verification -- and can be made to refuse.
-  next_rung_trigger: climbs_when(capability: "gunbc test //gunbc/instruments:approve-ios-linux-swift dispatches on the current head and exits nonzero when any of its legs fails, having fetched the pinned archive, verified its signature against the published keyring and fingerprint, refused any archive whose digest or size differs from the pin, typechecked the Foundation-only file set from the declared row as ONE module, and executed both ApproveTests suites against vectors.json. SUFFICIENT FOR: flipping one byte of vectors.json, or one byte of a generated wire constant, turns the label red on the named test; deleting the harness's FoundationNetworking re-export turns it red on the declared gap. A hand-produced receipt reported through a label, a label that typechecks the files separately, or one that skips the signature step retires nothing")
+  next_rung_trigger: climbs_when(capability: "gunbc test //gunbc/instruments:approve-ios-linux-swift dispatches on the current head and exits nonzero when any of its legs fails, having fetched the pinned archive, verified its signature against the published keyring and fingerprint, refused any archive whose digest or size differs from the pin, typechecked the three Foundation-only files of apps/approve-ios/Approve as ONE module named Approve, and executed both ApproveTests suites against vectors.json. SUFFICIENT FOR: flipping one byte of vectors.json, or one byte of a generated wire constant, turns the label red on the named test; deleting the harness's FoundationNetworking re-export turns it red on the declared gap. A hand-produced receipt reported through a label, a label that typechecks the files separately, or one that skips the signature step retires nothing")
 }
