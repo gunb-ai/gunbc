@@ -329,3 +329,78 @@ profile.
 - One shared type reached in both roles (P2.8).
 - Service propagation through a chain and a diamond (P2.6).
 - Closure cases with bare names and primary-root precedence (P1.4, P2.1).
+
+## 5. Dispatch briefs, wave 1
+
+A worker **pins** its brief by citing this file at a fixed commit sha (`git show <sha>:docs/plans/v1-interface-cull-audit.md`) in its first message and its PR body. It works from that text, not from a later edit. If a brief changes, the new text gets a new sha and the worker is told which one.
+
+**Common preamble (applies to every lane).** Read DESIGN.md §2, §5 and §6b first, then §3a and §4 above. Rules for every lane:
+- Delete demand that has no consumer, or share a value computed twice. Never add a cache.
+- Before the change, state which repeated work disappears and what must stay unchanged.
+- Show that outputs and refusals are unchanged on a small discriminating test case.
+- Run the required routes `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli` through CI.
+- srv1 and srv2 are available for profiling. Use `sudo /usr/lib/linux-tools/6.8.0-147-generic/perf record --call-graph fp -p <pid>` on a seed built with `-C force-frame-pointers=yes`, under a private `CARGO_TARGET_DIR`. Change nothing host-wide.
+- One PR per lane. Edit only the files your lane names. Ask the operator to land it.
+
+### A: Loader timing receipt and shared lookup (P0.1 + P0.6)
+In `src/v1/stage0/src/cli_run.rs`:
+1. Make `compile_emission_over` print the existing `cli_run/pre_entry_phase.rs` receipt (`take_lines()`), plus a total transaction duration. Say whether each row is inclusive or exclusive.
+2. In `extend_with_bare_reference_closure`, reuse `pool_path_lookup(index)` instead of rebuilding `path_to_source_lookup(&index.source_files)` on every fixpoint round. Show the closure and its order are unchanged on the self-host entry and on a bare-name test case.
+
+Files: `cli_run.rs` and `cli_run/pre_entry_phase.rs` only.
+
+### B: Stop binding annotations on the compile path (P0.2)
+`v1.compiler.compile` `front_end_sources` always runs `bind_annotations`, which derives and sorts regions. It costs ~35 s of frontend's 55 s, and `compile_to_resolved_with_options` never reads `frontend.annotations`.
+1. Enumerate every reader of annotation binding (round-trip and annotation-gap claims).
+2. Move the demand to those readers. Verify that binding is total and has no refusal to keep.
+3. Keep those claims green.
+
+Files: `src/v1/compile.dag`, `src/v1/annotation_bind.dag`, and their consumers. Leave the emitter's `sort_by` lowering alone.
+
+### C: Emit import planning (P0.3 + P0.4 + P0.5)
+In `src/v1/05_emit_rust.dag`:
+1. Delete the absorbed disjunction in `(authored ∨ anonymous_head ∨ emitted_token) ∧ ¬builtin ∧ emitted_token`, plus any local producers that become unused. Check each helper's other consumers first.
+2. Compute `applied_type_argument_names` once in `emit_module_full`, and pass it to both `emit_imports` and `reference_derived_use_line_plan`.
+3. Carry `provider_module` from `CandidateSurvived` instead of looking it up again. Turn the per-provider binding rescan into one grouping pass in canonical order.
+4. Emitted bytes must be identical for both required closures; diff the emitted trees.
+
+`struct_candidates_by_field_names` is out of scope (wave 2). Files: `05_emit_rust.dag` and its regenerated mirrors only.
+
+### D: Reconcile hot-frame diagnosis (P0.7), diagnosis only
+Profile on srv1 and take the exclusive (self) time of each sub-frame under `v1.compiler.infer`. Cover:
+- `infer_call_arguments_generic_pass` (58% inclusive, which includes recursive argument inference);
+- `expand_nominal_alias_rhs` (24%);
+- `direct_call_arg_mismatch_diags`;
+- `text_representation_by_identity`;
+- `authored_name_at` (22%);
+- repeated per-module kernel setup;
+- repeated argument-to-parameter matching.
+
+For each real defect, name the earliest unjustified boundary (§6b) and propose it as a P-item. Commit findings to this file, §3a and §4 only, on this PR's branch.
+
+### E: Post-emit reverse index (P1.6)
+`gunbc_crate_partition` `emitted_target_reach` → `reached_set` → `std.graph` `graph_reverse_reachable_members` → `reverse_adjacency` rebuilds the reverse index for every query, ~19 s after emit.
+1. Build the index once per graph, at `std.graph`.
+2. Check the other callers (§6b breadth).
+3. The emitted workspace must be identical.
+
+Files: `dag/std/graph.dag` (and its mirror) and the partition call sites.
+
+### F: Cull discovery and deletion (P2.10 + P2.11 + P2.12)
+1. From the 116 single-occurrence v1 functions (§3), subtract the names that are string-reachable: rosters, `--function` entries, claim and witness discovery, instrument rows.
+2. List the importers of `trace.dag` and `expected_red_roster_join.dag` by name. They are outside the required gate.
+3. Trace each single-referrer host module (§1.3) and each `src/bin/*` to a live invocation.
+4. Delete in batches, one PR each, each proved by a build. Avoid files owned by lanes B, C and E until they land.
+5. Turn the census into a `gunbc test` row (P2.13).
+
+### Wave 2 (after C lands)
+- P1.5: record-field lookup.
+- P1.1: `sort_by` lowering.
+- Whatever D proposes.
+
+### Wave 3
+- P1.2: module index from paths.
+- P1.3: the parser allocator postcondition.
+- P1.4: one closure worklist.
+- P1.8: the census service view.
+- P1.7: exit teardown.
