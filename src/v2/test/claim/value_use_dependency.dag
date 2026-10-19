@@ -1,6 +1,6 @@
 module v2.test.claim.value_use_dependency
 
-import std.algebra { Cons, Empty, contains, fold_list, length, list_append, list_at_optional, map_contains_key, map_support_keys }
+import std.algebra { Cons, Empty, contains, fold_list, length, list_append, list_at_optional, map_contains_key, map_lookup, map_support_keys }
 import extdeps.communication.medium { Lossless, Medium }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.occurrence_identity { OccurrenceId }
@@ -24,11 +24,12 @@ import v2.compiler.resolve {
   resolved_tree_lexical_binding
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.lexical_scope { bind_binder, bind_value }
 import v2.compiler.value_use_dependency {
   NotDerivedStanding,
   RecordAbsent,
-  ValuedSourceNotLocated,
-  ValuedSourceUnkeyed,
+  ValuedBinderNotLocated,
+  ValuedBinderSiteUnkeyed,
   ValuedUseNotLocated,
   ValueUseDependencies,
   ValueUseInput,
@@ -41,7 +42,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.dependency { DataDependsOn, DependencyView, dependency_view_relation }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Bind, ComputationNode, Node, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
+import v2.std.node { Bind, ComputationNode, Node, NodeOccurrenceIdentity, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
 import v2.std.provenance { node_occurrence_id_optional }
 import v2.std.qualified_name { lexical_reference_label_optional }
 import v2.std.text { String }
@@ -145,6 +146,7 @@ test fn vudd_a_independent_lets_yield_exactly_two_rows_holds() -> Bool {
       match value_use_dispositions(tree: tree) {
         d =>
           vudd_relation_count(d: d) == 2
+            && vudd_views_carry_every_relation(d: d)
             && vudd_every_row_is_data(d: d)
             && vudd_every_row_agrees_with_resolve(d: d, tree: tree)
             && vudd_dependents_are_distinct(d: d)
@@ -166,6 +168,7 @@ test fn vudd_b_value_use_inside_later_let_yields_row_holds() -> Bool {
       match value_use_dispositions(tree: tree) {
         d =>
           vudd_every_row_is_data(d: d)
+            && vudd_views_carry_every_relation(d: d)
             && vudd_every_row_agrees_with_resolve(d: d, tree: tree)
             && vudd_relation_count_for_spelling(d: d, spelling: "x") == 1
             && vudd_uses_inside_value(d: d, use_spelling: "x", value_spelling: "y")
@@ -200,12 +203,14 @@ test fn vudd_c_parameter_uses_are_input_dispositions_holds() -> Bool {
           vudd_relation_count(d: d) == 0
             && vudd_input_count(d: d) > 0
             && vudd_every_input_is_non_lexical(d: d)
+            && vudd_every_parameter_record_is_a_parameter_input(d: d, tree: tree)
+            && vudd_has_parameter_input(d: d)
       }
   }
 }
 
-// (f) THE SOURCE IS THE RESOLVED VALUE. One row; its source carries the occurrence resolve recorded for
-// x's value and IS the Bind's value child in ResolvedTree.root under structural equality; the recorded
+// (f) THE SOURCE IS THE RESOLVED VALUE. One row; its source IS the Bind's value child in ResolvedTree.root
+// under structural equality, the Bind resolve named by its binder site; the recorded
 // node is NOT that child (so the fixture discriminates: sourcing at the record fails here); and a
 // scheduler that has completed exactly the resolved value finds the row's dependent unblocked
 // (v2.workflow.scheduler scheduler_relation_unblocked under scheduler_node_eq, over the row's own
@@ -222,6 +227,7 @@ test fn vudd_f_source_is_the_resolved_value_holds() -> Bool {
               match d.relations {
                 Cons { head: r, tail: Empty } =>
                   r.view.source == resolved_value
+                    && vudd_views_carry_every_relation(d: d)
                     && vudd_row_agrees_with_resolve(r: r, tree: tree)
                     && vudd_recorded_value_differs(r: r, tree: tree, resolved_value: resolved_value)
                     && scheduler_relation_unblocked(
@@ -399,8 +405,9 @@ fn vudd_row_agrees_with_resolve(r: ValueUseRelation, tree: ResolvedTree) -> Bool
   match resolved_tree_lexical_binding(tree: tree, reference: r.view.dependent) {
     Present { value: b } =>
       match b.standing {
-        LexicalValued { node: value } =>
-          vudd_same_node(a: value, b: r.view.source) && vudd_node_in_resolved_tree(node: r.view.source, tree: tree)
+        LexicalValued { node: _ } =>
+          vudd_source_is_the_bound_value(source: r.view.source, binder_site: b.binder_site, tree: tree)
+            && vudd_node_in_resolved_tree(node: r.view.source, tree: tree)
         LexicalDeclared { node: _ } => false
         LexicalOwedFormal { field_type: _ } => false
         LexicalUntyped => false
@@ -408,6 +415,63 @@ fn vudd_row_agrees_with_resolve(r: ValueUseRelation, tree: ResolvedTree) -> Bool
     Absent => false
   }
     && vudd_same_node(a: r.view.dependent, b: r.view.usage_site)
+    && match node_occurrence_id_optional(node: r.view.dependent) {
+      Present { value: id } => vudd_same_occurrence(a: id, b: r.occurrence)
+      Absent => false
+    }
+}
+
+// THE SOURCE IS THE RESOLVED VALUE OF THE BIND resolve NAMED: walk the resolved tree for the Binds whose
+// binder atom sits at the recorded binder site -- a walk, not the derivation's index, so the claim does not
+// grade the index by itself -- and require exactly one, whose value IS the source under structural equality.
+fn vudd_source_is_the_bound_value(source: Node, binder_site: NodeOccurrenceIdentity, tree: ResolvedTree) -> Bool {
+  match vudd_bind_values_at(root: tree.root, binder_site: binder_site) {
+    Cons { head: value, tail: Empty } => value == source
+    _ => false
+  }
+}
+
+fn vudd_bind_values_at(root: Node, binder_site: NodeOccurrenceIdentity) -> List<Node> {
+  fold_list(
+    xs: node_subtree_nodes(root: root),
+    empty: [],
+    cons: fn(acc, n) { vudd_with_bind_value_at(acc: acc, n: n, binder_site: binder_site) }
+  )
+}
+
+fn vudd_with_bind_value_at(acc: List<Node>, n: Node, binder_site: NodeOccurrenceIdentity) -> List<Node> {
+  match bind_binder(n: n) {
+    Present { value: binder } =>
+      if binder.atom.occurrence_id == binder_site {
+        match bind_value(n: n) {
+          Present { value: value } => list_append(left: acc, right: [value])
+          Absent => acc
+        }
+      } else {
+        acc
+      }
+    Absent => acc
+  }
+}
+
+// THE EXPORTED PROJECTION CARRIES EVERY RELATION: value_use_views is what A4 reads, so the positive claims
+// assert through it -- same length as the relation population, and every relation's view present in it.
+// A projection that returned [] or dropped a row would leave the relation population intact and fail here.
+fn vudd_views_carry_every_relation(d: ValueUseDependencies) -> Bool {
+  length(xs: value_use_views(d: d)) == vudd_relation_count(d: d)
+    && fold_list(
+      xs: d.relations,
+      empty: true,
+      cons: fn(acc, r) { acc && vudd_view_in(views: value_use_views(d: d), view: r.view) }
+    )
+}
+
+fn vudd_view_in(views: List<DependencyView>, view: DependencyView) -> Bool {
+  contains(xs: views, item: view, eq: fn(a, b) { vudd_view_eq(a: a, b: b) })
+}
+
+fn vudd_view_eq(a: DependencyView, b: DependencyView) -> Bool {
+  a == b
 }
 
 // A ROW'S ENDPOINT IS A NODE OF THE RESOLVED GRAPH under the consumer's own equality (structural, as
@@ -672,8 +736,8 @@ fn vudd_no_record_absent(d: ValueUseDependencies) -> Bool {
       match row.reason {
         RecordAbsent => false
         ValuedUseNotLocated { value: _, why: _ } => acc
-        ValuedSourceUnkeyed { value: _ } => acc
-        ValuedSourceNotLocated { value: _, why: _ } => acc
+        ValuedBinderSiteUnkeyed { value: _ } => acc
+        ValuedBinderNotLocated { value: _, why: _ } => acc
         NotDerivedStanding { standing: _ } => acc
       }
     }
@@ -691,6 +755,57 @@ fn vudd_every_input_is_non_lexical(d: ValueUseDependencies) -> Bool {
   )
 }
 
+// EVERY RECORD resolve BOUND TO A PARAMETER IS AN INPUT ROW CARRYING THAT BINDING, at identity grain: the
+// fixture's ambient `Int` records are inputs too, so a non-empty input population alone would let the
+// parameter uses be mis-sorted unseen.
+fn vudd_every_parameter_record_is_a_parameter_input(d: ValueUseDependencies, tree: ResolvedTree) -> Bool {
+  fold_list(
+    xs: map_support_keys(m: tree.occurrence_bindings),
+    empty: true,
+    cons: fn(acc, id) { acc && vudd_parameter_record_disposed(d: d, tree: tree, id: id) }
+  )
+}
+
+fn vudd_parameter_record_disposed(d: ValueUseDependencies, tree: ResolvedTree, id: OccurrenceId) -> Bool {
+  match map_lookup(m: tree.occurrence_bindings, key: id) {
+    Present { value: record } =>
+      match record.binding {
+        BoundToParameter { path: _ } => vudd_parameter_input_at(d: d, id: id)
+        BoundToTypeParameter { canonical: _ } => true
+        BoundToDeclaration { identity: _ } => true
+        BoundAmbient { table: _, identity: _ } => true
+        BoundByExpectedType { identity: _ } => true
+        BoundByGeneratedReference { identity: _ } => true
+        BoundByLexicalBinder { binding: _ } => true
+      }
+    Absent => false
+  }
+}
+
+fn vudd_parameter_input_at(d: ValueUseDependencies, id: OccurrenceId) -> Bool {
+  fold_list(
+    xs: d.inputs,
+    empty: false,
+    cons: fn(acc, row) { acc || vudd_same_occurrence(a: row.occurrence, b: id) && vudd_input_is_parameter(row: row) }
+  )
+}
+
+fn vudd_has_parameter_input(d: ValueUseDependencies) -> Bool {
+  fold_list(xs: d.inputs, empty: false, cons: fn(acc, row) { acc || vudd_input_is_parameter(row: row) })
+}
+
+fn vudd_input_is_parameter(row: ValueUseInput) -> Bool {
+  match row.binding {
+    BoundToParameter { path: _ } => true
+    BoundToTypeParameter { canonical: _ } => false
+    BoundToDeclaration { identity: _ } => false
+    BoundAmbient { table: _, identity: _ } => false
+    BoundByExpectedType { identity: _ } => false
+    BoundByGeneratedReference { identity: _ } => false
+    BoundByLexicalBinder { binding: _ } => false
+  }
+}
+
 fn vudd_input_is_non_lexical(row: ValueUseInput) -> Bool {
   match row.binding {
     BoundByLexicalBinder { binding: _ } => false
@@ -702,3 +817,4 @@ fn vudd_input_is_non_lexical(row: ValueUseInput) -> Bool {
     BoundByGeneratedReference { identity: _ } => true
   }
 }
+
