@@ -326,6 +326,12 @@ fn host_runs_floor_labels(deploy: RunnerHostDeploy, floor_labels: List<String>) 
   }
 }
 
+fn browser_toolchain_pool_not_self_hosted() -> BrowserToolchainPool {
+  BrowserToolchainPoolUndefined {
+    cause: "the floor job's selected runner target (gunbc.ci.ci_runner_target selected_ci_runner_target) is not the self-hosted fleet, so no fleet runner runs it and there is no pool to converge",
+  }
+}
+
 fn runner_browser_toolchain_pool_of(deploys: List<RunnerHostDeploy>) -> BrowserToolchainPool {
   match gunbc_ci_selected_runner_spec() {
     SelfHosted { labels: floor_labels } =>
@@ -333,14 +339,8 @@ fn runner_browser_toolchain_pool_of(deploys: List<RunnerHostDeploy>) -> BrowserT
         hosts: fold(deploys, init: [], f: (acc, d) =>
           if host_runs_floor_labels(deploy: d, floor_labels: floor_labels) { list_append(left: acc, right: [d]) } else { acc }),
       }
-    HostedRunner { label: _ } =>
-      BrowserToolchainPoolUndefined {
-        cause: "the floor job's selected runner target (gunbc.ci.ci_runner_target selected_ci_runner_target) is not the self-hosted fleet, so no fleet runner runs it and there is no pool to converge",
-      }
-    RunsOnExpression { expression: _ } =>
-      BrowserToolchainPoolUndefined {
-        cause: "the floor job's selected runner target (gunbc.ci.ci_runner_target selected_ci_runner_target) is not the self-hosted fleet, so no fleet runner runs it and there is no pool to converge",
-      }
+    HostedRunner { label: _ } => browser_toolchain_pool_not_self_hosted()
+    RunsOnExpression { expression: _ } => browser_toolchain_pool_not_self_hosted()
   }
 }
 
