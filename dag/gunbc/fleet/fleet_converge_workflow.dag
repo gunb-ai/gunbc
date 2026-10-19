@@ -5000,11 +5000,13 @@ data fleet_converge_gcp_iam_approved_if: String = join(["(", fleet_converge_gcp_
 // THE CONVERGE WAITS FOR THE BOOTSTRAP JOBS BUT IS BLOCKED ONLY BY A FAILED APPLY. An empty delta skips
 // the apply job; a refused, untapped or not-yet-provisioned delta fails the REQUEST job, loudly and
 // typed, and the converge still runs: subjects it cannot act on refuse there as SubjectNotBootstrapped
-// (gunbc.auth.gcp_iam_converge not_bootstrapped_refusal), and everything already bound converges. A
-// failed apply means the approved cells did not land, and the converge does not run over them.
+// (gunbc.auth.gcp_iam_converge not_bootstrapped_refusal), and everything already bound converges. ONLY
+// success or skipped admits it, by enumeration: a failed apply did not land its cells, and a CANCELLED
+// apply -- displaced in the shared concurrency group by a later dispatch -- may have landed some of them
+// with no readback, so the converge does not run over either (warm-crane-219's review).
 data fleet_converge_gcp_iam_job_if: String = join([
-  "!cancelled() && needs.", fleet_converge_release_bins_job_id as String, ".result == 'success' && needs.", fleet_converge_gcp_iam_bootstrap_job_id as String,
-  ".result != 'failure' && (", fleet_converge_any_mode_step_if(modes: [GcpIamConverge, BranchRunGrant]), ")"], "")
+  "!cancelled() && needs.", fleet_converge_release_bins_job_id as String, ".result == 'success' && (needs.", fleet_converge_gcp_iam_bootstrap_job_id as String,
+  ".result == 'success' || needs.", fleet_converge_gcp_iam_bootstrap_job_id as String, ".result == 'skipped') && (", fleet_converge_any_mode_step_if(modes: [GcpIamConverge, BranchRunGrant]), ")"], "")
 
 fn fleet_converge_branch_run_grant_env(with_converge_token: Bool) -> List<YamlKeyValue> {
   concat(

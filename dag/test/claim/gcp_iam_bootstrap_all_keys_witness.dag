@@ -55,11 +55,11 @@ test fn every_declared_secret_is_rostered_or_a_ceremony_trust_root() -> Bool {
   count(declared_secrets()) > 0 && count(uncovered_secrets()) == 0
 }
 
-// THE TRUST ROOTS ARE EXACTLY THE APPROVAL LOOP'S MAC KEYS, and they are not rostered.
-test fn the_ceremony_trust_roots_are_the_approval_mac_keys() -> Bool {
+// THE TRUST ROOTS ARE EXACTLY THE APPROVAL LOOP'S MAC KEYS AND THE UNDECIDED GATE APP'S KEY.
+test fn the_ceremony_trust_roots_are_the_approval_mac_keys_and_the_gate_app_key() -> Bool {
   let roots = filter(declared_secrets(), s => match secret_iam_owner(secret: s as NonEmptyStr) { Present { value: o } => match o { CeremonyTrustRoot { reason: _ } => true  BootstrapRostered => false }  Absent => false })
-  count(roots) == 3
-    && all(["approval-capability-mac-key", "approval-submission-mac-key", "approval-store-receipt-mac-key"], k => any(roots, r => r == k))
+  count(roots) == 4
+    && all(["approval-capability-mac-key", "approval-submission-mac-key", "approval-store-receipt-mac-key", "ci-github-app-private-key"], k => any(roots, r => r == k))
 }
 
 // THE READING ENTRY: the RED names the uncovered secrets (names only, no values).

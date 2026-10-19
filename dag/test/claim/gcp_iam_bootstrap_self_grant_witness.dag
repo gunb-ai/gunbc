@@ -19,6 +19,9 @@ import gunbc.auth.gcp_iam_bootstrap_delta_route { bootstrap_delta_privileged_eff
 import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, DivergesWithReason, gcp_iam_approval_enforced_in_reviewed_code }
 import gunbc.auth.authorization_pattern_selection { select_authorization_pattern, PatternSelected, OperatorApprovedCapability }
 import std.decl_ref { declaration_ref_display_key }
+import gunbc.auth.gcp_iam_trust_roots { ceremony_trust_root_secrets }
+import extdeps.cloud.gcp.secret_ref { gcp_secret_resource_by_number }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -64,6 +67,15 @@ test fn a_roster_edit_naming_the_bootstrap_pool_cannot_reach_it() -> Bool {
 // reach check refusing everything.
 test fn an_ordinary_roster_edit_is_admitted() -> Bool {
   reach_with(extra: target_naming(account: "unrelated@gunbai-secrets.iam.gserviceaccount.com", pool: "an-unrelated-pool"))
+}
+
+// THE WIDENED REACH STILL EXCLUDES EVERY TRUST ROOT: with every non-root secret now a converge grant-set
+// secret (all keys), no iam-converge binding sits on a trust-root secret, and the declared own-trust
+// resources are still outside its reach.
+test fn the_widened_converge_reach_excludes_every_trust_root() -> Bool {
+  let bound = map(iam_converge_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets()), b => b.resource)
+  iam_converge_reach_excludes_its_own_trust()
+    && all(ceremony_trust_root_secrets(), t => !any(bound, r => r == gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: t.secret)))
 }
 
 // ── iam-bootstrap's own reach: fixed, denied where deniable, and not a roster input ────────────
