@@ -111,7 +111,7 @@ fn probe_prints_the_minted_ids_for_both_calls() {
         ids.len(),
         distinct.len()
     );
-    let site_tagged: Vec<&&String> = ids.iter().filter(|s| s.contains('@')).collect();
+    let site_tagged: Vec<&String> = ids.iter().filter(|s| s.contains('@')).collect();
     println!(
         "PROBE collide SUMMARY site_tagged={} bare={}",
         site_tagged.len(),
@@ -171,7 +171,7 @@ fn fold_step_shared_then_two(
     unbound: Rc<Node>,
     first: &Rc<Node>,
     second: &Rc<Node>,
-) -> UnifyGenericsAcc {
+) -> Rc<UnifyGenericsAcc> {
     let si = Rc::new(im::HashMap::new());
     let mut acc: im::HashMap<String, Rc<Node>> = im::HashMap::new();
     acc.insert("T".to_string(), unbound);
