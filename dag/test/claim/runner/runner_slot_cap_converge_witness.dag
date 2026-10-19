@@ -59,6 +59,7 @@ import gunbc.runner.runner_host_file_converge {
   SlotReloadStatus,
   SlotReloadNotPending,
   SlotReloadOwed,
+  SlotReloadOwedInert,
   SlotReloadUnobserved,
   SlotFabricMemberRunsARunner,
   classify_runner_slot_population_with_fabric,
@@ -356,16 +357,16 @@ fn pending_none(got: HostPendingReloads) -> Bool { match got { HostNoReloadPendi
 // RED: the pending-reload reading is LOCATED and TYPED: each case carries the unit and which status it is
 // (owed vs unobserved), a population that could not be listed is its own arm, and nothing pending is no list.
 test fn the_pending_reload_reading_carries_each_unit_and_its_status() -> Bool {
-  pending_is(got: runner_host_cap_pending_reloads(population: obs_with_reload(st: SlotTeardownEffective, rl: SlotReloadOwed)), kind: PendingReloadOwed)
-    && pending_is(got: runner_host_cap_pending_reloads(population: obs_with_reload(st: SlotUnitUnread, rl: SlotReloadUnobserved)), kind: PendingReloadUnobserved)
-    && (match runner_host_cap_pending_reloads(population: SlotPopulationUnobservable { reason: "x" }) { HostPopulationUnobserved { reason: r } => r == "x" HostNoReloadPending => false HostReloadsPending { units: _ } => false })
-    && pending_none(got: runner_host_cap_pending_reloads(population: obs_of(st: SlotTeardownEffective)))
+  pending_is(got: runner_host_cap_pending_reloads(population: obs_with_reload(st: SlotTeardownEffective, rl: SlotReloadOwed), bracket_units: [unit(n: "01")]), kind: PendingReloadOwed)
+    && pending_is(got: runner_host_cap_pending_reloads(population: obs_with_reload(st: SlotUnitUnread, rl: SlotReloadUnobserved), bracket_units: [unit(n: "01")]), kind: PendingReloadUnobserved)
+    && (match runner_host_cap_pending_reloads(population: SlotPopulationUnobservable { reason: "x" }, bracket_units: [unit(n: "01")]) { HostPopulationUnobserved { reason: r } => r == "x" HostNoReloadPending => false HostReloadsPending { units: _ } => false })
+    && pending_none(got: runner_host_cap_pending_reloads(population: obs_of(st: SlotTeardownEffective), bracket_units: [unit(n: "01")]))
 }
 
 // RED: the rendered refusal names the unit and the status, for both statuses.
 test fn the_pending_reload_refusal_renders_the_unit_and_status() -> Bool {
-  let owed = host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reloads: runner_host_cap_pending_reloads(population: obs_with_reload(st: SlotTeardownEffective, rl: SlotReloadOwed)), retirement_cause: none, extras: [])
-  let unobserved = host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reloads: runner_host_cap_pending_reloads(population: obs_with_reload(st: SlotUnitUnread, rl: SlotReloadUnobserved)), retirement_cause: none, extras: [])
+  let owed = host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reloads: runner_host_cap_pending_reloads(population: obs_with_reload(st: SlotTeardownEffective, rl: SlotReloadOwed), bracket_units: [unit(n: "01")]), retirement_cause: none, extras: [])
+  let unobserved = host_cap_plan(standings: one_at(), gate: all_idle(), files: CapFilesSettled, pending_reloads: runner_host_cap_pending_reloads(population: obs_with_reload(st: SlotUnitUnread, rl: SlotReloadUnobserved), bracket_units: [unit(n: "01")]), retirement_cause: none, extras: [])
   plan_withheld_naming(p: owed, needle: "pending: actions-runner@srv3-01.service reload=owed")
     && plan_withheld_naming(p: unobserved, needle: "pending: actions-runner@srv3-01.service reload=unobserved")
 }
@@ -383,13 +384,13 @@ fn fabric_population_of(show: String) -> RunnerSlotPopulation {
   SlotPopulationObserved { units: classify_runner_slot_population_with_fabric(units: [u], fabric: [u], retirements: [], show_stdout: show, expect: runner_slot_expectation(per_slot: hardware_thread_count(count: 7), fragment_delivered: false, residue_absent: false)) }
 }
 fn fabric_plan_for(show: String) -> HostCapPlan {
-  host_cap_plan(standings: one_at(), gate: host_cap_idle_gate(readings: [busy_of(u: unit(n: "01"))]), files: CapFilesSettled, pending_reloads: runner_host_cap_pending_reloads(population: fabric_population_of(show: show)), retirement_cause: none, extras: [])
+  host_cap_plan(standings: one_at(), gate: host_cap_idle_gate(readings: [busy_of(u: unit(n: "01"))]), files: CapFilesSettled, pending_reloads: runner_host_cap_pending_reloads(population: fabric_population_of(show: show), bracket_units: [unit(n: "01")]), retirement_cause: none, extras: [])
 }
 test fn a_pending_reload_on_a_loaded_fabric_member_survives_classification_and_withholds() -> Bool {
   let pop = fabric_population_of(show: fabric_show(reload: "yes"))
   let lifecycle_is_fabric = match pop { SlotPopulationObserved { units: us } => any(us, r => match r.standing { SlotFabricMemberRunsARunner => true _ => false }) SlotPopulationUnobservable { reason: _ } => false }
   lifecycle_is_fabric
-    && !pending_none(got: runner_host_cap_pending_reloads(population: pop))
+    && !pending_none(got: runner_host_cap_pending_reloads(population: pop, bracket_units: [unit(n: "01")]))
     && plan_withheld_naming(p: fabric_plan_for(show: fabric_show(reload: "yes")), needle: "actions-runner@srv3-06.service reload=owed")
     && plan_withheld_naming(p: fabric_plan_for(show: fabric_show(reload: "yes")), needle: "pending reload")
     && runner_host_cap_phase_bars_reload(phase: CapPhaseWithheld { cause: "pending reload" })
@@ -397,7 +398,7 @@ test fn a_pending_reload_on_a_loaded_fabric_member_survives_classification_and_w
 
 // Positive: the same fabric member with nothing pending is not pending, and leaves the settled caps in place.
 test fn a_loaded_fabric_member_with_no_pending_reload_leaves_settled_caps_in_place() -> Bool {
-  pending_none(got: runner_host_cap_pending_reloads(population: fabric_population_of(show: fabric_show(reload: "no"))))
+  pending_none(got: runner_host_cap_pending_reloads(population: fabric_population_of(show: fabric_show(reload: "no")), bracket_units: [unit(n: "01")]))
     && plan_leaves(p: fabric_plan_for(show: fabric_show(reload: "no")))
 }
 
@@ -428,3 +429,43 @@ test fn an_incomplete_retiree_withholds_a_differing_cap_and_not_a_settled_one() 
 
 fn obs_of(st: RunnerSlotUnitStanding) -> RunnerSlotPopulation { obs_with_reload(st: st, rl: SlotReloadNotPending) }
 fn obs_with_reload(st: RunnerSlotUnitStanding, rl: SlotReloadStatus) -> RunnerSlotPopulation { SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: unit(n: "01"), standing: st, reload: rl }] } }
+
+// THE MASKED FABRIC MEMBER, FROM REAL SHOW TEXT (the srv3-07 / srv4-06 shape): masked, inactive, no cgroup,
+// still owing a reload. `active` and `load` vary the one fact each RED turns on.
+fn masked_show(load: String, active: String, cgroup: String) -> String {
+  join(["Id=actions-runner@srv3-06.service\nLoadState=", load, "\nNeedDaemonReload=yes\nExitType=main\nKillMode=control-group\nActiveState=", active, "\nControlGroup=", cgroup, "\nCPUQuotaPerSecUSec=7s\nEnvironment="], "")
+}
+fn masked_plan_for(show: String) -> HostCapPlan {
+  host_cap_plan(standings: one_at(), gate: host_cap_idle_gate(readings: [busy_of(u: unit(n: "01"))]), files: CapFilesSettled, pending_reloads: runner_host_cap_pending_reloads(population: fabric_population_of(show: show), bracket_units: [unit(n: "01")]), retirement_cause: none, extras: [])
+}
+
+// Positive: an Owed reload on a unit that is masked, inactive and has no cgroup cannot load onto anything,
+// so the caps are not withheld on it (settled caps are left in place); the very same population still reports the reload as owed by status.
+test fn a_masked_inactive_cgroupless_owed_unit_does_not_withhold_the_caps() -> Bool {
+  let show = masked_show(load: "masked", active: "inactive", cgroup: "")
+  pending_none(got: runner_host_cap_pending_reloads(population: fabric_population_of(show: show), bracket_units: [unit(n: "01")]))
+    && plan_leaves(p: masked_plan_for(show: show))
+}
+
+// RED: masked but still ACTIVE (a cgroup exists) is not inert.
+test fn a_masked_but_active_owed_unit_still_withholds() -> Bool {
+  plan_withheld_naming(p: masked_plan_for(show: masked_show(load: "masked", active: "active", cgroup: "/system.slice/x")), needle: "actions-runner@srv3-06.service reload=owed")
+    && plan_withheld_naming(p: masked_plan_for(show: masked_show(load: "masked", active: "inactive", cgroup: "/system.slice/x")), needle: "reload=owed")
+}
+
+// RED: inactive but not masked (it can be started, loading the pending change) still withholds.
+test fn an_unmasked_inactive_owed_unit_still_withholds() -> Bool {
+  plan_withheld_naming(p: masked_plan_for(show: masked_show(load: "loaded", active: "inactive", cgroup: "")), needle: "actions-runner@srv3-06.service reload=owed")
+}
+
+// RED: a masked inactive unit that is IN the bracket's set is not excluded -- activation unmasks it.
+test fn an_inert_owed_unit_inside_the_bracket_set_still_withholds() -> Bool {
+  let u = "actions-runner@srv3-06.service" as NonEmptyStr
+  !pending_none(got: runner_host_cap_pending_reloads(population: fabric_population_of(show: masked_show(load: "masked", active: "inactive", cgroup: "")), bracket_units: [u]))
+}
+
+// RED: a masked unit with a missing ActiveState/ControlGroup key is not proven inert.
+test fn a_masked_unit_missing_its_activity_keys_still_withholds() -> Bool {
+  let show = "Id=actions-runner@srv3-06.service\nLoadState=masked\nNeedDaemonReload=yes\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment="
+  plan_withheld_naming(p: masked_plan_for(show: show), needle: "reload=owed")
+}
