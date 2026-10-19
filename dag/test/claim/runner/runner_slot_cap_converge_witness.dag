@@ -59,7 +59,10 @@ import gunbc.runner.runner_host_file_converge {
   SlotReloadStatus,
   SlotReloadNotPending,
   SlotReloadOwed,
-  SlotReloadOwedInert,
+  SlotReloadReach,
+  ReachesLiveCgroup,
+  ReloadInert,
+  runner_host_cap_extras,
   SlotReloadUnobserved,
   SlotFabricMemberRunsARunner,
   classify_runner_slot_population_with_fabric,
@@ -206,8 +209,8 @@ fn retired_unit() -> NonEmptyStr { "actions-runner@srv3-06.service" as NonEmptyS
 
 // The retirement gate: caps are written only once every required retiree reads retired.
 test fn caps_wait_for_the_retirees() -> Bool {
-  let done = SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: retired_unit(), standing: SlotRetiredAsDeclared, reload: SlotReloadNotPending }] }
-  let pending = SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: retired_unit(), standing: SlotRetirementIncomplete { cause: "job" }, reload: SlotReloadNotPending }] }
+  let done = SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: retired_unit(), standing: SlotRetiredAsDeclared, reload: SlotReloadNotPending, reach: ReachesLiveCgroup }] }
+  let pending = SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: retired_unit(), standing: SlotRetirementIncomplete { cause: "job" }, reload: SlotReloadNotPending, reach: ReachesLiveCgroup }] }
   (match runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: [retired_unit()], population: done)) { Absent => true Present { value: _ } => false })
     && (match runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: [retired_unit()], population: pending)) { Absent => false Present { value: _ } => true })
     && (match runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: [retired_unit()], population: SlotPopulationUnobservable { reason: "ssh" })) { Absent => false Present { value: _ } => true })
@@ -428,12 +431,15 @@ test fn an_incomplete_retiree_withholds_a_differing_cap_and_not_a_settled_one() 
 }
 
 fn obs_of(st: RunnerSlotUnitStanding) -> RunnerSlotPopulation { obs_with_reload(st: st, rl: SlotReloadNotPending) }
-fn obs_with_reload(st: RunnerSlotUnitStanding, rl: SlotReloadStatus) -> RunnerSlotPopulation { SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: unit(n: "01"), standing: st, reload: rl }] } }
+fn obs_with_reload(st: RunnerSlotUnitStanding, rl: SlotReloadStatus) -> RunnerSlotPopulation { SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: unit(n: "01"), standing: st, reload: rl, reach: ReachesLiveCgroup }] } }
 
 // THE MASKED FABRIC MEMBER, FROM REAL SHOW TEXT (the srv3-07 / srv4-06 shape): masked, inactive, no cgroup,
 // still owing a reload. `active` and `load` vary the one fact each RED turns on.
 fn masked_show(load: String, active: String, cgroup: String) -> String {
-  join(["Id=actions-runner@srv3-06.service\nLoadState=", load, "\nNeedDaemonReload=yes\nExitType=main\nKillMode=control-group\nActiveState=", active, "\nControlGroup=", cgroup, "\nCPUQuotaPerSecUSec=7s\nEnvironment="], "")
+  masked_show_reload(load: load, active: active, cgroup: cgroup, reload: "yes")
+}
+fn masked_show_reload(load: String, active: String, cgroup: String, reload: String) -> String {
+  join(["Id=actions-runner@srv3-06.service\nLoadState=", load, "\nNeedDaemonReload=", reload, "\nExitType=main\nKillMode=control-group\nActiveState=", active, "\nControlGroup=", cgroup, "\nCPUQuotaPerSecUSec=7s\nEnvironment="], "")
 }
 fn masked_plan_for(show: String) -> HostCapPlan {
   host_cap_plan(standings: one_at(), gate: host_cap_idle_gate(readings: [busy_of(u: unit(n: "01"))]), files: CapFilesSettled, pending_reloads: runner_host_cap_pending_reloads(population: fabric_population_of(show: show), bracket_units: [unit(n: "01")]), retirement_cause: none, extras: [])
@@ -468,4 +474,127 @@ test fn an_inert_owed_unit_inside_the_bracket_set_still_withholds() -> Bool {
 test fn a_masked_unit_missing_its_activity_keys_still_withholds() -> Bool {
   let show = "Id=actions-runner@srv3-06.service\nLoadState=masked\nNeedDaemonReload=yes\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment="
   plan_withheld_naming(p: masked_plan_for(show: show), needle: "reload=owed")
+}
+
+// THE EXTRAS ARM FROM REAL SHOW TEXT, THROUGH EVERY ARM (the srv3-07 / srv4-06 shape). One declared slot
+// (srv3-01, caps differ, idle) and one loaded extra outside the declared sets whose own show block varies
+// the one fact each case turns on. Population -> extras -> pending reloads -> host plan, no supplied flag.
+fn declared_show() -> String {
+  "Id=actions-runner@srv3-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nActiveState=active\nControlGroup=/system.slice/y\nCPUQuotaPerSecUSec=7s\nEnvironment="
+}
+fn extras_population_of(extra_show: String) -> RunnerSlotPopulation { extras_population_with(extra_show: extra_show, as_fabric: true) }
+fn extras_population_with(extra_show: String, as_fabric: Bool) -> RunnerSlotPopulation {
+  let d = unit(n: "01")
+  let x = "actions-runner@srv3-06.service" as NonEmptyStr
+  SlotPopulationObserved { units: classify_runner_slot_population_with_fabric(units: [d, x], fabric: if as_fabric { [x] } else { [] }, retirements: [], show_stdout: join([declared_show(), extra_show], "\n\n"), expect: runner_slot_expectation(per_slot: hardware_thread_count(count: 7), fragment_delivered: false, residue_absent: false)) }
+}
+fn extras_plan_for(extra_show: String) -> HostCapPlan { extras_plan_with(extra_show: extra_show, as_fabric: true) }
+fn extras_plan_with(extra_show: String, as_fabric: Bool) -> HostCapPlan {
+  let pop = extras_population_with(extra_show: extra_show, as_fabric: as_fabric)
+  host_cap_plan(standings: one_old(), gate: all_idle(), files: CapFilesDiffer, pending_reloads: runner_host_cap_pending_reloads(population: pop, bracket_units: [unit(n: "01")]), retirement_cause: none, extras: runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: pop))
+}
+
+// Positive: the inert masked extra is no hazard in ANY arm -- the caps proceed to the bracket.
+test fn an_inert_masked_extra_goes_through_every_arm_and_the_caps_proceed() -> Bool {
+  let show = masked_show(load: "masked", active: "inactive", cgroup: "")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_of(extra_show: show))) == 0
+    && pending_none(got: runner_host_cap_pending_reloads(population: extras_population_of(extra_show: show), bracket_units: [unit(n: "01")]))
+    && plan_drains(p: extras_plan_for(extra_show: show))
+}
+
+// RED: masked but ACTIVE (a live cgroup) withholds, naming the unit.
+test fn a_masked_but_active_extra_withholds() -> Bool {
+  plan_withheld_naming(p: extras_plan_for(extra_show: masked_show(load: "masked", active: "active", cgroup: "/system.slice/x")), needle: "actions-runner@srv3-06.service")
+}
+
+// RED: an unmasked extra withholds even when inactive and cgroupless.
+test fn an_unmasked_extra_withholds() -> Bool {
+  plan_withheld_naming(p: extras_plan_for(extra_show: masked_show(load: "loaded", active: "inactive", cgroup: "")), needle: "actions-runner@srv3-06.service")
+}
+
+// RED: a missing key is not inert, so the extra withholds.
+test fn an_extra_missing_its_activity_keys_withholds() -> Bool {
+  let show = "Id=actions-runner@srv3-06.service\nLoadState=masked\nNeedDaemonReload=yes\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment="
+  plan_withheld_naming(p: extras_plan_for(extra_show: show), needle: "actions-runner@srv3-06.service")
+}
+
+// THE REACH FACT ALONE GOVERNS AN EXTRA, with NeedDaemonReload=no so no pending-reload arm refuses first.
+fn no_reload_missing_keys_show() -> String {
+  "Id=actions-runner@srv3-06.service\nLoadState=masked\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment="
+}
+
+// RED (a): a non-fabric masked-ACTIVE extra with nothing owed stays in extras and withholds by unit name.
+test fn a_non_fabric_masked_active_extra_without_a_pending_reload_withholds() -> Bool {
+  let show = masked_show_reload(load: "masked", active: "active", cgroup: "/system.slice/x", reload: "no")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 1
+    && plan_withheld_naming(p: extras_plan_with(extra_show: show, as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
+
+// Positive (b): the masked, inactive, cgroupless non-fabric extra with nothing owed is no hazard.
+test fn a_non_fabric_inert_extra_without_a_pending_reload_is_no_hazard() -> Bool {
+  let show = masked_show_reload(load: "masked", active: "inactive", cgroup: "", reload: "no")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 0
+    && plan_drains(p: extras_plan_with(extra_show: show, as_fabric: false))
+}
+
+// RED (c): missing activity keys with nothing owed are not inert, fabric or not.
+test fn a_non_fabric_extra_missing_activity_keys_without_a_pending_reload_withholds() -> Bool {
+  plan_withheld_naming(p: extras_plan_with(extra_show: no_reload_missing_keys_show(), as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
+
+// (d): fabric classification alone does not change the reach decision for the same unit.
+test fn fabric_classification_alone_does_not_change_the_extras_decision() -> Bool {
+  let active = masked_show_reload(load: "masked", active: "active", cgroup: "/system.slice/x", reload: "no")
+  let inert = masked_show_reload(load: "masked", active: "inactive", cgroup: "", reload: "no")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: active, as_fabric: true)))
+      == length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: active, as_fabric: false)))
+    && length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: inert, as_fabric: true)))
+      == length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: inert, as_fabric: false)))
+}
+
+// Positive: reach is "no loaded config AND no cgroup", not masked-ness. A not-found, inactive, cgroupless
+// non-fabric extra has nothing for a reload to apply to, so it is admitted.
+test fn a_non_fabric_not_found_inactive_cgroupless_extra_is_no_hazard() -> Bool {
+  let show = masked_show_reload(load: "not-found", active: "inactive", cgroup: "", reload: "no")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 0
+    && plan_drains(p: extras_plan_with(extra_show: show, as_fabric: false))
+}
+
+// RED: a not-found but ACTIVE extra (a live cgroup) is still reached, and withholds by unit name.
+test fn a_non_fabric_not_found_active_extra_withholds() -> Bool {
+  let show = masked_show_reload(load: "not-found", active: "active", cgroup: "/system.slice/x", reload: "no")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 1
+    && plan_withheld_naming(p: extras_plan_with(extra_show: show, as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
+
+// Positive: a LOADED, inactive, cgroupless extra is still reached (it can be started), unchanged.
+test fn a_non_fabric_loaded_inactive_cgroupless_extra_still_withholds() -> Bool {
+  let show = masked_show_reload(load: "loaded", active: "inactive", cgroup: "", reload: "no")
+  plan_withheld_naming(p: extras_plan_with(extra_show: show, as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
+
+// RED (fail-closed): an unrecognized LoadState word is not proof of "no unit file", so an inactive,
+// cgroupless extra with it is still reached.
+test fn a_non_fabric_unknown_load_state_extra_withholds() -> Bool {
+  let show = masked_show_reload(load: "lodaed", active: "inactive", cgroup: "", reload: "no")
+  plan_withheld_naming(p: extras_plan_with(extra_show: show, as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
+
+// RED: bad-setting and error leave a unit file a reload re-reads and may load, so they are reached.
+test fn a_non_fabric_bad_setting_or_error_extra_withholds() -> Bool {
+  plan_withheld_naming(p: extras_plan_with(extra_show: masked_show_reload(load: "bad-setting", active: "inactive", cgroup: "", reload: "no"), as_fabric: false), needle: "actions-runner@srv3-06.service")
+    && plan_withheld_naming(p: extras_plan_with(extra_show: masked_show_reload(load: "error", active: "inactive", cgroup: "", reload: "no"), as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
+
+// Positive: the masked inactive cgroupless extra with nothing owed stays inert.
+test fn a_non_fabric_masked_inactive_cgroupless_extra_stays_inert() -> Bool {
+  let show = masked_show_reload(load: "masked", active: "inactive", cgroup: "", reload: "no")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 0
+}
+
+// RED: a not-found extra that is inactive but still holds a cgroup is reached, and withholds by unit name.
+test fn a_non_fabric_not_found_inactive_extra_with_a_cgroup_withholds() -> Bool {
+  let show = masked_show_reload(load: "not-found", active: "inactive", cgroup: "/system.slice/x", reload: "no")
+  length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 1
+    && plan_withheld_naming(p: extras_plan_with(extra_show: show, as_fabric: false), needle: "actions-runner@srv3-06.service")
 }
