@@ -270,7 +270,7 @@ fn rust_primitive_two_argument_rows() -> TargetPrimitiveRealizations {
 
 fn rust_two_argument_text(callee: Symbol, args: List<TargetValueExpression>) -> String {
   match rust_primitive_emit(
-    expr: target_value_expression_resolved_primitive_call(callee: callee, args: args),
+    expr: target_value_expression_callable_apply(callee: callee, kind: PrimitiveRowCallee, args: args),
     catalog: rust_operator_realizations_catalog_node(),
     primitives: rust_primitive_two_argument_rows()
   ) {
@@ -281,7 +281,7 @@ fn rust_two_argument_text(callee: Symbol, args: List<TargetValueExpression>) -> 
 
 test fn rust_primitive_free_call_emits_both_arguments_in_order() -> Bool {
   rust_two_argument_text(
-    callee: ^pair_probe,
+    callee: ^pair_probe_contract,
     args: [
       target_value_expression_binding_ref(binding: ^rust_binding_param_x),
       target_value_expression_binding_ref(binding: ^rust_binding_param_y)
@@ -291,7 +291,7 @@ test fn rust_primitive_free_call_emits_both_arguments_in_order() -> Bool {
 
 test fn rust_primitive_method_call_emits_both_arguments_in_order() -> Bool {
   rust_two_argument_text(
-    callee: ^method_probe,
+    callee: ^method_probe_contract,
     args: [
       target_value_expression_binding_ref(binding: ^rust_binding_param_x),
       target_value_expression_binding_ref(binding: ^rust_binding_param_y),
