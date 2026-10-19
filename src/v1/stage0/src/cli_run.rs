@@ -16786,7 +16786,9 @@ fn cli_arg_resolved_type_node(type_expr: Rc<Node>) -> Rc<Node> {
 fn type_nodes_name_the_same_declaration(a: &Rc<Node>, b: &Rc<Node>) -> bool {
     Rc::ptr_eq(a, b)
         || match (&a.ident_span, &b.ident_span) {
-            (Some(left), Some(right)) => left.file == right.file && left.start == right.start,
+            (Some(left), Some(right)) => {
+                left.span.file == right.span.file && left.span.start == right.span.start
+            }
             _ => false,
         }
 }
@@ -19176,7 +19178,10 @@ mod closure_bare_disposition_tests {
             name: decl_name.to_string(),
             ident: None,
             span: span.clone(),
-            ident_span: Some(span),
+            ident_span: Some(crate::v1_std_core::authored_ident(
+                span,
+                decl_name.to_string(),
+            )),
             children: crate::v1_std_core::empty_node_list(),
             connective: crate::v1_std_core::Connective::NoConnective,
             params: crate::v1_std_core::empty_node_list(),

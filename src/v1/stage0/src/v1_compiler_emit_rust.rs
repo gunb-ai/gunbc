@@ -14134,7 +14134,7 @@ pub fn authored_import_binds_provider_declaration(
                                         Some(sp) => {
                                             crate::v1_compiler_infer_env::binding_declares_span(
                                                 binding.clone(),
-                                                sp.clone(),
+                                                sp.span.clone(),
                                             )
                                         }
                                         std::option::Option::None => false,

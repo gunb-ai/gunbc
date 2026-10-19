@@ -318,6 +318,63 @@ fn add(x: Int, y: Int) -> Int { x + y }
     assert_parses(source, "brace-bodied fn (legacy)");
 }
 
+// DIFFERENTIAL (H2): the text a parsed node CARRIES in ident_span equals what authored_name_at
+// slices from the source at that span, for every reachable node. The source puts a non-BMP
+// scalar before the identifiers, because spans index Unicode scalars and a UTF-16 or byte
+// offset would shift the slice. The RED control rewrites one carried text and must be seen.
+fn carried_ident_text_equals_authored_name_at() {
+    let source = "module test\n// \u{1F600}\ntype Widget = String\nfn \u{1F600}_pad() -> Int { 1 }\nfn make_widget(w: Widget) -> Widget {\n  w\n}\nservice weather.api {\n}";
+    let result = parse_source(source);
+    assert!(result.error.is_none(), "parse error");
+    let index =
+        v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
+    let mut m = HashMap::new();
+    m.insert("test.dag".to_string(), index);
+    let indices = Rc::new(m);
+    let module = result.module.clone().expect("module");
+    fn walk(
+        n: &Rc<v1_compiler::v1_std_core::Node>,
+        out: &mut Vec<Rc<v1_compiler::v1_std_core::Node>>,
+    ) {
+        out.push(n.clone());
+        for c in n.children.iter().chain(n.params.iter()) {
+            walk(c, out);
+        }
+    }
+    let mut nodes = Vec::new();
+    walk(&module, &mut nodes);
+    let mut checked = 0;
+    for n in &nodes {
+        if let Some(ident) = n.ident_span.as_ref() {
+            let sliced = v1_compiler::v1_std_core::authored_name_at(indices.clone(), n.clone());
+            assert_eq!(
+                ident.text, sliced,
+                "carried text differs at node {}",
+                n.name
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked >= 6, "differential reached only {} nodes", checked);
+    let victim = nodes
+        .iter()
+        .find(|n| n.name == "Widget" && n.ident_span.is_some())
+        .expect("Widget node")
+        .clone();
+    let tampered = Rc::new(v1_compiler::v1_std_core::Node {
+        ident_span: victim
+            .ident_span
+            .as_ref()
+            .map(|i| v1_compiler::v1_std_core::authored_ident(i.span.clone(), "Wrong".to_string())),
+        ..(*victim).clone()
+    });
+    assert_ne!(
+        tampered.ident_span.as_ref().unwrap().text,
+        v1_compiler::v1_std_core::authored_name_at(indices.clone(), tampered.clone()),
+        "RED control did not discriminate"
+    );
+}
+
 fn item_ident_spans_point_at_identifiers_not_keywords() {
     let source = r#"module test
 type Widget = String
@@ -337,7 +394,12 @@ service weather.api {
     assert_eq!(module.children.len(), 3, "expected three top-level items");
 
     let type_item = module.children[0].clone();
-    let type_ident = type_item.ident_span.clone().expect("type ident span");
+    let type_ident = type_item
+        .ident_span
+        .clone()
+        .expect("type ident span")
+        .span
+        .clone();
     assert_eq!(
         type_item.span.start,
         source.find("type Widget").unwrap() as i64
@@ -346,7 +408,12 @@ service weather.api {
     assert!(type_ident.start > type_item.span.start);
 
     let fn_item = module.children[1].clone();
-    let fn_ident = fn_item.ident_span.clone().expect("fn ident span");
+    let fn_ident = fn_item
+        .ident_span
+        .clone()
+        .expect("fn ident span")
+        .span
+        .clone();
     assert_eq!(
         fn_item.span.start,
         source.find("fn make_widget").unwrap() as i64
@@ -355,7 +422,12 @@ service weather.api {
     assert!(fn_ident.start > fn_item.span.start);
 
     let service_item = module.children[2].clone();
-    let service_ident = service_item.ident_span.clone().expect("service ident span");
+    let service_ident = service_item
+        .ident_span
+        .clone()
+        .expect("service ident span")
+        .span
+        .clone();
     assert_eq!(
         service_item.span.start,
         source.find("service weather.api").unwrap() as i64
@@ -415,7 +487,7 @@ type Alias = ResultType
         InferredNode::Resolved { node, .. } => node.clone(),
         other => panic!("expected resolved alias rhs, got {:?}", other),
     };
-    let rhs_ident = rhs.ident_span.clone().expect("rhs ident span");
+    let rhs_ident = rhs.ident_span.clone().expect("rhs ident span").span.clone();
     assert_eq!(
         &source[rhs_ident.start as usize..rhs_ident.end as usize],
         "ResultType"
@@ -441,7 +513,12 @@ type Pair<KeyT, ValueU> = Map<KeyT, ValueU>
 
     let key_param = type_item.params[0].clone();
     let key_type = key_param.children[0].clone();
-    let key_ident = key_type.ident_span.clone().expect("key type ident span");
+    let key_ident = key_type
+        .ident_span
+        .clone()
+        .expect("key type ident span")
+        .span
+        .clone();
     assert_eq!(
         &source[key_ident.start as usize..key_ident.end as usize],
         "KeyT"
@@ -453,7 +530,9 @@ type Pair<KeyT, ValueU> = Map<KeyT, ValueU>
     let value_ident = value_type
         .ident_span
         .clone()
-        .expect("value type ident span");
+        .expect("value type ident span")
+        .span
+        .clone();
     assert_eq!(
         &source[value_ident.start as usize..value_ident.end as usize],
         "ValueU"
@@ -967,6 +1046,10 @@ fn floor_suite() -> Vec<WitnessCase> {
         (
             "parse_fn_brace_body_still_accepted",
             parse_fn_brace_body_still_accepted,
+        ),
+        (
+            "carried_ident_text_equals_authored_name_at",
+            carried_ident_text_equals_authored_name_at,
         ),
         (
             "item_ident_spans_point_at_identifiers_not_keywords",

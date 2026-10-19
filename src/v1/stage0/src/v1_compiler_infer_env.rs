@@ -52,7 +52,7 @@ pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
-    intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
+    intern_find, intern_str, kernel_ident, kernel_span, merge_intern_tables, module_path_segments,
     param_node_name_at, param_node_type_expr, qualified_last_segment,
     resolved_node_is_kernel_identity_for_name, source_text_at, Cardinality, CompilerDiagnostic,
     Connective, DeclarationMarker, ExprData, InferredNode, InternTable, NewlineIndex, Node,
@@ -1815,7 +1815,7 @@ pub fn qualify_borrowed_type_names(
                             ),
                             name: qname.clone(),
                             span: n.span.clone(),
-                            ident_span: Some(crate::v1_std_core::kernel_span(qname.clone())),
+                            ident_span: Some(crate::v1_std_core::kernel_ident(qname.clone())),
                             children: qualified_children.clone(),
                             connective: n.connective.clone(),
                             params: n.params.clone(),
@@ -2615,7 +2615,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: tp_name.clone(),
                     span: crate::v1_std_core::kernel_span(tp_name.clone()),
-                    ident_span: Some(crate::v1_std_core::kernel_span(tp_name.clone())),
+                    ident_span: Some(crate::v1_std_core::kernel_ident(tp_name.clone())),
                     children: Rc::new(vec![]),
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
@@ -2718,7 +2718,9 @@ pub fn census_declaration_type_env(
 
 pub fn binding_declares_span(binding: Rc<TypeBinding>, sp: Rc<SourceSpan>) -> bool {
     match binding.resolved.ident_span.clone() {
-        Some(s) => ((s.file.clone() == sp.file.clone()) && (s.start.clone() == sp.start.clone())),
+        Some(s) => {
+            ((s.span.file.clone() == sp.file.clone()) && (s.span.start.clone() == sp.start.clone()))
+        }
         std::option::Option::None => false,
     }
 }
@@ -2754,7 +2756,7 @@ pub fn type_reference_declaration(
                         binding: b,
                         ..
                     }) => {
-                        if binding_declares_span(b.clone(), sp.clone()) {
+                        if binding_declares_span(b.clone(), sp.span.clone()) {
                             Some(Rc::new(OperandDeclaration {
                                 declaration: crate::std_decl_ref::decl_ref(
                                     mp.clone(),
@@ -2774,7 +2776,7 @@ pub fn type_reference_declaration(
                     }) => match Rc::new({
                         let mut __result = Vec::new();
                         for c in cands.iter().cloned() {
-                            if binding_declares_span(c.binding.clone(), sp.clone()) {
+                            if binding_declares_span(c.binding.clone(), sp.span.clone()) {
                                 __result.push(c);
                             }
                         }
@@ -3002,7 +3004,7 @@ pub fn declaration_ref_of_declaration_node(
                         binding: b,
                         ..
                     }) => {
-                        if binding_declares_span(b.clone(), sp.clone()) {
+                        if binding_declares_span(b.clone(), sp.span.clone()) {
                             Some(crate::std_decl_ref::decl_ref(mp.clone(), decl_name.clone()))
                         } else {
                             std::option::Option::None
@@ -3014,7 +3016,7 @@ pub fn declaration_ref_of_declaration_node(
                     }) => match Rc::new({
                         let mut __result = Vec::new();
                         for c in cands.iter().cloned() {
-                            if binding_declares_span(c.binding.clone(), sp.clone()) {
+                            if binding_declares_span(c.binding.clone(), sp.span.clone()) {
                                 __result.push(c);
                             }
                         }
