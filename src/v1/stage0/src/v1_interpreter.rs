@@ -15795,7 +15795,7 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
 fn reference_derived_closure_admission_value(
     admission: &crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission,
     ctx: &InterpContext,
-) -> Value {
+) -> InterpResult<Value> {
     use crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission as A;
     let nullary = |type_name: &str, variant_name: String| Value::Variant {
         type_name: ctx.sym(type_name),
@@ -15842,7 +15842,7 @@ fn reference_derived_closure_admission_value(
         };
         nullary("ReferenceDerivedClosureScenarioFailure", name.to_string())
     };
-    match admission {
+    Ok(match admission {
         A::ReferenceDerivedClosureEstablished { receipt } => Value::Variant {
             type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
             variant_name: ctx.sym("ReferenceDerivedClosureEstablished"),
@@ -15884,9 +15884,13 @@ fn reference_derived_closure_admission_value(
                     G::ReferenceBindingNamedReferenceAbsent => "ReferenceBindingNamedReferenceAbsent",
                     G::ReferenceBindingNamedDeclarationAbsent => "ReferenceBindingNamedDeclarationAbsent",
                 },
-                other => panic!(
-                    "reference_derived_closure_admission_value: no encoder for binding refusal cause {other:?}"
-                ),
+                other => {
+                    return Err(InterpError::TypeError {
+                        msg: format!(
+                            "reference_derived_closure_admission_value: no encoder for binding refusal cause {other:?}"
+                        ),
+                    })
+                }
             };
             Value::Variant {
                 type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
@@ -15918,7 +15922,7 @@ fn reference_derived_closure_admission_value(
                 (ctx.sym("trigger"), trigger_value(trigger)),
             ])),
         },
-    }
+    })
 }
 
 /// Encode the rows for one in-memory source: each admission the `.dag` producer computed,
@@ -16149,25 +16153,27 @@ fn namespace_structural_observation_admissions_value(
     compiled_module: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
     admissions: &[Rc<crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
     ctx: &InterpContext,
-) -> Value {
-    list_value(
+) -> InterpResult<Value> {
+    Ok(list_value(
         admissions
             .iter()
-            .map(|admission| Value::Record {
-                type_name: ctx.sym("OrdinaryCompileStructuralAdmission"),
-                fields: Rc::new(sorted_fields(vec![
-                    (
-                        ctx.sym("compiled_module"),
-                        subject_module_value(compiled_module, ctx),
-                    ),
-                    (
-                        ctx.sym("admission"),
-                        reference_derived_closure_admission_value(admission, ctx),
-                    ),
-                ])),
+            .map(|admission| {
+                Ok(Value::Record {
+                    type_name: ctx.sym("OrdinaryCompileStructuralAdmission"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (
+                            ctx.sym("compiled_module"),
+                            subject_module_value(compiled_module, ctx),
+                        ),
+                        (
+                            ctx.sym("admission"),
+                            reference_derived_closure_admission_value(admission, ctx)?,
+                        ),
+                    ])),
+                })
             })
-            .collect::<Vec<_>>(),
-    )
+            .collect::<InterpResult<Vec<_>>>()?,
+    ))
 }
 
 /// ONE PROJECTION OF `CompileDiagnosticCensusRow`, CALLED BY EVERY PRODUCER OF IT.
@@ -24944,7 +24950,7 @@ macro_rules! v1_builtin_arms {
                     &compiled_module,
                     &admissions,
                     $ctx,
-                )))
+                )?))
             },
 
             arm "free_call.emit_rust_reference_derived_rows_bridge" { "emit_rust_reference_derived_rows_bridge" } => {
