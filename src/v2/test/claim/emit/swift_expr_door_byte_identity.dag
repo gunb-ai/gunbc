@@ -48,10 +48,8 @@ test fn form_outside_projection_refuses_on_the_door_path_holds() -> Bool {
     && sed_rows_text(e: sw_add(l: sw_id(n: "a"), r: sw_id(n: "b"))) == "let v = a + b\n"
 }
 
-// A nested int literal is outside what the shared shape can reify (target_value_expression_reify_from_wire
-// has no int-literal arm, so a call argument cannot be one); it refuses rather than print, while the rows
-// printer prints it. The gap is the shared shape's (Charter 6), recorded under the swift.dag frontier row.
-test fn nested_int_literal_argument_refuses_on_the_door_path_holds() -> Bool {
-  sed_door_text(e: sw_calln(f: "callee", a: [sw_pos(v: sw_int(n: 2))])) == "DOOR_REFUSED"
-    && sed_rows_text(e: sw_calln(f: "callee", a: [sw_pos(v: sw_int(n: 2))])) == "let v = callee(2)\n"
+// A nested int literal reifies since C5-G (#14424) added the int-literal arm to
+// target_value_expression_reify_from_wire, so a call argument can be one.
+test fn nested_int_literal_argument_prints_identically_both_ways_holds() -> Bool {
+  sed_joins(e: sw_calln(f: "callee", a: [sw_pos(v: sw_id(n: "a")), sw_pos(v: sw_int(n: 2))]), golden: "callee(a, 2)")
 }
