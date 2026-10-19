@@ -383,7 +383,7 @@ index 187b7e2fd786..50bcd620e0eb 100644
      "    }\n",
      "}\n")
 diff --git a/src/v1/compile.dag b/src/v1/compile.dag
-index 362b29145b34..50ec273e4bf0 100644
+index 362b29145b34..b26a3edc36eb 100644
 --- a/src/v1/compile.dag
 +++ b/src/v1/compile.dag
 @@ -7,6 +7,7 @@ import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
@@ -414,7 +414,7 @@ index 362b29145b34..50ec273e4bf0 100644
    diagnostics
      |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
      |> map(d => {
-@@ -1587,22 +1599,34 @@ fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> Lis
+@@ -1587,22 +1599,44 @@ fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> Lis
        concat(
          diagnostic_to_message(d: d.diagnostic),
          " (",
@@ -429,12 +429,22 @@ index 362b29145b34..50ec273e4bf0 100644
      })
  }
  
-+// THE SAME ONE RENDERER, FOR A CALLER THAT HAS NO INDEX TO OFFER. This is not a second renderer:
-+// it delegates with an empty index, so every line it returns carries a TYPED unlocated cause and
-+// none of them carries a byte offset dressed as a position. It exists so a host caller that only
-+// counts or keys the messages (`cli_run.rs`'s blocking count) keeps its call shape; every caller
-+// that PRINTS a line threads its own index through the `..._with_source_indices` name above, so no
-+// reader-facing line is located by this arm.
++// THE SAME ONE RENDERER, FOR A CALLER THAT HAS NO INDEX TO OFFER -- A STAGED SHAPE, NOT A SECOND
++// ENTRY POINT (DESIGN 6b, admitted at a gap-intolerant boundary). It delegates with an empty index,
++// so every line it returns carries a TYPED unlocated cause and none carries a byte offset dressed
++// as a position. WHY THE BOUNDARY IS gap-intolerant: the regenerator's own verify compiles the
++// emitted candidate together with the hand-maintained files copied from the working tree
++// (`copy_hand_maintained_support`), so an exported arity change cannot land atomically -- the round
++// that emits the 2-arg mirror fails its step-1 or verify build on the hand-written callers, and
++// reverts. Measured: REGEN-EXIT=1 with the arity changed, five reverted files.
++//
++// DISSOLUTION (this name is deleted, not kept): when the committed mirror carries
++// `interpreter_blocking_diagnostic_messages_with_source_indices` AND its only remaining caller, the
++// blocking COUNT at `src/v1/stage0/src/cli_run.rs` `run_dag_parse_sweep`'s tally, has moved to that
++// name. Then this function is removed and the located name is the only exported one. No PRINTING
++// caller uses this name today: the five printing call sites (`cli_run/emit_host.rs` x3,
++// `target_invocation_host.rs` x2) and the seed's own `stage0_self_compile_refusal_message` all pass
++// their real index to the located name; the only caller here counts lines and prints none.
 +fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> List<String> {
 +  interpreter_blocking_diagnostic_messages_with_source_indices(
 +    diagnostics: diagnostics,

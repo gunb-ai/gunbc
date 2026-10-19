@@ -79,10 +79,10 @@ index 6531c5e4de83..1b150b6a2000 100644
              .iter()
              .next()
 diff --git a/src/v1/stage0/src/declaration_index.rs b/src/v1/stage0/src/declaration_index.rs
-index 51a2fb4e7aad..f63ae3015cea 100644
+index 51a2fb4e7aad..4fdb7f747abe 100644
 --- a/src/v1/stage0/src/declaration_index.rs
 +++ b/src/v1/stage0/src/declaration_index.rs
-@@ -3213,10 +3213,25 @@ pub fn render_finding(
+@@ -3213,10 +3213,28 @@ pub fn render_finding(
      let located = match finding.offset {
          Some(offset) => match std::fs::read_to_string(workspace.join(&finding.rel_path)) {
              Ok(content) => {
@@ -98,7 +98,10 @@ index 51a2fb4e7aad..f63ae3015cea 100644
 +                    String,
 +                    std::rc::Rc<crate::v1_std_core::NewlineIndex>,
 +                > = std::collections::HashMap::new();
-+                source_indices.insert(finding.rel_path.clone(), std::rc::Rc::new(index));
++                // `build_newline_index` already RETURNS `Rc<NewlineIndex>` -- the map's value type
++                // is `Rc<NewlineIndex>`, so the index goes in as built. Wrapping it again is a
++                // second pointer to the same fact, and the compiler says so.
++                source_indices.insert(finding.rel_path.clone(), index);
 +                crate::v1_std_core::render_span_location(
 +                    crate::v1_std_core::SourceSpan {
 +                        file: finding.rel_path.clone(),
