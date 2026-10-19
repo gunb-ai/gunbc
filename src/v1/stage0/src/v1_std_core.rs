@@ -2166,11 +2166,7 @@ pub fn authored_name_at(
     node: Rc<Node>,
 ) -> String {
     match node.ident_span.clone() {
-        Some(ident) => authored_text_at(
-            source_indices.clone(),
-            ident.span.clone(),
-            node.name.clone(),
-        ),
+        Some(ident) => ident.text.clone(),
         std::option::Option::None => "".to_string(),
     }
 }
