@@ -3053,8 +3053,7 @@ pub fn kernel_or_unidentified(
                 TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: v.clone() },
             ),
             _ => {
-                if (crate::std_types::is_kernel_type(nm.clone()) || node_is_kernel_mint(n.clone()))
-                {
+                if crate::std_types::is_kernel_type(nm.clone()) {
                     Rc::new(TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
                         name: nm.clone(),
                     })
@@ -3065,10 +3064,16 @@ pub fn kernel_or_unidentified(
     name: nm.clone(),
 })
                     } else {
-                        Rc::new(TypeReferenceDeclarationReading::TypeReferenceUnidentified {
-                            authored: authored.clone(),
-                            resolved: resolved.clone(),
-                        })
+                        if node_is_kernel_mint(n.clone()) {
+                            Rc::new(TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
+                                name: nm.clone(),
+                            })
+                        } else {
+                            Rc::new(TypeReferenceDeclarationReading::TypeReferenceUnidentified {
+                                authored: authored.clone(),
+                                resolved: resolved.clone(),
+                            })
+                        }
                     }
                 }
             }
