@@ -16207,6 +16207,23 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
   }
 }
 
+// How one record-literal field is stored: the single storage decision. emit_stored_record_field renders
+// from it and the dying-base reuse form (dying_literal_plan) authorizes nested reuse from it, so a new
+// storage form is added to this classification and both paths see it.
+type FieldStorage
+  = StoredPromotedToSome
+  | StoredOptionalSlot
+  | StoredWrapped
+  | StoredDirectRc
+
+fn record_field_storage(f_name: String, f_value: Node, summary_name: String, ctor_name: String, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> FieldStorage {
+  if is_optional_struct_field(emit_info: emit_info, struct_name: summary_name, field_name: f_name) {
+    if is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) { StoredOptionalSlot } else { StoredPromotedToSome }
+  } else if wrap_rust_record_field_value(raw: "__slot", value_node: none, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: f_name) == "__slot" {
+    StoredDirectRc
+  } else { StoredWrapped }
+}
+
 // The stored representation of one record-literal field: the value rendered in its field context,
 // wrapped Some(..) when the field is optional and the value is not already, then wrapped for the
 // field's storage (callable Rc, Box). The struct literal and the dying-base reuse form both read it,
@@ -16215,11 +16232,12 @@ fn emit_stored_record_field(f: Node, resolved_type: Node, outer_type_name: Strin
   let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
   let f_value = field_init_node_value(n: f)
   let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: outer_type_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: summary_name, field_name: f_name)
-    && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
-  let field_val = if needs_wrap {
-    concat("Some(", val_str, ")")
-  } else { val_str }
+  let field_val = match record_field_storage(f_name: f_name, f_value: f_value, summary_name: summary_name, ctor_name: ctor_name, scope: scope, shared_types: shared_types, emit_info: emit_info) {
+    StoredPromotedToSome => concat("Some(", val_str, ")")
+    StoredOptionalSlot => val_str
+    StoredWrapped => val_str
+    StoredDirectRc => val_str
+  }
   wrap_rust_record_field_value(raw: field_val, value_node: Present { value: f_value }, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: f_name)
 }
 
@@ -16231,7 +16249,7 @@ fn emit_stored_record_field(f: Node, resolved_type: Node, outer_type_name: Strin
 // the same literal is built behind a fresh Rc, which is the arm the emitter took before the fact, so
 // correctness does not depend on runtime uniqueness, provided eligibility, the field-storage conversions
 // and the fallback construction are correct. A field that is itself a plain literal of a shared struct
-// held in a direct Rc slot (record_field_slot_is_direct_rc) is reused the same way, because the slot it fills is
+// held in a direct Rc slot (record_field_storage is StoredDirectRc) is reused the same way, because the slot it fills is
 // overwritten and so its old box is dead too. No field's type changes: every slot stays Rc<T>, so
 // no container element widens (recurring_failure_mode by_value_record_widens_container_slots).
 type DyingLitInit {
@@ -16284,15 +16302,6 @@ fn plain_shared_struct_literal_name(lit: Node, scope: InferScope, shared_types: 
   }
 }
 
-// A field slot that stores its value exactly as rendered: not optional (emit_stored_record_field
-// promotes to Some(..) there) and not callable- or Box-wrapped by wrap_rust_record_field_value. Only
-// such a slot is a direct Rc<Inner> that the dying-base form may Rc::get_mut; every other slot takes
-// the stored text whole, so one storage decision serves both forms.
-fn record_field_slot_is_direct_rc(f_name: String, summary_name: String, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>) -> Bool {
-  !is_optional_struct_field(emit_info: emit_info, struct_name: summary_name, field_name: f_name)
-    && wrap_rust_record_field_value(raw: "__slot", value_node: none, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: summary_name, field_name: f_name) == "__slot"
-}
-
 fn dying_literal_plan(lit: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> DyingLitPlan? {
   let si = scope.type_env.source_indices
   match plain_shared_struct_literal_name(lit: lit, scope: scope, shared_types: shared_types, emit_info: emit_info) {
@@ -16303,7 +16312,13 @@ fn dying_literal_plan(lit: Node, registry: Map<String, ItemInfo>, scope: InferSc
         let f_name = field_init_node_name_at(n: f, source_indices: si)
         let f_value = field_init_node_value(n: f)
         let stored = emit_stored_record_field(f: f, resolved_type: rt, outer_type_name: Present { value: tn }, summary_name: tn, ctor_name: tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-        let inner_name = if record_field_slot_is_direct_rc(f_name: f_name, summary_name: tn, scope: scope, emit_info: emit_info, shared_types: shared_types) { plain_shared_struct_literal_name(lit: f_value, scope: scope, shared_types: shared_types, emit_info: emit_info) } else { none }
+        let direct_rc = match record_field_storage(f_name: f_name, f_value: f_value, summary_name: tn, ctor_name: tn, scope: scope, shared_types: shared_types, emit_info: emit_info) {
+          StoredDirectRc => true
+          StoredPromotedToSome => false
+          StoredOptionalSlot => false
+          StoredWrapped => false
+        }
+        let inner_name = if direct_rc { plain_shared_struct_literal_name(lit: f_value, scope: scope, shared_types: shared_types, emit_info: emit_info) } else { none }
         match inner_name {
           Present { value: inner_tn } =>
             let inner_rt = expand_type_for_field_access(n: resolved_type(n: f_value), env: scope.type_env, module_name: scope.module_name).resolved
