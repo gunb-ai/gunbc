@@ -443,10 +443,42 @@ fn rust_overlayless_alias_leaf_requires_peel(env: TypeEnv, n: Node) -> Bool {
 // authored name, then the layer asked once of the declaration (render_rust_declaration_position), then
 // the optional layer. It replaces the target-generic render_node_type, which spelled the name and read
 // the layer from a spelling-keyed shared_types membership; no Rust-emit position calls that renderer.
+fn render_rust_leaf_layered(n: Node, spelled: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  rust_carrier_optional_wrap(n: n, rendered: render_rust_declaration_position(n: with_required_cardinality(n: n), spelled: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names))
+}
+
 fn render_rust_leaf_declaration_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: n)
-  let base = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: Rust), dag_name: tn)
-  rust_carrier_optional_wrap(n: n, rendered: render_rust_declaration_position(n: with_required_cardinality(n: n), spelled: base, shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names))
+  let named_base = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: Rust), dag_name: tn)
+  if n.connective == Disj {
+    if n.ident_span != none { render_rust_leaf_layered(n: n, spelled: named_base, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info) } else { emit_rust_compile_error_expr(message: "Anonymous coproduct type") }
+  } else if n.connective == Conj {
+    if n.type_annotation != none {
+      match n.children |> first {
+        Present { value: base } => render_rust_type(n: base, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+        Absent => coerce_primitive_type(decision: type_realization_decision(target: Rust, dag_name: "Refined", provenance: DeclarationIdentityAbsent), dag_name: "Refined")
+      }
+    } else if n.ident_span == none {
+      render_tuple_parts(parts: n.children |> map(c => render_rust_type(n: resolved_type(n: c), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)), target: Rust)
+    } else if is_declared_container_alias_spelling(name: tn) {
+      render_rust_leaf_layered(n: n, spelled: if to_snake(name: tn) == "map" { emit_map_type(key_type: "_", val_type: "_", target: Rust) } else { emit_container(name: tn, inner: "_", target: Rust) }, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    } else {
+      render_rust_leaf_layered(n: n, spelled: named_base, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    }
+  } else if n.params |> count > 0 && !(is_declared_container_alias_spelling(name: tn) && n.params |> count == 1) {
+    let spec = language_spec(target: Rust)
+    render_rust_leaf_layered(n: n, spelled: concat(named_base, spec.type_arg_open, n.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)) |> join(separator: ", "), spec.type_arg_close), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  } else if is_declared_container_alias_spelling(name: tn) {
+    let inner = match n.params |> first {
+      Present { value: p } => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+      Absent => "_"
+    }
+    render_rust_leaf_layered(n: n, spelled: if to_snake(name: tn) == "map" { emit_map_type(key_type: "_", val_type: "_", target: Rust) } else { emit_container(name: tn, inner: inner, target: Rust) }, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  } else if tn == tuple_type_name {
+    render_tuple_parts(parts: [], target: Rust)
+  } else {
+    render_rust_leaf_layered(n: n, spelled: named_base, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  }
 }
 
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
