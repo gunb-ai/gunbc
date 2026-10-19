@@ -4,7 +4,10 @@ import std.types { String, NonEmptyStr, List, Bool, Secret }
 import std.list { distinct_by_key }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpIamBindingCell, gcp_cell_in, gcp_policy_cells, gcp_policy_from_wire }
-import extdeps.cloud.gcp.errors { gcp_permission_denied_decides_existence }
+import extdeps.cloud.gcp.errors {
+  GcpParentReadStanding, GcpCallerReadsParentChildren, GcpCallerCannotReadParent,
+  GcpAbsentResourceAnswer, GcpAbsentAnswersPermissionDenied, GcpAbsentAnswersNotFound, gcp_absent_resource_answer,
+}
 import extdeps.transports.rest { RestRefusal, RestAnswered, RestRefused }
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.secret_manager
@@ -29,7 +32,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
 // WHAT THE OBSERVER CAN TELL is a consequence of where it is bound, read from its own roles rather than
 // restated: iam-observe holds getIamPolicy on accounts and secrets, only get on pools, and nothing on
 // the project. An absent resource answers NOT_FOUND only to a caller that can read its parent's
-// children (extdeps.cloud.gcp.errors gcp_permission_denied_decides_existence, google.aip.dev/211), and
+// children (extdeps.cloud.gcp.errors gcp_absent_resource_answer, google.aip.dev/211), and
 // iam-observe holds nothing on the project, so a PERMISSION_DENIED it sees is "absent OR unbound": a
 // typed cannot-tell, never a raw 403 and never a guess at either.
 
@@ -55,12 +58,12 @@ fn observer_reach(subject: IamBootstrapResource) -> ObserverReach {
   }
 }
 
-// THE OBSERVER HOLDS NOTHING ON THE PROJECT, the parent of every rostered subject.
-fn observer_reads_project_children() -> Bool {
+// THE OBSERVER'S STANDING ON THE PROJECT, the parent of every rostered subject, read from its reach there.
+fn observer_project_standing() -> GcpParentReadStanding {
   match observer_reach(subject: BootstrapProject) {
-    ObserverHoldsNothing => false
-    ObserverReadsSubjectOnly => true
-    ObserverReadsPolicy => true
+    ObserverHoldsNothing => GcpCallerCannotReadParent
+    ObserverReadsSubjectOnly => GcpCallerReadsParentChildren
+    ObserverReadsPolicy => GcpCallerReadsParentChildren
   }
 }
 
@@ -137,12 +140,10 @@ fn classify_bootstrap_subject(roster: List<IamBootstrapBinding>, o: BootstrapSub
       ObserverReadsPolicy => SubjectRefused { reason: concat(key, ": not observed, though the observer is bound on it") }
     }
     SubjectNotFound => SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectAbsent, missing: cells } }
-    SubjectPermissionDenied { cause } =>
-      if gcp_permission_denied_decides_existence(caller_reads_parent_children: observer_reads_project_children()) {
-        SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectUnbound, missing: cells } }
-      } else {
-        SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectAbsentOrUnboundCannotTell { cause: cause }, missing: cells } }
-      }
+    SubjectPermissionDenied { cause } => match gcp_absent_resource_answer(parent: observer_project_standing()) {
+      GcpAbsentAnswersNotFound => SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectUnbound, missing: cells } }
+      GcpAbsentAnswersPermissionDenied => SubjectMissing { classified: SubjectNotBootstrapped { subject: o.subject, standing: SubjectAbsentOrUnboundCannotTell { cause: cause }, missing: cells } }
+    }
     SubjectUnreadable { cause } => SubjectRefused { reason: join([key, ": unreadable: ", cause], "") }
   }
 }

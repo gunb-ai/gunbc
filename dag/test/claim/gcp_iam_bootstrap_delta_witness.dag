@@ -14,8 +14,9 @@ import gunbc.auth.gcp_iam_bootstrap_delta {
   BootstrapSubjectReading, SubjectPolicyRead, SubjectAnswered, SubjectPermissionDenied, SubjectNotFound, SubjectUnreadable, SubjectUnobservable,
   BootstrapSubjectObservation, BootstrapSubjectStanding, SubjectUnbound, SubjectAbsent, SubjectAbsentOrUnboundCannotTell,
   SubjectNotBootstrapped, BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused,
-  bootstrap_delta_over, roster_subjects, subject_cells, observer_reads_project_children,
+  bootstrap_delta_over, roster_subjects, subject_cells, observer_project_standing,
 }
+import extdeps.cloud.gcp.errors { GcpCallerCannotReadParent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -134,7 +135,7 @@ test fn absent_and_unbound_are_distinguished_or_a_typed_cannot_tell_is_returned(
   let cells = secret_cells(r: roster, secret: first_custody_secret)
   let denied = the_one_subject(d: bootstrap_delta_over(roster: roster, observations: observations_with(r: roster, subject: s, reading: SubjectPermissionDenied { cause: "status 403: denied" })))
   let absent = the_one_subject(d: bootstrap_delta_over(roster: roster, observations: observations_with(r: roster, subject: s, reading: SubjectNotFound)))
-  !observer_reads_project_children()
+  (match observer_project_standing() { GcpCallerCannotReadParent => true  _ => false })
     && match denied { Present { value: n } => same_cells(a: n.missing, b: cells) && match n.standing { SubjectAbsentOrUnboundCannotTell { cause: _ } => true  _ => false }  Absent => false }
     && match absent { Present { value: n } => same_cells(a: n.missing, b: cells) && match n.standing { SubjectAbsent => true  _ => false }  Absent => false }
 }
