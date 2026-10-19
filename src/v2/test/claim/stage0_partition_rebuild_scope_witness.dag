@@ -6,6 +6,7 @@ import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
   generated_partition_crate_rows
 }
+import gunbc.source_layout { layout_module_storage_path }
 import gunbc.stage0_partition_rebuild_scope {
   ChangedMirrorUnlocatable,
   ExecutableAssemblyNotCovered,
@@ -564,4 +565,11 @@ test fn witness_regen_bound_getter_and_predicate_agree_holds() -> Bool {
 test fn witness_boundary_carrying_stage_is_whole_compiler_holds() -> Bool {
   stage0_stage_rebuild_is_whole_compiler(boundary_files: ["src/v1/stage0_std_core/lib.rs"])
     && !stage0_stage_rebuild_is_whole_compiler(boundary_files: [])
+}
+
+// The mapping honours the per-namespace root: v2 elides its namespace under src/v2, every other
+// namespace keeps its full name under dag/ (the local copy this replaced ignored root(v2)).
+test fn witness_layout_module_storage_path_honours_namespace_root_holds() -> Bool {
+  layout_module_storage_path(module: "v2.std.node") == "src/v2/std/node.dag"
+    && layout_module_storage_path(module: "gunbc.source_layout") == "dag/gunbc/source_layout.dag"
 }
