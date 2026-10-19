@@ -9,11 +9,14 @@ import v2.compiler.program_assembly { assemble_program_from_ingest_located }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.c { c_target_model }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.dag { dag_language_model, dag_pick_target_model, dag_value_expression_projection }
 import v2.extdeps.languages.typescript { ts_target_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.compilers.target_model {
   TargetModel,
+  render_target_text,
   target_project_arrow_body_to_value_expression,
   target_value_expression_projection_from_target,
   target_value_expression_tokens_from_target
@@ -163,4 +166,64 @@ test fn typescript_refuses_a_list_introduction_at_the_authored_literal_holds() -
 
 test fn dag_refuses_a_list_introduction_at_the_authored_literal_holds() -> Bool {
   list_introduction_refused_unwired_at_the_literal(v: list_introduction_probe_table().dag)
+}
+
+type ListIntroductionRustVerdict
+  = ListIntroductionRustText { text: String }
+  | ListIntroductionRustUnreached
+
+fn list_introduction_rust_text(arrow: Node) -> ListIntroductionRustVerdict {
+  let target = rust_target_model()
+  let tokens = bind_outcome(
+    o: target_project_arrow_body_to_value_expression(
+      arrow: arrow,
+      target: target,
+      source_bool_form: dag_value_expression_projection().bool_literal_form,
+      handle_transform: fn(a, b, t) { translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t) }
+    ),
+    f: fn(expr) {
+      bind_outcome(
+        o: target_value_expression_projection_from_target(target: target),
+        f: fn(projection) {
+          target_value_expression_tokens_from_target(expr: expr, target: target, projection: projection)
+        }
+      )
+    }
+  )
+  match bind_outcome(o: tokens, f: fn(ts) { serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: ts) }) {
+    Accepted { value: t, diagnostics: _ } => ListIntroductionRustText { text: render_target_text(t: t) }
+    Rejected { diagnostics: _ } => ListIntroductionRustUnreached
+  }
+}
+
+fn list_introduction_rust_probe() -> ListIntroductionRustVerdict {
+  let assembled = assemble_program_from_ingest_located(
+    ingest: list_introduction_probe_ingest,
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^list_introduction_probe, tail: Empty } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+  match bind_outcome(o: assembled.program, f: fn(p) { infer_and_discharge(tree: p) }) {
+    Rejected { diagnostics: _ } => ListIntroductionRustUnreached
+    Accepted { value: inferred, diagnostics: _ } =>
+      match produced_decl_conjs_in_tree(root: inferred.root) {
+        Empty => ListIntroductionRustUnreached
+        Cons { head: decl, tail: _ } =>
+          match emit_produced_decl_inner_arrow(decl: decl) {
+            Rejected { diagnostics: _ } => ListIntroductionRustUnreached
+            Accepted { value: arrow, diagnostics: _ } => list_introduction_rust_text(arrow: arrow)
+          }
+      }
+  }
+}
+
+// THE POSITIVE CONTROL: the Rust row renders the same list literal as its existing FreeMonoid
+// realization (`Vec`) literal, so the refusals above are the missing row and not a broken probe.
+test fn rust_renders_a_list_introduction_as_a_vec_literal_holds() -> Bool {
+  match list_introduction_rust_probe() {
+    ListIntroductionRustText { text: text } => text == "vec![1, 2]"
+    ListIntroductionRustUnreached => false
+  }
 }
