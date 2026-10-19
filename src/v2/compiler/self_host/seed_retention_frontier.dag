@@ -865,6 +865,52 @@ fn frontier_summary_line(frontier: SelfHostFrontier) -> String {
   )
 }
 
+// THE PER-FILE READING, one line per observed path in observed (sorted) order, so two runs diff to
+// the files that moved. Format, space-separated, no field contains a space:
+//   [self-host-frontier] file <crate_relative_path> standing=<standing> source_module=<module|-> cause=<cause|-> reason=<reason|->
+// standing: self-emitted | emitted-unexecuted | seed-retained | generated-census-artifact | unclassified
+// cause and reason are set only for seed-retained rows (reason: declared-here | declared-elsewhere |
+// not-yet-declared). An unclassified path additionally prints its REFUSED line.
+fn frontier_cause_word(cause: SeedRetentionCause) -> String {
+  match cause {
+    SeedRetainedIntrinsicSource => "seed-retained-intrinsic"
+    WetActuatorGeneratedSource => "wet-actuator-generated"
+    EmitterProducedDivergentSource => "emitter-produced-divergent"
+    SupportDirectoryMemberSource => "support-directory-member"
+    HostBinaryEntryPointSource => "host-binary-entry-point"
+    CrateTestHarnessSource => "crate-test-harness"
+    CargoBuildScriptSource => "cargo-build-script"
+  }
+}
+
+fn frontier_reason_word(reason: SeedRetentionReason) -> String {
+  match reason {
+    ReasonDeclaredHere { detail: _, dissolution: _ } => "declared-here"
+    ReasonDeclaredElsewhere { authority: _ } => "declared-elsewhere"
+    ReasonNotYetDeclared => "not-yet-declared"
+  }
+}
+
+fn frontier_file_line(path: String, standing: String, source_module: String, cause: String, reason: String) -> String {
+  concat(
+    "[self-host-frontier] file ", path,
+    " standing=", standing,
+    " source_module=", source_module,
+    " cause=", cause,
+    " reason=", reason
+  )
+}
+
+fn frontier_standing_file_line(standing: FrontierStanding) -> String {
+  match standing {
+    SelfEmitted { crate_relative_path: path, source_module: module, receipt: _ } => frontier_file_line(path: path, standing: "self-emitted", source_module: module, cause: "-", reason: "-")
+    EmittedUnexecuted { crate_relative_path: path, source_module: module } => frontier_file_line(path: path, standing: "emitted-unexecuted", source_module: module, cause: "-", reason: "-")
+    SeedRetained { row: row } => frontier_file_line(path: row.crate_relative_path, standing: "seed-retained", source_module: "-", cause: frontier_cause_word(cause: row.cause), reason: frontier_reason_word(reason: row.reason))
+    GeneratedCensusArtifact { crate_relative_path: path } => frontier_file_line(path: path, standing: "generated-census-artifact", source_module: "-", cause: "-", reason: "-")
+    Unclassified { crate_relative_path: path } => frontier_file_line(path: path, standing: "unclassified", source_module: "-", cause: "-", reason: "-")
+  }
+}
+
 fn frontier_standing_lines(frontier: SelfHostFrontier) -> List<String> {
   concat(
     fold(
@@ -872,11 +918,11 @@ fn frontier_standing_lines(frontier: SelfHostFrontier) -> List<String> {
       init: [],
       f: fn(acc, standing) {
         match standing {
-          Unclassified { crate_relative_path: path } => concat(acc, [concat("[self-host-frontier] REFUSED unclassified: ", path)])
-          SelfEmitted { crate_relative_path: path, source_module: module, receipt: _ } => concat(acc, [concat("[self-host-frontier] self-emitted: ", concat(path, concat(" <- ", module)))])
-          EmittedUnexecuted { crate_relative_path: _, source_module: _ } => acc
-          SeedRetained { row: _ } => acc
-          GeneratedCensusArtifact { crate_relative_path: _ } => acc
+          Unclassified { crate_relative_path: path } => concat(acc, [frontier_standing_file_line(standing: standing), concat("[self-host-frontier] REFUSED unclassified: ", path)])
+          SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
+          EmittedUnexecuted { crate_relative_path: _, source_module: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
+          SeedRetained { row: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
+          GeneratedCensusArtifact { crate_relative_path: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
         }
       }
     ),

@@ -273,9 +273,11 @@ test fn witness_report_control_holds() -> Bool {
     observed_text: report_observed
   )
   (r.exit == 0)
-    && (length(xs: r.lines) == 2)
+    && (length(xs: r.lines) == 5)
     && report_has(lines: r.lines, pattern: "self_emitted=1 emitted_unexecuted=1 seed_retained=2 unclassified=0")
-    && report_has(lines: r.lines, pattern: "self-emitted: src/emitted_in_closure.rs <- emitted_in_closure")
+    && report_has(lines: r.lines, pattern: "file src/emitted_in_closure.rs standing=self-emitted source_module=emitted_in_closure cause=- reason=-")
+    && report_has(lines: r.lines, pattern: "file src/emitted_outside_closure.rs standing=emitted-unexecuted source_module=")
+    && report_has(lines: r.lines, pattern: " standing=seed-retained source_module=- cause=")
 }
 
 // RED: a nested manifest path is not emission-shaped; it is no observation (exit 2), never a
