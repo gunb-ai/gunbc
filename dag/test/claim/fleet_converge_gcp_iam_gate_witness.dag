@@ -3,9 +3,9 @@ module test.claim.fleet_converge_gcp_iam_gate_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
-import extdeps.github.expressions { Expression, ContextAccess, Needs, StringLiteral, Equals, LogicalAnd, serialize_expression }
+import extdeps.github.expressions { Expression, ContextAccess, Needs, StringLiteral, Equals, NotEquals, LogicalAnd, LogicalOr, LogicalNot, FunctionCall, Cancelled, serialize_expression }
 import gunbc.fleet.fleet_converge_workflow {
-  GcpIamConverge, fleet_converge_dispatch_mode_is,
+  GcpIamConverge, BranchRunGrant, fleet_converge_dispatch_mode_is, fleet_converge_release_bins_job_id, fleet_converge_gcp_iam_bootstrap_job_id,
   fleet_converge_gcp_iam_bootstrap_apply_job_gate, fleet_converge_gcp_iam_bootstrap_step_gate, fleet_converge_gcp_iam_job_gate,
   fleet_converge_gcp_iam_bootstrap_job, fleet_converge_gcp_iam_bootstrap_request_job, fleet_converge_gcp_iam_converge_job_on,
   fleet_converge_gcp_iam_bootstrap_request_job_id,
@@ -52,4 +52,47 @@ test fn the_apply_gate_admits_only_an_approved_delta_under_the_converge_mode() -
 test fn a_gate_without_the_approved_conjunct_is_refused() -> Bool {
   !admits_only_an_approved_delta(gate: fleet_converge_dispatch_mode_is(mode: GcpIamConverge))
     && !admits_only_an_approved_delta(gate: LogicalAnd { left: fleet_converge_dispatch_mode_is(mode: GcpIamConverge), right: StringLiteral { value: "true" } })
+}
+
+// ── THE CONVERGE GATE'S LAW (srv2 mutations E3, E4) ────────────────────────────────────────────
+// A CANCELLED apply, displaced in the shared concurrency group, may have landed cells with no readback,
+// and a failed one did not land them; so the converge runs only when the build succeeded, the run was
+// not cancelled, and the apply SUCCEEDED or was SKIPPED (no delta), by enumeration, under its modes.
+// The expected gate is built here from its parts, not read from the production value.
+fn needs_is(job: NonEmptyStr, field: String, value: String) -> Expression {
+  Equals { left: ContextAccess { context: Needs, path: [job as String, field] }, right: StringLiteral { value: value } }
+}
+
+fn converge_gate_with(not_cancelled: Bool, apply_results: List<String>) -> Expression {
+  let build = needs_is(job: fleet_converge_release_bins_job_id, field: "result", value: "success")
+  let first = if not_cancelled { LogicalAnd { left: LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } }, right: build } } else { build }
+  let applied = fold(apply_results.skip(n: 1), init: needs_is(job: fleet_converge_gcp_iam_bootstrap_job_id, field: "result", value: join(apply_results.take(n: 1), "")),
+    f: (acc, r) => LogicalOr { left: acc, right: needs_is(job: fleet_converge_gcp_iam_bootstrap_job_id, field: "result", value: r) })
+  LogicalAnd {
+    left: LogicalAnd { left: first, right: applied },
+    right: LogicalOr { left: fleet_converge_dispatch_mode_is(mode: GcpIamConverge), right: fleet_converge_dispatch_mode_is(mode: BranchRunGrant) },
+  }
+}
+
+fn admits_only_a_landed_or_absent_apply(gate: Expression) -> Bool {
+  serialize_expression(expression: gate) == serialize_expression(expression: converge_gate_with(not_cancelled: true, apply_results: ["success", "skipped"]))
+}
+
+test fn the_converge_gate_admits_only_a_succeeded_or_skipped_apply() -> Bool {
+  admits_only_a_landed_or_absent_apply(gate: fleet_converge_gcp_iam_job_gate)
+}
+
+// CONTROLS: admitting 'cancelled' or 'failure', dropping !cancelled(), or `!= 'failure'` is refused.
+test fn a_converge_gate_admitting_an_unlanded_apply_is_refused() -> Bool {
+  let neq_failure = LogicalAnd {
+    left: LogicalAnd {
+      left: LogicalAnd { left: LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } }, right: needs_is(job: fleet_converge_release_bins_job_id, field: "result", value: "success") },
+      right: NotEquals { left: ContextAccess { context: Needs, path: [fleet_converge_gcp_iam_bootstrap_job_id as String, "result"] }, right: StringLiteral { value: "failure" } },
+    },
+    right: LogicalOr { left: fleet_converge_dispatch_mode_is(mode: GcpIamConverge), right: fleet_converge_dispatch_mode_is(mode: BranchRunGrant) },
+  }
+  !admits_only_a_landed_or_absent_apply(gate: converge_gate_with(not_cancelled: true, apply_results: ["success", "cancelled"]))
+    && !admits_only_a_landed_or_absent_apply(gate: converge_gate_with(not_cancelled: true, apply_results: ["success", "skipped", "failure"]))
+    && !admits_only_a_landed_or_absent_apply(gate: converge_gate_with(not_cancelled: false, apply_results: ["success", "skipped"]))
+    && !admits_only_a_landed_or_absent_apply(gate: neq_failure)
 }
