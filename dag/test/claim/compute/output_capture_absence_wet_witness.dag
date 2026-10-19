@@ -60,7 +60,6 @@ import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.plumbing
-import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import gunbc.compute.work_request { DeclaredOutput, CheckoutRoot }
 import gunbc.compute.work_provider_local {
   ComputeExec,
@@ -125,22 +124,20 @@ data containment_snapshot_dirs: List<String> = [
   "/var/lib/gunbc",
 ]
 
-// THE FRAME THIS WITNESS PASSES. The fleet allocates small frame numbers; passing the run's
-// unix-millis means the fleet's own frame path /tmp/gunbc_compute_<frame> is a name no run of this
-// file can address, and the /tmp population snapshot above would show any new one anyway.
-fn witness_frame() -> Int {
-  match clock_unix_millis_read() {
-    ClockUnixMillisRefused { detail: _ } => 0
-    ClockUnixMillisObserved { millis } => millis
-  }
-}
-
 // THE WITNESS'S OWN HOST: the production constructor shape (cf.
-// fleet_compute_hermetic_dashboard_instance_at) with exactly two departures, both toward
+// fleet_compute_hermetic_dashboard_instance_at) with exactly three departures, all toward
 // containment -- repo_root/origin are the temp checkout, and BOTH roots production derives capture
 // paths from (instance_root, and the materialization store, which is WitnessScratchRoot here) sit
 // under one temp root.
-fn witness_instance(temp_root: String, frame: Int) -> HostDashboardInstance {
+//
+// NO FRAME IS PASSED, and that is deliberate rather than an omission: nothing in this file reads a
+// frame, so there is nothing for a refused clock read to default. An earlier revision carried a
+// frame parameter whose only use was a name nothing looked up, and defaulted it to 0 when
+// clock_unix_millis_read refused -- which threw a refusal away to feed a value no consumer read
+// (review 82782). Deleting the unread parameter deletes the fabrication; the fleet's own frame
+// scratch (/tmp/gunbc_compute_<n>) is covered as a POPULATION by the /tmp snapshot above, so
+// containment never depended on it.
+fn witness_instance(temp_root: String) -> HostDashboardInstance {
   let homes = IsolatedJobToolchainHomes {
     cargo_home: dashboard_instance_child(root: temp_root as FilePath, child: "homes/cargo"),
     rustup_home: dashboard_instance_child(root: temp_root as FilePath, child: "homes/rustup"),
@@ -242,8 +239,7 @@ type WetCaptureCase {
 // running.
 fn wet_capture_case(write_output: Bool, second_output_present: Bool) -> WetCaptureCase {
   let root = shell.Mktemp.Dir().path as String
-  let frame = witness_frame()
-  let instance = witness_instance(temp_root: root, frame: frame)
+  let instance = witness_instance(temp_root: root)
   let before = snapshots()
   let layout_opt = compute_layout(instance: instance, identity_hex: "wetcapturewitnessidentity0000000000")
   let checkout = match layout_opt {
