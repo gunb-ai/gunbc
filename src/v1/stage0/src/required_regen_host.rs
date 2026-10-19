@@ -2994,7 +2994,6 @@ struct CargoBuildObservation {
 }
 
 const REGEN_CONVERGENCE_SCHEMA: &str = "gunbc.regen_convergence_transaction.v1";
-const REGEN_CONVERGENCE_BOUND: usize = 8;
 const REGEN_CONVERGENCE_JOURNAL_REL: &str = "target/regen-convergence-journal";
 const REGEN_CONVERGENCE_RECEIPT_REL: &str = "target/regen-convergence-transaction.json";
 
@@ -3513,6 +3512,20 @@ fn rebuild_scope_decision(
         v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
     })
     .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+}
+
+fn regen_convergence_generation_bound(source_roots: &[String]) -> Result<i64, String> {
+    match rebuild_scope_decision(
+        source_roots,
+        "regen_convergence_generation_bound",
+        Vec::new(),
+    )? {
+        ModelValue::Int(value) => Ok(value),
+        other => Err(format!(
+            "refusal: regen_convergence_generation_bound returned {} instead of Int",
+            other.type_label_public()
+        )),
+    }
 }
 
 fn regen_convergence_bound_exceeded(
@@ -4513,7 +4526,7 @@ fn partition_rebuild_actuation(
 ///   2. the boundary files the move needs are RENDERED FROM THE CANDIDATE TREE'S ROWS, not the
 ///      predecessor's compiled-in ones.
 /// The converse equality (the built seed's own compiled-in rows project to these same bytes) is
-/// checked after the build by `admit_built_seed_partition_projection`. Anything else keeps the
+/// checked after each build by `built_seed_boundary_drift`, whose answer is another loop population. Anything else keeps the
 /// typed `WholeCompilerRebuildRequired` refusal.
 fn admit_derived_partition_move(
     source_roots: &[String],
@@ -4589,11 +4602,12 @@ fn partition_move_rebuild(
     seed_cargo_build(workspace, "round.rebuild_from_installed")
 }
 
-/// THE FIXED-POINT CONJUNCT FOR A MOVED PARTITION: the seed built from the installed mirrors
-/// projects, from its OWN compiled-in rows, exactly the boundary files this round installed. The
-/// read-only producer exits nonzero on any divergence, so a mirror that disagrees with the
-/// authority it was meant to project refuses here instead of converging.
-fn admit_built_seed_partition_projection(workspace: &Path) -> Result<(), String> {
+/// THE BOUNDARY POPULATION OF THE FIXED POINT: the built seed projects, from its OWN compiled-in
+/// rows and renderer, the partition boundary files. `Ok(vec![])` is agreement; a nonempty answer
+/// names the workspace-relative files the rebuilt producer would change, which are one more
+/// drifted population of the loop (another install and rebuild), never a terminal refusal. A
+/// producer that exits nonzero WITHOUT naming a drifted file did not observe, and refuses.
+fn built_seed_boundary_drift(workspace: &Path) -> Result<Vec<String>, String> {
     let on_disk = current_exe_on_disk()?;
     let output = Command::new(&on_disk)
         .arg("--emit-partition-crates")
@@ -4605,11 +4619,66 @@ fn admit_built_seed_partition_projection(workspace: &Path) -> Result<(), String>
                 on_disk.display()
             )
         })?;
-    if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let drifted = boundary_drift_from_producer_report(&output.stdout).ok_or_else(|| {
+        format!(
+            "PartitionProjectionUnobserved: the built seed returned no typed boundary report: {stderr}"
+        )
+    })?;
+    if output.status.success() != drifted.is_empty() {
         return Err(format!(
-            "PartitionProjectionDiverges: the built seed's own partition projects boundary \
-             files that differ from the installed ones: {}",
-            String::from_utf8_lossy(&output.stderr)
+            "PartitionProjectionUnobserved: exit status and typed report disagree: {stderr}"
+        ));
+    }
+    Ok(drifted)
+}
+
+fn boundary_drift_from_producer_report(stdout: &[u8]) -> Option<Vec<String>> {
+    let report: serde_json::Value = serde_json::from_slice(stdout).ok()?;
+    if report.get("schema")?.as_str()? != "gunbc.partition_boundary_report.v1" {
+        return None;
+    }
+    report
+        .get("divergent")?
+        .as_array()?
+        .iter()
+        .map(|p| p.as_str().map(str::to_string))
+        .collect()
+}
+
+/// Install the rebuilt producer's boundary output: journal the files first (the one rollback),
+/// then let the built seed write them.
+fn install_built_seed_boundary(workspace: &Path, drifted: &[String]) -> Result<(), String> {
+    let journal_path = regen_convergence_journal_path(workspace).join("journal.json");
+    let journal: RegenConvergenceJournal = serde_json::from_slice(
+        &fs::read(&journal_path).map_err(|e| format!("read {}: {e}", journal_path.display()))?,
+    )
+    .map_err(|e| format!("parse {}: {e}", journal_path.display()))?;
+    let subject = RegenConvergenceCheckpointSubject {
+        starting_commit: journal.starting_commit,
+        source_authority_digest: journal.source_authority_digest,
+        stage_plan_authority_digest: journal.stage_plan_authority_digest,
+    };
+    let entries = drifted
+        .iter()
+        .map(|path| (path.clone(), workspace.join(path)))
+        .collect::<Vec<_>>();
+    journal_paths_for_subject(workspace, &entries, &subject)?;
+    let on_disk = current_exe_on_disk()?;
+    let status = Command::new(&on_disk)
+        .args(["--emit-partition-crates", "--write"])
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| {
+            format!(
+                "PartitionBoundaryWriteRefused: spawn {}: {e}",
+                on_disk.display()
+            )
+        })?;
+    if !status.status.success() {
+        return Err(format!(
+            "PartitionBoundaryWriteRefused: {}",
+            String::from_utf8_lossy(&status.stderr)
         ));
     }
     Ok(())
@@ -4885,6 +4954,7 @@ fn convergence_plan_from_model(
     affected_bound: &RegenEmissionScope,
     seen_state_keys: &[String],
     seed_digest: &str,
+    generation_bound: i64,
 ) -> Result<(RegenConvergenceStageKindReceipt, Vec<String>, String), String> {
     use crate::v1_interpreter::{self, str_value, Value};
     let ctx = model.context();
@@ -4908,10 +4978,7 @@ fn convergence_plan_from_model(
             Some("ordinal".to_string()),
             Value::Int((ordinal - 1) as i64),
         ),
-        (
-            Some("bound".to_string()),
-            Value::Int(REGEN_CONVERGENCE_BOUND as i64),
-        ),
+        (Some("bound".to_string()), Value::Int(generation_bound)),
     ];
     let progress = v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(
@@ -6096,9 +6163,74 @@ pub fn run_regen_round_cost(
         );
     }
 
+    let generation_bound = regen_convergence_generation_bound(source_roots)?;
     let mut partition_moved = false;
     let mut round_records: Vec<String> = Vec::new();
-    while !drifted.is_empty() {
+    loop {
+        if drifted.is_empty() {
+            if !partition_moved {
+                break;
+            }
+            let boundary_drift = match built_seed_boundary_drift(&workspace) {
+                Ok(paths) => paths,
+                Err(failure) => {
+                    restore_regen_convergence_journal(&workspace)?;
+                    return Err(format!("{failure}; checkpoint restored"));
+                }
+            };
+            if boundary_drift.is_empty() {
+                break;
+            }
+            round_records.push(format!(
+                "generation {generation_ordinal}: mirrors converged, boundary drift under the \
+                 rebuilt producer {boundary_drift:?}"
+            ));
+            if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
+                restore_regen_convergence_journal(&workspace)?;
+                return Err(format!(
+                    "RegenConvergenceBoundExceeded: boundary files did not converge within the \
+                     declared bound (regen_convergence_max_generations) at generation \
+                     {generation_ordinal}; checkpoint restored; nothing is published -- {}",
+                    round_records.join("; ")
+                ));
+            }
+            let rebuilt = install_built_seed_boundary(&workspace, &boundary_drift)
+                .and_then(|()| seed_cargo_build(&workspace, "round.rebuild_from_boundary"))
+                .and_then(|_| next_pass_executable_digest(&workspace));
+            match rebuilt {
+                Ok(digest) => current_seed_digest = digest,
+                Err(failure) => {
+                    restore_regen_convergence_journal(&workspace)?;
+                    return Err(format!(
+                        "boundary stage refused; checkpoint restored: {failure}"
+                    ));
+                }
+            }
+            generation_ordinal += 1;
+            match run_built_seed_regen(
+                &workspace,
+                candidate_dir_rel,
+                receipt_rel,
+                source_roots,
+                affected_scope,
+                &current_seed_digest,
+            ) {
+                Ok(next) => {
+                    candidate_digest = next.manifest.candidate_tree_digest.clone();
+                    candidate_tree_id = next.manifest.candidate_tree_id.clone();
+                    drifted = next.drifted;
+                    authority_digest = next.authority_digest;
+                    candidate_manifest = next.manifest;
+                }
+                Err(failure) => {
+                    restore_regen_convergence_journal(&workspace)?;
+                    return Err(format!(
+                        "next generation refused; checkpoint restored: {failure}"
+                    ));
+                }
+            }
+            continue;
+        }
         round_records.push(format!(
             "generation {generation_ordinal}: first_generation_equal=false drifted={drifted:?}"
         ));
@@ -6136,6 +6268,7 @@ pub fn run_regen_round_cost(
             &scope,
             &seen_state_keys,
             &current_seed_digest,
+            generation_bound,
         )?;
         seen_states.insert(state);
         let stage_kind = kind;
@@ -6274,12 +6407,6 @@ pub fn run_regen_round_cost(
         }
     }
 
-    if partition_moved {
-        if let Err(failure) = admit_built_seed_partition_projection(&workspace) {
-            restore_regen_convergence_journal(&workspace)?;
-            return Err(format!("{failure}; checkpoint restored"));
-        }
-    }
     // Anything still drifting at the terminal is a PROMISE, not an outcome, and the lineage join
     // refuses it. The loop exits on an empty drift so a converged run records none -- the arm
     // exists because a fixed point that was never reached must not be able to render as one.
@@ -8132,6 +8259,29 @@ mod dag_artifact_identity_tests {
             "{}\n{}",
             outcome.summary(),
             outcome.findings.join("\n")
+        );
+    }
+}
+
+#[cfg(test)]
+mod boundary_population_tests {
+    use super::*;
+
+    #[test]
+    fn producer_report_is_read_as_a_typed_record() {
+        let report =
+            br#"{"schema":"gunbc.partition_boundary_report.v1","divergent":["src/b/lib.rs"]}"#;
+        assert_eq!(
+            boundary_drift_from_producer_report(report),
+            Some(vec!["src/b/lib.rs".to_string()])
+        );
+        assert_eq!(
+            boundary_drift_from_producer_report(b"emit-partition-crates: drifted x/y"),
+            None
+        );
+        assert_eq!(
+            boundary_drift_from_producer_report(br#"{"schema":"other","divergent":[]}"#),
+            None
         );
     }
 }

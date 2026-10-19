@@ -671,6 +671,10 @@ fn stage0_partition_move_explained_by_changed_paths(changed_paths: List<String>)
 // widened or unbounded loop.
 data regen_convergence_max_generations: Int = 6
 
+fn regen_convergence_generation_bound() -> Int {
+  regen_convergence_max_generations
+}
+
 fn regen_convergence_bound_exceeded(generation_ordinal: Int) -> Bool {
-  generation_ordinal >= regen_convergence_max_generations
+  generation_ordinal >= regen_convergence_generation_bound()
 }
