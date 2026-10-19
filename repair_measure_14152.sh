@@ -37,20 +37,22 @@ fold_keeps_a_settled_binding_against_an_actual_that_still_carries_a_type_variabl
 fold_refuses_two_distinct_settled_bindings_of_the_same_shape
 fold_refuses_int_bound_then_bool'
 
-if [ "${1:-}" = "--selfcheck" ]; then
-  echo "row-count=$(printf '%s\n' $ROWS | wc -l)"
-  test -f "$(dirname "$0")/patch_producer_instantiate.py" || { echo "SELFCHECK FAIL patcher"; exit 1; }
-  test -f "$(dirname "$0")/instruments/regen_full.sh" || { echo "SELFCHECK FAIL regen"; exit 1; }
-  echo "SELFCHECK OK"; exit 0
-fi
-
 say(){ echo "=== $* ==="; }
 seed(){ sha256sum "$1" | cut -c1-16; }
 
+TESTCMD="${TESTCMD:-cargo test -p v1-compiler-tests --lib cross_coproduct}"
+
 testrows(){ # testrows <label>
-  local label="$1" log="$LOGS/test_$label.log"
+  local label="$1"
+  # NOT `local label=$1 log=...$label...`: in one local statement the later
+  # assignment is expanded before the earlier one lands, so $label is unbound and the
+  # whole run dies under set -u.
+  local log="$LOGS/test_$label.log"
   echo "--- BEGIN-TESTS $label"
-  cargo test -p v1-compiler-tests --lib cross_coproduct >"$log" 2>&1
+  # TESTCMD is injectable so --selfcheck can stub it: the real crate build must
+  # NEVER run here -- this session shares a memory cgroup with every other session and a
+  # whole-tree cargo build locally gets the largest task killed. It belongs on the runner.
+  $TESTCMD >"$log" 2>&1
   local rc=$?
   echo "--- TESTS $label rc=$rc"
   local r
@@ -63,6 +65,25 @@ testrows(){ # testrows <label>
   grep -E "^error(\[|:)" "$log" | head -5 | sed "s/^/COMPILE_ERROR $label /"
   return $rc
 }
+
+if [ "${1:-}" = "--selfcheck" ]; then
+  echo "row-count=$(printf '%s\n' $ROWS | wc -l)"
+  test -f "$(dirname "$0")/patch_producer_instantiate.py" || { echo "SELFCHECK FAIL patcher"; exit 1; }
+  test -f "$(dirname "$0")/instruments/regen_full.sh" || { echo "SELFCHECK FAIL regen"; exit 1; }
+  # Exercise the real helpers against fabricated input: `bash -n` cannot see a bad local.
+  LOGS=/tmp/repair_selfcheck_logs; rm -rf "$LOGS"; mkdir -p "$LOGS"
+  # Stub emits the fabricated cargo output on stdout; testrows redirects it into the log.
+  # Never build locally: this session shares a memory cgroup with every other session.
+  FIXTURE=/tmp/repair_selfcheck_fixture.log
+  printf 'test cross_coproduct_generic_locate_test::%s ... ok\n' $ROWS > "$FIXTURE"
+  printf 'test result: ok. 9 passed; 0 failed; 0 ignored\n' >> "$FIXTURE"
+  TESTCMD="cat $FIXTURE"
+  out=$(testrows selfcheck 2>&1); rc=$?
+  echo "$out" | sed 's/^/SC /'
+  echo "$out" | grep -q MISSING_FATAL && { echo "SELFCHECK FAIL row matching"; exit 1; }
+  [ $rc -eq 0 ] || { echo "SELFCHECK FAIL testrows rc=$rc"; exit 1; }
+  echo "SELFCHECK OK"; exit 0
+fi
 
 say "cargo location"
 command -v cargo || { echo "FATAL no cargo on PATH"; exit 1; }
