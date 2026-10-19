@@ -4,8 +4,9 @@ import std.types { String, Int, List, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.css.values {
-  CssDecimal, CssVarRef, CssHsl, css_decimal_wire, css_var_ref_wire, css_hsl_wire,
+  CssVarRef, CssHsl, css_number_fraction_digits, css_var_ref_wire, css_hsl_wire,
 }
+import std.decimal { fixed_point_trimmed_wire }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -73,8 +74,8 @@ type CssOperator
 type CssValue
   = ValIdent { ident: String }
   | ValString { text: String }
-  | ValNumber { n: CssDecimal }
-  | ValDimension { magnitude: CssDecimal, unit: CssDimensionUnit }
+  | ValNumber { milli: Int }
+  | ValDimension { milli: Int, unit: CssDimensionUnit }
   | ValVar { reference: CssVarRef }
   | ValHsl { color: CssHsl }
   | ValCall { function: CssFunctionName, args: List<CssValue> }
@@ -105,11 +106,11 @@ fn css_dimension_unit_is_length(u: CssDimensionUnit) -> Bool {
   }
 }
 
-fn css_dimension_wire(magnitude: CssDecimal, unit: CssDimensionUnit) -> String {
-  if magnitude.milli == 0 && css_dimension_unit_is_length(u: unit) {
+fn css_dimension_wire(milli: Int, unit: CssDimensionUnit) -> String {
+  if milli == 0 && css_dimension_unit_is_length(u: unit) {
     "0"
   } else {
-    join([css_decimal_wire(d: magnitude), css_dimension_unit_token(u: unit)], "")
+    join([fixed_point_trimmed_wire(value: milli, decimals: css_number_fraction_digits), css_dimension_unit_token(u: unit)], "")
   }
 }
 
@@ -117,8 +118,8 @@ fn css_value_wire(v: CssValue) -> String {
   match v {
     ValIdent { ident: i } => i
     ValString { text: t } => join(["\"", t, "\""], "")
-    ValNumber { n: n } => css_decimal_wire(d: n)
-    ValDimension { magnitude: m, unit: u } => css_dimension_wire(magnitude: m, unit: u)
+    ValNumber { milli: m } => fixed_point_trimmed_wire(value: m, decimals: css_number_fraction_digits)
+    ValDimension { milli: m, unit: u } => css_dimension_wire(milli: m, unit: u)
     ValVar { reference: r } => css_var_ref_wire(v: r)
     ValHsl { color: c } => css_hsl_wire(c: c)
     ValCall { function: f, args: a } => join([css_function_name_token(f: f), "(", join(map(a, x => css_value_wire(v: x)), ", "), ")"], "")
