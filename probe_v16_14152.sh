@@ -30,8 +30,8 @@ set -uo pipefail
 export PATH="/opt/cargo/bin:/usr/local/bin:/usr/local/sbin:$PATH"
 # DERIVED from the ref, never typed: a hand-written 40-char literal has cost this lane four dispatches.
 URL0=https://github.com/gunb-ai/gunbc.git
-BASE_SHA=$(timeout 300 git ls-remote $URL0 refs/heads/main | cut -f1)
-B_SHA=$(timeout 300 git ls-remote $URL0 refs/heads/session/gentle-carp-16 | cut -f1)
+BASE_SHA=${BASE_SHA:-$(timeout 300 git ls-remote $URL0 refs/heads/main | cut -f1)}
+B_SHA=$(timeout 300 git ls-remote $URL0 ${B_REF:-refs/heads/session/gentle-carp-16} | cut -f1)
 [ -n "$BASE_SHA" ] && [ -n "$B_SHA" ] || { echo "could not resolve main / the WIP branch"; exit 20; }
 echo "BASE(main, includes S0)=$BASE_SHA"; echo "WIP=$B_SHA"
 # DERIVED from the ref, NEVER typed. This script died at 16 s (exit 29) carrying a hand-written 40-char
