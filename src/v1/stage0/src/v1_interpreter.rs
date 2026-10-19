@@ -21301,6 +21301,9 @@ pub enum RestResponseDecodeCause {
     /// Both the wire key and the authored name of one renamed field are present; which one
     /// populates the field would be decided by iteration order.
     AmbiguousWireSpelling { authored: String, wire: String },
+    /// A field declared `std.decimal` `ExactDecimal` was answered by a JSON value that is not a
+    /// finite decimal number whose digits fit the record's Int units.
+    NotAnExactDecimal { json_text: String },
 }
 
 impl fmt::Display for RestResponseDecodeRefusal {
@@ -21344,6 +21347,11 @@ impl fmt::Display for RestResponseDecodeRefusal {
             RestResponseDecodeCause::UnknownSpelling { spelling } => {
                 write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
             }
+            RestResponseDecodeCause::NotAnExactDecimal { json_text } => write!(
+                f,
+                "declared ExactDecimal, answered `{}`, which is not a finite decimal whose digits fit Int units",
+                json_text
+            ),
         }
     }
 }
@@ -21561,6 +21569,49 @@ fn decode_json_by_declared_type(
             }
             _ => Ok(json_to_value(json)),
         };
+    }
+    // A field declared `std.decimal` `ExactDecimal { units, fraction_digits }` is carried on the wire
+    // as a JSON number (extdeps.cloud.vast_ai money fields). It is decoded EXACTLY from the number's
+    // own decimal text, never through f64 arithmetic; a number that is not a finite decimal whose
+    // digits fit Int units refuses. Without this arm the number fell through to `json_to_value` and
+    // the declared ExactDecimal arrived as a Float (gunbc.recurring_failure_mode
+    // rest_response_declared_exact_decimal_decoded_as_float).
+    // `T?` on the wire is T or null; null returned above, so a present value decodes as the declared T
+    // (a present value is carried raw, as `json_to_value` carries it). Without this the declared type
+    // under the optional layer was never consulted.
+    if name.rsplit('.').next() == Some("Optional") {
+        if let Some(inner) = ty.children.first() {
+            return decode_json_by_declared_type(json, inner, path, ctx);
+        }
+    }
+    if name.rsplit('.').next() == Some("ExactDecimal") {
+        if let serde_json::Value::Number(n) = json {
+            let text = n.to_string();
+            return match exact_decimal_from_json_number_text(&text) {
+                Some((units, fraction_digits)) => {
+                    let mut fields: HamtMap<CanonKey, Value> = HamtMap::new();
+                    if let Some(ck) = CanonKey::new(str_value("units")) {
+                        fields.insert(ck, Value::Int(units));
+                    }
+                    if let Some(ck) = CanonKey::new(str_value("fraction_digits")) {
+                        fields.insert(ck, Value::Int(fraction_digits));
+                    }
+                    Ok(map_value(fields))
+                }
+                None => Err(RestResponseDecodeRefusal {
+                    field_path: path.to_string(),
+                    coproduct: name.clone(),
+                    cause: RestResponseDecodeCause::NotAnExactDecimal { json_text: text },
+                }),
+            };
+        }
+        return Err(RestResponseDecodeRefusal {
+            field_path: path.to_string(),
+            coproduct: name.clone(),
+            cause: RestResponseDecodeCause::NotAnExactDecimal {
+                json_text: json.to_string(),
+            },
+        });
     }
     if ty.connective == Connective::Disj {
         let nullary =
@@ -21803,6 +21854,46 @@ pub(crate) fn json_container_depth(json: &serde_json::Value) -> usize {
         }
     }
     deepest
+}
+
+/// The exact `(units, fraction_digits)` of a JSON number's decimal text: `-?D+(.D+)?([eE][+-]?D+)?`.
+/// `units` is the signed mantissa digits and `fraction_digits` the count of digits after the point less
+/// the exponent; a negative scale is folded into `units`. `None` when the text is not that grammar or
+/// the digits do not fit i64, so the caller refuses rather than rounding.
+fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
+    let (negative, rest) = match text.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, text),
+    };
+    let (mantissa, exponent) = match rest.find(['e', 'E']) {
+        Some(i) => (&rest[..i], rest[i + 1..].parse::<i64>().ok()?),
+        None => (rest, 0),
+    };
+    let (int_part, frac_part) = match mantissa.find('.') {
+        Some(i) => (&mantissa[..i], &mantissa[i + 1..]),
+        None => (mantissa, ""),
+    };
+    if int_part.is_empty()
+        || !int_part.bytes().all(|b| b.is_ascii_digit())
+        || !frac_part.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let digits = format!("{}{}", int_part, frac_part);
+    let mut units: i64 = digits.parse::<i64>().ok()?;
+    let mut fraction_digits: i64 = (frac_part.len() as i64).checked_sub(exponent)?;
+    while fraction_digits < 0 {
+        units = units.checked_mul(10)?;
+        fraction_digits += 1;
+    }
+    Some((
+        if negative {
+            units.checked_neg()?
+        } else {
+            units
+        },
+        fraction_digits,
+    ))
 }
 
 fn json_to_value(json: &serde_json::Value) -> Value {
