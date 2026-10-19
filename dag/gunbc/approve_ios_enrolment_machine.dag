@@ -1,6 +1,6 @@
 module gunbc.approve_ios_enrolment_machine
 
-import std.types { Bool, NonEmptyStr, String, List }
+import std.types { Bool, NonEmptyStr, String, List, list_length }
 import std.algebra { list_append }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import std.content_hash { ContentHash, compare_content_hash, content_hash_of_value, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
@@ -569,9 +569,10 @@ type EnrolmentOrderingStanding
   | PersistBeforeEffectBasisMissing
 
 fn enrolment_persist_before_effect_standing(property: EnrolmentOrderingProperty) -> EnrolmentOrderingStanding {
-  match enrolment_persist_before_effect_ordering(property: property) {
-    [] => PersistBeforeEffectBasisMissing
-    _ => PersistBeforeEffectAdmitted { basis: enrolment_persist_before_effect_basis }
+  if list_length(items: enrolment_persist_before_effect_ordering(property: property)) == 0 {
+    PersistBeforeEffectBasisMissing
+  } else {
+    PersistBeforeEffectAdmitted { basis: enrolment_persist_before_effect_basis }
   }
 }
 

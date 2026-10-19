@@ -30,8 +30,6 @@ module test.claim.approve_ios_enrolment_machine_persist_order_witness
 // (class, subject) rises by exactly one and no other key moves.
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
-
 import std.types { String, Bool, Int, List, list_length }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import std.content_hash { content_hash_of_value }
@@ -110,6 +108,8 @@ fn prepared_payload() -> PreparedEnrolmentPayload {
     attestation: optional_absent(),
   }
 }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn prepared_state() -> EnrolmentState {
   StatePrepared { payload: prepared_payload() }
