@@ -598,7 +598,6 @@ pub mod v1_compiler_tokenize;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod v1_compiler_trace;
 #[allow(
     unused_imports,
     unused_variables,
@@ -675,7 +674,6 @@ pub mod v1_gunbc_parsed_import_statements;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod v1_probe_emit_interp;
 #[allow(
     unused_imports,
     unused_variables,
