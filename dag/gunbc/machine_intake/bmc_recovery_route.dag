@@ -18,7 +18,7 @@ import extdeps.bmc.capability {
 }
 import extdeps.bmc.ipmi {
   IpmiCommandInterfaceParsed, IpmiCommandInterfaceUnrecognized, ipmi_command_interface_from_wire,
-  InBandHostTransportChannel, NotInBandHostTransport, InBandHostTransport,
+  InBandHostTransportChannel, NotInBandHostTransport, InBandHostTransport, IpmiCommandTransport,
   OpenIpmiDriver, BmcKernelDriver, LanPlusTransport, LanTransport,
   IpmiDeviceIdentity, IpmiDeviceNode, IpmiDevIpmiNode, IpmiImbDeviceNode,
   ipmi_device_node_canonical_text,
@@ -337,70 +337,333 @@ type InBandAccessWithoutCredential
 // THE OPTIONS THAT PUT A CREDENTIAL IN REACH OF THE WRITE. Declared rather than matched as strings at each
 // call site, for the same reason the transport names are: an in-band tag compared by string equality is a
 // sum with one member nobody wrote down, and a call site that mistypes "-P" as "-p" admits the write.
+// -U is here because naming the remote user is a credential-bearing invocation; -f is here because ipmitool
+// reads the remote session PASSWORD out of the file named by its argument ("-f file  Read remote session
+// password from file", lib/ipmi_main.c usage) -- the old scan missed it, and a fixture proved the miss.
 type IpmiArgvCredentialOption
-  = IpmiArgvUserName            // -U <user>       lib/ipmi_main.c OPTION_STRING "U:", case 'U' at :540
-  | IpmiArgvPassword            // -P <password>   OPTION_STRING "P:", case 'P' at :645
-  | IpmiArgvPasswordFromEnv     // -E, no argument: the password comes from IPMITOOL_PASSWORD, case 'E' at :660
+  = IpmiArgvUserName            // -U <user>       lib/ipmi_main.c OPTION_STRING "U:", case 'U'
+  | IpmiArgvPassword            // -P <password>   OPTION_STRING "P:", case 'P'
+  | IpmiArgvPasswordFile        // -f <file>       OPTION_STRING "f:", case 'f'
+  | IpmiArgvPasswordFromEnv     // -E, no argument: the password comes from IPMI_PASSWORD, case 'E'
 
-// WHY ONLY THESE THREE, AND WHY NO LONG OPTIONS. ipmitool parses its arguments with plain getopt against
-// OPTION_STRING (lib/ipmi_main.c:371, defined at :82 under ENABLE_ALL_OPTIONS) -- there is no getopt_long
-// anywhere in the tree, so --username and --password are not ipmitool options and are not modelled here;
-// a word like "--password" on the argv is just a word, exactly as upstream treats it. -E is a separate arm
-// rather than folded into -P because it is a different fact about the invocation: the secret is not on the
-// command line at all, so it does not appear in a captured argv or in shell history, and a reader of the
-// capture cannot see it. All three still leave the admitted arm, because all three mean the write is not
-// being performed through the passwordless in-band channel. -A (cipher suite) is NOT here: it names an
-// authentication algorithm and carries no secret.
+// ══ THE ONE AUTHORITY OVER WHAT A CAPTURED ipmitool INVOCATION MEANS ══════════
+// (merry-fox-82, HOLD blocker 3: "one command authority for transport+credential").
+//
+// WHAT THIS REPLACES, AND WHY THE OLD SHAPE WAS NOT ONE. Transport came from `interface_name`, a string
+// carried BESIDE the words; the credential came from a separate scan for the words "-U"/"-P"/"-E"
+// ANYWHERE in the words. Two readers, two notions of the same command, and nothing joined them. Their own
+// fixtures are the proof: the claim over the credential scan ran words carrying `-I lanplus -f /tmp/pw
+// -H 10.0.0.5` while the transport was supplied as "open" beside them, and was read as the passwordless
+// OpenIPMI channel -- a credential write over an authenticating out-of-band transport, which is the exact
+// "failed OPEN" failure the transport sums in extdeps/bmc/ipmi.dag exist to prevent, reintroduced one
+// module up. `-f` was not in the scan at all.
+//
+// WHAT UPSTREAM ACTUALLY DOES, which is what this walk copies. ipmitool parses with PLAIN getopt
+// (lib/ipmi_main.c:371 -- there is no getopt_long, so `--password` is an unknown WORD, not an option)
+// against OPTION_STRING "I:46hVvcgsEKYao:H:d:P:f:U:p:C:L:A:t:T:m:z:S:l:b:B:e:k:y:O:R:N:D:Z"
+// (lib/ipmi_main.c:82), which says two things this module now refuses on:
+//   - letters with a colon take a value, letters without one take none. An option that needs a value and
+//     gets the end of the words is upstream's error, not a pass.
+//   - an unrecognised option reaches getopt's `default:`, which prints the usage and aborts before the
+//     command runs. So "this word may be an option we have not modelled" is a REFUSAL here, matching
+//     upstream -- never a verb.
+// Beyond the option letters there is no syntax: ipmitool does not re-order and does not group; its
+// interface is chosen by the LAST -I seen (case 'I' assigns intfname on every hit, ipmi_intf_load runs
+// only after the loop), so `-I open -I lanplus` IS lanplus; and a credential anywhere on the line reaches
+// the write no matter which word the verb is. Those are exactly the two facts the old split could not
+// represent. Here the option and its argument are carried together through the walk, so the word after -I
+// is consumed as an argument and can never be read as a verb or as a credential.
+//
+// HOW MUCH IS MODELLED. Of the 33 letters, these can change what this route is about to do: -I (the
+// transport), -U -P -f -E (a credential), -H (which machine), -N -S -D (values that tune the exchange but
+// not its kind), -Z (a display switch). Those are modelled with their arity, as EXACT option words --
+// getopt's attached-value spelling ("-P0penBmc") is refused rather than guessed at, because guessing where
+// a word divides is the kind of reading the capture does not support. Every other letter -- -k/-y/-K (the
+// IPMIv2 Kg key), -a (prompt for the password), -C/-L/-A (cipher, privilege, auth type), -t/-T/-b/-B/-l/-m
+// (bridging), -p/-R (port, retries), the verbosity/cipher/quiet letters, -O/-o/-z/-e, -4/-6 -- is REFUSED
+// by name rather than guessed at, because each of them changes how a write to the BMC is authenticated or
+// where it is delivered. Refusing is also the honest treatment of upstream's two OPTION_STRING builds (the
+// narrow build drops most letters): nothing here claims a letter exists that this ipmitool may not accept.
+//
+// WHY NO -I IS A REFUSAL AND NOT A DEFAULT. With no -I, ipmitool loads the interface named by DEFAULT_INTF,
+// which ./configure bakes into the binary from whichever drivers it found (--with-intf=...; "open" only
+// when OpenIPMI is built, otherwise lan). That is a fact about whatever binary happens to be installed on
+// the rescue OS, not a fact about the captured invocation, and guessing it in front of a destructive reset
+// is how a wrong transport reaches a write. The capture's README says "NO -I lanplus" -- an observation of
+// absence, not evidence of a compiled default -- and 02's own header reads "no -I lanplus, no credential".
+// So the module refuses the shape; the words that stand for the capture carry `-I open`, the OpenIPMI
+// driver over the /dev/ipmi0 node 02 records together with ipmi_ssif/ipmi_devintf loaded, and the claim
+// below asserts the no--I words are REFUSED rather than defaulted.
+type IpmiCommandInvocation
+  = IpmiCommandInBand { transport: InBandHostTransport, credential: IpmiArgvCredentialOption? }
+  | IpmiCommandNotInBand { wire: String, why_not_in_band: NonEmptyStr }
+  | IpmiCommandUnrecognised { wire: String }
+  | IpmiCommandTransportAbsent { detail: NonEmptyStr }
+  | IpmiCommandUnmodelledOption { option: String, detail: NonEmptyStr }
+  | IpmiCommandOptionNeedsValue { option: String, detail: NonEmptyStr }
+  | IpmiCommandRemoteHostWithInBandName { host: NonEmptyStr, wire: String }
 
-// THE PARSE THAT DECIDES THE ARM, ONCE. The in-band transport itself comes from ipmi_command_interface_from_wire,
-// so an unrecognised -I name never reaches here. This decides only the credential half, from the argv words
-// as they were actually passed.
-fn in_band_channel_from_argv(
-  interface_name: NonEmptyStr,
-  argv_words: List<String>,
-) -> InBandAccessWithoutCredential {
-  match ipmi_command_interface_from_wire(wire: interface_name) {
-    // Not a wire name ipmitool knows: there is no transport to stand on, so nothing is admitted. Refused,
-    // never defaulted, the same rule the transport arms follow.
-    IpmiCommandInterfaceUnrecognized { wire: _ } =>
-      InBandChannelNotObserved { detail: "the -I name is not one ipmitool implements" }
-    IpmiCommandInterfaceParsed { wire: _, transport: NotInBandHostTransport { transport: _, why_not_in_band: why } } =>
-      // the parse already knows WHY this transport is not a host transport; the refusal carries it rather
-      // than re-deriving a reason, so the reader sees the upstream fact and not a restatement
-      InBandChannelNotObserved { detail: why }
-    IpmiCommandInterfaceParsed { wire: _, transport: InBandHostTransportChannel { transport: in_band } } =>
-      match in_band_argv_credential_option(words: argv_words) {
-        Absent => InBandChannelPasswordless { transport: in_band }
-        Present { value: opt } =>
-          InBandChannelCredentialCarriedOnArgv { transport: in_band, credential_option: opt }
-      }
+// WHERE THE WALK IS. The state is the walk's own and no other module reads it: it exists so one pass over
+// the words can carry an option and its argument together, which is what two separate scans could not do.
+// `transport` is the transport sum's OWN arm (Absent until -I answers), so the in-band decision is never
+// re-derived from a string at the end.
+type IpmiCommandWalkState {
+  pending: String                    // "", or the exact option word awaiting its argument
+  pending_is_credential: Bool        // that word is -U/-P/-f: its argument is a credential, not a verb
+  pending_is_host: Bool              // that word is -H: its argument names another machine
+  host_seen: Bool
+  transport: IpmiCommandTransport?   // the arm -I named, or Absent
+  transport_wire: String             // the name that produced it, for the refusals
+  transport_unrecognized: Bool       // -I answered with a name no plugin claims -- its own refusal
+  credential_word: String            // "", "-U", "-P" or "-f"; the LAST one wins, as getopt leaves it
+  file_credential: Bool
+  env_credential: Bool
+  unmodelled: String                 // the first option word upstream's getopt would have aborted on
+  verb: String                       // the first non-option word, kept for the refusal's detail
+}
+
+fn ipmi_command_walk_init() -> IpmiCommandWalkState {
+  IpmiCommandWalkState {
+    pending: "", pending_is_credential: false, pending_is_host: false, host_seen: false,
+    transport: Absent, transport_wire: "", transport_unrecognized: false,
+    credential_word: "", file_credential: false,
+    env_credential: false, unmodelled: "", verb: "",
   }
 }
 
-// The first credential-bearing option on the line, if any. Order matters only for WHICH option gets named
-// in the refusal, not for whether one is refused: any of them routes out of the admitted arm.
-fn in_band_argv_credential_option(words: List<String>) -> IpmiArgvCredentialOption? {
-  // THE std.optional MINTS, NOT the variant constructors: `Present { value: IpmiArgvUserName }` parses as
-  // a type annotation followed by a block, so the if-branches resolved to the variant and to Optional
-  // separately and the function was refused. The mints name the same two arms and take the value as an
-  // argument, which is the spelling the rest of the tree uses when a branch has to produce an optional.
-  if (any(xs: words, predicate: w => w == "-U")) {
-    optional_present(value: IpmiArgvUserName)
-  } else if (any(xs: words, predicate: w => w == "-P")) {
+// WHAT EACH MODELLED OPTION WORD DOES, one row each, as the data the walk AND the claims read. Anything
+// else that reaches the walk looking like an option ("-k", "--password", "-P0penBmc") is refused; see the
+// table above for who is left out and why. Because the walk's decision and the claims over it come from
+// this one row, they cannot drift apart.
+fn ipmi_option_word_effect(word: String) -> String {
+  if word == "-I" { "pending" }
+  else if word == "-U" || word == "-P" || word == "-f" { "pending-credential" }
+  else if word == "-E" { "env" }
+  else if word == "-H" { "pending-host" }
+  else if word == "-N" || word == "-S" || word == "-D" { "pending-skip" }
+  else if word == "-Z" { "skip" }
+  // Every letter below is declared in OPTION_STRING but not modelled here: each changes how a write is
+  // authenticated or where it is delivered, and upstream's own getopt aborts on a word this module's table
+  // does not name, so refusing is upstream's behaviour rather than an addition.
+  else if word == "-k" || word == "-y" || word == "-K" || word == "-a" { "unmodelled" }
+  else if word == "-C" || word == "-L" || word == "-A" { "unmodelled" }
+  else if word == "-t" || word == "-T" || word == "-b" || word == "-B" || word == "-l" || word == "-m" { "unmodelled" }
+  else if word == "-p" || word == "-R" || word == "-c" || word == "-v" || word == "-V" || word == "-h" { "unmodelled" }
+  else if word == "-O" || word == "-o" || word == "-z" || word == "-e" || word == "-4" || word == "-6" { "unmodelled" }
+  else { "unmodelled" }
+}
+
+// ONE WORD OF THE WALK. Total: every branch returns a state. A word held as a pending option's argument is
+// consumed as an argument before it can be read as an option or a verb -- the distinction the old
+// whole-line scan made by accident is here the mechanism, and it is what makes `-I lanplus` one fact
+// instead of two.
+fn ipmi_command_walk_step(state: IpmiCommandWalkState, word: String) -> IpmiCommandWalkState {
+  if word == "" {
+    state
+  } else if state.pending != "" {
+    // THE ARGUMENT IS CONSUMED AS AN ARGUMENT. It is never re-read as an option or as the verb: the word
+    // after -I is a transport name even when it spells "open", and the word after -P is a secret even when
+    // it spells "-U" -- which is the whole reason an argument-position scan is the only honest reading.
+    if state.pending_is_credential {
+      IpmiCommandWalkState {
+        pending: "", pending_is_credential: false, pending_is_host: false,
+        host_seen: state.host_seen, transport: state.transport, transport_wire: state.transport_wire,
+        transport_unrecognized: state.transport_unrecognized,
+        credential_word: state.pending,
+        file_credential: if state.pending == "-f" { true } else { state.file_credential },
+        env_credential: state.env_credential, unmodelled: state.unmodelled,
+        verb: state.verb,
+      }
+    } else if state.pending_is_host {
+      IpmiCommandWalkState {
+        pending: "", pending_is_credential: false, pending_is_host: false,
+        host_seen: true, transport: state.transport, transport_wire: state.transport_wire,
+        transport_unrecognized: state.transport_unrecognized,
+        credential_word: state.credential_word, file_credential: state.file_credential,
+        env_credential: state.env_credential, unmodelled: state.unmodelled,
+        verb: state.verb,
+      }
+    } else if state.pending == "-I" {
+      // LAST -I WINS, as upstream leaves it: the arm is overwritten wholesale, so a trailing -I lanplus
+      // cannot be laundered by an earlier -I open.
+      let iface = ipmi_command_interface_from_wire(wire: word)
+      match iface {
+        IpmiCommandInterfaceParsed { wire: w, transport: arm } =>
+          IpmiCommandWalkState {
+            pending: "", pending_is_credential: false, pending_is_host: false,
+            host_seen: state.host_seen, transport: Present { value: arm }, transport_wire: w,
+            transport_unrecognized: false,
+            credential_word: state.credential_word, file_credential: state.file_credential,
+            env_credential: state.env_credential, unmodelled: state.unmodelled,
+            verb: state.verb,
+          }
+        IpmiCommandInterfaceUnrecognized { wire: w } =>
+          IpmiCommandWalkState {
+            pending: "", pending_is_credential: false, pending_is_host: false,
+            host_seen: state.host_seen, transport: Absent, transport_wire: w,
+            transport_unrecognized: true,
+            credential_word: state.credential_word, file_credential: state.file_credential,
+            env_credential: state.env_credential, unmodelled: state.unmodelled,
+            verb: state.verb,
+          }
+      }
+    } else {
+      // -N/-S/-D: the value tunes the exchange and changes nothing about its kind
+      IpmiCommandWalkState {
+        pending: "", pending_is_credential: false, pending_is_host: false,
+        host_seen: state.host_seen, transport: state.transport, transport_wire: state.transport_wire,
+        transport_unrecognized: state.transport_unrecognized,
+        credential_word: state.credential_word, file_credential: state.file_credential,
+        env_credential: state.env_credential, unmodelled: state.unmodelled,
+        verb: state.verb,
+      }
+    }
+  } else if starts_with(s: word, prefix: "-") && word != "-" {
+    let effect = ipmi_option_word_effect(word: word)
+    IpmiCommandWalkState {
+      // the FIRST bad word is the refusal: a later option never overwrites an earlier unmodelled name or
+      // an earlier missing value, because the earlier one is what upstream would have stopped on
+      pending: if effect == "pending" || effect == "pending-credential" || effect == "pending-host" || effect == "pending-skip" { word } else { "" },
+      pending_is_credential: if state.unmodelled == "" { effect == "pending-credential" } else { false },
+      pending_is_host: if state.unmodelled == "" { effect == "pending-host" } else { false },
+      host_seen: state.host_seen, transport: state.transport, transport_wire: state.transport_wire,
+      transport_unrecognized: state.transport_unrecognized,
+      credential_word: state.credential_word, file_credential: state.file_credential,
+      env_credential: if effect == "env" && state.unmodelled == "" { true } else { state.env_credential },
+      unmodelled: if effect == "unmodelled" && state.unmodelled == "" { word } else { state.unmodelled },
+      verb: state.verb,
+    }
+  } else if state.verb == "" {
+    IpmiCommandWalkState {
+      pending: "", pending_is_credential: false, pending_is_host: false,
+      host_seen: state.host_seen, transport: state.transport, transport_wire: state.transport_wire,
+      transport_unrecognized: state.transport_unrecognized,
+      credential_word: state.credential_word, file_credential: state.file_credential,
+      env_credential: state.env_credential, unmodelled: state.unmodelled,
+      verb: word,
+    }
+  } else {
+    state
+  }
+}
+
+// THE DECISION, read once from the walk in a fixed order: a broken line is refused before anything about
+// the transport is trusted, and a credential is only ever a field of the arm that admits.
+fn in_band_command_from_argv(argv_words: List<String>) -> IpmiCommandInvocation {
+  let st = fold(argv_words, init: ipmi_command_walk_init(), f: (s, w) => ipmi_command_walk_step(state: s, word: w))
+  if st.unmodelled != "" {
+    IpmiCommandUnmodelledOption {
+      option: st.unmodelled,
+      detail: "this word is not modelled here. ipmitool's own getopt aborts on an option it does not recognise (lib/ipmi_main.c default: prints the usage and exits), so these words would not have run either; the letters left out of this module's table -- -k/-y/-K (the IPMIv2 Kg key), -a (prompt for the password), -C/-L/-A (cipher, privilege, auth type), -t/-T/-b/-B/-l/-m (bridging), -p/-R (port, retries) -- all of them change how a write to the BMC is authenticated or where it is delivered" as NonEmptyStr,
+    }
+  } else if st.pending != "" {
+    // A LETTER THAT NEEDS A VALUE AND GETS THE END OF THE WORDS IS AN ERROR, NOT A PASS. Every word that
+    // can be left pending (-I -U -P -f -H -N -S -D) carries a colon in OPTION_STRING
+    // (lib/ipmi_main.c:82), so the words ending while one holds is getopt's missing-argument error.
+    IpmiCommandOptionNeedsValue {
+      option: st.pending,
+      detail: "the words end with this option still holding for its argument, so neither the transport it was naming nor any credential it was naming was ever given; plain getopt would have errored on the missing required argument (OPTION_STRING, lib/ipmi_main.c:82)" as NonEmptyStr,
+    }
+  } else if st.transport_unrecognized {
+    // The name after -I is not in ipmi_intf_table, so ipmi_intf_load returns NULL and ipmitool exits
+    // before the command runs. It is NOT the same refusal as "no -I": here a name WAS given, and a reader
+    // needs to see it rather than being told the transport was absent.
+    IpmiCommandUnrecognised { wire: st.transport_wire }
+  } else {
+    match st.transport {
+      // WHY NO -I IS A REFUSAL AND NOT A DEFAULT: see the block above. DEFAULT_INTF is a ./configure
+      // property of the installed binary, not a fact of this invocation.
+      Absent => IpmiCommandTransportAbsent {
+        detail: "no -I appears in the words. ipmitool would fall back to the interface DEFAULT_INTF baked into the binary by ./configure -- a property of whichever ipmitool is installed on the rescue OS, not of this invocation. 00_README.txt records only that -I lanplus was ABSENT, which is not the same as knowing which driver answered; 02's header reads no -I lanplus, no credential" as NonEmptyStr,
+      }
+      Present { value: NotInBandHostTransport { transport: _, why_not_in_band: why } } =>
+        // the parse already knows WHY this transport is not a host transport; the refusal carries it
+        // rather than re-deriving a reason, so the reader sees the upstream fact and not a restatement
+        IpmiCommandNotInBand { wire: st.transport_wire, why_not_in_band: why }
+      Present { value: InBandHostTransportChannel { transport: in_band } } =>
+        if st.host_seen {
+          // -H names a machine to reach OVER LAN; -I open names the host's own device node. Both cannot be
+          // true of one invocation (upstream warns about the pair), and the pair is where a credential
+          // could reach a remote host under a "passwordless in-band" label. Refused, never defaulted to
+          // the convenient arm.
+          IpmiCommandRemoteHostWithInBandName {
+            host: "a -H argument was supplied to this invocation" as NonEmptyStr,
+            wire: st.transport_wire,
+          }
+        } else {
+          IpmiCommandInBand { transport: in_band, credential: recovery_argv_credential_of(st: st) }
+        }
+    }
+  }
+}
+
+// THE CREDENTIAL, READ OFF THE WALK. -E is its own fact rather than a second name for -P: with -E the
+// secret is off the captured line entirely, and a reader of the capture cannot see it -- the README's own
+// honesty rule is that what was written down and what was not are different things.
+fn recovery_argv_credential_of(st: IpmiCommandWalkState) -> IpmiArgvCredentialOption? {
+  if st.file_credential {
+    optional_present(value: IpmiArgvPasswordFile)
+  } else if st.credential_word == "-P" {
     optional_present(value: IpmiArgvPassword)
-  } else if (any(xs: words, predicate: w => w == "-E")) {
+  } else if st.credential_word == "-U" {
+    optional_present(value: IpmiArgvUserName)
+  } else if st.env_credential {
     optional_present(value: IpmiArgvPasswordFromEnv)
   } else {
     optional_absent()
   }
 }
 
-// The captured channel, read from the bytes: /dev/ipmi0 was present with ipmi_ssif loaded, and no -I was
-// passed, so ipmitool used its default transport -- `open`, the OpenIPMI kernel driver over /dev/ipmi0
-// (upstream's DEFAULT_INTF_NO_ENV when the driver is built). Note what the capture does NOT say: `ipmi_ssif`
-// is the kernel MODULE for the SMBus/IPMI-SSIF bus beneath that driver, not a name `ipmitool -I` accepts;
-// naming the interface "ssif" would have been a transport that does not exist, and it would now be refused
-// at the parse rather than modeled.
+// THE ONE PLACE A ROUTE CHANNEL VALUE IS MADE. The parse answers, and this says which arm of the route's
+// channel sum it lands on -- so the transport, the credential and the refusal all still come from a single
+// read of the words. An unrecognised or unmodelled name has NO arm beside "never observed", which is what
+// makes "passwordless over an unmodelled transport" unconstructible rather than a mistake a consumer could
+// make.
+fn in_band_channel_of_command(command: IpmiCommandInvocation) -> InBandAccessWithoutCredential {
+  match command {
+    IpmiCommandInBand { transport: t, credential: Absent } =>
+      InBandChannelPasswordless { transport: t }
+    IpmiCommandInBand { transport: t, credential: Present { value: c } } =>
+      InBandChannelCredentialCarriedOnArgv { transport: t, credential_option: c }
+    IpmiCommandNotInBand { wire: w, why_not_in_band: why } =>
+      InBandChannelNotObserved { detail: concat("the transport named on the command line (", concat(w, concat(") is out of band -- ", why))) as NonEmptyStr }
+    IpmiCommandUnrecognised { wire: w } =>
+      InBandChannelNotObserved {
+        detail: concat("the -I name (", concat(w, ") is not a transport ipmitool implements; the words were refused before a channel could be read")) as NonEmptyStr,
+      }
+    IpmiCommandTransportAbsent { detail: d } => InBandChannelNotObserved { detail: d }
+    IpmiCommandUnmodelledOption { option: o, detail: d } =>
+      InBandChannelNotObserved { detail: concat(o, concat(": ", d)) as NonEmptyStr }
+    IpmiCommandOptionNeedsValue { option: o, detail: d } =>
+      InBandChannelNotObserved { detail: concat(o, concat(": ", d)) as NonEmptyStr }
+    IpmiCommandRemoteHostWithInBandName { host: h, wire: w } =>
+      InBandChannelNotObserved {
+        detail: concat("an in-band -I name beside a remote host (", concat(w, concat(", ", concat(h, ")): in-band reaches the BMC through the host's own device node, so this is not a host-to-BMC path, and the name cannot be trusted over the argument that contradicts it")))) as NonEmptyStr,
+      }
+  }
+}
+
+// THE ONE CALLER'S VIEW: the channel of a captured invocation, from the words alone. This is the only
+// function outside this module that turns a captured argv into a channel, and it takes NOTHING beside the
+// words -- the old `interface_name` parameter was the second source of the transport that this whole block
+// exists to remove.
+fn in_band_channel_from_argv(argv_words: List<String>) -> InBandAccessWithoutCredential {
+  in_band_channel_of_command(command: in_band_command_from_argv(argv_words: argv_words))
+}
+
+// THE CAPTURE'S CHANNEL, AND WHAT THE CAPTURE DOES NOT SAY. 02's header reads "no -I lanplus, no
+// credential" and 00_README.txt repeats "NO -I lanplus". Both are observations of an ABSENCE, and an
+// absence is not a transport name: with no -I at all ipmitool would ask ./configure's DEFAULT_INTF which
+// driver answers, which is why in_band_command_from_argv REFUSES those words rather than defaulting them
+// (see the block above). What the bytes do establish is the in-band path: /dev/ipmi0 present, the
+// ipmi_msghandler/ipmi_devintf/ipmi_ssif modules loaded, and the same account read off the controller
+// without a secret, which is the OpenIPMI driver over that node. The words that stand for the capture
+// therefore carry the name that driver answers to -- -I open -- and the claim
+// the_transport_sums_place_every_wire_name_on_exactly_one_side asserts both halves: those words admit, and
+// words with no -I are refused.
+// Note also what the capture does NOT say, because the name is easy to invent: `ipmi_ssif` is the kernel
+// MODULE for the SMBus/IPMI-SSIF bus beneath that driver, not a name `ipmitool -I` accepts. Naming the
+// interface "ssif" would have been a transport that does not exist, and it is refused at the parse.
 // WHY NO FIXTURE EVER HOLDS A TRANSPORT IT DID NOT RUN THROUGH THE PARSE. There is no way to obtain a
 // lanplus "channel" at all -- the field's type is InBandHostTransport and the out-of-band arms are a
 // different sum -- so the most a reader can be shown about "lanplus" is which side the parse put it on and
@@ -1191,7 +1454,7 @@ fn reset_write_admitted_after_ledger(
         ResetWriteAdmitted {
           ticket: recovery_mint_reset_admission_ticket(
             subject: route.subject,
-            operation: kind,
+            operation: recovery_reset_actuation(),
             reset_type: a,
             authorized_by: recovery_manager_reset_site(),
             operator_ruling: under_ruling,
@@ -2430,8 +2693,8 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
       })
 }
 
-// THE CREDENTIAL DECISION IS MADE BY THE PARSE, AND THE ADMITTED ARM CANNOT HOLD A CREDENTIAL. Three parts,
-// each a different way this could be wrong:
+// THE CREDENTIAL DECISION IS MADE BY THE PARSE, AND THE ADMITTED ARM CANNOT HOLD A CREDENTIAL. Parts, each
+// a different way this could be wrong:
 //   - an argv that passed -P lands on the credential-bearing arm, naming WHICH option, and the same argv
 //     with no credential option lands on the admitted arm -- both through in_band_channel_from_argv, so
 //     the side is decided once, at the parse, not at each consumer;
@@ -2439,32 +2702,101 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
 //     -P 0penBmc" unconstructible: this claim has no case for it, and
 //     neither does any gate;
 //   - an out-of-band -I name cannot reach either arm, so there is no channel value to hand the password
-//     gate that would admit a write over a transport requiring a secret.
+//     gate that would admit a write over a transport requiring a secret;
+//   - and the case the SPLIT authority got wrong, which is what one authority is for: `-f <file>` was not
+//     in the credential scan at all while -I lanplus was ignored by the transport side. The words that
+//     stood for it are asserted here, and no arm of this parse lets them through as passwordless.
 test fn a_channel_that_passed_a_credential_on_the_command_line_is_not_passwordless() -> Bool {
-  (match in_band_channel_from_argv(interface_name: "open", argv_words: ["-I", "open", "-P", "0penBmc", "user", "set", "password", "1", "0penBmc"]) {
+  (match in_band_channel_from_argv(argv_words: ["-I", "open", "-P", "0penBmc", "user", "set", "password", "1", "0penBmc"]) {
     // refused, and it says which option did it: -P is ipmitool's password option (src/ipmitool.c)
     InBandChannelCredentialCarriedOnArgv { transport: t, credential_option: opt } =>
       t == OpenIpmiDriver && opt == IpmiArgvPassword
     _ => false
   })
     // -U alone is enough to leave the admitted arm: naming the user is a credential-bearing invocation
-    && (match in_band_channel_from_argv(interface_name: "open", argv_words: ["-I", "open", "-U", "root", "user", "list", "1"]) {
+    && (match in_band_channel_from_argv(argv_words: ["-I", "open", "-U", "root", "user", "list", "1"]) {
       InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: opt } => opt == IpmiArgvUserName
       _ => false
     })
+    // -f is the one the old scan missed: ipmitool reads the session password from that FILE, so naming a
+    // file is a credential-bearing invocation whether or not the transport is the in-band one
+    && (match in_band_channel_from_argv(argv_words: ["-I", "open", "-f", "/tmp/pw", "user", "set", "password", "1", "x"]) {
+      InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: opt } => opt == IpmiArgvPasswordFile
+      _ => false
+    })
+    // -E is its OWN arm, not a second name for -P: the secret was never on the line, so no bytes exist for
+    // a reader of the capture to cite. Collapsing them would claim more than the capture holds.
+    && (match in_band_channel_from_argv(argv_words: ["-I", "open", "-E", "user", "set", "password", "1"]) {
+      InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: opt } => opt == IpmiArgvPasswordFromEnv
+      _ => false
+    })
+    // THE HEADLINE FIXTURE. The transport named here is out of band, so there is no channel value at all:
+    // the old shape answered "passwordless over OpenIPMI", because interface_name said open and -f was
+    // invisible to the credential scan. A credential write over an authenticating remote transport is the
+    // failure extdeps/bmc/ipmi.dag was built to make unconstructible.
+    && (match in_band_channel_from_argv(argv_words: ["-I", "lanplus", "-f", "/tmp/pw", "-H", "10.0.0.5", "user", "set", "password", "1", "0penBmc"]) {
+      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "out of band")
+      _ => false
+    })
     // the argv the capture actually used: no credential option, so the credential-free arm
-    && (match in_band_channel_from_argv(interface_name: "open", argv_words: ["-I", "open", "user", "list", "1"]) {
+    && (match in_band_channel_from_argv(argv_words: ["-I", "open", "user", "list", "1"]) {
       InBandChannelPasswordless { transport: t } => t == OpenIpmiDriver
       _ => false
     })
-    // a name ipmitool does not implement is refused at the parse and reaches no arm
-    && (match in_band_channel_from_argv(interface_name: "ssif", argv_words: ["user", "list", "1"]) {
-      InBandChannelNotObserved { detail: d } => string_length(d) > 0
+    // a name ipmitool does not implement is refused at the parse and reaches no arm. The name travels in
+    // the WORDS now, not beside them: there is nothing left for a caller to get wrong.
+    && (match in_band_channel_from_argv(argv_words: ["-I", "ssif", "user", "list", "1"]) {
+      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "ssif")
       _ => false
     })
     // and an out-of-band name cannot produce a channel at all: no value exists for the gate to be fooled by
-    && (match in_band_channel_from_argv(interface_name: "lanplus", argv_words: ["user", "list", "1"]) {
+    && (match in_band_channel_from_argv(argv_words: ["-I", "lanplus", "user", "list", "1"]) {
       InBandChannelNotObserved { detail: d } => string_length(d) > 0
+      _ => false
+    })
+    // LAST -I WINS, which only an authority that pairs -I with its argument can see (case 'I' in
+    // lib/ipmi_main.c assigns intfname on every hit; ipmi_intf_load runs after the loop). An earlier -I
+    // open does not launder a later -I lanplus.
+    && (match in_band_channel_from_argv(argv_words: ["-I", "open", "-I", "lanplus", "user", "list", "1"]) {
+      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "out of band")
+      _ => false
+    })
+    // THE WORD AFTER -I IS AN ARGUMENT, NEVER A CREDENTIAL AND NEVER A VERB. "-U" sitting where a transport
+    // name belongs is consumed as the transport name (and refused as one), not counted as a user option --
+    // the distinction the whole-line scan could not draw.
+    && (match in_band_channel_from_argv(argv_words: ["-I", "-U", "user", "list", "1"]) {
+      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "-U")
+      _ => false
+    })
+    // AN OPTION THAT NEEDS A VALUE AND GETS THE END OF THE WORDS IS UPSTREAM'S ERROR, not a pass: "P:"
+    // carries a colon in OPTION_STRING (lib/ipmi_main.c:82), so the missing argument is refused with the
+    // option named, rather than defaulting to the credential-free arm.
+    && (match in_band_channel_from_argv(argv_words: ["-I", "open", "user", "set", "password", "1", "-P"]) {
+      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "-P")
+      _ => false
+    })
+    // getopt's attached-value spelling is NOT guessed at: "-P0penBmc" is one word this table does not
+    // name, and upstream's getopt would have aborted on it too. Refusing beats guessing where it divides.
+    && (match in_band_channel_from_argv(argv_words: ["-I", "open", "-P0penBmc", "user", "set", "password", "1"]) {
+      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "-P0penBmc")
+      _ => false
+    })
+    // a long option is not an option at all in this build -- there is no getopt_long (lib/ipmi_main.c:371
+    // calls plain getopt), so "--password" is an unknown word, refused rather than read as -P.
+    && (match in_band_channel_from_argv(argv_words: ["-I", "open", "--password", "user", "set", "password", "1"]) {
+      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "--password")
+      _ => false
+    })
+    // an option that changes how a write is AUTHENTICATED is refused by name, not passed through: -k is the
+    // IPMIv2 Kg key. Passing it through would let a keyed session be read as the passwordless channel.
+    && (match in_band_channel_from_argv(argv_words: ["-I", "open", "-k", "0x01", "user", "list", "1"]) {
+      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "-k")
+      _ => false
+    })
+    // -H beside an in-band name is a contradiction, and the contradiction is refused rather than resolved
+    // in favour of the arm that lets the write through.
+    && (match in_band_channel_from_argv(argv_words: ["-I", "open", "-H", "10.0.0.5", "user", "list", "1"]) {
+      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "-H")
       _ => false
     })
 }
@@ -2512,10 +2844,50 @@ test fn the_transport_sums_place_every_wire_name_on_exactly_one_side() -> Bool {
     // THE CONSEQUENCE THAT MAKES THIS MORE THAN A RENAME: the only channel values that exist are the
     // credential-free arm, the arm naming a credential option, and the arm saying the channel was never
     // read. There is no value in between for a gate to be fooled by, and no Bool a consumer can skip.
-    && (match in_band_channel_from_argv(interface_name: "open", argv_words: []) {
+    && (match in_band_channel_from_argv(argv_words: ["-I", "open", "user", "list", "1"]) {
       InBandChannelPasswordless { transport: _ } => true
       _ => false
     })
+    // AND NO -I IS REFUSED, NOT DEFAULTED. The old shape called words with no -I at all a passwordless
+    // OpenIPMI channel, because the transport arrived from outside the words. What ipmitool would actually
+    // use is DEFAULT_INTF, which ./configure bakes in per-build (configure.ac --with-intf=...), so it is a
+    // fact about the installed binary and not about this capture: 00_README.txt records only that -I
+    // lanplus was ABSENT. The name has to travel in the words or the channel is not observed.
+    && (match in_band_channel_from_argv(argv_words: ["user", "list", "1"]) {
+      InBandChannelNotObserved { detail: d } => string_contains(s: d, pattern: "DEFAULT_INTF")
+      _ => false
+    })
+    && (match in_band_command_from_argv(argv_words: ["user", "list", "1"]) {
+      IpmiCommandTransportAbsent { detail: d } => string_length(d) > 0
+      _ => false
+    })
+}
+
+// THE WALK AND ITS CLAIMS READ ONE TABLE. The option rows are data (ipmi_option_word_effect), and the
+// refusals the claims above assert come from that same table -- so a claim cannot stay green while the walk
+// quietly starts accepting a letter. This asserts the table itself, in the two directions that matter: what
+// is modelled stays modelled, and what is refused by name is refused.
+test fn the_option_table_models_exactly_the_letters_the_route_actually_acts_on() -> Bool {
+  // modelled, with the arity ipmitool's OPTION_STRING gives them (lib/ipmi_main.c:82)
+  ipmi_option_word_effect(word: "-I") == "pending"
+    && ipmi_option_word_effect(word: "-U") == "pending-credential"
+    && ipmi_option_word_effect(word: "-P") == "pending-credential"
+    && ipmi_option_word_effect(word: "-f") == "pending-credential"
+    && ipmi_option_word_effect(word: "-E") == "env"
+    && ipmi_option_word_effect(word: "-H") == "pending-host"
+    // refused: each of these changes how a write is authenticated or where it is delivered, and upstream's
+    // getopt aborts on any word this table does not name
+    && ipmi_option_word_effect(word: "-k") == "unmodelled"
+    && ipmi_option_word_effect(word: "-y") == "unmodelled"
+    && ipmi_option_word_effect(word: "-a") == "unmodelled"
+    && ipmi_option_word_effect(word: "-L") == "unmodelled"
+    && ipmi_option_word_effect(word: "-C") == "unmodelled"
+    && ipmi_option_word_effect(word: "-t") == "unmodelled"
+    && ipmi_option_word_effect(word: "--password") == "unmodelled"
+    && ipmi_option_word_effect(word: "-P0penBmc") == "unmodelled"
+    // and the effect strings are only ever compared against this file's own set: an unknown word gets the
+    // refusal arm, never an accidental pass through a default branch
+    && ipmi_option_word_effect(word: "-Z") == "skip"
 }
 test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
   (match reset_to_defaults_user_table_disposition(kind: ResetAll) {
@@ -3102,6 +3474,16 @@ fn recovery_admitted_in_band_write() -> PasswordWriteAuthorization
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "the_standing_refuses_to_hand_off_without_the_readback"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recovered"),
+    // the ticket-binding claim needs an ADMITTED pair as its control: without it, the two refusals
+    // above could be what every call returns
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "an_admission_bound_to_another_unit_or_another_operation_is_refused"),
+    // three fixtures OUTSIDE this module stand on an admitted pair, and each is named here rather than
+    // let through by a wildcard: two witness fixtures that build a standing to test a REFUSAL with (a
+    // locked and a completed one), and the seal probe's sanctioned control. An unrostered caller of
+    // either mint is a compile refusal, which is the property the seal witness measures.
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_recovery_route_witness", decl_name: "recovery_locked_standing_on_a_release_nobody_measured"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_recovery_route_witness", decl_name: "recovery_completed_standing"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_recovery_authorization_seal_witness", decl_name: "sanctioned_ticket_source"),
   ]
 {
   PasswordWriteAdmitted {
@@ -3123,6 +3505,16 @@ fn recovery_admitted_reset_write() -> ResetWriteAuthorization
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "the_standing_refuses_to_hand_off_without_the_readback"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recovered"),
+    // the ticket-binding claim needs an ADMITTED pair as its control: without it, the two refusals
+    // above could be what every call returns
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "an_admission_bound_to_another_unit_or_another_operation_is_refused"),
+    // three fixtures OUTSIDE this module stand on an admitted pair, and each is named here rather than
+    // let through by a wildcard: two witness fixtures that build a standing to test a REFUSAL with (a
+    // locked and a completed one), and the seal probe's sanctioned control. An unrostered caller of
+    // either mint is a compile refusal, which is the property the seal witness measures.
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_recovery_route_witness", decl_name: "recovery_locked_standing_on_a_release_nobody_measured"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_recovery_route_witness", decl_name: "recovery_completed_standing"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_recovery_authorization_seal_witness", decl_name: "sanctioned_ticket_source"),
   ]
 {
   ResetWriteAdmitted {
@@ -3364,7 +3756,7 @@ test fn the_password_gate_admits_the_captured_channel_and_refuses_the_wrong_kind
   let route = recovery_test_route(reading: recovery_measured_identity())
   (match admit_recovery_in_band_password_write(route: route, write: recovery_in_band_write_record()) {
     PasswordWriteAdmitted { ticket: t } =>
-      declaration_ref_eq(a: authorized_by, b: recovery_in_band_password_write_site())
+      declaration_ref_eq(a: t.authorized_by, b: recovery_in_band_password_write_site())
     PasswordWriteRefused { cause: _ } => false
     PasswordWriteRefusedByLedger { site: _, cause: _ } => false
   })
