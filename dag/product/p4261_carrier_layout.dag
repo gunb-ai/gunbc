@@ -78,6 +78,10 @@ import product.electrical.bench_session {
   ResistanceObservation,
   StatementCertainty,
   MeterRange,
+  ProbePolarity,
+  RedOnFirst,
+  RedOnSecond,
+  PolarityUnrecorded,
   ResistanceDisplay,
   RangeFullScale,
   RangeUnrecorded,
@@ -139,6 +143,11 @@ import product.electrical.continuity {
   supporting_readings,
   terminal_text,
   continuity_text,
+}
+import product.electrical.measured_netlist {
+  MeasuredNetlist,
+  measured_netlist,
+  netlist_text,
 }
 
 // GH200-3 (2026-10-04). THE P4261 CARRIER AS OBSERVED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
@@ -421,6 +430,19 @@ fn side_terminals(h: ConnectorHousing, side: RowSide) -> List<ElectricalTerminal
 
 fn board_graph(b: MeasuredBoard) -> ReachabilityGraph {
   reachability_graph(observations: b.continuity, asset: b.asset)
+}
+
+// The board as measured: its beep classes joined by its baseline resistance readings into nodes, and
+// every other resistance reading a link between them (product.electrical.measured_netlist).
+fn board_netlist(b: MeasuredBoard) -> MeasuredNetlist {
+  measured_netlist(graph: board_graph(b: b), resistances: b.bench.resistances)
+}
+
+fn netlist_reading(layout: CarrierLayoutObservation) -> String {
+  match layout.measured {
+    Absent => "no board measured, so no measured netlist"
+    Present { value: b } => netlist_text(net: board_netlist(b: b))
+  }
 }
 
 fn standings_to(g: ReachabilityGraph, ts: List<ElectricalTerminalRef>, target: ElectricalTerminalRef) -> List<ReachabilityStanding> {
@@ -1304,21 +1326,24 @@ data p4261_j20_main_input_hypothesis: InvestigationHypothesis = InvestigationHyp
   decided_by: "where the probed MOSFET's sources go: terminal readings from its source pins toward the module receptacles' power contacts",
 }
 
-// TWO COMPETING READINGS OF THE SAME SMALL DRAW. With the module removed the carrier's own load is small
-// whether or not its hot-swap stage conducts: the module carries its own regulators, so a low draw does
-// not say the main path is off. Neither reading is established; one live measurement decides between them.
+// THE HELD ENABLE IS READ; WHAT HOLDS IT IS NOT. That pin 7 sits below its threshold is a derived
+// standing (controller_enable_standing); the network holding it is a lead. No in-circuit resistance
+// names a part on it, and arithmetic over two such readings is a lead for a direct reading, never a
+// component's value (product.electrical.measured_netlist).
 data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
-  claim: "U1_P5's UVLO/EN (pin 7) is held near 1 V, below its threshold, by a network that does not depend on the input -- a path of about 500 ohm to the return with a fixed source above it -- most likely a remote-shutdown pull-down (candidates Q300 / Q301, on whose trace the 500 ohm ground pad sits; D5_P5, not the input TVS D5; Q5_P5 with the resistor and capacitor beside it) holding the input stage off until a remote-enable, chassis-presence or module-presence condition the original system supplies releases it. Alternatives not excluded: an override by another circuit, or damage to pin 7's network",
+  claim: "U1_P5's UVLO/EN (pin 7) holds about 1.0 V with the source at 36, 48 and 54 V -- below its 2.41 V minimum and not in proportion to the source -- so the input stage is held off by its enable; what holds pin 7 there is unread. Candidates, none examined: a pull-down that keeps the stage off until a condition the original system supplies releases it, an override by another circuit, or damage to pin 7's network",
   sources: [
-    "Q21_P5 and Q22_P5 read blocking at 48 V (input_switch_standing), and pin 7 read about 1.0 V at 36, 48 and 54 V, below the 2.41 V minimum (controller_enable_standing) and not in proportion to the source (enable_projection): the input stage is held off by its enable, and the enable is not fed from the input",
+    "Q21_P5 and Q22_P5 read blocking at 48 V (input_switch_standing), and pin 7 read about 1.0 V at 36, 48 and 54 V (controller_enable_standing, enable_projection), read through a wire taped to the lead",
     "U1_P5's OVLO reads 1.8 V at 48 V and 1.35 V at 36 V, below its 2.39 V minimum (controller_overvoltage_standing): overvoltage lockout is not what holds it off. TI SNVS950C's design example, section 9.2.1.2.6 option B (R3 = 95.3 kohm, R4 = 3.74 kohm), predicts those readings -- a reference circuit, not this board's parts",
-    "TI SNVS950C: the load can be remotely switched off by taking UVLO/EN below its threshold with an open-collector or open-drain device; released, the LM5066I switches on (extdeps.electronic_component.ti_lm5066i vendor statement)",
-    "unpowered, pin 7 reads about 500 ohm to a back-side pad on the ground rings that sits on the trace toward Q300 / Q301; in-circuit, so the path's parts are unread",
+    "TI SNVS950C: the load can be remotely switched off by taking UVLO/EN below its threshold with an open-collector or open-drain device; released, the LM5066I switches on (extdeps.electronic_component.ti_lm5066i vendor statement) -- a mechanism the part admits, not one read on this board",
+    "unpowered, pin 7 to the back-side ground pad reads differently with the probes swapped: 557 ohm on the 2k range with the red probe on the pad, over range on the 2k range and about 11 kohm on the 20k range with the red probe on pin 7. The path is not a plain resistance: something one-way is in it. Which way it conducts, and so whether it is reverse-biased while pin 7 sits at +1 V, waits on this meter's resistance-mode polarity, which is unverified",
+    "every other unpowered reading from pin 7 is in-circuit and names no part: Q300's, Q301's and a small resistor's points read 700 ohm and later 550 ohm, as did ground, all with the red probe away from pin 7 -- the placement under which the ground pad read 557 ohm -- so whether they run through the same one-way path is unread; pin 21 (VDD) reads 16 kohm and Q21_P5's tab about 40 kohm on the 200k range and about 100 kohm on the 2M range, placement unstated. None is a component's value, and none includes or excludes a source",
+    "a pasted report, not read against its source: OCP MGX gates a tray's power-on on a management presence and standby handshake (PRSNT, STBY_EN, STBY_RDY). The P4261 is not established as an MGX tray, and no such signal is traced to pin 7",
+    "Q5_P5 and D5_P5 sit beside pin 8's back-side pad; whether either is on pin 7's network is unread",
     "no K1 comparison of pin 7 was made, so damage to pin 7's network from the 2026-10-19 bridge is not excluded by a sibling board; the bridge was a MOSFET's source to its drain, not on pin 7's network",
-    "Q5_P5's single lead is on the return; its function is unread",
     "the 11-13 mA draw does not establish which circuits are powered, so it neither shows nor excludes other powered logic",
   ],
-  decided_by: "unpowered, pin 7's resistance to each lead of Q300, Q301 and Q5_P5, both ends of the resistor between Q300 and Q301, of D5_P5, and of the parts beside Q5_P5: the lowest readings name the parts on pin 7's network; then those parts' markings and, powered, the voltage on their control leads",
+  decided_by: "unpowered, a point larger than the lead at the shorted-probe baseline to pin 7 (each end of every part beside U1_P5 read from pin 7), naming the part on pin 7 and its other end; this meter's resistance-mode polarity checked against a known diode; powered, VDD (pin 21) read at its bypass capacitor; then the first identified part followed. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
 }
 
 data p4261_q4_temperature_diode_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
@@ -1631,7 +1656,7 @@ data e1_return_basis: NonEmptyStr = "'ground' is J20's latch-side row; position 
 
 fn e1_pad_ohms(to: ElectricalTerminalRef, display: ResistanceDisplay, range: MeterRange, certainty: StatementCertainty, said: NonEmptyStr) -> ResistanceObservation {
   ResistanceObservation {
-    asset: p4261_e1_b, first: e1_terminal(c: e1_ovlo_pad, name: "pad"), second: to, record: both_points_recorded, conditions: e1_bench,
+    asset: p4261_e1_b, first: e1_terminal(c: e1_ovlo_pad, name: "pad"), second: to, record: both_points_recorded, conditions: e1_bench, polarity: PolarityUnrecorded,
     range: range, display: display, stability: StabilityUnrecorded, certainty: certainty, order: AfterIncidents { keys: [e1_bridge_incident.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo],
   }
@@ -1639,7 +1664,7 @@ fn e1_pad_ohms(to: ElectricalTerminalRef, display: ResistanceDisplay, range: Met
 
 fn e1_to_return(from: ElectricalTerminalRef, said: NonEmptyStr) -> ResistanceObservation {
   ResistanceObservation {
-    asset: p4261_e1_b, first: from, second: e1_ground_ref, record: second_point_inferred(basis: e1_return_basis), conditions: e1_bench,
+    asset: p4261_e1_b, first: from, second: e1_ground_ref, record: second_point_inferred(basis: e1_return_basis), conditions: e1_bench, polarity: PolarityUnrecorded,
     range: RangeUnrecorded, display: DisplayAtProbeBaseline, stability: StabilityUnrecorded, certainty: StatedPlainly, order: AfterIncidents { keys: [e1_bridge_incident.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo],
   }
@@ -1647,7 +1672,7 @@ fn e1_to_return(from: ElectricalTerminalRef, said: NonEmptyStr) -> ResistanceObs
 
 fn e1_pad_to_pin(pin: NonEmptyStr, display: ResistanceDisplay, said: NonEmptyStr) -> ResistanceObservation {
   ResistanceObservation {
-    asset: p4261_e1_b, first: e1_terminal(c: e1_ovlo_pad, name: "pad"), second: e1_terminal(c: e1_u1_p5, name: pin), record: both_points_recorded, conditions: e1_bench,
+    asset: p4261_e1_b, first: e1_terminal(c: e1_ovlo_pad, name: "pad"), second: e1_terminal(c: e1_u1_p5, name: pin), record: both_points_recorded, conditions: e1_bench, polarity: PolarityUnrecorded,
     range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly, order: AfterIncidents { keys: [e1_bridge_incident.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo, e1_u1_closeup_photo],
   }
@@ -1676,27 +1701,75 @@ fn e1_pad_volts(source_volts: Nat, millivolts: Nat, said: NonEmptyStr) -> NodeVo
 }
 
 // U1_P5'S ENABLE, READ THROUGH A WIRE TAPED TO PIN 7 (2026-10-19, after the probe bridge). The wire is
-// not at the baseline to pin 8's pad; pin 7 reads about 500 ohm to a back-side pad that is on the
-// ground rings; energized, pin 7 held about 1.0 V with the source at 36, 48 and 54 V. No comparison
+// not at the baseline to pin 8's pad; pin 7 read about 500 ohm to a back-side pad that is on the
+// ground rings, with pin 7 on the meter's COM probe (with the probes swapped it reads differently,
+// below); energized, pin 7 held about 1.0 V with the source at 36, 48 and 54 V. No comparison
 // with the K1 was made (the operator declined to wire the K1's pin 7), so whether the probe bridge
 // changed pin 7's network is not separated by a sibling board -- the bridge itself was a MOSFET's
 // source to its drain, not on pin 7's network.
 data e1_ground_pad: ComponentInstanceIdentity = e1_component(local: "back-side pad on the trace toward Q300 / Q301, on the ground rings")
 data e1_pin7_wire_said: NonEmptyStr = "I taped a thin wire to pin 7 now so I can explore the bottom"
 
-fn e1_pin7_ohms(to: ElectricalTerminalRef, display: ResistanceDisplay, certainty: StatementCertainty, said: NonEmptyStr) -> ResistanceObservation {
+// placed: the statements naming which probe touched pin 7, when the reading's own words do not.
+fn e1_pin7_read(to: ElectricalTerminalRef, record: ProbeRecord, polarity: ProbePolarity, placed: List<EvidenceRef>, range: MeterRange, display: ResistanceDisplay, certainty: StatementCertainty, said: NonEmptyStr) -> ResistanceObservation {
   ResistanceObservation {
-    asset: p4261_e1_b, first: e1_terminal(c: e1_u1_p5, name: "pin 7"), second: to, record: both_points_recorded, conditions: e1_bench,
-    range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: certainty, order: AfterIncidents { keys: [e1_bridge_incident.key] },
-    evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, OperatorStatement { stated_on: "2026-10-19", verbatim: e1_pin7_wire_said }, e1_u1_closeup_photo],
+    asset: p4261_e1_b, first: e1_terminal(c: e1_u1_p5, name: "pin 7"), second: to, record: record, conditions: e1_bench, polarity: polarity,
+    range: range, display: display, stability: StabilityUnrecorded, certainty: certainty, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: concat([OperatorStatement { stated_on: "2026-10-19", verbatim: said }, OperatorStatement { stated_on: "2026-10-19", verbatim: e1_pin7_wire_said }, e1_u1_closeup_photo], placed),
   }
 }
 
+// Pin 7 on the meter's COM (black) probe, so the red probe on the other point: the operator's
+// statement for the readings from pin 7 to the parts on the back.
+data e1_pin7_on_com: List<EvidenceRef> = [OperatorStatement { stated_on: "2026-10-19", verbatim: "sorry - so to be clear, the 500 to the parts on the back were done in the \"wrong\" direction, with pin 7 on the ground port of the multimeter" }]
+
 data e1_pin7_resistances: List<ResistanceObservation> = [
-  e1_pin7_ohms(to: e1_terminal(c: e1_ovlo_pad, name: "pad"), display: DisplayAboveBaseline, certainty: StatedPlainly, said: "Yeah it's not on pin 8, I checked"),
-  e1_pin7_ohms(to: e1_terminal(c: e1_ground_pad, name: "pad"), display: DisplayValue { ohms: 500, approximate: false }, certainty: StatedPlainly, said: "This pad is 500 ohms to pin 7"),
+  e1_pin7_read(to: e1_terminal(c: e1_ovlo_pad, name: "pad"), record: both_points_recorded, polarity: PolarityUnrecorded, placed: [], range: RangeUnrecorded, display: DisplayAboveBaseline, certainty: StatedPlainly, said: "Yeah it's not on pin 8, I checked"),
+  e1_pin7_read(to: e1_terminal(c: e1_ground_pad, name: "pad"), record: both_points_recorded, polarity: RedOnSecond, placed: e1_pin7_on_com, range: RangeUnrecorded, display: DisplayValue { ohms: 500, approximate: false }, certainty: StatedPlainly, said: "This pad is 500 ohms to pin 7"),
   e1_to_return(from: e1_terminal(c: e1_ground_pad, name: "pad"), said: "I think that pad is ground., it's the same as copper rings"),
 ]
+
+// THE LATER PIN 7 READINGS, every one from the taped wire with the supply's leads unplugged. Each is
+// kept as read, and none is reconciled with another: a reading that disagrees with an earlier one of
+// the same pair is a second link, not a correction.
+//
+// Q300's, Q301's and a small resistor's points read 700 ohm from pin 7, then 550 ohm with ground
+// ("Not sure what changed"), all with pin 7 on the meter's COM probe. Which lead of each transistor,
+// and which resistor, is unrecorded, so each is named as read rather than stood in by a lead it may
+// not be; four points reading the same value from pin 7 are four links, not one node. Pin 21 and
+// Q21_P5's tab were read with the probes' placement unstated, which stays unrecorded.
+//
+// Pin 7 to the ground pad depends on which probe touched which point: 557 ohm on the 2k range with the
+// red probe on the pad, over range on the 2k range and about 11 kohm on the 20k range with the red
+// probe on pin 7. Which probe this meter drives positive in resistance mode is unverified, so the
+// readings say which probe touched which point and nothing about which way a junction conducts.
+data e1_q300_leg: ElectricalTerminalRef = e1_terminal(c: e1_component(local: "Q300"), name: "leg read from pin 7 (which of the three unrecorded)")
+data e1_q301_leg: ElectricalTerminalRef = e1_terminal(c: e1_component(local: "Q301"), name: "leg read from pin 7 (which of the three unrecorded)")
+data e1_small_resistor_pad: ElectricalTerminalRef = e1_terminal(c: e1_component(local: "small resistor near Q300 / Q301 (which one unrecorded)"), name: "pad read from pin 7")
+data e1_shared_700_said: NonEmptyStr = "One leg of each q300 and q301 share 700ohms with pin 7, and one of the small resistors shares one pad of 700ohm"
+data e1_shared_550_said: NonEmptyStr = "Now it's reading 550 ohms on all of them and ground / Not sure what changed"
+data e1_them_basis: NonEmptyStr = "'on all of them': the three points that read 700 ohm from pin 7 just before"
+data e1_and_ground_basis: NonEmptyStr = "'and ground': which ground point is unrecorded; J20's latch-side row position 1 stands for it"
+data e1_pin21_basis: NonEmptyStr = "'That reads 16k': the point asked for, U1_P5 pin 21 (VDD), the seventh lead up the right-hand column; the operator did not name it, nor the range"
+data e1_q21_tab_basis: NonEmptyStr = "'on 200k it reads 40, on 2m it reads .100': the point asked for, Q21_P5's wide tab; the operator named the ranges, not the point"
+data e1_q21_tab_said: NonEmptyStr = "on 200k it reads \"40\", on 2m it reads \".100\" - not sure if that makes sense."
+data e1_q21_tab_hedge: StatementCertainty = StatedHedged { verbatim: "not sure if that makes sense" }
+data e1_ground_pad_basis: NonEmptyStr = "'red is on ground': the point asked for, the back-side ground pad that read 500 ohm from pin 7"
+data e1_red_on_pad_said: NonEmptyStr = "its 557 / sorry - black is on pin 7, and red is on ground for 557"
+data e1_red_on_pin7_said: NonEmptyStr = "that doesn't read at 2k, it reads 11 at 20k"
+
+data e1_pin7_later_resistances: List<ResistanceObservation> = concat(concat(
+  map([e1_q300_leg, e1_q301_leg, e1_small_resistor_pad], t => e1_pin7_read(to: t, record: both_points_recorded, polarity: RedOnSecond, placed: e1_pin7_on_com, range: RangeUnrecorded, display: DisplayValue { ohms: 700, approximate: false }, certainty: StatedPlainly, said: e1_shared_700_said)),
+  map([e1_q300_leg, e1_q301_leg, e1_small_resistor_pad], t => e1_pin7_read(to: t, record: second_point_inferred(basis: e1_them_basis), polarity: RedOnSecond, placed: e1_pin7_on_com, range: RangeUnrecorded, display: DisplayValue { ohms: 550, approximate: false }, certainty: StatedPlainly, said: e1_shared_550_said))),
+  [
+    e1_pin7_read(to: e1_ground_ref, record: second_point_inferred(basis: e1_and_ground_basis), polarity: RedOnSecond, placed: e1_pin7_on_com, range: RangeUnrecorded, display: DisplayValue { ohms: 550, approximate: false }, certainty: StatedPlainly, said: e1_shared_550_said),
+    e1_pin7_read(to: e1_terminal(c: e1_u1_p5, name: "pin 21"), record: second_point_inferred(basis: e1_pin21_basis), polarity: PolarityUnrecorded, placed: [], range: RangeUnrecorded, display: DisplayValue { ohms: 16000, approximate: false }, certainty: StatedPlainly, said: "That reads 16k"),
+    e1_pin7_read(to: e1_terminal(c: e1_q21, name: "tab"), record: second_point_inferred(basis: e1_q21_tab_basis), polarity: PolarityUnrecorded, placed: [], range: RangeFullScale { ohms: 200000 }, display: DisplayValue { ohms: 40000, approximate: true }, certainty: e1_q21_tab_hedge, said: e1_q21_tab_said),
+    e1_pin7_read(to: e1_terminal(c: e1_q21, name: "tab"), record: second_point_inferred(basis: e1_q21_tab_basis), polarity: PolarityUnrecorded, placed: [], range: RangeFullScale { ohms: 2000000 }, display: DisplayValue { ohms: 100000, approximate: true }, certainty: e1_q21_tab_hedge, said: e1_q21_tab_said),
+    e1_pin7_read(to: e1_terminal(c: e1_ground_pad, name: "pad"), record: second_point_inferred(basis: e1_ground_pad_basis), polarity: RedOnSecond, placed: [], range: RangeFullScale { ohms: 2000 }, display: DisplayValue { ohms: 557, approximate: false }, certainty: StatedPlainly, said: e1_red_on_pad_said),
+    e1_pin7_read(to: e1_terminal(c: e1_ground_pad, name: "pad"), record: second_point_inferred(basis: e1_ground_pad_basis), polarity: RedOnFirst, placed: [], range: RangeFullScale { ohms: 2000 }, display: DisplayOverRange, certainty: StatedPlainly, said: e1_red_on_pin7_said),
+    e1_pin7_read(to: e1_terminal(c: e1_ground_pad, name: "pad"), record: second_point_inferred(basis: e1_ground_pad_basis), polarity: RedOnFirst, placed: [], range: RangeFullScale { ohms: 20000 }, display: DisplayValue { ohms: 11000, approximate: true }, certainty: StatedPlainly, said: e1_red_on_pin7_said),
+  ])
 
 fn e1_pin7_volts(source_volts: Nat) -> NodeVoltageObservation {
   NodeVoltageObservation {
@@ -1710,7 +1783,7 @@ fn e1_pin7_volts(source_volts: Nat) -> NodeVoltageObservation {
 data e1_bench_record: BenchRecord = BenchRecord {
   incidents: [e1_bridge_incident],
   voltages: concat(concat(concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)), [e1_pad_volts(source_volts: 48, millivolts: 1800, said: "1.8v"), e1_pad_volts(source_volts: 36, millivolts: 1350, said: "1.35 at 36v")]), map([48, 36, 54], v => e1_pin7_volts(source_volts: v))),
-  resistances: concat(e1_ovlo_pad_resistances, e1_pin7_resistances),
+  resistances: concat(concat(e1_ovlo_pad_resistances, e1_pin7_resistances), e1_pin7_later_resistances),
 }
 
 data e1_measured: MeasuredBoard = MeasuredBoard {
@@ -2103,6 +2176,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
     "J20 (", j20_text(layout: layout), "; ", polarity_text(p: input_polarity(layout: layout)), "): ", bound_text(b: input_bound(layout: layout)),
     ". J20 ", input_draw_text(d: input_draw(layout: layout)),
     ". ", input_stage_text(layout: layout),
+    ". ", netlist_reading(layout: layout),
     ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
