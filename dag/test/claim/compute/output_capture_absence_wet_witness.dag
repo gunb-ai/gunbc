@@ -23,7 +23,7 @@ module test.claim.compute.output_capture_absence_wet_witness
 // unconditional alternative is the arm class that module filed as a defect and had deleted on
 // 2026-08-23 (`mock_arm_is_fabricating`, `hermetic_mock_fidelity_rows`).
 //
-// THE TWO CLAIMS THE RULING ASKED FOR.
+// establishes them: production's own route, run against a real git.
 //  (1) PRESENT. One declared output exists on disk. The route must return it with a blob that
 //      EQUALS git hash-object's OWN stdout. Nothing is typed from memory: the expectation is
 //      captured in the same run by the same /usr/bin/git twice over -- `hash-object <path>` in the
@@ -57,9 +57,10 @@ module test.claim.compute.output_capture_absence_wet_witness
 //   * the tree is removed and the host then answers not_found for the root.
 // Production's frame scratch is the one write root outside the temp dir that this route could reach --
 // the store frame prefix lives under /tmp, not under the root -- so its sorted population is listed
-// BEFORE and AFTER and carried in the case record as reported evidence for the PR body, per the
-// manager's ruling. It is evidence, not a verdict input: an unrelated process touching /tmp says
-// nothing about where THIS run wrote. A refused listing is named as a refusal, never read as empty.
+// BEFORE and AFTER and carried in the case record as REPORTED evidence, beside the verdict rather
+// than inside it. It is not a verdict input: an unrelated process touching /tmp says nothing about
+// where THIS run wrote, and a claim that could be failed by somebody else's traffic is not a claim
+// about this route. A refused listing is named as a refusal, never read as empty.
 //
 // ENROLLMENT, all three rows (the incomplete triple is the failure chunk_21's header documents):
 //   1. v2.workflow.local_repo_wet_terminal local_repo_wet_schedule -- one WetScheduledClaim per
