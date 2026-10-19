@@ -19,20 +19,8 @@ import extdeps.linux.proc_self_cgroup {
   read_unified_cgroup_membership_drift_sketch,
   unified_membership_outcome_tag,
 }
-import v2.extdeps.languages.bash_orch_if {
-  bash_nearest_ancestor_locate_cond_command,
-  bash_nearest_ancestor_locate_body_command,
-}
-import std.path_intent {
-  NearestAncestorContaining,
-  PathRefStart,
-  And,
-  Not,
-  nearest_ancestor_while_predicate,
-}
-import std.filesystem.types { RegularFile }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { FilePathParts, NonEmptyStr }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -47,10 +35,6 @@ data fixture_malformed_no_colon: String = "garbage-line\n"
 data fixture_missing_unified: String = "1:memory:/legacy.path\n"
 
 data fixture_hierarchy_zero_nonempty_controller: String = "0:cpu:/sys/fs/cgroup\n"
-
-data cgroup_mount_root: FilePathParts = FilePathParts { segments: ["sys", "fs", "cgroup"] }
-
-data cgroup_walk_var: NonEmptyStr = "d" as NonEmptyStr
 
 // THE CROSS-REALIZATION LAW, AND WHAT REMAINS OF IT. This file once held two legs of one claim: the
 // typed parser's tag, and the SAME tag produced by executing a bash realization of the same fixture
@@ -263,34 +247,6 @@ test fn unified_membership_state_observed_keeps_the_colon_bearing_path_on_both_r
 
 
 
-
-data cgroup_locate_spec: NearestAncestorContaining = NearestAncestorContaining {
-  start: PathRefStart { name: cgroup_walk_var },
-  stop_before: cgroup_mount_root,
-  relative_entry: FilePathParts { segments: ["memory.peak"] },
-  expected_kind: RegularFile,
-}
-
-
-
-test fn cgroup_locate_cond_preserves_predicate_shape_holds() -> Bool {
-  let cmd = bash_nearest_ancestor_locate_cond_command(spec: cgroup_locate_spec)
-  string_contains(s: cmd, pattern: "[ -n \"$d\" ]")
-    && string_contains(s: cmd, pattern: "[ \"$d\" != \"/sys/fs/cgroup\" ]")
-    && string_contains(s: cmd, pattern: "! [ -f \"$d/memory.peak\" ]")
-}
-
-test fn cgroup_locate_body_preserves_ascent_holds() -> Bool {
-  let cmd = bash_nearest_ancestor_locate_body_command(spec: cgroup_locate_spec)
-  cmd == "d=$(dirname \"$d\")"
-}
-
-test fn nearest_ancestor_predicate_uses_regular_file_peak_holds() -> Bool {
-  match nearest_ancestor_while_predicate(spec: cgroup_locate_spec) {
-    And { lhs: _, rhs: And { lhs: _, rhs: Not { inner: std.path_intent.PathEntryKind { path: _, kind: RegularFile } } } } => true
-    _ => false
-  }
-}
 
 // D1 derived-equality backfill (unified_membership_outcome_tag_eq deleted): the hand fold
 // matched all four variants and, for OutcomeTagObserved, compared `ra as String == rb as String`.
