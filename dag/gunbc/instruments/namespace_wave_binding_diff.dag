@@ -13,7 +13,7 @@ import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { PreparedLexRules }
 import v2.std.diagnostic { Accepted, Rejected }
 import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, ModuleEvidence, occurrence_join_module, recompute_wave_text, rows_proof_scope, rows_by_module, module_rows, rows_multiset_equal, join_delta_line, join_delta_admitted, join_delta_unobserved, occurrence_join_controls_failure }
-import gunbc.instruments.namespace_wave_binding_shard { ShardFull, ShardOf, ShardMerge, ShardMalformed, ModuleResult, ShardRun, Merged, MergeRefused, parse_shard_mode, shard_modules, evidence_identity, evidence_at_ranks, shard_receipt_text, receipt_name, merge_receipts }
+import gunbc.instruments.namespace_wave_binding_shard { ShardFull, ShardBase, ShardOf, ShardMerge, ShardMalformed, ModuleResult, ShardRun, Merged, MergeRefused, HeadMerged, HeadMergeRefused, parse_shard_mode, shard_modules, evidence_identity, evidence_at_ranks, shard_receipt_text, receipt_name, base_receipt_file, indices_below, base_receipt_text, base_receipt_refusal, base_receipt_rows, base_receipt_status, merge_head_rows, merge_results, rewritten_names, shard_owned_rewritten, wave_plan }
 
 // THE NAMESPACE-WAVE BINDING DIFF: `gunbc test //gunbc/instruments:namespace-wave-binding-diff`, run by
 // a wave's author on the wave's own PR (no bystander is billed; the namespace-wave admission wall that
@@ -511,18 +511,38 @@ fn incomplete_side_control_failure() -> Optional<String> {
 
 // THE SHARD MERGE'S CONTROLS, run over synthetic receipts: the full set joins (the positive control), and each way the
 // identity join must refuse does: a dropped shard, a module proved twice (carried by a shard that does not own it), a
-// module in the wrong shard, a receipt from another head, another K, another evidence set, and a stray file in the directory.
+// module in the wrong shard, a receipt from another head, base, K or rewritten set, a stray file in the directory, a shared
+// dependency whose rows the shards disagree on, and a module outside the rewritten set whose rows differ. The base
+// receipt is checked against another base, head and rewritten set the same way.
 fn control_result(module: String) -> ModuleResult {
   ModuleResult { module: module, lines: ["admitted\tUnboundToDeclaredHome\t1:0\tstd.host_text.chars"], refused: 0, conflicting: false, clean: true }
 }
 
-fn control_receipt(head_sha: String, evidence: String, k: Int, index: Int, modules: List<String>) -> String {
-  shard_receipt_text(run: ShardRun { head_sha: head_sha, evidence: evidence, count: k }, index: index, results: modules |> map(m => control_result(module: m)))
+fn control_row(module: String, site: String) -> String {
+  "binding\t" + module + "\t" + site + "\tUnboundToDeclaredHome"
 }
 
-fn merge_case(name: String, want_merged: Bool, texts: List<String>, listing: List<String>) -> Optional<String> {
-  let evidence = ["a.m1", "a.m2", "a.m3"]
-  match merge_receipts(run: ShardRun { head_sha: "h1", evidence: evidence_identity(evidence: evidence), count: 2 }, evidence: evidence, texts: texts, listing: listing) {
+fn control_run(head_sha: String, base_sha: String, rewritten: String, k: Int) -> ShardRun {
+  ShardRun { head_sha: head_sha, base_sha: base_sha, rewritten: rewritten, count: k }
+}
+
+fn control_receipt(run: ShardRun, index: Int, modules: List<String>, shared: String) -> String {
+  shard_receipt_text(run: run, index: index, head_status: 0,
+    head_stdout: ((modules |> map(m => control_row(module: m, site: "1:0"))) + ["binding\ta.dep\t" + shared + "\tUnboundToDeclaredHome"]) |> join(separator: "\n"),
+    results: modules |> map(m => control_result(module: m)))
+}
+
+fn control_rewritten() -> List<String> {
+  ["a.m1", "a.m2", "a.m3"]
+}
+
+fn merge_case(name: String, want_merged: Bool, evidence: List<String>, texts: List<String>, listing: List<String>) -> Optional<String> {
+  let run = control_run(head_sha: "h1", base_sha: "b1", rewritten: evidence_identity(evidence: control_rewritten()), k: 2)
+  let outcome = match merge_head_rows(run: run, texts: texts, listing: listing) {
+    HeadMergeRefused { why: why } => MergeRefused { why: why }
+    HeadMerged { head_stdout: _, head_status: _ } => merge_results(run: run, rewritten: control_rewritten(), evidence: evidence, texts: texts)
+  }
+  match outcome {
     Merged { results: rs } =>
       if want_merged && (count(rs) == 3) { optional_absent() } else { optional_present(value: name + ": merged " + to_string(count(rs)) + " module(s) where it must " + (if want_merged { "merge 3" } else { "refuse" })) }
     MergeRefused { why: why } =>
@@ -530,19 +550,53 @@ fn merge_case(name: String, want_merged: Bool, texts: List<String>, listing: Lis
   }
 }
 
+fn base_case(name: String, want_held: Bool, run: ShardRun, text: String) -> Optional<String> {
+  match base_receipt_refusal(run: run, text: text) {
+    Absent => if want_held { optional_absent() } else { optional_present(value: name + ": a base receipt for another wave was accepted") }
+    Present { value: why } => if want_held { optional_present(value: name + ": a correct base receipt was refused: " + why) } else { optional_absent() }
+  }
+}
+
+fn merged_rows_control_failure() -> Optional<String> {
+  let ev = evidence_identity(evidence: control_rewritten())
+  let run = control_run(head_sha: "h1", base_sha: "b1", rewritten: ev, k: 2)
+  let texts = [control_receipt(run: run, index: 0, modules: ["a.m1", "a.m3"], shared: "9:9"), control_receipt(run: run, index: 1, modules: ["a.m2"], shared: "9:9")]
+  match merge_head_rows(run: run, texts: texts, listing: ["base.txt", "0-of-2.txt", "1-of-2.txt"]) {
+    HeadMergeRefused { why: why } => optional_present(value: "merged-rows control: refused a correct set: " + why)
+    HeadMerged { head_stdout: h, head_status: st } =>
+      if (count(split(s: h, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t"))) != 4) || (st != 0) {
+        optional_present(value: "merged-rows control: the whole-wave rows are not each module once (a shared dependency counted twice or dropped)")
+      } else {
+        optional_absent()
+      }
+  }
+}
+
 fn shard_merge_control_failure() -> Optional<String> {
-  let ev = evidence_identity(evidence: ["a.m1", "a.m2", "a.m3"])
-  let r0 = control_receipt(head_sha: "h1", evidence: ev, k: 2, index: 0, modules: ["a.m1", "a.m3"])
-  let r1 = control_receipt(head_sha: "h1", evidence: ev, k: 2, index: 1, modules: ["a.m2"])
+  let ev = evidence_identity(evidence: control_rewritten())
+  let run = control_run(head_sha: "h1", base_sha: "b1", rewritten: ev, k: 2)
+  let r0 = control_receipt(run: run, index: 0, modules: ["a.m1", "a.m3"], shared: "9:9")
+  let r1 = control_receipt(run: run, index: 1, modules: ["a.m2"], shared: "9:9")
+  let listing = ["base.txt", "0-of-2.txt", "1-of-2.txt"]
+  let every = control_rewritten()
   first_control_failure(controls: [
-    merge_case(name: "shard merge positive control (every shard, each module once)", want_merged: true, texts: [r0, r1], listing: ["0-of-2.txt", "1-of-2.txt"]),
-    merge_case(name: "shard merge RED: a dropped shard", want_merged: false, texts: [r0, ""], listing: ["0-of-2.txt"]),
-    merge_case(name: "shard merge RED: a module proved twice", want_merged: false, texts: [r0, control_receipt(head_sha: "h1", evidence: ev, k: 2, index: 1, modules: ["a.m2", "a.m3"])], listing: ["0-of-2.txt", "1-of-2.txt"]),
-    merge_case(name: "shard merge RED: a module in the wrong shard (same count)", want_merged: false, texts: [control_receipt(head_sha: "h1", evidence: ev, k: 2, index: 0, modules: ["a.m1", "a.m2"]), control_receipt(head_sha: "h1", evidence: ev, k: 2, index: 1, modules: ["a.m3"])], listing: ["0-of-2.txt", "1-of-2.txt"]),
-    merge_case(name: "shard merge RED: one receipt from another head", want_merged: false, texts: [r0, control_receipt(head_sha: "h0", evidence: ev, k: 2, index: 1, modules: ["a.m2"])], listing: ["0-of-2.txt", "1-of-2.txt"]),
-    merge_case(name: "shard merge RED: a receipt proved with another K", want_merged: false, texts: [r0, control_receipt(head_sha: "h1", evidence: ev, k: 3, index: 1, modules: ["a.m2"])], listing: ["0-of-2.txt", "1-of-2.txt"]),
-    merge_case(name: "shard merge RED: a receipt proved against another evidence set", want_merged: false, texts: [r0, control_receipt(head_sha: "h1", evidence: "a.m1,a.m2", k: 2, index: 1, modules: ["a.m2"])], listing: ["0-of-2.txt", "1-of-2.txt"]),
-    merge_case(name: "shard merge RED: a stray receipt in the directory", want_merged: false, texts: [r0, r1], listing: ["0-of-2.txt", "1-of-2.txt", "3-of-8.txt"]),
+    merge_case(name: "shard merge positive control (every shard, each module once)", want_merged: true, evidence: every, texts: [r0, r1], listing: listing),
+    merge_case(name: "shard merge RED: a dropped shard", want_merged: false, evidence: every, texts: [r0, ""], listing: ["base.txt", "0-of-2.txt"]),
+    merge_case(name: "shard merge RED: a module proved twice", want_merged: false, evidence: every, texts: [r0, control_receipt(run: run, index: 1, modules: ["a.m2", "a.m3"], shared: "9:9")], listing: listing),
+    merge_case(name: "shard merge RED: a module in the wrong shard (same count)", want_merged: false, evidence: every, texts: [control_receipt(run: run, index: 0, modules: ["a.m1", "a.m2"], shared: "9:9"), control_receipt(run: run, index: 1, modules: ["a.m3"], shared: "9:9")], listing: listing),
+    merge_case(name: "shard merge RED: one receipt from another head", want_merged: false, evidence: every, texts: [r0, control_receipt(run: control_run(head_sha: "h0", base_sha: "b1", rewritten: ev, k: 2), index: 1, modules: ["a.m2"], shared: "9:9")], listing: listing),
+    merge_case(name: "shard merge RED: one receipt proved against another base", want_merged: false, evidence: every, texts: [r0, control_receipt(run: control_run(head_sha: "h1", base_sha: "b0", rewritten: ev, k: 2), index: 1, modules: ["a.m2"], shared: "9:9")], listing: listing),
+    merge_case(name: "shard merge RED: a receipt proved with another K", want_merged: false, evidence: every, texts: [r0, control_receipt(run: control_run(head_sha: "h1", base_sha: "b1", rewritten: ev, k: 3), index: 1, modules: ["a.m2"], shared: "9:9")], listing: listing),
+    merge_case(name: "shard merge RED: a receipt proved against another rewritten set", want_merged: false, evidence: every, texts: [r0, control_receipt(run: control_run(head_sha: "h1", base_sha: "b1", rewritten: "a.m1,a.m2", k: 2), index: 1, modules: ["a.m2"], shared: "9:9")], listing: listing),
+    merge_case(name: "shard merge RED: a stray receipt in the directory", want_merged: false, evidence: every, texts: [r0, r1], listing: listing + ["3-of-8.txt"]),
+    merge_case(name: "shard merge RED: shards disagree on a shared dependency's rows", want_merged: false, evidence: every, texts: [r0, control_receipt(run: run, index: 1, modules: ["a.m2"], shared: "7:7")], listing: listing),
+    merge_case(name: "shard merge RED: a module outside the rewritten set has differing rows", want_merged: false, evidence: every + ["a.dep"], texts: [r0, r1], listing: listing),
+    merged_rows_control_failure(),
+    base_case(name: "base receipt positive control", want_held: true, run: run, text: base_receipt_text(run: run, status: 0, stdout: "binding\ta.m1\t1:0\tx\n")),
+    base_case(name: "base receipt RED: another base sha", want_held: false, run: run, text: base_receipt_text(run: control_run(head_sha: "h1", base_sha: "b0", rewritten: ev, k: 2), status: 0, stdout: "binding\ta.m1\t1:0\tx\n")),
+    base_case(name: "base receipt RED: another head", want_held: false, run: run, text: base_receipt_text(run: control_run(head_sha: "h0", base_sha: "b1", rewritten: ev, k: 2), status: 0, stdout: "binding\ta.m1\t1:0\tx\n")),
+    base_case(name: "base receipt RED: another rewritten set", want_held: false, run: run, text: base_receipt_text(run: control_run(head_sha: "h1", base_sha: "b1", rewritten: "a.m1", k: 2), status: 0, stdout: "binding\ta.m1\t1:0\tx\n")),
+    base_case(name: "base receipt RED: no receipt", want_held: false, run: run, text: ""),
     shard_mode_control_failure()
   ])
 }
@@ -562,6 +616,7 @@ fn shard_mode_control_failure() -> Optional<String> {
       ShardFull => optional_present(value: "shard index 2 of 2 parsed as the unsharded run")
       ShardOf { index: _, count: _ } => optional_present(value: "shard index 2 of 2 was admitted")
       ShardMerge { count: _ } => optional_present(value: "shard index 2 of 2 parsed as a merge")
+      ShardBase => optional_present(value: "shard index 2 of 2 parsed as the base run")
     }
   }
 }
@@ -694,10 +749,6 @@ fn shard_dir(head_root: String) -> String {
   head_root + "/target/namespace-wave-binding-diff/shards"
 }
 
-fn indices_below(n: Int) -> List<Int> {
-  if n <= 0 { [] } else { indices_below(n: n - 1) + [n - 1] }
-}
-
 fn shard_refusal(why: String) -> CliWireResponse {
   CliWirePrintable { bytes: "", exit: ExitFailure { code: 2, reason: "shard: " + why + ": not observed" } }
 }
@@ -707,43 +758,115 @@ fn read_receipt(dir: String, index: Int, shards: Int) -> String {
   if r.success { r.content } else { "" }
 }
 
-// THE SHARDED VERDICT. `shard_mode` is GUNBC_WAVE_SHARD verbatim (empty: the unsharded run). A shard `i/K` proves the
-// modules it owns by rank among the sorted evidence identities and writes a receipt naming the run it proved against;
-// `merge/K` joins the K receipts by identity and answers the verdict over every module; an unobserved shard is exit 2.
-fn binding_diff_sharded(base_stdout: String, head_stdout: String, base_status: Int, head_status: Int, base_root: String, head_root: String, head_sha: String, shard_mode: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> CliWireResponse {
-  let diff = binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: ambient_name_homes())
-  let evidence = evidence_at_ranks(evidence: evidence_modules(base_stdout: base_stdout, head_stdout: head_stdout), rank: 0, total: count(evidence_modules(base_stdout: base_stdout, head_stdout: head_stdout)))
+// THE EDIT PROOF AND JOIN over `modules` (the whole evidence set, or one shard's), wherever the rows came from.
+fn proved_results(base_stdout: String, head_stdout: String, modules: List<String>, base_root: String, head_root: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> List<ModuleResult> {
+  join_modules(base_stdout: base_stdout, head_stdout: head_stdout,
+    proof: read_proof(modules: modules, base_root: base_root, head_root: head_root, prepared: prepared, lex: lex),
+    modules: modules)
+}
+
+fn read_base_receipt(head_root: String) -> String {
+  let r = Filesystem.Read(path: shard_dir(head_root: head_root) + "/" + base_receipt_file())
+  if r.success { r.content } else { "" }
+}
+
+// THE SIDES' OWN CHECKS, shared by the unsharded run, a shard and the merge (the side that did not run for this mode is
+// never checked): a side whose census did not hold its controls, or printed no binding row, is no observation.
+fn sides_unobserved(base_stdout: String, head_stdout: String, base_status: Int, head_status: Int) -> Optional<CliWireResponse> {
+  if (base_status != 0) && (base_status != 2) {
+    optional_present(value: CliWirePrintable { bytes: base_stdout + "\n", exit: ExitFailure { code: 2, reason: "base: the base ambient-name census exited " + to_string(base_status) + " (its controls did not hold, or it did not run), so base was not observed" } })
+  } else if (head_status != 0) && (head_status != 2) {
+    optional_present(value: CliWirePrintable { bytes: head_stdout + "\n", exit: ExitFailure { code: 2, reason: "head: the head ambient-name census exited " + to_string(head_status) + " (its controls did not hold, or it did not run), so head was not observed" } })
+  } else if count(binding_lines(stdout: base_stdout)) == 0 {
+    optional_present(value: CliWirePrintable { bytes: base_stdout + "\n", exit: ExitFailure { code: 2, reason: "base: the base census printed no binding row (exit " + to_string(base_status) + "), so base was not observed; an empty side is no observation, never an empty diff" } })
+  } else if count(binding_lines(stdout: head_stdout)) == 0 {
+    optional_present(value: CliWirePrintable { bytes: head_stdout + "\n", exit: ExitFailure { code: 2, reason: "head: the head census printed no binding row, so head was not observed; an empty side is no observation, never an empty diff" } })
+  } else {
+    optional_absent()
+  }
+}
+
+// THE SHARDED VERDICT. `shard_mode` is GUNBC_WAVE_SHARD verbatim (empty: the unsharded run).
+//   base     the one base census of the wave, written as a receipt keyed by (base sha, head sha, rewritten set);
+//   i/K      the shard's SCOPED head census (its rewritten members and their closures) joined against the base receipt,
+//            the edit proof of the modules it owns, written as a receipt carrying the rows it measured;
+//   merge/K  no census: the base receipt and the K shard receipts reconstruct the whole-wave rows, equal wherever two
+//            shards carry one module, and the verdict is the unsharded verdict over them.
+// A receipt for another wave, a missing or foreign receipt, or a module outside the rewritten set whose rows differ is
+// exit 2, named.
+fn binding_diff_sharded(base_stdout: String, head_stdout: String, base_status: Int, head_status: Int, base_root: String, head_root: String, head_sha: String, base_sha: String, rewritten_text: String, shard_mode: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> CliWireResponse {
+  let names = rewritten_names(text: rewritten_text)
+  let rewritten = evidence_identity(evidence: names)
   match parse_shard_mode(text: shard_mode) {
     ShardMalformed { why: why } => shard_refusal(why: why)
-    ShardFull => verdict_from_results(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status, diff: diff,
-      results: join_modules(base_stdout: base_stdout, head_stdout: head_stdout, proof: read_proof(modules: evidence, base_root: base_root, head_root: head_root, prepared: prepared, lex: lex), modules: diff.unobserved_both_sides))
+    ShardFull =>
+      match sides_unobserved(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status) {
+        Present { value: r } => r
+        Absent =>
+          let diff = binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: ambient_name_homes())
+          let evidence = evidence_at_ranks(evidence: evidence_modules(base_stdout: base_stdout, head_stdout: head_stdout), rank: 0, total: count(evidence_modules(base_stdout: base_stdout, head_stdout: head_stdout)))
+          verdict_from_results(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status, diff: diff,
+            results: join_modules(base_stdout: base_stdout, head_stdout: head_stdout,
+              proof: read_proof(modules: evidence, base_root: base_root, head_root: head_root, prepared: prepared, lex: lex), modules: diff.unobserved_both_sides))
+      }
+    ShardBase =>
+      match sides_unobserved(base_stdout: base_stdout, head_stdout: base_stdout, base_status: base_status, head_status: 0) {
+        Present { value: r } => r
+        Absent =>
+          let text = base_receipt_text(run: ShardRun { head_sha: head_sha, base_sha: base_sha, rewritten: rewritten, count: 0 }, status: base_status, stdout: base_stdout)
+          let written = Filesystem.Write(path: shard_dir(head_root: head_root) + "/" + base_receipt_file(), content: text)
+          if written.success { CliWirePrintable { bytes: text, exit: ExitSuccess } } else { shard_refusal(why: "the base receipt could not be written under " + shard_dir(head_root: head_root)) }
+      }
     ShardOf { index: i, count: k } =>
-      let results = join_modules(base_stdout: base_stdout, head_stdout: head_stdout,
-        proof: read_proof(modules: shard_modules(evidence: evidence, index: i, shards: k), base_root: base_root, head_root: head_root, prepared: prepared, lex: lex),
-        modules: shard_modules(evidence: evidence, index: i, shards: k))
-      let text = shard_receipt_text(run: ShardRun { head_sha: head_sha, evidence: evidence_identity(evidence: evidence), count: k }, index: i, results: results)
-      let written = Filesystem.Write(path: shard_dir(head_root: head_root) + "/" + receipt_name(index: i, shards: k), content: text)
-      if written.success {
-        CliWirePrintable { bytes: text, exit: ExitSuccess }
-      } else {
-        shard_refusal(why: "the receipt could not be written under " + shard_dir(head_root: head_root))
+      let run = ShardRun { head_sha: head_sha, base_sha: base_sha, rewritten: rewritten, count: k }
+      let base_text = read_base_receipt(head_root: head_root)
+      match base_receipt_refusal(run: run, text: base_text) {
+        Present { value: why } => shard_refusal(why: why)
+        Absent =>
+          let base_rows = base_receipt_rows(text: base_text)
+          let base_code = base_receipt_status(text: base_text)
+          match sides_unobserved(base_stdout: base_rows, head_stdout: head_stdout, base_status: base_code, head_status: head_status) {
+            Present { value: r } => r
+            Absent =>
+              let owned = shard_modules(evidence: names, index: i, shards: k)
+              let mine = evidence_modules(base_stdout: base_rows, head_stdout: head_stdout) |> filter(m => count(owned |> filter(o => o == m)) != 0)
+              let results = proved_results(base_stdout: base_rows, head_stdout: head_stdout, modules: mine, base_root: base_root, head_root: head_root, prepared: prepared, lex: lex)
+              let text = shard_receipt_text(run: run, index: i, head_status: head_status, head_stdout: head_stdout, results: results)
+              let written = Filesystem.Write(path: shard_dir(head_root: head_root) + "/" + receipt_name(index: i, shards: k), content: text)
+              if written.success { CliWirePrintable { bytes: text, exit: ExitSuccess } } else { shard_refusal(why: "the receipt could not be written under " + shard_dir(head_root: head_root)) }
+          }
       }
     ShardMerge { count: k } =>
+      let run = ShardRun { head_sha: head_sha, base_sha: base_sha, rewritten: rewritten, count: k }
+      let base_text = read_base_receipt(head_root: head_root)
       let listing = Filesystem.List(path: shard_dir(head_root: head_root))
-      if !listing.success {
-        shard_refusal(why: "the receipt directory " + shard_dir(head_root: head_root) + " could not be listed")
-      } else {
-        match merge_receipts(
-          run: ShardRun { head_sha: head_sha, evidence: evidence_identity(evidence: evidence), count: k },
-          evidence: evidence,
-          texts: indices_below(n: k) |> map(i => read_receipt(dir: shard_dir(head_root: head_root), index: i, shards: k)),
-          listing: if listing.entries == "" { [] } else { split(s: listing.entries, delimiter: "\n") }
-        ) {
-          MergeRefused { why: why } => shard_refusal(why: why)
-          Merged { results: proved } => verdict_from_results(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status, diff: diff,
-            results: proved + join_modules(base_stdout: base_stdout, head_stdout: head_stdout, proof: read_proof(modules: [], base_root: base_root, head_root: head_root, prepared: prepared, lex: lex),
-              modules: diff.unobserved_both_sides |> filter(m => count(evidence |> filter(e => e == m)) == 0)))
-        }
+      match base_receipt_refusal(run: run, text: base_text) {
+        Present { value: why } => shard_refusal(why: why)
+        Absent =>
+          if !listing.success {
+            shard_refusal(why: "the receipt directory " + shard_dir(head_root: head_root) + " could not be listed")
+          } else {
+            let texts = indices_below(n: k) |> map(i => read_receipt(dir: shard_dir(head_root: head_root), index: i, shards: k))
+            match merge_head_rows(run: run, texts: texts, listing: if listing.entries == "" { [] } else { split(s: listing.entries, delimiter: "\n") }) {
+              HeadMergeRefused { why: why } => shard_refusal(why: why)
+              HeadMerged { head_stdout: merged_head, head_status: merged_status } =>
+                let base_rows = base_receipt_rows(text: base_text)
+                let base_code = base_receipt_status(text: base_text)
+                match sides_unobserved(base_stdout: base_rows, head_stdout: merged_head, base_status: base_code, head_status: merged_status) {
+                  Present { value: r } => r
+                  Absent =>
+                    let evidence = evidence_modules(base_stdout: base_rows, head_stdout: merged_head)
+                    match merge_results(run: run, rewritten: names, evidence: evidence, texts: texts) {
+                      MergeRefused { why: why } => shard_refusal(why: why)
+                      Merged { results: proved } =>
+                        let diff = binding_diff(base_stdout: base_rows, head_stdout: merged_head, rows: ambient_name_homes())
+                        verdict_from_results(base_stdout: base_rows, head_stdout: merged_head, base_status: base_code, head_status: merged_status, diff: diff,
+                          results: proved + join_modules(base_stdout: base_rows, head_stdout: merged_head, proof: read_proof(modules: [], base_root: base_root, head_root: head_root, prepared: prepared, lex: lex),
+                            modules: diff.unobserved_both_sides |> filter(m => count(evidence |> filter(e => e == m)) == 0)))
+                    }
+                }
+            }
+          }
       }
   }
 }
@@ -793,11 +916,13 @@ fn binding_diff_standing(
   base_root: String,
   head_root: String,
   head_sha: String,
+  base_sha: String,
+  rewritten: String,
   shard_mode: String
 ) -> CliWireResponse {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 2, reason: "the dag grammar could not be prepared, so no edit proof can be computed: not observed" } }
-    Accepted { value: prepared, diagnostics: _ } => binding_diff_standing_prepared(rebind_base_stdout: rebind_base_stdout, rebind_head_stdout: rebind_head_stdout, base_stdout: base_stdout, base_status: base_status, head_stdout: head_stdout, head_status: head_status, wave_base_stdout: wave_base_stdout, wave_admit_stdout: wave_admit_stdout, wave_moved_stdout: wave_moved_stdout, wave_wrong_home_stdout: wave_wrong_home_stdout, base_root: base_root, head_root: head_root, head_sha: head_sha, shard_mode: shard_mode, prepared: prepared, lex: dag_prepared_lex())
+    Accepted { value: prepared, diagnostics: _ } => binding_diff_standing_prepared(rebind_base_stdout: rebind_base_stdout, rebind_head_stdout: rebind_head_stdout, base_stdout: base_stdout, base_status: base_status, head_stdout: head_stdout, head_status: head_status, wave_base_stdout: wave_base_stdout, wave_admit_stdout: wave_admit_stdout, wave_moved_stdout: wave_moved_stdout, wave_wrong_home_stdout: wave_wrong_home_stdout, base_root: base_root, head_root: head_root, head_sha: head_sha, base_sha: base_sha, rewritten: rewritten, shard_mode: shard_mode, prepared: prepared, lex: dag_prepared_lex())
   }
 }
 
@@ -815,6 +940,8 @@ fn binding_diff_standing_prepared(
   base_root: String,
   head_root: String,
   head_sha: String,
+  base_sha: String,
+  rewritten: String,
   shard_mode: String,
   prepared: PreparedGrammar,
   lex: PreparedLexRules
@@ -825,19 +952,16 @@ fn binding_diff_standing_prepared(
       match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure(), shard_merge_control_failure(), occurrence_join_controls_failure(prepared: prepared, lex: lex), wave_unobserved_control_failure(prepared: prepared, lex: lex), unobserved_guards_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, prepared: prepared, lex: lex), wave_other_incompleteness_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex))), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout, prepared: prepared, lex: lex)]) {
         Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "control: " + why } }
         Absent =>
-          if (base_status != 0) && (base_status != 2) {
-            CliWirePrintable { bytes: base_stdout + "\n", exit: ExitFailure { code: 2, reason: "base: the base ambient-name census exited " + to_string(base_status) + " (its controls did not hold, or it did not run), so base was not observed" } }
-          } else if (head_status != 0) && (head_status != 2) {
-            CliWirePrintable { bytes: head_stdout + "\n", exit: ExitFailure { code: 2, reason: "head: the head ambient-name census exited " + to_string(head_status) + " (its controls did not hold, or it did not run), so head was not observed" } }
-          } else if count(binding_lines(stdout: base_stdout)) == 0 {
-            CliWirePrintable { bytes: base_stdout + "\n", exit: ExitFailure { code: 2, reason: "base: the base census printed no binding row (exit " + to_string(base_status) + "), so base was not observed; an empty side is no observation, never an empty diff" } }
-          } else if count(binding_lines(stdout: head_stdout)) == 0 {
-            CliWirePrintable { bytes: head_stdout + "\n", exit: ExitFailure { code: 2, reason: "head: the head census printed no binding row, so head was not observed; an empty side is no observation, never an empty diff" } }
-          } else {
-            binding_diff_sharded(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status, base_root: base_root, head_root: head_root, head_sha: head_sha, shard_mode: shard_mode, prepared: prepared, lex: lex)
-          }
+          binding_diff_sharded(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status, base_root: base_root, head_root: head_root, head_sha: head_sha, base_sha: base_sha, rewritten_text: rewritten, shard_mode: shard_mode, prepared: prepared, lex: lex)
       }
   }
+}
+
+// WHICH CENSUSES THIS MODE RUNS, read by the host (which only runs what this says): `full` runs base's and head's whole
+// census; `base` runs base's alone; `shard` runs a scoped head census and needs base's tree only for its module texts;
+// `merge` runs no census. A malformed mode runs nothing and the standing refuses it.
+fn binding_diff_wave_plan(shard_mode: String) -> String {
+  wave_plan(shard_mode: shard_mode)
 }
 
 // THE BASE A WAVE IS DIFFED AGAINST: the merge base of HEAD and this ref. A policy fact, so it lives here

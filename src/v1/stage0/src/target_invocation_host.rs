@@ -1778,6 +1778,35 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
             return unreached(format!("the rewritten modules could not be read: {cause}"))
         }
     };
+    // The wave scope (GUNBC_WAVE_SHARD) is policy the reader owns: it names the rewritten modules this run covers.
+    let rewritten = {
+        let all_text: String = rewritten
+            .iter()
+            .map(|(m, present)| format!("{m}\t{}\n", if *present { "present" } else { "absent" }))
+            .collect();
+        let text = |s: &str| crate::v1_interpreter::Value::Str(s.to_string().into());
+        let owned = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "ambient_census_scoped_rewritten",
+            &[
+                (Some("rewritten".to_string()), text(&all_text)),
+                (
+                    Some("shard_mode".to_string()),
+                    text(&std::env::var("GUNBC_WAVE_SHARD").unwrap_or_default()),
+                ),
+            ],
+            true,
+        )
+        .map_err(|c| c.to_string())
+        .and_then(|v| strings(&v, "ambient_census_scoped_rewritten"));
+        match owned {
+            Ok(owned) => rewritten
+                .into_iter()
+                .filter(|(m, _)| owned.contains(m))
+                .collect::<Vec<_>>(),
+            Err(cause) => return unreached(format!("ambient_census_scoped_rewritten: {cause}")),
+        }
+    };
     let scratch = std::path::Path::new("target").join(label_name);
     let write_root = |name: &str, function: &str| -> Result<String, String> {
         // A NATIVE SOURCE ROOT IS A GOVERNED TREE'S DIRECTORY (v2.cli.repository_layout
@@ -1942,15 +1971,54 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         Ok(head) => head,
         Err(cause) => return unreached(format!("head commit: {cause}")),
     };
-    let (base, base_tree) = match run_base_ambient_name_census(&scratch, &base_ref, &head) {
-        Ok(base) => base,
-        Err(cause) => return unreached(format!("base: {cause}")),
+    // GUNBC_WAVE_SHARD is policy the reader parses; the host hands it over verbatim (unset: the empty string)
+    // and runs only what the reader's plan names.
+    let shard_mode = std::env::var("GUNBC_WAVE_SHARD").unwrap_or_default();
+    let plan = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "binding_diff_wave_plan",
+        &[(
+            Some("shard_mode".to_string()),
+            crate::v1_interpreter::Value::Str(shard_mode.clone().into()),
+        )],
+        true,
+    ) {
+        Ok(value) => match &value {
+            crate::v1_interpreter::Value::Str(plan) => plan.to_string(),
+            _ => return unreached("binding_diff_wave_plan did not return a string".to_string()),
+        },
+        Err(cause) => return unreached(format!("binding_diff_wave_plan failed: {cause}")),
+    };
+    let merge_base = match census_merge_base(&head, &base_ref) {
+        Ok(merge_base) => merge_base,
+        Err(cause) => return unreached(format!("merge base: {cause}")),
+    };
+    let rewritten_text: String = match census_rewritten_modules(&merge_base, &head) {
+        Ok(rewritten) => rewritten
+            .iter()
+            .map(|(m, present)| format!("{m}\t{}\n", if *present { "present" } else { "absent" }))
+            .collect(),
+        Err(cause) => {
+            return unreached(format!("the rewritten modules could not be read: {cause}"))
+        }
+    };
+    let (base, base_tree) = if plan == "merge" || plan.starts_with("malformed") {
+        ((String::new(), None), String::new())
+    } else {
+        match run_base_ambient_name_census(&scratch, &base_ref, &head, plan != "shard") {
+            Ok(base) => base,
+            Err(cause) => return unreached(format!("base: {cause}")),
+        }
     };
     // The base tree stays until the standing has read the texts the edit proof is computed from.
     let _base_tree = BaseTreeGuard(base_tree.clone());
-    let head_run = match run_head_ambient_name_census(&head) {
-        Ok(run) => run,
-        Err(cause) => return unreached(format!("head: {cause}")),
+    let head_run = if plan == "full" || plan == "shard" {
+        match run_head_ambient_name_census(&head) {
+            Ok(run) => run,
+            Err(cause) => return unreached(format!("head: {cause}")),
+        }
+    } else {
+        (String::new(), None)
     };
     let runs = match cli_run::run_census_infer_root_sets(
         source_roots,
@@ -1999,12 +2067,9 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
             text(&cli_run::workspace_root().to_string_lossy()),
         ),
         (Some("head_sha".to_string()), text(&head)),
-        // The shard is policy the reader parses (`parse_shard_mode`); the host only hands the environment
-        // over, unset as the empty string (the unsharded run).
-        (
-            Some("shard_mode".to_string()),
-            text(&std::env::var("GUNBC_WAVE_SHARD").unwrap_or_default()),
-        ),
+        (Some("base_sha".to_string()), text(&merge_base)),
+        (Some("rewritten".to_string()), text(&rewritten_text)),
+        (Some("shard_mode".to_string()), text(&shard_mode)),
     ];
     match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
@@ -2019,11 +2084,13 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
 
 /// Base's own `ambient-name-census`, run by base's own seed in a private worktree of the merge base of
 /// `head` and `base_ref`, handed head's commit as `GITHUB_SHA` so it reads the SAME rewritten modules
-/// head does. Returns that run's reading and status and the worktree path, which the caller removes.
+/// head does (`run_census` false: only the worktree, for the module texts a shard proves from). Returns that run's
+/// reading and status and the worktree path, which the caller removes.
 fn run_base_ambient_name_census(
     scratch: &std::path::Path,
     base_ref: &str,
     head: &str,
+    run_census: bool,
 ) -> Result<((String, Option<i32>), String), String> {
     let merge_base = census_merge_base(head, base_ref)?;
     let tree = scratch.join("base_tree");
@@ -2037,6 +2104,11 @@ fn run_base_ambient_name_census(
     let _ = std::fs::remove_dir_all(&tree);
     std::fs::create_dir_all(scratch).map_err(|e| e.to_string())?;
     git_text(&["worktree", "add", "--detach", &tree_text, &merge_base])?;
+    if !run_census {
+        // A shard reads base's module TEXTS from this tree for the edit proof; base's census is the wave's one
+        // base receipt, not rerun here.
+        return Ok(((String::new(), None), tree_text));
+    }
     let target_dir = std::fs::canonicalize(scratch)
         .map_err(|e| e.to_string())?
         .join("base_target");
