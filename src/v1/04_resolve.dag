@@ -1663,7 +1663,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   // `left: Measure<Q, S, M>` contributes nothing here and the wall reads the module-env binder
   // instead. Passing Absent therefore keeps that binder identity-free rather than minting a reference
   // from a name that does not own it; the owner-named route is census_declaration_type_env.
-  let env = env_with_type_variable_bindings(env: env, tp_names: tp_names, owner_decl_name: Absent)
+  let env = env_with_type_variable_bindings(env: env, tp_names: tp_names)
   let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
   let resolved_params = map(param_results, pr => pr.param)
   let param_diags = flat_map(param_results, pr => pr.diagnostics)
