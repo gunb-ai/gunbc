@@ -218,7 +218,7 @@ fn receipt_for(
     repo: repo,
     run_id: run_id,
     environment_name: environment,
-    claimed: state,
+    intended: state,
     review: DeploymentProtectionRuleReview {
       environment_name: environment,
       state: state,

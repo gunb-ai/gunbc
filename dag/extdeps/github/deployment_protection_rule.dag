@@ -454,17 +454,25 @@ data review_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/actions/runs
 data review_endpoint_method: HttpMethod = POST
 data review_endpoint_success_status: HttpStatus = 204
 
-// THE LITERAL ANCHORS OF THE PATH ABOVE, as rows. They are what a path built by concatenation is
-// checked against: the builder below is separate from the template, so a builder that drifted — dropping
-// the final segment, or putting the run id in the wrong place — fails against these without either side
-// agreeing with the other by being the same string.
+// THE LITERAL ANCHORS OF THE PATH ABOVE, as rows transcribed from the pinned template. THE GATE IS
+// WITNESSED AT THE BUILDER, NOT AT ITS CONSUMERS: the builder's own witness pins its exact output against
+// these literals, so a builder that drifted — dropped the final segment, put the run id in the wrong
+// place — goes red there. There is deliberately NO built_path_carries_every_pinned_anchor predicate for
+// consumers to call. It was deleted on review (side chat, R1) as an unreachable re-validation of a
+// construction: the only producer of a built path IS the builder, so re-testing these anchors at the mint
+// asserted a state forbidden nowhere it runs — DESIGN §4b, "a check whose forbidden state is
+// expressible nowhere it runs is a decoration, green by construction and later cited as coverage".
 data review_endpoint_prefix: NonEmptyStr = "/repos/"
 data review_endpoint_runs_anchor: NonEmptyStr = "/actions/runs/"
 data review_endpoint_suffix: NonEmptyStr = "/deployment_protection_rule"
 
 // WHICH PART OF THE PATH IS WHAT. The template carries three caller-supplied values; only two of them
 // are free text, and both arrive from configuration rather than from GitHub.
-type ReviewPathSegment = OwnerSegment { value: NonEmptyStr } | RepoSegment { value: NonEmptyStr }
+type ReviewPathSegment
+  = OwnerSegment { value: NonEmptyStr }
+  | RepoSegment { value: NonEmptyStr }
+  // The run id lives in the route too, so a refusal that can name the run axis needs to carry one.
+  | RunIdSegment { value: Int }
 
 // THE PATH, BUILT RATHER THAN ACCEPTED. Callers that take a path as an argument can pass a path that
 // merely CONTAINS the run id — the path for run 1234 satisfies a "contains 123" check, a path on another
@@ -473,7 +481,29 @@ type ReviewPathSegment = OwnerSegment { value: NonEmptyStr } | RepoSegment { val
 // literals and these three values. A hostile owner or repo is refused by name rather than concatenated
 // into a route, because "octocat/..", an owner containing "/", or one containing a newline would each
 // change WHICH endpoint is called while still reading as a plausible repository.
-type BuiltReviewPath = BuiltReviewPathOk { path: NonEmptyStr } | BuiltReviewPathRefused {
+// WHICH PART OF THE ROUTE REFUSED TO BE BUILT. The refusal used to carry only a `hostile_segment`,
+// which forced a non-positive run id to be blamed on the OWNER — a perfectly valid owner was reported
+// as the thing that was wrong. The refusal names the axis, and the segment names the value.
+type ReviewPathBuildRefusal
+  = HostileSegment
+  // A run id that is not a positive number is not a run GitHub has ever had; a route built with it
+  // would be a route to nothing, and "nothing" answers 404 in a way a caller could mistake for
+  // "the run is gone".
+  | RunIdIsNotPositive
+
+fn review_path_build_refusal_name(refusal: ReviewPathBuildRefusal) -> NonEmptyStr {
+  match refusal {
+    HostileSegment {  } => "the route carried a segment that is not a route segment"
+    RunIdIsNotPositive {  } => "the run id is not a positive number"
+  }
+}
+
+type BuiltReviewPath =
+  BuiltReviewPathOk { path: NonEmptyStr }
+  | BuiltReviewPathRefused {
+    // DEFAULTED so the ordinary hostile-segment case reads as it did: a refusal that does not name an
+    // axis explicitly is blaming the segment it carries.
+    refusal: ReviewPathBuildRefusal = HostileSegment {  },
     hostile_segment: ReviewPathSegment,
   }
 
@@ -489,10 +519,12 @@ fn review_endpoint_path_built_for(
   } else if !path_segment_is_safe(raw: repo_text) {
     BuiltReviewPathRefused { hostile_segment: RepoSegment { value: repo } }
   } else if run_id <= 0 {
-    // A run id that is not a positive number is not a run GitHub has ever had; a route built with it
-    // would be a route to nothing, and "nothing" answers 404 in a way a caller could mistake for
-    // "the run is gone".
-    BuiltReviewPathRefused { hostile_segment: OwnerSegment { value: owner } }
+    // The run id blames ITSELF: the axis is RunIdIsNotPositive and the value is the run id, not the
+    // owner that was fine.
+    BuiltReviewPathRefused {
+      refusal: RunIdIsNotPositive,
+      hostile_segment: RunIdSegment { value: run_id },
+    }
   } else {
     BuiltReviewPathOk {
       path: concat(
@@ -513,16 +545,6 @@ fn review_endpoint_path_built_for(
       ) as NonEmptyStr,
     }
   }
-}
-
-// THE BUILT PATH AND THE PINNED TEMPLATE MUST AGREE, checked against the template rather than against
-// the builder: every literal anchor the template carries must be present in a built path. If the
-// builder drifts from upstream's route, this is the statement that goes red.
-fn built_path_carries_every_pinned_anchor(path: NonEmptyStr) -> Bool {
-  let text = path as String
-  (text |> contains(review_endpoint_prefix as String))
-    && (text |> contains(review_endpoint_runs_anchor as String))
-    && (text |> contains(review_endpoint_suffix as String))
 }
 
 // The body, from components/schemas in the OpenAPI description. It is an anyOf of two shapes, and

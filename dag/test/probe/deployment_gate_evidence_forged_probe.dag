@@ -125,7 +125,7 @@ fn forge_an_accepted_review() -> AcceptedReviewOutcome {
     repo: "gunbc",
     run_id: forged_run_id,
     environment_name: forged_environment,
-    claimed: Approved,
+    intended: Approved,
     review: DeploymentProtectionRuleReview {
       environment_name: forged_environment,
       state: Approved,

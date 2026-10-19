@@ -46,13 +46,16 @@ import extdeps.external_authority { external_model_scope_citations }
 import extdeps.github.deployment_protection_rule {
   DeploymentProtectionRuleReview,
   review_endpoint_path_built_for,
-  built_path_carries_every_pinned_anchor,
   BuiltReviewPath,
   BuiltReviewPathOk,
   BuiltReviewPathRefused,
   ReviewPathSegment,
   OwnerSegment,
   RepoSegment,
+  RunIdSegment,
+  RunIdIsNotPositive,
+  HostileSegment,
+  review_path_build_refusal_name,
   review_endpoint_prefix,
   review_endpoint_runs_anchor,
   review_endpoint_suffix,
@@ -280,10 +283,10 @@ test fn a_review_without_an_environment_or_a_state_cannot_be_built() -> Bool {
 test fn the_built_route_is_the_pinned_template_with_its_values_substituted() -> Bool {
   match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc", run_id: 35447067113) {
     BuiltReviewPathOk { path: built } =>
-      // every anchor the pinned template declares is present...
-      built_path_carries_every_pinned_anchor(path: built)
-        // ...and the whole route is upstream's, with the three values in their positions
-        && ((built as String)
+      // THE WHOLE ROUTE, EQUAL TO upstream's template with the three values substituted. There is
+      // deliberately no anchor-CONTAINMENT helper here (R1, deleted): containment over three literals is
+      // weaker than this equality and lived on the consumer side, where it could not fail.
+      ((built as String)
           == "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule")
         // the template it was checked against really is the citation's route, braces and all
         && ((review_endpoint_path as String)
@@ -318,6 +321,7 @@ test fn the_builder_refuses_a_segment_that_would_change_which_endpoint_is_called
       match seg {
         RepoSegment { value: v } => (v as String) == "gunbc/../other"
         OwnerSegment { value: _ } => false
+        RunIdSegment { value: _ } => false
       }
     BuiltReviewPathOk { path: _ } => false
   }
@@ -331,33 +335,37 @@ test fn the_builder_refuses_a_segment_that_would_change_which_endpoint_is_called
             match seg {
               OwnerSegment { value: v } => (v as String) == "gunb-ai/.."
               RepoSegment { value: _ } => false
+              RunIdSegment { value: _ } => false
             }
           BuiltReviewPathOk { path: _ } => false
         })
     // a run id that is not a positive number was never handed out upstream; a route built with one would
-    // answer 404 and be mistaken for "the run is gone"
+    // answer 404 and be mistaken for "the run is gone" — AND IT MUST BLAME THE RUN, NOT THE OWNER, which
+    // is the difference between a report somebody can act on and one that sends them to the wrong config.
     && (match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc", run_id: 0) {
-          BuiltReviewPathRefused { hostile_segment: _ } => true
+          BuiltReviewPathRefused { refusal: r, hostile_segment: seg } =>
+            (match r {
+               RunIdIsNotPositive {  } => true
+               HostileSegment {  } => false
+             })
+              && (match seg {
+                   RunIdSegment { value: v } => v == 0
+                   OwnerSegment { value: _ } => false
+                   RepoSegment { value: _ } => false
+                 })
+              // the refusal text says the run id, not the owner
+              && ((review_path_build_refusal_name(refusal: r) as String)
+                == "the run id is not a positive number")
           BuiltReviewPathOk { path: _ } => false
         })
-}
-
-// THE ANCHOR ROWS ARE NOT DECORATION. If they were the same string as the builder's own literals the
-// check would be green by construction; they are separate rows transcribed from the pinned template, so
-// a builder that drifted is caught by an ABSENCE. These four routes are ones a drifted builder could
-// plausibly produce, and none of them may pass.
-test fn an_absent_anchor_fails_the_check_rather_than_passing_it() -> Bool {
-  built_path_carries_every_pinned_anchor(
-    path: "/repos/gunb-ai/gunbc/actions/runs/7/deployment_protection_rule"
-  )
-    // the review suffix missing: this is a run's actions route, not a rule-review route
-    && !built_path_carries_every_pinned_anchor(path: "/repos/gunb-ai/gunbc/actions/runs/7")
-    // the runs anchor missing: a path that reached the suffix by some other way
-    && !built_path_carries_every_pinned_anchor(
-      path: "/repos/gunb-ai/gunbc/actions/7/deployment_protection_rule"
-    )
-    // the /repos/ prefix missing: an enterprise or org-scoped route wearing the same tail
-    && !built_path_carries_every_pinned_anchor(path: "/orgs/gunb-ai/gunbc/deployment_protection_rule")
+    && (match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc", run_id: -7) {
+          BuiltReviewPathRefused { refusal: r, hostile_segment: _ } =>
+            match r {
+              RunIdIsNotPositive {  } => true
+              HostileSegment {  } => false
+            }
+          BuiltReviewPathOk { path: _ } => false
+        })
 }
 
 test fn the_review_carries_a_decision_and_it_can_be_a_refusal() -> Bool {

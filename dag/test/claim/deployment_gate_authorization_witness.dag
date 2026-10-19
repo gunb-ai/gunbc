@@ -427,7 +427,7 @@ fn fx_receipt(run_id: Int, state: ReviewState) -> AcceptedRuleReviewReceipt? {
     repo: gate_repo,
     run_id: run_id,
     environment_name: gated_env,
-    claimed: state,
+    intended: state,
     review: DeploymentProtectionRuleReview {
       environment_name: gated_env,
       state: state,
@@ -453,7 +453,7 @@ fn fx_mint_probe(
   repo: NonEmptyStr,
   run_id: Int,
   environment_name: NonEmptyStr,
-  claimed: ReviewState,
+  intended: ReviewState,
   review: DeploymentProtectionRuleReview,
   status: HttpStatus,
   ownership: EnvironmentRuleOwnership,
@@ -464,7 +464,7 @@ fn fx_mint_probe(
     repo: repo,
     run_id: run_id,
     environment_name: environment_name,
-    claimed: claimed,
+    intended: intended,
     review: review,
     status: status,
     ownership: ownership,
@@ -1293,7 +1293,7 @@ test fn the_mint_refuses_a_body_for_another_environment() -> Bool {
     repo: gate_repo,
     run_id: 35447067113,
     environment_name: gated_env,
-    claimed: Approved,
+    intended: Approved,
     review: DeploymentProtectionRuleReview {
       environment_name: other_env,
       state: Approved,
@@ -1321,7 +1321,7 @@ test fn the_mint_refuses_a_status_it_does_not_accept() -> Bool {
     repo: gate_repo,
     run_id: 35447067113,
     environment_name: gated_env,
-    claimed: Approved,
+    intended: Approved,
     review: DeploymentProtectionRuleReview {
       environment_name: gated_env,
       state: Approved,
@@ -1348,7 +1348,7 @@ test fn the_mint_refuses_the_right_run_on_an_unread_repository() -> Bool {
     repo: other_repo,
     run_id: 35447067113,
     environment_name: gated_env,
-    claimed: Approved,
+    intended: Approved,
     review: DeploymentProtectionRuleReview {
       environment_name: gated_env,
       state: Approved,
@@ -1383,7 +1383,7 @@ test fn the_mint_refuses_a_repository_it_cannot_put_in_a_route() -> Bool {
     repo: hostile_repo,
     run_id: 35447067113,
     environment_name: gated_env,
-    claimed: Approved,
+    intended: Approved,
     review: DeploymentProtectionRuleReview {
       environment_name: gated_env,
       state: Approved,
@@ -1453,7 +1453,7 @@ test fn the_mint_refuses_a_rule_that_is_not_the_one_read_back() -> Bool {
     repo: gate_repo,
     run_id: 35447067113,
     environment_name: gated_env,
-    claimed: Approved,
+    intended: Approved,
     review: DeploymentProtectionRuleReview {
       environment_name: gated_env,
       state: Approved,
@@ -1471,6 +1471,101 @@ test fn the_mint_refuses_a_rule_that_is_not_the_one_read_back() -> Bool {
   }
 }
 
+// THE STAGE-4 FORGERY, CLOSED: THE BODY IS THE AUTHORITY ON WHAT WAS DECIDED. Before this red existed the
+// mint copied the CALLER'S `claimed` into the receipt, so `status 204 + body.state Approved + claimed
+// Rejected` minted a REJECTED receipt — and two accepted approvals walked into admit_reviewer_removal as
+// an approve/reject trial pair, which is exactly how the reviewer-removal act would have been unlocked by
+// evidence that never rejected anything. The witnesses missed it because every receipt helper copied one
+// state into both the intention and the body.
+//
+// THE CONTROL THE SIDE CHAT ASKED FOR, enforced both ways: 204 + body Approved + intended Rejected either
+// refuses by the named arm or mints APPROVED. It never mints Rejected. Written as three claims rather than
+// one so a mutation names which half broke:
+//   (a) the mismatch is refused by name, carrying BOTH states;
+//   (b) the same forgery from the other direction is refused too (intended Approved, body Rejected);
+//   (c) when the intention agrees with the body the receipt's state IS the body's — the ordinary path
+//       still works, so (a) and (b) cannot be passing because nothing mints at all.
+test fn the_receipt_state_is_the_bodys_and_never_the_callers() -> Bool {
+  // (a) body says Approved, caller wants it recorded as Rejected.
+  (match fx_mint_probe(
+         owner: gate_owner,
+         repo: gate_repo,
+         run_id: 35447067113,
+         environment_name: gated_env,
+         intended: Rejected,
+         review: DeploymentProtectionRuleReview {
+           environment_name: gated_env,
+           state: Approved,
+           comment: Present { value: "GitHub said approved" },
+         },
+         status: 204,
+         ownership: minted_ownership(),
+         requested_rule_id: 900000001,
+       ) {
+         AcceptedReviewRefused {
+           because: IntendedDecisionIsNotWhatTheBodySaid { intended: i, stated: s_ },
+         } => i == Rejected && s_ == Approved
+         // the other permitted outcome is an APPROVED receipt; a Rejected one is the forgery
+         Accepted { receipt: r } => r.state == Approved
+         AcceptedReviewRefused { because: _ } => false
+       })
+    // (b) the mirror: caller wants Approved, the body said Rejected. Same refusal, opposite directions,
+    // so the check cannot be an accidental one-directional `== Approved`.
+    && (match fx_mint_probe(
+           owner: gate_owner,
+           repo: gate_repo,
+           run_id: 35447067113,
+           environment_name: gated_env,
+           intended: Approved,
+           review: DeploymentProtectionRuleReview {
+             environment_name: gated_env,
+             state: Rejected,
+             comment: Present { value: "GitHub said rejected" },
+           },
+           status: 204,
+           ownership: minted_ownership(),
+           requested_rule_id: 900000001,
+         ) {
+           AcceptedReviewRefused {
+             because: IntendedDecisionIsNotWhatTheBodySaid { intended: i, stated: s_ },
+           } => i == Approved && s_ == Rejected
+           Accepted { receipt: r } => r.state == Rejected
+           AcceptedReviewRefused { because: _ } => false
+         })
+    // (c) THE CONTROL: an honest caller gets a receipt, and its state came from the body. Without this
+    // the two claims above could be green because the mint refuses everything.
+    && (match fx_mint_probe(
+           owner: gate_owner,
+           repo: gate_repo,
+           run_id: 35447067113,
+           environment_name: gated_env,
+           intended: Approved,
+           review: DeploymentProtectionRuleReview {
+             environment_name: gated_env,
+             state: Approved,
+             comment: Present { value: "agreed" },
+           },
+           status: 204,
+           ownership: minted_ownership(),
+           requested_rule_id: 900000001,
+         ) {
+           Accepted { receipt: r } => r.state == Approved
+           AcceptedReviewRefused { because: _ } => false
+         })
+    // (d) and the pair the trial needs is built from TWO BODIES, so a caller cannot supply one body
+    // twice with two intentions: here is the two-approvals forgery the side chat named, run through the
+    // admission it would otherwise have unlocked.
+    && (match admit_reviewer_removal(
+           boundary: srv1_boundary,
+           approved: fx_receipt(run_id: 35447067113, state: Approved),
+           rejected: fx_receipt(run_id: 35447067114, state: Approved),
+         ) {
+           RemovalRefused { missing: RejectingArmWasNotARejection } => true
+           RemovalRefused { missing: _ } => false
+           RemovalAdmitted { evidence: _ } => false
+         })
+}
+
 // NO OWNERSHIP, NO RECEIPT: an unattributed readback cannot authorise a review, and the installation the
 // token would be minted from is readable only off a JOINED ownership — never off the operator's claim.
 test fn no_receipt_and_no_token_without_an_attributed_ownership() -> Bool {
@@ -1479,7 +1574,7 @@ test fn no_receipt_and_no_token_without_an_attributed_ownership() -> Bool {
          repo: gate_repo,
          run_id: 35447067113,
          environment_name: gated_env,
-         claimed: Approved,
+         intended: Approved,
          review: DeploymentProtectionRuleReview {
            environment_name: gated_env,
            state: Approved,

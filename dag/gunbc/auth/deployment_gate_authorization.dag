@@ -62,7 +62,8 @@ import extdeps.github.deployment_protection_rule {
   wait_timer_maximum,
   rule_delivery_documented_guarantee,
   review_endpoint_path_built_for,
-  built_path_carries_every_pinned_anchor,
+  review_decision,
+  ReviewPathBuildRefusal,
   BuiltReviewPath,
   BuiltReviewPathOk,
   BuiltReviewPathRefused,
@@ -899,10 +900,13 @@ type AcceptedReviewRefusal =
   // The repository pair could not be turned into route segments, so no endpoint was addressable and
   // nothing was accepted. Named with the segment that was hostile: "your config is wrong" is not
   // actionable and "the repo is octocat/.." is.
-  | RouteSegmentsAreNotRouteSafe { hostile_segment: ReviewPathSegment }
-  // The route the mint assembled does not carry every anchor the pinned template declares. Only the
-  // builder can be at fault: the template is upstream's, transcribed once and cited.
-  | BuiltRouteDoesNotMatchThePinnedTemplate { route: NonEmptyStr }
+  | RouteSegmentsAreNotRouteSafe {
+    // WHICH AXIS the builder refused, and the value it blamed. Carried from the builder rather than
+    // re-derived, because only the builder knows whether the owner, the repo or the run id was the
+    // problem — re-deriving it here is how a valid owner came to be blamed for a zero run id.
+    refusal: ReviewPathBuildRefusal,
+    hostile_segment: ReviewPathSegment,
+  }
   // The readback attributed the rule for a different gate than the receipt would claim. Distinct from
   // BodyNamesAnotherEnvironment, which is the CALLER's body disagreeing: this is GitHub's read.
   | ReceiptEnvironmentIsNotTheObservedEnvironment {
@@ -918,6 +922,15 @@ type AcceptedReviewRefusal =
       observed_repo: NonEmptyStr,
     }
   | BodyNamesAnotherEnvironment { body_environment: NonEmptyStr, claimed: NonEmptyStr }
+  // THE CALLER BELIEVED SOMETHING ELSE. The mint refuses when the decision the caller meant to record
+  // is not the decision the BODY carries. This arm cannot make a receipt say what the body did not say:
+  // the receipt's state comes from the body alone, below. An earlier version took `claimed: ReviewState`
+  // and put it in the receipt, so a 204 whose body said Approved minted a Rejected receipt, and two
+  // accepted approvals passed as an approve/reject trial pair.
+  | IntendedDecisionIsNotWhatTheBodySaid {
+      intended: ReviewState,
+      stated: ReviewState,
+    }
   // THE OWNERSHIP MUTATIONS, at the mint rather than after the response. The arm that used to be
   // `OwnershipInstallationMismatch` never fired: the only way to this mint's ownership arm is
   // OwnedByGateApp, whose installation id already came from the observation, so there was no second
@@ -942,7 +955,10 @@ fn mint_accepted_rule_review(
   repo: NonEmptyStr,
   run_id: Int,
   environment_name: NonEmptyStr,
-  claimed: ReviewState,
+  // WHAT THE CALLER MEANT TO ANSWER. Checked against the body and never copied into the receipt: the
+  // body is the only source of the recorded state. Passing it is how a caller learns it was answering a
+  // different gate than it thought, not how it decides what was approved.
+  intended: ReviewState,
   review: DeploymentProtectionRuleReview,
   status: HttpStatus,
   ownership: EnvironmentRuleOwnership,
@@ -980,6 +996,16 @@ fn mint_accepted_rule_review(
         claimed: environment_name,
       },
     }
+  } else if review_decision(review: review) != intended {
+    // THE RED THE SIDE CHAT ASKED FOR. Before this line existed the mint copied the caller's
+    // `claimed` into the receipt, so `204 + body Approved + intended Rejected` minted a Rejected
+    // receipt. The only two outcomes this permits are the named refusal and an Approved receipt.
+    AcceptedReviewRefused {
+      because: IntendedDecisionIsNotWhatTheBodySaid {
+        intended: intended,
+        stated: review_decision(review: review),
+      },
+    }
   } else {
     // THE PATH IS BUILT, NOT CHECKED. It used to arrive as an argument and be tested with
     // `path |> contains(run_id as String)`, which accepted three things it appeared to refuse: the path
@@ -987,17 +1013,17 @@ fn mint_accepted_rule_review(
     // path to another endpoint whose digits happen to line up. Building it from the pinned template
     // leaves nothing to compare — a caller CANNOT hand this mint a path.
     match review_endpoint_path_built_for(owner: owner, repo: repo, run_id: run_id) {
-      BuiltReviewPathRefused { hostile_segment: segment } => AcceptedReviewRefused {
-        because: RouteSegmentsAreNotRouteSafe { hostile_segment: segment },
+      BuiltReviewPathRefused { refusal: axis, hostile_segment: segment } => AcceptedReviewRefused {
+        because: RouteSegmentsAreNotRouteSafe {
+          refusal: axis,
+          hostile_segment: segment,
+        },
       }
-      BuiltReviewPathOk { path: built } =>
-        // The built route is checked against the PINNED TEMPLATE before anything is accepted, so a
-        // builder that drifted from upstream's route (dropped a segment, reordered the run id) refuses
-        // rather than minting a receipt for an endpoint nobody called.
-        if !built_path_carries_every_pinned_anchor(path: built) {
-          AcceptedReviewRefused { because: BuiltRouteDoesNotMatchThePinnedTemplate { route: built } }
-        } else {
-    match ownership {
+      // The built route is NOT re-checked against the template here. Only this builder can produce it,
+      // and the builder's own witness pins its exact output; re-validating a construction at its
+      // consumer is a check whose forbidden state is expressible nowhere it runs (§4b), which is what
+      // the side chat ruled on.
+      BuiltReviewPathOk { path: _ } => match ownership {
       NotOwnedByGateApp { because: b } =>
         // The refusal the READBACK gave, carried rather than renamed: "no rule is enabled" and "the
         // rule belongs to another App" are different operator situations, and minting one name for
@@ -1042,7 +1068,9 @@ fn mint_accepted_rule_review(
             receipt: AcceptedRuleReviewReceipt {
               run_id: run_id,
               environment_name: environment_name,
-              state: claimed,
+              // THE BODY, NOT THE CALLER. The single most load-bearing line in this file: whatever
+              // the caller intended, the receipt can only attest the decision GitHub's body carried.
+              state: review_decision(review: review),
               rule_id: o.rule_id,
               installation_id: o.installation_id,
               // FROM THE OBSERVATION, not the caller. Above they must agree; below, only the read can
@@ -1053,7 +1081,6 @@ fn mint_accepted_rule_review(
           }
         }
     }
-        }
     }
   }
 }
