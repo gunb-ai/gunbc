@@ -37,6 +37,8 @@ import std.optional {
   Present,
   Absent,
   Optional,
+  optional_present,
+  optional_absent,
 }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.github.deployment_protection_rule {
@@ -363,19 +365,19 @@ fn refusal_from_the_run_record(
     // dispatches. This is the RUN mutation, and it is caught on GitHub's record rather than on an id the
     // caller typed — taking `verified_run_id: Int` beside `claim.run_id: Int` let a caller "verify" the
     // run by passing the claim's own number through.
-    Present {
+    optional_present(
       value: RecordRunIdIsNotTheFiledRun {
         record_run_id: run.run_id,
         filed_run_id: claim.run_id,
-      },
-    }
+      }
+    )
   } else {
     match workflow_run_settlement(record: run) {
-      RunSettlementInFlight => none
+      RunSettlementInFlight => optional_absent()
       // A concluded run's deployment has settled; a review posted now changes nothing while looking like
       // it did. GitHub's own sum carries the conclusion, and it is carried out of here too — "the gate
       // was never answered because the run failed" and "because it succeeded" are different facts.
-      RunSettled { conclusion: c } => Present { value: TheRunHasConcluded { conclusion: c } }
+      RunSettled { conclusion: c } => optional_present(value: TheRunHasConcluded { conclusion: c })
     }
   }
 }
@@ -387,18 +389,18 @@ fn refusal_from_the_wait(
   if pending_wait_environment_name(wait: wait) != claim.environment {
     // The ENVIRONMENT mutation. The review endpoint answers 204 for a wrong-environment review exactly
     // as happily as for a right one, so the only place this can be enforced is before the call.
-    Present {
+    optional_present(
       value: WaitNamesAnotherEnvironment {
         waiting_environment: pending_wait_environment_name(wait: wait),
         filed_environment: claim.environment,
-      },
-    }
+      }
+    )
   } else if pending_wait_carries_a_human_reviewer(wait: wait) {
     // A wait naming users or teams is a required-reviewer wait, and an App answering it is the
     // double-authority this whole change exists to remove.
-    Present { value: TheWaitIsHeldByAHumanReviewer }
+    optional_present(value: TheWaitIsHeldByAHumanReviewer)
   } else {
-    none
+    optional_absent()
   }
 }
 
@@ -411,25 +413,27 @@ fn refusal_from_the_ownership(
     OwnedByGateApp { observation: o } =>
       if o.installation_id <= 0 {
         // The arm that authorises a token refuses to authorise one it cannot name an installation for.
-        Present { value: RuleOwnershipNotEstablished { because: ObservedIdentityIsNotTheRuleOwner } }
+        optional_present(
+          value: RuleOwnershipNotEstablished { because: ObservedIdentityIsNotTheRuleOwner }
+        )
       } else if o.environment_name != pending_wait_environment_name(wait: wait) {
         // The rule was READ BACK for a different environment than the one waiting. "The rule is ours"
         // and "the rule is ours FOR THIS GATE" are different claims, and only the second one means
         // anything about this job.
-        Present {
+        optional_present(
           value: OwnershipWasReadForAnotherEnvironment {
             read_for_environment: o.environment_name,
             filed_environment: claim.environment,
-          },
-        }
+          }
+        )
       } else {
-        none
+        optional_absent()
       }
+    // The reason the READBACK gave, not a restatement of it: empty list, nothing enabled, no rule for
+    // this App, or the observed identity is not the owner — four different operator situations, and a
+    // Bool turned all four into "no".
     NotOwnedByGateApp { because: b } =>
-      // The reason the READBACK gave, not a restatement of it: empty list, nothing enabled, no rule for
-      // this App, or the observed identity is not the owner — four different operator situations, and a
-      // Bool turned all four into "no".
-      Present { value: RuleOwnershipNotEstablished { because: b } }
+      optional_present(value: RuleOwnershipNotEstablished { because: b })
   }
 }
 
@@ -440,11 +444,11 @@ fn refusal_from_the_tap(
   if (capability.claims.escalation_id as String) == (claim.escalation_id as String)
     && (capability.claims.request_revision as String) == (claim.request_revision as String)
     && capability.claims.attempt == claim.attempt {
-    none
+    optional_absent()
   } else {
     // Both sides, because "the tap did not match the filing" is only actionable if you can see what each
     // side claimed. The capability's are the authenticated ones; the claim's are the workflow's word.
-    Present {
+    optional_present(
       value: TapBindsAnotherRequest {
         tapped_escalation_id: capability.claims.escalation_id,
         tapped_request_revision: capability.claims.request_revision,
@@ -452,8 +456,8 @@ fn refusal_from_the_tap(
         filed_escalation_id: claim.escalation_id,
         filed_request_revision: claim.request_revision,
         filed_attempt: claim.attempt,
-      },
-    }
+      }
+    )
   }
 }
 
@@ -461,10 +465,12 @@ fn refusal_from_the_tap(
 // the one reported, so "which check actually said no" is a fact rather than a guess. A list built in a
 // different order would report a later problem first, which is why the order lives here rather than in
 // each caller.
-fn first_answer_refusal(refusals: List<BrokerAnswerRefusal?>) -> BrokerAnswerRefusal? {
-  fold(refusals, init: none, f: (acc, refusal) => match acc {
-    Present { value } => Present { value: value }
-    none => refusal
+fn first_answer_refusal(refusals: List<Optional<BrokerAnswerRefusal>>) -> Optional<BrokerAnswerRefusal> {
+  fold(refusals, init: optional_absent(), f: fn(acc, refusal) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => refusal
+    }
   })
 }
 
@@ -488,7 +494,7 @@ fn broker_answer_decision(
     ]
   ) {
     Present { value: because } => BrokerRefused { because: because }
-    none => BrokerMayAnswer
+    Absent => BrokerMayAnswer
   }
 }
 
