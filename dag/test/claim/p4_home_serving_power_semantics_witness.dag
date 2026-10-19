@@ -1,6 +1,6 @@
 module test.claim.p4_home_serving_power_semantics_witness
 
-import std.types { Bool, String }
+import std.types { Bool, Int, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { string_contains }
 import std.markdown { MarkdownDocument }
@@ -24,6 +24,51 @@ import gunbc.plans.p4_home_serving_power_semantics { p4_home_serving_power_seman
 // drift from the renderer with both sides staying green.
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ── The GENERAL positional-citation rule, not a list of shapes I happened to observe.
+// An earlier head of this PR shipped `-- :136`, `-- :226` and `external_authority:13-16`
+// while this claim was GREEN, because the guard then enumerated suffixes (`.dag:`, `.rs:`,
+// `.py:`, `DESIGN.md:`) and none of those three has a file suffix — they were inside a
+// fenced code sample, which the prose rewrites never touch. Enumerating shapes reproduces
+// the bug; encoding the distinction does not.
+//
+// DESIGN §3 permits a position only BESIDE a symbol, never AS the citation. The
+// distinction is measurable: in `foo:12`, `12:39Z` and `12:55:33Z`, a time or a counter
+// has a DIGIT before its colon, while a citation never does. So split on `:` and flag a
+// segment that begins with a digit while the segment before it does not END with one.
+// Measured: flags all three shipped defects in the previous head's serialized text, and
+// flags nothing in the current one — where the timestamps `12:39Z` and `12:55:33Z` (inside
+// a verbatim escalation quote that must be kept) survive.
+type P4PositionScan {
+  index: Int
+  prev_ends_in_digit: Bool
+  found_positional: Bool
+}
+
+fn p4_is_digit(c: String) -> Bool {
+  (c != "") && string_contains(s: "0123456789", pattern: c)
+}
+
+fn p4_last_is_digit(s: String) -> Bool {
+  p4_is_digit(c: substring(s: s, start: s.length() - 1, end: s.length()))
+}
+
+fn p4_positional_step(acc: P4PositionScan, segment: String) -> P4PositionScan {
+  let begins_in_digit = p4_is_digit(c: substring(s: segment, start: 0, end: 1))
+  P4PositionScan {
+    index: acc.index + 1,
+    prev_ends_in_digit: p4_last_is_digit(s: segment),
+    found_positional: acc.found_positional || (acc.index > 0 && begins_in_digit && !acc.prev_ends_in_digit)
+  }
+}
+
+fn p4_has_positional_citation(t: String) -> Bool {
+  fold(
+    split(s: t, delimiter: ":"),
+    init: P4PositionScan { index: 0, prev_ends_in_digit: false, found_positional: false },
+    f: p4_positional_step
+  ).found_positional
+}
 
 fn carrier_is_registered() -> Bool {
   fold(all_plans, init: false, f: (acc, p) => acc || p.slug == "p4-home-serving-power-semantics")
@@ -50,9 +95,13 @@ test fn the_carrier_is_registered_and_is_the_only_authority() -> Bool {
 // positional naming scheme that any edit above the line silently invalidates." This
 // asserts over SERIALIZED text, so it catches a positional citation wherever it hides —
 // body prose, list items, table cells, quoted blocks, and the fenced code sample alike.
-// It is scoped to the citation shape (a path with a source extension, immediately followed
-// by a line number) so that the shell commands required by the next claim are not
-// themselves forbidden for containing a colon.
+// The suffix list below names the common shapes; the load-bearing part is
+// `p4_has_positional_citation`, which enforces the RULE rather than a list. Both are
+// asserted because each is blind to what the other catches: a bare `-- :136` has no file
+// suffix to match, and `12:55:33Z` must survive a rule written too loosely. That is why the
+// rule tests the character BEFORE the colon as well as after it — the carrier is required to
+// quote instrument commands such as `awk -F: '$NF>1'`, and a rule keyed only on
+// "digits after a colon" would forbid the instruments this document exists to name.
 //
 // This rule is not decorative here: one seal-check citation in an earlier draft had its
 // line number drift out from under it *while this document was being written* — the check
@@ -83,7 +132,14 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
       || string_contains(s: t, pattern: "at/.")
       || string_contains(s: t, pattern: " at.")
       || string_contains(s: t, pattern: "are at/")
-      || string_contains(s: t, pattern: "there at/"))
+      || string_contains(s: t, pattern: "there at/")
+      // a citation deleted from INSIDE a parenthetical leaves the paren open on a comma:
+      // `(`:250`, which compares ...)` lost its citation and its subject together.
+      || string_contains(s: t, pattern: "(,")
+      || string_contains(s: t, pattern: ",)")
+      // ...and the general rule behind them, so the next shape is caught without being
+      // enumerated first. This is what the suffix list above could not do.
+      || p4_has_positional_citation(t: t))
 }
 
 // ── DESIGN §6: "Name the instrument, never transcribe its output ... a transcribed number
