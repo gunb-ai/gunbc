@@ -334,9 +334,9 @@ use crate::v1_std_core::VarBindingKind::{
 };
 pub use crate::v1_std_core::{
     admit_callers_entry_coords, admit_callers_entry_uninterpretable_spans, arg_name_at, arg_value,
-    arm_body, arm_guard, arm_pattern, authored_ident, authored_name_at, binop_left, binop_right,
-    bool_type, build_newline_index, call_semantics_target, callable_identity, cast_expr,
-    cast_target, decl_ref_coords_label, declaration_provenance_of, default_ident_span,
+    arm_body, arm_guard, arm_pattern, authored_name_at, binop_left, binop_right, bool_type,
+    build_newline_index, call_semantics_target, callable_identity, cast_expr, cast_target,
+    decl_ref_coords_label, declaration_provenance_of, default_ident_span,
     diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table, error_type,
     expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_is_any_literal,
     expr_literal_int_optional, expr_literal_string_optional, expr_method_name_at, expr_var_name_at,
@@ -348,8 +348,8 @@ pub use crate::v1_std_core::{
     import_specific_names_at, index_base, index_expr, int_type, intern, intern_str,
     is_child_accessor_in_model, is_compiler_error, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, is_property_contraction, is_shell_transport,
-    is_tree_size_reducing, kernel_ident, lambda_body, lambda_param_names_at, let_binding_name_at,
-    let_body, let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
     make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
     make_interp_part_node, make_named_expr_node, make_param_node, make_text_part_node,
     make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
@@ -361,13 +361,13 @@ pub use crate::v1_std_core::{
     return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
     string_type, type_name_compatible, type_reference_provenance, type_variable_binder_name,
     unaryop_operand, unit_type, variant_node_fields, with_optional_cardinality,
-    with_required_cardinality, AdmitCallersEntry, AuthoredIdent, CallSemantics, CallTargetIdentity,
-    Cardinality, CompilerDiagnostic, Connective, DeclRefCoords, DeclarationMarker,
-    DeclaredCallableIdentity, DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind,
-    FieldAccessSpine, FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey,
-    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    ParsedModuleItemKind, ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart,
-    UnaryOpKind, VarBindingKind,
+    with_required_cardinality, AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality,
+    CompilerDiagnostic, Connective, DeclRefCoords, DeclarationMarker, DeclaredCallableIdentity,
+    DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
+    FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
+    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
+    ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -878,7 +878,7 @@ pub fn build_item_inductive_fields(
 pub fn nominal_ref_node(
     name: String,
     span: Rc<SourceSpan>,
-    ident_span: Option<Rc<AuthoredIdent>>,
+    ident_span: Option<Rc<SourceSpan>>,
 ) -> Rc<Node> {
     {
         let declared_leaf = Rc::new(Node {
@@ -4031,8 +4031,8 @@ pub fn where_refinement_brand_declaration_site(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match ty.ident_span.clone() {
-        Some(ident) => Some(v1_rt::concat(
-            v1_rt::concat(ident.span.file.clone(), "#".to_string()),
+        Some(span) => Some(v1_rt::concat(
+            v1_rt::concat(span.file.clone(), "#".to_string()),
             crate::v1_std_core::authored_name_at(source_indices.clone(), ty.clone()),
         )),
         std::option::Option::None => std::option::Option::None,
@@ -11142,9 +11142,7 @@ pub fn rest_operation_result_type(
                         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: "RestResult".to_string(),
                         span: kernel_span("RestResult".to_string()),
-                        ident_span: Some(crate::v1_std_core::kernel_ident(
-                            "RestResult".to_string(),
-                        )),
+                        ident_span: Some(kernel_span("RestResult".to_string())),
                         children: Rc::new(vec![body.clone()]),
                         connective: Connective::NoConnective,
                         params: Rc::new(vec![]),
@@ -12641,10 +12639,7 @@ pub fn elaborated_expr_node(
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: name.clone(),
         span: span.clone(),
-        ident_span: Some(crate::v1_std_core::authored_ident(
-            elaborated_span(name.clone()),
-            name.clone(),
-        )),
+        ident_span: Some(elaborated_span(name.clone())),
         children: children.clone(),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -28078,7 +28073,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "True".to_string(),
             span: kernel_span("True".to_string()),
-            ident_span: Some(crate::v1_std_core::kernel_ident("True".to_string())),
+            ident_span: Some(kernel_span("True".to_string())),
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -28102,7 +28097,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "False".to_string(),
             span: kernel_span("False".to_string()),
-            ident_span: Some(crate::v1_std_core::kernel_ident("False".to_string())),
+            ident_span: Some(kernel_span("False".to_string())),
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -28126,7 +28121,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Bool".to_string(),
             span: kernel_span("Bool".to_string()),
-            ident_span: Some(crate::v1_std_core::kernel_ident("Bool".to_string())),
+            ident_span: Some(kernel_span("Bool".to_string())),
             children: Rc::new(vec![
                 kernel_true_variant.clone(),
                 kernel_false_variant.clone(),
@@ -28182,7 +28177,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
-            ident_span: Some(crate::v1_std_core::kernel_ident("value".to_string())),
+            ident_span: Some(kernel_span("value".to_string())),
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -28208,7 +28203,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Present".to_string(),
             span: kernel_span("Present".to_string()),
-            ident_span: Some(crate::v1_std_core::kernel_ident("Present".to_string())),
+            ident_span: Some(kernel_span("Present".to_string())),
             children: Rc::new(vec![present_value_field.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -28232,7 +28227,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Absent".to_string(),
             span: kernel_span("Absent".to_string()),
-            ident_span: Some(crate::v1_std_core::kernel_ident("Absent".to_string())),
+            ident_span: Some(kernel_span("Absent".to_string())),
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -28256,7 +28251,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
-            ident_span: Some(crate::v1_std_core::kernel_ident("Optional".to_string())),
+            ident_span: Some(kernel_span("Optional".to_string())),
             children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
             connective: Connective::Disj,
             params: Rc::new(vec![]),
@@ -28360,7 +28355,7 @@ pub fn build_type_env(
                                 ),
                                 name: name.clone(),
                                 span: kernel_span(name.clone()),
-                                ident_span: Some(crate::v1_std_core::kernel_ident(name.clone())),
+                                ident_span: Some(kernel_span(name.clone())),
                                 children: Rc::new(vec![]),
                                 connective: Connective::NoConnective,
                                 params: Rc::new(vec![]),
@@ -28398,10 +28393,7 @@ pub fn build_type_env(
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "Unit".to_string(),
                     span: unit_span.clone(),
-                    ident_span: Some(crate::v1_std_core::authored_ident(
-                        unit_span.clone(),
-                        "Unit".to_string(),
-                    )),
+                    ident_span: Some(unit_span.clone()),
                     children: Rc::new(vec![]),
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
@@ -29027,7 +29019,7 @@ pub fn build_type_env_unresolved(
                                 ),
                                 name: name.clone(),
                                 span: kernel_span(name.clone()),
-                                ident_span: Some(crate::v1_std_core::kernel_ident(name.clone())),
+                                ident_span: Some(kernel_span(name.clone())),
                                 children: Rc::new(vec![]),
                                 connective: Connective::NoConnective,
                                 params: Rc::new(vec![]),
@@ -33012,10 +33004,9 @@ pub fn same_declaration_site(a: Rc<Node>, b: Rc<Node>) -> bool {
     match a.ident_span.clone() {
         Some(sa) => match b.ident_span.clone() {
             Some(sb) => {
-                ((((sa.span.file.clone() == sb.span.file.clone())
-                    && (sa.span.start.clone() == sb.span.start.clone()))
-                    && (sa.span.end.clone() == sb.span.end.clone()))
-                    && (sa.span.file.clone() != "".to_string()))
+                ((((sa.file.clone() == sb.file.clone()) && (sa.start.clone() == sb.start.clone()))
+                    && (sa.end.clone() == sb.end.clone()))
+                    && (sa.file.clone() != "".to_string()))
             }
             std::option::Option::None => false,
         },
@@ -33435,7 +33426,7 @@ pub fn compiler_kernel_type_env(
                                 ),
                                 name: name.clone(),
                                 span: kernel_span(name.clone()),
-                                ident_span: Some(crate::v1_std_core::kernel_ident(name.clone())),
+                                ident_span: Some(kernel_span(name.clone())),
                                 children: Rc::new(vec![]),
                                 connective: Connective::NoConnective,
                                 params: Rc::new(vec![]),
@@ -33473,10 +33464,7 @@ pub fn compiler_kernel_type_env(
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "Unit".to_string(),
                     span: unit_span.clone(),
-                    ident_span: Some(crate::v1_std_core::authored_ident(
-                        unit_span.clone(),
-                        "Unit".to_string(),
-                    )),
+                    ident_span: Some(unit_span.clone()),
                     children: Rc::new(vec![]),
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),

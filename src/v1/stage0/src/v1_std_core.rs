@@ -209,7 +209,7 @@ pub fn divergent_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: no_span(),
-        ident_span: Some(authored_ident(no_span(), "".to_string())),
+        ident_span: Some(no_span()),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1570,7 +1570,7 @@ pub struct Node {
     pub name: String,
     pub ident: Option<i64>,
     pub span: Rc<SourceSpan>,
-    pub ident_span: Option<Rc<AuthoredIdent>>,
+    pub ident_span: Option<Rc<SourceSpan>>,
     pub children: Rc<Vec<Rc<Node>>>,
     pub connective: Connective,
     pub params: Rc<Vec<Rc<Node>>>,
@@ -1590,40 +1590,17 @@ pub struct Node {
     pub expr_data: Rc<ExprData>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AuthoredIdent {
-    pub span: Rc<SourceSpan>,
-    pub text: String,
-}
-
-pub fn authored_ident(span: Rc<SourceSpan>, text: String) -> Rc<AuthoredIdent> {
-    Rc::new(AuthoredIdent {
-        span: span.clone(),
-        text: text.clone(),
-    })
-}
-
-pub fn kernel_ident(name: String) -> Rc<AuthoredIdent> {
-    Rc::new(AuthoredIdent {
-        span: kernel_span(name.clone()),
-        text: name.clone(),
-    })
-}
-
-pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<AuthoredIdent>> {
+pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
     if (name.clone() == "".to_string()) {
         std::option::Option::None
     } else {
-        Some(Rc::new(AuthoredIdent {
-            span: span.clone(),
-            text: name.clone(),
-        }))
+        Some(span.clone())
     }
 }
 
 pub fn node_name_span(n: Rc<Node>) -> Rc<SourceSpan> {
     match n.ident_span.clone() {
-        Some(s) => s.span.clone(),
+        Some(s) => s.clone(),
         std::option::Option::None => n.span.clone(),
     }
 }
@@ -2127,50 +2104,34 @@ pub fn generic_param_name_at(
     authored_name_at(source_indices.clone(), n.clone())
 }
 
-pub fn authored_text_at(
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    span: Rc<SourceSpan>,
-    fallback: String,
-) -> String {
-    match v1_rt::map_get(&source_indices, span.file.clone()) {
-        Some(index) => source_text_at(index.clone(), span.clone()),
-        std::option::Option::None => {
-            if ((v1_rt::string_length(&span.file.clone()) > 8)
-                && (v1_rt::substring(&span.file.clone(), 0, 8) == "<kernel:".to_string()))
-            {
-                v1_rt::substring(
-                    &span.file.clone(),
-                    8,
-                    v1_rt::int_sub(v1_rt::string_length(&span.file.clone()), 1),
-                )
-            } else {
-                fallback
-            }
-        }
-    }
-}
-
-pub fn authored_ident_at(
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    span: Rc<SourceSpan>,
-    fallback: String,
-) -> Rc<AuthoredIdent> {
-    Rc::new(AuthoredIdent {
-        span: span.clone(),
-        text: authored_text_at(source_indices.clone(), span.clone(), fallback.clone()),
-    })
-}
-
 pub fn authored_name_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     node: Rc<Node>,
 ) -> String {
     match node.ident_span.clone() {
-        Some(ident) => authored_text_at(
-            source_indices.clone(),
-            ident.span.clone(),
-            node.name.clone(),
-        ),
+        Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
+            Some(index) => {
+                let text = source_text_at(index.clone(), span.clone());
+                if (text.clone() == "".to_string()) {
+                    "".to_string()
+                } else {
+                    text.clone()
+                }
+            }
+            std::option::Option::None => {
+                if ((v1_rt::string_length(&span.file.clone()) > 8)
+                    && (v1_rt::substring(&span.file.clone(), 0, 8) == "<kernel:".to_string()))
+                {
+                    v1_rt::substring(
+                        &span.file.clone(),
+                        8,
+                        v1_rt::int_sub(v1_rt::string_length(&span.file.clone()), 1),
+                    )
+                } else {
+                    node.name.clone()
+                }
+            }
+        },
         std::option::Option::None => "".to_string(),
     }
 }
@@ -4489,7 +4450,7 @@ pub fn import_node(
             occurrence_identity: occurrence_identity.clone(),
             name: module_path.clone(),
             span: span.clone(),
-            ident_span: Some(authored_ident(name_span.clone(), module_path.clone())),
+            ident_span: Some(name_span.clone()),
             children: specific_names.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -4581,7 +4542,7 @@ pub fn kernel_span(name: String) -> Rc<SourceSpan> {
 
 pub fn resolved_node_is_kernel_identity_for_name(node: Rc<Node>, name: String) -> bool {
     match node.ident_span.clone() {
-        Some(sp) => (sp.span.file.clone() == kernel_span(name.clone()).file.clone()),
+        Some(sp) => (sp.file.clone() == kernel_span(name.clone()).file.clone()),
         std::option::Option::None => false,
     }
 }
@@ -4590,7 +4551,7 @@ pub fn declaration_provenance_of(item: Rc<Node>) -> Rc<TypeDeclarationProvenance
     match item.ident_span.clone() {
         std::option::Option::None => Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
         Some(sp) => {
-            if (sp.span.file.clone() == "".to_string()) {
+            if (sp.file.clone() == "".to_string()) {
                 Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
             } else {
                 if resolved_node_is_kernel_identity_for_name(item.clone(), item.name.clone()) {
@@ -4599,7 +4560,7 @@ pub fn declaration_provenance_of(item: Rc<Node>) -> Rc<TypeDeclarationProvenance
                     })
                 } else {
                     Rc::new(TypeDeclarationProvenance::CorpusDeclared {
-                        decl_file: sp.span.file.clone(),
+                        decl_file: sp.file.clone(),
                     })
                 }
             }
@@ -4728,7 +4689,7 @@ pub fn unit_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Unit".to_string(),
         span: kernel_span("Unit".to_string()),
-        ident_span: Some(kernel_ident("Unit".to_string())),
+        ident_span: Some(kernel_span("Unit".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::Conj,
         params: Rc::new(vec![]),
@@ -4760,7 +4721,7 @@ pub fn bool_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Bool".to_string(),
         span: kernel_span("Bool".to_string()),
-        ident_span: Some(kernel_ident("Bool".to_string())),
+        ident_span: Some(kernel_span("Bool".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4792,7 +4753,7 @@ pub fn string_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "String".to_string(),
         span: kernel_span("String".to_string()),
-        ident_span: Some(kernel_ident("String".to_string())),
+        ident_span: Some(kernel_span("String".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4824,7 +4785,7 @@ pub fn hash_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Hash".to_string(),
         span: kernel_span("Hash".to_string()),
-        ident_span: Some(kernel_ident("Hash".to_string())),
+        ident_span: Some(kernel_span("Hash".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4856,7 +4817,7 @@ pub fn int_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Int".to_string(),
         span: kernel_span("Int".to_string()),
-        ident_span: Some(kernel_ident("Int".to_string())),
+        ident_span: Some(kernel_span("Int".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4888,7 +4849,7 @@ pub fn float_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Float".to_string(),
         span: kernel_span("Float".to_string()),
-        ident_span: Some(kernel_ident("Float".to_string())),
+        ident_span: Some(kernel_span("Float".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4920,7 +4881,7 @@ pub fn none_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "None".to_string(),
         span: kernel_span("None".to_string()),
-        ident_span: Some(kernel_ident("None".to_string())),
+        ident_span: Some(kernel_span("None".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -5417,7 +5378,7 @@ pub fn type_node_name_is_authored(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match node.ident_span.clone() {
-        Some(ident) => match v1_rt::map_get(&source_indices, ident.span.file.clone()) {
+        Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
             Some(_) => true,
             std::option::Option::None => false,
         },

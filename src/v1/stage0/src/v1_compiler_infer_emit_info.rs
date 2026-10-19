@@ -549,7 +549,7 @@ pub fn type_decl_index_insert(
             let __rb_1_0 = match item.ident_span.clone() {
                 Some(sp) => v1_rt::rc_map_insert(
                     index.identity_by_declaring_span.clone(),
-                    declaring_span_key(sp.span.clone()),
+                    declaring_span_key(sp.clone()),
                     identity.clone(),
                 ),
                 std::option::Option::None => index.identity_by_declaring_span.clone(),
@@ -685,7 +685,7 @@ pub fn resolve_type_decl_routed(
             let by_span = match type_expr.ident_span.clone() {
                 Some(sp) => v1_rt::map_get(
                     &index.identity_by_declaring_span.clone(),
-                    declaring_span_key(sp.span.clone()),
+                    declaring_span_key(sp.clone()),
                 ),
                 std::option::Option::None => std::option::Option::None,
             };
@@ -751,7 +751,7 @@ pub fn type_decl_qualifier_declarer(index: Rc<TypeDeclIndex>, authored: String) 
         Some(decl) => match decl.ident_span.clone() {
             Some(sp) => v1_rt::map_get(
                 &index.identity_by_declaring_span.clone(),
-                declaring_span_key(sp.span.clone()),
+                declaring_span_key(sp.clone()),
             ),
             std::option::Option::None => std::option::Option::None,
         },
@@ -883,7 +883,7 @@ pub fn type_decl_identity_of_declaration(
     match decl.ident_span.clone() {
         Some(sp) => v1_rt::map_get(
             &index.identity_by_declaring_span.clone(),
-            declaring_span_key(sp.span.clone()),
+            declaring_span_key(sp.clone()),
         ),
         std::option::Option::None => std::option::Option::None,
     }
