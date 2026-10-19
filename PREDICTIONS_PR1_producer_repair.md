@@ -15,7 +15,18 @@ failure is the finding and is reported as such; the text is not edited after the
 - The old mutant ref `probe/mut-namekeyed` belongs to the Acc era. Verdicts measured there say
   nothing about PR-1's base, which is why `probe/pr1-mut-namekeyed` was cut from main.
 
-## Measurements and predictions
+## AMENDMENT A1 -- written after M1/M2 were written, before either was read
+
+My own M1/M2 wording is wrong and is corrected here rather than quietly satisfied later: I wrote
+"the row's prints show 24 positions, 4 distinct ids, 24 site-tagged, 0 bare". The row had NO
+println! at all -- measurements appeared only in its FAILURE messages. A passing run would therefore
+have printed nothing, making a passing run indistinguishable from a passing-but-vacuous one, which is
+the exact defect the row is written to close. So the row now prints a MINT-INVENTORY line before
+deciding (commit on probe/pr1-producer-repair), and M1/M2 below are read as "the row passes AND
+prints the inventory" / "the row fails AND prints the inventory", not as a claim that prints existed.
+Nothing else about M1-M5 changes, and in particular M2's requirement that the mutant fail on the
+SHARING rather than on absence is unchanged.
+
 
 **M1 — the RED passes on the repair at PR-1's base.**
 Tree: `refs/heads/probe/pr1-producer-repair` + regenerated mirror.
