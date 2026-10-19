@@ -275,6 +275,7 @@ fn fragment_is_sound_toggle(c: Fragment) -> Bool {
           found || (at.name == "class" && any(split(s: at.value, delimiter: " "), token => token == sound_toggle_class)))
     FragmentText { content: _ } => false
     RawNode { content: _ } => false
+    MarkupComment { body: _ } => false
   }
 }
 
@@ -286,6 +287,9 @@ fn header_subtree_has_sound_toggle(f: Fragment) -> Bool {
         fold(children, init: false, f: (acc, c) => acc || header_subtree_has_sound_toggle(f: c))
       FragmentText { content: _ } => false
       RawNode { content: _ } => false
+      MarkupComment { body: _ } => false
+      // Walked, not false: same shape as roadmap_register_witness's wordmark scan — a descender has to
+      // enter a Document's root or it reports "no toggle" for a page that ships one.
     })
 }
 
@@ -296,6 +300,7 @@ fn header_has_sound_toggle(h: Fragment) -> Bool {
         && fold(children, init: false, f: (acc, c) => acc || header_subtree_has_sound_toggle(f: c))
     FragmentText { content: _ } => false
     RawNode { content: _ } => false
+    MarkupComment { body: _ } => false
   }
 }
 

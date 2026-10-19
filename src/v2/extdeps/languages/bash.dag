@@ -56,6 +56,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.witness { Holds, Violates, Witness }
+import std.host_text { chars }
 
 fn bash_word_atom(id: Symbol) -> Node {
   Node {
@@ -674,7 +675,7 @@ fn bash_binding_spellings() -> Map<Symbol, String> {
 // re-spelling the encoding here.
 
 fn bash_posix_single_quote_escapes() -> List<EmitSpellingEscape> {
-  [EmitSpellingEscape { from: chars(s: posix_single_quote_delimiter), to: chars(s: posix_single_quote_escape_encoding) }]
+  [EmitSpellingEscape { from: chars(text: posix_single_quote_delimiter), to: chars(text: posix_single_quote_escape_encoding) }]
 }
 
 fn bash_posix_single_quote_transform(prefix: String) -> TokenClassEmitTransform {

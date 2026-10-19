@@ -1,4 +1,5 @@
 module test.claim.markup_serializer_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 import std.live_tree { LiveTreeDisposition }
 import std.markup {
@@ -44,7 +45,7 @@ fn sample_fragment() -> Fragment {
 }
 
 test fn witness_serialize_fragment_full() -> Bool {
-  serialize_fragment(frag: sample_fragment()) ==
+  render_markup(serialize_fragment(frag: sample_fragment())) ==
     "<a href=\"/x?a=1&amp;b=2\">hi &lt;b&gt; &amp; \"q\"<span>&gt;end</span></a>"
 }
 
@@ -65,8 +66,8 @@ fn react_consumer_button() -> Fragment {
 }
 
 test fn witness_one_fold_serves_html_and_react() -> Bool {
-  let html = serialize_fragment(frag: html_consumer_button())
-  let react = serialize_fragment(frag: react_consumer_button())
+  let html = render_markup(serialize_fragment(frag: html_consumer_button()))
+  let react = render_markup(serialize_fragment(frag: react_consumer_button()))
   (html == react) && (html == "<button class=\"primary\">Go</button>")
 }
 
@@ -95,7 +96,7 @@ fn req_a_breakout_fragment() -> Fragment {
 }
 
 test fn witness_url_within_attribute_composition() -> Bool {
-  serialize_fragment(frag: req_a_breakout_fragment()) ==
+  render_markup(serialize_fragment(frag: req_a_breakout_fragment())) ==
     "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
 }
 

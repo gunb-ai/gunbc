@@ -18,7 +18,7 @@ import v2.std.type_binder { cast_target_optional, type_annotation_optional, type
 import v2.std.node { positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, Occupancy, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node }
 import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import v2.std.node_query { declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
+import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional }
 import v2.std.host_transport { EmitHostRuntimeRow, TargetEmitHostRuntimeRow, configured_emit_host_runtime_row_from_target_row }
 import v2.std.integer { integer_decimal_magnitude_node_to_int }
@@ -5999,46 +5999,39 @@ fn target_callee_kind_symbol(kind: TargetCalleeKind) -> Symbol {
 }
 
 fn target_value_expr_callable_apply_kind_from_wire(wire: Node) -> Outcome<TargetCalleeKind> {
-  match fold(
-    wire.children,
-    init: optional_absent(),
-    f: fn(acc, edge) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match edge.label {
-            Authored { name: n } =>
-              if n == ^target_value_expr_field_callee_kind {
-                match edge.target.kind {
-                  TypeNode { connective: Atom { identity: id } } =>
-                    if id == ^target_callee_kind_primitive_row {
-                      optional_present(value: PrimitiveRowCallee)
-                    } else if id == ^target_callee_kind_declaration_reference {
-                      optional_present(value: DeclarationReferenceCallee)
-                    } else if id == ^target_callee_kind_local {
-                      optional_present(value: LocalCallee)
-                    } else {
-                      acc
-                    }
-                  TypeNode { connective: Conj } => acc
-                  TypeNode { connective: Disj } => acc
-                  TypeNode { connective: Arrow } => acc
-                  TypeNode { connective: Occupancy } => acc
-                  TypeNode { connective: Instantiation } => acc
-                  ComputationNode { behavior: _ } => acc
-                }
-              } else {
-                acc
-              }
-            StructuralLabel { label: _ } => acc
-            Positional => acc
-          }
-      }
+  match fold(wire.children, init: NamedChildMissing, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      StructuralLabel { label: _ } => acc
+      Authored { name: n } => child_lookup_step(acc: acc, hit: n == ^target_value_expr_field_callee_kind, target: e.target)
     }
-  ) {
-    Present { value: kind } => outcome_accepted(kind)
-    Absent =>
-      outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+  }) {
+    NamedChildFound { target: marker } =>
+      match marker.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          if id == ^target_callee_kind_primitive_row {
+            outcome_accepted(PrimitiveRowCallee)
+          } else if id == ^target_callee_kind_declaration_reference {
+            outcome_accepted(DeclarationReferenceCallee)
+          } else if id == ^target_callee_kind_local {
+            outcome_accepted(LocalCallee)
+          } else {
+            outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+          }
+        TypeNode { connective: Conj } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        TypeNode { connective: Disj } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        TypeNode { connective: Arrow } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        TypeNode { connective: Occupancy } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        TypeNode { connective: Instantiation } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        ComputationNode { behavior: _ } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+      }
+    NamedChildMissing => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+    NamedChildAmbiguous =>
+      outcome_rejected(Diagnostic {
+        reason: ^target_value_expr_callee_kind_marker_ambiguous,
+        at: node_locus(node: wire),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
   }
 }
 
@@ -14203,7 +14196,7 @@ fn target_model_with_produced_scaffold(
   scaffold: TargetBodiedArrowStatementScaffold
 ) -> TargetModel {
   TargetModel {
-    primitive_realizations: PrimitiveRealizationsUnwired,
+    primitive_realizations: target.primitive_realizations,
     produced_decl_support: target.produced_decl_support,
     bundle: target_model_bundle_replace_edge_target(
       bundle: target.bundle,
@@ -14257,7 +14250,7 @@ fn target_model_augment_use_site_ownership_catalog(
           Present { value: catalog } =>
             outcome_accepted(
               TargetModel {
-                primitive_realizations: PrimitiveRealizationsUnwired,
+                primitive_realizations: target.primitive_realizations,
                 produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
@@ -14314,7 +14307,7 @@ fn target_model_augment_value_semantics_carriers(
           Present { value: carriers_node } =>
             outcome_accepted(
               TargetModel {
-                primitive_realizations: PrimitiveRealizationsUnwired,
+                primitive_realizations: target.primitive_realizations,
                 produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,

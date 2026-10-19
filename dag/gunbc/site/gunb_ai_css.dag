@@ -1,0 +1,277 @@
+module gunbc.site.gunb_ai_css
+
+import std.types { String, Int, List, Bool }
+import std.optional { Absent, Present }
+import std.measure { degree_count, percent_count }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.render_repeat_string_bootstrap { repeat_string }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.site.markup { page_render_refusal_prefix }
+import extdeps.languages.css.values {
+  CssLengthUnit, Rem, Ch, CssDecimalLength, css_decimal_length_wire, css_hsl_wire,
+  CssFontStack, CssFontFamily, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif,
+  GenericMonospace, css_font_stack_wire, DoubleQuote,
+}
+import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_property_wire }
+import extdeps.languages.css.selectors { SelectorSubject, root_selector, selector_subject_wire }
+import gunbc.design.gunb_ai_live_scale {
+  LiveMeasure, live_measure_page, live_measure_wide, live_measure_prose, live_measure_title,
+  live_gap_xs, live_gap_sm, live_gap_md, live_gap_lg, live_gap_xl, live_font_mono, live_font_sans,
+}
+import gunbc.design.gunb_ai_hues {
+  HueDegrees, PercentParameter, LiveColorToken, live_token_border_dark, live_token_border_dark_strong, live_token_brass, live_token_brass_dim, live_token_brass_subtle, live_token_clay, live_token_clay_dim, live_token_clay_subtle, live_token_css, live_token_moss, live_token_moss_dim, live_token_moss_subtle, live_token_stone, live_token_stone_dim, live_token_stone_faint, live_token_void, live_token_void_up, live_token_void_up2, live_token_warm_white, live_token_warm_white_dim,
+  live_hue_warm, live_hue_moss, live_hue_clay, live_hue_brass,
+  live_accent_saturation, live_accent_lightness,
+}
+
+// gunb.ai's assets/site.css, built from typed rows. THIS SLICE: the file header and the :root token
+// block; later slices append sections to sheet_entries until the whole served file is the render.
+//
+// THE FILE IS HAND-AUTHORED, SO ITS FORMATTING IS DATA TOO. A comment is content the served bytes
+// carry, a blank-line run is a decision, and a declaration group is column-aligned. Alignment is not
+// authored here: it is derived (value column = longest `--name:` in the group + 1 space), and the
+// witness checks the derivation against the served file, so a group that does not fit the rule
+// refuses instead of being padded by hand.
+//
+// COLOUR AUTHORITY. Every colour value is a gunbc.design.gunb_ai_hues row (live_color_tokens, the hue
+// parameters, the accent percentages); this module only names which token a declaration shows and
+// where. The measures, gaps and font stacks below are the stylesheet's own values (rem, not the px
+// of gunbc.site.gunb_ai_tokens) and are listed in the PR as disagreements, not reconciled.
+//
+// Consumers (§3c): sheet_write_arg is the build route; test.claim.site_gunb_ai_css_witness executes
+// render_sheet. Outside the claim runner:
+//   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_css.dag \
+//     --function sheet_write_arg --arg dir=/tmp/gunbai/assets
+
+
+data sheet_output_name: String = "site.css"
+
+type SheetValue
+  = ValueNumber { n: Int }
+  | ValuePercent { n: Int }
+  | ValueLiveColor { token: LiveColorToken }
+  | ValueLength { length: CssDecimalLength }
+  | ValueFonts { stack: CssFontStack }
+
+type SheetDecl {
+  property: CssPropertyName
+  value: SheetValue
+}
+
+type SheetItem
+  = ItemComment { lines: List<String> }
+  | ItemDecls { decls: List<SheetDecl> }
+  | ItemBlank
+
+type SheetEntry
+  = EntryComment { lines: List<String> }
+  | EntryRule { selector: SelectorSubject, items: List<SheetItem> }
+  | EntryGap { blank_lines: Int }
+
+fn sheet_hue(hue: HueDegrees) -> SheetDecl {
+  SheetDecl { property: CustomProperty { name: hue.name }, value: ValueNumber { n: 0 + degree_count(d: hue.degrees) } }
+}
+
+fn sheet_percentage(parameter: PercentParameter) -> SheetDecl {
+  SheetDecl { property: CustomProperty { name: parameter.name }, value: ValuePercent { n: 0 + percent_count(p: parameter.percent) } }
+}
+
+fn sheet_live_color(token: LiveColorToken) -> SheetDecl {
+  SheetDecl { property: CustomProperty { name: token.name }, value: ValueLiveColor { token: token } }
+}
+
+fn sheet_measure(m: LiveMeasure) -> SheetDecl {
+  SheetDecl { property: CustomProperty { name: m.name }, value: ValueLength { length: m.length } }
+}
+
+fn sheet_fonts(name: String, stack: CssFontStack) -> SheetDecl {
+  SheetDecl { property: CustomProperty { name: name }, value: ValueFonts { stack: stack } }
+}
+
+data header_comment: List<String> = ["════════════════════════════════════════════════════════════════════", "gunb.ai · canonical design system", "────────────────────────────────────────────────────────────────────", "Tokens, base typography, AND the shared primitive vocabulary.", "", "Every public page composes named primitives from this file.", "Pages should only add inline CSS for genuinely page-specific", "structure (e.g. workpad has dev chrome that doesn't belong in the", "public design system).", "══════════════════════════════════════════════════════════════════"]
+
+data tokens_banner: List<String> = ["╔══ TOKENS ═════════════════════════════════════════════════════════"]
+
+data tokens_items: List<SheetItem> = [
+    ItemComment { lines: ["Hue and accent parameters — change once, propagate everywhere"] },
+    ItemDecls { decls: [
+      sheet_hue(hue: live_hue_warm),
+      sheet_hue(hue: live_hue_moss),
+      sheet_hue(hue: live_hue_clay),
+      sheet_hue(hue: live_hue_brass),
+    ] },
+    ItemDecls { decls: [
+      sheet_percentage(parameter: live_accent_saturation),
+    ] },
+    ItemDecls { decls: [
+      sheet_percentage(parameter: live_accent_lightness),
+    ] },
+    ItemBlank,
+    ItemComment { lines: ["Accents — materials, not status signals.", "moss   = structural continuity / derived / held / re-derived", "clay   = boundary / removed / violated / no artifact emitted", "brass  = human edit focus / selected source fact (rare, narrow)"] },
+    ItemDecls { decls: [
+      sheet_live_color(token: live_token_moss),
+      sheet_live_color(token: live_token_moss_dim),
+      sheet_live_color(token: live_token_moss_subtle),
+      sheet_live_color(token: live_token_clay),
+      sheet_live_color(token: live_token_clay_dim),
+      sheet_live_color(token: live_token_clay_subtle),
+    ] },
+    ItemDecls { decls: [
+      sheet_live_color(token: live_token_brass),
+      sheet_live_color(token: live_token_brass_dim),
+      sheet_live_color(token: live_token_brass_subtle),
+    ] },
+    ItemBlank,
+    ItemComment { lines: ["Neutrals — void scale (dark surfaces)"] },
+    ItemDecls { decls: [
+      sheet_live_color(token: live_token_void),
+      sheet_live_color(token: live_token_void_up),
+      sheet_live_color(token: live_token_void_up2),
+    ] },
+    ItemBlank,
+    ItemComment { lines: ["Neutrals — stone scale (text on dark)"] },
+    ItemDecls { decls: [
+      sheet_live_color(token: live_token_stone),
+      sheet_live_color(token: live_token_stone_dim),
+      sheet_live_color(token: live_token_stone_faint),
+    ] },
+    ItemBlank,
+    ItemComment { lines: ["Neutrals — warm white (light surfaces / strong text)"] },
+    ItemDecls { decls: [
+      sheet_live_color(token: live_token_warm_white),
+      sheet_live_color(token: live_token_warm_white_dim),
+    ] },
+    ItemBlank,
+    ItemComment { lines: ["Borders"] },
+    ItemDecls { decls: [
+      sheet_live_color(token: live_token_border_dark),
+      sheet_live_color(token: live_token_border_dark_strong),
+    ] },
+    ItemBlank,
+    ItemComment { lines: ["Type families"] },
+    ItemDecls { decls: [
+      sheet_fonts(name: "font-mono", stack: live_font_mono),
+      sheet_fonts(name: "font-sans", stack: live_font_sans),
+    ] },
+    ItemBlank,
+    ItemComment { lines: ["Measures — width grammar"] },
+    ItemDecls { decls: [
+      sheet_measure(m: live_measure_page),
+      sheet_measure(m: live_measure_wide),
+      sheet_measure(m: live_measure_prose),
+      sheet_measure(m: live_measure_title),
+    ] },
+    ItemBlank,
+    ItemComment { lines: ["Gaps — vertical/spacing rhythm"] },
+    ItemDecls { decls: [
+      sheet_measure(m: live_gap_xs),
+      sheet_measure(m: live_gap_sm),
+      sheet_measure(m: live_gap_md),
+      sheet_measure(m: live_gap_lg),
+      sheet_measure(m: live_gap_xl),
+    ] },
+]
+
+data sheet_entries: List<SheetEntry> = [
+  EntryComment { lines: header_comment },
+  EntryGap { blank_lines: 2 },
+  EntryComment { lines: tokens_banner },
+  EntryGap { blank_lines: 1 },
+  EntryRule { selector: root_selector, items: tokens_items },
+]
+
+fn value_wire(v: SheetValue) -> String {
+  match v {
+    ValueNumber { n: n } => to_string(n)
+    ValuePercent { n: n } => join([to_string(n), "%"], "")
+    ValueLength { length: l } => css_decimal_length_wire(l: l)
+    ValueFonts { stack: s } => css_font_stack_wire(s: s, quote: DoubleQuote)
+    ValueLiveColor { token: t } => css_hsl_wire(c: live_token_css(t: t))
+  }
+}
+
+fn decl_name_wire(d: SheetDecl) -> String {
+  concat(css_property_wire(p: d.property), ":")
+}
+
+fn name_width(d: SheetDecl) -> Int {
+  0 + decl_name_wire(d: d).length()
+}
+
+fn longest_name(decls: List<SheetDecl>) -> Int {
+  fold(decls, init: 0, f: (acc, d) => if name_width(d: d) > acc { name_width(d: d) } else { acc })
+}
+
+// The value starts one space after the longest `--name:` of its group.
+fn decl_line(d: SheetDecl, name_column: Int, indent: Int) -> String {
+  let name = decl_name_wire(d: d)
+  join([repeat_string(s: " ", n: indent), name, repeat_string(s: " ", n: name_column + 1 - name.length()), value_wire(v: d.value), ";"], "")
+}
+
+type CommentAcc {
+  text: String
+  started: Bool
+}
+
+fn comment_line_prefix(acc: CommentAcc, line: String, indent: Int) -> String {
+  if !acc.started {
+    join([repeat_string(s: " ", n: indent), "/* "], "")
+  } else if line == "" {
+    "\n"
+  } else {
+    join(["\n", repeat_string(s: " ", n: indent + 3)], "")
+  }
+}
+
+// First line opens `/* `; later lines are indented to sit under the first line's text (blank lines
+// stay empty); the last line closes ` */`.
+fn comment_wire(lines: List<String>, indent: Int) -> String {
+  let folded = fold(lines, init: CommentAcc { text: "", started: false }, f: (acc, l) => CommentAcc {
+    text: join([acc.text, comment_line_prefix(acc: acc, line: l, indent: indent), l], ""),
+    started: true,
+  })
+  concat(folded.text, " */")
+}
+
+fn item_wire(item: SheetItem) -> String {
+  match item {
+    ItemBlank => ""
+    ItemComment { lines: ls } => comment_wire(lines: ls, indent: 2)
+    ItemDecls { decls: ds } => join(map(ds, d => decl_line(d: d, name_column: longest_name(decls: ds), indent: 2)), "\n")
+  }
+}
+
+fn rule_wire(selector: SelectorSubject, items: List<SheetItem>) -> String {
+  join([selector_subject_wire(s: selector), " {\n", join(map(items, i => item_wire(item: i)), "\n"), "\n}\n"], "")
+}
+
+fn entry_wire(e: SheetEntry) -> String {
+  match e {
+    EntryComment { lines: ls } => concat(comment_wire(lines: ls, indent: 0), "\n")
+    EntryRule { selector: s, items: is } => rule_wire(selector: s, items: is)
+    EntryGap { blank_lines: n } => repeat_string(s: "\n", n: n)
+  }
+}
+
+fn render_sheet() -> String {
+  join(map(sheet_entries, e => entry_wire(e: e)), "")
+}
+
+type SheetWrite = SheetWritten { path: String } | SheetWriteRefused { reason: String }
+
+fn sheet_write(dir: String) -> SheetWrite {
+  let path = join([dir, "/", sheet_output_name], "")
+  let wrote = Filesystem.Write(path: path, content: render_sheet())
+  if wrote.success { SheetWritten { path: path } } else { SheetWriteRefused { reason: join(["write failed: ", path], "") } }
+}
+
+fn sheet_exit(run: SheetWrite) -> ProcessExit {
+  match run {
+    SheetWritten { path: _ } => ExitSuccess
+    SheetWriteRefused { reason: r } => exit_failure(reason: join([page_render_refusal_prefix, r], ""))
+  }
+}
+
+fn sheet_write_arg(dir: String) -> ProcessExit {
+  sheet_exit(run: sheet_write(dir: dir))
+}

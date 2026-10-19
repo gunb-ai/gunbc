@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gunb.ai — A structural compiler for composable systems</title>
+  <meta name="description" content="Modern systems are full of hand-written translations. gunbc gives the system one structural description, checks it, and derives the mechanical pieces. When the description is incomplete, the compiler refuses to guess." />
+  <link rel="icon" type="image/svg+xml" href="assets/mark.svg" />
+  <meta name="theme-color" content="#0c0d0c" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/site.css" />
+  <script src="assets/cards.js" defer></script>
+</head>
+<body>
+
+  <main class="page">
+
+    <!-- Mark + wordmark -->
+    <header class="masthead">
+      <svg class="mark" viewBox="0 0 120 120" aria-hidden="true">
+        <path fill-rule="evenodd" fill="currentColor" d="
+          M40,20 H80 A30,30 0 0,1 110,50 V70 A30,30 0 0,1 80,100 H40 A30,30 0 0,1 10,70 V50 A30,30 0 0,1 40,20 Z
+          M35,40 A8,8 0 0,1 35,56 A8,8 0 0,1 35,40 Z
+          M85,40 A8,8 0 0,1 85,56 A8,8 0 0,1 85,40 Z
+          M54,54 H66 A2,2 0 0,1 68,56 V58 A2,2 0 0,1 66,60 H54 A2,2 0 0,1 52,58 V56 A2,2 0 0,1 54,54 Z
+        "/>
+      </svg>
+      <span class="wordmark">gunb.ai</span>
+      <span class="eyebrow">gunbc · structural compiler</span>
+      <nav class="masthead-nav">
+        <a href="https://github.com/gunb-ai/gunbc">GitHub</a>
+      </nav>
+    </header>
+
+    <!-- Hero spine — identity on the left; prose + install fill the right -->
+    <section class="hero-spine">
+      <div class="hero-left">
+        <h1>A structural compiler for composable systems.</h1>
+        <p class="tagline">Describe the system once. Let the compiler derive the rest.</p>
+      </div>
+      <div class="hero-right">
+        <p>
+          Modern systems are full of hand-written translations: types into clients, models into schemas, services into docs, code into tests, source into build rules.
+        </p>
+        <p>
+          <strong>gunbc</strong> gives the system one structural description, checks it, and derives the mechanical pieces.
+        </p>
+        <p>
+          When the description is incomplete, the compiler refuses to guess.
+        </p>
+        <section class="install">
+          <span class="section-label">early access · build from source</span>
+<pre class="command"><span class="prompt">$ </span>git clone https://github.com/gunb-ai/gunbc
+<span class="prompt">$ </span>cd gunbc
+<span class="prompt">$ </span>cargo build --release</pre>
+        </section>
+      </div>
+    </section>
+
+    <!-- Carved rule — fills page width, aligns with specimen cards below -->
+    <div class="carved-rule" aria-hidden="true"><span class="notch"></span></div>
+
+    <!-- One Users system, three isolated views. Each card pivots on a
+         different structural claim (closure, propagation, budget) but
+         all read from the same source model. Navigate with prev/next
+         or ← / → keys. -->
+    <div data-deck="users.dag"></div>
+
+    <!-- Footer -->
+    <footer class="foot">
+      <a href="https://github.com/gunb-ai/gunbc">GitHub</a>
+      <span class="sep">·</span>
+      <a href="mailto:hello@gunb.ai">hello@gunb.ai</a>
+    </footer>
+
+  </main>
+
+</body>
+</html>
