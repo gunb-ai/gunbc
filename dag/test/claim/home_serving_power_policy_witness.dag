@@ -136,8 +136,7 @@ fn is_admitted(policy: HomeServingPowerPolicy) -> Bool {
 // A missing ceiling is not a passed ceiling. Without the fold this is where an omitted field
 // silently becomes "no limit was exceeded".
 test fn an_absent_tdp_is_unread_rather_than_admitted() -> Bool {
-  home_serving_power_policy(tdp: Absent, applied: reading(limit: at_ceiling, standing: datasheet_ground))
-    |> is_unread
+  is_unread(policy: home_serving_power_policy(tdp: Absent, applied: reading(limit: at_ceiling, standing: datasheet_ground)))
 }
 
 // THE ORDERING CLAIM, the one an untested fold gets wrong. The applied value is OVER the ceiling
@@ -145,32 +144,27 @@ test fn an_absent_tdp_is_unread_rather_than_admitted() -> Bool {
 // conflation this module exists to remove — so the ceiling is established first and the answer is
 // unread.
 test fn an_over_limit_applied_value_beside_an_uncited_tdp_is_unread_not_refused() -> Bool {
-  home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: ungrounded_ground), applied: reading(limit: over_ceiling, standing: datasheet_ground))
-    |> is_unread
+  is_unread(policy: home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: ungrounded_ground), applied: reading(limit: over_ceiling, standing: datasheet_ground)))
 }
 
 test fn an_absent_applied_limit_beside_a_grounded_tdp_is_unread() -> Bool {
-  home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: Absent)
-    |> is_unread
+  is_unread(policy: home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: Absent))
 }
 
 // An applied limit nobody stands behind buys nothing even beside a real ceiling.
 test fn an_uncited_applied_limit_buys_no_admission() -> Bool {
-  home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: reading(limit: at_ceiling, standing: ungrounded_ground))
-    |> is_unread
+  is_unread(policy: home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: reading(limit: at_ceiling, standing: ungrounded_ground)))
 }
 
 // AT the ceiling is admitted: the refusal is strictly above it. Boundary pinned, not assumed.
 test fn an_applied_limit_equal_to_the_ceiling_buys_an_admission() -> Bool {
-  home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: reading(limit: at_ceiling, standing: datasheet_ground))
-    |> is_admitted
+  is_admitted(policy: home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: reading(limit: at_ceiling, standing: datasheet_ground)))
 }
 
 // One watt over, refused. Together with the claim above this pins the boundary at the ceiling
 // rather than somewhere above it; either one alone would pass under a fold that refused at 2x TDP.
 test fn one_watt_over_the_ceiling_is_refused() -> Bool {
-  home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: reading(limit: over_ceiling, standing: datasheet_ground))
-    |> is_refused
+  is_refused(policy: home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: reading(limit: over_ceiling, standing: datasheet_ground)))
 }
 
 // THE CONFLATION GUARD, and the reason this file reads the admission back through its accessors.
