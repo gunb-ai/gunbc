@@ -865,8 +865,8 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
 //     `==` and `!=` on a ConstructorTag refuse at typecheck (the accepted rule behind
 //     `v1.compiler.infer.equality_admission_wall_note`: `==` on a function-valued member is
 //     the refusal, not a convention);
-//   * `sole_constructor` makes construction legal only inside THIS file, so no consumer can
-//     mint a tag except through `tag_of` or the elaboration entry `constructor_tag`.
+//   * `sole_constructor` makes construction legal only inside THIS file, and `tag_of` is the only
+//     function that builds one, so no consumer can mint a tag or choose what a tag matches.
 // A record with an Int tag or a String name would fail the second clause twice over: it would
 // carry a discriminant in its public shape and derive a structural `==` (both measured; see
 // dag/gunbc/recurring_failure_mode/one_type_variable_bound_to_two_distinct_coproducts.dag).
@@ -882,17 +882,28 @@ type ConstructorTag<T> sole_constructor {
   accepts: fn(T) -> Bool
 }
 
-// ELABORATION-ONLY. The internal constructor the `x is V` sugar calls: it takes the arm
-// predicate elaboration has already resolved against T's declared roster. It is not user
-// writable -- `sole_constructor` refuses any construction of ConstructorTag outside this file.
-fn constructor_tag<T>(accepts: fn(T) -> Bool) -> ConstructorTag<T> {
-  ConstructorTag { accepts: accepts }
-}
-
-// The value route: the tag of the arm a value inhabits. The identity is what `discriminant`
-// yields, keyed on T's declaration and never a string, so a tag cannot be forged from text.
+// THE ONLY WAY TO MINT A TAG. The caller supplies a VALUE (or, for a unit arm, the arm spelled
+// as a value) and nothing else -- the predicate below is the only `fn` ever stored in a
+// ConstructorTag, and it is written in this file. That is deliberate and load-bearing: an
+// earlier shape exposed `constructor_tag<T>(accepts: fn(T) -> Bool)`, and because
+// `sole_constructor` guards only the RECORD LITERAL, `constructor_tag(accepts: fn(_w) { true })`
+// minted a tag that `same_arm` reported as matching EVERY arm (measured PASS, so it was real).
+// A predicate-taking entry is a forgery route by construction, and DESIGN section 4b is explicit
+// that a brand is cosmetic until construction enforces it -- so the entry is gone rather than
+// documented as "elaboration-only". There is no visibility mechanism to fall back on either:
+// `public` is not a gate in resolve, and type modifiers are dropped at parse
+// (v1.compiler.parse drop_leading_type_modifier), so `sole_constructor` is the only construction
+// control the language has.
+//
+// The identity is what `discriminant` yields, keyed on T's declaration and never a string, so a
+// tag cannot be forged from text either. Elaboration for `x is V` calls THIS function on the arm
+// it resolved against T's declared roster; it needs no separate entry, because for a unit arm the
+// arm reference is exactly the value `tag_of` takes. For a payload arm there is no arm-reference
+// value to pass (see the frontier note on
+// dag/gunbc/recurring_failure_mode/one_type_variable_bound_to_two_distinct_coproducts.dag), so
+// elaboration passes a value of that arm -- which is the same identity, and is a control.
 fn tag_of<T>(v: T) -> ConstructorTag<T> {
-  constructor_tag(accepts: fn(w) { discriminant(v: v) == discriminant(v: w) })
+  ConstructorTag { accepts: fn(w) { discriminant(v: v) == discriminant(v: w) } }
 }
 
 // THE one exposed comparison, and the only equality between two arms: does `v` inhabit the

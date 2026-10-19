@@ -6,7 +6,7 @@ module test.claim.constructor_tag_route_probe
 // String }` and compared tags with `==` — a string discriminant in the public shape, the exact
 // thing the design forbids).
 
-import std.primitives { ConstructorTag, constructor_tag, tag_of, same_arm }
+import std.primitives { ConstructorTag, tag_of, same_arm }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -55,17 +55,18 @@ test fn consumer_names_only_two_of_twelve_arms() -> Bool {
     && same_arm(tag: tag_of(v: W03 { a: 1, b: 2 }), v: W03 { a: 9, b: 9 })
 }
 
-// CONTROL 6: the elaboration route. A tag built from (T, arm) through the elaboration-only entry
-// AGREES with the tag of a value of that arm. The arm reference is spelled at `discriminant`'s own
-// argument position, which is the only place a tag reference is admitted today; elaboration has no
-// such textual limit, and this control pins the agreement the sugar depends on.
-test fn elaborated_arm_tag_agrees_with_value_tag() -> Bool {
-  let from_arm = constructor_tag(accepts: fn(w) { discriminant(v: W11 {}) == discriminant(v: w) })
-  same_arm(tag: from_arm, v: W11 { a: 7 })
+// CONTROL 6: the identity a tag carries IS the identity `discriminant` yields at the tag-reference
+// position, so the arm the sugar resolves against T's roster and a value of that arm give the same
+// arm. `discriminant(v: W11 {})` is the tag-reference spelling for a PAYLOAD arm -- the one place
+// a payload arm names as a value -- and it must agree with the tag of a value of that arm.
+test fn payload_arm_tag_reference_agrees_with_value_tag() -> Bool {
+  discriminant(v: W11 {}) == discriminant(v: W11 { a: 7 })
+    && same_arm(tag: tag_of(v: W11 { a: 7 }), v: W11 { a: 9 })
 }
 
-// CONTROL 7: the same, for a unit arm named through the elaboration route.
-test fn elaborated_unit_arm_tag_agrees_and_discriminates() -> Bool {
-  let from_arm = constructor_tag(accepts: fn(w) { discriminant(v: W08) == discriminant(v: w) })
-  same_arm(tag: from_arm, v: W08) && !same_arm(tag: from_arm, v: W04)
+// CONTROL 7: the same for a unit arm, and it still discriminates.
+test fn unit_arm_tag_reference_agrees_and_discriminates() -> Bool {
+  discriminant(v: W08) == discriminant(v: W08)
+    && same_arm(tag: tag_of(v: W08), v: W08)
+    && !same_arm(tag: tag_of(v: W08), v: W04)
 }
