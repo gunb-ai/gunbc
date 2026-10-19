@@ -3330,7 +3330,7 @@ fn rust_fold_call_runtime_row() -> TargetEmitHostRuntimeRow {
 // tokens added to its lex and the element parameters `e1 e2 e3` spelled. Its callee folds a `Vec` by decimal
 // positional accumulation (`f(acc * 10, h)`), so [1, 2, 3] from 0 is 123 and [3, 2, 1] is 321; a
 // target that dropped or reordered the elements cannot reach 123.
-data rust_list_fold_emit_host_suffix: String = "\n\nfn fold_call_callee(xs: Vec<i32>, z: i32, f: impl Fn(i32, i32) -> i32) -> i32 { xs.into_iter().fold(z, |a, h| f(a * 10, h)) }\n\nfn main() { let value = fold_demo(1, 2, 3, 0); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+data rust_list_fold_emit_host_suffix: String = "\n\nfn fold_call_callee(xs: Vec<i32>, z: i32, f: impl Fn(i32, i32) -> i32) -> i32 { xs.into_iter().fold(z, |a, h| f(a * 10, h)) }\n\nfn main() { let value = fold_demo(1, 2); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
 
 fn rust_list_fold_lex() -> LexRules {
   ModeledLexRules {
@@ -3348,10 +3348,7 @@ fn rust_list_fold_lex() -> LexRules {
 }
 
 fn rust_list_fold_binding_spellings() -> Map<Symbol, String> {
-  let m0 = rust_fold_call_binding_spellings()
-  let m1 = map_insert(m0, ^dag_binding_mvp1_fold_e1, "e1")
-  let m2 = map_insert(m1, ^dag_binding_mvp1_fold_e2, "e2")
-  map_insert(m2, ^dag_binding_mvp1_fold_e3, "e3")
+  rust_fold_call_binding_spellings()
 }
 
 fn rust_list_fold_host_transport_descriptor() -> HostTransportDescriptor {

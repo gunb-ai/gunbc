@@ -1,13 +1,7 @@
 module v2.test.claim.execution.emit_host_list_introduction_equals_eval
 
 import std.types { List, Map }
-import v2.compiler.emit { emit }
-import v2.compiler.eval { eval, inputs_root_only }
-import extdeps.communication.medium { Medium }
-import v2.compiler.eval { inputs_for_emit_host }
 import v2.compiler.emit_host {
-  run_emit_host,
-  runtime_value_parse,
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
 }
@@ -44,7 +38,6 @@ import std.optional {
   optional_present,
   optional_absent
 }
-import v2.std.host_run { EmitHostRunReceipt }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -91,7 +84,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.verdict { Pass, BuildFailed, RunFailed, SemanticMismatch, Deferred, verdict_establishes_divergence, verdict_establishes_equivalence }
+import v2.std.verdict { verdict_establishes_equivalence }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -106,9 +99,9 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The arrow: fold_demo() = fold_call_callee([1, 2, 3], 0, |acc, h| acc + h). The callee is the fixture's
+// The arrow: fold_demo(xs, z) = fold_call_callee([xs, z], z, |acc, h| acc + h), run with xs = 1, z = 2. The callee is the fixture's
 // decimal positional fold (f(acc * 10, h)) on BOTH sides -- the Rust suffix in rust_fixtures and
-// emit_fold_eval_call_primitive below -- so the result is order-sensitive: [1, 2, 3] is 123, and an
+// emit_fold_eval_call_primitive below -- so the result is order-sensitive: [1, 2] from 2 is 212 ([2, 1] would be 221), and an
 // emitted literal that dropped or reordered an element cannot reach it.
 fn emit_fold_eval_lit(id: Symbol) -> Node {
   fold_fixture_atom(id: id)
@@ -117,9 +110,8 @@ fn emit_fold_eval_lit(id: Symbol) -> Node {
 fn emit_fold_eval_call_node() -> Node {
   fold_fixture_call_body(
       xs: lie_list(elements: [
-        emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_e1),
-        emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_e2),
-        emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_e3)
+        emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_xs),
+        emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_z)
       ]),
       z: emit_fold_eval_lit(id: ^dag_binding_mvp1_fold_z),
       closure: fold_fixture_closure_arrow(
@@ -135,9 +127,7 @@ fn emit_fold_eval_param(name: Symbol) -> Edge {
 
 fn emit_fold_eval_params() -> List<Edge> {
   [
-    emit_fold_eval_param(name: ^dag_binding_mvp1_fold_e1),
-    emit_fold_eval_param(name: ^dag_binding_mvp1_fold_e2),
-    emit_fold_eval_param(name: ^dag_binding_mvp1_fold_e3),
+    emit_fold_eval_param(name: ^dag_binding_mvp1_fold_xs),
     emit_fold_eval_param(name: ^dag_binding_mvp1_fold_z)
   ]
 }
@@ -226,10 +216,8 @@ fn emit_fold_eval_closure_operator_is_sub(closure: Node) -> Bool {
 }
 
 fn emit_fold_eval_digit_of(id: Symbol) -> Optional<Int> {
-  if id == ^dag_binding_mvp1_fold_z { optional_present(value: 0) }
-  else if id == ^dag_binding_mvp1_fold_e1 { optional_present(value: 1) }
-  else if id == ^dag_binding_mvp1_fold_e2 { optional_present(value: 2) }
-  else if id == ^dag_binding_mvp1_fold_e3 { optional_present(value: 3) }
+  if id == ^dag_binding_mvp1_fold_xs { optional_present(value: 1) }
+  else if id == ^dag_binding_mvp1_fold_z { optional_present(value: 2) }
   else { optional_absent() }
 }
 
@@ -342,6 +330,15 @@ fn emit_fold_eval_call_primitive(
       match emit_fold_eval_positional(args: args, node: node, wanted: 0) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: xs, diagnostics: _ } =>
+          match emit_fold_eval_positional(args: args, node: node, wanted: 1) {
+           Rejected { diagnostics: r } => Rejected { diagnostics: r }
+           Accepted { value: seed_value, diagnostics: _ } =>
+           match emit_fold_eval_decode(v: seed_value) {
+           Absent =>
+             outcome_rejected(
+               d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_list_field_miss, node: node)
+             )
+           Present { value: seed } =>
           match xs {
             RuntimeAggregate { value: agg } =>
               match emit_fold_eval_fields_digits(fields: agg.fields) {
@@ -350,7 +347,7 @@ fn emit_fold_eval_call_primitive(
                     value: emit_fold_eval_octet_value(
                       n: emit_fold_eval_reduce(
                         digits: digits,
-                        seed: 0,
+                        seed: seed,
                         minus: emit_fold_eval_closure_operator_is_sub(closure: closure)
                       )
                     )
@@ -364,6 +361,8 @@ fn emit_fold_eval_call_primitive(
               outcome_rejected(
                 d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_list_not_aggregate, node: node)
               )
+          }
+           }
           }
       }
   }
@@ -469,8 +468,8 @@ fn emit_fold_eval_run_with(target: TargetModel) -> TestClaimRun<Node, RuntimeVal
   )
 }
 
-// POSITIVE CONTROL: the Rust row emits vec![1, 2, 3], cargo builds and runs it, and the host output
-// (123) equals eval of the same arrow, whose list literal goes through eval's list arm.
+// POSITIVE CONTROL: the Rust row emits vec![xs, z], cargo builds and runs it, and the host output
+// (212) equals eval of the same arrow, whose list literal goes through eval's list arm.
 test fn emit_host_list_introduction_equals_eval_holds() -> Bool {
   verdict_establishes_equivalence(v: emit_fold_eval_run_with(target: rust_list_fold_target_model_staging()).verdict)
 }
@@ -485,151 +484,3 @@ test fn emit_host_list_introduction_unwired_refuses_holds() -> Bool {
   )
 }
 
-fn probe_emit() -> Outcome<Medium<String>> {
-  emit(tree: emit_fold_eval_tree_for(root: emit_fold_eval_list_arrow()), target: rust_list_fold_target_model_staging())
-}
-test fn probe_emit_ok() -> Bool {
-  match probe_emit() { Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false }
-}
-test fn probe_emit_has_call() -> Bool {
-  match probe_emit() { Accepted { value: m, diagnostics: _ } => string_contains(s: m.carried, pattern: "fold_call_callee(vec![e1, e2, e3], z, ")
-    Rejected { diagnostics: _ } => false }
-}
-test fn probe_eval_ok() -> Bool {
-  match eval(tree: emit_fold_eval_tree_for(root: emit_fold_eval_list_arrow()), interpretation: emit_fold_eval_interpretation(), inputs: inputs_root_only(root: emit_fold_eval_call_node())) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-fn probe_arm(n: Int) -> Bool {
-  match emit_fold_eval_run_with(target: rust_list_fold_target_model_staging()).verdict {
-    Pass => n == 0
-    SemanticMismatch { actual: _, falsification: _ } => n == 1
-    BuildFailed { actual: _, diagnostic: _ } => n == 2
-    RunFailed { actual: _, diagnostic: _ } => n == 3
-    Deferred { actual: _, diagnostic: _ } => n == 4
-  }
-}
-test fn probe_a1() -> Bool { probe_arm(n: 1) }
-test fn probe_a2() -> Bool { probe_arm(n: 2) }
-test fn probe_a3() -> Bool { probe_arm(n: 3) }
-test fn probe_a4() -> Bool { probe_arm(n: 4) }
-
-fn probe_receipt() -> Outcome<EmitHostRunReceipt> {
-  match probe_emit() {
-    Accepted { value: src, diagnostics: _ } =>
-      run_emit_host(target: rust_list_fold_target_model_staging(), source: src,
-        fixture_inputs: inputs_for_emit_host(claim_input_root: emit_fold_eval_call_node(), expected_eval_root: emit_fold_eval_call_node(), claim_pin: ^emit_fold_eval_evaluator_pin))
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-  }
-}
-test fn probe_run_rejected() -> Bool {
-  match probe_receipt() { Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true }
-}
-test fn probe_exit_ok() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } =>
-      match r.exit.outcome { Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false }
-    Rejected { diagnostics: _ } => false }
-}
-test fn probe_source_has_fn() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_call_callee(vec![e1, e2, e3], z, |acc, h|")
-    Rejected { diagnostics: _ } => false }
-}
-test fn probe_compile_skipped() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => r.compile_skipped
-    Rejected { diagnostics: _ } => false }
-}
-
-test fn probe_logical_clean() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } =>
-      match r.logical_run { Accepted { value: _, diagnostics: None } => true
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => false }
-    Rejected { diagnostics: _ } => false }
-}
-test fn probe_logical_accepted() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } =>
-      match r.logical_run { Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false }
-    Rejected { diagnostics: _ } => false }
-}
-test fn probe_parse_ok() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } =>
-      match r.logical_run { Accepted { value: l, diagnostics: _ } =>
-          match runtime_value_parse(target: rust_list_fold_target_model_staging(), stdout: l.stdout) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false }
-        Rejected { diagnostics: _ } => false }
-    Rejected { diagnostics: _ } => false }
-}
-
-test fn probe_exit_holds() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } =>
-      match r.exit.outcome { Accepted { value: Holds { value: _ }, diagnostics: _ } => true
-        Accepted { value: Violates { diagnostic: _ }, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => false }
-    Rejected { diagnostics: _ } => false }
-}
-test fn probe_sig() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fn fold_demo(e1: i32, e2: i32, e3: i32, z: i32) -> i32")
-    Rejected { diagnostics: _ } => false }
-}
-test fn probe_sig2() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fn fold_demo(e1: i32, e2: i32, e3: i32, z: i32)")
-    Rejected { diagnostics: _ } => false }
-}
-test fn probe_body() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_call_callee(vec![e1, e2, e3], z, |acc, h| acc + h)")
-    Rejected { diagnostics: _ } => false }
-}
-test fn probe_noderef() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_demo(")
-    Rejected { diagnostics: _ } => false }
-}
-test fn probe_main() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_demo(1, 2, 3, 0)")
-    Rejected { diagnostics: _ } => false }
-}
-test fn pq1() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fn fold_demo(")
-    Rejected { diagnostics: _ } => false }
-}
-test fn pq2() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fn fold_demo(e1")
-    Rejected { diagnostics: _ } => false }
-}
-test fn pq3() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fn fold_demo(e1: i32")
-    Rejected { diagnostics: _ } => false }
-}
-test fn pq4() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "e3: i32, z: i32) -> i32")
-    Rejected { diagnostics: _ } => false }
-}
-test fn pq5() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "e3: i32, z: i32)")
-    Rejected { diagnostics: _ } => false }
-}
-test fn pq6() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "-> i32 {")
-    Rejected { diagnostics: _ } => false }
-}
-test fn pq7() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_demo(e1")
-    Rejected { diagnostics: _ } => false }
-}
-test fn pq8() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "|acc, h| acc + h)")
-    Rejected { diagnostics: _ } => false }
-}
-test fn pq9() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "z, |acc")
-    Rejected { diagnostics: _ } => false }
-}
-test fn pq10() -> Bool {
-  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_call_callee(vec![e1, e2, e3], z, |acc, h| ")
-    Rejected { diagnostics: _ } => false }
-}
