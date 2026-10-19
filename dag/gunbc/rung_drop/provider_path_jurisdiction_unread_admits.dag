@@ -130,7 +130,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 //
 // WHAT THE EMPTY LIST COSTS, DECLARED RATHER THAN DISCOVERED: the projection renders
 // "Population: " and stops, and DESIGN 4c means this annotation is unreadable to any consumer,
-// so the REASON the population is zero does not reach `gunbc.design_ledgers` `expected_design_rung_drops_md`. That is
+// so the REASON the population is zero does not reach docs/design-rung-drops.md. That is
 // uninformative rather than wrong -- nothing plausible is asserted. It is not the
 // bottom-as-answer conflation gunbc.guarantee_stall warns about either: that warning is about
 // rows whose exposure is UNBOUNDED, where [] would falsely read as "nothing is affected". Here

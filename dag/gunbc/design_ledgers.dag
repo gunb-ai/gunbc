@@ -139,7 +139,7 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
 
 // A LATER RULING BEARING ON A STANDING DROP IS RENDERED BENEATH ITS DECLARATION, from
 // gunbc.rung_drop_amendment rather than from bytes somebody typed into this file's output. The
-// paragraph this restores was hand-edited into `gunbc.design_ledgers` `expected_design_rung_drops_md` by gunbc#11774 and deleted
+// paragraph this restores was hand-edited into docs/design-rung-drops.md by gunbc#11774 and deleted
 // by the next regeneration, which is the whole reason the carrier exists; rendering it here is what
 // makes the carrier consumed rather than declared.
 fn rung_drop_amendment_blocks(d: RungDrop) -> List<MarkdownBlock> {

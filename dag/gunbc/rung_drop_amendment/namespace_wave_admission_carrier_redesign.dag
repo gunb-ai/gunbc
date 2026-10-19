@@ -5,7 +5,7 @@ import gunbc.rung_drop_amendment { RungDropAmendment }
 
 // THE ARGUMENT THIS ROW NOW OWNS WAS WRITTEN TWICE AND READ NOWHERE. gunbc#11774 put it in an
 // annotation on the drop row -- the right home for why-rationale under DESIGN section 4c, and a
-// home no Accepted program can read -- and ALSO pasted it into `gunbc.design_ledgers` `expected_design_rung_drops_md`, which is
+// home no Accepted program can read -- and ALSO pasted it into docs/design-rung-drops.md, which is
 // a projection of gunbc.rung_drop. gunbc#11789 regenerated the file and the pasted copy went with
 // it. So the defect was a DUPLICATE, not a loss; what was genuinely missing was a carrier the
 // projection could render. This row is it, and the annotation on the drop row is now a pointer

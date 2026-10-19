@@ -16,7 +16,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 // names, and repairing the loop was ruled not worth its cost against the coverage the wall bought.
 //
 // THE REDESIGN THAT LANDED FIRST IS NOT RECORDED HERE ANY MORE. It was, in this block, and the
-// same argument was also pasted into `gunbc.design_ledgers` `expected_design_rung_drops_md` by the change that wrote it -- two
+// same argument was also pasted into docs/design-rung-drops.md by the change that wrote it -- two
 // authorities for one argument, one of which no Accepted program can read. It now lives once, in
 // gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign, which the ledger projection
 // renders beneath this row's declaration. What stays in this block is reasoning about the

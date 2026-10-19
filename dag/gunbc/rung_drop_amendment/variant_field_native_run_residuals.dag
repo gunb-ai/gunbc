@@ -13,7 +13,7 @@ import gunbc.rung_drop_amendment { RungDropAmendment }
 //
 // WHY THIS IS WORTH A ROW RATHER THAN A COMMENT ON THE DROP: the comment is unreadable by any
 // Accepted program, and the projection renders this row's message beside the drop's declaration,
-// so the next reader of `gunbc.design_ledgers` `expected_design_rung_drops_md` meets the residuals without loading anything
+// so the next reader of docs/design-rung-drops.md meets the residuals without loading anything
 // else. The two recurring-failure-mode rows it names carry the per-class receipts, the
 // distinguishing facts and the next-rung triggers; this row carries only the join.
 
