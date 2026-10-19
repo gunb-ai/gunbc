@@ -35,8 +35,8 @@ use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 pub use crate::std_coercion::{
-    dag_can_cast, dag_cast_requires_proof, dag_refinement_upcast, is_dag_cast_domain_type,
-    SubtractionRefinement, TextRepresentation, TypeDeclarationProvenance,
+    dag_can_cast, dag_cast_requires_proof, dag_is_machine_width_compose, dag_refinement_upcast,
+    is_dag_cast_domain_type, SubtractionRefinement, TextRepresentation, TypeDeclarationProvenance,
 };
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
@@ -4756,6 +4756,162 @@ pub fn refinement_upcast_admits(
     }
 }
 
+pub fn width_declaration_over_int(
+    mut __tco_loop_d: Rc<DeclarationRef>,
+    mut __tco_loop_type_env: Rc<TypeEnv>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_fuel: i64,
+) -> bool {
+    loop {
+        #[allow(unused_mut)]
+        let mut d = __tco_loop_d;
+        #[allow(unused_mut)]
+        let mut type_env = __tco_loop_type_env;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        if (fuel.clone() <= 0) {
+            break false;
+        } else {
+            if crate::std_coercion::dag_refinement_upcast(d.clone(), "Int".to_string()) {
+                break true;
+            } else {
+                match crate::v1_compiler_infer_env::declaration_node_of_ref(
+                    d.clone(),
+                    type_env.clone(),
+                ) {
+                    Some(decl) => {
+                        match compose_application_of(
+                            decl.clone(),
+                            type_env.clone(),
+                            source_indices.clone(),
+                        ) {
+                            Some(app) => match app.children.clone().first().cloned() {
+                                Some(base) => {
+                                    if (crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        base.clone(),
+                                    ) == "Int".to_string())
+                                    {
+                                        break true;
+                                    } else {
+                                        match crate::v1_compiler_infer_env::type_reference_declaration_ref(base.clone(), source_indices.clone(), type_env.clone()) {
+    Some(base_ref) => { {
+                        let __tco_0 = base_ref.clone();
+let __tco_1 = type_env;
+let __tco_2 = source_indices;
+let __tco_3 = v1_rt::int_sub(fuel, 1);
+__tco_loop_d = __tco_0;
+__tco_loop_type_env = __tco_1;
+__tco_loop_source_indices = __tco_2;
+__tco_loop_fuel = __tco_3;
+continue;
+} },
+    std::option::Option::None => { break false; },
+}
+                                    }
+                                }
+                                std::option::Option::None => {
+                                    break false;
+                                }
+                            },
+                            std::option::Option::None => {
+                                match decl.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: target, .. }) => { match crate::v1_compiler_infer_env::type_reference_declaration_ref(target.clone(), source_indices.clone(), type_env.clone()) {
+    Some(target_ref) => { if crate::std_decl_ref::declaration_ref_eq(target_ref.clone(), d.clone()) {
+                    break false;
+} else {
+                    {
+                        let __tco_0 = target_ref.clone();
+let __tco_1 = type_env;
+let __tco_2 = source_indices;
+let __tco_3 = v1_rt::int_sub(fuel, 1);
+__tco_loop_d = __tco_0;
+__tco_loop_type_env = __tco_1;
+__tco_loop_source_indices = __tco_2;
+__tco_loop_fuel = __tco_3;
+continue;
+}
+} },
+    std::option::Option::None => { break false; },
+} },
+    _ => { break false; },
+}
+                            }
+                        }
+                    }
+                    std::option::Option::None => {
+                        break false;
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn compose_application_of(
+    n: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    if node_names_machine_width_compose(n.clone(), type_env.clone(), source_indices.clone()) {
+        Some(n.clone())
+    } else {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => {
+                if node_names_machine_width_compose(
+                    target.clone(),
+                    type_env.clone(),
+                    source_indices.clone(),
+                ) {
+                    Some(target.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+            _ => std::option::Option::None,
+        }
+    }
+}
+
+pub fn node_names_machine_width_compose(
+    n: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+        n.clone(),
+        source_indices.clone(),
+        type_env.clone(),
+    ) {
+        Some(r) => crate::std_coercion::dag_is_machine_width_compose(r.clone()),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn machine_width_upcast_admits(
+    actual: Rc<Node>,
+    formal_name: String,
+    type_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((formal_name.clone() == "Int".to_string())
+        && match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+            actual.clone(),
+            source_indices.clone(),
+            type_env.clone(),
+        ) {
+            Some(operand) => width_declaration_over_int(
+                operand.clone(),
+                type_env.clone(),
+                source_indices.clone(),
+                8,
+            ),
+            std::option::Option::None => false,
+        })
+}
+
 pub fn kernel_value_declared_type_mismatch_bounded(
     mut __tco_loop_formal: Rc<Node>,
     mut __tco_loop_actual: Rc<Node>,
@@ -4813,10 +4969,19 @@ pub fn kernel_value_declared_type_mismatch_bounded(
             {
                 break false;
             } else {
-                if (((crate::v1_std_core::qualified_last_segment(formal_name.clone())
+                if ((((crate::v1_std_core::qualified_last_segment(formal_name.clone())
                     == crate::v1_std_core::qualified_last_segment(actual_name.clone()))
-                    || crate::std_coercion::dag_can_cast(actual_name.clone(), formal_name.clone()))
+                    || crate::std_coercion::dag_can_cast(
+                        actual_name.clone(),
+                        formal_name.clone(),
+                    ))
                     || refinement_upcast_admits(
+                        actual_base.clone(),
+                        formal_name.clone(),
+                        type_env.clone(),
+                        source_indices.clone(),
+                    ))
+                    || machine_width_upcast_admits(
                         actual_base.clone(),
                         formal_name.clone(),
                         type_env.clone(),

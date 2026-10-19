@@ -277,6 +277,13 @@ pub fn dag_refinement_upcast(operand: Rc<DeclarationRef>, target_type: String) -
     }
 }
 
+pub fn dag_is_machine_width_compose(operand: Rc<DeclarationRef>) -> bool {
+    crate::std_decl_ref::declaration_ref_eq(
+        crate::std_decl_ref::decl_ref("std.machine_constraints".to_string(), "Compose".to_string()),
+        operand.clone(),
+    )
+}
+
 pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
     ({
         let mut __found = false;
