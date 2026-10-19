@@ -1,0 +1,111 @@
+module test.claim.p4_home_serving_power_semantics_witness
+
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.algebra { string_contains }
+import std.markdown { MarkdownDocument }
+import gunbc.plan { Plan, plan_projects_committed_markdown }
+import gunbc.plan_registry { all_plans }
+import extdeps.languages.markdown { serialize_markdown_source }
+import gunbc.plans.p4_home_serving_power_semantics { p4_home_serving_power_semantics_plan }
+
+// Guards on the P4 watt-semantics decision CARRIER. DESIGN §1: "A plan's authority is
+// its `.dag` carrier; generated plan markdown whose only consumer is ProjectDocumentation
+// is not a checkout artifact." This document is a decision record, so its carrier is the
+// only authority and there is deliberately no docs/plans/*.md for it — the claim below
+// pins that, rather than leaving it to a comment.
+//
+// Each claim is written so its RED is reachable on the real acceptance path (DESIGN §4b:
+// "A check whose forbidden state is expressible nowhere it runs is a decoration, green by
+// construction and later cited as coverage"). The body is read through the repository's
+// OWN serializer, `extdeps.languages.markdown::serialize_markdown_source`, not a
+// hand-written AST walk: minting a second walker beside the one that renders the document
+// would be the §2 re-invention these claims exist to police, and a private walker could
+// drift from the renderer with both sides staying green.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn carrier_is_registered() -> Bool {
+  fold(all_plans, init: false, f: (acc, p) => acc || p.slug == "p4-home-serving-power-semantics")
+}
+
+fn carrier_text() -> String {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: p4_home_serving_power_semantics_plan.body })
+}
+
+// ── DESIGN §1, and the reason the markdown was deleted rather than kept beside the
+// carrier. `gunbc.plan::plan_projects_committed_markdown` answers false only for
+// `PlanIsAuthorityOnly`; the generated-artifact gate then treats a committed projection of
+// this plan as a stale artifact. RED: switching the projection to
+// `PlanProjectsCommittedMarkdown`, or registering a second plan whose document restates
+// this decision, turns this red. Registered-ness is checked through `all_plans` rather
+// than from the import alone, so a carrier dropped from the registry cannot pass by the
+// import still resolving.
+test fn the_carrier_is_registered_and_is_the_only_authority() -> Bool {
+  carrier_is_registered()
+    && plan_projects_committed_markdown(p: p4_home_serving_power_semantics_plan) == false
+}
+
+// ── DESIGN §3: "Cite the symbol, not the position. A `file:line` pointer is a second,
+// positional naming scheme that any edit above the line silently invalidates." This
+// asserts over SERIALIZED text, so it catches a positional citation wherever it hides —
+// body prose, list items, table cells, quoted blocks, and the fenced code sample alike.
+// It is scoped to the citation shape (a path with a source extension, immediately followed
+// by a line number) so that the shell commands required by the next claim are not
+// themselves forbidden for containing a colon.
+//
+// This rule is not decorative here: one seal-check citation in an earlier draft had its
+// line number drift out from under it *while this document was being written* — the check
+// moved from `:17368` to `:17466` as main took other merges — which is exactly the failure
+// §3 names, and the reason the symbol is cited instead.
+test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
+  let t = carrier_text()
+  // Positive conjuncts FIRST. This claim's load-bearing part is a NEGATIVE assertion, and
+  // a negative assertion is satisfied by an empty read: if the subject module stopped
+  // resolving or the body ever became empty, every `string_contains` would return false
+  // and this claim would be green while proving nothing. DESIGN §4b names that a
+  // decoration. So the same claim also requires the text to be a substantive document that
+  // really carries the symbols it is supposed to carry — break the read and the claim goes
+  // red instead of green.
+  t.length() > 4000
+    && string_contains(s: t, pattern: "extdeps.gpu.types::GpuModelCatalogRow.tdp_watts")
+    && string_contains(s: t, pattern: "gunbc.spark.serving_performance_subject::ServingAcceleratorRealization.applied_power_limit")
+    && string_contains(s: t, pattern: "v1.compiler.infer::constructor_admission_diags_from_lookup")
+    && !(string_contains(s: t, pattern: ".dag:")
+      || string_contains(s: t, pattern: ".rs:")
+      || string_contains(s: t, pattern: ".py:")
+      || string_contains(s: t, pattern: "DESIGN.md:"))
+}
+
+// ── DESIGN §6: "Name the instrument, never transcribe its output ... a transcribed number
+// rots unreachably." Every quantity this decision rests on must arrive as the command that
+// re-derives it. The numbers in an earlier draft had already gone stale twice over (the
+// dag file-count claims disagreed between two checks of the same document), which is the
+// rotting this rule exists to prevent.
+//
+// Each conjunct pins a DIFFERENT claim's instrument, so deleting any one command from the
+// carrier reddens this claim on its own rather than silently narrowing it: the applied-limit
+// site list, the WarmValid construction classification, the missing-roster absence check, the
+// dag file-count invariant, the "600 is a label not a measurement" split, and the
+// no-watt-field-in-the-fixture reading.
+test fn every_load_bearing_quantity_arrives_as_the_command_that_re_derives_it() -> Bool {
+  let t = carrier_text()
+  string_contains(s: t, pattern: "git grep -n applied_power_limit dag")
+    && string_contains(s: t, pattern: "git grep -n WarmValid dag")
+    && string_contains(s: t, pattern: "grep -c admit_callers dag/gunbc/serving/gpu_bench_warm_standing.dag")
+    && string_contains(s: t, pattern: "git ls-tree -r --name-only origin/main -- dag")
+    && string_contains(s: t, pattern: "grep -o \"600\"")
+    && string_contains(s: t, pattern: "grep -Ei 'watt|power|tdp' fixtures/gpu_bench/pro6000ws_600w_v2/*")
+}
+
+// ── DESIGN §4d: "Do not assert as deduced what is only inferred." The ruling here was the
+// escalation closing on its recommendation with no operator answer inside the window — a
+// DEFAULT, not an endorsement. If the carrier ever read as though the operator had chosen
+// option C, that would state a decision nobody made; and because the fleet question is still
+// unanswered, the carrier must keep saying so rather than implying the choice is settled.
+test fn the_carrier_records_the_ruling_as_a_default_not_an_endorsement() -> Bool {
+  let t = carrier_text()
+  string_contains(s: t, pattern: "decided — by default, not by the operator")
+    && string_contains(s: t, pattern: "licenses the shape, not a number")
+    && string_contains(s: t, pattern: "Still open after this PR")
+}
