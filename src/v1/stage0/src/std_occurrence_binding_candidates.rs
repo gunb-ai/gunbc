@@ -3062,40 +3062,6 @@ pub fn section13_population_law_roster() -> Rc<Vec<Rc<Section13PopulationLawRost
     CACHED.with(|c: &Rc<Vec<Rc<Section13PopulationLawRosterRow>>>| c.clone())
 }
 
-pub fn section13_population_law_id_eq(
-    left: Section13PopulationLawId,
-    right: Section13PopulationLawId,
-) -> bool {
-    match left.clone() {
-        Section13PopulationLawId::Section13StructuralVisibility => match right.clone() {
-            Section13PopulationLawId::Section13StructuralVisibility => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13SiblingArmExclusion => match right.clone() {
-            Section13PopulationLawId::Section13SiblingArmExclusion => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13LexicalEnclosure => match right.clone() {
-            Section13PopulationLawId::Section13LexicalEnclosure => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13SourceOrderGate => match right.clone() {
-            Section13PopulationLawId::Section13SourceOrderGate => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13DistinctIdentityAmbiguity => match right.clone() {
-            Section13PopulationLawId::Section13DistinctIdentityAmbiguity => true,
-            _ => false,
-        },
-        Section13PopulationLawId::Section13RepeatedDiscoverySameIdentityCollapse => {
-            match right.clone() {
-                Section13PopulationLawId::Section13RepeatedDiscoverySameIdentityCollapse => true,
-                _ => false,
-            }
-        }
-    }
-}
-
 pub fn section13_module_path_is_symbolic(module_path: String) -> bool {
     {
         let path = module_path.clone();
@@ -3111,7 +3077,7 @@ pub fn section13_roster_has_law(
     {
         let mut __found = false;
         for row in rows.iter().cloned() {
-            if section13_population_law_id_eq(row.law.clone(), law.clone()) {
+            if (row.law.clone() == law.clone()) {
                 __found = true;
                 break;
             }
@@ -3154,11 +3120,11 @@ pub fn section13_roster_has_duplicate_law(
             false => {
                 (rows.iter().cloned().fold(
                     0,
-                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
-                        match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
-                            true => v1_rt::int_add(count.clone(), 1),
-                            false => count.clone(),
-                        }
+                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| match (row.law.clone()
+                        == other.law.clone())
+                    {
+                        true => v1_rt::int_add(count.clone(), 1),
+                        false => count.clone(),
                     },
                 ) > 1)
             }
@@ -3176,11 +3142,11 @@ pub fn section13_first_duplicate_law(
             std::option::Option::None => {
                 if (rows.iter().cloned().fold(
                     0,
-                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
-                        match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
-                            true => v1_rt::int_add(count.clone(), 1),
-                            false => count.clone(),
-                        }
+                    |count: i64, other: Rc<Section13PopulationLawRosterRow>| match (row.law.clone()
+                        == other.law.clone())
+                    {
+                        true => v1_rt::int_add(count.clone(), 1),
+                        false => count.clone(),
                     },
                 ) > 1)
                 {

@@ -3,7 +3,11 @@ module v2.test.claim.coproduct_pipe_chain_declaration_order
 import std.algebra { Cons, Empty }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present }
+import v2.test.claim.parse.alias_decl_parse { alias_decl_index_of, alias_decl_normalized }
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
 import std.types { List }
 import v2.std.compilers.sugar { sugar_all_coproduct_variants, sugar_variants_to_disj_edges }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -21,9 +25,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // DECLARATION order. The collector used to append each tail variant after its recursion, so a 5-arm
 // chain read Active, Beta, Zed, Revoked, Pending -- this claim goes red on that arm.
 //
-// INHABITANCE OWED (section 3 pairing obligation): this claim supplies the chain; the claim that the
-// real ingest produces this shape is the door walk of a 5-arm source (receipt on the PR that carries
-// it), not asserted here.
+// INHABITANCE (section 3 pairing obligation): this claim supplies the chain; the source-fed test at
+// the end of this module runs the real front end over the same five arms.
 
 fn cpo_atom(name: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
@@ -88,3 +91,30 @@ test fn coproduct_pipe_chain_reversed_tail_is_not_the_fixture_order_holds() -> B
   }
 }
 
+
+// SOURCE-FED: the same five arms written as source text and carried by the REAL front end
+// (tokenize_prepared -> parse_module -> normalize, via alias_decl_normalized), then read back from
+// the symbol index. This is the inhabitance claim the supplied-chain tests above owe: it executes the
+// real ingest route, so reverting the collector in sugar.dag fails it. Its expected value is the shared fixture.
+data cpo_source_text: String = "module v2.test.claim.coproduct_source\n\ntype Standing = Active | Pending | Revoked | Zed | Beta\n"
+
+fn cpo_source_declaration_labels() -> Optional<List<EdgeLabel>> {
+  match alias_decl_normalized(text: cpo_source_text, file: ^coproduct_source_probe) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: t, diagnostics: _ } =>
+      match symbol_index_lookup(
+        index: alias_decl_index_of(trees: [t]),
+        qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.claim.coproduct_source.Standing")
+      ) {
+        Present { value: n } => Present { value: cpo_labels(edges: n.children) }
+        Absent => Absent
+      }
+  }
+}
+
+test fn coproduct_source_text_declaration_arms_are_in_source_order_holds() -> Bool {
+  match cpo_source_declaration_labels() {
+    Present { value: labels } => labels == cpo_labels(edges: cpf_standing_disj().children)
+    Absent => false
+  }
+}

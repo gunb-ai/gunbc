@@ -7,11 +7,11 @@ import std.optional { Present, Absent }
 import std.decimal { ExactDecimal }
 import std.decl_ref { decl_ref }
 import std.measure {
-  MoneyPerHour, MoneyAmountMicro, MoneyRate, money_amount_micro, money_per_hour_micros,
+  MoneyPerHour, MoneyAmountMicro, MoneyRate, money_amount_micro, money_per_hour_micros, money_amount_micro_count,
   second, byte_size,
 }
 import extdeps.currency.currency { Usd }
-import extdeps.cloud.vast_ai { VastAiInstance, VastAiCharge, VastAiCharges }
+import extdeps.cloud.vast_ai { VastAiInstance, VastAiCharge, VastAiCharges, VastAiChargeMetadata }
 import extdeps.external_authority { TranscribedUncited }
 import product.fabric.flex_policy {
   FlexPolicy, FlexBidAdmission, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused, FlexCurrencyMismatch, flex_bid_admission,
@@ -40,7 +40,7 @@ import product.fabric.flex_vast_loop {
   flex_plan_pass, flex_created_outcome, flex_reconcile_ours, flex_reconciled_allocation,
   flex_acquired_allocation, flex_release_card, flex_ours_roster, flex_provider_declaration, flex_vast_disk_gigabytes,
   flex_wet_gate_wall, flex_create_walls, flex_create_request,
-  FlexPassStep, FlexPassDone, FlexPassDestroyDue, flex_pass_step,
+  FlexPassStep, FlexPassDone, FlexPassDestroyDue, flex_pass_step, FlexReleaseInputs, FlexPassReleaseReadingsUnread, flex_key_from_custody, FlexPassStopped,
 }
 import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation {
@@ -58,7 +58,7 @@ import test.claim.fabric.flex_bid_admission_witness {
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
 import extdeps.cloud.vast_ai { VastAiCharges }
 import test.claim.serving.rented_release_witness { w_acquired, w_readings, w_roots, w_protected, w_instance }
-import gunbc.serving.rented_release { RentedInstanceObserved }
+import gunbc.serving.rented_release { RentedInstanceObserved, rented_bound_instance_id }
 import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation { rented_allocation_wire }
 
@@ -116,7 +116,7 @@ fn w_charges(units: Int) -> FlexChargesStanding {
       after_token: none,
       page: VastAiCharges {
         success: true, count: 1, total: 1, next_token: none,
-        results: [VastAiCharge { start: 1, end: 2, type: "compute", source: "vast", description: "spent", amount: ExactDecimal { units: units, fraction_digits: 0 }, items: [] }],
+        results: [VastAiCharge { start: 1, end: 2, type: "compute", source: "vast", description: "spent", amount: ExactDecimal { units: units, fraction_digits: 0 }, metadata: Present { value: VastAiChargeMetadata { template_id: none, label: Present { value: "gunbc-flex" } } }, items: [] }],
       },
     },
   ])
@@ -151,8 +151,8 @@ fn w_input(mode: ApplyMode, gates: FlexWetGates, roster: FlexInstancesStanding, 
   }
 }
 
-data w_open: FlexWetGates = FlexWetGates { custody: CustodyHeld }
-data w_closed: FlexWetGates = FlexWetGates { custody: CustodyNotHeld { causes: ["file ABSENT"] } }
+data w_open: FlexWetGates = FlexWetGates { key: flex_key_from_custody(custody: CustodyHeld) }
+data w_closed: FlexWetGates = FlexWetGates { key: flex_key_from_custody(custody: CustodyNotHeld { causes: ["file ABSENT"] }) }
 
 fn w_under_roster() -> FlexInstancesStanding { exhausted(rows: [w_ours(id: 1001, dollars: 1)]) }
 
@@ -357,7 +357,7 @@ test fn the_fifty_dollar_trial_total_is_a_ceiling_over_the_spent_charges_and_the
   let under = w_wet_with_charges(units: 10)
   let unread = w_wet_charges_state(c: FlexChargesUnobserved)
   match at {
-    Present { value: FlexPassCreateRefused { refusal: FlexRefusedBudgetCeiling { spent: _, reservation: _, ceiling: _ } } } => true
+    Present { value: FlexPassCreateRefused { refusal: FlexRefusedBudgetCeiling { spent: _, unattributed: _, reservation: _, ceiling: _ } } } => true
     _ => false
   } && match under {
     Absent => true
@@ -374,6 +374,55 @@ fn w_wet_with_charges(units: Int) -> FlexPassRefusal? {
 
 fn w_wet_charges_state(c: FlexChargesStanding) -> FlexPassRefusal? {
   w_refusal_of(p: flex_plan_pass(input: w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: c, intent: Present { value: w_intent(entry: w_established(), admitted: true) })))
+}
+
+// ---- ISOLATION OF THE CEILING: ctrl's spend on the shared account is not ours, and a row whose owner is
+// unread is never assumed not ours. $49 of ctrl-bidder charges plus $5 unlabelled plus $10 of ours stays under
+// the $50 ceiling with an hour's reservation (a fold summing every row sees $64 and refuses); $49 unlabelled
+// plus $1 of ours refuses, naming the unattributed $49 (a fold that drops unlabelled rows sees $1 and admits).
+fn w_charge_row(units: Int, label: String?, source: String) -> VastAiCharge {
+  VastAiCharge {
+    start: 1, end: 2, type: "instance", source: source, description: "spent",
+    amount: ExactDecimal { units: units, fraction_digits: 0 },
+    metadata: Present { value: VastAiChargeMetadata { template_id: none, label: label } },
+    items: [],
+  }
+}
+
+fn w_charges_rows(rows: List<VastAiCharge>) -> FlexChargesStanding {
+  flex_fold_charge_pages(pages: [
+    FlexChargesPageTurn {
+      after_token: none,
+      page: VastAiCharges { success: true, count: length(rows), total: length(rows), next_token: none, results: rows },
+    },
+  ])
+}
+
+test fn foreign_charges_do_not_count_and_unattributed_charges_do() -> Bool {
+  let mixed = w_wet_charges_state(c: w_charges_rows(rows: [
+    w_charge_row(units: 49, label: Present { value: "ctrl-bidder" }, source: "instance-1"),
+    w_charge_row(units: 5, label: none, source: "instance-2"),
+    w_charge_row(units: 10, label: Present { value: "gunbc-flex" }, source: "instance-3"),
+  ]))
+  let unattributed_over = w_wet_charges_state(c: w_charges_rows(rows: [
+    w_charge_row(units: 49, label: none, source: "instance-2"),
+    w_charge_row(units: 1, label: Present { value: "gunbc-flex" }, source: "instance-3"),
+  ]))
+  let ours_over = w_wet_charges_state(c: w_charges_rows(rows: [
+    w_charge_row(units: 49, label: Present { value: "gunbc-flex" }, source: "instance-3"),
+    w_charge_row(units: 1, label: Present { value: "ctrl-bidder" }, source: "instance-1"),
+  ]))
+  match mixed {
+    Absent => true
+    Present { value: _ } => false
+  } && match unattributed_over {
+    Present { value: FlexPassCreateRefused { refusal: FlexRefusedBudgetCeiling { spent: o, unattributed: u, reservation: _, ceiling: _ } } } =>
+      (money_amount_micro_count(m: o) == 1000000) && (money_amount_micro_count(m: u) == 49000000)
+    _ => false
+  } && match ours_over {
+    Present { value: FlexPassCreateRefused { refusal: FlexRefusedBudgetCeiling { spent: _, unattributed: _, reservation: _, ceiling: _ } } } => true
+    _ => false
+  }
 }
 
 // ---- ISOLATION: a foreign (ctrl) instance is invisible to the cap, the reconcile and the destroy.
@@ -526,7 +575,17 @@ fn w_listed(id: Int) -> RentedInstanceReading {
 }
 
 fn w_step(readings: RentedReleaseReadings) -> FlexPassStep {
-  flex_pass_step(input: w_destroy_due_input(), roots: w_roots, protected: w_protected, readings: readings)
+  flex_pass_step(input: w_destroy_due_input(), releasing: Present { value: FlexReleaseInputs { roots: w_roots, protected: w_protected, readings: readings } })
+}
+
+// A wet release planned with no readings supplied stops typed and names the allocation; it never reaches
+// S5's receipt (which would judge readings the pass does not have) and plans no destroy.
+test fn a_release_without_readings_stops_typed_and_destroys_nothing() -> Bool {
+  match flex_pass_step(input: w_destroy_due_input(), releasing: none) {
+    FlexPassDone { outcome: FlexPassStopped { refusal: FlexPassReleaseReadingsUnread { allocation: a } } } =>
+      (rented_bound_instance_id(allocation: a) as String) == "1001"
+    _ => false
+  }
 }
 
 // A never-started card (host silent, control reached): the on-card legs are NotPerformed, the id-guarded
@@ -597,3 +656,4 @@ test fn the_selected_flex_recipe_has_an_unresolved_template_until_its_served_id_
     _ => false
   }
 }
+
