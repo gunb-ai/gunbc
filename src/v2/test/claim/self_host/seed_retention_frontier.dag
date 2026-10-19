@@ -23,7 +23,8 @@ import v2.compiler.self_host.seed_retention_frontier {
   frontier_count_where,
   frontier_undeclared_reason_count,
   self_host_frontier,
-  self_host_frontier_holds
+  self_host_frontier_holds,
+  self_host_frontier_report_over
 }
 import std.algebra { length }
 import v2.std.text { String }
@@ -252,4 +253,69 @@ test fn witness_frontier_stale_row_still_refuses() -> Bool {
     controls: ControlsPassed
   )
   !self_host_frontier_holds(frontier: f)
+}
+
+fn report_has(lines: List<String>, pattern: String) -> Bool {
+  any(xs: lines, predicate: fn(l) { string_contains(s: l, pattern: pattern) })
+}
+
+data report_manifest: String = "// src/emitted_in_closure.rs\n// src/emitted_outside_closure.rs\n"
+data report_observed: String = "src/alpha.rs\nsrc/bin/gamma.rs\nsrc/emitted_in_closure.rs\nsrc/emitted_outside_closure.rs\n"
+
+// Positive control through the text route the driver mode takes: one SelfEmitted, one
+// EmittedUnexecuted, two SeedRetained, exit 0.
+test fn witness_report_control_holds() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: frontier_roster,
+    manifest_text: report_manifest,
+    verdict_text: "controls-passed\nemitted_in_closure\n",
+    observed_text: report_observed
+  )
+  (r.exit == 0)
+    && (length(xs: r.lines) == 1)
+    && report_has(lines: r.lines, pattern: "self_emitted=1 emitted_unexecuted=1 seed_retained=2 unclassified=0")
+}
+
+// RED: the module removed from the executed closure -> SelfEmitted moves to EmittedUnexecuted.
+test fn witness_report_module_removed_from_closure_moves_to_unexecuted() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: frontier_roster,
+    manifest_text: report_manifest,
+    verdict_text: "controls-passed\n",
+    observed_text: report_observed
+  )
+  (r.exit == 0)
+    && report_has(lines: r.lines, pattern: "self_emitted=0 emitted_unexecuted=2")
+}
+
+// RED: a deleted retention row -> Unclassified refusal, exit 1.
+test fn witness_report_deleted_row_refuses() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: [retained_host_binary(path: "src/bin/gamma.rs")],
+    manifest_text: report_manifest,
+    verdict_text: "controls-passed\nemitted_in_closure\n",
+    observed_text: report_observed
+  )
+  (r.exit == 1)
+    && report_has(lines: r.lines, pattern: "REFUSED unclassified: src/alpha.rs")
+}
+
+// RED: a deleted manifest line (the emission no longer declared) -> that file is Unclassified.
+test fn witness_report_deleted_manifest_line_refuses() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: frontier_roster,
+    manifest_text: "// src/emitted_outside_closure.rs\n",
+    verdict_text: "controls-passed\nemitted_in_closure\n",
+    observed_text: report_observed
+  )
+  (r.exit == 1)
+    && report_has(lines: r.lines, pattern: "REFUSED unclassified: src/emitted_in_closure.rs")
+}
+
+// No observation is exit 2, never a green or a refusal.
+test fn witness_report_missing_inputs_are_no_observation() -> Bool {
+  let empty_verdict = self_host_frontier_report_over(roster: frontier_roster, manifest_text: report_manifest, verdict_text: "", observed_text: report_observed)
+  let no_observed = self_host_frontier_report_over(roster: frontier_roster, manifest_text: report_manifest, verdict_text: "controls-passed\n", observed_text: "")
+  let bad_word = self_host_frontier_report_over(roster: frontier_roster, manifest_text: report_manifest, verdict_text: "maybe\n", observed_text: report_observed)
+  (empty_verdict.exit == 2) && (no_observed.exit == 2) && (bad_word.exit == 2)
 }

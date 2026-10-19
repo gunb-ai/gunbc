@@ -9,8 +9,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.stage0.stage0_emitted_population_manifest {
   emitted_population_manifest_basename,
-  emitted_population_manifest_line_prefix,
-  emitted_population_manifest_line_separator
+  emitted_population_paths_from_manifest
 }
 import gunbc.stage0.stage0_cargo_manifest {
   CargoManifestBinParse,
@@ -161,34 +160,6 @@ data emitted_population_manifest_repo_path: String = concat(
   stage0_package_root,
   concat(stage0_source_dir_relative_to_package, emitted_population_manifest_basename)
 )
-
-// THE READ IS THE STRUCTURAL INVERSE OF THE WRITE, NOT A SECOND PARSER.
-//
-// `v1.compiler.emit_rust` `emit_emitted_population_manifest` renders one line per produced path
-// as `line_prefix ++ path`, joined by the separator. This recovers them by splitting on that
-// separator and stripping that prefix, reading BOTH literals from the same authority the writer
-// reads (`gunbc.stage0.stage0_emitted_population_manifest`). No Rust grammar is involved: the artifact
-// is a `.rs` so that it is covered by the regen comparison, but nothing here parses Rust, which
-// is the whole reason it is comment lines rather than a `const &[&str]`.
-//
-// A line that does not carry the prefix is DROPPED rather than guessed at. The manifest is
-// emitter-produced and every line carries it by construction, so a line that does not is
-// evidence the artifact is not what this function was pointed at -- and the emptiness that
-// results is caught by the caller, which refuses on an empty population rather than reporting
-// "the emitter produced nothing".
-fn emitted_population_paths_from_manifest(content: String) -> List<String> {
-  let prefix_length = string_length(s: emitted_population_manifest_line_prefix)
-  let lines = split(s: content, delimiter: emitted_population_manifest_line_separator)
-  list_map(
-    xs: filter(
-      xs: lines,
-      predicate: fn(line) {
-        starts_with(s: line, prefix: emitted_population_manifest_line_prefix)
-      }
-    ),
-    f: fn(line) { substring(s: line, start: prefix_length, end: string_length(s: line)) }
-  )
-}
 
 // The manifest declares TARGET-relative paths (`src/cli_run.rs`), because that is the space the
 // emitter writes in. Everything downstream of this observation addresses REPOSITORY-relative

@@ -315,6 +315,7 @@ pub enum TargetProducer {
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
     DependencyDemandCensus,
+    SelfHostFrontier,
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
@@ -572,6 +573,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("dependency-demand-census"),
             TargetProducer::DependencyDemandCensus,
+        ),
+        (
+            instrument_label("self-host-frontier"),
+            TargetProducer::SelfHostFrontier,
         ),
         (
             instrument_label("generic-identity-census"),
@@ -1071,6 +1076,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::DependencyDemandCensus => {
             run_dependency_demand_census(&self_host_source_roots())
         }
+        TargetProducer::SelfHostFrontier => run_self_host_frontier(&self_host_source_roots()),
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
         }
@@ -5453,6 +5459,25 @@ fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
             "generic-identity-census: {} (controls over {FIXTURE}; report over the closure of {REPORT_ENTRY}, {subjects} sources)",
             standing.lines().next().unwrap_or("STANDING absent")
         ),
+    }
+}
+
+fn run_self_host_frontier(source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_self_host_frontier(source_roots) {
+        Ok(code) => InvocationOutcome {
+            termination: match code {
+                0 => Termination::ObservationHeld,
+                1 => Termination::ObservationDidNotHold,
+                _ => Termination::SubjectUnreached,
+            },
+            message: format!(
+                "self-host-frontier: exit {code}; the [self-host-frontier] lines above are the derived frontier"
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
     }
 }
 

@@ -15,7 +15,13 @@ import v2.compiler.self_host.stage0_crate_layout {
   wet_actuator_lib_module_registrations
 }
 import v2.compiler.self_host.seed_retention_frontier {
+  ControlsNotPassed,
+  EmittedUnexecuted,
+  SeedRetained,
   SeedRetentionFrontierRow,
+  SelfEmitted,
+  Unclassified,
+  frontier_path_standing,
   seed_retention_frontier_roster
 }
 
@@ -149,27 +155,44 @@ fn stage0_retained_module_dir_path(module_basename: String) -> String {
   concat("src/", module_basename, "/mod.rs")
 }
 
+// THE FRONTIER FOLD IS THE ONE ANSWER to "does this retained module have a retention row": the
+// module's path is classified by v2.compiler.self_host.seed_retention_frontier frontier_path_standing,
+// and only SeedRetained carries a row. A retained pub mod is by definition not in the emitted
+// population, so the emitted list is empty here rather than a second reading of it.
+fn stage0_retention_standing_path(
+  path: String,
+  roster: List<SeedRetentionFrontierRow>
+) -> String {
+  match frontier_path_standing(
+    roster: roster,
+    emitted: [],
+    executed_closure_modules: [],
+    controls: ControlsNotPassed,
+    path: path
+  ) {
+    SeedRetained { row: row } => row.crate_relative_path
+    SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => ""
+    EmittedUnexecuted { crate_relative_path: _, source_module: _ } => ""
+    Unclassified { crate_relative_path: _ } => ""
+  }
+}
+
 fn stage0_retention_row_path(
   module_basename: String,
   roster: List<SeedRetentionFrontierRow>
 ) -> String {
-  let file_path = stage0_retained_module_file_path(module_basename: module_basename)
-  let dir_path = stage0_retained_module_dir_path(module_basename: module_basename)
-  fold(
-    roster,
-    init: "",
-    f: fn(acc, row) {
-      if acc != "" {
-        acc
-      } else if row.crate_relative_path == file_path {
-        row.crate_relative_path
-      } else if row.crate_relative_path == dir_path {
-        row.crate_relative_path
-      } else {
-        acc
-      }
-    }
+  let file_row = stage0_retention_standing_path(
+    path: stage0_retained_module_file_path(module_basename: module_basename),
+    roster: roster
   )
+  if file_row != "" {
+    file_row
+  } else {
+    stage0_retention_standing_path(
+      path: stage0_retained_module_dir_path(module_basename: module_basename),
+      roster: roster
+    )
+  }
 }
 
 type Stage0AssemblyOwnerResolution

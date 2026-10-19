@@ -15,6 +15,8 @@ import v2.compiler.self_host.emitter_producer_provenance {
   cssl_harness_realized_closure,
   mint_producer_emission_receipt
 }
+import std.integer { int_to_decimal_string }
+import gunbc.stage0.stage0_emitted_population_manifest { emitted_population_paths_from_manifest }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
@@ -655,4 +657,127 @@ fn row_dissolution_is_unbound(row: SeedRetentionFrontierRow) -> Bool {
 
 fn frontier_unbound_dissolution_count(frontier: SelfHostFrontier) -> Int {
   length(xs: filter(xs: frontier_retained_rows(frontier: frontier), predicate: fn(row) { row_dissolution_is_unbound(row: row) }))
+}
+
+// THE VERB'S WHOLE ANSWER IS THIS FOLD (v2.compiler.source_root_eval native_self_host_frontier_output
+// prints it). The host reads three files and hands their TEXT here; every decision -- the join, the
+// standing, the count, the exit -- is below, so the shim cannot hold a second opinion of the verdict.
+//
+// THE THREE INPUTS AND WHO PRODUCES EACH (DESIGN section 3c, a fold with no producer is dangling):
+//   manifest -- src/emitted_population.rs, written by v1.compiler.emit_rust emit_emitted_population_manifest
+//     for compile_stage0(), read by the ONE inverse parser gunbc.stage0.stage0_emitted_population_manifest
+//     emitted_population_paths_from_manifest;
+//   verdict -- written by the self-host step (cli_run native_lane_runner run_self_host) AFTER its
+//     controls ran: line one is `controls-passed` or `controls-not-passed`, every later line the
+//     emit basename of one module of the emission the built driver was judged over;
+//   observed -- one crate-relative .rs path per line, the stage0 crate's files as the host found them.
+//
+// THE JOIN KEY IS THE EMIT BASENAME, because the module's emit filename (gunbc.rust_emitted_edge
+// rust_module_emit_filename) is the identity the emitter itself writes and the manifest carries: a
+// manifest path `src/<basename>.rs` and a verdict line `<basename>` are the same module by the
+// emitter's own naming rule, not by a second mapping this module authored.
+//
+// A MALFORMED INPUT IS NO OBSERVATION (exit 2), never a quiet empty: an unknown verdict word, an empty
+// manifest, or no observed paths would each otherwise fold to a plausible all-Unclassified or
+// all-retained report.
+type SelfHostFrontierReport {
+  lines: List<String>
+  exit: Int
+}
+
+data frontier_verdict_passed_word: String = "controls-passed"
+data frontier_verdict_not_passed_word: String = "controls-not-passed"
+
+fn frontier_nonempty_lines(text: String) -> List<String> {
+  filter(xs: split(s: text, delimiter: "\n"), predicate: fn(line) { string_length(s: line) > 0 })
+}
+
+fn frontier_emit_basename(path: String) -> String {
+  substring(s: path, start: 4, end: string_length(s: path) - 3)
+}
+
+fn frontier_emitted_rows(paths: List<String>) -> List<EmittedPopulationRow> {
+  list_map(
+    xs: paths,
+    f: fn(path) { EmittedPopulationRow { crate_relative_path: path, source_module: frontier_emit_basename(path: path) } }
+  )
+}
+
+fn frontier_no_observation(detail: String) -> SelfHostFrontierReport {
+  SelfHostFrontierReport { lines: [concat("[self-host-frontier] no observation: ", detail)], exit: 2 }
+}
+
+fn frontier_summary_line(frontier: SelfHostFrontier) -> String {
+  concat(
+    "[self-host-frontier] self_emitted=", int_to_decimal_string(value: frontier_count_where(frontier: frontier, wanted: 0)),
+    " emitted_unexecuted=", int_to_decimal_string(value: frontier_count_where(frontier: frontier, wanted: 1)),
+    " seed_retained=", int_to_decimal_string(value: frontier_count_where(frontier: frontier, wanted: 2)),
+    " unclassified=", int_to_decimal_string(value: frontier_count_where(frontier: frontier, wanted: 3)),
+    " stale_rows=", int_to_decimal_string(value: length(xs: frontier.stale_rows)),
+    " reason_not_yet_declared=", int_to_decimal_string(value: frontier_undeclared_reason_count(frontier: frontier)),
+    " unbound_dissolution=", int_to_decimal_string(value: frontier_unbound_dissolution_count(frontier: frontier))
+  )
+}
+
+fn frontier_standing_refusal_lines(frontier: SelfHostFrontier) -> List<String> {
+  concat(
+    fold(
+      frontier.standings,
+      init: [],
+      f: fn(acc, standing) {
+        match standing {
+          Unclassified { crate_relative_path: path } => concat(acc, [concat("[self-host-frontier] REFUSED unclassified: ", path)])
+          SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => acc
+          EmittedUnexecuted { crate_relative_path: _, source_module: _ } => acc
+          SeedRetained { row: _ } => acc
+        }
+      }
+    ),
+    list_map(
+      xs: frontier.stale_rows,
+      f: fn(row) {
+        match row {
+          RosterRowWithoutObservedPath { crate_relative_path: path } => concat("[self-host-frontier] REFUSED roster row without observed path: ", path)
+          RosteredPathIsCompared { crate_relative_path: path } => concat("[self-host-frontier] REFUSED roster row for a compared path: ", path)
+          RetainedRostered { crate_relative_path: path } => concat("[self-host-frontier] REFUSED stale row: ", path)
+          RetainedUnrostered { crate_relative_path: path } => concat("[self-host-frontier] REFUSED stale row: ", path)
+        }
+      }
+    )
+  )
+}
+
+// The live roster is bound here and nowhere else; the parameterized fold is what the controlled
+// fixture witnesses probe (a probe over the live roster would copy the current tree).
+fn self_host_frontier_report(manifest_text: String, verdict_text: String, observed_text: String) -> SelfHostFrontierReport {
+  self_host_frontier_report_over(roster: seed_retention_frontier_roster, manifest_text: manifest_text, verdict_text: verdict_text, observed_text: observed_text)
+}
+
+fn self_host_frontier_report_over(roster: List<SeedRetentionFrontierRow>, manifest_text: String, verdict_text: String, observed_text: String) -> SelfHostFrontierReport {
+  let verdict_lines = frontier_nonempty_lines(text: verdict_text)
+  let observed = frontier_nonempty_lines(text: observed_text)
+  let manifest_paths = emitted_population_paths_from_manifest(content: manifest_text)
+  match verdict_lines {
+    Empty => frontier_no_observation(detail: "the controls verdict file is empty")
+    Cons { head: word, tail: closure } =>
+      if length(xs: manifest_paths) == 0 {
+        frontier_no_observation(detail: "the emitted-population manifest carried no declared paths")
+      } else if length(xs: observed) == 0 {
+        frontier_no_observation(detail: "no observed stage0 .rs paths were given")
+      } else if (word != frontier_verdict_passed_word) && (word != frontier_verdict_not_passed_word) {
+        frontier_no_observation(detail: concat("unknown controls verdict word ", word))
+      } else {
+        let frontier = self_host_frontier(
+          roster: roster,
+          observed_crate_rust_paths: observed,
+          emitted: frontier_emitted_rows(paths: manifest_paths),
+          executed_closure_modules: closure,
+          controls: if word == frontier_verdict_passed_word { ControlsPassed } else { ControlsNotPassed }
+        )
+        SelfHostFrontierReport {
+          lines: concat([frontier_summary_line(frontier: frontier)], frontier_standing_refusal_lines(frontier: frontier)),
+          exit: if self_host_frontier_holds(frontier: frontier) { 0 } else { 1 }
+        }
+      }
+  }
 }

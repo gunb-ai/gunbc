@@ -7146,6 +7146,127 @@ mod emitted_build_not_clean_cause_tests {
 /// whole job is the preparation it shares with every native instrument; the census is the emitted
 /// binary's, which prints its own lines and decides its own exit. The child's stdout is relayed
 /// line for line and its status is returned unjudged.
+/// THE SELF-HOST FRONTIER MODE OF THE EXISTING SELF-HOST STEP. The seed builds the emitted driver and
+/// runs the step's controls exactly as `run_self_host` does, then writes the three facts the driver's
+/// `self-host-frontier` mode folds: the controls verdict plus the executed closure (the emit basenames
+/// of the crate it built), the stage0 crate's declared emitted population, and its observed `.rs`
+/// files. Every standing is decided by `v2.compiler.self_host.seed_retention_frontier`
+/// `self_host_frontier_report`; this function only observes and relays.
+pub fn run_self_host_frontier(source_roots: &[String]) -> Result<i32, String> {
+    let prepared = prepare_emitted_compiler(source_roots)?;
+    let controls_passed = run_runtime_calibration(&prepared).is_ok()
+        && walk_eval_driver_door(&prepared.binary_path, &super::process_workspace_root()).is_ok();
+    let emitted_dir = prepared.emitted_crate_dir.clone().ok_or_else(|| {
+        "V2-NATIVE REFUSAL cause=SelfHostFrontierNoWorkspace — a restored product has no emitted workspace to read the executed closure from"
+            .to_string()
+    })?;
+    let mut closure = Vec::new();
+    for entry in std::fs::read_dir(emitted_dir.join("src")).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=SelfHostFrontierClosureUnreadable — {}: {e}",
+            emitted_dir.display()
+        )
+    })? {
+        let path = entry
+            .map_err(|e| {
+                format!("V2-NATIVE REFUSAL cause=SelfHostFrontierClosureUnreadable — {e}")
+            })?
+            .path();
+        if path.extension().and_then(|x| x.to_str()) == Some("rs") {
+            if let Some(stem) = path.file_stem().and_then(|x| x.to_str()) {
+                if stem != "lib" && stem != "main" {
+                    closure.push(stem.to_string());
+                }
+            }
+        }
+    }
+    closure.sort();
+    let verdict = format!(
+        "{}\n{}\n",
+        if controls_passed {
+            "controls-passed"
+        } else {
+            "controls-not-passed"
+        },
+        closure.join("\n")
+    );
+    let crate_dir = super::process_workspace_root().join("src/v1/stage0");
+    let mut observed = Vec::new();
+    fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) -> Result<(), String> {
+        for entry in std::fs::read_dir(dir).map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=SelfHostFrontierObservedUnreadable — {}: {e}",
+                dir.display()
+            )
+        })? {
+            let path = entry
+                .map_err(|e| {
+                    format!("V2-NATIVE REFUSAL cause=SelfHostFrontierObservedUnreadable — {e}")
+                })?
+                .path();
+            if path.is_dir() {
+                walk(&path, root, out)?;
+            } else if path.extension().and_then(|x| x.to_str()) == Some("rs") {
+                if let Ok(rel) = path.strip_prefix(root) {
+                    out.push(rel.to_string_lossy().into_owned());
+                }
+            }
+        }
+        Ok(())
+    }
+    walk(&crate_dir.join("src"), &crate_dir, &mut observed)?;
+    observed.sort();
+    let scratch = emitted_dir.join("self_host_frontier_operands");
+    std::fs::create_dir_all(&scratch).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=SelfHostFrontierOperandsUnwritable — {}: {e}",
+            scratch.display()
+        )
+    })?;
+    let verdict_path = scratch.join("verdict.txt");
+    let observed_path = scratch.join("observed.txt");
+    std::fs::write(&verdict_path, verdict).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=SelfHostFrontierOperandsUnwritable — {}: {e}",
+            verdict_path.display()
+        )
+    })?;
+    std::fs::write(&observed_path, observed.join("\n") + "\n").map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=SelfHostFrontierOperandsUnwritable — {}: {e}",
+            observed_path.display()
+        )
+    })?;
+    let manifest_path = crate_dir.join("src/emitted_population.rs");
+    let output = Command::new(&prepared.binary_path)
+        .arg("self-host-frontier")
+        .arg(&manifest_path)
+        .arg(&verdict_path)
+        .arg(&observed_path)
+        .output()
+        .map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+                prepared.binary_path.display()
+            )
+        })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — self-host-frontier stdout: {cause}"
+        )
+    })?;
+    for line in stdout.lines() {
+        println!("{line}");
+    }
+    for line in String::from_utf8_lossy(&output.stderr).lines() {
+        eprintln!("{line}");
+    }
+    output.status.code().ok_or_else(|| {
+        "V2-NATIVE REFUSAL cause=NativeRunKilled — the self-host-frontier child exited without a status"
+            .to_string()
+    })
+}
+
 pub fn run_v2_demand_census(source_roots: &[String]) -> Result<i32, String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let mut args = vec!["demand-census".to_string()];
