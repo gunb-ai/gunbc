@@ -233,8 +233,17 @@ forge_stamp() {
   awk -v new="$val" -v form="$form" -v key="GUNBC_COMPILER_GATE_CONTRACT_STAMP" '
     function die(m) { printf "FAIL: %s\n", m > "/dev/stderr"; exit 1 }
     /^[ \t]*GUNBC_COMPILER_GATE_CONTRACT_STAMP:[ \t]*[0-9a-f]+[ \t]*$/ {
-      if (form == "duplicate") { print; placed++; print "  " key ": " new; placed++ }
-      else { sub(/:.*/, ": " new); placed++ }
+      # BOTH BRANCHES MUST PRINT EXPLICITLY. The first version modified the line with sub() and relied
+      # on the default action to print it -- but the next below (needed so the duplicate branch does
+      # not print its original twice) skips that default for the OTHER branch too. Every single-member
+      # forgery then SILENTLY DELETED the member it meant to change: five RED cases got StampAbsent
+      # ("your tree predates the instruction") instead of the typed malformed-member refusal they
+      # exist to prove, and placed never noticed because it counted intent, not bytes written. This
+      # module is about a check that reports the wrong reason and looks like a pass.
+      # (No apostrophes in this block: it lives inside a single-quoted program, where one closes the
+      # quoting -- the same rule that keeps the emitted awk program quote-free.)
+      if (form == "duplicate") { print; print "  " key ": " new; placed += 2 }
+      else { sub(/:.*/, ": " new); print; placed += 1 }
       next
     }
     { print }

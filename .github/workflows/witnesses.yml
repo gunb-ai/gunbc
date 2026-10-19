@@ -22,7 +22,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 6eef1638a85753a8
-  GUNBC_COMPILER_GATE_CONTRACT_STAMP: 0acdbc124e13bfec
+  GUNBC_COMPILER_GATE_CONTRACT_STAMP: c2a333eab5544c9e
 jobs:
   v2-bootstrap:
     runs-on: [self-hosted, linux, arm64]
@@ -43,19 +43,24 @@ jobs:
           STAMP_RUNNING='${{ env.GUNBC_COMPILER_GATE_CONTRACT_STAMP }}'
           if '[' '-z' "$STAMP_RUNNING" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampUnreadable {the executing workflow carries no ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' in its environment, so it was not generated with an invocation contract. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: merge origin/main into this branch.'; exit 1; fi
           AWK_PROG='
-          BEGIN { in_env = 0 }
-          $0 ~ /^env:[[:space:]]*$/ { in_env = 1; next }
+          BEGIN { in_env = 0; seen = 0; bad = "" }
+          $0 ~ /^env:[[:space:]]*$/ { if (in_env) { bad = "duplicate" }; in_env = 1; next }
           in_env && $0 ~ /^[^[:space:]]/ { in_env = 0 }
           in_env && index($0, "  " key ": ") == 1 {
+            if (seen) { bad = "duplicate" }
             v = substr($0, index($0, ": ") + 2)
-            gsub(/[^0-9a-f]/, "", v)
-            if (length(v) > 0) { print v; found = 1; exit }
-            exit 3
+            if (v !~ /^[0-9a-f]+$/ || length(v) != 16) { bad = "form" }
+            seen = 1
           }
-          END { if (!found) exit 3 }
+          END {
+            if (bad != "") { print "UNREADABLE"; exit 4 }
+            if (!seen) { exit 3 }
+            print v
+          }
           '
           STAMP_TREE=$('awk' '-v' 'key=GUNBC_COMPILER_GATE_CONTRACT_STAMP' "$AWK_PROG" '.github/workflows/witnesses.yml' || 'true')
           if '[' '-z' "$STAMP_TREE" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no readable ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' at ''.github/workflows/witnesses.yml'', so its workflow predates the instruction this job is executing. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: merge origin/main into this branch.'; exit 1; fi
+          if '[' "$STAMP_TREE" '==' 'UNREADABLE' ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' at ''.github/workflows/witnesses.yml'' but its value is not the one supported scalar form -- ''16'' lowercase hex digits, nothing added around it. A workflow text is not an instruction you can edit into agreement. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: regenerate it through gunbc.witness.compiler_gate_workflow.'; exit 1; fi
           if '[' "$STAMP_TREE" '!=' "$STAMP_RUNNING" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampMismatch {running='"$STAMP_RUNNING"', tree='"$STAMP_TREE"'}. The workflow executing was generated from a DIFFERENT revision than the tree it is judging: the instruction came from the merge ref, and the ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''-stamped workflow committed in the checked-out tree says otherwise. Remedy: merge origin/main into this branch so the tree carries the instruction being run.'; exit 1; fi
           'printf' 'gunbc contract stamp: paired running=%s tree=%s\n' "$STAMP_RUNNING" "$STAMP_TREE"
       - name: Execute the contract-stamp guard against the recorded silent-green subject
@@ -77,9 +82,16 @@ jobs:
           'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL unreadable (no running stamp)' 'committed' '' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
           'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL contract-changing PR (both new)' 'rewritten' '0123456789abcdef' '0' 'paired' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
           'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL step-level env is not the read' 'demoted' '__FROM_WORKFLOW__' '1' 'StampAbsent' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged wrapped (chars around the stamp)' 'forged:wrapped' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged expression (a GitHub expression member)' 'forged:expression' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged quoted scalar' 'forged:quoted' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged truncated (15 digits)' 'forged:truncated' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged extended (17 digits)' 'forged:extended' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged uppercased (hex, wrong case)' 'forged:uppercased' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged duplicate member (declared twice)' 'forged:duplicate' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
           GUNBC_CONTRACT_STAMP_CASES_RAN=$('grep' '-c' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN" "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" || 'true')
-          if '[' "$GUNBC_CONTRACT_STAMP_CASES_RAN" '!=' '6' ']'; then 'printf' '%s
-          ' 'REFUSED gunbc contract stamp evidence: the harness reported gunbc-contract-stamp-evidence-case case lines, expected 6 modelled cases FOR THIS RUN -- the harness is missing, crashed, or ran a table that is not the model'\''s. See $GUNBC_CONTRACT_STAMP_EVIDENCE_LOG'; exit 1; fi
+          if '[' "$GUNBC_CONTRACT_STAMP_CASES_RAN" '!=' '13' ']'; then 'printf' '%s
+          ' 'REFUSED gunbc contract stamp evidence: the harness reported gunbc-contract-stamp-evidence-case case lines, expected 13 modelled cases FOR THIS RUN -- the harness is missing, crashed, or ran a table that is not the model'\''s. See $GUNBC_CONTRACT_STAMP_EVIDENCE_LOG'; exit 1; fi
           if '[' '-e' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" ']'; then 'printf' '%s
           ' 'REFUSED gunbc contract stamp evidence: the harness did not report ALL ASSERTIONS HELD. See its output above.'; exit 1; fi
       - name: Isolate toolchain homes
