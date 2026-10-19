@@ -3,8 +3,6 @@ module gunbc.fleet.flex_pass_run
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String, EpochMs }
 import std.optional { Present, Absent }
 import std.list { first_where }
-import std.induction { int_pow_bounded }
-import std.decimal { ExactDecimal }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.integer { int_to_decimal_string }
@@ -35,7 +33,7 @@ import product.fabric.serving_recipe { ServingSelectionQuote, SelectionQuoteEsta
 import product.fabric.flex_vast_loop {
   FlexPassInput, FlexPassObservation, FlexWetGates, FlexKeyStanding, FlexKeyLive, FlexKeyNotLive, FlexKeyFromSecretManager,
   FlexCreateIntent, FlexPlacementUnread, FlexPassOutcome, flex_run_pass, flex_vast_template_hashes,
-  flex_pass_outcome_wire,
+  flex_pass_outcome_wire, flex_create_walls, flex_wet_gate_wall, FlexCreateRefusal, flex_create_refusal_wire,
 }
 
 // THE SRV1 FLEET-CONVERGE ENTRY OF THE FLEX TIER: ONE PASS of product.fabric.flex_vast_loop flex_run_pass
@@ -184,63 +182,45 @@ fn flex_entry_member(entry: FlexShadowFieldEntry) -> Bool {
 }
 
 // The cheapest member by bid floor (min_bid). A tie keeps the earlier offer in the answer's order.
-fn flex_no_screened_offer() -> FlexScreenedOffer? {
-  none
+// ---- NO SELECTION HERE. Choosing which offer to rent is a matching decision, owned by product.fabric.selection
+// select_supply under std.decision (DESIGN 3b, 3d); this entry never ranks members itself. That route is the
+// declared frontier product.fabric.flex_vast_loop flex_select_supply_consumer_frontier: no bid attempt is
+// built and no member's quote is established, so a selection would answer needs-evidence. Until it lands,
+// the pass is run with NO intent and the receipt reports, for EVERY member, the create it would ask for and
+// every wall in front of it (flex_create_walls), so the walls are read without choosing a card.
+type FlexMemberWalls {
+  screened: FlexScreenedOffer
+  admission_built: Bool
+  walls: List<FlexCreateRefusal>
 }
 
-fn flex_cheapest_member(screened: List<FlexScreenedOffer>) -> FlexScreenedOffer? {
-  fold(
-    screened |> filter(s => flex_entry_member(entry: s.entry)),
-    init: flex_no_screened_offer(),
-    f: (acc, s) =>
-      match acc {
-        Absent => Present { value: s }
-        Present { value: best } =>
-          if flex_decimal_less(a: s.offer.min_bid, b: best.offer.min_bid) {
-            Present { value: s }
-          } else {
-            acc
-          }
-      },
-  )
-}
-
-// a < b for two non-negative decimals, compared exactly by cross-scaling (std.induction int_pow_bounded).
-// A scale that does not fit refuses the comparison as false, so it never picks an offer it cannot compare.
-fn flex_decimal_less(a: ExactDecimal, b: ExactDecimal) -> Bool {
-  match int_pow_bounded(base: 10, exp: b.fraction_digits) {
-    Absent => false
-    Present { value: sb } =>
-      match int_pow_bounded(base: 10, exp: a.fraction_digits) {
-        Absent => false
-        Present { value: sa } => (a.units * sb) < (b.units * sa)
+fn flex_member_intent(s: FlexScreenedOffer) -> FlexCreateIntent? {
+  match flex_offer_admission_unattempted(offer: s.offer, account: flex_vast_account) {
+    Absent => none
+    Present { value: admission } =>
+      Present {
+        value: FlexCreateIntent {
+          offer: s.offer,
+          entry: s.entry,
+          quote: s.quote,
+          admission: admission,
+          placement: FlexPlacementUnread { obligation: "the card, host and route of a Vast rental are read from the instance the create yields, never supplied before it" as NonEmptyStr },
+        },
       }
   }
 }
 
-// THE INTENT: the cheapest member, its screened standing and quote, the admission it can have with no bid
-// attempt built, and its placement, which only the observed instance can supply (A3) and stays unread.
-type FlexIntentStanding
-  = FlexIntentBuilt { intent: FlexCreateIntent }
-  | FlexIntentNoMember
-  | FlexIntentAdmissionUnbuilt { offer_id: Int }
-
-fn flex_intent(screened: List<FlexScreenedOffer>) -> FlexIntentStanding {
-  match flex_cheapest_member(screened: screened) {
-    Absent => FlexIntentNoMember
-    Present { value: s } =>
-      match flex_offer_admission_unattempted(offer: s.offer, account: flex_vast_account) {
-        Absent => FlexIntentAdmissionUnbuilt { offer_id: s.offer.id }
-        Present { value: admission } =>
-          FlexIntentBuilt {
-            intent: FlexCreateIntent {
-              offer: s.offer,
-              entry: s.entry,
-              quote: s.quote,
-              admission: admission,
-              placement: FlexPlacementUnread { obligation: "the card, host and route of a Vast rental are read from the instance the create yields, never supplied before it" as NonEmptyStr },
-            },
-          }
+fn flex_member_walls(input: FlexPassInput, s: FlexScreenedOffer) -> FlexMemberWalls {
+  match flex_member_intent(s: s) {
+    Absent => FlexMemberWalls { screened: s, admission_built: false, walls: [] }
+    Present { value: intent } =>
+      FlexMemberWalls {
+        screened: s,
+        admission_built: true,
+        walls: concat(
+          flex_create_walls(policy: input.policy, observation: input.observation, intent: intent, recipe: input.recipe, hashes: input.template_hashes),
+          flex_wet_gate_wall(gates: input.gates),
+        ),
       }
   }
 }
@@ -289,12 +269,15 @@ fn flex_charges_wire(s: FlexChargesStanding) -> String {
   }
 }
 
-fn flex_intent_wire(i: FlexIntentStanding) -> String {
-  match i {
-    FlexIntentBuilt { intent: it } => concat("intent=offer ", int_to_decimal_string(value: it.offer.id))
-    FlexIntentNoMember => "intent=none (no shadow-field member)"
-    FlexIntentAdmissionUnbuilt { offer_id: id } => concat("intent=none (candidates derived but no bid attempt is built) offer ", int_to_decimal_string(value: id))
-  }
+fn flex_member_line(m: FlexMemberWalls) -> String {
+  join([
+    flex_screened_line(s: m.screened),
+    if m.admission_built {
+      concat(" walls=[", concat(join(map(m.walls, w => flex_create_refusal_wire(r: w)), ", "), "]"))
+    } else {
+      " walls=unbuilt (candidates derived but no bid attempt is built)"
+    },
+  ], "")
 }
 
 // ---- THE PASS.
@@ -318,9 +301,7 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
         },
         quote: flex_offer_quote(offer: o, recipe: flex_serving_recipe),
       })
-      let intent = flex_intent(screened: screened)
-      let outcome = flex_run_pass(
-        input: FlexPassInput {
+      let input = FlexPassInput {
           policy: flex_trial_policy,
           recipe: flex_serving_recipe,
           gates: FlexWetGates { key: FlexKeyLive { route: FlexKeyFromSecretManager { resolved_version: resolved_version } } },
@@ -329,24 +310,20 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
           observation: FlexPassObservation { roster: instances, charges: charges },
           cards: [],
           allocations: [],
-          intent: match intent {
-            FlexIntentBuilt { intent: it } => Present { value: it }
-            _ => none
-          },
+          intent: none,
           template_hashes: flex_vast_template_hashes,
           no_room: false,
           replacement_serving: false,
-        },
-        api_key: key,
-        releasing: none,
-      )
+        }
+      let members = map(screened |> filter(s => flex_entry_member(entry: s.entry)), s => flex_member_walls(input: input, s: s))
+      let outcome = flex_run_pass(input: input, api_key: key, releasing: none)
       join([
         "key=live secret_manager version=", resolved_version as String, "\n",
         flex_instances_wire(s: instances), "\n",
         flex_charges_wire(s: charges), "\n",
-        "offers=", int_to_decimal_string(value: length(offers)), " members=", int_to_decimal_string(value: length(screened |> filter(s => flex_entry_member(entry: s.entry)))), "\n",
-        join(map(screened |> filter(s => flex_entry_member(entry: s.entry)), s => flex_screened_line(s: s)), "\n"), "\n",
-        flex_intent_wire(i: intent), "\n",
+        "offers=", int_to_decimal_string(value: length(offers)), " members=", int_to_decimal_string(value: length(members)), "\n",
+        join(map(members, m => flex_member_line(m: m)), "\n"), "\n",
+        "selection=needs-evidence (select_supply unwired: product.fabric.flex_vast_loop flex_select_supply_consumer_frontier)\n",
         "outcome=", flex_pass_outcome_wire(outcome: outcome),
       ], "")
   }

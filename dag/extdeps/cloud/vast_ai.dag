@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.algebra { trim, list_head }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { ExactDecimal }
-import std.integer { int_to_decimal_string }
+import extdeps.languages.json.emit { json_int, json_kv, json_object, serialize_json }
 import std.measure {
   MoneyAmountMicro,
   money_amount_micro,
@@ -454,12 +454,17 @@ type VastAiChargesDayRange {
 
 // The day range as the select_filters JSON the endpoint takes (observed accepted live 2026-10-18 from srv1).
 fn vast_ai_charges_day_filter(range: VastAiChargesDayRange) -> String {
-  join(["{\"day\":{\"gte\":", int_to_decimal_string(value: range.gte), ",\"lte\":", int_to_decimal_string(value: range.lte), "}}"], "")
+  serialize_json(v: json_object(members: [
+    json_kv(key: "day", value: json_object(members: [
+      json_kv(key: "gte", value: json_int(n: range.gte)),
+      json_kv(key: "lte", value: json_int(n: range.lte)),
+    ])),
+  ]))
 }
 
 // An empty select_filters object: GET /instances answers every instance on the account (observed live
 // 2026-10-18 from srv1: total_instances counted instances under every label).
-data vast_ai_instances_unfiltered: String = "{}"
+data vast_ai_instances_unfiltered: String = serialize_json(v: json_object(members: []))
 
 type VastAiChargesRefusal
   = VastAiChargesMissingDateRange
