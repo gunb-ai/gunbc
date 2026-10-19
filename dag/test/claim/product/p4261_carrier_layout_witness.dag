@@ -1505,10 +1505,29 @@ test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
     && !one_node(net: net, a: cluster_pad(name: "P9"), b: e1_w4_end)
     && !any(["P1", "P2", "P3", "P4", "P8", "P9"], p => one_node(net: net, a: cluster_pad(name: p), b: e1_beige_top) || one_node(net: net, a: cluster_pad(name: p), b: e1_rail_ref))
     && one_node(net: net, a: e1_q301_lone_lead, b: e1_w4_end) && one_node(net: net, a: e1_q301_lone_lead, b: cluster_pad(name: "P6"))
+    && !one_node(net: net, a: e1_w4_end, b: e1_ground_ref) && !one_node(net: net, a: e1_w4_end, b: pad_ref())
+    && q301_join_needs_the_baseline()
     && count(filter(net.links, l => !is_between(l: l))) == 0
     && carrier_input_reading(layout: p4261_e1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: p4261_k1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: unmeasured_k1()).contains("no board measured, so no measured netlist")
+}
+
+// Q301's lone lead joins P6 only through the baseline reading: the same pair read as a literal 0 ohm
+// value, or with the reading removed, leaves the two in separate nodes.
+fn q301_join_needs_the_baseline() -> Bool {
+  let read = filter(e1_bench_record.resistances, o => reads_pair(o: o, a: e1_q301_lone_lead, b: cluster_pad(name: "P6")))
+  let as_value = map(read, o => ResistanceObservation {
+    asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: o.conditions, polarity: o.polarity, range: o.range,
+    display: DisplayValue { ohms: 0, approximate: true }, stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence,
+  })
+  let joined = measured_netlist(graph: no_beeps(), resistances: read)
+  let valued = measured_netlist(graph: no_beeps(), resistances: as_value)
+  let removed = measured_netlist(graph: no_beeps(), resistances: [])
+  count(read) == 1
+    && one_node(net: joined, a: e1_q301_lone_lead, b: cluster_pad(name: "P6"))
+    && !one_node(net: valued, a: e1_q301_lone_lead, b: cluster_pad(name: "P6"))
+    && !one_node(net: removed, a: e1_q301_lone_lead, b: cluster_pad(name: "P6"))
 }
 
 fn cluster_pad(name: NonEmptyStr) -> ElectricalTerminalRef {
