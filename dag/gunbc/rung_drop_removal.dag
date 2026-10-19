@@ -1,7 +1,7 @@
 module gunbc.rung_drop_removal
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, GitRef }
-import std.algebra { trim }
+import std.algebra { trim, FreeSemigroup, non_empty_to_list }
 import extdeps.git.plumbing
 import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
 import extdeps.git.inspect
@@ -42,7 +42,8 @@ type SubjectRemoval {
   drop_identity: NonEmptyStr
   commit: NonEmptyStr
   pr: Int
-  removed_paths: List<NonEmptyStr>
+  // A removal naming no path asserts nothing, so the field is nonempty by construction.
+  removed_paths: FreeSemigroup<NonEmptyStr>
 }
 
 // WHAT GIT SAID, supplied to the pure verdict so every refusal arm is authorable from values
@@ -159,7 +160,7 @@ fn observe_removal(repo: FilePath, r: SubjectRemoval) -> RemovalObservation {
     commit_stderr: trim(s: commit.stderr),
     ancestry: merge_base_outcome(exit_code: base.exit_code, stdout: (base.sha as String), stderr: base.stderr),
     head_history_is_shallow: trim(s: shallow.answer) == "true",
-    paths: map(r.removed_paths, p => path_probe_at_head(address: address, path: (p as String))),
+    paths: map(non_empty_to_list(xs: r.removed_paths), p => path_probe_at_head(address: address, path: (p as String))),
   }
 }
 
@@ -172,9 +173,4 @@ fn every_removal_names_a_rostered_drop(removals: List<SubjectRemoval>, drop_iden
   fold(removals, init: true, f: fn(acc, r) {
     acc && length(xs: filter(drop_identities, i => i == (r.drop_identity as String))) == 1
   })
-}
-
-// A REMOVAL THAT NAMES NO PATH ASSERTS NOTHING, so it is refused rather than admitted vacuously.
-fn every_removal_names_a_path(removals: List<SubjectRemoval>) -> Bool {
-  all(removals, r => length(xs: r.removed_paths) > 0)
 }

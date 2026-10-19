@@ -1,7 +1,7 @@
 module test.claim.rung_drop_removal_witness
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, GitRef }
-import std.algebra { trim }
+import std.algebra { trim, FreeSemigroup }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.git
 import extdeps.shell
@@ -9,7 +9,6 @@ import extdeps.filesystem.filesystem_io
 import gunbc.rung_drop_removal {
   SubjectRemoval, RemovalVerdict, RemovalHolds, RemovalCommitUnresolved, RemovedPathStillAtHead,
   RemovalCommitOutsideHeadHistory, observed_removal_verdict, every_removal_names_a_rostered_drop,
-  every_removal_names_a_path,
 }
 import gunbc.rung_drop_removal.roster { rung_drop_removal_roster }
 import gunbc.rung_drop.roster { rung_drop_roster }
@@ -65,7 +64,7 @@ fn removal_of(commit: String, path: String) -> SubjectRemoval {
     drop_identity: "control.drop" as NonEmptyStr,
     commit: commit as NonEmptyStr,
     pr: 0,
-    removed_paths: [path as NonEmptyStr],
+    removed_paths: FreeSemigroup { head: path as NonEmptyStr, tail: [] },
   }
 }
 
@@ -123,26 +122,17 @@ data control_dangling_removal: SubjectRemoval = SubjectRemoval {
   drop_identity: "control.no.such.drop" as NonEmptyStr,
   commit: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr,
   pr: 0,
-  removed_paths: ["x" as NonEmptyStr],
-}
-
-data control_pathless_removal: SubjectRemoval = SubjectRemoval {
-  drop_identity: "regen_producer" as NonEmptyStr,
-  commit: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr,
-  pr: 0,
-  removed_paths: [],
+  removed_paths: FreeSemigroup { head: "x" as NonEmptyStr, tail: [] },
 }
 
 fn rostered_drop_identities() -> List<String> {
   map(rung_drop_roster, d => (d.identity as String))
 }
 
-// THE JOIN, both directions: the live roster joins and a dangling record does not; a pathless record is refused.
-test fn every_removal_names_a_rostered_drop_and_a_path() -> Bool {
+// THE JOIN, both directions: the live roster joins and a dangling record does not.
+test fn every_removal_names_a_rostered_drop() -> Bool {
   every_removal_names_a_rostered_drop(removals: rung_drop_removal_roster, drop_identities: rostered_drop_identities())
     && !every_removal_names_a_rostered_drop(removals: [control_dangling_removal], drop_identities: rostered_drop_identities())
-    && every_removal_names_a_path(removals: rung_drop_removal_roster)
-    && !every_removal_names_a_path(removals: [control_pathless_removal])
 }
 
 // THE LIVE ROSTER AGAINST THE REAL REPOSITORY (inhabitance of the real route). Runs from the checkout root.
