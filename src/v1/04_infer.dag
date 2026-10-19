@@ -8011,7 +8011,7 @@ fn formal_code_point_view_peeled(formal: ResolvedFormal, env: TypeEnv) -> Node? 
   }
 }
 
-fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
+fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, seed_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
     let a = pair.second
     let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
@@ -8027,10 +8027,10 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
       CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
     }
     let has_formal = match formal_selection { CallArgumentFormalSelected { formal_index: _, formal: _ } => true  CallArgumentFormalUnavailable => false }
-    let formal_param_type = substitute_generics(n: formal_declared_context, subst: st.subst, source_indices: scope.type_env.source_indices)
+    let formal_param_type = substitute_generics(n: formal_declared_context, subst: map_merge(st.subst, seed_subst), source_indices: scope.type_env.source_indices)
     let formal_conformance_type = match formal_selection {
       CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
-        Present { value: carried } => substitute_generics(n: carried.declaration_bound_conformance, subst: st.subst, source_indices: scope.type_env.source_indices)
+        Present { value: carried } => substitute_generics(n: carried.declaration_bound_conformance, subst: map_merge(st.subst, seed_subst), source_indices: scope.type_env.source_indices)
         Absent => error_type
       }
       CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
@@ -8980,6 +8980,17 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent => []
       }
       let call_sig_split = split_sig_params(params: sig_params, source_indices: scope.type_env.source_indices)
+      // RULE A: THE DECLARED POSITION SEEDS THE CALL'S INSTANTIATION. The callee's declared return unified against the expected type binds
+      // its type variables before any argument is read; the seed is the overlay (it wins), so an argument that derived another instance is
+      // refused at the argument by direct_call_arg_mismatch_diags against the plan formal built from the final substitution. A partial seed
+      // is kept; no expected, no sig, or a return that mentions no variable seeds nothing, and an unbound variable is never defaulted.
+      let seed_subst = match sig {
+        Present { value: s } => match expected {
+          Present { value: exp } => unify_generics(formal: s.inferred, actual: exp, generic_names: call_sig_split.generic_names, source_indices: scope.type_env.source_indices, acc: empty_map())
+          Absent => empty_map()
+        }
+        Absent => empty_map()
+      }
       let resolved_formals = match sig {
         Present { value: s } => match s.resolved_formals {
           DeclarationBoundFormals { formals: formals } => formals
@@ -9064,16 +9075,16 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 
         let value_params = call_sig_split.value_params
         let generic_names = call_sig_split.generic_names
-        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), scope: scope)
+        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), seed_subst: seed_subst, scope: scope)
         if call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: first_pass.subst) {
-          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
+          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, seed_subst: seed_subst, scope: scope)
         } else {
           first_pass
         }
       }
       let arg_infer_results = variant_tag_reference_argument_results(func_name: func_name, callee_is_body_binding: call_target_is_locally_bound(outcome: call_target), results: arg_call.results, scope: scope)
 
-      let call_subst = arg_call.subst
+      let call_subst = map_merge(arg_call.subst, seed_subst)
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let local_call_view = if match sig {
         Present { value: _ } => true

@@ -12061,6 +12061,7 @@ pub fn infer_call_arguments_generic_pass(
     formals: Rc<Vec<Rc<ResolvedFormal>>>,
     generic_names: Rc<Vec<String>>,
     init_subst: Rc<HashMap<String, Rc<Node>>>,
+    seed_subst: Rc<HashMap<String, Rc<Node>>>,
     scope: Rc<InferScope>,
 ) -> Rc<ArgGenericFoldState> {
     Rc::new(
@@ -12117,7 +12118,7 @@ pub fn infer_call_arguments_generic_pass(
             };
             let formal_param_type = substitute_generics(
                 formal_declared_context.clone(),
-                st.subst.clone(),
+                v1_rt::rc_map_merge(st.subst.clone(), seed_subst.clone()),
                 scope.type_env.source_indices.clone(),
             );
             let formal_conformance_type = match (*formal_selection.clone()).clone() {
@@ -12130,7 +12131,7 @@ pub fn infer_call_arguments_generic_pass(
                 {
                     Some(carried) => substitute_generics(
                         carried.declaration_bound_conformance.clone(),
-                        st.subst.clone(),
+                        v1_rt::rc_map_merge(st.subst.clone(), seed_subst.clone()),
                         scope.type_env.source_indices.clone(),
                     ),
                     std::option::Option::None => error_type(),
@@ -13168,58 +13169,41 @@ pub fn infer_expr_body(
             let span = texpr.span.clone();
             let literal_type = match (*lit.clone()).clone() {
                 LiteralValue::LitNull => {
-                    match expected_optional_instance(expected.clone(), scope.clone()) {
-                        Some(instance) => instance.clone(),
-                        std::option::Option::None => {
-                            crate::v1_compiler_infer_types::infer_literal_node(lit.clone())
-                        }
-                    }
+                    expected_optional_instance(expected.clone(), scope.clone())
                 }
                 _ => crate::v1_compiler_infer_types::infer_literal_node(lit.clone()),
             };
-            let plain = crate::v1_std_core::make_expr_node(
-                texpr.occurrence_identity.clone(),
-                Rc::new(ExprData::ExprLiteral { value: lit.clone() }),
-                Rc::new(vec![]),
-                Some(Rc::new(InferredNode::Resolved {
-                    node: literal_type.clone(),
-                })),
-                span.clone(),
-            );
-            match (*literal_boundary_elaboration(lit.clone(), expected.clone(), scope.clone()))
-                .clone()
-            {
-                LiteralBoundary::LiteralBoundaryPlain => ok_infer(plain.clone()),
-                LiteralBoundary::LiteralBoundaryElaborated {
-                    elaboration: e,
-                    destination_type: dt,
-                    ..
-                } => ok_infer(crate::v1_std_core::make_expr_node(
-                    texpr.occurrence_identity.clone(),
-                    Rc::new(ExprData::ExprElaboratedLiteral {
-                        value: lit.clone(),
-                        elaboration: e.clone(),
-                    }),
-                    Rc::new(vec![unfold_literal_image(
-                        lit.clone(),
-                        e.clone(),
-                        dt.clone(),
-                        span.clone(),
-                    )]),
-                    Some(Rc::new(InferredNode::Resolved { node: dt.clone() })),
-                    span.clone(),
-                )),
-                LiteralBoundary::LiteralBoundaryRefused { message: m, .. } => {
-                    Rc::new(InferResult {
-                        typed: plain.clone(),
-                        diagnostics: Rc::new(vec![inference_error(
-                            m.clone(),
-                            span.clone(),
-                            scope.module_name.clone(),
-                        )]),
-                    })
-                }
-            }
+            match literal_type.clone() {
+    std::option::Option::None => Rc::new(InferResult {
+    typed: crate::v1_std_core::make_expr_node(texpr.occurrence_identity.clone(), Rc::new(ExprData::ExprLiteral {
+    value: lit.clone(),
+}), Rc::new(vec![]), Some(Rc::new(InferredNode::CompilerError {
+    message: "`none` has no expected Optional<T> to lower to".to_string(),
+    span: span.clone(),
+})), span.clone()),
+    diagnostics: Rc::new(vec![inference_error("`none` has no expected Optional<T> to lower to: its position supplies no optional type, and it never defaults".to_string(), span.clone(), scope.module_name.clone())]),
+}),
+    Some(literal_type) => {
+            let plain = crate::v1_std_core::make_expr_node(texpr.occurrence_identity.clone(), Rc::new(ExprData::ExprLiteral {
+    value: lit.clone(),
+}), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
+    node: literal_type.clone(),
+})), span.clone());
+match (*literal_boundary_elaboration(lit.clone(), expected.clone(), scope.clone())).clone() {
+    LiteralBoundary::LiteralBoundaryPlain => ok_infer(plain.clone()),
+    LiteralBoundary::LiteralBoundaryElaborated { elaboration: e, destination_type: dt, .. } => ok_infer(crate::v1_std_core::make_expr_node(texpr.occurrence_identity.clone(), Rc::new(ExprData::ExprElaboratedLiteral {
+    value: lit.clone(),
+    elaboration: e.clone(),
+}), Rc::new(vec![unfold_literal_image(lit.clone(), e.clone(), dt.clone(), span.clone())]), Some(Rc::new(InferredNode::Resolved {
+    node: dt.clone(),
+})), span.clone())),
+    LiteralBoundary::LiteralBoundaryRefused { message: m, .. } => Rc::new(InferResult {
+    typed: plain.clone(),
+    diagnostics: Rc::new(vec![inference_error(m.clone(), span.clone(), scope.module_name.clone())]),
+}),
+}
+},
+}
         }
         ExprData::ExprElaboratedLiteral { .. } => ok_infer(texpr.clone()),
         ExprData::ExprError { kind, message, .. } => {
@@ -13648,6 +13632,21 @@ Rc::new(InferResult {
                             sig_params.clone(),
                             scope.type_env.source_indices.clone(),
                         );
+                        let seed_subst = match sig.clone() {
+                            Some(s) => match expected.clone() {
+                                Some(exp) => unify_generics(
+                                    s.inferred.clone(),
+                                    exp.clone(),
+                                    call_sig_split.generic_names.clone(),
+                                    scope.type_env.source_indices.clone(),
+                                    v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                ),
+                                std::option::Option::None => {
+                                    v1_rt::rc_empty_map::<String, Rc<Node>>()
+                                }
+                            },
+                            std::option::Option::None => v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                        };
                         let resolved_formals = match sig.clone() {
                             Some(s) => match (*s.resolved_formals.clone()).clone() {
                                 ResolvedFormals::DeclarationBoundFormals {
@@ -13860,6 +13859,7 @@ Rc::new(InferResult {
                                         resolved_formals.clone(),
                                         generic_names.clone(),
                                         v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                        seed_subst.clone(),
                                         scope.clone(),
                                     );
                                     if call_needs_generic_rebinding_pass(
@@ -13873,6 +13873,7 @@ Rc::new(InferResult {
                                             resolved_formals.clone(),
                                             generic_names.clone(),
                                             first_pass.subst.clone(),
+                                            seed_subst.clone(),
                                             scope.clone(),
                                         )
                                     } else {
@@ -13889,7 +13890,8 @@ Rc::new(InferResult {
                             arg_call.results.clone(),
                             scope.clone(),
                         );
-                        let call_subst = arg_call.subst.clone();
+                        let call_subst =
+                            v1_rt::rc_map_merge(arg_call.subst.clone(), seed_subst.clone());
                         let typed_args = Rc::new({
                             let mut __result = Vec::new();
                             for air in arg_infer_results.iter().cloned() {
