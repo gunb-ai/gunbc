@@ -55,9 +55,9 @@ fn list_introduction_eval_ingest(probe: String) -> SourceRootIngest {
   }
 }
 
-data list_introduction_eval_forward_source: String = "module list_introduction_eval_probe\n\nimport std.types { List }\n\ndata list_introduction_eval_value: List<Int> = [10, 20]\n"
+data list_introduction_eval_forward_source: String = "module list_introduction_eval_probe\n\nimport std.types { List }\n\nfn list_introduction_eval_value() -> List<Int> {\n  [10, 20]\n}\n"
 
-data list_introduction_eval_reversed_source: String = "module list_introduction_eval_probe\n\nimport std.types { List }\n\ndata list_introduction_eval_value: List<Int> = [20, 10]\n"
+data list_introduction_eval_reversed_source: String = "module list_introduction_eval_probe\n\nimport std.types { List }\n\nfn list_introduction_eval_value() -> List<Int> {\n  [20, 10]\n}\n"
 
 fn list_introduction_eval_first_list(n: Node) -> Optional<Node> {
   fold_node(
