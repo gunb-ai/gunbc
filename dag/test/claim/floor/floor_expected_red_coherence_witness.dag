@@ -151,10 +151,11 @@ test fn w_severed_fixture_linked_chunks_only_is_coherent() -> Bool {
 // prices exactly that); they assert the two properties that a chunk deletion or a rename would
 // silently break, and they do it over the live carriers rather than a fixture.
 //
-// WHY NOT A NEW WITNESS FILE. The live-join check the header asks for costs ~56s of `decl_facts` over
-// `src/v2/workflow` (its own measured figure) and the module says it dissolves with a
-// preparation-time consumer, not with a per-PR claim. Claiming it here would put a 56s parse in the
-// hermetic lane per PR to buy what the fleet instrument already proves by executing the claims. So
+// WHY NOT A NEW WITNESS FILE. The live-join check the header asks for pays a whole-module `decl_facts`
+// parse over `src/v2/workflow` -- its own comment gives the measured cost and is the place to read it.
+// The module says that cost dissolves with a preparation-time consumer, not with a per-PR claim, so
+// claiming it here would put a full-tree parse in the hermetic lane per PR to buy what the fleet
+// instrument already proves by executing the claims. So
 // these two are pure data over functions that are already evaluated, and the expensive join is left
 // where the module asked for it, not fabricated cheaper.
 
@@ -199,11 +200,11 @@ test fn each_enrolled_wet_red_is_a_scheduled_claim_the_schedule_still_expects_to
   (count_where(xs: wet_reds_under_test, predicate: fn(q) {
      count_where(xs: wet_reds_under_test, predicate: fn(o) { o == q }) > 1
    }) == 0)
-    // every identity is a schedule row AND a row that expects the claim to hold. `== 0` on each
-    // membership, not `== 1` over the schedule: the schedule has 503 rows over 502 distinct
-    // identities (measured), so one name legitimately appears twice there and a per-name count of 1
-    // over it would be an assertion about a number nobody owns. Membership is the property; the
-    // duplicate row is the schedule's business, not this claim's.
+    // every identity is a schedule row AND a row that expects the claim to hold. Membership is tested
+    // as `== 0` on the two absences rather than `== 1` over the schedule: the schedule can legitimately
+    // carry the same identity on more than one row, and a per-name count of exactly one over it would be
+    // a claim about a number `local_repo_wet_schedule` does not promise. Membership is the property; how
+    // many rows the schedule gives a name is the schedule's business, not this claim's.
     && (count_where(xs: wet_reds_under_test, predicate: fn(q) {
          count_where(xs: schedule_qualified, predicate: fn(o) { o == q }) == 0
            || count_where(xs: scheduled_holds, predicate: fn(o) { o == q }) == 0
