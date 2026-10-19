@@ -10,7 +10,7 @@ import std.measure {
   MoneyPerHour, MoneyAmountMicro, MoneyPerSecond, MoneyRate, ByteSize,
   money_amount_micro, money_per_hour_micros, measure_le,
   Bandwidth, bandwidth, bandwidth_count, mebibyte_count, mebibyte_ceiling,
-  second, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  second, Second, second_count, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
   byte_size_count, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
   money_amount_micro_count, exact_decimal_to_money_amount_micro_ceil, DecimalMoneyConverted,
 }
@@ -691,32 +691,37 @@ fn flex_offer_in_shadow_field(offer: VastAiOffer, host: VastAiOfferHostResources
 // rate divides by the hours in a billing month, which no cited Vast page states. That figure is
 // TranscribedUncited, so a quote resting on it is Estimated (refused as an established price, DESIGN 4d)
 // and names what would ground it. GB to GiB is exact (2^30 / 10^9).
-type FlexHoursPerMonth {
-  hours: Int
+// The billing month is a DURATION, and a zero month is unrepresentable: the period is one second more than
+// a Second-valued predecessor (the encoding std.rational NonzeroNatFraction uses for its denominator), so
+// the hourly division below has no zero case to check.
+type FlexStorageBillingMonth {
+  period_less_one_second: Second
   standing: CitedFigureStanding
 }
 
-data flex_vast_storage_hours_per_month: FlexHoursPerMonth = FlexHoursPerMonth {
-  hours: 730,
+fn flex_billing_month_seconds(m: FlexStorageBillingMonth) -> Nat {
+  second_count(s: m.period_less_one_second) + 1
+}
+
+data flex_vast_storage_billing_month: FlexStorageBillingMonth = FlexStorageBillingMonth {
+  period_less_one_second: second(count: 730 * 3600 - 1),
   standing: TranscribedUncited {
-    read_obligation: "the hours Vast divides storage_cost ($/GB-month) by to bill storage per hour; read it from Vast's billing documentation or derive it from a storage charge row (amount over GB-hours)" as NonEmptyStr,
+    read_obligation: "the period Vast divides storage_cost ($/GB-month) by to bill storage per hour (taken as 730 hours); read it from Vast's billing documentation or derive it from a storage charge row (amount over GB-hours)" as NonEmptyStr,
   },
 }
 
-fn flex_offer_disk_rate(offer: VastAiOffer, month: FlexHoursPerMonth) -> ServingDiskRate? {
+// $/GB-month to $/GiB-hour, rounded up: x * (2^30 / 10^9) GiB-per-GB * 3600 s-per-hour / period seconds.
+fn flex_offer_disk_rate(offer: VastAiOffer, month: FlexStorageBillingMonth) -> ServingDiskRate? {
   match exact_decimal_to_money_amount_micro_ceil(d: offer.storage_cost) {
     DecimalMoneyConverted { amount: per_gb_month } =>
-      if month.hours <= 0 {
-        none
-      } else {
-        Present {
-          value: ServingDiskRate {
-            rate: MoneyRate {
-              amount: money_amount_micro(count: (money_amount_micro_count(m: per_gb_month) * 1073741824 + (1000000000 * month.hours - 1)) / (1000000000 * month.hours)),
-              currency: vast_ai_quote_currency,
-            },
+      let denominator = 1000000000 * flex_billing_month_seconds(m: month)
+      Present {
+        value: ServingDiskRate {
+          rate: MoneyRate {
+            amount: money_amount_micro(count: (money_amount_micro_count(m: per_gb_month) * 1073741824 * 3600 + (denominator - 1)) / denominator),
+            currency: vast_ai_quote_currency,
           },
-        }
+        },
       }
     _ => none
   }
@@ -726,15 +731,15 @@ fn flex_offer_quote(offer: VastAiOffer, recipe: ServingRecipe) -> ServingSelecti
   match vast_ai_min_bid_money_per_hour(offer: offer) {
     DecimalMoneyPerHourRefused { conversion: _ } => SelectionQuoteRefusedUnavailable
     DecimalMoneyPerHourConverted { rate: floor } =>
-      match flex_offer_disk_rate(offer: offer, month: flex_vast_storage_hours_per_month) {
+      match flex_offer_disk_rate(offer: offer, month: flex_vast_storage_billing_month) {
         Absent => SelectionQuoteRefusedUnavailable
         Present { value: disk } =>
           let quote = serving_unit_cost_for_selection(cost: serving_cost_per_million_tokens(recipe: recipe, hourly: serving_card_hourly(recipe: recipe, supply: RentedCardSupply { dph: floor, disk_rate: disk })))
-          match flex_vast_storage_hours_per_month.standing {
+          match flex_vast_storage_billing_month.standing {
             TranscribedUncited { read_obligation: _ } =>
               match quote {
-                SelectionQuoteRefusedEstimated { standings: ss } => SelectionQuoteRefusedEstimated { standings: concat(ss, [flex_vast_storage_hours_per_month.standing]) }
-                SelectionQuoteEstablished { amount: _, currency: _ } => SelectionQuoteRefusedEstimated { standings: [flex_vast_storage_hours_per_month.standing] }
+                SelectionQuoteRefusedEstimated { standings: ss } => SelectionQuoteRefusedEstimated { standings: concat(ss, [flex_vast_storage_billing_month.standing]) }
+                SelectionQuoteEstablished { amount: _, currency: _ } => SelectionQuoteRefusedEstimated { standings: [flex_vast_storage_billing_month.standing] }
                 other => other
               }
             _ => quote
