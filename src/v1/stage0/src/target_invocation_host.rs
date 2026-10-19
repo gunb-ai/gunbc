@@ -2044,10 +2044,7 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
     // The base receipt covers the roster plus every module of the MERGE-BASE tree that spells a name the wave rows move;
     // it is chosen from git at the merge base alone, never from the head (so one base serves every wave on that revision).
     let population = if shard_mode == "base" {
-        match base_population(&ctx, &merge_base) {
-            Ok(modules) => Some(modules.join(",")),
-            Err(cause) => return unreached(format!("base population: {cause}")),
-        }
+        Some(source_roots)
     } else {
         None
     };
@@ -2147,7 +2144,7 @@ fn run_base_ambient_name_census(
     base_ref: &str,
     head: &str,
     run_census: bool,
-    population: Option<&str>,
+    population: Option<&[String]>,
 ) -> Result<((String, Option<i32>), String), String> {
     let merge_base = census_merge_base(head, base_ref)?;
     let tree = scratch.join("base_tree");
@@ -2172,17 +2169,16 @@ fn run_base_ambient_name_census(
     // The base receipt (`population` set) is read at the MERGE BASE with this executable run inside the base tree: the
     // receipt's census must not depend on the head, and base's own older seed does not know the population.
     let run = match population {
-        Some(modules) => std::env::current_exe()
-            .map_err(|e| format!("current_exe: {e}"))
-            .and_then(|exe| {
-                std::process::Command::new(exe)
-                    .args(["test", "//gunbc/instruments:ambient-name-census"])
-                    .current_dir(&tree)
-                    .env("GITHUB_SHA", &merge_base)
-                    .env("GUNBC_CENSUS_SUBJECTS", modules)
-                    .output()
-                    .map_err(|e| e.to_string())
-            }),
+        Some(source_roots) => select_base_population(source_roots, &tree).and_then(|modules| {
+            let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+            std::process::Command::new(exe)
+                .args(["test", "//gunbc/instruments:ambient-name-census"])
+                .current_dir(&tree)
+                .env("GITHUB_SHA", &merge_base)
+                .env("GUNBC_CENSUS_SUBJECTS", modules.join(","))
+                .output()
+                .map_err(|e| e.to_string())
+        }),
         None => std::process::Command::new("cargo")
             .args([
                 "run",
@@ -2241,49 +2237,21 @@ fn instrument_revision(source_roots: &[String], head: &str) -> Result<String, St
     ))
 }
 
-/// THE BASE RECEIPT'S POPULATION, chosen from git at the merge base alone: every `.dag` module of that tree that spells
-/// (as a word) a name the wave rows move. The roster is added by the census itself.
-fn base_population(
-    ctx: &crate::v1_interpreter::InterpContext,
-    merge_base: &str,
+/// THE BASE RECEIPT'S POPULATION, selected by the HEAD's emitted compiler (`select-spelled-modules`) over the base
+/// worktree's roots: the host only passes the roots and relays the module names the verb prints, one per line.
+fn select_base_population(
+    source_roots: &[String],
+    tree: &std::path::Path,
 ) -> Result<Vec<String>, String> {
-    let value = crate::v1_interpreter::run_in_context_with_args(
-        ctx,
-        "binding_diff_population_names",
-        &[],
-        true,
-    )
-    .map_err(|cause| format!("binding_diff_population_names failed: {cause}"))?;
-    let names = match &value {
-        crate::v1_interpreter::Value::List(items) => items
-            .iter()
-            .map(|item| match item {
-                crate::v1_interpreter::Value::Str(s) => Ok(s.to_string()),
-                _ => Err("binding_diff_population_names holds a non-string".to_string()),
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-        _ => return Err("binding_diff_population_names is not a list".to_string()),
-    };
-    let mut modules = std::collections::BTreeSet::new();
-    for name in names {
-        let out = std::process::Command::new("git")
-            .args(["grep", "-lw", "-e", &name, merge_base, "--", "*.dag"])
-            .output()
-            .map_err(|e| format!("git grep: {e}"))?;
-        // exit 1 is "no match"; anything else is a failure
-        if !out.status.success() && out.status.code() != Some(1) {
-            return Err(format!("git grep exited {:?}", out.status.code()));
-        }
-        for line in String::from_utf8_lossy(&out.stdout).lines() {
-            // The module is named by its own `module` declaration (the compiler's reading), never by a path rule.
-            let path = line.strip_prefix(&format!("{merge_base}:")).unwrap_or(line);
-            let content = git_text(&["show", &format!("{merge_base}:{path}")])?;
-            let module = crate::closure_identity::extract_module_path(&content)
-                .ok_or_else(|| format!("{path} declares no module"))?;
-            modules.insert(module);
-        }
+    let roots: Vec<String> = source_roots
+        .iter()
+        .map(|root| tree.join(root).to_string_lossy().into_owned())
+        .collect();
+    let (code, stdout) = cli_run::run_v2_select_spelled_modules(source_roots, &roots)?;
+    if code != 0 {
+        return Err(format!("select-spelled-modules exited {code}: {stdout}"));
     }
-    Ok(modules.into_iter().collect())
+    Ok(stdout.lines().map(str::to_string).collect())
 }
 
 /// Removes the base worktree the census left in place for the edit proof, whichever way the label ends.

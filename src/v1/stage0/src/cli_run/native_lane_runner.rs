@@ -7173,3 +7173,35 @@ pub fn run_v2_demand_census(source_roots: &[String]) -> Result<i32, String> {
             .to_string()
     })
 }
+
+/// THE SPELLED-MODULE SELECTION, RUN BY THE EMITTED COMPILER (`select-spelled-modules` verb): built from the
+/// head's `build_roots`, run over `population_roots`. The child prints one module name per line and decides its own
+/// exit; the seed relays both unjudged.
+pub fn run_v2_select_spelled_modules(
+    build_roots: &[String],
+    population_roots: &[String],
+) -> Result<(i32, String), String> {
+    let preparation = prepare_emitted_compiler(build_roots)?;
+    let mut args = vec!["select-spelled-modules".to_string()];
+    for root in population_roots {
+        args.push("--source-root".to_string());
+        args.push(root.clone());
+    }
+    let output = Command::new(&preparation.binary_path)
+        .args(&args)
+        .output()
+        .map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+                preparation.binary_path.display()
+            )
+        })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — select-spelled-modules stdout: {cause}")
+    })?;
+    let code = output.status.code().ok_or_else(|| {
+        "V2-NATIVE REFUSAL cause=NativeRunKilled — the select-spelled-modules child exited without a status"
+            .to_string()
+    })?;
+    Ok((code, stdout))
+}

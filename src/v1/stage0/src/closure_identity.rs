@@ -20,7 +20,7 @@ use std::sync::OnceLock;
 use crate::v1_compiler_compile::SourceFile;
 use crate::v1_rt::{self, Hash};
 
-pub(crate) fn extract_module_path(content: &str) -> Option<String> {
+fn extract_module_path(content: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("module ") {
