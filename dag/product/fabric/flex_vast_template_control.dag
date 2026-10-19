@@ -6,6 +6,7 @@ import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import std.measure { mebibyte_count, mebibyte_ceiling, bandwidth_count }
 import extdeps.cloud.vast_ai
 import extdeps.cloud.vast_ai { VastAiTemplateRow, VastAiTemplateList, VastAiTemplateCreateResult }
 import gunbc.fleet.flex_pass_run { flex_vast_key, FlexVastKeyReady, FlexVastKeyRefused }
@@ -63,9 +64,9 @@ fn flex_template_create(api_key: Secret, spec: FlexTemplateSpec) -> String uses 
     jup_direct: spec.jup_direct,
     use_jupyter_lab: spec.use_jupyter_lab,
     min_cuda_max_good: spec.min_cuda_max_good,
-    min_cpu_ram_mb: spec.min_cpu_ram_mb,
-    min_gpu_ram_mb: spec.min_gpu_ram_mb,
-    min_inet_down_mbps: spec.min_inet_down_mbps,
+    min_cpu_ram_mb: mebibyte_count(m: mebibyte_ceiling(b: spec.min_cpu_ram)) as Int,
+    min_gpu_ram_mb: mebibyte_count(m: mebibyte_ceiling(b: spec.min_gpu_ram)) as Int,
+    min_inet_down_mbps: (bandwidth_count(b: spec.min_inet_down) / 1000000) as Int,
     verified_only: spec.verified_only,
   ) {
     RestAnswered { answer: _ } => "created"

@@ -3,6 +3,7 @@ module product.fabric.flex_vast_template
 import std.types { String, NonEmptyStr, Bool, Int, List, Port, list_length }
 import std.optional { Present, Absent }
 import std.list { first_where }
+import std.measure { ByteSize, Bandwidth, mebibyte, mebibyte_to_byte_size, bandwidth }
 import extdeps.cloud.vast_ai { VastAiTemplateRow }
 
 // THE FLEX VAST TEMPLATE AS A DECLARED FACT, secret-free by construction. A template is the host's
@@ -23,9 +24,9 @@ type FlexTemplateSpec {
   jup_direct: Bool
   use_jupyter_lab: Bool
   min_cuda_max_good: Int
-  min_cpu_ram_mb: Int
-  min_gpu_ram_mb: Int
-  min_inet_down_mbps: Int
+  min_cpu_ram: ByteSize
+  min_gpu_ram: ByteSize
+  min_inet_down: Bandwidth
   verified_only: Bool
 }
 
@@ -120,8 +121,8 @@ data flex_vast_template_spec: FlexTemplateSpec = FlexTemplateSpec {
   jup_direct: true,
   use_jupyter_lab: false,
   min_cuda_max_good: 13,
-  min_cpu_ram_mb: 128000,
-  min_gpu_ram_mb: 90000,
-  min_inet_down_mbps: 1000,
+  min_cpu_ram: mebibyte_to_byte_size(m: mebibyte(count: 128000)),
+  min_gpu_ram: mebibyte_to_byte_size(m: mebibyte(count: 90000)),
+  min_inet_down: bandwidth(count: 1000000000),
   verified_only: true,
 }

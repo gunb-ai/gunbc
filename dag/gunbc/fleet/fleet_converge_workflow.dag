@@ -5019,7 +5019,7 @@ fn fleet_converge_flex_template_ensure_receipt_upload_step() -> Step {
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "flex-template-ensure-receipt")),
       kv(key: "path", value: yaml_string(s: flex_vast_template_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
     env: none,
