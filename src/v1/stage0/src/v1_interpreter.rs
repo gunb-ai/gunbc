@@ -7621,6 +7621,7 @@ fn call_function(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
+    zz_count_all(&fn_node.name);
     let depth = CALL_DEPTH.with(|d| {
         let v = d.get() + 1;
         d.set(v);
@@ -25763,6 +25764,29 @@ fn record_list_cons_tail_split(receiver_len: usize) {
 static CALL_FREQUENCY_WATCHLIST: std::sync::Mutex<
     Option<std::collections::HashMap<&'static str, u64>>,
 > = std::sync::Mutex::new(None);
+
+static ZZ_ALL_CALLS: std::sync::Mutex<Option<(u64, std::collections::HashMap<String, u64>)>> =
+    std::sync::Mutex::new(None);
+fn zz_count_all(func_name: &str) {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if !*ON.get_or_init(|| std::env::var("ZZ_CALLS").is_ok()) {
+        return;
+    }
+    let mut g = ZZ_ALL_CALLS.lock().unwrap();
+    let st = g.get_or_insert_with(|| (0, std::collections::HashMap::new()));
+    st.0 += 1;
+    *st.1.entry(func_name.to_string()).or_insert(0) += 1;
+    if st.0 % 100_000 == 0 {
+        let mut v: Vec<_> = st.1.iter().collect();
+        v.sort_by(|a, b| b.1.cmp(a.1));
+        let line: Vec<String> = v
+            .iter()
+            .take(80)
+            .map(|(k, n)| format!("{}={}", k, n))
+            .collect();
+        eprintln!("ZZCALLS total={} {}", st.0, line.join(" "));
+    }
+}
 
 fn record_call_frequency(func_name: &str) {
     if !residual_hunt_forensics_enabled() {
