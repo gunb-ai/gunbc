@@ -17,6 +17,7 @@ import v2.std.compilers.target_model {
   target_operator_realizations_catalog_node,
   target_value_expression_binding_ref,
   target_value_expression_callable_apply,
+  target_value_expression_resolved_primitive_call,
   target_value_expression_to_concrete_tokens
 }
 import v2.std.diagnostic { Accepted, Rejected, None, Outcome, bind_outcome }
@@ -26,6 +27,14 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rust_primitive_string_length_call() -> TargetValueExpression {
+  target_value_expression_resolved_primitive_call(
+    callee: ^string_length,
+    args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
+  )
+}
+
+// The same spelling resolved to a user declaration: no resolved-primitive identity, so an ordinary call.
+fn rust_user_string_length_call() -> TargetValueExpression {
   target_value_expression_callable_apply(
     callee: ^string_length,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
@@ -96,6 +105,29 @@ test fn rust_non_primitive_call_is_not_row_gated() -> Bool {
     catalog: rust_primitive_operators_only_catalog()
   ) {
     Accepted { value: s, diagnostics: _ } => s == "string_to_upper(x)"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// RED for the name-keyed join: a user fn spelled string_length, under a catalog that HAS the string_length row, must
+// emit the ordinary call and not the primitive shape (`string_length(&x)`).
+test fn rust_user_fn_spelled_like_a_primitive_is_not_the_primitive() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_user_string_length_call(),
+    catalog: rust_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: s, diagnostics: _ } => s == "string_length(x)"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The same user call under a catalog with no primitive rows still emits: it never consults the row family.
+test fn rust_user_fn_spelled_like_a_primitive_needs_no_row() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_user_string_length_call(),
+    catalog: rust_primitive_operators_only_catalog()
+  ) {
+    Accepted { value: s, diagnostics: _ } => s == "string_length(x)"
     Rejected { diagnostics: _ } => false
   }
 }
