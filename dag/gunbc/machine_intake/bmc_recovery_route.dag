@@ -1,7 +1,7 @@
 module gunbc.machine_intake.bmc_recovery_route
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Port, String, list_length }
-import std.interval { IntervalConstruction, IntervalConstructionFold, OrderedClosedInterval, closed_interval, interval_construction_fold, interval_high, interval_low }
+import std.types { Bool, Int, List, NonEmptyStr, Port, String, list_length }
+import std.interval { interval_high, interval_low }
 // THE OPTIONAL MINTS, not the raw arms: a branch that has to produce an optional uses these, because
 // `Present { value: SomeType { ... } }` parses as a type annotation followed by a block (see the note at
 // in_band_argv_credential_option). Absent/Present are still needed for MATCHING.
@@ -28,6 +28,12 @@ import extdeps.bmc.ipmi {
 // shelf; extdeps.boards.asrock_rack keeps only what ASRock Rack publishes about the board.
 import gunbc.machine_intake.bmc_inband_recovery_receipts {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured, CatalogAmbiguousForController, CatalogIndexesDisagree, RowDisagreesWithItsOwnReading, asrock_altrad8ud_published_factory_password_write_policy_sighted_on, asrock_altrad8ud_published_factory_password_write_policy_for, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy, asrock_altrad8ud_1l2t_inband_device_identity, RecoveryPostResetReadbackRecord, asrock_altrad8ud_post_reset_readback_record_for,
+  // WHEN a capture was taken is the notebook's fact, not the route's: the carrier, every mint and
+  // the two folds over it are imported, never re-declared (review 82481).
+  CapturedInstant, CaptureTimeBand, CaptureTimeBandInverted, recovery_capture_day,
+  captured_epoch_millisecond, captured_band, captured_instant_band, captured_band_precedes,
+  captured_bound_utc_text, recovery_inband_channel_instant, recovery_device_node_creation_instant,
+  recovery_reset_instant, recovery_post_reset_instant,
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
 // THE PRIVILEGE FACT IS NOT RE-MINTED HERE. §2: "Decomposing a leaf by minting a fresh authority for a
@@ -47,11 +53,6 @@ import extdeps.bmc.redfish {
   RedfishPasswordChangeRequired, RedfishPasswordChangeNotIndicated, RedfishResponseBodyUnreadable,
 }
 import extdeps.linux.kernel { LinuxKernelModuleName }
-import extdeps.units.iso8601 { iso8601_seconds_per_minute }
-import extdeps.units.iso8601_calendar {
-  iso8601_days_from_civil, iso8601_seconds_per_day, iso8601_seconds_per_hour, iso8601_utc_text,
-}
-import std.measure { milliseconds_per_second }
 import extdeps.network.ipv4 {
   Ipv4Address,
 }
@@ -2798,147 +2799,6 @@ test fn an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recov
 // ── FIXTURES ────────────────────────────────────────────────────────────────────────────────────
 // The capture's own numbers, through the mints only.
 
-// A MINTED BAND, NOT A STOPWATCH READING. The artifact records its times to the precision the
-// capture itself has, and none of them to the second:
-//   02_inband_channel.txt   the device node's own date field: `Oct 16 06:27 /dev/ipmi0`
-//   00_README.txt           `PRIVILEGED WRITE 1 ... executed in the original run ~06:40Z`
-//   00_README.txt           `PRIVILEGED WRITE 2 (Redfish Manager.ResetToDefaults): executed ~06:45Z`
-//   00_README.txt           `Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the reset`
-// An EpochMs field holds ONE exact instant, so every value typed into one claims second precision
-// the bytes do not support (DESIGN section 5: "no plausible output is fabricated"; section 4d: an
-// inference is a bet and travels typed as one). So what an observation carries is the INTERVAL the
-// capture licenses, minted through std.interval -- a reversed pair becomes CaptureTimeBandInverted
-// carrying std.interval's own words about the pair rather than being swapped into order, and there
-// is no arm for "a time" at all, only for a band or for the refusal. Bounds go through
-// extdeps.units.iso8601_calendar rather than being typed as round numbers, so a bound cannot
-// silently name a different day than the artifact does.
-type CapturedInstant
-  = CaptureTimeBand { band: OrderedClosedInterval<EpochMs> }
-  | CaptureTimeBandInverted { reason: String }
-
-fn epoch_milliseconds_count(e: EpochMs) -> Int {
-  e
-}
-
-fn captured_instant_le(earlier: EpochMs, later: EpochMs) -> Bool {
-  epoch_milliseconds_count(e: earlier) <= epoch_milliseconds_count(e: later)
-}
-
-// one UTC instant on the captured day, from the hour/minute/second a capture line shows. Every scale
-// factor is asked of the module that owns it -- extdeps.units.iso8601_calendar for the hour and the day,
-// extdeps.units.iso8601 for the minute, std.measure for the millisecond scale -- so the mint and the
-// bounds above it rest on one authority, and no round number sits here that could disagree with it.
-fn captured_epoch_millisecond(hour: Int, minute: Int, second: Int) -> EpochMs {
-  (
-    iso8601_days_from_civil(y: 2026, m: 10, d: 16) * iso8601_seconds_per_day()
-      + hour * iso8601_seconds_per_hour()
-      + minute * (iso8601_seconds_per_minute() as Int)
-      + second
-  ) * (milliseconds_per_second() as Int)
-}
-
-// THE ONE MINT EVERY BAND GOES THROUGH, including what a claim asks when it wants to know what an
-// out-of-order pair does. A claim that re-implemented this fold would be checking a copy of the
-// mint, not the mint: same shape, and no way to tell the two apart when they diverge.
-fn captured_band(low: EpochMs, high: EpochMs) -> CapturedInstant {
-  interval_construction_fold(
-    construction: closed_interval(low: low, high: high, le: captured_instant_le),
-    fold: IntervalConstructionFold {
-      ready: i => CaptureTimeBand { band: i },
-      refused: r => CaptureTimeBandInverted { reason: r },
-    },
-  )
-}
-
-// a capture line reading `06:4x` licenses the minute it names; the closed interval runs to the
-// last whole second inside it, so every reading stays inside the recorded band
-fn captured_minute_band(hour: Int, minute: Int) -> CapturedInstant {
-  captured_band(
-    low: captured_epoch_millisecond(hour: hour, minute: minute, second: 0),
-    high: captured_epoch_millisecond(hour: hour, minute: minute, second: (iso8601_seconds_per_minute() as Int) - 1),
-  )
-}
-
-// milliseconds back to seconds, for a reader that hands an instant to a function expecting a second
-// (iso8601_utc_text). The scale is the same authority the mint multiplies by, so no caller restates it:
-// a claim that wrote its own division could be checked against a scale the mint had already changed.
-fn captured_epoch_seconds(instant: EpochMs) -> Int {
-  epoch_milliseconds_count(e: instant) / (milliseconds_per_second() as Int)
-}
-
-// the band, read out of the carrier rather than out of a chosen point: a reader gets the ordered pair
-// (with std.interval's own bounds proof attached) and cannot mistake either bound for a stopwatch
-// reading. No accessor hands out one instant.
-fn captured_instant_band(instant: CapturedInstant) -> Optional<OrderedClosedInterval<EpochMs>> {
-  match instant {
-    CaptureTimeBand { band: b } => optional_present(value: b)
-    CaptureTimeBandInverted { reason: _ } => optional_absent()
-  }
-}
-
-// DOES ONE BAND LIE ENTIRELY BEFORE ANOTHER? Both sides have to be bands that constructed, and both
-// bounds are compared: an earlier band that merely STARTS before a later one does not precede it, and a
-// band that failed to construct is not allowed to look early, late, or equal -- it refuses. This is the
-// only way ordering is asked of a capture time anywhere, so a claim cannot get a different answer from
-// the one a fold would give.
-fn captured_band_precedes(earlier: CapturedInstant, later: CapturedInstant) -> Bool {
-  match captured_instant_band(instant: earlier) {
-    Present { value: e } =>
-      match captured_instant_band(instant: later) {
-        Present { value: l } =>
-          epoch_milliseconds_count(e: interval_high(interval: e))
-            < epoch_milliseconds_count(e: interval_low(interval: l))
-        Absent => false
-      }
-    Absent => false
-  }
-}
-
-// THE ONE ~06:5xZ BAND THE README RECORDS for the pass taken after the reset, shared by every fact
-// whose bytes come from that pass so a bound cannot drift between the two files dated by it. The band
-// spans the whole tens-of-minutes the README states, instead of the 06:53:00.000 an exact field would
-// have had to invent.
-fn recovery_recapture_window() -> CapturedInstant {
-  captured_band(
-    low: captured_epoch_millisecond(hour: 6, minute: 50, second: 0),
-    high: captured_epoch_millisecond(hour: 6, minute: 59, second: 59),
-  )
-}
-
-// THE IN-BAND CHANNEL READING WAS TAKEN AFTER THE RESET, NOT BEFORE IT. 00_README.txt dates
-// 02_inband_channel.txt as a "Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the reset, against the
-// SAME rescue host (.251) and the BMC in its post-reset factory state", so the channel facts -- device
-// node present, modules loaded, mc info, channel 1, user list, lan print -- are reads of a controller
-// already back in its factory state. Stamping this observation with 06:27 instead (the /dev/ipmi0 mtime
-// quoted INSIDE that capture) put the reading before the destructive reset, which is the one ordering
-// this route is built to keep straight.
-fn recovery_inband_channel_instant() -> CapturedInstant {
-  recovery_recapture_window()
-}
-
-// WHEN THE RESCUE KERNEL CREATED THE QUEUE, which 02_inband_channel.txt quotes as `Oct 16 06:27`. That
-// minute belongs to the device node, not to the reading: the node was made when the rescue OS booted,
-// ~18 minutes before these bytes were read. It is carried as its own named fact, and the claim over it
-// asserts the ordering the earlier single timestamp had got backwards.
-fn recovery_device_node_creation_instant() -> CapturedInstant {
-  captured_minute_band(hour: 6, minute: 27)
-}
-
-// WHEN THE RESET WAS EXECUTED. 00_README.txt dates it: "PRIVILEGED WRITE 2 (Redfish Manager.
-// ResetToDefaults): executed ~06:45Z". That is an OBSERVED-IN-SESSION fact, not a captured one -- no
-// request or response bytes were saved (04 holds only the readback) -- so it is the minute the operator
-// reported, banded the way every other time here is, and it exists to be ordered against the reads
-// around it rather than to ground any write.
-fn recovery_reset_instant() -> CapturedInstant {
-  captured_minute_band(hour: 6, minute: 45)
-}
-
-// the post-reset readback (04_post_reset_readback.txt): first contact after the BMC came back, inside
-// the same re-capture window
-fn recovery_post_reset_instant() -> CapturedInstant {
-  recovery_recapture_window()
-}
-
 fn recovery_rescue_host_address() -> Ipv4Address {
   Ipv4Address { octet1: 192, octet2: 168, octet3: 1, octet4: 251 }
 }
@@ -3355,14 +3215,16 @@ test fn the_reset_ledger_refuses_a_row_whose_selection_is_a_revocable_grant() ->
 }
 
 // THE CAPTURE TIMES HAVE REFERENTS OUTSIDE THIS FILE, AND EACH ASSERTS ONLY THE PRECISION THE ARTIFACT
-// RECORDS. Every capture-backed field carries a band minted here, so if a bound were a plausible-looking
-// number for the wrong day every fixture would still be self-consistent and nothing here would notice.
-// The referents are 00_README.txt ("Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the reset") for the
-// reading, and 02_inband_channel.txt's own `Oct 16 06:27 /dev/ipmi0` for the device node. Both are read
-// back through extdeps.units.iso8601_calendar's iso8601_utc_text -- a different function than the one
-// that built the bounds, so the two have to agree rather than one restating the other. The day is
-// asserted exactly; the time is asserted only as the band the artifact records, because a tighter claim
-// would itself be the fabrication this replaced: the value these bounds replaced decoded to
+// RECORDS. Every capture-backed field carries a band minted in the observing layer
+// (gunbc.machine_intake.bmc_inband_recovery_receipts), so if a bound were a plausible-looking number for
+// the wrong day every fixture here would still be self-consistent and nothing in this module would
+// notice. The referents are 00_README.txt ("Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the reset")
+// for the reading and 02_inband_channel.txt's own `Oct 16 06:27 /dev/ipmi0` for the device node. Bounds
+// are read back through the observing layer's captured_bound_utc_text, which goes through
+// extdeps.clock's epoch_secs_of_millis and extdeps.units.iso8601_calendar's iso8601_utc_text -- functions
+// other than the ones that built the bounds, so the two have to agree rather than one restating the
+// other. The day is asserted exactly; the time only as the band the artifact records, because a tighter
+// claim would itself be the fabrication this replaced: the value these bounds replaced decoded to
 // 06:53:00.000, a reading nothing ever measured.
 test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool {
   let channel = captured_instant_band(instant: recovery_inband_channel_instant())
@@ -3373,72 +3235,57 @@ test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool 
     Present { value: b } =>
       // the README's ~06:5x band, whole: 06:50:00Z through 06:59:59Z -- and neither bound claims a
       // second it has
-      iso8601_utc_text(unix: captured_epoch_seconds(instant: interval_low(interval: b))) == "2026-10-16T06:50:00Z"
-        && iso8601_utc_text(unix: captured_epoch_seconds(instant: interval_high(interval: b))) == "2026-10-16T06:59:59Z"
+      captured_bound_utc_text(bound: interval_low(interval: b)) == "2026-10-16T06:50:00Z"
+        && captured_bound_utc_text(bound: interval_high(interval: b)) == "2026-10-16T06:59:59Z"
     Absent => false
   }
     && (match device_node {
       Present { value: b } =>
         // 02's own `06:27`, to the minute it shows
-        iso8601_utc_text(unix: captured_epoch_seconds(instant: interval_low(interval: b))) == "2026-10-16T06:27:00Z"
-          && iso8601_utc_text(unix: captured_epoch_seconds(instant: interval_high(interval: b))) == "2026-10-16T06:27:59Z"
+        captured_bound_utc_text(bound: interval_low(interval: b)) == "2026-10-16T06:27:00Z"
+          && captured_bound_utc_text(bound: interval_high(interval: b)) == "2026-10-16T06:27:59Z"
       Absent => false
     })
     && (match post_reset {
       Present { value: b } =>
-        iso8601_utc_text(unix: captured_epoch_seconds(instant: interval_low(interval: b))) == "2026-10-16T06:50:00Z"
-          && iso8601_utc_text(unix: captured_epoch_seconds(instant: interval_high(interval: b))) == "2026-10-16T06:59:59Z"
+        captured_bound_utc_text(bound: interval_low(interval: b)) == "2026-10-16T06:50:00Z"
+          && captured_bound_utc_text(bound: interval_high(interval: b)) == "2026-10-16T06:59:59Z"
       Absent => false
     })
-    // A REVERSED PAIR REFUSES, IT IS NOT SWAPPED. The fold is the only route to a band, so this is
-    // what the fold does when the pair is out of order: std.interval's own words, no band, and -- by
-    // the type -- no absorbing plausible value.
+    // A REVERSED PAIR REFUSES, IT IS NOT SWAPPED. The observing layer's fold is the only route to a
+    // band, so this is what that fold does with an out-of-order pair: std.interval's own words, no band,
+    // and -- by the type -- no absorbing plausible value. Asked of the real mint, not of a copy.
     && (match captured_band(
-      low: captured_epoch_millisecond(hour: 6, minute: 59, second: 59),
-      high: captured_epoch_millisecond(hour: 6, minute: 50, second: 0),
+      low: captured_epoch_millisecond(
+        day: recovery_capture_day(),
+        hour: 6,
+        minute: 59,
+        second: 59,
+      ),
+      high: captured_epoch_millisecond(day: recovery_capture_day(), hour: 6, minute: 50, second: 0),
     ) {
       CaptureTimeBandInverted { reason: r } => string_non_empty(value: r)
       CaptureTimeBand { band: _ } => false
     })
 }
 
-// THE READING FOLLOWS THE RESET, AND THE DEVICE NODE PRECEDES BOTH (review 82404). The one timestamp
-// these facts used to share said the channel was read at 06:27, which put an observation of the
-// post-reset factory state BEFORE the destructive write it is evidence about. Each fact now carries its
-// own band, and what is asserted is the ORDER the artifact records: node created, then the reset, then
-// the re-capture. This is the claim that pays for the split -- with a single shared instant it would be
-// unfalsifiable, because a band is never earlier than itself.
+// THE READING FOLLOWS THE RESET, AND THE DEVICE NODE PRECEDES IT (review 82404). The one timestamp these
+// facts used to share said the channel was read at 06:27, which put an observation of the post-reset
+// factory state BEFORE the destructive write it is evidence about. Each fact now carries its own band,
+// and what is asserted is the ORDER the artifact records: node created, then the reset, then the
+// re-capture. Both halves are asked through captured_band_precedes -- the same fold the admission gate
+// uses -- so this claim checks the gate's rule rather than a copy of it, and a band that failed to
+// construct refuses instead of being rescued into a plausible number. With the old single shared stamp
+// this claim was unfalsifiable, because a band is never earlier than itself.
 test fn the_channel_reading_follows_the_reset_the_device_node_precedes_it() -> Bool {
-  let node = captured_instant_band(instant: recovery_device_node_creation_instant())
-  let channel = captured_instant_band(instant: recovery_inband_channel_instant())
-  let reset = captured_instant_band(instant: recovery_reset_instant())
-  // A band that failed to construct refuses this claim rather than being rescued into a plausible
-  // number: an Absent arm here would make an ordering about a time nobody recorded look like a pass.
-  match node {
-    Present { value: n } =>
-      match channel {
-        Present { value: c } =>
-          match reset {
-            Present { value: r } =>
-              // the queue existed when the bytes were read -- asked through the same fold the admission
-              // gate uses, so the claim checks the gate's own rule and not a copy of it ...
-              captured_band_precedes(
-                earlier: recovery_device_node_creation_instant(),
-                later: recovery_inband_channel_instant(),
-              )
-                // ... the reading sits wholly after the reported reset minute, so it cannot be a reading
-                // of the pre-reset controller
-                && epoch_milliseconds_count(e: interval_low(interval: c))
-                  > epoch_milliseconds_count(e: interval_high(interval: r))
-                // ... which is precisely what the one shared stamp denied: the node minute fell before it
-                && epoch_milliseconds_count(e: interval_high(interval: n))
-                  < epoch_milliseconds_count(e: interval_low(interval: r))
-            Absent => false
-          }
-        Absent => false
-      }
-    Absent => false
-  }
+  captured_band_precedes(
+    earlier: recovery_device_node_creation_instant(),
+    later: recovery_reset_instant(),
+  )
+    && captured_band_precedes(
+      earlier: recovery_reset_instant(),
+      later: recovery_inband_channel_instant(),
+    )
 }
 
 // THE DEVICE NODE IS COMPARED AS AN ARM, AND THE TEXT A CAPTURE SHOWS IS DERIVED FROM THE ARM (review
