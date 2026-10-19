@@ -1,0 +1,160 @@
+module v2.test.claim.callexec.list_introduction_eval
+
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest_located }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
+import v2.std.list_introduction { list_introduction_elements_optional }
+import v2.std.node { Node, NodeFold, Symbol, fold_node }
+import v2.std.runtime { RuntimeAggregate, RuntimePrimitive, RuntimeValue }
+import v2.std.text { String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { List }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS EVAL OF A LIST LITERAL. A literal lowers to one Transform headed by the marked
+// reference to std.algebra FreeMonoid (v2.std.list_introduction); infer reads it, but eval read the
+// head as a callee and refused eval_rejected_runtime_binding_lookup_miss though nothing was unbound.
+// The control is the value: the literal evaluates to a RuntimeAggregate whose fields are the element
+// values IN ORDER. Two literals over the same elements in opposite order separate, so a reversed or
+// element-dropping arm cannot pass.
+data list_introduction_eval_types_source: String = "module std.types\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = FreeMonoid<T>\n"
+
+data list_introduction_eval_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
+
+fn list_introduction_eval_witness(source: String, id: Symbol, path: String, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: cu,
+    source_root: V2Tree
+  }
+}
+
+fn list_introduction_eval_ingest(probe: String) -> SourceRootIngest {
+  Cons {
+    head: list_introduction_eval_witness(source: probe, id: ^list_introduction_eval_artifact, path: "src/v2/list_introduction_eval_probe.dag", cu: ^list_introduction_eval_cu),
+    tail: Cons {
+      head: list_introduction_eval_witness(source: list_introduction_eval_types_source, id: ^list_introduction_eval_types_artifact, path: "src/v2/std/types.dag", cu: ^list_introduction_eval_types_cu),
+      tail: Cons {
+        head: list_introduction_eval_witness(source: list_introduction_eval_algebra_source, id: ^list_introduction_eval_algebra_artifact, path: "src/v2/std/algebra.dag", cu: ^list_introduction_eval_algebra_cu),
+        tail: Empty
+      }
+    }
+  }
+}
+
+data list_introduction_eval_forward_source: String = "module list_introduction_eval_probe\n\nimport std.types { List }\n\ndata list_introduction_eval_value: List<Int> = [10, 20]\n"
+
+data list_introduction_eval_reversed_source: String = "module list_introduction_eval_probe\n\nimport std.types { List }\n\ndata list_introduction_eval_value: List<Int> = [20, 10]\n"
+
+fn list_introduction_eval_first_list(n: Node) -> Optional<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match list_introduction_elements_optional(node: n0) {
+          Present { value: _ } => optional_present(value: n0)
+          Absent => optional_absent()
+        }
+      },
+      step: fn(acc, _, child) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child
+        }
+      }
+    }
+  )
+}
+
+fn list_introduction_eval_of(source: String) -> Optional<Outcome<RuntimeValue>> {
+  let assembled = assemble_program_from_ingest_located(
+    ingest: list_introduction_eval_ingest(probe: source),
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^list_introduction_eval_probe, tail: Empty } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+  match bind_outcome(o: assembled.program, f: fn(p) { infer_and_discharge(tree: p) }) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: inferred, diagnostics: _ } =>
+      match list_introduction_eval_first_list(n: inferred.root) {
+        Absent => optional_absent()
+        Present { value: list } =>
+          optional_present(
+            value: eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: list))
+          )
+      }
+  }
+}
+
+fn list_introduction_eval_int(v: RuntimeValue) -> Optional<Int> {
+  match v {
+    RuntimePrimitive { value: p } =>
+      match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
+        Accepted { value: magnitude, diagnostics: _ } => optional_present(value: magnitude)
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+// The elements as Ints in field order; Absent unless the value is an aggregate of two Int elements.
+fn list_introduction_eval_pair(o: Optional<Outcome<RuntimeValue>>) -> Optional<List<Int>> {
+  match o {
+    Absent => optional_absent()
+    Present { value: outcome } => list_introduction_eval_pair_of(o: outcome)
+  }
+}
+
+fn list_introduction_eval_pair_of(o: Outcome<RuntimeValue>) -> Optional<List<Int>> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: v, diagnostics: _ } =>
+      match v {
+        RuntimeAggregate { value: a } =>
+          match a.fields {
+            Cons { head: f0, tail: Cons { head: f1, tail: Empty } } =>
+              match list_introduction_eval_int(v: f0.value) {
+                Present { value: x } =>
+                  match list_introduction_eval_int(v: f1.value) {
+                    Present { value: y } => optional_present(value: [x, y])
+                    Absent => optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+            _ => optional_absent()
+          }
+        _ => optional_absent()
+      }
+  }
+}
+
+fn list_introduction_eval_is(o: Optional<Outcome<RuntimeValue>>, x: Int, y: Int) -> Bool {
+  match list_introduction_eval_pair(o: o) {
+    Absent => false
+    Present { value: Cons { head: a, tail: Cons { head: b, tail: Empty } } } => a == x && b == y
+    Present { value: _ } => false
+  }
+}
+
+test fn list_literal_evaluates_to_its_elements_in_order_holds() -> Bool {
+  list_introduction_eval_is(o: list_introduction_eval_of(source: list_introduction_eval_forward_source), x: 10, y: 20)
+}
+
+test fn list_literal_order_is_discriminated_holds() -> Bool {
+  list_introduction_eval_is(o: list_introduction_eval_of(source: list_introduction_eval_reversed_source), x: 20, y: 10)
+}
