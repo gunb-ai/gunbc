@@ -207,7 +207,9 @@ data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
   },
   engine: EngineVllm { build: local_inference_lab_vllm_release },
   catalog_unit: none,
-  published_tcp_port: 8000,
+  // The inference server listens on 18000 (HTTPS, self-signed, bearer password); the image's Caddy portal owns 8000.
+  // Read from the secret-free template by crisp-seal-306 (Flex L2), 2026-10-19.
+  published_tcp_port: 18000,
   cards: [serving_card_class_rtx_pro_6000_blackwell],
   driver_floor: ServingDriverFloor {
     major: cuda_13_0_driver_requirement.min_driver_major,

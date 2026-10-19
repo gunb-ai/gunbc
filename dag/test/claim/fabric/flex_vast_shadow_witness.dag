@@ -45,6 +45,7 @@ import product.fabric.flex_market {
   FlexCapUnder, FlexCapOver, FlexCapAtLimit, FlexCapNeedsExhaustedRoster, FlexCapUnreadable, FlexCapUnobserved,
 }
 import product.fabric.flex_vast_shadow {
+  flex_offer_disk_rate, flex_vast_storage_billing_month, flex_offer_quote,
   flex_trial_fleet_rate_cap, flex_trial_total, flex_trial_policy, flex_objective,
   flex_serving_recipe, flex_host_image, flex_serving_template, FlexTemplateResolved, FlexTemplateImageUnread,
   FlexTemplateServedIdUnread, flex_offer_screen_by_recipe, flex_offer_in_shadow_field,
@@ -71,12 +72,12 @@ import std.rational { NonzeroNatFraction }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.procps.kill { procps_kill_standing }
 import product.fabric.serving_recipe {
-  ServingRecipe, ServingDriverFloor, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm,
+  ServingRecipe, ServingDriverFloor, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, SelectionQuoteRefusedEstimated,
 }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
-  vast_ai_search_type_bid, vast_ai_search_type_ondemand, vast_ai_quote_currency, vast_ai_keyset_page_limit,
+  vast_ai_search_type_bid, vast_ai_search_type_ondemand, vast_ai_wire_mb, vast_ai_wire_mbps, vast_ai_quote_currency, vast_ai_keyset_page_limit,
   vast_ai_ingest_search_offer_driver, vast_ai_driver_version_from_search_offers_text,
   VastAiDriverVersionStanding, VastAiDriverVersionUnread, VastAiDriverVersionRead, VastAiDriverVersionMalformed,
 }
@@ -1025,7 +1026,8 @@ test fn the_driver_floor_standing_alone_decides_estimated_against_established() 
 }
 
 test fn the_flash_next_driver_floor_is_cited_and_derives_from_the_cuda_requirement() -> Bool {
-  serving_recipe_flash_next_lab_vllm.driver_floor.major == cuda_13_0_driver_requirement.min_driver_major
+  serving_recipe_flash_next_lab_vllm.published_tcp_port == 18000
+    && serving_recipe_flash_next_lab_vllm.driver_floor.major == cuda_13_0_driver_requirement.min_driver_major
     && flex_flash_next_vast_filters.cuda_max_good_min == cuda_13_0_driver_requirement.toolkit_major
     && (match serving_recipe_flash_next_lab_vllm.driver_floor.standing {
       CitedToAuthority { authority: _ } => true
@@ -1037,10 +1039,10 @@ test fn the_search_query_and_the_screen_read_one_filter_fact() -> Bool {
   match flex_vast_offer_query(recipe: flex_serving_recipe) {
     Absent => false
     Present { value: q } =>
-      q.gpu_ram_min_mb == flex_flash_next_vast_filters.gpu_ram_min_mb
+      vast_ai_wire_mb(b: q.gpu_ram_min) == 90000
         && q.cuda_max_good_min == 13
-        && q.cpu_ram_min_mb == 128000
-        && q.inet_down_min == 1000
+        && vast_ai_wire_mb(b: q.cpu_ram_min) == 128000
+        && vast_ai_wire_mbps(b: q.inet_down_min) == 1000
         && q.verified
   }
     && (match flex_vast_offer_query(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
@@ -1073,4 +1075,17 @@ test fn interruptibility_is_the_search_type_not_is_bid() -> Bool {
   let observed = with_is_bid(o: qualifying_pro_6000(), bid: false)
   member_entry(e: flex_offer_in_shadow_field(offer: observed, host: host_of(observed), search_type: vast_ai_search_type_bid))
     && !member_entry(e: flex_offer_in_shadow_field(offer: with_is_bid(o: qualifying_pro_6000(), bid: true), host: host_of(observed), search_type: vast_ai_search_type_ondemand))
+}
+
+// THE DISK RATE: $0.15/GB-month on the 730-hour month the quote rests on is 221 micro-dollars per
+// GiB-hour (0.15 * 2^30/10^9 / 730, rounded up). A fold that kept decimal GB reads 206; one that forgot the
+// hours reads a monthly figure. The quote built on it is Estimated, naming the uncited month.
+test fn the_disk_rate_converts_gb_month_to_gib_hour_and_the_quote_stays_estimated() -> Bool {
+  match flex_offer_disk_rate(offer: qualifying_pro_6000(), month: flex_vast_storage_billing_month) {
+    Absent => false
+    Present { value: r } => money_amount_micro_count(m: r.rate.amount) == 221
+  } && match flex_offer_quote(offer: qualifying_pro_6000(), recipe: flex_serving_recipe) {
+    SelectionQuoteRefusedEstimated { standings: ss } => any(ss, s => match s { TranscribedUncited { read_obligation: o } => string_contains(s: o as String, pattern: "storage_cost") _ => false })
+    _ => false
+  }
 }

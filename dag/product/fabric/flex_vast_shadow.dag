@@ -1,7 +1,7 @@
 module product.fabric.flex_vast_shadow
 
 import std.apply_mode { ApplyMode, Plan, Apply }
-import std.types { NonEmptyStr, String, Bool, Int, List, Port }
+import std.types { NonEmptyStr, String, Bool, Int, List, Port, EpochMs }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.gpu.types { GpuModelCatalogRow }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog, nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
@@ -9,7 +9,8 @@ import std.integer { int_to_decimal_string }
 import std.measure {
   MoneyPerHour, MoneyAmountMicro, MoneyPerSecond, MoneyRate, ByteSize,
   money_amount_micro, money_per_hour_micros, measure_le,
-  second, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  Bandwidth, bandwidth, bandwidth_count, mebibyte_count, mebibyte_ceiling,
+  second, Second, second_count, scale_exponent, Giga, gibibyte_scale_factor_bytes, seconds_per_minute, minutes_per_hour, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
   byte_size_count, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
   money_amount_micro_count, exact_decimal_to_money_amount_micro_ceil, DecimalMoneyConverted,
 }
@@ -45,13 +46,14 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.demand { debt_payoff_objective, DemandObjective }
 import product.fabric.budget { MoneyAccount }
 import extdeps.cloud.vast_ai {
-  VastAiOffer, VastAiOfferHostResources, VastAiOfferQuery, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
+  VastAiOffer, VastAiOfferHostResources, VastAiOfferQuery, vast_ai_wire_mb, vast_ai_wire_mbps, vast_ai_bits_per_megabit, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
   vast_ai_search_type_bid, vast_ai_search_limit_default, vast_ai_keyset_page_limit,
   vast_ai_min_bid_money_per_hour, vast_ai_quote_currency,
   vast_ai_instance_dph_total_money_per_hour,
 }
 import std.rational { NonzeroNatFraction }
 import std.nat { Nat }
+import std.induction { int_pow_bounded }
 import std.decimal { ExactDecimal, decimal_pow10 }
 import extdeps.nvidia.cuda_toolkit_release { cuda_13_0_driver_requirement }
 import std.optional { Absent, Present }
@@ -395,10 +397,10 @@ data flex_trial_fleet_rate_cap_authority: DeclarationRef = decl_ref(module_path:
 
 data flex_trial_total: MoneyAmountMicro = money_amount_micro(count: 50000000)
 
-// The first day the trial's charges are read from, unix seconds UTC (2026-10-16T00:00Z, the day the operator
-// set the trial's cap and total). Only rows under our label count (flex_vast_loop flex_spent), so an earlier
-// start could only add rows that are not ours; a later one could hide ours, so it is never moved later.
-data flex_trial_charges_from: Int = 1792108800
+// The instant the trial's charges are read from: 2026-10-16T00:00Z, the day the operator set the trial's cap
+// and total. Only rows under our label count (flex_vast_loop flex_spent), so an earlier start could only add
+// rows that are not ours; a later one could hide ours, so it is never moved later.
+data flex_trial_charges_from: EpochMs = 1792108800000
 
 data flex_trial_policy: FlexPolicy = FlexPolicy {
   fleet_rate_cap: flex_trial_fleet_rate_cap,
@@ -430,10 +432,10 @@ data flex_serving_recipe: ServingRecipe = serving_recipe_flash_next_lab_vllm
 // A recipe with no row here has no Vast realization; a row with no filters admits no offer (flex_offer_screen_by_recipe).
 type FlexVastHostFilters {
   cuda_max_good_min: Nat
-  cpu_ram_min_mb: Int
-  gpu_ram_min_mb: Int
-  inet_down_min_mbps: Int
-  verification: NonEmptyStr
+  cpu_ram_min: ByteSize
+  gpu_ram_min: ByteSize
+  inet_down_min: Bandwidth
+  verified: Bool
 }
 
 type FlexHostImageRow {
@@ -449,10 +451,10 @@ type FlexHostImageRow {
 // (cuda_13_0_driver_requirement), so the filter and the floor cannot disagree.
 data flex_flash_next_vast_filters: FlexVastHostFilters = FlexVastHostFilters {
   cuda_max_good_min: cuda_13_0_driver_requirement.toolkit_major,
-  cpu_ram_min_mb: 128000,
-  gpu_ram_min_mb: 90000,
-  inet_down_min_mbps: 1000,
-  verification: "verified" as NonEmptyStr,
+  cpu_ram_min: mebibyte_to_byte_size(m: mebibyte(count: 128000)),
+  gpu_ram_min: mebibyte_to_byte_size(m: mebibyte(count: 90000)),
+  inet_down_min: bandwidth(count: 1000 * vast_ai_bits_per_megabit),
+  verified: true,
 }
 
 data flex_host_images: List<FlexHostImageRow> = [
@@ -560,11 +562,11 @@ fn flex_vast_offer_query(recipe: ServingRecipe) -> VastAiOfferQuery? {
             value: VastAiOfferQuery {
               search_type: vast_ai_search_type_bid,
               limit: vast_ai_search_limit_default,
-              gpu_ram_min_mb: f.gpu_ram_min_mb,
+              gpu_ram_min: f.gpu_ram_min,
               cuda_max_good_min: f.cuda_max_good_min,
-              cpu_ram_min_mb: f.cpu_ram_min_mb,
-              inet_down_min: f.inet_down_min_mbps,
-              verified: f.verification == "verified",
+              cpu_ram_min: f.cpu_ram_min,
+              inet_down_min: f.inet_down_min,
+              verified: f.verified,
             },
           }
       }
@@ -632,10 +634,10 @@ fn flex_optional_decimal_at_least(d: ExactDecimal?, min: Int) -> Bool {
 fn flex_offer_meets_filters(offer: VastAiOffer, host: VastAiOfferHostResources, filters: FlexVastHostFilters) -> Bool {
   host.id == offer.id
     && flex_optional_decimal_at_least(d: offer.cuda_max_good, min: filters.cuda_max_good_min)
-    && flex_optional_decimal_at_least(d: offer.inet_down, min: filters.inet_down_min_mbps)
-    && offer.gpu_ram >= filters.gpu_ram_min_mb
-    && host.cpu_ram >= filters.cpu_ram_min_mb
-    && offer.verification == (filters.verification as String)
+    && flex_optional_decimal_at_least(d: offer.inet_down, min: vast_ai_wire_mbps(b: filters.inet_down_min))
+    && offer.gpu_ram >= vast_ai_wire_mb(b: filters.gpu_ram_min)
+    && host.cpu_ram >= vast_ai_wire_mb(b: filters.cpu_ram_min)
+    && (!filters.verified || offer.verification == "verified")
 }
 
 // Consumer: flex_offer_in_shadow_field (the roster walk), and through it product.fabric.flex_vast_loop flex_entry_wall.
@@ -690,32 +692,51 @@ fn flex_offer_in_shadow_field(offer: VastAiOffer, host: VastAiOfferHostResources
 // rate divides by the hours in a billing month, which no cited Vast page states. That figure is
 // TranscribedUncited, so a quote resting on it is Estimated (refused as an established price, DESIGN 4d)
 // and names what would ground it. GB to GiB is exact (2^30 / 10^9).
-type FlexHoursPerMonth {
-  hours: Int
+// The billing month is a DURATION, and a zero month is unrepresentable: the period is one second more than
+// a Second-valued predecessor (the encoding std.rational NonzeroNatFraction uses for its denominator), so
+// the hourly division below has no zero case to check.
+type FlexStorageBillingMonth {
+  period_less_one_second: Second
   standing: CitedFigureStanding
 }
 
-data flex_vast_storage_hours_per_month: FlexHoursPerMonth = FlexHoursPerMonth {
-  hours: 730,
+fn flex_billing_month_seconds(m: FlexStorageBillingMonth) -> Nat {
+  second_count(s: m.period_less_one_second) + 1
+}
+
+data flex_vast_storage_billing_month: FlexStorageBillingMonth = FlexStorageBillingMonth {
+  period_less_one_second: second(count: 730 * 3600 - 1),
   standing: TranscribedUncited {
-    read_obligation: "the hours Vast divides storage_cost ($/GB-month) by to bill storage per hour; read it from Vast's billing documentation or derive it from a storage charge row (amount over GB-hours)" as NonEmptyStr,
+    read_obligation: "the period Vast divides storage_cost ($/GB-month) by to bill storage per hour (taken as 730 hours); read it from Vast's billing documentation or derive it from a storage charge row (amount over GB-hours)" as NonEmptyStr,
   },
 }
 
-fn flex_offer_disk_rate(offer: VastAiOffer, month: FlexHoursPerMonth) -> ServingDiskRate? {
+// Bytes in a decimal gigabyte, from std.measure's Giga exponent (Vast's storage_cost is per GB).
+fn flex_bytes_per_gigabyte() -> Int? {
+  match scale_exponent(s: Giga) {
+    Absent => none
+    Present { value: e } => int_pow_bounded(base: 10, exp: e)
+  }
+}
+
+// $/GB-month to $/GiB-hour, rounded up: x * (bytes per GiB / bytes per GB) * (seconds per hour / seconds
+// per billing month). Every factor is std.measure's own; the month is the one uncited figure.
+fn flex_offer_disk_rate(offer: VastAiOffer, month: FlexStorageBillingMonth) -> ServingDiskRate? {
   match exact_decimal_to_money_amount_micro_ceil(d: offer.storage_cost) {
     DecimalMoneyConverted { amount: per_gb_month } =>
-      if month.hours <= 0 {
-        none
-      } else {
-        Present {
-          value: ServingDiskRate {
-            rate: MoneyRate {
-              amount: money_amount_micro(count: (money_amount_micro_count(m: per_gb_month) * 1073741824 + (1000000000 * month.hours - 1)) / (1000000000 * month.hours)),
-              currency: vast_ai_quote_currency,
+      match flex_bytes_per_gigabyte() {
+        Absent => none
+        Present { value: bytes_per_gb } =>
+          let seconds_per_hour = seconds_per_minute() * minutes_per_hour()
+          let denominator = bytes_per_gb * flex_billing_month_seconds(m: month)
+          Present {
+            value: ServingDiskRate {
+              rate: MoneyRate {
+                amount: money_amount_micro(count: (money_amount_micro_count(m: per_gb_month) * gibibyte_scale_factor_bytes() * seconds_per_hour + (denominator - 1)) / denominator),
+                currency: vast_ai_quote_currency,
+              },
             },
-          },
-        }
+          }
       }
     _ => none
   }
@@ -725,15 +746,15 @@ fn flex_offer_quote(offer: VastAiOffer, recipe: ServingRecipe) -> ServingSelecti
   match vast_ai_min_bid_money_per_hour(offer: offer) {
     DecimalMoneyPerHourRefused { conversion: _ } => SelectionQuoteRefusedUnavailable
     DecimalMoneyPerHourConverted { rate: floor } =>
-      match flex_offer_disk_rate(offer: offer, month: flex_vast_storage_hours_per_month) {
+      match flex_offer_disk_rate(offer: offer, month: flex_vast_storage_billing_month) {
         Absent => SelectionQuoteRefusedUnavailable
         Present { value: disk } =>
           let quote = serving_unit_cost_for_selection(cost: serving_cost_per_million_tokens(recipe: recipe, hourly: serving_card_hourly(recipe: recipe, supply: RentedCardSupply { dph: floor, disk_rate: disk })))
-          match flex_vast_storage_hours_per_month.standing {
+          match flex_vast_storage_billing_month.standing {
             TranscribedUncited { read_obligation: _ } =>
               match quote {
-                SelectionQuoteRefusedEstimated { standings: ss } => SelectionQuoteRefusedEstimated { standings: concat(ss, [flex_vast_storage_hours_per_month.standing]) }
-                SelectionQuoteEstablished { amount: _, currency: _ } => SelectionQuoteRefusedEstimated { standings: [flex_vast_storage_hours_per_month.standing] }
+                SelectionQuoteRefusedEstimated { standings: ss } => SelectionQuoteRefusedEstimated { standings: concat(ss, [flex_vast_storage_billing_month.standing]) }
+                SelectionQuoteEstablished { amount: _, currency: _ } => SelectionQuoteRefusedEstimated { standings: [flex_vast_storage_billing_month.standing] }
                 other => other
               }
             _ => quote
