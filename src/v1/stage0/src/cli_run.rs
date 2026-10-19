@@ -21109,7 +21109,7 @@ pub fn run_claim_route(
                 .join("\n  ")
         ));
     }
-    let index = process_shared_index(source_roots);
+    let index = entry_resolve::try_process_shared_index(source_roots)?;
     let mut selected: Vec<(&String, &Rc<v1_compiler_compile::SourceFile>)> = index
         .source_files
         .iter()
