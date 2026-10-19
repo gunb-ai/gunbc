@@ -3,7 +3,7 @@ module gunbc.auth.approval_broker_marker
 import std.types { String, NonEmptyStr, List }
 import std.markup { MarkupComment, serialize_fragment_with }
 import extdeps.languages.html { html_markup_medium }
-import std.markup { HazardFree, HazardFound, fragment_hazard }
+import std.markup { Serialized, Rejected }
 import extdeps.http.server { MediaType }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess, BrokerProcess }
 
@@ -169,17 +169,14 @@ type BrokerMarkerComment
   = MarkerCommentRendered { text: String }
   | MarkerCommentRefused { reason: String }
 
+// ONE CALL, NOT A PAIR. This used to run the walk and then the serializer by hand, which is the shape
+// review 82279 on #14351 pointed at: two calls that a caller must remember to make together, and a
+// serializer that would happily write the comment if called alone. The serializer is now the check, so
+// there is nothing to pair and no way to get the bytes without passing it.
 fn approval_broker_marker_comment(body: String) -> BrokerMarkerComment {
-  // The SAME walk the guarded document routes run, on this one node, against the HTML medium. The
-  // check stays explicit here because the serializer's guarded route is a whole-document route and
-  // this is a fragment appended to an existing body -- but the RULE is not a second copy: it is
-  // std.markup's fragment_hazard reading CommentGrammar.terminator, the same function the HTML
-  // and JSX routes call. Before review 82181 this module reached past the medium into a language
-  // module's own hazard fn, which is how the two came to disagree about what a comment was.
-  let comment = MarkupComment { body: body }
-  match fragment_hazard(node: comment, medium: html_markup_medium()) {
-    HazardFree => MarkerCommentRendered { text: serialize_fragment_with(frag: comment, medium: html_markup_medium()) }
-    HazardFound { reason: why } => MarkerCommentRefused { reason: why }
+  match serialize_fragment_with(frag: MarkupComment { body: body }, medium: html_markup_medium()) {
+    Serialized { html: text } => MarkerCommentRendered { text: text }
+    Rejected { reason: why } => MarkerCommentRefused { reason: why }
   }
 }
 

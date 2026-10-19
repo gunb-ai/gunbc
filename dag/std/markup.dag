@@ -90,7 +90,7 @@ type VoidTagRendering = OmitClose | SelfClose
 // A language's comment grammar, held as ONE value: the two delimiters the emitter writes, the sequence
 // the tokenizer actually stops on, and whether a body ending in "-" reaches that stop state. They are
 // carried together because they only make sense together -- HTML writes " -->" but stops on "-->", and
-// the gap between those two is exactly where "a-->b" escapes (measured as control C5), so a medium that
+// the gap between those two is exactly where "a-->b" escapes, so a medium that
 // could carry one without the other was a medium that could be wrong by construction.
 //
 // WHY NO "NO COMMENTS" ARM. A NoCommentGrammar variant was considered and rejected: no medium in this
@@ -185,8 +185,8 @@ fn escape_text_for(mode: EscapeMode, s: String) -> String {
 // seam labelled unreachable that in fact diverges). §5: "Stronger than catching a wrong state is making it
 // unwritable." A Fragment now CANNOT contain a document, so:
 //   - serialize_fragment_with is TOTAL (it returns String and has no refusal to skip and no divergent arm),
-//   - every Fragment walker loses the Document arm it had to carry (seventeen of them, all added by this
-//     change and all now deleted -- the arms existed only because the type allowed the shape),
+//   - every Fragment walker loses the Document arm it had to carry -- those arms existed only because the
+//     type allowed the shape, so removing the shape removes them,
 //   - a document is serialized only through serialize_document_with, whose refusal is a typed result.
 // The keyword is the NAME after <!DOCTYPE ("html" selects standards mode); the "<!DOCTYPE " prefix is the
 // medium's spelling, so a document cannot carry its own punctuation. The name is NonEmptyStr: an empty
@@ -217,20 +217,41 @@ fn serialize_attribute_with(a: Attribute, bracket: MarkupBracket) -> String {
 fn serialize_attributes_with(attrs: List<Attribute>, bracket: MarkupBracket) -> String {
   fold(attrs, init: "", f: (acc, a) => concat(acc, serialize_attribute_with(a: a, bracket: bracket)))
 }
-
-fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
+// THE ONLY WAY MARKUP BECOMES TEXT, AND IT IS FALLIBLE ON PURPOSE.
+//
+// The comment used to be WRITTEN here and CHECKED somewhere else, in a walk only the routes remembering to
+// call it got (review 82279 on #14351): serialize_jsx_fragment, serialize_jsx_component,
+// serialize_svg_document and html_fragment's serialize_fragment came straight here, so
+// MarkupComment { body: "*/ evil" } closed its comment early and the rest was emitted as TSX. The module
+// comment claimed a new medium "cannot forget to call" the check, which was false as written: a safety
+// property that depends on every caller remembering is validation, not construction (§5).
+//
+// So the checks that are about WRITING -- a body that would end its own comment, raw-text content that
+// would end its element early, a doctype name that is not one bare token -- happen in the arm that emits
+// those bytes, reading the medium's own grammar. Producing the bytes now REQUIRES passing those tests, so
+// there is no route that can skip them, no walk to forget, and no second copy to drift from the emitter
+// (§3). That is also why "did the walk recurse into that arm?" is no longer a question needing a control.
+//
+// Refusal, not repair. A comment cannot be escaped into safety: comments decode nothing, so "a-->b" has no
+// legal spelling as a comment and the author must restructure it. Emitting the text with the sequence
+// stripped would silently change what the comment SAYS -- §5's fabricated output.
+fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> MarkupSerializeResult {
   match frag {
-    FragmentText { content: c } => escape_text_for(mode: medium.text_escape, s: c)
-    RawNode { content: c } => c
-    MarkupComment { body: b } => join([medium.comment_grammar.open as String, b, medium.comment_grammar.close as String], "")
+    FragmentText { content: c } => Serialized { html: escape_text_for(mode: medium.text_escape, s: c) }
+    RawNode { content: c } => Serialized { html: c }
+    MarkupComment { body: b } =>
+      match comment_body_hazard(body: b, grammar: medium.comment_grammar) {
+        HazardFound { reason: why } => Rejected { reason: why }
+        HazardFree => Serialized { html: join([medium.comment_grammar.open as String, b, medium.comment_grammar.close as String], "") }
+      }
     Element { tag: t, attributes: attrs, children: kids } => {
       let attrs_str = serialize_attributes_with(attrs: attrs, bracket: medium.bracket)
       if is_void_tag(tag: t, void_tags: medium.void_tags) {
         match medium.void_rendering {
           OmitClose =>
-            join([medium.bracket.tag_open, t, attrs_str, medium.bracket.tag_close], "")
+            Serialized { html: join([medium.bracket.tag_open, t, attrs_str, medium.bracket.tag_close], "") }
           SelfClose =>
-            join([medium.bracket.tag_open, t, attrs_str, " /", medium.bracket.tag_close], "")
+            Serialized { html: join([medium.bracket.tag_open, t, attrs_str, " /", medium.bracket.tag_close], "") }
         }
       } else {
         let child_medium = if tag_in_set(tag: t, tags: medium.raw_text_tags) {
@@ -238,16 +259,41 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
         } else {
           medium
         }
-        let inner = fold(kids, init: "", f: (acc, k) => concat(acc, serialize_fragment_with(frag: k, medium: child_medium)))
-        match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
-          FoundTag { delim: d } =>
-            join([d.open, inner, d.close], "")
-          NoTag =>
-            join([medium.bracket.tag_open, t, attrs_str, medium.bracket.tag_close, inner, medium.bracket.end_tag_open, t, medium.bracket.tag_close], "")
+        if tag_in_set(tag: t, tags: medium.raw_text_tags) && string_contains(s: raw_text_children_text(children: kids), pattern: concat(medium.bracket.end_tag_open, t)) {
+          // Read from the MEDIUM, so a medium that spells end tags differently is guarded against the
+          // spelling it will actually write: bracket.end_tag_open is the same field three lines below
+          // emits (review 82268) -- one home, checker and emitter cannot disagree.
+          Rejected { reason: join(["raw-text element <", t, "> content contains its own close sequence '", medium.bracket.end_tag_open, t, "' — refusing to serialize (the remainder would be parsed as markup); restructure the content"], "") }
+        } else {
+          match serialize_children(children: kids, medium: child_medium) {
+            Rejected { reason: why } => Rejected { reason: why }
+            Serialized { html: inner } => match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
+              FoundTag { delim: d } =>
+                Serialized { html: join([d.open, inner, d.close], "") }
+              NoTag =>
+                Serialized { html: join([medium.bracket.tag_open, t, attrs_str, medium.bracket.tag_close, inner, medium.bracket.end_tag_open, t, medium.bracket.tag_close], "") }
+            }
+          }
         }
       }
     }
   }
+}
+
+// THE FOLD THAT PROPAGATES A REFUSAL. Accumulating the RESULT rather than a String is what makes the
+// guarantee real: a child that refuses stops its whole element, so no page is half-serialized and no
+// caller can obtain the text of a subtree that failed. The refusal rides in the accumulator, so it cannot
+// be dropped by a caller that forgot to look at it.
+fn serialize_children(children: List<Fragment>, medium: MarkupMedium) -> MarkupSerializeResult {
+  fold(children,
+    init: Serialized { html: "" },
+    f: (acc, c) => match acc {
+      Rejected { reason: r } => Rejected { reason: r }
+      Serialized { html: h } => match serialize_fragment_with(frag: c, medium: medium) {
+        Serialized { html: part } => Serialized { html: concat(h, part) }
+        Rejected { reason: r } => Rejected { reason: r }
+      }
+    })
 }
 
 fn attr_is_url_attr(name: String) -> Bool {
@@ -275,31 +321,31 @@ fn attr(name: String, value: String) -> Attribute {
 // return, and the alternative (a labelled-unreachable seam) was measured to diverge. Review 82244 on
 // #14351: the guard lived on one route and the unguarded routes reached the seam. Here there is no route
 // around it -- serialize_fragment_with cannot be handed a document at all -- and the refusal is a value
-// the caller must match on (§5: "every path succeeds fully or fails with a typed, located diagnostic").
+// THE ONLY WAY A DOCUMENT IS WRITTEN, and it owns every check that guards a doctype.
+//
+// A typed result rather than a String, for two reasons. A medium with NoDocumentGrammar has no spelling for
+// a document-type declaration, so there is no string to return, and the earlier alternative -- a
+// labelled-unreachable seam -- was measured to diverge (review 82244 on #14351). And the doctype NAME check
+// lives here rather than in a walk, because a separate walk is a check a route can skip, which is exactly
+// what review 82279 found for comments on the same day. This function is the only place a doctype is ever
+// spelled, so checking it here is checking it always.
 fn serialize_document_with(doc: MarkupDocument, medium: MarkupMedium) -> MarkupSerializeResult {
   match medium.document_grammar {
     NoDocumentGrammar =>
       // Located: it names the medium's own grammar as the reason, and what to do instead.
       Rejected { reason: "this medium declares no document grammar (DocumentGrammar is NoDocumentGrammar), so a document-type declaration has no spelling in it — serialize the root Fragment instead" }
-    DeclaresDocument { open: kw } =>
-      Serialized { html: join(
-        [kw as String, doc.doctype as String, medium.bracket.tag_close, document_line_ending(), serialize_fragment_with(frag: doc.root, medium: medium)],
-        "",
-      ) }
+    DeclaresDocument { open: kw, name_end_whitespace: ws } =>
+      match doctype_name_hazard(keyword: doc.doctype, name_end_whitespace: ws, bracket: medium.bracket) {
+        HazardFound { reason: why } => Rejected { reason: why }
+        HazardFree => match serialize_fragment_with(frag: doc.root, medium: medium) {
+          Serialized { html: body } =>
+            Serialized { html: join([kw as String, doc.doctype as String, medium.bracket.tag_close, document_line_ending(), body], "") }
+          Rejected { reason: why } => Rejected { reason: why }
+        }
+      }
   }
 }
 
-// The document half of the hazard walk, kept beside the type it checks. The doctype NAME is checked here
-// (a bare token, or the document parses in the wrong mode) and the root is handed to the fragment walk, so
-// a URL or a self-terminating comment inside a document's subtree is found by the same code as anywhere
-// else. No "does this medium allow documents" test: serialize_document_with owns that refusal, and asking
-// twice is how two answers get to disagree (§3).
-fn document_hazard(doc: MarkupDocument, medium: MarkupMedium) -> MarkupHazard {
-  match doctype_name_hazard(keyword: doc.doctype, grammar: medium.document_grammar, bracket: medium.bracket) {
-    HazardFound { reason: rs } => HazardFound { reason: rs }
-    HazardFree => fragment_hazard(node: doc.root, medium: medium)
-  }
-}
 
 fn document_line_ending() -> String {
   render(doc: DocLine, proto: LayoutProtocol { indent_unit: "" })
@@ -362,7 +408,7 @@ fn comment_body_hazard(body: String, grammar: CommentGrammar) -> MarkupHazard {
     // ending in a dash closes early even with no terminator in the middle. The remedy differs from the
     // case above (shorten the body vs remove a sequence from it), so the reason differs. Read from the
     // grammar, never hardcoded: witness_medium_grammar_decides_the_dash_rule reds if this line stops
-    // consulting the field (control C7).
+    // consulting the field.
     HazardFound { reason: join(["markup comment body ends in '-' — adjacent to the close delimiter this forms an abrupt '", grammar.terminator as String, "' close; restructure the comment"], "") }
   } else {
     HazardFree
@@ -383,35 +429,38 @@ fn comment_body_hazard(body: String, grammar: CommentGrammar) -> MarkupHazard {
 // `terminator`. No language's character is spelled as a literal in this module.
 //
 // NO EMPTINESS CHECK on the name: NonEmptyStr has no empty inhabitant (measured against the checker), so
-// asserting a refusal of one would be asserting an invalid value as expected.
-fn doctype_name_hazard(keyword: NonEmptyStr, grammar: DocumentGrammar, bracket: MarkupBracket) -> MarkupHazard {
+// A <!DOCTYPE> name is a production, not free text: the tokenizer reads at most ONE token after the
+// keyword, so a name holding whitespace or an angle bracket makes the declaration swallow text and the
+// document parse in the wrong mode (a page can silently land in quirks mode).
+//
+// WHICH CHARACTERS, AND WHERE THEY COME FROM (review 82268 on #14351). This read "<", ">" and " " as
+// literals inside std/, which is twice wrong: which characters end that token is a fact about the tokenizer
+// of the language that declares a doctype (§4: "a new target language is rows in extdeps/languages/, never
+// an edit to the fold"), and the two angle brackets were a SECOND home for a spelling the medium already
+// carries, since MarkupBracket.tag_open / tag_close are what serialize_fragment_with writes for every tag.
+// So the brackets are READ off the bracket and the whitespace is the caller's DeclaresDocument row.
+//
+// WHY THE BOUNDARY IS A PARAMETER AND NOT A MATCH ON THE GRAMMAR. An earlier shape took the whole
+// DocumentGrammar, matched it, and returned "no boundary" for NoDocumentGrammar -- reintroducing, on the
+// input side, the empty-string-as-meaning convention this module had just retired on the output side
+// (review 82279 on #14351, §5: "no plausible output is fabricated"). It also invented an answer for a state
+// the only caller has already refused. So the caller -- serialize_document_with, which has matched
+// DeclaresDocument and holds both rows -- hands them in. There is no absent case to answer, and no arm to
+// hand a fabricated one to.
+//
+// NO EMPTINESS CHECK on the name itself: NonEmptyStr has no empty inhabitant (measured against the
+// checker), so asserting a refusal of one would be asserting an invalid value as expected.
+fn doctype_name_hazard(keyword: NonEmptyStr, name_end_whitespace: NonEmptyStr, bracket: MarkupBracket) -> MarkupHazard {
   let s = keyword as String
-  // Read off the grammar that DECLARES a document type, so a medium with no document grammar can never
-  // supply a boundary by accident. The NoDocumentGrammar arm answers "no boundary" because it is never
-  // consulted: serialize_document_with refuses that grammar before this runs, which is claimed by
-  // witness_a_document_medium_refuses_to_write_a_document. Being total here and returning a clean value
-  // beats a divergent seam whose reachability was the last finding.
-  let whitespace_ends_name = match grammar {
-    DeclaresDocument { name_end_whitespace: w } => w as String
-    NoDocumentGrammar => ""
-  }
   if string_contains(s: s, pattern: bracket.tag_open)
     || string_contains(s: s, pattern: bracket.tag_close)
-    || (whitespace_ends_name != "" && string_contains(s: s, pattern: whitespace_ends_name)) {
+    || string_contains(s: s, pattern: name_end_whitespace as String) {
     HazardFound { reason: join(["doctype name '", s, "' is not a single bare token — the tokenizer reads one token after the doctype keyword; anything else changes how the document parses"], "") }
   } else {
     HazardFree
   }
 }
 
-fn first_hazard_in(children: List<Fragment>, medium: MarkupMedium) -> MarkupHazard {
-  fold(children,
-    init: HazardFree,
-    f: (acc, c) => match acc {
-      HazardFound { reason: r } => HazardFound { reason: r }
-      HazardFree => fragment_hazard(node: c, medium: medium)
-    })
-}
 
 fn raw_text_children_text(children: List<Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => match c {
@@ -424,34 +473,3 @@ fn raw_text_children_text(children: List<Fragment>) -> String {
   })
 }
 
-// THE ONE WALK, over FRAGMENTS ONLY. Exhaustive by construction — a new Fragment arm is a compile error
-// here, which is the point: an arm that quietly passed would certify an unchecked shape, and a guard that
-// looks like it checked is worse than one that is absent.
-//
-// It does not walk documents, and cannot be handed one: MarkupDocument is a type of its own, so the shape
-// does not exist inside a Fragment. That is what removed this function's Document arm and the seventeen
-// others across the repo (review 82244 on #14351). document_hazard is the document half, and it calls here
-// for the subtree.
-fn fragment_hazard(node: Fragment, medium: MarkupMedium) -> MarkupHazard {
-  match node {
-    FragmentText { content: _ } => HazardFree
-    RawNode { content: _ } => HazardFree
-    MarkupComment { body: b } => comment_body_hazard(body: b, grammar: medium.comment_grammar)
-    Element { tag: t, attributes: _, children: kids } =>
-      if tag_in_set(tag: t, tags: medium.raw_text_tags) {
-        // THE SEQUENCE THE EMITTER WILL ACTUALLY WRITE, read from the same medium: bracket.end_tag_open
-        // is what serialize_fragment_with puts before the tag name, so a medium that spells an end tag
-        // differently gets a guard that looks for THAT spelling. Hardcoding "</" here was review 82268's
-        // first finding -- the comment grammar had already been made one value read by both emitter and
-        // checker, and this line had been left behind as the second home. §3: "Minimization holds only if
-        // each fact lives in exactly one place."
-        if string_contains(s: raw_text_children_text(children: kids), pattern: concat(medium.bracket.end_tag_open, t)) {
-          HazardFound { reason: join(["raw-text element <", t, "> content contains its own close sequence '</", t, "' — refusing to serialize (corruption otherwise); restructure the content"], "") }
-        } else {
-          first_hazard_in(children: kids, medium: medium)
-        }
-      } else {
-        first_hazard_in(children: kids, medium: medium)
-      }
-  }
-}

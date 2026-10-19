@@ -4,7 +4,7 @@ import std.types { List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
-import std.markup { HazardFree, HazardFound, fragment_hazard, CommentGrammar, DeclaresDocument }
+import std.markup { CommentGrammar, DeclaresDocument }
 import extdeps.languages.html {
   canonical_html_spellings,
   html_comment_open_sequence,
@@ -637,32 +637,21 @@ fn find_first_rejected_url_in_document(doc: MarkdownDocument) -> RejectedUrlSche
   find_first_rejected_url_in_blocks(blocks: doc.blocks)
 }
 
-fn serialize_markdown_document(doc: MarkdownDocument) -> String {
+fn serialize_markdown_document(doc: MarkdownDocument) -> MarkupSerializeResult {
   serialize_fragment(frag: markdown_document_to_fragment(doc: doc))
 }
 
-// WHY THIS ROUTE CALLS THE HAZARD WALK ON ITS FRAGMENT AND THE OTHER TWO CALL IT TOO.
-// MarkdownDocument is a CLOSED set of typed blocks — heading, paragraph, code, list — and no block
-// carries a MarkupComment or a Document node, so today there is nothing for the comment or doctype
-// checks to find here and the walk would be a guard over an empty domain. The one thing that WOULD
-// need it is a raw-HTML block: the moment MarkdownDocument gains one, a comment could reach this
-// route through ingest_markdown_source, and this line has to be added at the same time — the trigger
-// is that block's addition, named here rather than left to memory. The medium carries Markdown's
-// comment grammar (read from HTML's, §6.6/§4.2) whether or not this route can reach it yet.
+// THE URL PASS, THEN THE SERIALIZER. MarkdownDocument is a closed set of typed blocks and no block carries
+// a MarkupComment or a Document node, so today the comment checks have nothing to find here -- but the
+// serializer is the same one and refuses the same way, so the day MarkdownDocument gains a raw-HTML block
+// (the trigger for a comment reaching this route) the guard is already in place rather than a line someone
+// has to remember to add. The separate pre-flight walk this used to run is gone: it checked rules the
+// emitter now checks, from the same medium rows, and a route that skipped it was the defect.
 fn try_serialize_markdown_document(doc: MarkdownDocument) -> MarkupSerializeResult {
-  let frag = markdown_document_to_fragment(doc: doc)
-  match fragment_hazard(node: frag, medium: markdown_markup_medium(sp: commonmark_gfm_spellings)) {
-    HazardFound { reason: why } => Rejected { reason: why }
-    HazardFree => try_serialize_markdown_document_guarded(doc: doc)
-  }
-}
-
-fn try_serialize_markdown_document_guarded(doc: MarkdownDocument) -> MarkupSerializeResult {
   match find_first_rejected_url_in_document(doc: doc) {
     Present { value: _ } =>
       Rejected { reason: "URL scheme not allowlisted for markdown link/image" }
-    Absent =>
-      Serialized { html: serialize_markdown_document(doc: doc) }
+    Absent => serialize_markdown_document(doc: doc)
   }
 }
 

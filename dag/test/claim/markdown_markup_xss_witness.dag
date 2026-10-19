@@ -1,4 +1,5 @@
 module test.claim.markdown_markup_xss_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -74,10 +75,10 @@ test fn witness_markdown_reduces_and_serializes() -> Bool {
 }
 
 test fn witness_markdown_uses_one_serialize_fragment_fold() -> Bool {
-  let via_consumer = serialize_markdown_document(doc: sample_readme_doc())
-  let via_fold = serialize_fragment(
+  let via_consumer = render_markup(serialize_markdown_document(doc: sample_readme_doc()))
+  let via_fold = render_markup(serialize_fragment(
     frag: markdown_document_to_fragment(doc: sample_readme_doc())
-  )
+  ))
   via_consumer == via_fold
 }
 
@@ -188,14 +189,14 @@ fn witness_escape_url_passes_javascript_scheme() -> Bool {
 }
 
 test fn witness_javascript_link_reject_discriminates_from_char_escape() -> Bool {
-  let unchecked = serialize_markdown_document(doc: javascript_link_doc())
+  let unchecked = render_markup(serialize_markdown_document(doc: javascript_link_doc()))
   witness_escape_url_passes_javascript_scheme()
     && unchecked == "<div><p><a href=\"javascript:alert(1)\">click</a></p></div>"
 }
 
 test fn witness_data_image_reject_discriminates_from_char_escape() -> Bool {
   starts_with(
-      s: serialize_markdown_document(doc: data_image_doc()),
+      s: render_markup(serialize_markdown_document(doc: data_image_doc())),
       prefix: "<div><p><img src=\"data:"
     )
 }

@@ -1,4 +1,5 @@
 module test.claim.markup_medium_convergence
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 import std.live_tree { LiveTreeDisposition }
 import std.markup {
@@ -60,8 +61,8 @@ fn md_medium() -> MarkupMedium {
 }
 
 test fn witness_same_fold_html_vs_md() -> Bool {
-  let html = serialize_fragment_with(frag: em_hi(), medium: html_markup_medium())
-  let md = serialize_fragment_with(frag: em_hi(), medium: md_medium())
+  let html = render_markup(serialize_fragment_with(frag: em_hi(), medium: html_markup_medium()))
+  let md = render_markup(serialize_fragment_with(frag: em_hi(), medium: md_medium()))
   (html == "<em>hi</em>") && (md == "*hi*") && (html != md)
 }
 
@@ -87,8 +88,8 @@ fn md_medium_underscore() -> MarkupMedium {
 }
 
 test fn witness_perturb_row_flips_output() -> Bool {
-  let base = serialize_fragment_with(frag: em_hi(), medium: md_medium())
-  let perturbed = serialize_fragment_with(frag: em_hi(), medium: md_medium_underscore())
+  let base = render_markup(serialize_fragment_with(frag: em_hi(), medium: md_medium()))
+  let perturbed = render_markup(serialize_fragment_with(frag: em_hi(), medium: md_medium_underscore()))
   (base == "*hi*") && (perturbed == "_hi_") && (base != perturbed)
 }
 
@@ -129,8 +130,8 @@ fn single_quote_medium() -> MarkupMedium {
 }
 
 test fn witness_third_medium_is_one_row() -> Bool {
-  let html = serialize_fragment_with(frag: button_node(), medium: html_markup_medium())
-  let single_quote = serialize_fragment_with(frag: button_node(), medium: single_quote_medium())
+  let html = render_markup(serialize_fragment_with(frag: button_node(), medium: html_markup_medium()))
+  let single_quote = render_markup(serialize_fragment_with(frag: button_node(), medium: single_quote_medium()))
   (html == "<button class=\"primary\">Go</button>")
     && (single_quote == "<button class='primary'>Go</button>")
     && (html != single_quote)

@@ -14,7 +14,7 @@ import std.markup {
   unescape_text, unescape_attribute, unescape_url,
   attr_is_url_attr,
   HazardFree, HazardFound,
-  fragment_hazard, document_hazard, serialize_document_with, MarkupSerializeResult, Serialized, Rejected,
+  serialize_document_with, MarkupSerializeResult, Serialized, Rejected,
 }
 import extdeps.uri_validation {
   validate_href, SafeHref, RejectedHref,
@@ -31,7 +31,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Comment and document-type SPELLINGS of this language. They live here, not in whichever module emits a
 // comment, because they are facts about HTML (§4: "a new target language is rows in extdeps/languages/,
 // never an edit to the fold"), and they are governed by an upstream with its own version, which is where
-// extdeps exists for (§122).
+// extdeps exists for (§3, external upstream decomposition).
 //
 // One home, read rather than restated: std.languages' html_format and markdown_format now READ these rows
 // instead of typing their own "<!-- " / " -->", so the characters exist once. They stay String? there
@@ -344,11 +344,19 @@ fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
   }
 }
 
-fn serialize_html_source_with(node: Fragment, sp: MarkupBracket) -> String {
-  serialize_fragment_with(frag: node, medium: html_medium_with(sp: sp))
+// THERE IS NO UNGUARDED NAME ANY MORE. Both of these used to return String by calling the serializer
+// directly, which is how a comment could be written without its check (review 82279 on #14351): the check
+// lived in a walk these functions never called. The serializer now refuses, so these return the typed
+// result and every caller has to say what a refusal means where it stands -- §5's "no plausible output is
+// fabricated", answered at the call site that knows what it is serving.
+fn serialize_html_source_with(node: Fragment, sp: MarkupBracket) -> HtmlEmitResult {
+  match serialize_fragment_with(frag: node, medium: html_medium_with(sp: sp)) {
+    Serialized { html: out } => EmitOk { html: out }
+    Rejected { reason: why } => EmitRejected { reason: why }
+  }
 }
 
-fn serialize_html_source(node: Fragment) -> String {
+fn serialize_html_source(node: Fragment) -> HtmlEmitResult {
   serialize_html_source_with(node: node, sp: canonical_html_spellings)
 }
 
@@ -395,15 +403,15 @@ type HtmlEmitResult
 // legitimately contain a URL-looking string ("<!-- see https://x -->") and find_first_rejected_url
 // already skips comments; anything the URL pass rejects is refused before its text is examined.
 
+// THE GUARDED FRAGMENT ROUTE: the URL pass, then the serializer -- which is itself the comment and
+// raw-text guard. It used to run a separate walk for those two, which meant the guarantee depended on this
+// route being the one a caller chose; now the check is in the arm that writes the bytes, so it holds for
+// every route including these two.
 fn try_serialize_html_source(node: Fragment) -> HtmlEmitResult {
   match find_first_rejected_url(node: node) {
     Present { value: r } =>
       EmitRejected { reason: r.url }
-    Absent =>
-      match fragment_hazard(node: node, medium: html_markup_medium()) {
-        HazardFree => EmitOk { html: serialize_html_source(node: node) }
-        HazardFound { reason: why } => EmitRejected { reason: why }
-      }
+    Absent => serialize_html_source(node: node)
   }
 }
 
@@ -415,16 +423,26 @@ fn try_serialize_html_source(node: Fragment) -> HtmlEmitResult {
 // NAME: find_first_rejected_url flags attributes that carry URLs, and a doctype name is not one (a
 // name holding "<", ">" or a space is refused by doctype_name_hazard before anything is written).
 fn try_serialize_html_document(doc: MarkupDocument) -> HtmlEmitResult {
+  try_serialize_html_document_with(doc: doc, medium: html_markup_medium())
+}
+
+// THE DOCUMENT ROUTE, PARAMETERISED BY THE MEDIUM. The entry point above is this with HTML's own medium.
+// The parameter exists so a claim can run the route against a medium that spells things DIFFERENTLY: a
+// claim that only ever uses HTML's medium cannot tell whether the guard READ the medium or merely happened
+// to agree with it, which is the distinction reviews 82268 (twice) and 82209 were about. The URL pass keeps
+// this in the language module rather than in std.markup because extdeps.uri_validation imports std.markup,
+// so the reverse edge would close a cycle.
+fn try_serialize_html_document_with(doc: MarkupDocument, medium: MarkupMedium) -> HtmlEmitResult {
   match find_first_rejected_url(node: doc.root) {
     Present { value: r } =>
       EmitRejected { reason: r.url }
     Absent =>
-      match document_hazard(doc: doc, medium: html_markup_medium()) {
-        HazardFree => match serialize_document_with(doc: doc, medium: html_markup_medium()) {
-          Serialized { html: out } => EmitOk { html: out }
-          Rejected { reason: why } => EmitRejected { reason: why }
-        }
-        HazardFound { reason: why } => EmitRejected { reason: why }
+      // One match, not a walk then a serialize: serialize_document_with owns the doctype-name check and
+      // the fragment serializer owns the comment and raw-text checks, so a refusal arrives as a Rejected
+      // from whichever of them found it.
+      match serialize_document_with(doc: doc, medium: medium) {
+        Serialized { html: out } => EmitOk { html: out }
+        Rejected { reason: why } => EmitRejected { reason: why }
       }
   }
 }

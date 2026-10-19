@@ -1,4 +1,5 @@
 module test.claim.markup_document_comment_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 // WITNESSES THE THREE THINGS THE COMMENT/DOCTYPE ARMS MUST GET RIGHT, and goes red when any of them
 // stops being true. §5: a typecheck is not a witness — every claim here runs the serializer and
@@ -39,10 +40,12 @@ module test.claim.markup_document_comment_witness
 //       value becomes expressible again, and the DELETED claim above would be needed once more; the
 //       checker refusing `terminator: ""` is the measurement that the construction holds. Verified by
 //       attempting the mutation and reading the compile refusal, not by a claim that can only pass.
-//   C8  extdeps.languages.react_jsx try_serialize_jsx_component: drop the fragment_hazard match and
-//       return JsxOk after the URL pass alone. witness_jsx_guarded_route_refuses_a_comment_that_closes_
-//       early goes red. (This is the pre-review-82181 shape; it is the control that would have caught the
-//       original finding. The document case is no longer exercisable here: a Fragment cannot hold one.)
+//   C8  std.markup serialize_fragment_with's MarkupComment arm: emit open+body+close without consulting
+//       comment_body_hazard (the pre-review-82279 shape, when the check lived only in a walk a route could
+//       skip). witness_comment_terminator_is_refused, witness_jsx_guarded_route_refuses_a_comment_that_
+//       closes_early and the broker marker claims go red together -- which is the point of putting the
+//       check in the emitter: ONE mutation now reddens every route, where the walk shape needed a separate
+//       control per route and still missed the ones that never called it.
 //   C3  extdeps.languages.html try_serialize_html_document: pass a node other than doc.root to the URL
 //       pass (e.g. skip the root). witness_url_guard_walks_into_the_document goes red (the javascript:
 //       href inside the root is no longer found) while witness_url_guard_passes_a_clean_document stays
@@ -66,7 +69,7 @@ import extdeps.languages.html {
 }
 import std.markup {
   HazardFree, HazardFound,
-  fragment_hazard, comment_body_hazard, doctype_name_hazard,
+  comment_body_hazard,
   serialize_document_with, Serialized, Rejected,
 }
 import extdeps.uri_validation { find_first_rejected_url }
@@ -140,14 +143,14 @@ fn document_with_root(root: Fragment) -> MarkupDocument {
 // ── 1. the delimiters are the medium's ────────────────────────────────────────────────────────
 
 test fn witness_comment_renders_with_the_medium_delimiters() -> Bool {
-  serialize_fragment_with(frag: comment_node(body: "note"), medium: html_markup_medium()) == "<!-- note -->"
+  render_markup(serialize_fragment_with(frag: comment_node(body: "note"), medium: html_markup_medium())) == "<!-- note -->"
 }
 
 // THE CLAIM THE RED CONTROL IS FOR. The same fragment through a medium that spells comments
 // differently must render differently. A hardcoded "<!-- " in the serializer passes the claim above
 // and fails this one, which is why both exist.
 test fn witness_comment_delimiters_come_from_the_medium() -> Bool {
-  serialize_fragment_with(frag: comment_node(body: "note"), medium: jsx_like_medium) == "{/* note */}"
+  render_markup(serialize_fragment_with(frag: comment_node(body: "note"), medium: jsx_like_medium)) == "{/* note */}"
 }
 
 test fn witness_html_delimiter_rows_match_the_medium() -> Bool {
@@ -165,7 +168,7 @@ test fn witness_emitter_delimiter_is_not_the_terminator() -> Bool {
 // inside a comment, so escaping would corrupt it — red if someone "fixes" the arm by routing the body
 // through the text escaper.
 test fn witness_comment_body_is_emitted_verbatim() -> Bool {
-  serialize_fragment_with(frag: comment_node(body: "a & b < c"), medium: html_markup_medium()) == "<!-- a & b < c -->"
+  render_markup(serialize_fragment_with(frag: comment_node(body: "a & b < c"), medium: html_markup_medium())) == "<!-- a & b < c -->"
 }
 
 // ── 2. a comment cannot terminate itself ──────────────────────────────────────────────────────
@@ -332,22 +335,26 @@ test fn witness_comment_in_a_document_still_checked_for_early_close() -> Bool {
 
 // ── 4. the doctype name is a production, not free text ────────────────────────────────────────
 
+// Also through the ROUTE, as its reject counterpart does. The pair is what matters: a doctype check that
+// refused everything would satisfy the reject claim alone, and one that refused nothing would satisfy the
+// accept claim alone.
 test fn witness_clean_doctype_name_is_accepted() -> Bool {
-  match doctype_name_hazard(keyword: html_doctype_name) {
-    HazardFree => true
-    HazardFound { reason: _ } => false
+  match try_serialize_html_document(doc: MarkupDocument { doctype: html_doctype_name, root: empty_html() }) {
+    EmitOk { html: _ } => true
+    EmitRejected { reason: _ } => false
   }
 }
 
 test fn witness_doctype_name_rejects_non_token_names() -> Bool {
-  // The empty name is NOT in this list, because it is no longer expressible: Document.doctype is
-  // NonEmptyStr and `Document { doctype: "", root: _ }` fails to resolve (measured against the checker).
-  // Asserting a refusal of it here would be asserting an invalid value as expected output -- a claim
-  // that can only pass is not a claim. The type is the guarantee. What remains are the characters a
-  // length bound cannot exclude.
-  // Asserted through the ROUTE, not by calling doctype_name_hazard directly: the refusal only matters if
-  // a page carrying such a name is actually refused, and going through the route also pins the wiring
-  // (a hazard function that nobody calls would keep these claims green otherwise).
+  // The empty name is NOT in this list, because it is no longer expressible: MarkupDocument.doctype is
+  // NonEmptyStr and `MarkupDocument { doctype: "", root: _ }` fails to resolve (measured against the
+  // checker). Asserting a refusal of it would be asserting an invalid value as expected output -- a claim
+  // that can only pass is not a claim. What remains are the characters a length bound cannot exclude: the
+  // two angle brackets the medium spells and the whitespace its DeclaresDocument row spells.
+  //
+  // Asserted through the ROUTE, not by calling the check directly: the refusal only matters if a page
+  // carrying such a name is actually refused, and going through the route also pins the wiring — a check
+  // that nothing calls would keep a direct-call claim green.
   all([("html system" as NonEmptyStr), ("html>" as NonEmptyStr), ("<html" as NonEmptyStr)],
     k => match try_serialize_html_document(doc: MarkupDocument { doctype: k, root: empty_html() }) {
       EmitRejected { reason: _ } => true

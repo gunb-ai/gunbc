@@ -15,6 +15,7 @@ import std.markup {
   EscapeHtml,
   SelfClose,
   serialize_fragment_with,
+  MarkupSerializeResult,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -173,6 +174,8 @@ fn svg_text(x: Int, y: Int, label: String, class_name: String) -> Fragment {
   ], children: [FragmentText { content: label }])
 }
 
-fn serialize_svg_document(doc: Fragment) -> String {
+// The typed result, for the same reason as the HTML and JSX serializers: this is a route straight to the
+// emitter, and the comment / raw-text checks now live in the emitter.
+fn serialize_svg_document(doc: Fragment) -> MarkupSerializeResult {
   serialize_fragment_with(frag: doc, medium: svg_markup_medium())
 }

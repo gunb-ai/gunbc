@@ -6,8 +6,7 @@ import std.types { NonEmptyStr }
 import std.markup {
   Fragment, MarkupMedium, CommentGrammar, DocumentGrammar, NoDocumentGrammar, EscapeHtml, SelfClose,
   serialize_fragment_with,
-  HazardFree, HazardFound,
-  fragment_hazard,
+  Serialized, Rejected,
 }
 import extdeps.languages.html {
   html_markup_medium,
@@ -96,12 +95,23 @@ fn jsx_markup_medium() -> MarkupMedium {
   }
 }
 
-fn serialize_jsx_fragment(node: Fragment) -> String {
-  serialize_fragment_with(frag: node, medium: jsx_markup_medium())
+// FALLIBLE, WHICH IS THE POINT. These two are the routes review 82279 on #14351 named: they went straight
+// to the serializer while the comment check lived in a walk only try_serialize_jsx_component called, so
+// MarkupComment { body: "*/ evil" } closed its comment early and the remainder was emitted as TSX. There is
+// no String-returning path to a comment any more -- the check is in the arm that writes the comment, so a
+// caller cannot obtain the unsafe bytes by choosing a different function.
+fn serialize_jsx_fragment(node: Fragment) -> JsxEmitResult {
+  match serialize_fragment_with(frag: node, medium: jsx_markup_medium()) {
+    Serialized { html: out } => JsxOk { tsx: out }
+    Rejected { reason: why } => JsxRejected { reason: why }
+  }
 }
 
-fn serialize_jsx_component(fn_name: String, node: Fragment) -> String {
-  join([jsx_component_prefix(fn_name: fn_name), serialize_jsx_fragment(node: node), "; }"], "")
+fn serialize_jsx_component(fn_name: String, node: Fragment) -> JsxEmitResult {
+  match serialize_jsx_fragment(node: node) {
+    JsxRejected { reason: why } => JsxRejected { reason: why }
+    JsxOk { tsx: body } => JsxOk { tsx: join([jsx_component_prefix(fn_name: fn_name), body, "; }"], "") }
+  }
 }
 
 type JsxEmitResult
@@ -124,9 +134,6 @@ fn try_serialize_jsx_component(fn_name: String, node: Fragment) -> JsxEmitResult
   match find_first_rejected_url(node: node) {
     Present { value: r } => JsxRejected { reason: r.url }
     Absent =>
-      match fragment_hazard(node: node, medium: jsx_markup_medium()) {
-        HazardFree => JsxOk { tsx: serialize_jsx_component(fn_name: fn_name, node: node) }
-        HazardFound { reason: why } => JsxRejected { reason: why }
-      }
+      serialize_jsx_component(fn_name: fn_name, node: node)
   }
 }
