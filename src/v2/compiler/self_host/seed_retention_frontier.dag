@@ -16,6 +16,7 @@ import v2.compiler.self_host.emitter_producer_provenance {
   mint_producer_emission_receipt
 }
 import std.integer { int_to_decimal_string }
+import gunbc.rust_emitted_edge { rust_module_emit_filename }
 import gunbc.stage0.stage0_emitted_population_manifest { emitted_population_paths_from_manifest }
 import v2.std.integer { Int }
 import v2.std.text { String }
@@ -606,17 +607,24 @@ fn self_host_frontier(
   }
 }
 
-fn frontier_count_where(frontier: SelfHostFrontier, wanted: Int) -> Int {
+type FrontierCounts {
+  self_emitted: Int
+  emitted_unexecuted: Int
+  seed_retained: Int
+  unclassified: Int
+}
+
+fn frontier_counts(frontier: SelfHostFrontier) -> FrontierCounts {
   fold(
     frontier.standings,
-    init: 0,
+    init: FrontierCounts { self_emitted: 0, emitted_unexecuted: 0, seed_retained: 0, unclassified: 0 },
     f: fn(acc, standing) {
-      acc + (match standing {
-        SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => if wanted == 0 { 1 } else { 0 }
-        EmittedUnexecuted { crate_relative_path: _, source_module: _ } => if wanted == 1 { 1 } else { 0 }
-        SeedRetained { row: _ } => if wanted == 2 { 1 } else { 0 }
-        Unclassified { crate_relative_path: _ } => if wanted == 3 { 1 } else { 0 }
-      })
+      match standing {
+        SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => FrontierCounts { self_emitted: acc.self_emitted + 1, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified }
+        EmittedUnexecuted { crate_relative_path: _, source_module: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted + 1, seed_retained: acc.seed_retained, unclassified: acc.unclassified }
+        SeedRetained { row: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained + 1, unclassified: acc.unclassified }
+        Unclassified { crate_relative_path: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified + 1 }
+      }
     }
   )
 }
@@ -624,7 +632,7 @@ fn frontier_count_where(frontier: SelfHostFrontier, wanted: Int) -> Int {
 // A refusal is exactly Unclassified or a stale row. ReasonNotYetDeclared and unbound dissolutions
 // are COUNTED below standard, never refusals (DESIGN section 4b(2)).
 fn self_host_frontier_holds(frontier: SelfHostFrontier) -> Bool {
-  (frontier_count_where(frontier: frontier, wanted: 3) == 0)
+  (frontier_counts(frontier: frontier).unclassified == 0)
     && (length(xs: frontier.stale_rows) == 0)
 }
 
@@ -692,6 +700,19 @@ fn frontier_nonempty_lines(text: String) -> List<String> {
   filter(xs: split(s: text, delimiter: "\n"), predicate: fn(line) { string_length(s: line) > 0 })
 }
 
+// A manifest path is emission-shaped iff it is `src/<stem>.rs` and the stem is a fixed point of the
+// emitter's own naming rule (rust_module_emit_filename), so a nested path, a dotted stem or the
+// crate's own main.rs can never be quietly keyed to a basename no verdict line can equal.
+fn frontier_path_is_emit_shaped(path: String) -> Bool {
+  let len = string_length(s: path)
+  if (len > 7) && (substring(s: path, start: 0, end: 4) == "src/") && (substring(s: path, start: len - 3, end: len) == ".rs") {
+    let stem = substring(s: path, start: 4, end: len - 3)
+    !string_contains(s: stem, pattern: "/") && (rust_module_emit_filename(module_name: stem) == stem)
+  } else {
+    false
+  }
+}
+
 fn frontier_emit_basename(path: String) -> String {
   substring(s: path, start: 4, end: string_length(s: path) - 3)
 }
@@ -708,11 +729,12 @@ fn frontier_no_observation(detail: String) -> SelfHostFrontierReport {
 }
 
 fn frontier_summary_line(frontier: SelfHostFrontier) -> String {
+  let counts = frontier_counts(frontier: frontier)
   concat(
-    "[self-host-frontier] self_emitted=", int_to_decimal_string(value: frontier_count_where(frontier: frontier, wanted: 0)),
-    " emitted_unexecuted=", int_to_decimal_string(value: frontier_count_where(frontier: frontier, wanted: 1)),
-    " seed_retained=", int_to_decimal_string(value: frontier_count_where(frontier: frontier, wanted: 2)),
-    " unclassified=", int_to_decimal_string(value: frontier_count_where(frontier: frontier, wanted: 3)),
+    "[self-host-frontier] self_emitted=", int_to_decimal_string(value: counts.self_emitted),
+    " emitted_unexecuted=", int_to_decimal_string(value: counts.emitted_unexecuted),
+    " seed_retained=", int_to_decimal_string(value: counts.seed_retained),
+    " unclassified=", int_to_decimal_string(value: counts.unclassified),
     " stale_rows=", int_to_decimal_string(value: length(xs: frontier.stale_rows)),
     " reason_not_yet_declared=", int_to_decimal_string(value: frontier_undeclared_reason_count(frontier: frontier)),
     " unbound_dissolution=", int_to_decimal_string(value: frontier_unbound_dissolution_count(frontier: frontier))
@@ -764,6 +786,8 @@ fn self_host_frontier_report_over(roster: List<SeedRetentionFrontierRow>, manife
         frontier_no_observation(detail: "the emitted-population manifest carried no declared paths")
       } else if length(xs: observed) == 0 {
         frontier_no_observation(detail: "no observed stage0 .rs paths were given")
+      } else if length(xs: filter(xs: manifest_paths, predicate: fn(p) { !frontier_path_is_emit_shaped(path: p) })) > 0 {
+        frontier_no_observation(detail: concat("a manifest path is not emission-shaped src/<stem>.rs: ", match filter(xs: manifest_paths, predicate: fn(p) { !frontier_path_is_emit_shaped(path: p) }) { Cons { head: h, tail: _ } => h Empty => "" }))
       } else if (word != frontier_verdict_passed_word) && (word != frontier_verdict_not_passed_word) {
         frontier_no_observation(detail: concat("unknown controls verdict word ", word))
       } else {

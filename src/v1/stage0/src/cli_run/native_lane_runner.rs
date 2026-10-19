@@ -7142,10 +7142,6 @@ mod emitted_build_not_clean_cause_tests {
     }
 }
 
-/// D13's DEPENDENCY-DEMAND CENSUS, RUN BY THE EMITTED COMPILER (`demand-census` verb). The seed's
-/// whole job is the preparation it shares with every native instrument; the census is the emitted
-/// binary's, which prints its own lines and decides its own exit. The child's stdout is relayed
-/// line for line and its status is returned unjudged.
 /// THE SELF-HOST FRONTIER MODE OF THE EXISTING SELF-HOST STEP. The seed builds the emitted driver and
 /// runs the step's controls exactly as `run_self_host` does, then writes the three facts the driver's
 /// `self-host-frontier` mode folds: the controls verdict plus the executed closure (the emit basenames
@@ -7154,8 +7150,15 @@ mod emitted_build_not_clean_cause_tests {
 /// `self_host_frontier_report`; this function only observes and relays.
 pub fn run_self_host_frontier(source_roots: &[String]) -> Result<i32, String> {
     let prepared = prepare_emitted_compiler(source_roots)?;
-    let controls_passed = run_runtime_calibration(&prepared).is_ok()
-        && walk_eval_driver_door(&prepared.binary_path, &super::process_workspace_root()).is_ok();
+    let calibration = run_runtime_calibration(&prepared);
+    let door = walk_eval_driver_door(&prepared.binary_path, &super::process_workspace_root());
+    for refusal in [calibration.as_ref().err(), door.as_ref().err()]
+        .into_iter()
+        .flatten()
+    {
+        eprintln!("[self-host-frontier] control refused: {refusal}");
+    }
+    let controls_passed = calibration.is_ok() && door.is_ok();
     let emitted_dir = prepared.emitted_crate_dir.clone().ok_or_else(|| {
         "V2-NATIVE REFUSAL cause=SelfHostFrontierNoWorkspace — a restored product has no emitted workspace to read the executed closure from"
             .to_string()
@@ -7237,7 +7240,9 @@ pub fn run_self_host_frontier(source_roots: &[String]) -> Result<i32, String> {
             observed_path.display()
         )
     })?;
-    let manifest_path = crate_dir.join("src/emitted_population.rs");
+    let manifest_path = crate_dir
+        .join("src")
+        .join(crate::gunbc_stage0_stage0_emitted_population_manifest::emitted_population_manifest_basename());
     let output = Command::new(&prepared.binary_path)
         .arg("self-host-frontier")
         .arg(&manifest_path)
@@ -7267,6 +7272,10 @@ pub fn run_self_host_frontier(source_roots: &[String]) -> Result<i32, String> {
     })
 }
 
+/// D13's DEPENDENCY-DEMAND CENSUS, RUN BY THE EMITTED COMPILER (`demand-census` verb). The seed's
+/// whole job is the preparation it shares with every native instrument; the census is the emitted
+/// binary's, which prints its own lines and decides its own exit. The child's stdout is relayed
+/// line for line and its status is returned unjudged.
 pub fn run_v2_demand_census(source_roots: &[String]) -> Result<i32, String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let mut args = vec!["demand-census".to_string()];

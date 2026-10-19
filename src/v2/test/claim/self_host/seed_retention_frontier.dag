@@ -20,7 +20,7 @@ import v2.compiler.self_host.seed_retention_frontier {
   ControlsNotPassed,
   ControlsPassed,
   EmittedPopulationRow,
-  frontier_count_where,
+  frontier_counts,
   frontier_undeclared_reason_count,
   self_host_frontier,
   self_host_frontier_holds,
@@ -196,10 +196,10 @@ test fn witness_frontier_control_classifies_every_standing() -> Bool {
     executed_closure_modules: frontier_closure,
     controls: ControlsPassed
   )
-  (frontier_count_where(frontier: f, wanted: 0) == 1)
-    && (frontier_count_where(frontier: f, wanted: 1) == 1)
-    && (frontier_count_where(frontier: f, wanted: 2) == 2)
-    && (frontier_count_where(frontier: f, wanted: 3) == 0)
+  (frontier_counts(frontier: f).self_emitted == 1)
+    && (frontier_counts(frontier: f).emitted_unexecuted == 1)
+    && (frontier_counts(frontier: f).seed_retained == 2)
+    && (frontier_counts(frontier: f).unclassified == 0)
     && (frontier_undeclared_reason_count(frontier: f) == 1)
     && self_host_frontier_holds(frontier: f)
 }
@@ -213,7 +213,7 @@ test fn witness_frontier_deleted_retention_row_is_unclassified() -> Bool {
     executed_closure_modules: frontier_closure,
     controls: ControlsPassed
   )
-  (frontier_count_where(frontier: f, wanted: 3) == 1)
+  (frontier_counts(frontier: f).unclassified == 1)
     && !self_host_frontier_holds(frontier: f)
 }
 
@@ -226,8 +226,8 @@ test fn witness_frontier_module_outside_executed_closure_is_unexecuted() -> Bool
     executed_closure_modules: [],
     controls: ControlsPassed
   )
-  (frontier_count_where(frontier: f, wanted: 0) == 0)
-    && (frontier_count_where(frontier: f, wanted: 1) == 2)
+  (frontier_counts(frontier: f).self_emitted == 0)
+    && (frontier_counts(frontier: f).emitted_unexecuted == 2)
     && self_host_frontier_holds(frontier: f)
 }
 
@@ -240,7 +240,7 @@ test fn witness_frontier_failed_controls_emit_nothing() -> Bool {
     executed_closure_modules: frontier_closure,
     controls: ControlsNotPassed
   )
-  frontier_count_where(frontier: f, wanted: 0) == 0
+  frontier_counts(frontier: f).self_emitted == 0
 }
 
 // RED: a roster row whose path the tree no longer holds stays a refusal in the frontier.
@@ -274,6 +274,19 @@ test fn witness_report_control_holds() -> Bool {
   (r.exit == 0)
     && (length(xs: r.lines) == 1)
     && report_has(lines: r.lines, pattern: "self_emitted=1 emitted_unexecuted=1 seed_retained=2 unclassified=0")
+}
+
+// RED: a nested manifest path is not emission-shaped; it is no observation (exit 2), never a
+// quiet EmittedUnexecuted keyed to a basename no verdict line can equal.
+test fn witness_report_nested_manifest_path_is_no_observation() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: frontier_roster,
+    manifest_text: "// src/emitted_in_closure.rs\n// src/cli_run/native_lane_runner.rs\n",
+    verdict_text: "controls-passed\nemitted_in_closure\n",
+    observed_text: report_observed
+  )
+  (r.exit == 2)
+    && report_has(lines: r.lines, pattern: "not emission-shaped src/<stem>.rs: src/cli_run/native_lane_runner.rs")
 }
 
 // RED: the module removed from the executed closure -> SelfEmitted moves to EmittedUnexecuted.
