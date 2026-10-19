@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
-import std.algebra { trim, list_head }
+import std.algebra { trim, list_head, FreeSemigroup, non_empty_singleton, non_empty_append }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
@@ -33,7 +33,7 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, read_host_idleness_over, drain_all_slots_over, drain_all_settled, drain_all_cause, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
+import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, read_host_idleness_over, drain_all_slots_over, drain_all_settled, drain_all_cause, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
@@ -2068,11 +2068,38 @@ fn runner_host_cap_files_state(subject: RunnerHostFileSubject, context: FleetSsh
 // A UNIT-FILE CHANGE IS PENDING when any observed instance owes a reload, read from its own reload status
 // (never from the lifecycle standing, which a fabric or retirement classification replaces); an instance
 // that could not be read is unknown and counts as pending (an unread unit proves nothing about what a reload would load).
-// systemd reports an instance's NeedDaemonReload for the template's drop-ins too.
-fn runner_host_cap_pending_reload(population: RunnerSlotPopulation) -> Bool {
+// systemd reports an instance's NeedDaemonReload for the template's drop-ins too. The answer is LOCATED:
+// the units and which of the two each is, kept typed until the refusal is rendered.
+fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation) -> HostPendingReloads {
   match population {
-    SlotPopulationUnobservable { reason: _ } => true
-    SlotPopulationObserved { units: us } => any(us, r => match r.reload { SlotReloadNotPending => false SlotReloadOwed => true SlotReloadUnobserved => true })
+    SlotPopulationUnobservable { reason: r } => HostPopulationUnobserved { reason: r }
+    SlotPopulationObserved { units: us } => {
+      // One partition: a unit either owes a kind of pending reload or contributes nothing, and the
+      // nonempty carrier is built at that split, so an empty "pending" cannot be written.
+      let located: FreeSemigroup<UnitPendingReload>? = fold(us, init: none, f: (acc, r) =>
+        match slot_reload_pending_kind(status: r.reload) {
+          Absent => acc
+          Present { value: k } => {
+            let one = non_empty_singleton(item: UnitPendingReload { unit: r.unit, kind: k })
+            match acc {
+              Absent => Present { value: one }
+              Present { value: xs } => Present { value: non_empty_append(left: xs, right: one) }
+            }
+          }
+        })
+      match located {
+        Absent => HostNoReloadPending
+        Present { value: xs } => HostReloadsPending { units: xs }
+      }
+    }
+  }
+}
+
+fn slot_reload_pending_kind(status: SlotReloadStatus) -> PendingReloadKind? {
+  match status {
+    SlotReloadNotPending => none
+    SlotReloadOwed => Present { value: PendingReloadOwed }
+    SlotReloadUnobserved => Present { value: PendingReloadUnobserved }
   }
 }
 
@@ -2121,7 +2148,7 @@ fn run_runner_host_cap_phase(
             gate: gate,
             files: runner_host_cap_files_state(subject: subject, context: context, privilege: privilege),
             extras: extras,
-            pending_reload: runner_host_cap_pending_reload(population: population),
+            pending_reloads: runner_host_cap_pending_reloads(population: population),
             retirement_cause: runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: subject.retired_units, population: population)),
           ) {
             HostCapsWithheld { cause: c } => CapPhaseWithheld { cause: c }
