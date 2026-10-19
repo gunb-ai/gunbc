@@ -703,6 +703,20 @@ fn remedy_count(gaps: List<RuntimeIdentityGap>) -> Int {
   gaps.flat_map(g => remedies_for_gap(gap: g)).length()
 }
 
+// THE KIND OF EACH GAP, BY NAME, chosen by an exhaustive match over the module's four-way absence in THIS
+// file. Used where a test must prove a gap is a SPECIFIC kind while also proving it offers no remedy: the
+// existing gap_is_refusal/gap_is_no_eligible helpers answer Bool, and a Bool is satisfied by an empty list as
+// happily as by a right one -- so the kind has to be readable as a list element to be asserted alongside an
+// exact length.
+fn gap_kinds(gaps: List<RuntimeIdentityGap>) -> List<String> {
+  gaps.map(g => match g.absence {
+    Unread { reason: _ } => "silence"
+    ControllerRefused { refusal: _ } => "refusal"
+    NoEligibleEvidence { reported_count: _ } => "no-eligible-evidence"
+    ProvenanceUnestablished { unestablished: _ } => "provenance-unestablished"
+  })
+}
+
 // A gap list that says EXACTLY THIS: one gap, on one named side, of one named kind, with one count. Used by
 // the provenance tests, where WHICH side failed and WHY are the whole claim -- an assertion that only
 // counted gaps would pass on a module that blamed the wrong side or gave the wrong reason, and both of those
@@ -1683,8 +1697,73 @@ test fn test_a_side_failing_two_ways_reports_two_reasons() -> Bool {
         && gaps.all(g => g.axis == NicSetAxis && g.side == PostBootOsSide)
         && gaps.any(g => gap_is_unprovenance(gap: g) && gap_unestablished_count(gap: g) == 1)
         && gaps.any(g => gap_is_no_eligible(gap: g) && gap_reported_count(gap: g) == 2)
+        // AND ONLY ONE OF THE TWO OFFERS A REMEDY. The other is a fact about the unit's addresses, not about
+        // the probe, and this fold does not advise on facts about units. Asserting the whole remedy list across
+        // BOTH gaps is what pins it: the provenance gap must contribute its one remedy and the ineligible gap
+        // must contribute NOTHING. Under an implementation that answered "record the source" for every gap --
+        // which is what an unconsidered arm looks like -- this line is the one that goes red, and it goes red
+        // on the gap that already existed for other reasons, so it needs no new fixture.
+        && remedy_labels(gaps: gaps) == ["record-the-source"]
+        && remedy_count(gaps: gaps) == 1
     _ => false
   }
+}
+
+// A GAP THAT IS NOT ABOUT PROVENANCE OFFERS NO REMEDY, whatever kind it is. The remedy map is a function from
+// `PermanenceNotEstablishedCause`, and only the provenance gap can name one: silence is an operator's question
+// to answer, a refusal is the controller's to explain, and "no eligible address" is a fact about the unit. An
+// implementation that handed advice on those gaps would send an operator to re-read a probe that was never
+// asked, or blame the tooling for a machine that has no usable address -- both wrong, and both invisible until
+// somebody asks what a NON-provenance gap says. Each arm below is reached through the public verdict, so the
+// assertions are about `runtime_identity_match`'s output and not about a helper nobody else calls.
+test fn test_silence_and_refusal_gaps_offer_no_remedy() -> Bool {
+  let silent_pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: AxisStayedSilent { reason: "the firmware ships no reader for the board serial" },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [permanent_report(addr: fixture_mac_b())] },
+  }
+  let read_pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [permanent_report(addr: fixture_mac_b())] },
+  }
+  let refused_pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: AxisWasRefused { refusal: BmcCredentialsRejected { detail: "the BMC rejected the credentials" } },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [permanent_report(addr: fixture_mac_b())] },
+  }
+  let post = PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: AxisWasRead { value: fixture_serial },
+    bios_version: AxisWasRead { value: fixture_bios },
+    model: AxisWasRead { value: fixture_model },
+    nics: AxisWasRead { value: [permanent_report(addr: fixture_mac_b())] },
+  }
+  let silent_gaps = match runtime_identity_match(pre: silent_pre, post: post) {
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } => gaps
+    _ => []
+  }
+  let refused_gaps = match runtime_identity_match(pre: refused_pre, post: post) {
+    Unprovable { why: gaps, pre_unit: _, post_unit: _ } => gaps
+    _ => []
+  }
+  // each side really produced the gap this test is about, so the assertions below cannot be green on an empty
+  // list -- an empty list satisfies "offers no remedy" as happily as a correct one does. Each gap's KIND is
+  // read by an exhaustive match in this file (the module deliberately exports no `is_*` predicates over its own
+  // sums), so a new absence stops compiling here instead of answering false.
+  silent_gaps.length() == 1
+    && gap_kinds(gaps: silent_gaps) == ["silence"]
+    && remedy_count(gaps: silent_gaps) == 0
+    && refused_gaps.length() == 1
+    && gap_kinds(gaps: refused_gaps) == ["refusal"]
+    && remedy_count(gaps: refused_gaps) == 0
 }
 
 // THE SCREEN, PINNED AT ITS OWN LEVEL. The verdict-level tests prove what a fold DOES with an unusable
