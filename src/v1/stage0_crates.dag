@@ -436,9 +436,9 @@ fn render_stage0_crate_dep(dep: CargoDependency) -> String {
   match dep.source {
     RegistryDep { version: version, default_features: default_features, features: features } =>
       if default_features {
-        emit_cargo_dep(name: dep.name, version: version, features: features)
+        emit_cargo_dep(name: dep.name, version: version as String, features: features)
       } else {
-        emit_cargo_dep_no_default_features(name: dep.name, version: version, features: features)
+        emit_cargo_dep_no_default_features(name: dep.name, version: version as String, features: features)
       }
     LocalPathDep { path: path } =>
       concat(dep.name, " = { path = \"", path, "\" }\n")

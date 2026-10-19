@@ -3406,15 +3406,17 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
 // formal keeps the two-relation wall's judgment (arm-to-parent, alias and generics are decided
 // there), and an undeclared head (a type variable) has no declaration to judge: both stay
 // unjudged, named residuals of the row, never a fabricated verdict.
-fn actual_is_unjudged_by_formal(actual_name: String, formal_name: String, formal_base: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn actual_is_unjudged_by_formal(actual: Node, actual_name: String, formal_name: String, formal_base: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   if is_kernel_type(name: actual_name) {
     false
   } else if is_kernel_type(name: formal_name) == false {
     true
   } else {
-    match lookup_type_by_name(env: type_env, name: actual_name) {
-      Present { value: _ } => brand_grounds_transparently_to(name: actual_name, other: formal_base, type_env: type_env, source_indices: source_indices)
-      Absent => true
+    match type_reference_declaration_reading(n: actual, source_indices: source_indices, env: type_env) {
+      TypeReferenceNamesDeclaration { declaration: _ } => brand_grounds_transparently_to(name: actual_name, other: formal_base, type_env: type_env, source_indices: source_indices)
+      TypeReferenceIsKernelType { name: _ } => false
+      TypeReferenceIsTypeVariable { id: _ } => true
+      TypeReferenceUnidentified { authored: _, resolved: _ } => true
     }
   }
 }
@@ -3454,7 +3456,7 @@ fn kernel_value_declared_type_mismatch_bounded(
     let formal_name = if formal_name_override == "" {
       authored_name_at(source_indices: source_indices, node: formal_base)
     } else { formal_name_override }
-    if actual_name == "" || formal_name == "" || actual_is_unjudged_by_formal(actual_name: actual_name, formal_name: formal_name, formal_base: formal_base, type_env: type_env, source_indices: source_indices) {
+    if actual_name == "" || formal_name == "" || actual_is_unjudged_by_formal(actual: actual_base, actual_name: actual_name, formal_name: formal_name, formal_base: formal_base, type_env: type_env, source_indices: source_indices) {
       false
     } else {
       if qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) || refinement_upcast_admits(actual: actual_base, formal_name: formal_name, type_env: type_env, source_indices: source_indices) {
@@ -12512,7 +12514,8 @@ fn classify_call_via_provenance(call: Node, param_map: Map<String, SubValueRelat
       Absent => acc
     }
   )
-  fold(param_map |> map_keys, init: none, f: (result, callee_pname) =>
+  let no_relation_yet: SubValueRelation? = none
+  fold(param_map |> map_keys, init: no_relation_yet, f: (result, callee_pname) =>
     match map_get(param_map, callee_pname) {
       Present { value: callee_rel } =>
         match map_get(arg_by_name, callee_pname) {
@@ -17473,7 +17476,8 @@ type GroundedArm {
 // unconditional: the match was judged exhaustive on the inductive declaration before this fold
 // ran, so a subject that reaches the last arm is one its pattern admits.
 fn grounded_arm_chain(arms: List<GroundedArm>, subject: Node, carrier_type: Node, result: InferredNode?, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node? {
-  arms |> reverse |> fold(init: none, f: (rest, a) =>
+  let no_chain_yet: Node? = none
+  arms |> reverse |> fold(init: no_chain_yet, f: (rest, a) =>
     let body = grounded_arm_body(arm: a.arm, reading: a.reading, subject: subject, carrier_type: carrier_type, view: view, ctx: ctx)
     match rest {
       Absent => Present { value: body }
