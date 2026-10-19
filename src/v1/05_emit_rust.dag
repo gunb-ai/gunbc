@@ -19986,7 +19986,8 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
       "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
       "            \}", "\n",
-      "        \};", "\n")
+      "        \};", "\n",
+      "        started_flag.store(true, std::sync::atomic::Ordering::SeqCst);", "\n")
   } else { "" }
   let worker_realize = if effectful {
     concat(
@@ -19996,6 +19997,26 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "        \};", "\n",
       binding_lines)
   } else { "" }
+  let started_decl = if startup { "    let started = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));\n    let started_flag = started.clone();\n" } else { "" }
+  let timeout_arm = if startup {
+    concat(
+      "        Err(_) => \{", "\n",
+      "            if !started.load(std::sync::atomic::Ordering::SeqCst) \{", "\n",
+      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(\"the startup did not complete within its bound\".to_string()));", "\n",
+      "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "            \}", "\n",
+      "            Err(\"the worker ended before it reported ready\".to_string())", "\n",
+      "        \}", "\n")
+  } else {
+    "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),\n"
+  }
+  let ready_within = if startup {
+    "std::time::Duration::from_secs(second_count(contract.startup_deadline.clone()) as u64)"
+  } else {
+    "std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64)"
+  }
+  let ready_name = if startup { "ready_within" } else { "deadline" }
+  let ready_let = if startup { concat("    let ready_within = ", ready_within, ";", "\n") } else { "" }
   let startup_arg = if startup { ", startup_value.clone()" } else { "" }
   let startup_static = if startup { "// Whether the startup line has been printed: every worker generation judges the image, only the first announces.\nstatic STARTUP_ANNOUNCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\n" } else { "" }
   let worker_call = if effectful {
@@ -20007,6 +20028,34 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
   } else {
     concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, ");\n")
   }
+  // Order of the serve main: a startup entry realizes its first worker (which runs the startup fold) BEFORE the bind, so a
+  // refusing self-check never becomes reachable; a driver with no startup keeps the original bind-then-realize order.
+  let realize_block = concat(
+      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
+      ready_let,
+      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
+      "    let mut generation = match realize_generation(&stuck, ", ready_name, ") \{", "\n",
+      "        Ok(generation) => generation,", "\n",
+      "        Err(cause) => \{", "\n",
+      "            eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \};", "\n"
+  )
+  let bind_block = concat(
+      "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
+      "        Ok(listener) => listener,", "\n",
+      "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      "    let bound = match listener.local_addr() \{", "\n",
+      "        Ok(addr) => addr,", "\n",
+      "        Err(cause) => \{ eprintln!(\"REFUSED: bound but could not read the bound address: \{\}\", cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      "    let bound_host = bound.ip().to_string();", "\n",
+      "    let bound_port = bound.port() as i64;", "\n"
+  )
+  let first_block = if startup { realize_block } else { bind_block }
+  let second_block = if startup { bind_block } else { realize_block }
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
@@ -20018,7 +20067,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "use std::rc::Rc;", "\n",
       "\n",
       "use ", crate_name, "::extdeps_http_server::ServeWireResponse;", "\n",
-      "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count\};", "\n",
+      "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count", if startup { ", second_count" } else { "" }, "\};", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{", "\n",
       "    native_serve_announcement,", effect_failed_import, " native_serve_frame, native_serve_handler_name, native_serve_read_refused,", "\n",
       "    native_serve_admission, native_serve_deadline_refused, native_serve_handler_failed, native_serve_outgoing, native_serve_route,", "\n",
@@ -20115,6 +20164,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    let state = std::sync::Arc::new(std::sync::Mutex::new(WORKER_WAITING));", "\n",
       "    let guard = WorkerGuard \{ state: state.clone(), stuck: stuck.clone() \};", "\n",
       "    let worker_state = state.clone();", "\n",
+      started_decl,
       "    std::thread::spawn(move || \{", "\n",
       "        let _guard = guard;", "\n",
       worker_startup,
@@ -20131,7 +20181,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    match readiness.recv_timeout(ready_within) \{", "\n",
       "        Ok(Ok(())) => Ok(Generation \{ calls, state \}),", "\n",
       "        Ok(Err(cause)) => Err(cause),", "\n",
-      "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),", "\n",
+      timeout_arm,
       "    \}", "\n",
       "\}", "\n",
       "", "\n",
@@ -20208,25 +20258,8 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \};", "\n",
-      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
-      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
-      "    let mut generation = match realize_generation(&stuck, deadline) \{", "\n",
-      "        Ok(generation) => generation,", "\n",
-      "        Err(cause) => \{", "\n",
-      "            eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
-      "            std::process::exit(2);", "\n",
-      "        \}", "\n",
-      "    \};", "\n",
-      "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
-      "        Ok(listener) => listener,", "\n",
-      "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",
-      "    \};", "\n",
-      "    let bound = match listener.local_addr() \{", "\n",
-      "        Ok(addr) => addr,", "\n",
-      "        Err(cause) => \{ eprintln!(\"REFUSED: bound but could not read the bound address: \{\}\", cause); std::process::exit(2); \}", "\n",
-      "    \};", "\n",
-      "    let bound_host = bound.ip().to_string();", "\n",
-      "    let bound_port = bound.port() as i64;", "\n",
+      first_block,
+      second_block,
       "    eprintln!(\"\{\}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));", "\n",
       "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);", "\n",
       "    for accepted in listener.incoming() \{", "\n",
@@ -20277,7 +20310,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "                            \}", "\n",
       "                        \};", "\n",
       "                        if replace \{", "\n",
-      "                            generation = match realize_generation(&stuck, deadline) \{", "\n",
+      "                            generation = match realize_generation(&stuck, ", ready_name, ") \{", "\n",
       "                                Ok(generation) => generation,", "\n",
       "                                Err(cause) => \{", "\n",
       "                                    eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
