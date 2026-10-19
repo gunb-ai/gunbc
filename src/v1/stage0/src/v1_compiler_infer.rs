@@ -14051,10 +14051,35 @@ Rc::new(InferResult {
                                 })
                             } else {
                                 {
+                                    let uninstantiated_call_generics = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for g in
+                                            call_sig_split.generic_names.clone().iter().cloned()
+                                        {
+                                            if !v1_rt::map_has(&call_subst, g.clone()) {
+                                                __result.push(g);
+                                            }
+                                        }
+                                        __result
+                                    });
+                                    let fresh_call_variables =
+                                        uninstantiated_call_generics.iter().cloned().fold(
+                                            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                            |acc: Rc<HashMap<String, Rc<Node>>>, g: String| {
+                                                v1_rt::rc_map_insert(
+                                                    acc,
+                                                    g.clone(),
+                                                    type_variable_node(g.clone()),
+                                                )
+                                            },
+                                        );
                                     let resolved_type = match sig.clone() {
                                         Some(s) => substitute_generics(
                                             s.inferred.clone(),
-                                            call_subst.clone(),
+                                            v1_rt::rc_map_merge(
+                                                call_subst.clone(),
+                                                fresh_call_variables.clone(),
+                                            ),
                                             scope.type_env.source_indices.clone(),
                                         ),
                                         std::option::Option::None => error_type(),

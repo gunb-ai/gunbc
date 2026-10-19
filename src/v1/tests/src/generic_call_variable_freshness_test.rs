@@ -113,6 +113,23 @@ fn minted_variables_are_fresh_per_call_site() {
     let ids = collide_minted_ids();
     let distinct: std::collections::HashSet<&String> = ids.iter().collect();
 
+    // PRINT THE INVENTORY BEFORE DECIDING, so a PASS is auditable. Without this line a passing run
+    // and a passing-but-vacuous run look identical in the log: the assertions below can only tell me
+    // the ids were not the forbidden ones, not what they actually were. Under --nocapture this is
+    // what a reviewer reads, and it is what the runner echoes as ROW_PRINTS.
+    let tags: std::collections::HashSet<&str> = distinct
+        .iter()
+        .map(|i| i.split_once('@').map(|(_, t)| t).unwrap_or("<UNTAGGED>"))
+        .collect();
+    println!(
+        "MINT-INVENTORY positions={} distinct={} site_tags={} bare={} sample={:?}",
+        ids.len(),
+        distinct.len(),
+        tags.len(),
+        distinct.iter().filter(|i| !i.contains('@')).count(),
+        distinct.iter().take(6).collect::<Vec<_>>()
+    );
+
     // (a) No variable may be left named by the callee's declared parameter name. That is precisely
     // the name-keyed mint: it hands two calls the same `K`, so a later call's settled Map(String,Int)
     // meets an earlier call's constraint on a variable they both own.
@@ -126,10 +143,8 @@ fn minted_variables_are_fresh_per_call_site() {
     }
     // (b) The two calls must carry DIFFERENT variables. The fixture is exactly two calls, so the
     // site tags -- the part after '@', which is the call's own span -- must number at least two.
-    let tags: std::collections::HashSet<&str> = distinct
-        .iter()
-        .map(|i| i.split_once('@').map(|(_, t)| t).unwrap_or("<UNTAGGED>"))
-        .collect();
+    // `tags` is the same set the inventory above printed, bound once, so the number a reviewer
+    // reads and the number the assertion uses cannot drift apart.
     assert!(
         tags.len() >= 2,
         "the two empty_map() calls are not distinguishable by call site: tags={tags:?} \
