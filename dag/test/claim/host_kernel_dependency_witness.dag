@@ -127,7 +127,9 @@ test fn dependency_response_is_bound_to_host_source_and_actual_operation() -> Bo
 // produce a commissioning credential, an admitted apply, or a successful apply terminal.
 test fn commissioning_plan_exposes_the_dependency_without_publishing_readiness() -> Bool {
   let request = WorkspaceCommissioningDependencyConverge { plan: kernel_fixture_plan() }
-  let artifact = fleet_converge_plan_artifact_of_request(request: request, prior_generation: 20)
+  match fleet_converge_plan_artifact_of_request(request: request, prior_generation: 20) {
+    Absent => false
+    Present { value: artifact } =>
   (match artifact.apply_terminal { AwaitingCapability { capability } => capability == host_kernel_maintenance_capability other => false })
     && string_contains(s: artifact.plan_body, pattern: "install-package:linux-generic-hwe-24.04=7.0.0-38.38~24.04.4")
     && string_contains(s: artifact.plan_body, pattern: "activate-kernel:7.0.0-38-generic")
@@ -142,4 +144,5 @@ test fn commissioning_plan_exposes_the_dependency_without_publishing_readiness()
       Present { value: slot } => slot_network_tun_queue_requirement(slot: slot) == kernel_fixture_plan().requirement
       Absent => false
     })
+  }
 }

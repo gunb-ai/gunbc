@@ -21,10 +21,10 @@ import std.power_of_two { bitwise_pow2 }
 // TRIGGER STATED AT THE WRONG GRAIN (review 69054 of gunbc#11645; DESIGN 4b(3): a trigger naming
 // less than the capability it gates is satisfied while the capability stays dead). The operations
 // take a width as a VALUE and the witnesses pass bit_width(count: 32) today, so nothing stops
-// std.bitwise passing one too.
+// std.machine_word passing one too.
 //
 // THE IMPORT CYCLE IS BROKEN: bitwise_pow2 lives in std.power_of_two, below both this module and
-// std.bitwise, so std.bitwise may import this family. (std.induction int_pow_bounded is not that
+// std.machine_word, so std.machine_word may import this family. (std.induction int_pow_bounded is not that
 // function: it is partial, linear and capped, where callers here need a total 2^n over [0, 62].)
 //
 // THE SECOND COST, STATED BESIDE IT so the next reader sees the real shape rather than a one-line

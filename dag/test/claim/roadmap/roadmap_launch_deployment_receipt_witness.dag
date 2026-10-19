@@ -148,6 +148,7 @@ fn rlm_run(run_id: String, revision: String) -> ActionsRunBinding {
     workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
     run_id: run_id,
     run_revision: revision,
+    execution_revision: revision,
   }
 }
 
@@ -232,6 +233,10 @@ fn rlm_apply(run: ActionsRunBinding, plan_identity: String) -> FleetConvergeAppl
 }
 
 fn rlm_dashboard(run: ActionsRunBinding, expected: String) -> LiveDeployApplyReceipt {
+  rlm_dashboard_citing(run: run, expected: expected, apply_identity: rlm_apply_identity())
+}
+
+fn rlm_dashboard_citing(run: ActionsRunBinding, expected: String, apply_identity: String) -> LiveDeployApplyReceipt {
   LiveDeployApplyReceipt {
     target: "srv1",
     instance_id: "srv1-live",
@@ -246,7 +251,7 @@ fn rlm_dashboard(run: ActionsRunBinding, expected: String) -> LiveDeployApplyRec
       expected_revision: expected,
       fleet: LiveDeployFleetProvenance {
         plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: rlm_fixture_plan_hash,
-        plan_receipt_identity: rlm_plan_identity(), apply_receipt_identity: rlm_apply_identity(),
+        plan_receipt_identity: rlm_plan_identity(), apply_receipt_identity: apply_identity,
       },
     },
     completed_at: rlm_fixture_deploy_completed_at,
@@ -274,6 +279,8 @@ fn rlm_units(exit_path: BeltEventPathStanding, oneshot: BeltOneshotStanding) -> 
     dashboard: DashboardServiceConverged { unit: "gunbc-roadmap.service" },
     exit_path: exit_path,
     answer_path: BeltEventPathConverged { unit: "gunbc-roadmap-belt-discovery.path" },
+    publication_path: BeltEventPathConverged { unit: "gunbc-roadmap-publication.path" },
+    publication_helper: BeltOneshotConverged { unit: "gunbc-roadmap-publication.service", active_state: "inactive" },
     oneshot: oneshot,
   }
 }
@@ -836,4 +843,73 @@ test fn witness_an_allocation_store_plan_cannot_occupy_the_rlm_plan_slot() -> Bo
 // the exact string this file's fixture used to carry.
 test fn witness_an_undecodable_plan_scope_wire_blocks_the_transaction() -> Bool {
   incomplete_at(facts: rlm_facts_at_plan_scope(scope_wire: "full_host"), member: "plan_scope")
+}
+
+// ---------------------------------------------------------------- SPLIT DISPATCH / EXECUTION REVISION
+// Plan made at X (= R). main moves to Y; apply and dashboard are DISPATCHED at Y and EXECUTE at X.
+// CONSUMER: roadmap_launch_deployment_verdict -> plan/apply/dashboard_receipt_blockers (agreement
+// reads execution_revision) and run_provenance_blockers (API provenance reads the receipt's
+// run_revision, the dispatch field). These controls run the real verdict fold.
+fn rlm_run_split(run_id: String, dispatched: String, executed: String) -> ActionsRunBinding {
+  ActionsRunBinding {
+    repository: "gunb-ai/gunbc",
+    workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+    run_id: run_id,
+    run_revision: dispatched,
+    execution_revision: executed,
+  }
+}
+
+fn rlm_predecessor_dispatched_at(run_id: String, sha: String) -> PredecessorRunProvenance {
+  PredecessorRunProvenance { run_id: run_id, conclusion_wire: "success", head_sha: sha, workflow_path: rlm_workflow_file_path() }
+}
+
+fn rlm_split_facts(apply_exec: String, dashboard_exec: String, api_apply_sha: String, api_dashboard_sha: String) -> RoadmapLaunchDeploymentFacts {
+  let plan = rlm_plan(run: rlm_run(run_id: "1001", revision: rlm_fixture_r), host: "srv1")
+  let apply = rlm_apply(run: rlm_run_split(run_id: "1002", dispatched: rlm_fixture_other_r, executed: apply_exec), plan_identity: fleet_converge_plan_receipt_identity_hex(r: plan))
+  with_run_provenance(
+    f: with_dashboard(
+      f: with_apply(f: rlm_complete_facts(), apply: ApplyReceiptRead { receipt: apply }),
+      d: DashboardReceiptRead { receipt: rlm_dashboard_citing(run: rlm_run_split(run_id: "1003", dispatched: rlm_fixture_other_r, executed: dashboard_exec), expected: rlm_fixture_r, apply_identity: fleet_converge_apply_receipt_identity_hex(r: apply)) }),
+    rp: RunProvenanceObserved {
+      receipt_repository: "gunb-ai/gunbc",
+      plan: rlm_predecessor(run_id: "1001"),
+      apply: rlm_predecessor_dispatched_at(run_id: "1002", sha: api_apply_sha),
+      dashboard: rlm_predecessor_dispatched_at(run_id: "1003", sha: api_dashboard_sha),
+      receipt_workflow_ref: ReceiptWorkflowRefNamesFile,
+    })
+}
+
+test fn witness_plan_at_x_with_apply_and_dashboard_dispatched_at_y_executing_at_x_is_complete() -> Bool {
+  match roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: rlm_split_facts(apply_exec: rlm_fixture_r, dashboard_exec: rlm_fixture_r, api_apply_sha: rlm_fixture_other_r, api_dashboard_sha: rlm_fixture_other_r)) {
+    DeploymentComplete { subject: _, facts: _, proof: _ } => true
+    DeploymentIncomplete { subject: _, facts: _, first_blocker: _, further_blockers: _ } => false
+  }
+}
+
+test fn witness_apply_executing_at_the_wrong_checkout_is_incomplete_at_apply_receipt() -> Bool {
+  incomplete_at(facts: rlm_split_facts(apply_exec: rlm_fixture_other_r, dashboard_exec: rlm_fixture_r, api_apply_sha: rlm_fixture_other_r, api_dashboard_sha: rlm_fixture_other_r), member: "apply_receipt")
+}
+
+test fn witness_dashboard_executing_at_the_wrong_checkout_is_incomplete_at_dashboard_receipt() -> Bool {
+  incomplete_at(facts: rlm_split_facts(apply_exec: rlm_fixture_r, dashboard_exec: rlm_fixture_other_r, api_apply_sha: rlm_fixture_other_r, api_dashboard_sha: rlm_fixture_other_r), member: "dashboard_receipt")
+}
+
+test fn witness_falsified_api_dispatch_sha_for_apply_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: rlm_split_facts(apply_exec: rlm_fixture_r, dashboard_exec: rlm_fixture_r, api_apply_sha: rlm_fixture_r, api_dashboard_sha: rlm_fixture_other_r), member: "run_provenance")
+}
+
+test fn witness_falsified_api_dispatch_sha_for_dashboard_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: rlm_split_facts(apply_exec: rlm_fixture_r, dashboard_exec: rlm_fixture_r, api_apply_sha: rlm_fixture_other_r, api_dashboard_sha: rlm_fixture_r), member: "run_provenance")
+}
+
+// A receipt that falsifies its own dispatch field disagrees with the API read, so it refuses too.
+test fn witness_receipt_dispatch_field_that_disagrees_with_the_api_is_incomplete_at_run_provenance() -> Bool {
+  let plan = rlm_plan(run: rlm_run(run_id: "1001", revision: rlm_fixture_r), host: "srv1")
+  let apply = rlm_apply(run: rlm_run_split(run_id: "1002", dispatched: rlm_fixture_r, executed: rlm_fixture_r), plan_identity: fleet_converge_plan_receipt_identity_hex(r: plan))
+  incomplete_at(
+    facts: with_dashboard(
+      f: with_apply(f: rlm_split_facts(apply_exec: rlm_fixture_r, dashboard_exec: rlm_fixture_r, api_apply_sha: rlm_fixture_other_r, api_dashboard_sha: rlm_fixture_other_r), apply: ApplyReceiptRead { receipt: apply }),
+      d: DashboardReceiptRead { receipt: rlm_dashboard_citing(run: rlm_run_split(run_id: "1003", dispatched: rlm_fixture_other_r, executed: rlm_fixture_r), expected: rlm_fixture_r, apply_identity: fleet_converge_apply_receipt_identity_hex(r: apply)) }),
+    member: "run_provenance")
 }

@@ -1,0 +1,84 @@
+module test.claim.runner.runner_revision_job_spec_witness
+
+import gunbc.target_invocation { ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold, ClaimUnobserved }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import gunbc.runner.runner_claim_set_results { ClaimSetResult }
+import gunbc.runner.runner_revision_job_spec {
+  RevisionJobSpecDecoded, RevisionJobSpecRefused, SpecUnreadable, SpecMemberMissing, SpecMemberMalformed,
+  SpecObjectIdInvalid, SpecClaimsEmpty, SpecClaimNotALabel, SpecClaimDuplicated, SpecRepositoryNotAdmitted,
+  decode_revision_job_spec, RevisionJobStanding, RevisionJobAllHeld, RevisionJobSomeNotHeld, RevisionJobSomeUnobserved,
+  revision_job_standing,
+}
+
+// THE SPEC AT ITS INTERFACE: supplied JSON, decoded by the job's own reader. Braces are spelled as
+// separate words because a `.dag` string interpolates `{...}`.
+
+data o: String = "{"
+data c: String = "}"
+data commit: String = "e9eaa579ed0b6585a48965842b43ee09af5671a1"
+data tree: String = "c8983a3d8412a5e37a309b2d90ceafc698856619"
+
+fn spec(claims: String, extra: String) -> String {
+  join([o, "\"repository\": \"https://github.com/gunb-ai/gunbc\", \"commit\": \"", commit, "\", \"tree\": \"", tree, "\", \"claims\": ", claims, extra, c], "")
+}
+
+fn label(text: String) -> String {
+  match decode_revision_job_spec(text: text) {
+    RevisionJobSpecDecoded { spec: s } => match s.provenance {
+      Present { value: p } => concat("decoded+provenance:", p.ref_name)
+      Absent => "decoded"
+    }
+    RevisionJobSpecRefused { refusal: r } => match r {
+      SpecUnreadable { detail: _ } => "unreadable"
+      SpecMemberMissing { member: m } => concat("missing:", m)
+      SpecMemberMalformed { member: m, detail: _ } => concat("malformed:", m)
+      SpecObjectIdInvalid { member: m, value: _ } => concat("not-an-oid:", m)
+      SpecClaimsEmpty => "claims-empty"
+      SpecClaimNotALabel { index: i, text: _ } => concat("not-a-label:", to_string(i))
+      SpecClaimDuplicated { label: _ } => "duplicate"
+      SpecRepositoryNotAdmitted { repository: _ } => "repository-not-admitted"
+    }
+  }
+}
+
+test fn a_well_formed_spec_decodes_and_carries_its_provenance_untouched() -> Bool {
+  label(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: "")) == "decoded"
+    && label(text: spec(claims: "[\"//gunbc/instruments:self-host\"]",
+         extra: join([", \"provenance\": ", o, "\"ref\": \"refs/pull/14058/head\", \"resolved_commit\": \"", commit, "\", \"observed_at\": \"2026-10-15T06:00:00Z\", \"observer\": \"bright-moth-475\"", c], ""))) == "decoded+provenance:refs/pull/14058/head"
+}
+
+test fn every_malformed_spec_refuses_by_name_before_any_vm() -> Bool {
+  label(text: "not json") == "unreadable"
+    && label(text: spec(claims: "[]", extra: "")) == "claims-empty"
+    && label(text: spec(claims: "[\"self-host\"]", extra: "")) == "not-a-label:0"
+    && label(text: spec(claims: "[\"//gunbc/instruments:self-host\", \"//gunbc/instruments:self-host\"]", extra: "")) == "duplicate"
+    && label(text: join([o, "\"repository\": \"https://github.com/gunb-ai/gunbc\", \"commit\": \"main\", \"tree\": \"", tree, "\", \"claims\": [\"//a:b\"]", c], "")) == "not-an-oid:commit"
+    && label(text: join([o, "\"commit\": \"", commit, "\", \"tree\": \"", tree, "\", \"claims\": [\"//a:b\"]", c], "")) == "missing:repository"
+}
+
+fn r(label: String, verdict: ClaimRouteVerdict) -> ClaimSetResult {
+  ClaimSetResult { label: label as NonEmptyStr, verdict: verdict, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr }
+}
+
+fn standing_label(s: RevisionJobStanding) -> String {
+  match s {
+    RevisionJobAllHeld => "all-held"
+    RevisionJobSomeNotHeld { not_held: n } => concat("not-held:", join(n, ","))
+    RevisionJobSomeUnobserved { unobserved: u, not_held: _ } => concat("unobserved:", join(u, ","))
+  }
+}
+
+test fn an_unobserved_claim_never_qualifies_whatever_the_others_did() -> Bool {
+  standing_label(s: revision_job_standing(results: [r(label: "//a:x", verdict: ClaimHeld), r(label: "//a:y", verdict: ClaimHeld)])) == "all-held"
+    && standing_label(s: revision_job_standing(results: [r(label: "//a:x", verdict: ClaimHeld)])) == "all-held"
+    && standing_label(s: revision_job_standing(results: [r(label: "//a:x", verdict: ClaimHeld), r(label: "//a:y", verdict: ClaimDidNotHold)])) == "not-held://a:y"
+    && standing_label(s: revision_job_standing(results: [r(label: "//a:x", verdict: ClaimHeld), r(label: "//a:typo", verdict: ClaimUnobserved)])) == "unobserved://a:typo"
+    && standing_label(s: revision_job_standing(results: [r(label: "//a:y", verdict: ClaimDidNotHold), r(label: "//a:z", verdict: ClaimUnobserved)])) == "unobserved://a:z"
+}
+
+// A FOREIGN REPOSITORY REFUSES AT DECODE, BEFORE ANY EFFECT: the job fetches and extracts it as root.
+test fn a_repository_outside_the_authored_list_refuses_before_any_effect() -> Bool {
+  label(text: join([o, "\"repository\": \"https://github.com/someone-else/gunbc\", \"commit\": \"", commit, "\", \"tree\": \"", tree, "\", \"claims\": [\"//a:b\"]", c], "")) == "repository-not-admitted"
+    && label(text: join([o, "\"repository\": \"/etc\", \"commit\": \"", commit, "\", \"tree\": \"", tree, "\", \"claims\": [\"//a:b\"]", c], "")) == "repository-not-admitted"
+}

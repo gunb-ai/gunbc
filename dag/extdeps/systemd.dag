@@ -102,13 +102,21 @@ type SystemdUnitProperty
   | ProtectHomeProperty
   | PrivateTmpProperty
   | ReadWritePathsProperty
+  // systemd.exec(5) BindPaths=: a space-separated list of SOURCE[:DESTINATION[:OPTIONS]] bind mounts made in the
+  // unit's own mount namespace, which is how a unit sees a private path at a name other units also use.
+  | BindPathsProperty
   | ReadOnlyPathsProperty
+  // systemd.exec(5) InaccessiblePaths=: paths made unreachable in the unit's mount namespace.
+  | InaccessiblePathsProperty
   | RemainAfterExitProperty
   | RuntimeMaxSecProperty
   | CollectModeProperty
   | JobProperty
   | NoNewPrivilegesProperty
   | RestrictSUIDSGIDProperty
+  // systemd.resource-control(5) Delegate=: the unit owns its cgroup subtree, so a non-root User= can write the
+  // memory controller files below it and the memory envelope read of its cgroup is bounded, not absent.
+  | DelegateProperty
 
 // THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
 //
@@ -187,13 +195,16 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     ProtectHomeProperty => "ProtectHome" as NonEmptyStr
     PrivateTmpProperty => "PrivateTmp" as NonEmptyStr
     ReadWritePathsProperty => "ReadWritePaths" as NonEmptyStr
+    BindPathsProperty => "BindPaths" as NonEmptyStr
     ReadOnlyPathsProperty => "ReadOnlyPaths" as NonEmptyStr
+    InaccessiblePathsProperty => "InaccessiblePaths" as NonEmptyStr
     RemainAfterExitProperty => "RemainAfterExit" as NonEmptyStr
     RuntimeMaxSecProperty => "RuntimeMaxSec" as NonEmptyStr
     CollectModeProperty => "CollectMode" as NonEmptyStr
     JobProperty => "Job" as NonEmptyStr
     NoNewPrivilegesProperty => "NoNewPrivileges" as NonEmptyStr
     RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
+    DelegateProperty => "Delegate" as NonEmptyStr
   }
 }
 

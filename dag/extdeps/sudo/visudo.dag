@@ -26,7 +26,7 @@
 
 module extdeps.sudo.visudo
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
@@ -45,15 +45,16 @@ data visudo_binary_path: NonEmptyStr = "/usr/sbin/visudo"
 
 // -cf is the SINGLE combined word, not two words: the shell builder the swap replaces spelled it
 // `-cf`, and the op must render the argv the shell rendered, byte for byte.
+fn visudo_check_arguments(file: String) -> List<String> {
+  [visudo_binary_path as String, "-cf", file]
+}
+
+// The elevated form: sudo's own prefix around the privilege-free arguments, which a transport that
+// applies elevation itself (gunbc.typed_remote_file_write) takes from visudo_check_arguments directly.
 fn visudo_check_command(file: String) -> ArgvCommand {
   argv_command(
     program: sudo_program(),
-    arguments: [
-      sudo_non_interactive_flag as String,
-      visudo_binary_path as String,
-      "-cf",
-      file,
-    ],
+    arguments: concat([sudo_non_interactive_flag as String], visudo_check_arguments(file: file)),
   )
 }
 

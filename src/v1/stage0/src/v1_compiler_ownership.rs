@@ -18,10 +18,8 @@ pub use crate::v1_std_core::{
     arg_value, arm_body, authored_name_at, expr_call_func_at, expr_method_name_at,
     expr_var_name_at, field_access_base, field_access_field_at, foreach_body, foreach_collection,
     if_condition, if_else_branch, if_then_branch, lambda_body, lambda_param_names_at, let_body,
-    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-};
-pub use crate::v1_std_core::{
-    Cardinality, ExprData, InferredNode, NewlineIndex, Node, VarBindingKind,
+    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, Cardinality,
+    ExprData, InferredNode, NewlineIndex, Node, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -333,7 +331,7 @@ pub fn walk_expr(
                         EdgeKind::Consumed,
                         "return".to_string(),
                         bk.clone(),
-                        texpr.span.clone().start.clone(),
+                        texpr.span.start.clone(),
                     )
                 } else {
                     record_use(
@@ -342,7 +340,7 @@ pub fn walk_expr(
                         EdgeKind::Read,
                         "read".to_string(),
                         bk.clone(),
-                        texpr.span.clone().start.clone(),
+                        texpr.span.start.clone(),
                     )
                 }
             }
@@ -364,7 +362,7 @@ pub fn walk_expr(
                             EdgeKind::Projected,
                             v1_rt::concat(".".to_string(), f.clone()),
                             bk.clone(),
-                            texpr.span.clone().start.clone(),
+                            texpr.span.start.clone(),
                         )
                     }
                     _ => walk_expr(accum.clone(), base_node.clone(), false, si.clone()),
@@ -404,7 +402,7 @@ pub fn walk_expr(
                                             EdgeKind::Threaded,
                                             "fold_init".to_string(),
                                             bk.clone(),
-                                            ia_val.span.clone().start.clone(),
+                                            ia_val.span.start.clone(),
                                         )
                                     }
                                     _ => {
@@ -488,7 +486,7 @@ pub fn walk_expr(
                                             EdgeKind::Threaded,
                                             "fold_init".to_string(),
                                             bk.clone(),
-                                            ia_val.span.clone().start.clone(),
+                                            ia_val.span.start.clone(),
                                         )
                                     }
                                     _ => walk_expr(
@@ -1338,7 +1336,7 @@ pub fn analyze_single_fold(
             && ((cond_struct.clone() && cond_safe.clone()) || cond_whole_acc.clone()));
         Rc::new(FoldAccUnwrapProof {
             site_key: crate::v1_compiler_emit_core_support::to_string(
-                method_call.span.clone().start.clone(),
+                method_call.span.start.clone(),
             ),
             acc_param_name: acc_param_name.clone(),
             acc_type_name: acc_type_name.clone(),

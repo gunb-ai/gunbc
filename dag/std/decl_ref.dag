@@ -1,6 +1,7 @@
 module std.decl_ref
 
 import std.types { NonEmptyStr, List }
+import std.algebra { collection_concat_shape }
 
 // A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER DECLARATION, declared in the owner's header,
 // exactly as a field is declared in its body. So a reference to one is identified by

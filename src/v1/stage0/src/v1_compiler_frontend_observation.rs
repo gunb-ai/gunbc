@@ -2,8 +2,7 @@
 // Source module: v1.compiler.frontend_observation
 
 pub use crate::std_occurrence_identity::OccurrenceTransport;
-pub use crate::v1_compiler_compile::front_end_sources;
-pub use crate::v1_compiler_compile::{FrontendResult, SourceFile};
+pub use crate::v1_compiler_compile::{front_end_sources, FrontendResult, SourceFile};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::ErrorNode;
@@ -35,26 +34,9 @@ pub fn frontend_phase_receipt(frontend: Rc<FrontendResult>) -> FrontendPhaseRece
             Some(graph) => (graph.modules.clone().len() as i64),
             std::option::Option::None => 0,
         },
-        occurrence_count: (frontend
-            .occurrence_transport
-            .clone()
-            .index
-            .clone()
-            .entries
-            .clone()
-            .len() as i64),
-        declaration_count: (frontend
-            .occurrence_transport
-            .clone()
-            .declarations
-            .clone()
-            .len() as i64),
-        reference_count: (frontend
-            .occurrence_transport
-            .clone()
-            .references
-            .clone()
-            .len() as i64),
+        occurrence_count: (frontend.occurrence_transport.index.entries.clone().len() as i64),
+        declaration_count: (frontend.occurrence_transport.declarations.clone().len() as i64),
+        reference_count: (frontend.occurrence_transport.references.clone().len() as i64),
         graph_present: (frontend.graph.clone() != std::option::Option::None),
     }
 }
