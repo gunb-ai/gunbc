@@ -71,7 +71,7 @@ GUNBC_BIN=$(command -v gunbc 2>/dev/null || true)
 # remote dispatch relies on the same neutrality check run locally before it is sent.
 case "$GUNBC_BIN" in ""|*ctrl-build-shims*) GUNBC_BIN="" ;; esac
 if [ -n "$GUNBC_BIN" ]; then
-  H_PRE=$("$GUNBC_BIN" --version >/dev/null 2>&1 && hard_of "$LOGS/infer.pristine")
+  H_PRE=$(hard_of "$LOGS/infer.pristine")
   H_POST=$(hard_of "$LOGS/infer.patched")
   echo "HARD_DIAG pristine=${H_PRE:-UNKNOWN} patched=${H_POST:-UNKNOWN}"
   if [ -n "${H_PRE:-}" ] && [ -n "${H_POST:-}" ] && [ "$H_PRE" != "$H_POST" ]; then
