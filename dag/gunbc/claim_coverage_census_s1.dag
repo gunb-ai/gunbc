@@ -2,7 +2,7 @@ module gunbc.claim_coverage_census_s1
 
 import std.types { String, Bool, List, Int, Set }
 import std.optional { Optional, Absent, Present }
-import std.algebra { empty_set, set_insert, set_contains, is_empty, string_contains }
+import std.algebra { is_empty, string_contains }
 
 // THE DISCOVERED UNIVERSE, CLASSIFIED (manager ruling 2026-10-19, Charter 4, plus the two scope
 // additions: the ungroundable drop members, and jolly-boar-495's StaleEnrolled standing).
@@ -252,9 +252,10 @@ fn grounded(row: ClassifierRow, covers: List<String>) -> ClassifierStanding {
 // the carriers cost O(rows x |S1|) and the "one map build so no call site scans" comment was false. A SET,
 // not a `Map<String, Bool>` whose value was always `true` (review 82943): the dummy value made
 // `map_insert(key, false)` a writable state that reads as absent -- a member that is not a member -- and
-// `std.types::Set` with `std.algebra`'s `set_contains` is the corpus's own membership authority
-// (`std.graph`'s visited set), so the hand-rolled `Present => true / Absent => false` predicate dissolves
-// instead of being centralised.
+// `std.types::Set` with the `empty_set` / `set_insert` / `set_contains` PRIMITIVES is the corpus's own
+// membership authority (`std.graph`'s visited set, which calls them with no import -- they are declared in
+// the primitive table, not exported by a module), so the hand-rolled `Present => true / Absent => false`
+// predicate dissolves instead of being centralised.
 fn classify_rows(universe: List<String>, rows: List<ClaimRow>, classifier_rows: List<ClassifierRow>) -> List<ClassifierStanding> {
   let universe_members = universe_set(universe: universe)
   map(
