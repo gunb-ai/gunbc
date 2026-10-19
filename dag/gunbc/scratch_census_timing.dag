@@ -1,0 +1,51 @@
+module gunbc.scratch_census_timing
+
+import std.types { String, List, Int }
+import std.algebra { take_prefix, is_empty }
+import std.process { ExitSuccess }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.module_acquisition { AcquisitionEnvReady, AcquisitionEnvUnprepared, acquisition_env }
+import v2.workflow.floor_discovery_producer { FloorDiscoverySourcesObserved, FloorDiscoverySourcesRefused, floor_discovery_source_inventory_live }
+import gunbc.claim_coverage_census_s1_live { governed_bindings, content_index, marked_over_files, discovery_walk }
+
+fn done(text: String) -> CliWireResponse {
+  CliWirePrintable { bytes: concat(text, "\n"), exit: ExitSuccess }
+}
+
+fn t0_baseline() -> CliWireResponse {
+  done(text: "t0 baseline")
+}
+
+fn t1_inventory() -> CliWireResponse {
+  match floor_discovery_source_inventory_live(pool_roots: witness_layer_roots) {
+    FloorDiscoverySourcesRefused { reason: r } => done(text: concat("refused ", r))
+    FloorDiscoverySourcesObserved { sources: s } => done(text: concat("t1 sources=", to_string(s |> count)))
+  }
+}
+
+fn t2_env() -> CliWireResponse {
+  match acquisition_env(layout: repository_storage_layout(), bindings: governed_bindings()) {
+    AcquisitionEnvUnprepared { diagnostics: _ } => done(text: "unprepared")
+    AcquisitionEnvReady { env: _ } => done(text: "t2 env ready")
+  }
+}
+
+fn markers_n(n: Int) -> CliWireResponse {
+  match floor_discovery_source_inventory_live(pool_roots: witness_layer_roots) {
+    FloorDiscoverySourcesRefused { reason: r } => done(text: concat("refused ", r))
+    FloorDiscoverySourcesObserved { sources: s } =>
+      match acquisition_env(layout: repository_storage_layout(), bindings: governed_bindings()) {
+        AcquisitionEnvUnprepared { diagnostics: _ } => done(text: "unprepared")
+        AcquisitionEnvReady { env: env } => {
+          let m = marked_over_files(env: env, contents: content_index(sources: s), paths: take_prefix(xs: map(s, x => x.repo_path), n: n))
+          done(text: concat("markers files=", concat(to_string(m.marked |> count), concat(" unread=", to_string(m.unread |> count)))))
+        }
+      }
+  }
+}
+
+fn t3_markers_100() -> CliWireResponse { markers_n(n: 100) }
+fn t3_markers_200() -> CliWireResponse { markers_n(n: 200) }
+fn t3_markers_400() -> CliWireResponse { markers_n(n: 400) }
