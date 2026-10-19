@@ -1,0 +1,206 @@
+module gunbc.instruments.namespace_wave_binding_shard
+
+import std.types { String, Bool, List, Int }
+import std.algebra { Cons, Empty, list_at_optional }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
+
+// THE SHARDED BINDING-DIFF PROOF (gunbc.instruments.namespace_wave_binding_diff): the edit proof recomputes each
+// wave-edited module, about 4 s per KB, so the 59-module wave exceeds one runner's limit. A shard proves the modules
+// whose rank among the SORTED evidence identities is congruent to its index mod K; the merge admits the shards only on an
+// identity join, never a count: every receipt names the run it proved against (head commit, the evidence set verbatim,
+// K), and the modules each receipt carries equal, as a set, exactly the modules its index owns. A missing shard, a module
+// proved twice or in the wrong shard, a receipt from another head, or a stray file in the receipt directory is no
+// observation (exit 2). Unsharded is the case K = 1 with the same merge.
+
+type ShardMode
+  = ShardFull
+  | ShardOf { index: Int, count: Int }
+  | ShardMerge { count: Int }
+  | ShardMalformed { why: String }
+
+type ModuleResult {
+  module: String
+  lines: List<String>
+  refused: Int
+  conflicting: Bool
+  clean: Bool
+}
+
+type ShardRun {
+  head_sha: String
+  evidence: String
+  count: Int
+}
+
+type MergeOutcome
+  = Merged { results: List<ModuleResult> }
+  | MergeRefused { why: String }
+
+fn shard_count_of(text: String) -> Optional<Int> {
+  match parse_int(s: text) {
+    Present { value: n } => if n >= 1 { optional_present(value: n) } else { optional_absent() }
+    Absent => optional_absent()
+  }
+}
+
+// The host hands the environment's GUNBC_WAVE_SHARD verbatim: empty is the unsharded run, `i/K` proves shard i of K,
+// `merge/K` joins K receipts.
+fn parse_shard_mode(text: String) -> ShardMode {
+  if text == "" {
+    ShardFull
+  } else {
+    let parts = split(s: text, delimiter: "/")
+    if count(parts) != 2 {
+      ShardMalformed { why: "GUNBC_WAVE_SHARD must be empty, i/K or merge/K, got: " + text }
+    } else {
+      let head = match list_at_optional(xs: parts, index: 0) { Present { value: v } => v, Absent => "" }
+      let tail = match list_at_optional(xs: parts, index: 1) { Present { value: v } => v, Absent => "" }
+      match shard_count_of(text: tail) {
+        Absent => ShardMalformed { why: "GUNBC_WAVE_SHARD count is not a positive integer: " + text }
+        Present { value: k } =>
+          if head == "merge" {
+            ShardMerge { count: k }
+          } else {
+            match parse_int(s: head) {
+              Absent => ShardMalformed { why: "GUNBC_WAVE_SHARD index is not an integer: " + text }
+              Present { value: i } =>
+                if (i >= 0) && (i < k) { ShardOf { index: i, count: k } } else { ShardMalformed { why: "GUNBC_WAVE_SHARD index outside 0..K: " + text } }
+            }
+          }
+      }
+    }
+  }
+}
+
+// RANK IN THE SORTED IDENTITIES, not read order: the number of evidence modules that sort before this one.
+fn module_rank(evidence: List<String>, module: String) -> Int {
+  count(evidence |> filter(x => x < module))
+}
+
+fn shard_owns(evidence: List<String>, module: String, index: Int, shards: Int) -> Bool {
+  (module_rank(evidence: evidence, module: module) % shards) == index
+}
+
+fn shard_modules(evidence: List<String>, index: Int, shards: Int) -> List<String> {
+  evidence |> filter(m => shard_owns(evidence: evidence, module: m, index: index, shards: shards))
+}
+
+// The evidence set as an identity: its members in sorted order, verbatim. Rank order is the definition, so it is derived
+// from rank rather than from a sort.
+fn evidence_identity(evidence: List<String>) -> String {
+  join(evidence_at_ranks(evidence: evidence, rank: 0, total: count(evidence)), separator: ",")
+}
+
+fn evidence_at_ranks(evidence: List<String>, rank: Int, total: Int) -> List<String> {
+  if rank >= total {
+    []
+  } else {
+    (evidence |> filter(m => module_rank(evidence: evidence, module: m) == rank)) + evidence_at_ranks(evidence: evidence, rank: rank + 1, total: total)
+  }
+}
+
+fn bool_digit(b: Bool) -> String {
+  if b { "1" } else { "0" }
+}
+
+fn result_receipt_lines(r: ModuleResult) -> List<String> {
+  ["module_result\t" + r.module + "\t" + to_string(r.refused) + "\t" + bool_digit(b: r.conflicting) + "\t" + bool_digit(b: r.clean)]
+    + (r.lines |> map(l => "delta\t" + r.module + "\t" + l))
+}
+
+fn receipt_name(index: Int, shards: Int) -> String {
+  to_string(index) + "-of-" + to_string(shards) + ".txt"
+}
+
+// A shard's receipt: its identity header, then one module_result row and the module's delta rows per proved module.
+fn shard_receipt_text(run: ShardRun, index: Int, results: List<ModuleResult>) -> String {
+  (["shard_receipt\t" + to_string(index) + "\t" + to_string(run.count) + "\t" + run.head_sha + "\t" + run.evidence]
+    + (results |> fold(init: [], f: fn(acc, r) { acc + result_receipt_lines(r: r) }))) |> join(separator: "\n") + "\n"
+}
+
+fn receipt_lines(text: String, prefix: String) -> List<String> {
+  split(s: text, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: prefix))
+}
+
+fn field_of(line: String, index: Int) -> String {
+  match list_at_optional(xs: split(s: line, delimiter: "\t"), index: index) {
+    Present { value: f } => f
+    Absent => ""
+  }
+}
+
+// The delta lines of one module in a receipt: everything after the `delta\t<module>\t` prefix, tabs preserved.
+fn receipt_deltas(text: String, module: String) -> List<String> {
+  let prefix = "delta\t" + module + "\t"
+  receipt_lines(text: text, prefix: prefix) |> map(l => replace(l, prefix, ""))
+}
+
+fn receipt_result(text: String, row: String) -> ModuleResult {
+  let m = field_of(line: row, index: 1)
+  ModuleResult {
+    module: m,
+    lines: receipt_deltas(text: text, module: m),
+    refused: match parse_int(s: field_of(line: row, index: 2)) { Present { value: n } => n, Absent => 0 },
+    conflicting: field_of(line: row, index: 3) == "1",
+    clean: field_of(line: row, index: 4) == "1"
+  }
+}
+
+fn same_members(a: List<String>, b: List<String>) -> Bool {
+  (count(a) == count(b))
+    && (count(a |> filter(x => count(b |> filter(y => y == x)) != 1)) == 0)
+    && (count(b |> filter(y => count(a |> filter(x => x == y)) != 1)) == 0)
+}
+
+// ONE RECEIPT against the run it must belong to; Absent is a receipt that holds, Present names why not.
+fn receipt_refusal(run: ShardRun, evidence: List<String>, index: Int, text: String) -> Optional<String> {
+  let headers = receipt_lines(text: text, prefix: "shard_receipt\t")
+  if count(headers) != 1 {
+    optional_present(value: "shard " + to_string(index) + ": the receipt has " + to_string(count(headers)) + " header row(s), not 1")
+  } else {
+    let h = match list_at_optional(xs: headers, index: 0) { Present { value: v } => v, Absent => "" }
+    let carried = receipt_lines(text: text, prefix: "module_result\t") |> map(r => field_of(line: r, index: 1))
+    if field_of(line: h, index: 1) != to_string(index) {
+      optional_present(value: "shard " + to_string(index) + ": the receipt names shard " + field_of(line: h, index: 1))
+    } else if field_of(line: h, index: 2) != to_string(run.count) {
+      optional_present(value: "shard " + to_string(index) + ": the receipt was proved with K=" + field_of(line: h, index: 2) + ", this merge has K=" + to_string(run.count))
+    } else if field_of(line: h, index: 3) != run.head_sha {
+      optional_present(value: "shard " + to_string(index) + ": the receipt was proved against head " + field_of(line: h, index: 3) + ", this merge is head " + run.head_sha)
+    } else if field_of(line: h, index: 4) != run.evidence {
+      optional_present(value: "shard " + to_string(index) + ": the receipt was proved against a different evidence set")
+    } else if !same_members(a: carried, b: shard_modules(evidence: evidence, index: index, shards: run.count)) {
+      optional_present(value: "shard " + to_string(index) + ": the receipt's modules are not exactly the modules this shard owns (missing, duplicated or foreign module)")
+    } else {
+      optional_absent()
+    }
+  }
+}
+
+// THE MERGE'S IDENTITY JOIN. `texts` pairs each expected receipt (index 0..K-1, in order) with its read text, empty when the
+// file was absent; `listing` is the receipt directory's entries. Any deviation refuses with the first cause.
+fn merge_receipts(run: ShardRun, evidence: List<String>, texts: List<String>, listing: List<String>) -> MergeOutcome {
+  let expected = fold(texts, init: [], f: fn(acc, _t) { acc + [receipt_name(index: count(acc), shards: run.count)] })
+  let stray = listing |> filter(name => count(expected |> filter(e => e == name)) == 0)
+  if count(stray) != 0 {
+    MergeRefused { why: "the receipt directory holds a file this merge does not expect (a stale receipt from another run or K): " + join(stray, separator: ",") }
+  } else if count(texts) != run.count {
+    MergeRefused { why: "expected " + to_string(run.count) + " receipt(s), read " + to_string(count(texts)) }
+  } else {
+    let refusals = fold(texts, init: [], f: fn(acc, t) {
+      let i = count(acc)
+      let why = if t == "" { optional_present(value: "shard " + to_string(i) + ": no receipt") } else { receipt_refusal(run: run, evidence: evidence, index: i, text: t) }
+      acc + [why]
+    })
+    let first = fold(refusals, init: optional_absent(), f: fn(acc, w) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => w
+      }
+    })
+    match first {
+      Present { value: why } => MergeRefused { why: why }
+      Absent =>
+      Merged { results: fold(texts, init: [], f: fn(acc, t) { acc + (receipt_lines(text: t, prefix: "module_result\t") |> map(r => receipt_result(text: t, row: r))) }) }
+    }
+  }
+}

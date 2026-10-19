@@ -1998,6 +1998,13 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
             Some("head_root".to_string()),
             text(&cli_run::workspace_root().to_string_lossy()),
         ),
+        (Some("head_sha".to_string()), text(&head)),
+        // The shard is policy the reader parses (`parse_shard_mode`); the host only hands the environment
+        // over, unset as the empty string (the unsharded run).
+        (
+            Some("shard_mode".to_string()),
+            text(&std::env::var("GUNBC_WAVE_SHARD").unwrap_or_default()),
+        ),
     ];
     match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
