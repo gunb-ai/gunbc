@@ -788,9 +788,9 @@ test fn the_honest_pair_is_admitted_and_carries_the_receipts_it_was_built_from()
               && e.rejected.state == Rejected
           RemovalRefused { missing: _ } => false
         }
-      Absent => false
+      none => false
     }
-    Absent => false
+    none => false
   }
 }
 
@@ -799,8 +799,8 @@ test fn the_honest_pair_is_admitted_and_carries_the_receipts_it_was_built_from()
 // reason is a closed sum, so a fold that mixed two blockers up is caught and a rewording is not.
 test fn nothing_witnessed_is_admitted_neither_nor_left_unnamed() -> Bool {
   (match admit_reviewer_removal(
-        approved: Absent,
-        rejected: Absent,
+        approved: none,
+        rejected: none,
         environment_name: gated_env,
       ) {
         RemovalRefused { missing: NoApprovingReview } => true
@@ -810,7 +810,7 @@ test fn nothing_witnessed_is_admitted_neither_nor_left_unnamed() -> Bool {
     // ONE ARM MISSING, NAMED.
     && (match admit_reviewer_removal(
           approved: fx_receipt(run_id: 35447067113, state: Approved),
-          rejected: Absent,
+          rejected: none,
           environment_name: gated_env,
         ) {
           RemovalRefused { missing: NoRejectingReview } => true
@@ -834,7 +834,7 @@ test fn an_approving_arm_dressed_as_the_rejecting_arm_is_refused() -> Bool {
         RemovalRefused { missing: _ } => false
         RemovalAdmitted { evidence: _ } => false
       }
-    Absent => false
+    none => false
   }
 }
 
@@ -869,9 +869,9 @@ test fn a_pair_witnessed_on_another_environment_unlocks_nothing_here() -> Bool {
           RemovalRefused { missing: _ } => false
           RemovalAdmitted { evidence: _ } => false
         }
-      Absent => false
+      none => false
     }
-    Absent => false
+    none => false
   }
 }
 
