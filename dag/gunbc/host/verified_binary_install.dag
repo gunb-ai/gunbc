@@ -53,17 +53,17 @@ type VerifiedBinaryInstallParams {
   // the top-level directory extraction creates, which cleanup removes. Both are facts of the cited
   // release layout and are supplied, never derived here -- deriving either by string surgery would
   // put a fact about someone's tarball into the effect.
-  url: String
+  url: NonEmptyStr
   digest: Digest
   archive_member: String
   staged_root: String
   staged_binary_path: String
   // The staging layout: where the archive lands and where extraction puts it.
-  download_path: String
+  download_path: NonEmptyStr
   extract_root: String
   // Where the binary ends up, and in what mode. `exec_mode` is `+x` (add executable) or an octal
   // such as `0755`; the effect does not decide that a cache daemon's binary wants +x, its consumer does.
-  dest_path: String
+  dest_path: NonEmptyStr
   exec_mode: NonEmptyStr
   // True: the move and the mode step are elevated through the cited non-interactive sudo, so a
   // missing NOPASSWD grant REFUSES instead of prompting on a tty that CI does not have. False: the
@@ -76,7 +76,7 @@ type VerifiedBinaryInstallParams {
 // non-zero exit rather than a body written to disk, so an unfetchable release is a refusal at this
 // step and the verify step never sees a truncated file.
 fn verified_binary_install_fetch_step(p: VerifiedBinaryInstallParams) -> ArgvCommand {
-  curl_download_command(url: p.url, destination: p.download_path)
+  curl_download_command(url: p.url as String, destination: p.download_path as String)
 }
 
 // FETCH-AND-VERIFY, STEP TWO: the digest check as an OBSERVATION, not as a shell test. The cited
@@ -84,14 +84,14 @@ fn verified_binary_install_fetch_step(p: VerifiedBinaryInstallParams) -> ArgvCom
 // `verified_binary_install_admission` below. Reading the digest instead of trusting a piped `sha256sum -c`
 // is what lets the refusal be a value: a shell can only abort, a type can say which refusal.
 fn verified_binary_install_verify_step(p: VerifiedBinaryInstallParams) -> ArgvCommand {
-  sha256sum_file_command(path: p.download_path)
+  sha256sum_file_command(path: p.download_path as String)
 }
 
 // THE VERIFY LINE FOR THE SHELL REALIZATION: `echo '<hex>  <path>' | sha256sum -c -` through the
 // cited op. Under `set -e` a mismatching line is a non-zero exit that aborts the script before the
 // first move, chmod, or cleanup -- the shell form of the same refusal the typed admission states.
 fn verified_binary_install_verify_line(p: VerifiedBinaryInstallParams) -> String {
-  digest_shell_verify_line(digest: p.digest, file_path: p.download_path as NonEmptyStr)
+  digest_shell_verify_line(digest: p.digest, file_path: p.download_path)
 }
 
 // THE GATE BETWEEN THE TWO HALVES OF THE EFFECT. `observed_sha256sum_line` is the stdout of
@@ -217,7 +217,7 @@ fn verified_binary_install_admission(
 // unverified copy of the binary lying around.
 fn verified_binary_install_install_steps(p: VerifiedBinaryInstallParams) -> List<ArgvCommand> {
   let extract =
-    tar_extract_command(archive: p.download_path, into_directory: p.extract_root, strip_components: 0)
+    tar_extract_command(archive: p.download_path as String, into_directory: p.extract_root, strip_components: 0)
   // THE MOVE AND THE MODE COME FROM THEIR AUTHORITIES, AND ELEVATION IS APPLIED TO THAT ARGV
   // (stern-bat-401 (4)). Both arms start from the SAME operation the unprivileged path uses —
   // `mv_exact_destination_command` and `chmod_set_mode_command` in extdeps — and the privileged arm
@@ -235,15 +235,15 @@ fn verified_binary_install_install_steps(p: VerifiedBinaryInstallParams) -> List
   // it on the privileged path only is the worst possible split. Taking the argv from the authority
   // makes the split unrepresentable, and `control_the_privileged_arms_are_the_authority_argv_prefixed_with_sudo`
   // pins it so a future hand-authored leg cannot creep back.
-  let move_op = mv_exact_destination_command(source: p.staged_binary_path, destination: p.dest_path)
-  let mode_op = chmod_set_mode_command(chmod_program: chmod_binary_path, mode: p.exec_mode, path: p.dest_path)
+  let move_op = mv_exact_destination_command(source: p.staged_binary_path, destination: p.dest_path as String)
+  let mode_op = chmod_set_mode_command(chmod_program: chmod_binary_path, mode: p.exec_mode, path: p.dest_path as String)
   let move =
     if p.elevated { sudo_elevate_command(command: argv_words(command: move_op)) }
     else { move_op }
   let mode =
     if p.elevated { sudo_elevate_command(command: argv_words(command: mode_op)) }
     else { mode_op }
-  let cleanup_archive = rm_recursive_force_command(path: p.download_path)
+  let cleanup_archive = rm_recursive_force_command(path: p.download_path as String)
   let cleanup_staging = rm_recursive_force_command(path: p.staged_root)
   [extract, move, mode, cleanup_archive, cleanup_staging]
 }
@@ -298,7 +298,7 @@ fn verified_binary_install_plan_refusal(plan: VerifiedBinaryInstallPlan) -> Veri
 // replaces the `if [ ! -x ... ]` guard a consumer used to concatenate by hand; the cited op is the
 // same one, so the typed observation and the shell spelling cannot drift apart.
 fn verified_binary_install_destination_present_command(p: VerifiedBinaryInstallParams) -> ArgvCommand {
-  test_executable_command(path: p.dest_path)
+  test_executable_command(path: p.dest_path as String)
 }
 
 type VerifiedBinaryInstallPresence =
@@ -309,8 +309,8 @@ fn verified_binary_install_destination_present(
   p: VerifiedBinaryInstallParams,
   test_executable_exit: Int,
 ) -> VerifiedBinaryInstallPresence {
-  if test_executable_exit == 0 { AlreadyInstalled { dest_path: p.dest_path } }
-  else { InstallNeeded { dest_path: p.dest_path } }
+  if test_executable_exit == 0 { AlreadyInstalled { dest_path: p.dest_path as String } }
+  else { InstallNeeded { dest_path: p.dest_path as String } }
 }
 
 // THE DEBT THIS SHELL BUILDER STILL CARRIES (DESIGN §4b, restored at review 81885 — it was deleted with

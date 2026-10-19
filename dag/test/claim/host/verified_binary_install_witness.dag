@@ -84,14 +84,14 @@ fn sccache_params(digest: Digest) -> VerifiedBinaryInstallParams {
 // sccache's is, which makes this the genericity witness rather than a second sccache witness.
 fn other_product_params() -> VerifiedBinaryInstallParams {
   VerifiedBinaryInstallParams {
-    url: "https://example.invalid/tools/thing-9.9.9.tar.gz",
+    url: "https://example.invalid/tools/thing-9.9.9.tar.gz" as NonEmptyStr,
     digest: sccache_release_0_15_0.digest_x86_64,
     archive_member: "thing-9.9.9/bin/thing",
     staged_root: "/tmp/thing-9.9.9",
     staged_binary_path: "/tmp/thing-9.9.9/bin/thing",
-    download_path: "/tmp/thing.tar.gz",
+    download_path: "/tmp/thing.tar.gz" as NonEmptyStr,
     extract_root: "/tmp",
-    dest_path: "/opt/tools/bin/thing",
+    dest_path: "/opt/tools/bin/thing" as NonEmptyStr,
     exec_mode: "0755" as NonEmptyStr,
     elevated: false,
   }
@@ -323,9 +323,10 @@ test fn the_two_refusal_causes_are_distinguishable_as_types() -> Bool {
 // release row or from the instance's identity -- which is the whole reason the effect can be generic.
 test fn the_sccache_adapter_supplies_the_release_row_values() -> Bool {
   let p = sccache_params(digest: sccache_release_0_15_0.digest_aarch64)
-  string_contains(s: p.url, pattern: "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
+  string_contains(s: p.url as String,
+    pattern: "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
     && p.digest == sccache_release_0_15_0.digest_aarch64
-    && p.dest_path == sccache_installed_binary_path
+    && (p.dest_path as String) == sccache_installed_binary_path
     && p.archive_member == "sccache-v0.15.0-aarch64-unknown-linux-musl/sccache"
     && p.staged_binary_path == "/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache"
     && p.staged_root == "/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl"
@@ -362,11 +363,11 @@ test fn the_binary_presence_precondition_gates_the_install() -> Bool {
   let p = sccache_params(digest: sccache_release_0_15_0.digest_aarch64)
   match verified_binary_install_destination_present(p: p, test_executable_exit: 0) {
     InstallNeeded { dest_path: _ } => false
-    AlreadyInstalled { dest_path: d } => d == p.dest_path
+    AlreadyInstalled { dest_path: d } => d == (p.dest_path as String)
   }
     && match verified_binary_install_destination_present(p: p, test_executable_exit: 1) {
          AlreadyInstalled { dest_path: _ } => false
-         InstallNeeded { dest_path: d } => d == p.dest_path
+         InstallNeeded { dest_path: d } => d == (p.dest_path as String)
        }
     // The gate is not decorative: with the binary present, no install argv is derived at all.
     && !string_contains(
@@ -472,10 +473,11 @@ test fn control_the_privileged_arms_are_the_authority_argv_prefixed_with_sudo() 
   let priv_mode = get(xs: priv_steps, index: 2)
   // The unprivileged rendering of the same two operations, from the same authorities, is the baseline.
   let plain_move = shell_command_render(
-    command: mv_exact_destination_command(source: p.staged_binary_path, destination: p.dest_path),
+    command: mv_exact_destination_command(source: p.staged_binary_path, destination: p.dest_path as String),
   )
   let plain_mode = shell_command_render(
-    command: chmod_set_mode_command(chmod_program: chmod_binary_path, mode: p.exec_mode, path: p.dest_path),
+    command: chmod_set_mode_command(chmod_program: chmod_binary_path, mode: p.exec_mode,
+                                        path: p.dest_path as String),
   )
   let sudo_prefix = "'/usr/bin/sudo' '-n' "
   match priv_move {
@@ -496,7 +498,7 @@ test fn control_the_privileged_arms_are_the_authority_argv_prefixed_with_sudo() 
           && shell_command_render(
                command: sudo_elevate_command(command: argv_words(command: mv_exact_destination_command(
                  source: p.staged_binary_path,
-                 destination: p.dest_path,
+                 destination: p.dest_path as String,
                ))),
              )
              == shell_command_render(command: mv_step)

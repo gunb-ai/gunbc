@@ -1108,6 +1108,52 @@ test fn the_fold_runs_no_leg_after_a_leg_has_stopped_the_sequence() -> Bool {
        }
 }
 
+// THE SUPPLY FUNCTION FOR THE EXIT-CODE PAIR, shared by the two claims below so that they differ in exactly
+// ONE input. Written as one function on purpose: the pair's whole value is that a single bit moves between
+// them, and two hand-written blocks that happen to match today are two blocks that can drift tomorrow --
+// which is the same class of defect this PR has been chasing.
+//
+// `fail_on` names the ONE leg whose process is supposed to exit non-zero (Absent = none of them, which is the
+// green half). Everything else is identical in both halves, including what the read prints.
+//
+// THE READ LEG PRINTS THE MATCHING DIGEST IN BOTH HALVES, and that is load-bearing in a way it does not look.
+// A read that exits 0 with NOTHING on stdout is not a success: `build_cache_read_leg_gate` has nothing to
+// compare and refuses it as `Unverifiable`. If the line were left empty, the green half would refuse for the
+// DIGEST reason, the two halves would differ in two inputs, and the pair would prove nothing about exit codes.
+// With the digest correct in both halves, the only thing that can stop this sequence is a leg's exit code --
+// which is exactly the `set -e` rule under test: a failure part-way through must stop the rest even though
+// every later step, on its own, would have succeeded.
+fn build_cache_contract_exit_pair_answer(
+  op: BuildCacheEnsureOp,
+  fail_on: Optional<BuildCacheEnsureKind>,
+  matched: String,
+) -> BuildCacheEnsureSuppliedOutcome {
+  let broken = match fail_on {
+    Present { value: k } => op.kind == k
+    Absent => false
+  }
+  BuildCacheEnsureSuppliedOutcome {
+    op: op,
+    ran: RunArgvTransportObserved {
+      observed: ShellExecObserved {
+        exit_code: if broken { 1 } else { 0 },
+        success: !broken,
+        // THE CITED AUTHORITY FOR WHAT A LEG PRINTS, reused rather than re-derived: `stdout_for_leg` is the
+        // same helper every other supplied-outcome claim in this module goes through, so the read leg's line
+        // is built the one way it is built anywhere else here.
+        stdout: stdout_for_leg(kind: op.kind, line: Present { value: matched }),
+        stderr: if broken { "curl: (7) Failed to connect to the mirror" } else { "" },
+      },
+    },
+  }
+}
+
+// THE PINNED LINE, spelled once. The pinned digest plus the archive path sha256sum itself would have printed,
+// so the comparator has something that genuinely matches and the gate cannot be vacuous in either half.
+fn build_cache_contract_matched_digest_line() -> String {
+  sccache_release_0_15_0.digest_x86_64.hex as String + "  /tmp/sccache-download/sccache"
+}
+
 test fn a_failing_leg_answer_stops_the_sequence_and_is_named_by_the_refusal() -> Bool {
   // THE `set -e` ARM, DRIVEN WITH A FAILING ANSWER. Every other claim on this effect hands the fold legs that
   // SUCCEEDED, because the only digest-shaped failure the fold can see comes from the digest line; nothing in
@@ -1133,24 +1179,18 @@ test fn a_failing_leg_answer_stops_the_sequence_and_is_named_by_the_refusal() ->
     state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
     plan: ops,
     digest: sccache_release_0_15_0.digest_x86_64,
+    // THE FETCH IS THE ONE LEG THAT FAILS. The fetch is chosen (rather than, say, a unit leg) because it is
+    // first in the production order, so stopping there means every other leg -- including the install -- would
+    // have run and must not have.
     supplied: fold(
       ops,
       init: [],
       f: (acc, op) =>
-        append(acc, items: [BuildCacheEnsureSuppliedOutcome {
+        append(acc, items: [build_cache_contract_exit_pair_answer(
           op: op,
-          ran: RunArgvTransportObserved {
-            observed: ShellExecObserved {
-              // EVERY LEG IS HANDED A SUCCESS except none of them matters: the fold must stop at the FIRST one,
-              // and the first one is the fetch, which answers with a non-zero exit. Making the later legs
-              // successes is what turns this into a claim about stopping rather than about reachability.
-              exit_code: if (op.kind == FetchArchive) { 1 } else { 0 },
-              success: op.kind != FetchArchive,
-              stdout: "",
-              stderr: if (op.kind == FetchArchive) { "curl: (7) Failed to connect" } else { "" },
-            },
-          },
-        }]),
+          fail_on: Present { value: FetchArchive },
+          matched: build_cache_contract_matched_digest_line(),
+        )]),
     ),
   )
   match failed.executed {
@@ -1178,26 +1218,35 @@ test fn a_failing_leg_answer_stops_the_sequence_and_is_named_by_the_refusal() ->
 }
 
 test fn a_leg_that_exited_zero_is_reported_as_progress_and_the_plan_completes() -> Bool {
-  // THE GREEN TWIN, AND THE HALF THAT MAKES THE RED ABOVE A CHECK. Identical inputs, identical fold, identical
-  // plan; the ONE thing that differs is the exit code, which is now 0 on every leg. The verdict must flip from
-  // refusal to completion. Without this twin, the claim above could be satisfied by a step that refuses
-  // everything -- which is the exact vacuity this lane's reviews have repeatedly called out, and the reason no
+  // THE GREEN TWIN, AND THE HALF THAT MAKES THE RED ABOVE A CHECK. Same plan, same fold, same digest, same
+  // shared supply function -- the ONLY delta is `fail_on: Absent`, so every leg now answers zero. The verdict
+  // must flip from refusal to completion. Without this twin, the claim above could be satisfied by a step that
+  // refuses everything -- the exact vacuity this lane's reviews have repeatedly called out, and the reason no
   // RED is reported here without its green pair.
+  //
+  // HOW THIS CLAIM WAS WRONG ONCE, AND WHAT THAT COST. Its first version handed every leg EMPTY stdout, and it
+  // was red at rest: a read that exits 0 with nothing on stdout is refused as `Unverifiable`, not completed. A
+  // cheap pre-flight dispatch caught it in 20 minutes; without that dispatch it would have surfaced after a
+  // six-hour evidence pass and every table in this PR would have described a red that was really a bug in the
+  // test. The lesson is recorded here rather than silently fixed: an all-success leg still has to be a
+  // SUCCESSFUL leg, which for the read means printing the digest.
   let ops = build_cache_contract_install_plan()
   let done = build_cache_fold_ensure_ops_with_outcomes(
     state: BuildCacheEnsureFold { executed: EnsureCompleted, digest_line: none },
     plan: ops,
     digest: sccache_release_0_15_0.digest_x86_64,
+    // NOT ONE INPUT DIFFERS EXCEPT THE EXIT CODES: same plan, same fold, same digest, same shared supply
+    // function; `fail_on: Absent` is the entire delta. A refusal here is therefore not conservatism, it is a
+    // comparator that cannot tell a working mirror from a dead one.
     supplied: fold(
       ops,
       init: [],
       f: (acc, op) =>
-        append(acc, items: [BuildCacheEnsureSuppliedOutcome {
+        append(acc, items: [build_cache_contract_exit_pair_answer(
           op: op,
-          ran: RunArgvTransportObserved {
-            observed: ShellExecObserved { exit_code: 0, success: true, stdout: "", stderr: "" },
-          },
-        }]),
+          fail_on: Absent,
+          matched: build_cache_contract_matched_digest_line(),
+        )]),
     ),
   )
   match done.executed {

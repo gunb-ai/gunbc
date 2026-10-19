@@ -59,9 +59,10 @@ fn sccache_release_archive_dir(rel: SccacheBinaryRelease, arch: NonEmptyStr) -> 
   join(["sccache-", rel.version as String, "-", arch as String, "-unknown-linux-musl"], "")
 }
 
-fn sccache_release_archive_url(rel: SccacheBinaryRelease, arch: NonEmptyStr) -> String {
+fn sccache_release_archive_url(rel: SccacheBinaryRelease, arch: NonEmptyStr) -> NonEmptyStr {
   let dir = sccache_release_archive_dir(rel: rel, arch: arch)
   join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "")
+    as NonEmptyStr
 }
 
 // THE PARAMETER RECORD BOTH CONSUMERS RUN THE EFFECT THROUGH. `+x` rather than `0755`: the cited
@@ -82,9 +83,9 @@ fn sccache_verified_install_params(
     archive_member: join([dir, "/sccache"], ""),
     staged_root: join(["/tmp/", dir], ""),
     staged_binary_path: join(["/tmp/", dir, "/sccache"], ""),
-    download_path: "/tmp/sccache.tar.gz",
+    download_path: "/tmp/sccache.tar.gz" as NonEmptyStr,
     extract_root: "/tmp",
-    dest_path: sccache_installed_binary_path,
+    dest_path: sccache_installed_binary_path as NonEmptyStr,
     exec_mode: "+x" as NonEmptyStr,
     elevated: true,
   }
