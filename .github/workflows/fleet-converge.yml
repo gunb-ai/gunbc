@@ -36,7 +36,7 @@ on:
       credential:
         description: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.fleet.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and its target host: a row scoped to one host is delivered there from whichever executor host names"
         required: false
-        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, cursor_worker_turn_api_key, codex_worker_turn_auth, oracle_oci_api_signing_key, claude_code_oauth_harness_token, tracker_web_test_oauth_client_secret, gunbai_bot_publication_app_key, flex_vast_api_key]
+        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, cursor_worker_turn_api_key, codex_worker_turn_auth, oracle_oci_api_signing_key, claude_code_oauth_harness_token, tracker_web_test_oauth_client_secret, gunbai_bot_publication_app_key, flex_vast_api_key, service_slot_app_key]
         type: choice
       app_key_version:
         description: "app_key_version_verify only: the Secret Manager version NUMBER of ci-github-app-private-key to verify. The alias latest is refused -- it names whatever is newest when it resolves, so a mint through it proves nothing about a specific key"
@@ -685,7 +685,7 @@ jobs:
       actions: read
       id-token: write
     concurrency:
-      group: ${{ github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'host_memory_observe' && format('gunbc-read-only-{0}', github.run_id) || github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1' || github.event.inputs.mode == 'r2_conditional_put_race_probe' && 'r2-conditional-put-race-probe' || github.event.inputs.mode == 'flex_pass' && 'gunbc-flex-vast-account' || github.event.inputs.mode == 'flex_template_ensure' && 'gunbc-flex-vast-account' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
+      group: ${{ github.event.inputs.mode == 'workspace_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'revision_job_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'host_memory_observe' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1' || github.event.inputs.mode == 'r2_conditional_put_race_probe' && 'r2-conditional-put-race-probe' || github.event.inputs.mode == 'flex_pass' && 'gunbc-flex-vast-account' || github.event.inputs.mode == 'flex_template_ensure' && 'gunbc-flex-vast-account' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
       cancel-in-progress: false
     steps:
       - name: Checkout
