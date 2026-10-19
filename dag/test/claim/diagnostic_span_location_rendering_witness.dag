@@ -221,9 +221,19 @@ fn any_line_with(lines: List<String>, needle: String) -> Bool {
   any(lines, l => contains(l, needle))
 }
 
-// The compile lane's own line for the arity refusal: it carries the message and is NOT the CLI's
-// `error[…]:` line. The message is inlined rather than captured, because a declared fn is the only
-// form a lambda-typed argument takes here.
+// The compile lane's OWN line for the arity refusal: it carries the message, is NOT the CLI's
+// `error[…]:` line, and must itself name the position. Scoping all three tests to one line is what
+// makes this row bite: tested separately, the CLI's located line satisfies 'some line has the
+// position' and the lane's offset line satisfies 'some line has the message', so the row passed
+// with the lane unlocated. A declared fn is the only form a lambda-typed argument takes here.
+fn lane_line_names_the_position(l: String) -> Bool {
+  contains(l, "too many positional arguments")
+    && !contains(l, "error[")
+    && contains(l, "m.dag:9:5")
+}
+
+// Whether a line is the lane's line at all, so the count reports the lane spoke even when its
+// position is wrong.
 fn is_lane_line_without_error_prefix(l: String) -> Bool {
   contains(l, "too many positional arguments") && !contains(l, "error[")
 }
@@ -366,20 +376,19 @@ test fn the_compile_lane_line_and_the_cli_line_render_the_same_position_for_the_
   let text = join(lines, separator: "\n")
   let usable = discard_scratch(root: root)
   let message = "too many positional arguments"
-  // The lane line: it ends in the parenthesised location and is not the CLI's `error[…]:` line.
-  let lane_agrees = any_line_with(lines: lines, needle: "m.dag:9:5")
-    && any_line_with(lines: lines, needle: message)
+  // The lane SPOKE (its line exists, message and all) and the CLI SPOKE (its own line, its own
+  // position). Then the agreement: the lane's own line must carry the same position the CLI prints.
   let lane_line_count = count(filter(lines, is_lane_line_without_error_prefix))
+  let lane_names_position = any(lines, lane_line_names_the_position)
   let cli_line_present = any_line_with(lines: lines, needle: "error[")
     && any_line_with(lines: lines, needle: "m.dag:9:5")
-  // lane_line_count is the LANE's line only (the predicate excludes the CLI's `error[…]:` line),
-  // so >= 1 means the lane spoke at all; cli_line_present is the second renderer's own assertion.
   usable && (
     result.exit_code != 0
-      && lane_agrees
       && lane_line_count >= 1
+      && contains(text, message)
+      && lane_names_position
       && cli_line_present
-      && !shows_an_offset_run(text: text, file: "m.dag")
+      && !shows_a_named_offset_shape(text: text)
   )
 }
 
