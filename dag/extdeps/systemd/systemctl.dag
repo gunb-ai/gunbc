@@ -224,8 +224,10 @@ data systemctl_mask_verb: NonEmptyStr = "mask" as NonEmptyStr
 
 data systemctl_unmask_verb: NonEmptyStr = "unmask" as NonEmptyStr
 
+data systemctl_now_flag: NonEmptyStr = "--now" as NonEmptyStr
+
 fn systemctl_mask_now_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", systemctl_mask_verb as String, "--now", unit as String]
+  ["systemctl", systemctl_mask_verb as String, systemctl_now_flag as String, unit as String]
 }
 
 // MASK WITHOUT --now IS THE INHIBIT ALONE: the unit can no longer be started or restarted, and a

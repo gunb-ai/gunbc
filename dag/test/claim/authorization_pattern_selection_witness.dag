@@ -493,3 +493,13 @@ test fn the_r2_custody_cells_are_realized_by_the_federated_iam_route() -> Bool {
           RealizedUnauthorized => false
         })
 }
+
+// THE RUNNER-RETIREMENT MASK IS A SELECTION: reversible, recurring, bindable and resource-scoped, so the
+// fold selects the federated scoped grant and the row conforms. The discriminating
+// control for the irreversible variant is a_recurring_effect_that_owes_a_witness_has_no_admissible_pattern.
+test fn the_runner_retirement_mask_selects_the_federated_grant_and_conforms() -> Bool {
+  any(census_verdicts(), v =>
+    (v.site.decl_name as String) == "retirement_mask_line"
+      && selected_federated(s: v.selection)
+      && match v.conformance { Conforms => true _ => false })
+}
