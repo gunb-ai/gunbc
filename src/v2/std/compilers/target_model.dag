@@ -15079,7 +15079,11 @@ fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValue
 // 🟡 REMAINING POPULATION of the pick-table literal bindings (C5-G left it; the int-literal magnitude
 // special case is gone). Source atoms dag_pick_lit_one/two and dag_rec_lit_nine are minted ONLY by
 // fixture constructors (program.dag program_literal_one/two, dag.dag fixtures) and are consumed by
-// the BoundToken/spelling rows in dag.dag (~308-374, 4161-4162, 4697-4698) and rust_fixtures.dag.
+// the rows held by dag.dag `dag_pick_concrete_tokens`,
+// `dag_language_model_binding_canonical_map`, `dag_binding_spellings`, and by rust_fixtures.dag
+// `rust_pick_concrete_tokens`, `rust_pick_binding_spellings`, `rust_loop_*`, `rust_match_*`,
+// `rust_field_access_binding_spellings`, `rust_variant_construct_binding_spellings`,
+// `rust_literal_emit_binding_spellings`, `rust_bind_literal_golden_tokens`.
 // Ingest and dag_int_literal_fixture_node never mint them. DISSOLVES WHEN those fixtures spell their
 // literals as int_literal atoms and expect int_literal tokens; then these map arms, the rows and
 // this marker are deleted together. Follow-up, not this PR.
