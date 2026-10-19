@@ -2,7 +2,7 @@ module gunbc.instruments.native_crypto_cost
 
 import std.types { Int, List, String, Bool, NonEmptyStr }
 import std.measure { Nanosecond, nanosecond }
-import std.bignat { BigNat, bignat_one, bignat_sub, bignat_zero_limbs }
+import std.bignat { BigNat, bignat_one, bignat_sub, bignat_zero_limbs, bignat_add_scaled, bignat_pad, bignat_drop_lowest, montgomery_step }
 import extdeps.crypto.sha2 { sha256 }
 import extdeps.crypto.signature {
   SignatureSuite, EcdsaP256Sha256, PublicKeyEncoding, Sec1Uncompressed, SignatureEncoding, P1363FixedWidth,
@@ -154,9 +154,54 @@ fn attestation_rows(s: AppAttestSample) -> List<CostRow> {
   }
 }
 
+// ── the pieces inside one Montgomery multiplication, 1000 calls each on 11 limbs (P-256's field
+// width): a copied accumulator or a quadratic list op shows as one piece costing more than its
+// share of montgomery_step. `held` is the piece's arithmetic answer (its limb count).
+fn limb_run(w: Int) -> List<Int> {
+  fold(octet_run(n: w, acc: []), init: [], f: (acc, o) => acc |> list_push(16777000 - o))
+}
+
+fn piece_row(identity: String, held: Bool, t0: Int, t1: Int) -> CostRow {
+  CostRow { identity: identity, held: held, nanos: nanosecond(count: t1 - t0) }
+}
+
+fn add_scaled_row() -> CostRow {
+  let t = limb_run(w: 11)
+  let x = limb_run(w: 11)
+  let t0 = observed_monotonic_nanos("add-scaled-start")
+  let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(bignat_add_scaled(t: t, x: x, k: 16777000, carry: 0, acc: [])))
+  let t1 = observed_monotonic_nanos("add-scaled-end")
+  piece_row(identity: "bignat_add_scaled_x1000", held: n >= 11000, t0: t0, t1: t1)
+}
+
+fn pad_row() -> CostRow {
+  let t = limb_run(w: 11)
+  let t0 = observed_monotonic_nanos("pad-start")
+  let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(bignat_pad(limbs: t, width: 12)))
+  let t1 = observed_monotonic_nanos("pad-end")
+  piece_row(identity: "bignat_pad_x1000", held: n == 12000, t0: t0, t1: t1)
+}
+
+fn drop_lowest_row() -> CostRow {
+  let t = limb_run(w: 12)
+  let t0 = observed_monotonic_nanos("drop-start")
+  let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(bignat_drop_lowest(limbs: t)))
+  let t1 = observed_monotonic_nanos("drop-end")
+  piece_row(identity: "bignat_drop_lowest_x1000", held: n == 11000, t0: t0, t1: t1)
+}
+
+fn montgomery_step_row() -> CostRow {
+  let t = limb_run(w: 12)
+  let b = limb_run(w: 11)
+  let t0 = observed_monotonic_nanos("step-start")
+  let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(montgomery_step(ctx: p256_curve.field, t: t, ai: 12345, b: b)))
+  let t1 = observed_monotonic_nanos("step-end")
+  piece_row(identity: "montgomery_step_x1000", held: n == 12000, t0: t0, t1: t1)
+}
+
 fn native_crypto_cost_rows() -> List<CostRow> {
   concat(
-    [sha256_row(n: 4096), sha256_row(n: 16384), sha256_row(n: 65536), fmul_row(), point_double_row(), point_add_row(), scalar_row(), verify_signature_row()],
+    [sha256_row(n: 4096), sha256_row(n: 16384), sha256_row(n: 65536), fmul_row(), add_scaled_row(), pad_row(), drop_lowest_row(), montgomery_step_row(), point_double_row(), point_add_row(), scalar_row(), verify_signature_row()],
     attestation_rows(s: ios_14_4_sample())
   )
 }
@@ -166,6 +211,10 @@ data native_crypto_cost_expected_identities: List<String> = [
   "sha256_over_16384_octets",
   "sha256_over_65536_octets",
   "p256_field_multiplication_x200",
+  "bignat_add_scaled_x1000",
+  "bignat_pad_x1000",
+  "bignat_drop_lowest_x1000",
+  "montgomery_step_x1000",
   "p256_point_doubling_x50",
   "p256_point_addition_x50",
   "p256_double_scalar_multiplication",

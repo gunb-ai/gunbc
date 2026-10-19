@@ -18711,7 +18711,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     fn_type_env: empty_type_env(),
     fn_return_type: none,
     expected_type: none,
-    tco_cursor_param: "",
+    tco_cursor_params: [],
     tco_cursor_tails: empty_map()
   }
 }
