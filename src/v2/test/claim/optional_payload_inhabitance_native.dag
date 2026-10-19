@@ -59,6 +59,9 @@ fn opi_report() -> CliWireResponse {
   CliWirePrintable {
     bytes: "control_int=" + opi_probe(body: "fn f() -> Int? {\n  Present { value: 1 }\n}\n")
       + " | hole_string=" + opi_probe(body: "fn f() -> Int? {\n  Present { value: \"s\" }\n}\n")
+      + " | absent=" + opi_probe(body: "fn f() -> Int? {\n  Absent\n}\n")
+      + " | bare_lift=" + opi_probe(body: "fn f(x: Int) -> Int? {\n  x\n}\n")
+      + " | rigid_t=" + opi_probe(body: "fn f<T>(x: T) -> Int? {\n  Present { value: x }\n}\n")
       + " | planted=" + opi_probe(body: "fn f() -> Int {\n  true\n}\n")
       + " | END",
     exit: ExitSuccess
