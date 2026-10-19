@@ -8,7 +8,7 @@ import gunbc.guarantee_rung {
 import gunbc.rung_drop {
   RungDrop, TypedDeclaration, Enumerated, NotYetCounted, NoInstrumentObservesTheZero, DerivedBy, DeletedWithoutReplacement, Standing,
   rung_drop_is_readable, every_unreadable_standing_drop_is_not_yet_counted,
-  rung_drop_declaration_message, rung_drop_off_ladder_judgment,
+  rung_drop_declaration_message, rung_drop_off_ladder_judgment, authored_prose_rung_drops,
   OffLadder, OnLadderAt, NotJudgeableFromProse,
 }
 import extdeps.bazel.label { Label, TargetName }
@@ -16,6 +16,12 @@ import gunbc.instrument_targets { instruments_package, compile_clean_diagnostic_
 import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
+import gunbc.rung_drop.direct_call_unbound_carried_generic_compat { direct_call_unbound_carried_generic_compat }
+import gunbc.rung_drop.floor_cut_regen_second_generation_agreement { floor_cut_regen_second_generation_agreement }
+import gunbc.rung_drop.floor_cost_high_cpu_withheld { floor_cost_high_cpu_withheld }
+import gunbc.rung_drop.emitted_bytes_witness_required_lane { emitted_bytes_witness_required_lane }
+import gunbc.rung_drop.required_gate_bankruptcy { required_gate_bankruptcy }
+import gunbc.rung_drop.text_boundary_identity_wall { text_boundary_identity_wall }
 
 // A CONTROL DROP THAT DIFFERS FROM THE LIVE ROW IN EVERY DECIDED FIELD. Its purpose is to make
 // the assertions below discriminating: a renderer that ignored its argument, or an off-ladder
@@ -186,4 +192,28 @@ test fn an_uncounted_or_unlabelled_standing_population_is_refused_and_readable_o
 
 test fn unreadable_standing_roster_drops_are_only_not_yet_counted_populations() -> Bool {
   every_unreadable_standing_drop_is_not_yet_counted(ds: rung_drop_roster)
+}
+
+// THE FOUR TYPED NOT-YET-COUNTED ROWS EACH RENDER THEIR OWN CAUSE. The cause names the MISSING CAPABILITY, so
+// the rendering is the only consumer that makes an arm more than a spelling. RED: a renderer that
+// dropped the cause, or a row naming the wrong capability, fails the per-row needle; the arms
+// differ across rows (instance projection, population join, surface), so one constant cannot satisfy all four.
+test fn each_typed_uncounted_row_renders_the_capability_it_lacks() -> Bool {
+  contains_text(haystack: rung_drop_declaration_message(d: direct_call_unbound_carried_generic_compat), needle: "none projects the member identities")
+    && contains_text(haystack: rung_drop_declaration_message(d: floor_cost_high_cpu_withheld), needle: "none projects the member identities")
+    && contains_text(haystack: rung_drop_declaration_message(d: floor_cut_regen_second_generation_agreement), needle: "is not modeled")
+    && contains_text(haystack: rung_drop_declaration_message(d: emitted_bytes_witness_required_lane), needle: "no substrate-visible surface")
+    && !contains_text(haystack: rung_drop_declaration_message(d: emitted_bytes_witness_required_lane), needle: "none projects the member identities")
+}
+
+// POSITIVE CONTROL / BOUND: the two multi-population rows stay prose (their split is a follow-up) and remain counted debt, while
+// the four converted rows are no longer prose debt.
+test fn the_converted_rows_leave_prose_debt_and_the_multi_population_rows_stay() -> Bool {
+  let ids = map(authored_prose_rung_drops(ds: rung_drop_roster), d => d.identity)
+  length(xs: filter(ids, i => i == required_gate_bankruptcy.identity)) == 1
+    && length(xs: filter(ids, i => i == text_boundary_identity_wall.identity)) == 1
+    && length(xs: filter(ids, i => i == direct_call_unbound_carried_generic_compat.identity)) == 0
+    && length(xs: filter(ids, i => i == floor_cut_regen_second_generation_agreement.identity)) == 0
+    && length(xs: filter(ids, i => i == floor_cost_high_cpu_withheld.identity)) == 0
+    && length(xs: filter(ids, i => i == emitted_bytes_witness_required_lane.identity)) == 0
 }
