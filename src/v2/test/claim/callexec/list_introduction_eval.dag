@@ -15,7 +15,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.node { Node, NodeFold, Symbol, fold_node }
-import v2.std.runtime { RuntimeAggregate, RuntimePrimitive, RuntimeValue }
+import v2.std.runtime { RuntimeAggregate, RuntimeFieldValue, RuntimePrimitive, RuntimeValue }
 import v2.std.text { String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -101,6 +101,10 @@ fn list_introduction_eval_of(source: String) -> Optional<Outcome<RuntimeValue>> 
   }
 }
 
+fn list_introduction_eval_field_int(f: RuntimeFieldValue) -> Optional<Int> {
+  list_introduction_eval_int(v: f.value)
+}
+
 fn list_introduction_eval_int(v: RuntimeValue) -> Optional<Int> {
   match v {
     RuntimePrimitive { value: p } =>
@@ -128,9 +132,9 @@ fn list_introduction_eval_pair_of(o: Outcome<RuntimeValue>) -> Optional<List<Int
         RuntimeAggregate { value: a } =>
           match a.fields {
             Cons { head: f0, tail: Cons { head: f1, tail: Empty } } =>
-              match list_introduction_eval_int(v: f0.value) {
+              match list_introduction_eval_field_int(f: f0) {
                 Present { value: x } =>
-                  match list_introduction_eval_int(v: f1.value) {
+                  match list_introduction_eval_field_int(f: f1) {
                     Present { value: y } => optional_present(value: [x, y])
                     Absent => optional_absent()
                   }
