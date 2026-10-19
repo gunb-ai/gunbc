@@ -258,12 +258,31 @@ test fn a_workflow_declaring_the_stamp_twice_is_unreadable_not_first_wins_holds(
   // quietly deleting the refusal. Pinning prose from a module this one does not own is a coupling that
   // tests nothing. The invariant is: a disputed stamp is refused, and no member's value survives into the
   // answer. Which layer noticed is not part of the contract.
-  match tree {
-    StampPresent { stamp: _ } => false
-    StampAbsent => false
-    StampUnreadable { detail: d } =>
-      !string_contains(s: d, pattern: stamp)
-      && !string_contains(s: d, pattern: stamp_other)
+  // A refusal alone is not evidence: if the fixture were unreadable for some unrelated reason -- a bad
+  // indent, an unsupported construct -- this claim would still see StampUnreadable and pass. So the claim
+  // carries its own POSITIVE CONTROL over the same fixture: the identical document with the SECOND member
+  // removed must read as StampPresent with exactly this stamp. Refused-with-the-duplicate and
+  // accepted-without-it is what makes the duplication, and not the fixture, the cause.
+  let alone = compiler_gate_contract_stamp_read_from(
+    src: workflow_with_env(
+      extra: join(["  ", compiler_gate_contract_stamp_env_key, ": '", stamp, "'\n"], ""),
+      after_env: after_env_marker()
+    )
+  )
+  let control = match alone {
+    StampPresent { stamp: s } => s == stamp
+    _ => false
+  }
+  if !control {
+    false
+  } else {
+    match tree {
+      StampPresent { stamp: _ } => false
+      StampAbsent => false
+      StampUnreadable { detail: d } =>
+        !string_contains(s: d, pattern: stamp)
+        && !string_contains(s: d, pattern: stamp_other)
+    }
   }
 }
 
