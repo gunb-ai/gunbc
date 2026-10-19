@@ -44,14 +44,38 @@ cd "$WORK" || { echo "FATAL clone missing"; exit 4; }
 echo "MEASURED_AT $SHA"
 echo "REF $REF"
 # GUARD, not a comment: if the tree the clone produced is not the tree I committed, everything below
-# measures something else. The .dag must carry the repair and must NOT carry the accumulator.
+# measures something else. TREE_KIND selects which tree is expected, and the two modes are mutually
+# exclusive: measuring a mutant while believing you are measuring the repair is the exact failure
+# this lane keeps hitting, so the guard asserts the MUTANT shape too rather than merely skipping.
 DAGSUM=$(sha256sum src/v1/04_infer.dag | cut -c1-16)
 FRESH=$(grep -c fresh_call_variables src/v1/04_infer.dag || true)
 ACC=$(grep -c UnifyGenericsAcc src/v1/04_infer.dag || true)
+NK=$(grep -c 'map_insert(acc, g, type_variable_node(id: g))' src/v1/04_infer.dag || true)
+SPAN=$(grep -c 'type_variable_node(id: concat(g, "@", span.file' src/v1/04_infer.dag || true)
+# The narrowing (stern-bat-401 msg_c4d4f3e1): the mint fires ONLY for a call with no argument nodes.
+# Asserted, not assumed -- a regen from a tree that lost it would emit a mirror that minted at calls
+# WITH actuals, which is what broke the self-host product with error[E0277] `S: Clone`.
+NARROW=$(grep -c "mint_only_without_actuals" src/v1/04_infer.dag || true)
+PIN=$(grep -c "fn arguments_present_do_not_trigger_the_call_site_mint" src/v1/tests/src/generic_call_variable_freshness_test.rs || true)
 MIRROR_BEFORE=$(sha256sum src/v1/stage0/src/v1_compiler_infer.rs | cut -c1-16)
-echo "GUARD infer.dag=$DAGSUM fresh_call_variables=$FRESH UnifyGenericsAcc=$ACC mirror_before=$MIRROR_BEFORE"
-[ "$FRESH" -ge 2 ] || { echo "VOID: the tree has no producer repair"; exit 5; }
-[ "$ACC" -eq 0 ] || { echo "VOID: the tree carries the accumulator; PR-1 must not"; exit 5; }
+echo "GUARD infer.dag=$DAGSUM fresh=$FRESH namekeyed=$NK span=$SPAN narrow=$NARROW pin=$PIN UnifyGenericsAcc=$ACC mirror_before=$MIRROR_BEFORE"
+if [ "${TREE_KIND:-repair}" = repair ]; then
+  [ "$NARROW" -ge 2 ] || { echo "VOID: the call-site mint is not narrowed to argument-less calls (found $NARROW, need 2: the binding and the branch)"; exit 5; }
+  [ "$PIN" -ge 1 ] || { echo "VOID: the narrowing pin row is missing; the mirror would ship an unpinned widening"; exit 5; }
+fi
+[ "$ACC" -eq 0 ] || { echo "VOID: the tree carries the accumulator; neither PR-1 nor its mutant may"; exit 5; }
+if [ "${TREE_KIND:-repair}" = repair ]; then
+  [ "$FRESH" -ge 2 ] || { echo "VOID: the tree has no producer repair"; exit 5; }
+  [ "$SPAN" -ge 1 ] || { echo "VOID: the repair does not mint span-keyed ids at the call site"; exit 5; }
+  [ "$NK" -le 1 ] || { echo "VOID: the call site mints by the callee's PARAMETER NAME -- this is the MUTANT, not the repair (TREE_KIND=name-keyed if that is what you meant)"; exit 5; }
+else
+  # The mutant must differ from the repair in exactly one respect, and the guard says which: the
+  # call-site fold must mint by parameter name. TWO occurrences of that text is what means it -- one
+  # is the pre-existing unbound_owner_param_variables fold, so a bare grep would pass on a tree with
+  # no mutation at all.
+  [ "$NK" -ge 2 ] || { echo "VOID: name-keyed mutation is not present at the call site (found $NK, need 2)"; exit 5; }
+  [ "$SPAN" -eq 0 ] || { echo "VOID: the span-keyed id survived; this is not the mutant"; exit 5; }
+fi
 grep -q "fn minted_variables_are_fresh_per_call_site" src/v1/tests/src/generic_call_variable_freshness_test.rs \
   || { echo "VOID: the RED is not in the tree"; exit 5; }
 grep -q "^mod generic_call_variable_freshness_test;" src/v1/tests/src/lib.rs \
@@ -125,7 +149,7 @@ else
   # The few lines that matter, printed plainly so a human can eyeball the emitted repair without
   # decoding anything: the minting statement and the merged substitution.
   echo "EMITTED_REPAIR_MARKERS"
-  grep -n "uninstantiated_call_generics\|fresh_call_variables\|map_merge(call_subst" src/v1/stage0/src/v1_compiler_infer.rs | head -12
+  grep -n "uninstantiated_call_generics\|fresh_call_variables\|map_merge(call_subst\|type_variable_node(id: g)" src/v1/stage0/src/v1_compiler_infer.rs | head -14
   echo "PATCH_GZIP_B64_BEGIN"
   gzip -9 < "$LOGS/mirror.patch" | base64 -w0; echo
   echo "PATCH_GZIP_B64_END"
