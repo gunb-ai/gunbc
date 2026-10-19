@@ -3,7 +3,7 @@ module v2.test.claim.derived_structural_eq_witness
 import std.types { Bool, Int, List, String }
 import gunbc.commit_workflow { CommitWorkflowSurface, GithubActionsCiJob, GitPrePushHook, FalsifierCadenceJob, LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyCargoFmtCheck }
 
-// R2 backfill (nfr_dissolve_derived_equality payoff): the hand structural-equality folds
+// R2 backfill (derived structural equality payoff): the hand structural-equality folds
 // commit_workflow_surface_eq, gate_eq, local_tidy_check_eq, bmc_event_eq,
 // section13_population_law_id_eq and nat_manual_anchor_key_eq are deleted; their call sites read
 // the derived structural ==. Prior art: v2.test.claim.vacuity_evidence_derived_eq_witness.
