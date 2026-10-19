@@ -378,7 +378,7 @@ type RunnerJobUserUidReading
   | JobUserUidUnobserved { cause: NonEmptyStr }
 
 // THE PASSWD ENTRY IS name:passwd:uid:gid:gecos:home:shell (extdeps.posix.getent), and only an entry
-// that NAMES the asked-for user with a non-negative integer uid is a reading. getent exits 2 when
+// that NAMES the asked-for user (or, for a numeric key, carries that uid) with a non-negative integer uid is a reading. getent exits 2 when
 // the key is absent; that, an empty answer, a second line or a different name are all unobserved.
 fn runner_job_user_uid_reading(job_user: NonEmptyStr, exit_code: Int, stdout: String, stderr: String) -> RunnerJobUserUidReading {
   let lines = filter(split(s: stdout, delimiter: "\n"), l => trim(s: l) != "")
@@ -391,8 +391,9 @@ fn runner_job_user_uid_reading(job_user: NonEmptyStr, exit_code: Int, stdout: St
     let fields = split(s: line, delimiter: ":")
     if length(fields) != 7 {
       JobUserUidUnobserved { cause: concat("passwd entry does not have seven fields: ", line) as NonEmptyStr }
-    } else if fold(fields, init: "", f: (acc, f) => if acc == "" { f } else { acc }) != (job_user as String) {
-      JobUserUidUnobserved { cause: concat("passwd entry names a different user: ", line) as NonEmptyStr }
+    } else if fold(fields, init: "", f: (acc, f) => if acc == "" { f } else { acc }) != (job_user as String)
+      && match fields.skip(n: 2).first() { Absent => "" Present { value: f } => f } != (job_user as String) {
+      JobUserUidUnobserved { cause: concat("passwd entry matches the key by neither name nor uid: ", line) as NonEmptyStr }
     } else {
       match parse_int(s: match fields.skip(n: 2).first() { Absent => "" Present { value: f } => f }) {
         Absent => JobUserUidUnobserved { cause: concat("passwd entry uid field is not an integer: ", line) as NonEmptyStr }

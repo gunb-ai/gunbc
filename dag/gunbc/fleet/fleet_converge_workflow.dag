@@ -1518,16 +1518,20 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // produce/materialize/launch/load modes keyed on Group A were deleted with the group (decommissioned and
 // sold, 2026-10-07). The pair-serving apply keeps the srv1 control-plane key it shared with them.
 //
-// A READ-ONLY OBSERVE SITS IN NO QUEUE AT ALL. GitHub keeps one pending run per group and a newer
-// pending CANCELS the older, so an observe that shared the srv1 key was cancelled by an unrelated
-// dispatch queueing behind it -- which lost the readback of Group A's release (run 37100651736):
-// the absorbing kind of loss, a reading that silently never happens. It mutates nothing, so it takes
-// a group keyed by its own run and is never serialized or superseded.
+// A MODE WHOSE EFFECTS ARE CONFINED TO ITS OWN RUN SITS IN NO QUEUE AT ALL. The invariant is that
+// everything the mode writes lives in the run itself -- the runner's own workspace and the run's own
+// artifacts -- so nothing shared needs it serialized. Two kinds inhabit it: a read-only observe (it writes
+// no host state) and a guest-image build (it writes an artifact, but only into its own run). GitHub keeps
+// one pending run per group and a newer pending CANCELS the older, so such a mode that shared the srv1
+// key was cancelled by an unrelated dispatch queueing behind it: the absorbing kind of loss, a result that
+// silently never happens (the classes pending_run_cancelled_by_a_later_dispatch_with_no_signal and
+// an_own_run_mode_is_serialized_in_a_shared_host_mutation_group hold the runs). It takes a group keyed by its own run and is never serialized or superseded. The domain says
+// "confined", not "read-only": a build writes, so the name must not claim otherwise.
 type FleetMutationDomain
   = SubjectDomain { group: String }
   | ExecutorDomain
   | TargetHostDomain
-  | ReadOnlyOwnRun
+  | OwnRunConfined
 
 fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> FleetMutationDomain {
   match mode {
@@ -1536,8 +1540,8 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     AllocationStorePlan => ExecutorDomain
     WorkspaceCommissioningPlan => ExecutorDomain
     WorkspaceAllocationPlan => ExecutorDomain
-    WorkspaceImageBuild => ExecutorDomain
-    RevisionJobImageBuild => ExecutorDomain
+    WorkspaceImageBuild => OwnRunConfined
+    RevisionJobImageBuild => OwnRunConfined
     FleetApply => ExecutorDomain
     OrgActionsObserve => ExecutorDomain
     AppControlPlaneObserve => ExecutorDomain
@@ -1559,7 +1563,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     RlmLaunchDeploymentReceipt => ExecutorDomain
     HostResetReturn => ExecutorDomain
     RunnerHostFileObserve => ExecutorDomain
-    HostMemoryObserve => ReadOnlyOwnRun
+    HostMemoryObserve => OwnRunConfined
     ApprovalBrokerDarkInstall => ExecutorDomain
     MicrovmControllerInstall => ExecutorDomain
     MicrovmSlotReserve => ExecutorDomain
@@ -1605,7 +1609,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
   }
 }
 
-data fleet_read_only_group_prefix: String = "gunbc-read-only-"
+data fleet_own_run_group_prefix: String = "gunbc-own-run-"
 
 // The group a dispatch lands in, for a mode, the executor it named, the target it named and its run.
 fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: String, target: String, run_id: String) -> String {
@@ -1613,7 +1617,7 @@ fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: Stri
     SubjectDomain { group: g } => g
     ExecutorDomain => join([fleet_host_mutation_group_prefix, host], "")
     TargetHostDomain => join([fleet_host_mutation_group_prefix, target], "")
-    ReadOnlyOwnRun => join([fleet_read_only_group_prefix, run_id], "")
+    OwnRunConfined => join([fleet_own_run_group_prefix, run_id], "")
   }
 }
 
@@ -1623,7 +1627,7 @@ fn fleet_converge_arm_domain_clause(mode: FleetConvergeWorkflowMode) -> String {
     SubjectDomain { group: g } => join([when, "'", g, "' || "], "")
     ExecutorDomain => ""
     TargetHostDomain => join([when, "format('", fleet_host_mutation_group_prefix, "{0}', github.event.inputs.target) || "], "")
-    ReadOnlyOwnRun => join([when, "format('", fleet_read_only_group_prefix, "{0}', github.run_id) || "], "")
+    OwnRunConfined => join([when, "format('", fleet_own_run_group_prefix, "{0}', github.run_id) || "], "")
   }
 }
 
