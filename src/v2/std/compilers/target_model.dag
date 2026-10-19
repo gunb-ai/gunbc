@@ -15588,27 +15588,15 @@ fn target_project_record_construct(
 // A LIST INTRODUCTION IS RECOGNIZED BY ITS OWN READER, v2.std.list_introduction
 // list_introduction_elements_optional, the one authority the producer (body lowering) and infer
 // share, so this gate cannot disagree with them about which Transform heads a list.
-fn target_value_expr_list_introduction_gate(node: Node) -> Bool {
-  match list_introduction_elements_optional(node: node) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 fn target_project_list_introduction(
   arrow: Node,
   body: Node,
+  element_nodes: List<Node>,
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
-  match list_introduction_elements_optional(node: body) {
-    Absent =>
-      outcome_rejected(
-        target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: body)
-      )
-    Present { value: element_nodes } =>
-      bind_outcome(
+  bind_outcome(
         o: fold(
           element_nodes,
           init: Accepted { value: Empty, diagnostics: None },
@@ -15633,7 +15621,6 @@ fn target_project_list_introduction(
           outcome_accepted(target_value_expression_list_introduction(elements: elements, source: body))
         }
       )
-  }
 }
 
 fn target_value_expr_field_access_gate(node: Node) -> Bool {
@@ -16225,16 +16212,19 @@ fn target_value_expr_project_body_subexpression(
           source_bool_form: source_bool_form,
           handle_transform: handle_transform
         )
-      } else if target_value_expr_list_introduction_gate(node: node) {
-        target_project_list_introduction(
-          arrow: arrow,
-          body: node,
-          target: target,
-          source_bool_form: source_bool_form,
-          handle_transform: handle_transform
-        )
       } else {
-        handle_transform(arrow, node, target)
+        match list_introduction_elements_optional(node: node) {
+          Present { value: elements } =>
+            target_project_list_introduction(
+              arrow: arrow,
+              body: node,
+              element_nodes: elements,
+              target: target,
+              source_bool_form: source_bool_form,
+              handle_transform: handle_transform
+            )
+          Absent => handle_transform(arrow, node, target)
+        }
       }
     ComputationNode { behavior: Branch } =>
       target_project_branch_bool_if_else(
@@ -16617,16 +16607,19 @@ fn target_project_arrow_body_by_kind(
             source_bool_form: source_bool_form,
             handle_transform: handle_transform
           )
-        } else if target_value_expr_list_introduction_gate(node: body) {
-          target_project_list_introduction(
-            arrow: arrow,
-            body: body,
-            target: target,
-            source_bool_form: source_bool_form,
-            handle_transform: handle_transform
-          )
         } else {
-          handle_transform(arrow, body, target)
+          match list_introduction_elements_optional(node: body) {
+            Present { value: elements } =>
+              target_project_list_introduction(
+                arrow: arrow,
+                body: body,
+                element_nodes: elements,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              )
+            Absent => handle_transform(arrow, body, target)
+          }
         }
       ComputationNode { behavior: Branch } =>
         target_project_branch_bool_if_else(
