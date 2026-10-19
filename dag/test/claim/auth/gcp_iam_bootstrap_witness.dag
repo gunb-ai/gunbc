@@ -260,11 +260,11 @@ fn ops(op: String, elected: IamAuthorityRecord, closed: IamAuthorityRecord, refu
 fn elected_only(op: String) -> CustodyOperationRecords { ops(op: op, elected: valid(op: op), closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: AuthorityRecordAbsent) }
 
 fn creates(st: CustodyContainerStep) -> Bool {
-  match st { CustodyContainerCreateBare => true  CustodyContainerLeave => false  CustodyContainerSettle { operations: _ } => false  CustodyContainerRefuse { reason: _ } => false }
+  match st { CustodyContainerCreateBare => true  CustodyContainerLeave => false  CustodyContainerSettle { operations: _ } => false  CustodyContainerRefuse { reason: _ } => false  CustodyContainerRunCeremonyFirst { ceremony: _ } => false }
 }
 
 fn refuses(st: CustodyContainerStep) -> Bool {
-  match st { CustodyContainerRefuse { reason: _ } => true  CustodyContainerCreateBare => false  CustodyContainerLeave => false  CustodyContainerSettle { operations: _ } => false }
+  match st { CustodyContainerRefuse { reason: _ } => true  CustodyContainerCreateBare => false  CustodyContainerLeave => false  CustodyContainerSettle { operations: _ } => false  CustodyContainerRunCeremonyFirst { ceremony: _ } => true }
 }
 
 fn stops_unresolved(a: CustodyAfterCreate) -> Bool {
@@ -296,6 +296,7 @@ test fn an_unresolved_create_is_settled_by_observing_the_container() -> Bool {
     CustodyContainerLeave => false
     CustodyContainerCreateBare => false
     CustodyContainerRefuse { reason: _ } => false
+    CustodyContainerRunCeremonyFirst { ceremony: _ } => false
   }
 }
 

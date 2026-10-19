@@ -25,12 +25,14 @@ import gunbc.secret_provision_actuator {
   observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused, SecretObservationOutcome, SecretContainerCreation,
   SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown,
 }
-import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, estate_refused_texts, GcpIamEstatePartialNoop, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
+import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
 import gunbc.auth.heal_publisher_provision {
   standing_principal_set,
   DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present, dedicated_federation_input_refusals,
   FederationClassified, FederationUnclassified, FederationPermissionDenied, rest_refusal_text, outcome_is_not_found,
 }
+import gunbc.auth.gcp_iam_bootstrap_delta { BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused, bootstrap_delta_over, observe_bootstrap_subject, roster_subjects, subject_not_bootstrapped_text }
+import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ceremony_trust_root_cells, trust_root_ceremony_entry }
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
@@ -172,7 +174,17 @@ type CustodyContainerStep
   = CustodyContainerLeave
   | CustodyContainerSettle { operations: List<String> }
   | CustodyContainerCreateBare
+  | CustodyContainerRunCeremonyFirst { ceremony: TrustRootCeremony }
   | CustodyContainerRefuse { reason: String }
+
+// WHO MAY CREATE A SECRET'S CONTAINER is a separate fact from who owns a cell on it (side chat on
+// gunbc#14360): IamBootstrapApply owns iam-observe's read cell on the approval-submission MAC key, never
+// the key's creation. A trust-root secret's container is its value ceremony's, the ceremony that binds
+// its other root cells (gunbc.auth.gcp_iam_trust_roots ceremony_trust_root_cells), which creates it with
+// its pinned first version. RED STUB: today no container is another ceremony's.
+fn custody_container_ceremony(secret: NonEmptyStr) -> TrustRootCeremony? {
+  none
+}
 
 type CustodyAfterCreate = CustodyReadBack | CustodyCreateRefusedDefinitely { reason: String } | CustodyCreateStops { reason: String }
 
@@ -303,6 +315,7 @@ fn iam_bootstrap_ensure_custody_container(secret: NonEmptyStr, token: Secret) ->
     CustodyContainerLeave => ""
     CustodyContainerSettle { operations } => custody_journal_close(secret: secret, operations: operations)
     CustodyContainerRefuse { reason } => reason
+    CustodyContainerRunCeremonyFirst { ceremony } => join([secret as String, ": a trust-root secret whose container is its value ceremony's; this ceremony creates no trust-root secret. Run ", trust_root_ceremony_entry(ceremony: ceremony), " first, then rerun this ceremony to bind its own cell"], "")
     CustodyContainerCreateBare =>
       if !Filesystem.WriteCreateNew(path: concat("target/", custody_journal_name(secret: secret, operation: op, mark: CustodyMarkElected)), content: custody_journal_wire(secret: secret, operation: op)).success {
         concat(secret as String, ": the create election could not be recorded or was already taken by this operation; no create issued")
@@ -674,6 +687,26 @@ fn iam_bootstrap_is_forbidden(refusal: RestRefusal) -> Bool {
 
 // Readback uses a temporary, exact-account token permission for the verified operator.
 // Its grant is retired before workflow trust; no signing permission or account key is added.
+// ── THE ROOT-BOUNDARY READBACK (side chat on gunbc#14360, first use) ─────────────────────────
+// Before workflow trust the ceremony proves ITS OWN population only: every root cell it binds, read in
+// place by the observer, plus the probes above (roles, the deny boundary, the absence of forbidden
+// reach). A target that is absent or unbound is the delta's work (SubjectNotBootstrapped there, by
+// design), so it must not block the trust that lets the delta run at all.
+type RootReadback = RootReadbackAdmitted | RootReadbackRefused { reason: NonEmptyStr }
+
+// RED STUB: today the readback covers the whole derivation, targets included.
+fn iam_bootstrap_root_readback_roster() -> List<IamBootstrapBinding> {
+  iam_bootstrap_capability_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+}
+
+fn iam_bootstrap_root_readback_verdict(delta: BootstrapDelta) -> RootReadback {
+  match delta {
+    BootstrapObserved { root_residual: _ } => RootReadbackAdmitted
+    BootstrapDeltaRequired { subjects, root_residual: _ } => RootReadbackRefused { reason: concat("root cells are not read back; workflow trust withheld: ", join(map(subjects, x => subject_not_bootstrapped_text(s: x)), " || ")) as NonEmptyStr }
+    BootstrapDeltaRefused { reasons } => RootReadbackRefused { reason: concat("the root readback refuses; workflow trust withheld: ", join(reasons, "; ")) as NonEmptyStr }
+  }
+}
+
 fn iam_bootstrap_privilege_readback(token: Secret) -> String {
   match iam_bootstrap_probe_token(token: token, account: iam_converge_service_account, remaining: 85) {
     BootstrapProbeTokenRefused { reason } => concat("apply-account readback credential unavailable; workflow trust withheld: ", reason)
@@ -684,16 +717,13 @@ fn iam_bootstrap_privilege_readback(token: Secret) -> String {
         if negative != "" { negative } else {
           match iam_bootstrap_probe_token(token: token, account: iam_observe_service_account, remaining: 85) {
             BootstrapProbeTokenRefused { reason } => concat("observer readback credential unavailable; workflow trust withheld: ", reason)
-            BootstrapProbeTokenReady { access_token: observer_token } => match observe_and_plan_estate(token: observer_token) {
-              GcpIamEstateRefused { reasons } => concat("observer cannot establish the declared estate: ", join(reasons, "; "))
-              GcpIamEstatePartialNoop { refused } => concat("observer cannot establish the declared estate: ", join(estate_refused_texts(refused: refused), "; "))
-              GcpIamEstateNoop => iam_bootstrap_observer_secret_readback(observer_token: observer_token, apply_token: apply_token)
-              GcpIamEstateApply { diff: d } =>
-                if d.refused.length() > 0 {
-                  concat("observer cannot establish the declared estate: ", join(estate_refused_texts(refused: d.refused), "; "))
-                } else {
-                  iam_bootstrap_observer_secret_readback(observer_token: observer_token, apply_token: apply_token)
-                }
+            BootstrapProbeTokenReady { access_token: observer_token } => {
+              let roster = iam_bootstrap_root_readback_roster()
+              let observed = map(roster_subjects(roster: roster), s => observe_bootstrap_subject(subject: s, token: observer_token))
+              match iam_bootstrap_root_readback_verdict(delta: bootstrap_delta_over(roster: roster, observations: observed)) {
+                RootReadbackRefused { reason } => reason as String
+                RootReadbackAdmitted => iam_bootstrap_observer_secret_readback(observer_token: observer_token, apply_token: apply_token)
+              }
             }
           }
         }
