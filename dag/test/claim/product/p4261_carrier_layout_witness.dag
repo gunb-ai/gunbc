@@ -828,9 +828,9 @@ test fn an_energized_draw_counts_only_above_its_open_reading() -> Bool {
   let offset_red = !draw_finding(layout: e1_with_draws(ds: [offset])) && has_gap(s: source_draw_standing(o: offset), load: true)
   let cold = draw_with(open: 0, loaded: 13, behaviour: HeldBelowLimit, conditions: BenchConditions { power: Unpowered, module: ModuleRemoved }, feed: e1_rail_ref, ret: e1_ground_ref)
   let cold_red = !draw_finding(layout: e1_with_draws(ds: [cold])) && has_gap(s: source_draw_standing(o: cold), load: false)
-  let none = !draw_finding(layout: e1_with_draws(ds: [])) && no_input_reading(d: input_draw(layout: e1_with_draws(ds: [])))
+  let no_reading = !draw_finding(layout: e1_with_draws(ds: [])) && no_input_reading(d: input_draw(layout: e1_with_draws(ds: [])))
   let k1 = !draw_finding(layout: p4261_k1_layout)
-  live && offset_red && cold_red && none && k1
+  live && offset_red && cold_red && no_reading && k1
 }
 
 // A TRIP, CONSTANT CURRENT OR A READING AT THE LIMIT CONTRADICTS THE BOUND, and one contradicted reading

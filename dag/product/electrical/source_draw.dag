@@ -88,7 +88,7 @@ fn reaches(reading: Nat, limit: Nat) -> Bool {
 
 fn held_standing(o: SourceDrawObservation) -> SourceDrawStanding {
   let loaded = milliampere_count(i: o.loaded_reading)
-  let limit = milliampere_count(i: o.current_limit)
+  let limit = milliampere_count(i: o.setting.current_limit)
   if reaches(reading: loaded, limit: limit) {
     DrawBoundContradicted { observation: o, cause: LimitReached }
   } else {

@@ -771,20 +771,32 @@ data p4261_j20_main_input_hypothesis: InvestigationHypothesis = InvestigationHyp
   sources: [
     "the E1's measured board puts F300 (75 V / 100 A) and the probed input-stage MOSFET's drain -- its tab and pin 4 on the IPB017N10N5LF pinout -- on J20's fused side, with none of that MOSFET's pins reaching ground: a hot-swap stage's shape, read on inferred probe points",
     "J20's nine fused positions on a 3.0 mm-pitch housing could carry a 1 kW module's input current at 48-54 V, where its 12 A F1 could not -- so F1 is either a branch or the input is elsewhere",
-    "energized 2026-10-18 with the module removed, J20 fed a real load at up to 52 V without tripping a 100 mA over-current limit (input_draw): it accepts a 48-54 V-class voltage, and the main stage drew nothing past the limit",
+    "energized 2026-10-18 with the module removed, J20 fed a real load at up to 52 V without tripping a 100 mA over-current limit (input_draw): it accepts a 48-54 V-class voltage, and nothing large drew from J20 up to 52 V",
   ],
   decided_by: "where the probed MOSFET's sources go: terminal readings from its source pins toward the module receptacles' power contacts",
 }
 
-data p4261_standby_domain_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
-  claim: "J20 powers an always-on standby or bias domain on the E1 while the main power path is withheld -- by an enable through the grey connectors' sideband contacts, by management logic near U4, or by module presence through the module receptacles",
+// TWO COMPETING READINGS OF THE SAME SMALL DRAW. With the module removed the carrier's own load is small
+// whether or not its hot-swap stage conducts: the module carries its own regulators, so a low draw does
+// not say the main path is off. Neither reading is established; one live measurement decides between them.
+data p4261_main_path_withheld_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "the E1's input hot-swap stage is held OFF -- waiting on an enable through the grey connectors' sideband contacts, on management logic near U4, or on module presence through the module receptacles -- while J20 powers only an always-on bias or standby domain",
   sources: [
-    "the E1's energized J20 draw stood above the open reading and below the limit (input_draw): something on the board draws from J20, and nothing that would exceed 100 mA did",
+    "the E1's energized J20 draw stood above the open reading and below the limit (input_draw): something on the board draws from J20, and nothing large drew from J20 up to 52 V",
     "the draw was read near 11 mA over most of the ramp and 13 mA at 52 V, with no per-step table recorded: a regulated load and a resistive one are both consistent with those readings, so no regulator is established",
     "brief readings near 20 mA on each upward step that fell back: consistent with input capacitance charging, inferred and not read",
-    "had the main conversion path started, its draw would have exceeded the 100 mA limit and tripped the armed shutoff",
   ],
-  decided_by: "where the 48 V path stops -- J20's rail, both ends of F300, and the input MOSFETs' drain, gate and source each read to J20's return while energized -- and the identity of the controller that drives those MOSFETs' gates, read from its marking",
+  decided_by: "the input MOSFETs' (Q21_P5, Q22_P5) source and gate read to J20's return while J20 is at 48 V: source near 0 V with gate near 0 V means the stage is held off",
+}
+
+data p4261_hot_swap_on_unloaded_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "the E1's input hot-swap stage is ON and simply unloaded with the module removed, and the ~11 mA is the two input channels' controllers' own bias",
+  sources: [
+    "the module carries its own voltage regulators, so with it removed the carrier's switched rail may have almost nothing to feed: a low J20 draw does not establish that the main path is off",
+    "operator photograph 2026-10-19: the input MOSFETs are Q21_P5 and Q22_P5, marked 017N10LF / HAD228, with a Coilcraft-marked 'A850 D' inductor beside them; the 28-lead part above them reads, upside down, plausibly as 'LM5066I' (a TI hot-swap controller with PMBus) -- a marking candidate, not an identification",
+    "the same photograph shows a parallel _P1 channel (U1_P1, U522, Q1_P1, Q4_P1, Q6_P1; U2_P1 an unpopulated QFN footprint): two channels' controllers biased from J20 would account for a draw of this size",
+  ],
+  decided_by: "the same reading as the withheld hypothesis: the source of Q21_P5 / Q22_P5 read to J20's return while J20 is at 48 V -- a source near the input voltage means the stage is on with no load",
 }
 
 // ── THE K1 UNIT (listing photographs; design p4261-k1-a) ────────────────────────────────────
@@ -1115,6 +1127,8 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     UnresolvedPart { designator: Absent, marking: Present { value: "P617A / 01 14 / 226" }, obligation: "an 8-pin MSOP left of the VCI mark, read at the photograph's resolution: maker and function unresolved", evidence: e1_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
     UnresolvedPart { designator: Absent, marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
     UnresolvedPart { designator: Absent, marking: Present { value: "HA..." }, obligation: "a part below D5, partly in frame: read its marking", evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },
+    UnresolvedPart { designator: Absent, marking: Present { value: "LM5066I" }, obligation: "the 28-lead part above the input MOSFETs, read upside down: 'LM5066I' is a marking CANDIDATE, not an identification -- read it right side up under raking light and match its 28-lead pinout to TI's LM5066I before treating it as the hot-swap controller", evidence: e1_photo(taken_on: "2026-10-19", locator: "E1 input-region photograph sent in the session") },
+    UnresolvedPart { designator: Present { value: "Q21_P5, Q22_P5" }, marking: Present { value: "017N10LF / HAD228" }, obligation: "the input-stage MOSFETs by designator; which of them the 2026-10-16 continuity probe touched is unrecorded, so neither replaces the probed MOSFET's identity until a reading names its designator", evidence: e1_photo(taken_on: "2026-10-19", locator: "E1 input-region photograph sent in the session") },
     UnresolvedPart { designator: Absent, marking: Absent, obligation: "the large bare pads by F300 and the copper-ringed mounting holes were read as populations ('all of the big bare pads', 'J20 connects to all copper holes'); each would be a terminal once numbered on a photograph", evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "all of the big bare pads are connected the to the power rail" } },
   ],
 }
@@ -1337,7 +1351,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
   join([
     "J20 (", j20_text(layout: layout), "; ", polarity_text(p: input_polarity(layout: layout)), "): ", bound_text(b: input_bound(layout: layout)),
     ". J20 ", input_draw_text(d: input_draw(layout: layout)),
-    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_standby_domain_hypothesis),
+    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_main_path_withheld_hypothesis), ". ", hypothesis_text(h: p4261_hot_swap_on_unloaded_hypothesis),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
 }
