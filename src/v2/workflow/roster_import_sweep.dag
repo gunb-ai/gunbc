@@ -54,7 +54,7 @@ import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string 
 // lexically-unbound roster head needs, deduplicated by Symbol identity. The import declaration is then
 // rendered from that value and addressed by its parsed source extent, so a malformed block has no
 // construction (the c.dag:866 defect was a spliced block, #14017). Output is rows, never writes:
-//   EDIT <path> <start> <end> <replacement>     replacement has newlines escaped as \n
+//   EDIT <path> <start> <end> <replacement>     replacement has backslashes escaped as \\ and newlines as \n (one line per row)
 //   REFUSE <path> <cause>
 // roster_import_sweep_apply_exit is the committed apply step (stale-read check under an apply lock, then Filesystem.Write).
 // This module IS the row-driven wave generator of the NAMESPACE-XL sweeps: roster_head_rows is its row table, the
@@ -534,7 +534,7 @@ fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
     RosterClean => RosterApplyWritten { content: before }
     RosterRefused { reason: reason } => RosterApplyRefused { reason: reason }
     RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
-      roster_splice(before: before, start: start, end: end, replacement: (if own_line { "\n" } else { "" }) + text)
+      roster_splice(before: before, start: start, end: end, replacement: roster_edit_replacement(text: text, own_line: own_line))
     RosterLabelEdits { edits: edits } => roster_label_splices(before: before, edits: edits)
     // THE LABELS LAND IN THE SAME WRITE AS THE IMPORT THAT MAKES THEM NECESSARY: a file with the import and the old label
     // does not resolve (the home's parameter is `text`), and a file the generator itself loads would stop the generator.
@@ -544,7 +544,7 @@ fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
         RosterApplyRefused { reason: r } => RosterApplyRefused { reason: r }
         RosterApplyWritten { content: relabelled } =>
           if roster_labels_below(labels: labels, at: end) {
-            roster_splice(before: relabelled, start: start, end: end, replacement: (if own_line { "\n" } else { "" }) + text)
+            roster_splice(before: relabelled, start: start, end: end, replacement: roster_edit_replacement(text: text, own_line: own_line))
           } else {
             RosterApplyRefused { reason: RefusalExtentMismatch }
           }
@@ -643,21 +643,92 @@ fn roster_is_continuation(octet: Int) -> Bool {
 
 // A replaced extent is a whole std.algebra import declaration (it opens with the keyword and the module and ends at
 // its closing brace (roster_apply_edit also refuses an extent carrying a `//` annotation, which the replacement would erase); an insertion point is the end of an import block. Offsets here are scalar offsets.
+// An insertion holds where the parse put it: after an import block's closing brace, or (a module with no import yet) at the
+// end of the module header's line.
+fn roster_ends_module_header_line(before: String, at: Int) -> Bool {
+  let line = fold_list(xs: split(s: substring(s: before, start: 0, end: at), delimiter: "\n"), empty: "", cons: fn(_last, l) { l })
+  substring(s: line, start: 0, end: 7) == "module " && substring(s: before, start: at, end: at + 1) == "\n"
+}
+
 fn roster_extent_holds(before: String, start: Int, end: Int) -> Bool {
   if start == end {
-    substring(s: before, start: start - 1, end: start) == "}"
+    substring(s: before, start: start - 1, end: start) == "}" || roster_ends_module_header_line(before: before, at: start)
   } else {
     substring(s: before, start: start, end: start + 7) == "import " && substring(s: before, start: end - 1, end: end) == "}"
   }
 }
 
 // The one rendering of an outcome as protocol rows: replacement newlines are escaped as \n.
+// THE REPLACEMENT A ROW CARRIES is exactly the bytes the apply splices in (roster_applied): the own-line newline, then the text.
+fn roster_edit_replacement(text: String, own_line: Bool) -> String {
+  (if own_line { "\n" } else { "" }) + text
+}
+
+// The row encoding of a replacement, total and invertible: backslash first, then newline, so a row is always one line
+// and roster_unescape_replacement recovers the bytes exactly.
+fn roster_escape_replacement(text: String) -> String {
+  roster_join_exact(xs: split(s: roster_join_exact(xs: split(s: text, delimiter: "\\"), sep: "\\\\"), delimiter: "\n"), sep: "\\n")
+}
+
+fn roster_unescape_replacement(text: String) -> String {
+  roster_join_exact(
+    xs: list_map(xs: split(s: text, delimiter: "\\\\"), f: fn(part) { roster_unescape_newlines(part: part) }),
+    sep: "\\"
+  )
+}
+
+fn roster_unescape_newlines(part: String) -> String {
+  roster_join_exact(xs: split(s: part, delimiter: "\\n"), sep: "\n")
+}
+
+// split's inverse: every part kept, the separator between each adjacent pair, so empty parts (a leading or doubled
+// separator) survive. roster_join drops them and is not an inverse.
+fn roster_join_exact(xs: List<String>, sep: String) -> String {
+  match xs {
+    Empty => ""
+    Cons { head: h, tail: t } => fold_list(xs: t, empty: h, cons: fn(acc, x) { acc + sep + x })
+  }
+}
+
+// THE READER of one EDIT row, the round trip the controls hold the renderer to: a row is exactly one line, and its fields
+// decode back to the start, end and replacement it was rendered from.
+fn roster_edit_row_reads_back(row: String, start: Int, end: Int, replacement: String) -> Bool {
+  let lines = split(s: row, delimiter: "\n")
+  let fields = split(s: substring(s: row, start: 0, end: string_length(s: row) - 1), delimiter: " ")
+  if length(xs: lines) != 2 || length(xs: fields) < 5 {
+    false
+  } else {
+    roster_field(fields: fields, at: 0) == "EDIT"
+      && roster_field(fields: fields, at: 2) == int_to_decimal_string(value: start)
+      && roster_field(fields: fields, at: 3) == int_to_decimal_string(value: end)
+      && roster_unescape_replacement(text: roster_join(xs: roster_fields_from(fields: fields, at: 4), sep: " ")) == replacement
+  }
+}
+
+fn roster_field(fields: List<String>, at: Int) -> String {
+  match list_at_optional(xs: fields, index: at) {
+    Present { value: f } => f
+    Absent => ""
+  }
+}
+
+fn roster_fields_from(fields: List<String>, at: Int) -> List<String> {
+  fold_list(xs: fields, empty: RosterFieldTail { index: 0, kept: [] }, cons: fn(acc, f) {
+    RosterFieldTail { index: acc.index + 1, kept: if acc.index >= at { list_snoc_item(xs: acc.kept, item: f) } else { acc.kept } }
+  }).kept
+}
+
+type RosterFieldTail {
+  index: Int
+  kept: List<String>
+}
+
 fn roster_render_outcome(path: String, outcome: RosterOutcome) -> String {
   match outcome {
     RosterClean => ""
     RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
       "EDIT " + path + " " + int_to_decimal_string(value: start) + " " + int_to_decimal_string(value: end) + " "
-        + (if own_line { "\\n" } else { "" }) + text + "\n"
+        + roster_escape_replacement(text: roster_edit_replacement(text: text, own_line: own_line)) + "\n"
     RosterEditWithLabels { start: start, end: end, text: text, own_line: own_line, labels: labels } =>
       roster_render_outcome(path: path, outcome: RosterEdit { start: start, end: end, text: text, own_line: own_line })
         + roster_render_outcome(path: path, outcome: RosterLabelEdits { edits: labels })
@@ -1082,7 +1153,15 @@ fn roster_import_row_home(parse_root: Node, spans: SpanIndex, home: QualifiedNam
       match roster_last_decl_end(decls: decls) {
         Present { value: at } =>
           RosterEdit { start: at, end: at, text: roster_render_import(home: home, names: roster_dedupe(base: [], more: wanted)), own_line: true }
-        Absent => RosterRefused { reason: RefusalNoImportAnchor }
+        // NO IMPORT YET: the first import goes where the grammar puts the first top-level item, directly after the module
+        // header (v2.extdeps.languages.dag dag_grammar_module_expr: module_header, then top_level_item*). The anchor is the
+        // header's own parsed extent, never a text search; a module whose header the parse does not place still refuses.
+        Absent =>
+          match roster_module_header_end(parse_root: parse_root, spans: spans) {
+            Present { value: at } =>
+              RosterEdit { start: at, end: at, text: "\n" + roster_render_import(home: home, names: roster_dedupe(base: [], more: wanted)), own_line: true }
+            Absent => RosterRefused { reason: RefusalNoImportAnchor }
+          }
       }
     _ =>
       // Several std.algebra imports make the same names visible; the first one is extended and the rest stay as authored.
@@ -1097,6 +1176,25 @@ fn roster_import_row_home(parse_root: Node, spans: SpanIndex, home: QualifiedNam
           }
         }
       )
+  }
+}
+
+// The end of the module header's parsed extent: exactly one header, read by its emitted production identity. None, or more
+// than one, or one with no recorded extent, is Absent and the caller refuses.
+fn roster_module_header_end(parse_root: Node, spans: SpanIndex) -> Int? {
+  let headers = fold_list(xs: node_subtree_nodes(root: parse_root), empty: [], cons: fn(acc, n) {
+    match parse_production_emitted_identity_optional(node: n) {
+      Present { value: id } => if id == ^dag_surface_module_header { list_snoc_item(xs: acc, item: n) } else { acc }
+      Absent => acc
+    }
+  })
+  match headers {
+    Cons { head: h, tail: Empty } =>
+      match roster_node_byte_range(node: h, spans: spans) {
+        Present { value: r } => Present { value: r.end }
+        Absent => Absent
+      }
+    _ => Absent
   }
 }
 
@@ -1264,6 +1362,7 @@ fn roster_controls_report() -> String {
         + roster_control_multibyte(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_annotation(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_home_converges(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_no_import_anchor(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_local_call(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_method_spelling(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_imported_qualified_tag(prepared: prepared, lex: dag_prepared_lex())
@@ -1420,7 +1519,7 @@ fn roster_control_called_parameter(prepared: PreparedGrammar, lex: PreparedLexRu
 }
 
 // A NESTED CALL'S LABEL IS NOT THE OUTER CALL'S: chars(s: g(s: x)) relabels only chars's own direct argument; the inner g's
-// s: is an argument of g (the stopping rule of v2.extdeps.languages.dag dag_call_direct_args).
+// s: is an argument of g (the stopping rule of v2.extdeps.languages.dag dag_call_direct_arg_slots).
 fn roster_control_nested_call_label(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let before = "module c.nested\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: g(s: x)))\n}\n"
   let after = "module c.nested\n\nimport std.algebra { Cons, collection_count_shape }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  count(xs: chars(text: g(s: x)))\n}\n"
@@ -1516,6 +1615,37 @@ fn roster_control_homonym(prepared: PreparedGrammar, lex: PreparedLexRules) -> S
       if roster_refusal_text(reason: reason) == "shape-name-bound-elsewhere" { "" } else { "CONTROL-FAIL homonym: refused for " + roster_refusal_text(reason: reason) + "\n" }
     _ => "CONTROL-FAIL homonym: a shape name bound to another declaration was not refused as a conflict\n"
   }
+}
+
+// THE ROW PROTOCOL HOLDS FOR A MULTILINE REPLACEMENT: the outcome's EDIT row is one line and reads back to the edit's own
+// start, end and replacement.
+fn roster_control_edit_row_round_trip(outcome: RosterOutcome) -> String {
+  match outcome {
+    RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: _ } =>
+      if roster_edit_row_reads_back(row: roster_render_outcome(path: "control/bare.dag", outcome: RosterEdit { start: st, end: en, text: tx, own_line: ol }), start: st, end: en, replacement: roster_edit_replacement(text: tx, own_line: ol)) { "" } else { "CONTROL-FAIL no-import-anchor: the EDIT row does not read back to its edit\n" }
+    RosterEdit { start: st, end: en, text: tx, own_line: ol } =>
+      if roster_edit_row_reads_back(row: roster_render_outcome(path: "control/bare.dag", outcome: outcome), start: st, end: en, replacement: roster_edit_replacement(text: tx, own_line: ol)) { "" } else { "CONTROL-FAIL no-import-anchor: the EDIT row does not read back to its edit\n" }
+    _ => "CONTROL-FAIL no-import-anchor: pass 1 is not an import edit\n"
+  }
+}
+
+// A MODULE WITH NO IMPORT LINE is in reach: pass 1 writes exactly one import, directly after the module header and before
+// the first top-level item, and leaves the header's own bytes untouched; pass 2 (the fixed point) is Clean.
+fn roster_control_no_import_anchor(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.bare\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n"
+  let after = "module c.bare\n\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  count(xs: chars(text: x))\n}\n"
+  let outcome = roster_sweep_text_scoped(path: "control/bare.dag", text: before, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") })
+  let applied = match roster_applied(before: before, outcome: outcome) {
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL no-import-anchor: pass 1 refused " + roster_refusal_text(reason: r) + "\n"
+    RosterApplyWritten { content: c1 } =>
+      if c1 != after { "CONTROL-FAIL no-import-anchor: pass 1 did not write exactly one import after the module header\n" } else {
+        match roster_sweep_text_scoped(path: "control/bare.dag", text: c1, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }) {
+          RosterClean => ""
+          _ => "CONTROL-FAIL no-import-anchor: pass 2 is not Clean\n"
+        }
+      }
+  }
+  roster_control_edit_row_round_trip(outcome: outcome) + applied
 }
 
 fn roster_control_present(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {

@@ -138,7 +138,10 @@ type NativeClaimReport {
 // contract's byte limits and timeout, call the handler once per request, write the returned
 // value -- serially, one request at a time, as the seed does. It is a fifth arm and not a mode on
 // NativeCliDriver for the reason that arm gives for itself: one crate has one entry point, and a
-// served program's main shares nothing with the compile CLI's. Instrument:
+// served program's main shares nothing with the compile CLI's. A driver MAY also declare
+// `native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup` (gunbc.native_serve): the
+// main runs it once, before the bind, with its own executable's octets, and a refusal exits
+// without binding; a driver that declares none is emitted unchanged. Instrument:
 // `gunbc test //gunbc/instruments:native-serve`.
 type CompilerEntryDriver
   = RetainedHostCliKernel

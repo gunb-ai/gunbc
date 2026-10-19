@@ -3,6 +3,7 @@ module test.claim.kernel_float_binary64_denotation_witness
 import std.types { Bool, Int, List, String }
 import std.bit { Bit }
 import std.algebra { Ordering, Less, Equal, Greater }
+import std.decl_ref { decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.standards.ieee_754_2019 {
   BinaryInterchangeEncoding, EncodingAdmission, EncodingAdmitted, EncodingRefused,
@@ -88,7 +89,7 @@ test fn w_rust_f64_holds_against_what_float_denotes() -> Bool {
 // ---- REDs at the denotation interface ----
 
 test fn w_planted_float_denotes_binary32_refuses_f64() -> Bool {
-  let planted = [kernel_type_denotation_row(kernel_name: "Float", meaning: BinaryInterchangeFormatMeaning { format: binary32 })]
+  let planted = [kernel_type_denotation_row(kernel_name: "Float", declaration: decl_ref(module_path: "std.float", decl_name: "Float"), meaning: BinaryInterchangeFormatMeaning { format: binary32 })]
   match rust_float_binding_verdict(b: rust_f64_binding, denotations: planted) {
     RustFloatBindingDisagrees { kernel_name: k, target_name: t } => k.name == "Float" && t == "f64"
     _ => false
@@ -96,7 +97,7 @@ test fn w_planted_float_denotes_binary32_refuses_f64() -> Bool {
 }
 
 test fn w_non_kernel_name_key_is_refused() -> Bool {
-  match kernel_type_denotation_row(kernel_name: "Real", meaning: BinaryInterchangeFormatMeaning { format: binary64 }) {
+  match kernel_type_denotation_row(kernel_name: "Real", declaration: decl_ref(module_path: "std.float", decl_name: "Float"), meaning: BinaryInterchangeFormatMeaning { format: binary64 }) {
     KernelTypeDenotationRefused { refusal: NotAKernelTypeName { name: n } } => n == "Real"
     _ => false
   }
@@ -115,7 +116,7 @@ test fn w_kernel_type_name_admits_only_rostered_names() -> Bool {
 }
 
 test fn w_table_with_a_non_kernel_key_is_not_admitted() -> Bool {
-  let planted = [kernel_type_denotation_row(kernel_name: "Float64", meaning: BinaryInterchangeFormatMeaning { format: binary64 })]
+  let planted = [kernel_type_denotation_row(kernel_name: "Float64", declaration: decl_ref(module_path: "std.float", decl_name: "Float"), meaning: BinaryInterchangeFormatMeaning { format: binary64 })]
   kernel_type_denotation_rows_admitted(rows: planted) == false
 }
 
