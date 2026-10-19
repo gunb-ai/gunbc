@@ -269,6 +269,14 @@ type AdmissionVerdict
   = AdmissionSound
   | AdmissionNotDeclared { subject: String, spelling: String }
 
+// THE ONLY WAY A ROW IS BUILT: the admitted set is a list of ARMS of the sum (type T), and both
+// lists are spelled by the sum's one spelling fn, so a spelling that is no arm's cannot be written
+// into a row. admission_verdict stays as the check on the carrier (and the arms list's completeness is
+// the cover claim in wire_spelling_injective_witness), not as the thing standing in for construction.
+fn admission_of<T>(subject: String, arms: List<T>, admitted: List<T>, spell: fn(T) -> String) -> WireAdmission {
+  WireAdmission { subject: subject, declared: map(arms, a => spell(a)), admitted: map(admitted, a => spell(a)) }
+}
+
 fn admission_verdict(row: WireAdmission) -> AdmissionVerdict {
   match first_undeclared(declared: row.declared, admitted: row.admitted) {
     Present { value: v } => AdmissionNotDeclared { subject: row.subject, spelling: v }
