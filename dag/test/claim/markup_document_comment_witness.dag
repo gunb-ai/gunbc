@@ -275,13 +275,11 @@ test fn witness_every_swept_escape_body_is_refused() -> Bool {
 
 // THE REVIEW'S CASE, verbatim, through the route that serves pages. RED under C12.
 test fn witness_comment_body_cannot_close_a_raw_text_element() -> Bool {
-  match try_serialize_html_document(doc: document_with_root(root:
-    Element { tag: "script", attributes: [], children: [
-      MarkupComment { body: "</script><img src=x onerror=alert(1)>" },
-    ] })) {
-    EmitRejected { reason: r } =>
-      string_contains(s: r, pattern: "</script") && string_contains(s: r, pattern: "script")
-    EmitOk { html: h } => false
+  let inside = MarkupComment { body: "</script><img src=x onerror=alert(1)>" }
+  let root = Element { tag: "script", attributes: [], children: [inside] }
+  match try_serialize_html_document(doc: document_with_root(root: root)) {
+    EmitRejected { reason: r } => string_contains(s: r, pattern: "</script")
+    EmitOk { html: _ } => false
   }
 }
 
@@ -289,10 +287,10 @@ test fn witness_comment_body_cannot_close_a_raw_text_element() -> Bool {
 // sequence was skipped too. Same fix, separate claim -- a mutation that re-adds only one of the two `acc`
 // arms must go red somewhere.
 test fn witness_nested_element_cannot_close_a_raw_text_element() -> Bool {
-  match try_serialize_html_document(doc: document_with_root(root:
-    Element { tag: "style", attributes: [], children: [
-      Element { tag: "span", attributes: [], children: [FragmentText { content: "</style><img src=x onerror=alert(1)>" }] },
-    ] })) {
+  let payload = FragmentText { content: "</style><img src=x onerror=alert(1)>" }
+  let nested = Element { tag: "span", attributes: [], children: [payload] }
+  let root = Element { tag: "style", attributes: [], children: [nested] }
+  match try_serialize_html_document(doc: document_with_root(root: root)) {
     EmitRejected { reason: r } => string_contains(s: r, pattern: "</style")
     EmitOk { html: _ } => false
   }
@@ -302,8 +300,9 @@ test fn witness_nested_element_cannot_close_a_raw_text_element() -> Bool {
 // and comments outside raw text are untouched. Without these two, the claims above are satisfied by a
 // serializer that refuses everything.
 test fn witness_legitimate_raw_text_and_ordinary_comments_still_serialize() -> Bool {
-  let css_ok = match try_serialize_html_document(doc: document_with_root(root:
-    Element { tag: "style", attributes: [], children: [FragmentText { content: "a { color: red }" }] })) {
+  let css = FragmentText { content: "a { color: red }" }
+  let css_root = Element { tag: "style", attributes: [], children: [css] }
+  let css_ok = match try_serialize_html_document(doc: document_with_root(root: css_root)) {
     EmitOk { html: h } => string_contains(s: h, pattern: "a { color: red }")
     EmitRejected { reason: _ } => false
   }
