@@ -1071,52 +1071,72 @@ fn compute_return_outputs_over_readings(pairs: List<ComputeOutputCapturePair>) -
     })
 }
 
-// THE EXECUTIONS, IN ORDER, STOPPING AT THE FIRST READING THAT REFUSES: hash each declared output
-// with git in the workspace, and -- only once that succeeded -- install it into the staging path.
-// The count and order of executions are exactly what they were before the readings became data:
-// the install of an output is reached only after that output hashed successfully, and no output
-// after a refusal executes at all.
-type ComputeCapturePairBuild {
+// THE EXECUTIONS, IN ORDER, STOPPING AT THE FIRST REFUSAL THE STEP RETURNED: hash each declared
+// output with git in the workspace, and -- only once that succeeded -- install it into the staging
+// path. The builder decides NOTHING on its own: after each pair it asks the one step, and the
+// accumulator IS that verdict, so "keep going?" is answered by the same fold the caller sees. A
+// second stop-condition here (an exit-code test of the builder's own) would be a second decision
+// site -- the day the step tolerated some failing reading the builder would still have stopped, and
+// the fold would return OutputsReturned missing the later outputs: a silent partial success, which
+// is what the controls in test.claim.compute.output_capture_absence_witness exist to rule out.
+// The count and order of executions are what they were before readings became data: an output's
+// install is reached only after that output hashed successfully, and nothing executes after the
+// step has refused.
+type ComputeCaptureExecutions {
   pairs: List<ComputeOutputCapturePair>
-  stopped: Bool
+  // The step's own verdict on the readings collected so far -- the ONLY thing the builder stops on.
+  verdict: OutputsReturn
 }
 
-fn compute_capture_exec_pairs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> List<ComputeOutputCapturePair> {
-  let build = fold(declared, init: ComputeCapturePairBuild { pairs: [], stopped: false }, f: (b, d) =>
-    if b.stopped {
-      b
-    } else {
-      let rel = d.path
-      let src = join([match d.root { CheckoutRoot => layout.checkout  TargetRoot => layout.target_dir }, "/", rel], "")
-      let dst = compute_staged_path(layout: layout, declared: rel)
-      match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: layout.checkout, args: ["hash-object", src]) {
-        ComputeExecFailed { exit_code, stdout, stderr } =>
-          ComputeCapturePairBuild {
-            pairs: concat(b.pairs, [ComputeOutputCapturePair { declared: d, hash: CaptureReadingFailed { exit_code: exit_code, stdout: stdout, stderr: stderr }, install: CaptureReadingNotRun }]),
-            stopped: true
+fn compute_capture_exec_pairs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> ComputeCaptureExecutions {
+  fold(declared, init: ComputeCaptureExecutions { pairs: [], verdict: OutputsReturned { outputs: [] } }, f: (b, d) =>
+    match b.verdict {
+      // The step refused an earlier output: nothing further executes, and the refusal carries on
+      // unchanged -- the builder neither edits it nor invents one.
+      OutputsMismatch { detail: _ } => b
+      OutputsReturned { outputs } => {
+        let rel = d.path
+        let src = join([match d.root { CheckoutRoot => layout.checkout  TargetRoot => layout.target_dir }, "/", rel], "")
+        let dst = compute_staged_path(layout: layout, declared: rel)
+        match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: layout.checkout, args: ["hash-object", src]) {
+          ComputeExecFailed { exit_code, stdout, stderr } => {
+            let hash = CaptureReadingFailed { exit_code: exit_code, stdout: stdout, stderr: stderr }
+            let install = CaptureReadingNotRun
+            ComputeCaptureExecutions {
+              pairs: concat(b.pairs, [ComputeOutputCapturePair { declared: d, hash: hash, install: install }]),
+              verdict: compute_output_capture_step(declared: rel, returned: outputs, hash: hash, install: install)
+            }
           }
-        ComputeExecOk { stdout, stderr } =>
-          match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: layout.checkout, args: ["-m", "0755", src, dst]) {
-            ComputeExecFailed { exit_code, stdout: install_stdout, stderr: install_stderr } =>
-              ComputeCapturePairBuild {
-                pairs: concat(b.pairs, [ComputeOutputCapturePair { declared: d, hash: CaptureReadingOk { stdout: stdout, stderr: stderr }, install: CaptureReadingFailed { exit_code: exit_code, stdout: install_stdout, stderr: install_stderr } }]),
-                stopped: true
+          ComputeExecOk { stdout, stderr } =>
+            match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: layout.checkout, args: ["-m", "0755", src, dst]) {
+              ComputeExecFailed { exit_code, stdout: install_stdout, stderr: install_stderr } => {
+                let hash = CaptureReadingOk { stdout: stdout, stderr: stderr }
+                let install = CaptureReadingFailed { exit_code: exit_code, stdout: install_stdout, stderr: install_stderr }
+                ComputeCaptureExecutions {
+                  pairs: concat(b.pairs, [ComputeOutputCapturePair { declared: d, hash: hash, install: install }]),
+                  verdict: compute_output_capture_step(declared: rel, returned: outputs, hash: hash, install: install)
+                }
               }
-            ComputeExecOk { stdout: install_stdout, stderr: install_stderr } =>
-              ComputeCapturePairBuild {
-                pairs: concat(b.pairs, [ComputeOutputCapturePair { declared: d, hash: CaptureReadingOk { stdout: stdout, stderr: stderr }, install: CaptureReadingOk { stdout: install_stdout, stderr: install_stderr } }]),
-                stopped: false
+              ComputeExecOk { stdout: install_stdout, stderr: install_stderr } => {
+                let hash = CaptureReadingOk { stdout: stdout, stderr: stderr }
+                let install = CaptureReadingOk { stdout: install_stdout, stderr: install_stderr }
+                ComputeCaptureExecutions {
+                  pairs: concat(b.pairs, [ComputeOutputCapturePair { declared: d, hash: hash, install: install }]),
+                  verdict: compute_output_capture_step(declared: rel, returned: outputs, hash: hash, install: install)
+                }
               }
-          }
+            }
+        }
       }
     })
-  build.pairs
 }
 
-// THE CAPTURE ROUTE: execute the pairs, then ask the one fold for the verdict. An absent or
-// unreadable output is a mismatch, never a success with a hole.
+// THE CAPTURE ROUTE: execute the pairs -- the builder stops on the step's verdict -- then hand the
+// readings to the one fold for the returned verdict. An absent or unreadable output is a mismatch,
+// never a success with a hole.
 fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout, declared: List<DeclaredOutput>) -> OutputsReturn {
-  compute_return_outputs_over_readings(pairs: compute_capture_exec_pairs(instance: instance, layout: layout, declared: declared))
+  let executions = compute_capture_exec_pairs(instance: instance, layout: layout, declared: declared)
+  compute_return_outputs_over_readings(pairs: executions.pairs)
 }
 
 // THE STAGING DIRECTORY sits beside the store root, so a staged file and the root share a filesystem

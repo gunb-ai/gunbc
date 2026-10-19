@@ -29,7 +29,9 @@ module test.claim.compute.output_capture_absence_witness
 // THE RED THIS FILE KILLS, and which must FAIL when planted (see the PR witness output): replacing
 // the step's CaptureReadingFailed hash arm with `OutputsReturned { outputs: returned }` -- capture
 // ACCEPTING an absent output -- turns every refusal row red while the positive controls stay
-// green; and deleting compute_return_outputs' call of the step turns the inhabitance rows red.
+// green; deleting compute_return_outputs' call of the step turns the inhabitance rows red; and
+// giving the exec pair-builder its own exit-code stop-condition (a second decision site, no longer
+// consulting the step) turns the pair-builder inhabittance row red.
 
 import std.types { Bool, Int, String, List }
 import std.algebra { string_contains, length, list_map, FreeMonoid }
@@ -214,13 +216,6 @@ test fn no_declared_outputs_is_the_empty_return_never_a_refusal() -> Bool {
 
 data compute_pool_roots: List<String> = ["dag/gunbc/compute"]
 data provider_module: String = "gunbc.compute.work_provider_local"
-data capture_route_fns: List<String> = [
-  "compute_spawn_and_collect",
-  "compute_return_outputs",
-  "compute_capture_exec_pairs",
-  "compute_return_outputs_over_readings",
-  "compute_output_capture_step"
-]
 
 fn reached_names_from(entry: String) -> List<String> {
   let reach = call_reachable_decls_from_root(
@@ -250,12 +245,16 @@ test fn production_reaches_the_same_capture_fold() -> Bool {
   reached_contains(entry: "compute_return_outputs", fn_name: "compute_output_capture_step")
 }
 
-// THE ROUTE AND THE READING-BUILDER ARE ONE PATH: the capture route reaches the exec pair-builder,
-// and the pair-builder does NOT reach back into the verdict fold -- the split (executions here,
-// verdicts there) is what keeps the refusal controllable, and this row pins it in both directions.
-test fn the_capture_route_executes_the_pair_builder_which_never_decides_verdicts() -> Bool {
+// THE BUILDER STOPS ONLY BECAUSE THE STEP STOPPED IT: the capture route reaches the exec
+// pair-builder, and the builder itself reaches the step -- it asks the step for the verdict it
+// stops on, rather than testing the exit codes on its own. A second stop-condition in the builder
+// is the defect this row kills: the day the step tolerated some failing reading, a builder of its
+// own opinion would still have stopped and the fold would have returned OutputsReturned missing
+// the later outputs -- a silent partial success. RED if the builder re-derives stop from readings
+// instead of consulting the step, and RED if the route stops executing pairs through it.
+test fn the_capture_route_executes_the_pair_builder_which_stops_on_the_steps_verdict() -> Bool {
   reached_contains(entry: "compute_spawn_and_collect", fn_name: "compute_capture_exec_pairs")
-    && (reached_contains(entry: "compute_capture_exec_pairs", fn_name: "compute_output_capture_step") == false)
+    && reached_contains(entry: "compute_capture_exec_pairs", fn_name: "compute_output_capture_step")
 }
 
 // THE STEP DECIDES FOR THE FOLD: the fold reaches the step -- so no fold-side copy of the verdict
