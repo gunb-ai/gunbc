@@ -294,3 +294,7 @@ test fn list_introduction_eval_stage_eval_ran() -> Bool {
 test fn list_introduction_eval_reason_runtime_binding_lookup_miss() -> Bool {
   list_introduction_eval_reason_is(wanted: ^eval_rejected_runtime_binding_lookup_miss)
 }
+
+test fn list_introduction_eval_reason_infer_facts_lookup_miss() -> Bool {
+  list_introduction_eval_reason_is(wanted: ^infer_facts_lookup_miss)
+}
