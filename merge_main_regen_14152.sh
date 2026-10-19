@@ -62,6 +62,7 @@ stamp "deleted-symbol grep (the #14287 class: main deletes a symbol my tree stil
 # What main DELETED since the merge base, and does the merged tree still reference it? A silent
 # semantic merge is invisible to git -- it reports success -- so this is the check that catches it.
 MB=$(git merge-base "$CAND" "$MAIN")
+echo "MERGE_BASE $MB"
 git diff -U0 "$MB" "$MAIN" -- src/v1 src/v2 dag \
   | grep -E '^-[^-].*(fn|record|type|enum) [a-z_]' \
   | sed -E 's/^-[^A-Za-z]*//; s/\(.*//' | awk '{print $NF}' | tr -d ' ;' \
@@ -98,11 +99,22 @@ echo "MERGE_COMMIT $(git rev-parse HEAD)"
 echo "TREE_DIRTY_AFTER_MERGE $(git status --porcelain | grep -c . )"
 
 # ---- regenerate to a fixed point -------------------------------------------------------------
-# The set to regenerate, from git's own list of what it could not resolve. Basenames only; see the
-# install loop for why this is restricted rather than "everything the emitter wrote".
-REGEN_TARGETS=$(sed -E 's#.*/##' "$LOGS/unmerged.txt" | tr '\n' ' ')
+# WHICH MIRRORS TO REGENERATE. Not --diff-filter=U alone. The repo installs a merge driver that
+# leaves concurrently-changed projections UNMERGED, but a clone of a worktree does not necessarily
+# carry that driver -- in one such clone the mirrors text-merged cleanly and the unmerged list came
+# back EMPTY, which would have meant "regenerate nothing" and shipped a mirror carrying whichever
+# side git happened to prefer. So the set is the UNION of what git could not resolve and what BOTH
+# sides changed since the merge base, the latter being the condition the generated-artifact hook
+# itself keys on (both sides moved => neither side's bytes are the projection of the merged
+# authorities). Anything the emitter writes outside this set stays out of the tree (install loop).
+MB2=$(git merge-base "$CAND" "$MAIN")
+BOTH=$(comm -12 <(git diff --name-only "$MB2" "$MAIN" -- src/v1/stage0/src | sort) \
+                <(git diff --name-only "$MB2" "$CAND" -- src/v1/stage0/src | sort))
+UNM=$(cat "$LOGS/unmerged.txt" 2>/dev/null)
+REGEN_TARGETS=$(printf '%s\n%s\n' "$BOTH" "$UNM" | grep '\.rs$' | sed -E 's#.*/##' | sort -u | tr '\n' ' ')
 echo "REGEN_TARGETS $REGEN_TARGETS"
-[ -n "$(echo "$REGEN_TARGETS" | tr -d ' ')" ] || { echo "VOID: nothing was unmerged, so there is nothing for this script to regenerate"; exit 6; }
+echo "REGEN_BOTH_SIDES $(echo "$BOTH" | grep -c '\.rs$' || true) REGEN_UNMERGED $(echo "$UNM" | grep -c '\.rs$' || true)"
+[ -n "$(echo "$REGEN_TARGETS" | tr -d ' ')" ] || { echo "VOID: no concurrently-changed mirror and nothing unmerged -- there is nothing for this script to regenerate, and running anyway would install the emitter's opinion over a tree nobody asked it to touch"; exit 6; }
 CE_BIN="$CARGO_TARGET_DIR/release/claim_executor"
 round=0
 while :; do
