@@ -773,6 +773,40 @@ fn collision_two_zero_arg_generic_calls_both_type() {
     );
 }
 
+/// ACCEPT CONTROL FOR THE PRODUCER REPAIR. The repaired call type for `empty_map()` is
+/// `Map(K@file:a-b, V@file:a-b)` -- a head whose EVERY argument is a fresh unbound variable
+/// carrying the call site in its id. That is the node the fold must treat as unsettled and
+/// then REPLACE with the first settled actual; it is a different shape from the existing
+/// control (which has one variable and one settled argument), and it is the shape the repair
+/// actually emits, so the accept duty lives here rather than in a hand-built pair.
+#[test]
+fn fold_accepts_a_binding_whose_arguments_are_all_fresh_call_variables() {
+    let bound = fold_app(
+        "Map",
+        &[
+            fold_tv_leaf("K@src/v2/std/text.dag:310-320"),
+            fold_tv_leaf("V@src/v2/std/text.dag:310-320"),
+        ],
+    );
+    let actual = fold_app("Map", &[fold_leaf("String"), fold_leaf("Int")]);
+    let acc = fold_step(bound, actual);
+    assert!(
+        acc.diagnostics.is_empty(),
+        "Map(fresh K, fresh V) is the repaired instantiation of empty_map() and is unsettled: {:?}",
+        acc.diagnostics
+    );
+    let kept = acc
+        .subst
+        .get("T")
+        .cloned()
+        .expect("T must still be bound after the step");
+    assert_eq!(
+        node_type_shape(kept, Rc::new(im::HashMap::new())),
+        "Map(Primitive(String),Primitive(Int))",
+        "the fresh-variable binding must be replaced by the first settled actual"
+    );
+}
+
 /// REFUSAL TWIN, built at the fold itself so nothing upstream can satisfy it: two distinct
 /// SETTLED instances of the same head must still refuse. Without this row the accept above
 /// could be satisfied by an implementation that admits any pair merely because a variable
