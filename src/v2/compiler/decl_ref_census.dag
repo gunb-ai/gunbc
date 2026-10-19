@@ -422,16 +422,72 @@ fn decl_ref_census_exit(c: DeclRefCensus) -> Int {
   }
 }
 
+fn resolution_arm_name(r: DeclarationRefResolution) -> String {
+  match r {
+    DeclarationRefResolved { declaration_identity: _ } => "resolved"
+    DeclarationRefModuleAbsent { reference: _ } => "module-absent"
+    DeclarationRefDeclarationAbsent { reference: _ } => "declaration-absent"
+    DeclarationRefFieldAbsent { reference: _ } => "field-absent"
+    DeclarationRefOutsideIndex { reference: _, coverage: _ } => "outside-index"
+  }
+}
+
+// The cited name of a refusal, "module decl"; a resolved resolution is not a refusal and cites nothing.
+fn resolution_cited_name(r: DeclarationRefResolution) -> String {
+  match r {
+    DeclarationRefResolved { declaration_identity: i } => i.qualified_name
+    DeclarationRefModuleAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
+    DeclarationRefDeclarationAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
+    DeclarationRefFieldAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
+    DeclarationRefOutsideIndex { reference: x, coverage: _ } => concat(x.module_path as String, " ", x.decl_name as String)
+  }
+}
+
+fn count_resolutions_with_arm(xs: List<DeclarationRefResolution>, arm: String) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, r) { if resolution_arm_name(r: r) == arm { acc + 1 } else { acc } })
+}
+
+// One located line per refusal: a refused reference by arm and cited name, a stale span by file.
+fn decl_ref_refusal_lines(c: DeclRefCensus) -> List<String> {
+  list_append(
+    left: fold_list(
+      xs: c.resolutions,
+      empty: [],
+      cons: fn(acc, r) {
+        if resolution_is_refusal(r: r) {
+          list_snoc_item(xs: acc, item: concat("[decl-ref-census] ref ", resolution_arm_name(r: r), " ", resolution_cited_name(r: r)))
+        } else { acc }
+      }
+    ),
+    right: fold_list(
+      xs: c.prose,
+      empty: [],
+      cons: fn(acc, s) {
+        if span_is_refusal(s: s) {
+          list_snoc_item(xs: acc, item: concat("[decl-ref-census] span stale ", symbol_lexeme(s: s.file), " `", s.span, "`"))
+        } else { acc }
+      }
+    )
+  )
+}
+
 fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
-  [
-    concat("[decl-ref-census] refs=", to_string(n: length(xs: c.cited)), " refused=", to_string(n: count_refused_resolutions(xs: c.resolutions))),
-    concat("[decl-ref-census] prose spans=", to_string(n: length(xs: c.prose)),
-      " resolves=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanResolves)),
-      " stale=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanStale)),
-      " outside_index=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanOutsideIndex)),
-      " not_a_symbol=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanNotASymbol)),
-      " unclassified=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanUnclassified)))
-  ]
+  list_append(
+    left: [
+      concat("[decl-ref-census] refs=", to_string(n: length(xs: c.cited)), " refused=", to_string(n: count_refused_resolutions(xs: c.resolutions)),
+        " module_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "module-absent")),
+        " declaration_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "declaration-absent")),
+        " field_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "field-absent")),
+        " outside_index=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "outside-index"))),
+      concat("[decl-ref-census] prose spans=", to_string(n: length(xs: c.prose)),
+        " resolves=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanResolves)),
+        " stale=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanStale)),
+        " outside_index=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanOutsideIndex)),
+        " not_a_symbol=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanNotASymbol)),
+        " unclassified=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanUnclassified)))
+    ],
+    right: decl_ref_refusal_lines(c: c)
+  )
 }
 
 // ---- assembly -----------------------------------------------------------------------------
