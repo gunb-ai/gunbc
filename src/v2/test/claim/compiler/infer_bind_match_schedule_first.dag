@@ -45,7 +45,7 @@ module v2.test.claim.compiler.infer_bind_match_schedule_first
 // rather than stated.
 
 import std.types { Int, List }
-import std.algebra { Cons, Empty, list_snoc_item }
+import std.algebra { Cons, Empty, list_append }
 import v2.extdeps.languages.dag { dag_type_atom_node }
 import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated, lower_match }
 import v2.std.node {
@@ -126,7 +126,7 @@ fn bms_arms(arm_count: Int, index: Int) -> List<Node> {
   if index >= arm_count {
     []
   } else {
-    list_snoc_item(xs: bms_arms(arm_count: arm_count, index: index + 1), item: bms_arm(index: index))
+    list_append(left: [bms_arm(index: index)], right: bms_arms(arm_count: arm_count, index: index + 1))
   }
 }
 
