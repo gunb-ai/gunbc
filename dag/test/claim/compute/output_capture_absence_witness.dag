@@ -85,7 +85,8 @@ fn returned_outputs(r: OutputsReturn) -> List<WorkOutput> {
 // than indexing keeps the rows off the resolver's weak spot (a value bound from a recursive tail
 // field) and states the ORDER in one equality.
 fn returned_shape(outputs: List<WorkOutput>) -> String {
-  join(list_map(xs: outputs, f: fn(o: WorkOutput) { join([o.declared, "=", o.blob], "") }), "|")
+  let cells = list_map(xs: outputs, f: fn(o) { join([o.declared, "=", o.blob], "") })
+  join(cells, "|")
 }
 
 // ── the refusal, driven on the real fold with a supplied absent output ─────────────────────────
@@ -219,11 +220,11 @@ fn reached_names_from(entry: String) -> List<String> {
     closure_modules: [provider_module],
     decls: fn_arrow_decl_facts_live(pool_roots: compute_pool_roots, pool_files: [])
   )
-  list_map(xs: reach.reached, f: fn(d: FnArrowDecl) { d.qualified_name })
+  list_map(xs: reach.reached, f: fn(d) { d.qualified_name })
 }
 
 fn reached_contains(entry: String, fn_name: String) -> Bool {
-  any(xs: reached_names_from(entry: entry), predicate: fn(q: String) { q == concat(concat("gunbc.compute.work_provider_local.", "."), fn_name) })
+  any(xs: reached_names_from(entry: entry), predicate: fn(q) { q == join(["gunbc.compute.work_provider_local.", fn_name], "") })
 }
 
 // POSITIVE CONTROL FIRST: the walk reaches the deepest leaf from the route, so the rows below are
