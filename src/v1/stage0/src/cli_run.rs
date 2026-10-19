@@ -20896,6 +20896,74 @@ pub struct ClaimRouteMember {
     pub cpu_ms: u128,
 }
 
+/// `gunbc.target_invocation` `claim_source_refusal_rendered`, mirrored for both
+/// `ClaimSourceRefusalCause` arms. Hand-written beside the carrier like `target_invocation_host`.
+fn claim_source_refusal_rendered(path: &str, unparseable_diagnostic: Option<&str>) -> String {
+    match unparseable_diagnostic {
+        Some(d) => format!("claim source refused: {path}: the file does not parse: {d}"),
+        None => format!(
+            "claim source refused: {path}: a .dag under the claim root declares no module, so no \
+             claim label can name it (paths follow names)"
+        ),
+    }
+}
+
+/// EVERY SOURCE THE CLAIM ROUTE CANNOT READ, LOCATED AND COUNTED, WITHOUT STOPPING THE PROCESS.
+///
+/// `process_shared_index` exits 1 on a header-bearing unparseable file and silently drops a file
+/// whose header is not recognized, so a broken claim file reads as "no discovered claim" (exit 2,
+/// indistinct from a typo) or as a claim failure (exit 1). `gunbc test` answers "what did the
+/// claim observe", so an unreadable source is no observation: this walk runs the SAME
+/// `parse_module_binding` the index runs, over the same roots, and returns instead of exiting.
+/// Unparseable refuses wherever it is (it would stop the index for every operand); a missing
+/// module header refuses under `<root>/test/claim`, the claim route's universe, where paths
+/// follow names. The walk does not own the index's own exit contract
+/// (`refuse_unparseable_module_sources`, the parse gate's seam); it only runs ahead of it.
+pub(crate) fn claim_source_refusals(source_roots: &[String]) -> Vec<String> {
+    use crate::module_path_index::{parse_module_binding, ModuleBindingOutcome};
+    let mut out = Vec::new();
+    for root in source_roots {
+        let anchored = anchor_source_root(root);
+        let claim_root = Path::new(&anchored).join("test").join("claim");
+        let mut files = Vec::new();
+        if let Err(e) = collect_dag_files_result(Path::new(&anchored), &mut files) {
+            out.push(format!(
+                "claim source refused: {anchored}: unreadable source root: {e}"
+            ));
+            continue;
+        }
+        for source in files {
+            let path = source.path();
+            let content = match source.read() {
+                Ok(c) => c,
+                Err(e) => {
+                    out.push(format!(
+                        "claim source refused: {}: unreadable: {e}",
+                        path.display()
+                    ));
+                    continue;
+                }
+            };
+            match parse_module_binding(path, &content) {
+                Ok(ModuleBindingOutcome::Bound(_)) => {}
+                Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => {
+                    if path.starts_with(&claim_root) {
+                        out.push(claim_source_refusal_rendered(
+                            &path.display().to_string(),
+                            None,
+                        ));
+                    }
+                }
+                Err(refusal) => out.push(claim_source_refusal_rendered(
+                    &refusal.source_path,
+                    Some(&refusal.rendered()),
+                )),
+            }
+        }
+    }
+    out
+}
+
 /// THE CLAIM ROUTE'S EXECUTOR: the floor's discovery authority over the modules the operand can
 /// reach, then the floor's claim evaluation over the claims it selects.
 ///
@@ -20917,6 +20985,14 @@ pub fn run_claim_route(
     module_selected: &dyn Fn(&str) -> bool,
     claim_selected: &dyn Fn(&str, &str) -> bool,
 ) -> Result<Vec<ClaimRouteMember>, String> {
+    let refusals = claim_source_refusals(source_roots);
+    if !refusals.is_empty() {
+        return Err(format!(
+            "{} unreadable claim source(s) — no observation:\n  {}",
+            refusals.len(),
+            refusals.join("\n  ")
+        ));
+    }
     let index = process_shared_index(source_roots);
     let mut selected: Vec<(&String, &Rc<v1_compiler_compile::SourceFile>)> = index
         .source_files
