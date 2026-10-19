@@ -246,6 +246,8 @@ import product.p4261_carrier_layout {
   attachment_standing,
   e1_pin7_attachment,
   e1_pin7_wire_end,
+  e1_rp1_pad,
+  e1_w2_attachment,
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
@@ -1341,6 +1343,8 @@ test fn a_wire_stands_for_its_pin_only_once_joined() -> Bool {
     && text.contains("taped wire meant for U1_P5 pin 7 (free end), attached at U1_P5 pin 7 on the operator's word ('I taped a thin wire to pin 7 now so I can explore the bottom' (2026-10-19)), is DISPUTED: no reading joins it to U1_P5 pin 7 at the shorted-probe baseline")
     && text.contains("it may have bridged to pin 21")
     && text.contains("U1_P5's enable (UVLO/EN) state not established (its only readings are at taped wire meant for U1_P5 pin 7 (free end) (attachment disputed), which no reading joins to the pin at the shorted-probe baseline")
+    && attachment_is(layout: p4261_e1_layout, a: e1_w2_attachment, which: 1)
+    && text.contains("W2: stranded red conductor of a red/black pair, taped at U1_P5's left-hand row (far end), attached at U1_P5 pin 7 on the operator's word ('It should be better now' (2026-10-19)), is DISPUTED")
   let unjoined = e1_with_attached(attachments: [undisputed], vs: wire_volts, rs: [])
   let unconfirmed = attachment_is(layout: unjoined, a: undisputed, which: 2) && enable_gap(ss: enable_of(layout: unjoined), which: 4)
     && carrier_input_reading(layout: unjoined).contains("is UNCONFIRMED: no reading joins it to U1_P5 pin 7")
@@ -1481,6 +1485,8 @@ test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
     && one_node(net: net, a: pad_ref(), b: u1_pin(pin: "pin 8"))
     && !one_node(net: net, a: u1_pin(pin: "pin 7"), b: e1_ground_ref) && !one_node(net: net, a: u1_pin(pin: "pin 7"), b: pad_ref())
     && !one_node(net: net, a: e1_pin7_wire_end, b: u1_pin(pin: "pin 7")) && !one_node(net: net, a: e1_pin7_wire_end, b: e1_ground_ref)
+    && one_node(net: net, a: e1_pin7_wire_end, b: e1_rp1_pad) && !one_node(net: net, a: e1_rp1_pad, b: u1_pin(pin: "pin 7"))
+    && links_between(net: net, a: u1_pin(pin: "pin 7"), b: e1_rp1_pad) == 1
     && count(filter(net.links, l => !is_between(l: l))) == 0
     && carrier_input_reading(layout: p4261_e1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: p4261_k1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")

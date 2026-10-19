@@ -1164,8 +1164,10 @@ fn controller_pin_standing(layout: CarrierLayoutObservation, c: InstalledCompone
 
 // A pin with no reading at it or at a point joined to it: readings at a wire meant for it, which no
 // reading joins to it, say so rather than leave the pin merely unread; they never stand for the pin.
+// Only the attachments whose points carry a reading are named: a wire that was never read at is not
+// where the pin's readings are.
 fn unjoined_pin_standing(layout: CarrierLayoutObservation, c: InstalledComponent, window: ThresholdWindow, t: ElectricalTerminalRef) -> ControllerPinStanding {
-  let unjoined = unjoined_attachments(layout: layout, t: t)
+  let unjoined = filter(unjoined_attachments(layout: layout, t: t), s => count(readings_at(vs: bench_of(layout: layout), ts: [attachment_of(s: s).point])) > 0)
   let at_unjoined = readings_at(vs: bench_of(layout: layout), ts: map(unjoined, s => attachment_of(s: s).point))
   match at_unjoined.first() {
     Absent => threshold_from(c: c, window: window, readings: [])
@@ -1510,11 +1512,12 @@ data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHyp
     "every other unpowered reading from the wire is in-circuit and names no part: Q300's, Q301's and a small resistor's points read 700 ohm and later 550 ohm, as did ground, all with the red probe away from the wire -- the placement under which the ground pad read 557 ohm -- so whether they run through the same one-way path is unread; pin 21 (VDD) reads 16 kohm and Q21_P5's tab about 40 kohm on the 200k range and about 100 kohm on the 2M range, placement unstated. None is a component's value, and none includes or excludes a source",
     "a pasted report, not read against its source: OCP MGX gates a tray's power-on on a management presence and standby handshake (PRSNT, STBY_EN, STBY_RDY). The P4261 is not established as an MGX tray, and no such signal is traced to pin 7",
     "Q5_P5 and D5_P5 sit beside pin 8's back-side pad; whether either is on pin 7's network is unread",
+    "unpowered, with no wire on the chip and the probe held on pin 7's own lead, the ringed point RP1 right of U1_P5 read about 1.3 kohm, the lowest the operator found from that lead in the controller's neighbourhood; the first wire had read at the baseline to RP1. So RP1 is not pin 7's access point, no point near pin 7 is, and the first wire's reading at RP1 does not place it on pin 7. A second wire (W2) read over range to J20's return and was closed as an attempt for want of a stable contact",
     "unpowered, the K1's pin 7, read with the probe held on the lead, is at the baseline to one end of a '200' resistor and not to the ringed via below-right of U1_P5 (hedged: 'seem electrically different'). The K1 is an earlier revision (-100, PCB A01; the E1 -201, PCB B00), so it is a lead about the design, not the E1's network, and it does not separate whether the 2026-10-19 bridge changed the E1's pin 7 network; the bridge was a MOSFET's source to its drain, not on pin 7's network",
     "energized at 48 V, the top end of the part across from pin 21 (at the baseline to pin 21, read directly, not through the wire) read about 4.86 V, hedged ('like 4.86 or something'; first 'it reads 5v'): U1_P5's bias supply reads live at a VDD-like level -- at a point joined to pin 21 at the baseline, not yet separated from pins 20 and 22 -- so on that reading the controller is not off for want of its own supply",
     "the 11-13 mA draw does not establish which circuits are powered, so it neither shows nor excludes other powered logic",
   ],
-  decided_by: "with the supply unplugged and the wire removed, a point larger than the lead (the ringed via, or a part's end) at the shorted-probe baseline to pin 7's lead itself, counted from the pin 1 marker, and separated from pins 6 and 8 and from pin 21; then pin 7's voltage read there with nothing wired to the chip; this meter's resistance-mode polarity checked against a known diode; then the first identified part followed. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
+  decided_by: "a mechanically secure connection to pin 7's own lead, counted from the pin 1 marker -- a fine-pitch test hook, since no point near the lead reads at the baseline to it -- read unpowered at the shorted-probe baseline to the lead's foot and away from pins 6 and 8; then, energized at 48 V with nothing moved, pin 7's voltage read once through it: clearly below 2.41 V, the first part on pin 7's node is followed; clearly above 2.55 V, the other inhibits are. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
 }
 
 data p4261_q4_temperature_diode_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
@@ -2099,11 +2102,68 @@ fn e1_wire_volts(source_volts: Nat) -> NodeVoltageObservation {
   }
 }
 
+// RP1 AND THE SECOND WIRE (2026-10-19, the operator's next session; after the probe bridge). RP1 is the
+// round pad with a white silkscreen ring right of U1_P5, named for where it is, not for a signal. The
+// first wire read at the baseline to it ("on the E1, its the circle you pointed to"), so the wire and
+// RP1 are one measured node. With no wire on the chip and the probe held on pin 7's own lead, RP1 read
+// about 1.3 kohm -- the lowest the operator found from that lead in the controller's neighbourhood -- so
+// RP1 is not pin 7's access point and no point near pin 7 is. The operator's "seems like pin 21" for RP1
+// is not a reading: none joins RP1 to pin 21. The 1.3 kohm display's range is unrecorded; a 200 ohm
+// range cannot show it.
+//
+// A second wire, W2 (the stranded red conductor of a red/black pair), was taped at the middle of the
+// left-hand row. With the meter's red probe on J20's black lead and black on its far end it read over
+// range on the 2k range; the operator found it was not touching pin 7, reseated it, and closed the
+// attempt because it kept moving. Asked about the first wire's disputes, the operator does not remember
+// the setting or probe point of the 0 V, 1.6 V and 5 V reports, and thinks the supply's current did not
+// change at the 5 V report ("i don't think so though").
+data e1_rp1: ComponentInstanceIdentity = e1_component(local: "RP1: round pad with a white silkscreen ring, right of U1_P5")
+data e1_rp1_pad: ElectricalTerminalRef = e1_terminal(c: e1_rp1, name: "pad")
+data e1_rp1_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload c8eee6bb, U1_P5 with the second wire; RP1 circled in the reply (not on Drive)")
+
+data e1_rp1_resistances: List<ResistanceObservation> = [
+  e1_wire_read(to: e1_rp1_pad, record: second_point_inferred(basis: "'its the circle you pointed to': the ringed point asked about, which the wire read near zero to"), polarity: PolarityUnrecorded, placed: [], range: RangeUnrecorded, display: DisplayAtProbeBaseline, certainty: StatedPlainly, said: "the two boards seem electrically different here: on the E1, its the circle you pointed to"),
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_terminal(c: e1_u1_p5, name: "pin 7"), second: e1_rp1_pad,
+    record: second_point_inferred(basis: "'that ringed wire': the ringed point RP1, the point just asked about"),
+    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayValue { ohms: 1300, approximate: true }, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [
+      OperatorStatement { stated_on: "2026-10-19", verbatim: "that ringed wire reads 1.3k directly to pin 7" },
+      OperatorStatement { stated_on: "2026-10-19", verbatim: "in that area, the closest i could find was 1.3k to basically what seems like pin 21 (that circled test pad) or whatever the circle connects to" },
+      e1_rp1_photo,
+    ],
+  },
+]
+
+data e1_w2: ComponentInstanceIdentity = e1_component(local: "W2: stranded red conductor of a red/black pair, taped at U1_P5's left-hand row")
+data e1_w2_end: ElectricalTerminalRef = e1_terminal(c: e1_w2, name: "(far end)")
+
+data e1_w2_attachment: ProbeAttachment = ProbeAttachment {
+  point: e1_w2_end,
+  intended: e1_terminal(c: e1_u1_p5, name: "pin 7"),
+  statement: OperatorStatement { stated_on: "2026-10-19", verbatim: "It should be better now" },
+  disputes: [
+    OperatorStatement { stated_on: "2026-10-19", verbatim: "OK - the wire was not making contact with pin 7, but it is now" },
+    OperatorStatement { stated_on: "2026-10-19", verbatim: "sorry - the wire thing is not working (sad face) it keeps moving etc" },
+  ],
+}
+
+data e1_w2_resistances: List<ResistanceObservation> = [
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_w2_end, second: e1_ground_ref,
+    record: both_points_inferred(first_basis: "the sheet's M4: the meter's black probe on the red wire's far end", second_basis: "the sheet's M4: the red probe on J20's black lead, which joins J20's latch-side row; position 1 stands for the row"),
+    conditions: e1_bench, polarity: RedOnSecond, range: RangeFullScale { ohms: 2000 }, display: DisplayOverRange, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "Sorry - M4 - returned no contact for this, does that make sense?" }],
+  },
+]
+
 data e1_bench_record: BenchRecord = BenchRecord {
   incidents: [e1_bridge_incident],
-  attachments: [e1_pin7_attachment],
+  attachments: [e1_pin7_attachment, e1_w2_attachment],
   voltages: concat(concat(concat(concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)), [e1_pad_volts(source_volts: 48, millivolts: 1800, said: "1.8v"), e1_pad_volts(source_volts: 36, millivolts: 1350, said: "1.35 at 36v")]), map([48, 36, 54], v => e1_wire_volts(source_volts: v))), [e1_vdd_volts]),
-  resistances: concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances),
+  resistances: concat(concat(concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances), e1_rp1_resistances), e1_w2_resistances),
 }
 
 data e1_measured: MeasuredBoard = MeasuredBoard {
