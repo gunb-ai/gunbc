@@ -195,10 +195,10 @@ use crate::v1_compiler_infer_method::NonDeclarationBinding::{
     BuiltinFunction, DeclarationOnly, EmptyCollectionConstructor, KernelMethodOnly,
 };
 pub use crate::v1_compiler_infer_method::{
-    bare_call_non_declaration_binding, builtin_host_text_param_names,
-    builtin_kernel_seed_diagnostics, builtin_param_names, infer_builtin_call_type,
-    is_empty_map_constructor, is_empty_set_constructor, resolve_builtin_call_type,
-    NonDeclarationBinding,
+    algebra_method_closed_over_receiver, bare_call_non_declaration_binding,
+    builtin_host_text_param_names, builtin_kernel_seed_diagnostics, builtin_param_names,
+    infer_builtin_call_type, is_empty_map_constructor, is_empty_set_constructor,
+    resolve_builtin_call_type, NonDeclarationBinding,
 };
 use crate::v1_compiler_infer_patterns::ConstructorRoster::{ConstructorsClosed, ConstructorsOpen};
 use crate::v1_compiler_infer_patterns::PatternSubject::*;
@@ -2770,7 +2770,25 @@ pub fn record_lit_expanded_from_expected(
             }
             std::option::Option::None => std::option::Option::None,
         },
-        std::option::Option::None => std::option::Option::None,
+        std::option::Option::None => match expected.clone() {
+            Some(exp) => match crate::v1_compiler_infer_env::lookup_type_for(
+                scope.type_env.clone(),
+                exp.clone(),
+            ) {
+                Some(decl) => {
+                    if (((decl.connective.clone() == Connective::Conj)
+                        && ((decl.children.clone().len() as i64) > 0))
+                        && ((decl.params.clone().len() as i64) == 0))
+                    {
+                        Some(decl.clone())
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
+            },
+            std::option::Option::None => std::option::Option::None,
+        },
     }
 }
 
@@ -12062,6 +12080,7 @@ pub fn infer_call_arguments_generic_pass(
     generic_names: Rc<Vec<String>>,
     init_subst: Rc<HashMap<String, Rc<Node>>>,
     seed_subst: Rc<HashMap<String, Rc<Node>>>,
+    receiver_self_expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
 ) -> Rc<ArgGenericFoldState> {
     Rc::new(
@@ -12192,7 +12211,7 @@ pub fn infer_call_arguments_generic_pass(
             let expected = if has_formal.clone() {
                 Some(contextual_expected.clone())
             } else {
-                std::option::Option::None
+                receiver_self_expected.clone()
             };
             let ar_inferred = infer_expr(
                 crate::v1_std_core::arg_value(a.clone()),
@@ -13647,6 +13666,14 @@ Rc::new(InferResult {
                             },
                             std::option::Option::None => v1_rt::rc_empty_map::<String, Rc<Node>>(),
                         };
+                        let receiver_self_expected = match sig.clone() {
+    Some(_) => std::option::Option::None,
+    std::option::Option::None => if crate::v1_compiler_infer_method::algebra_method_closed_over_receiver(func_name.clone()) {
+                expected.clone()
+            } else {
+                std::option::Option::None
+            },
+};
                         let resolved_formals = match sig.clone() {
                             Some(s) => match (*s.resolved_formals.clone()).clone() {
                                 ResolvedFormals::DeclarationBoundFormals {
@@ -13860,6 +13887,7 @@ Rc::new(InferResult {
                                         generic_names.clone(),
                                         v1_rt::rc_empty_map::<String, Rc<Node>>(),
                                         seed_subst.clone(),
+                                        receiver_self_expected.clone(),
                                         scope.clone(),
                                     );
                                     if call_needs_generic_rebinding_pass(
@@ -13874,6 +13902,7 @@ Rc::new(InferResult {
                                             generic_names.clone(),
                                             first_pass.subst.clone(),
                                             seed_subst.clone(),
+                                            receiver_self_expected.clone(),
                                             scope.clone(),
                                         )
                                     } else {

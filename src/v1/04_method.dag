@@ -57,6 +57,16 @@ fn algebra_param_templates(method: String) -> List<AlgebraTypeTemplate> {
   }
 }
 
+// EVERY TEMPLATE OF THE NAME TAKES ONLY THE RECEIVER'S OWN TYPE AND RETURNS IT: the method is closed over its receiver, so the type
+// a call is expected to produce is the type of each of its arguments.
+fn algebra_method_closed_over_receiver(method: String) -> Bool {
+  let templates = all_algebra_profiles() |> flat_map(p => algebra_templates_for_profile(profile: p) |> filter(t => t.name == method))
+  (templates |> count) > 0 && templates |> all(t =>
+    (t.param_types |> count) > 0
+      && (match t.return_type { ReceiverSelf => true  _ => false })
+      && t.param_types |> all(pt => match pt { ReceiverSelf => true  _ => false }))
+}
+
 fn algebra_param_templates_in(profile: AlgebraProfile, method: String) -> List<AlgebraTypeTemplate> {
   match algebra_templates_for_profile(profile: profile) |> filter(t => t.name == method) |> first {
     Present { value: t } => t.param_types

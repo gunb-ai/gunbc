@@ -119,7 +119,7 @@ import v1.compiler.infer_types {
   callable_return_type
 }
 import v1.compiler.infer_method {
-  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names,
+  builtin_kernel_seed_diagnostics, algebra_method_closed_over_receiver, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names,
   is_empty_map_constructor, is_empty_set_constructor,
   bare_call_non_declaration_binding, EmptyCollectionConstructor, BuiltinFunction,
   KernelMethodOnly, DeclarationOnly
@@ -1920,7 +1920,16 @@ fn record_lit_expanded_from_expected(type_name: String?, expected: Node?, scope:
           }
         Absent => none
       }
-    Absent => none
+    Absent =>
+      match expected {
+        Present { value: exp } =>
+          match lookup_type_for(env: scope.type_env, node: exp) {
+            Present { value: decl } =>
+              if decl.connective == Conj && decl.children |> count > 0 && decl.params |> count == 0 { Present { value: decl } } else { none }
+            Absent => none
+          }
+        Absent => none
+      }
   }
 }
 
@@ -8011,7 +8020,7 @@ fn formal_code_point_view_peeled(formal: ResolvedFormal, env: TypeEnv) -> Node? 
   }
 }
 
-fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, seed_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
+fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, seed_subst: Map<String, Node>, receiver_self_expected: Node?, scope: InferScope) -> ArgGenericFoldState {
   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
     let a = pair.second
     let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
@@ -8053,7 +8062,7 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
       ExprRecordLit { parent_enum: _ } => formal_param_type
       _ => formal_param_type
     } }
-    let expected = if has_formal { Present { value: contextual_expected } } else { none }
+    let expected = if has_formal { Present { value: contextual_expected } } else { receiver_self_expected }
     let ar_inferred = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
     let ar = if formal_is_code_point_sequence {
       InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope), diagnostics: ar_inferred.diagnostics }
@@ -8991,6 +9000,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         }
         Absent => empty_map()
       }
+      // RULE A, METHOD FORM: a method whose every template takes and returns the receiver's own type (algebra_method_closed_over_receiver)
+      // is judged with Self := the call's expected type, so each argument stands at that declared position (`concat(xs, ys)` under a
+      // List<T> return). It is the same rule as the seed above -- the return unified with the declared position -- read off the algebra
+      // template rather than a signature, because these methods carry no signature formals.
+      let receiver_self_expected = match sig {
+        Present { value: _ } => none
+        Absent => if algebra_method_closed_over_receiver(method: func_name) { expected } else { none }
+      }
       let resolved_formals = match sig {
         Present { value: s } => match s.resolved_formals {
           DeclarationBoundFormals { formals: formals } => formals
@@ -9075,9 +9092,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 
         let value_params = call_sig_split.value_params
         let generic_names = call_sig_split.generic_names
-        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), seed_subst: seed_subst, scope: scope)
+        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), seed_subst: seed_subst, receiver_self_expected: receiver_self_expected, scope: scope)
         if call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: first_pass.subst) {
-          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, seed_subst: seed_subst, scope: scope)
+          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, seed_subst: seed_subst, receiver_self_expected: receiver_self_expected, scope: scope)
         } else {
           first_pass
         }
