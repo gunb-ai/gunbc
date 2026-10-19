@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.parse_refusal_exits_as_failed_observation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data parse_refusal_exits_as_failed_observation: RecurringFailureMode = RecurringFailureMode {
+  identity: "parse_refusal_exits_as_failed_observation" as NonEmptyStr,
+
+  receipts: [
+    "**a refusal that made no observation is reported with the exit that means the observation did not hold** (found by the C4-B measurement, gunbc#14369). DESIGN Building & checks fixes the contract: exit 0 the observation held, 1 it did not, 2 there was no observation. An unparsable `.dag` in the module-index walk is the second case, no claim was reached, yet `cli_run` `refuse_unparseable_module_sources` ends the process with exit 1 for every command that builds the index, `gunbc test`, `claim_batch` and `claim_executor --required-regen` among them. The refusal itself is loud, typed and located, so this is not a fail-open; the harm is a caller that branches on 1 versus 2 reading a located parse refusal as a failed claim.",
+
+    "RUNG FOUND AT: mitigatable. The exit is a process exit inside the walk, not a typed result returned to the command boundary, so an in-process observer cannot witness it and the exit code is whatever that function chose for every caller at once. CEILING: structurally guaranteed. The refusal becomes a typed result, and each command boundary maps it to exit 2; this is decidable and fully modeled, and unbuilt.",
+
+    "NEXT TRIGGER, which is the capability and not an artifact: the walk returns its refusal as a typed result instead of exiting, and the command boundary of each route maps it to exit 2. The C4-A change (gunbc test route, exit 2 for an unparseable module) restores it for that route only; `claim_batch` and `claim_executor` keep exit 1 until the same move reaches their boundaries, so C4-A landing does not retire this row. TO RE-DERIVE the divergence, plant an unparsable `.dag` under `dag/test/claim` and read the exit of `gunbc test //test/claim:<label>`; do not transcribe it here.",
+  ],
+
+  evidence: [],
+}
