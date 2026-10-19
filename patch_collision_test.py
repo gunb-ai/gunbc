@@ -62,11 +62,24 @@ module test.producer_collision
 import std.types { Map }
 import std.algebra { empty_map }
 
-fn ints() -> Map<Int, Int> { empty_map() }
-fn texts() -> Map<String, Int> { empty_map() }
+fn takes_int_map(m: Map<Int, Int>) -> Int { 0 }
+fn takes_string_map(m: Map<String, Int>) -> Int { 0 }
+
+// BOTH calls, ONE body. Two separate functions could never expose a shared variable: the
+// cross-binding only exists where both call types meet inside a single unification, which is
+// this body. Each call is constrained against a settled formal, so under a name-keyed
+// unbound variable the first call fixes K,V := Int,Int and the second then refuses against
+// String,Int -- a conflict that has nothing to do with the two maps' own types.
+fn collide() -> Int {
+  let a = empty_map()
+  let b = empty_map()
+  let x = takes_int_map(a)
+  let y = takes_string_map(b)
+  x + y
+}
 "#;
 
-fn collision_resolved() -> ResolvedPipelineResult {
+fn collision_resolved() -> Rc<ResolvedPipelineResult> {
     let ws = workspace_root();
     let roots = [ws.join("src/v2"), ws.join("dag")];
     let sources =
