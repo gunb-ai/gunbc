@@ -54,6 +54,24 @@ fn w_literal_of_another_type_keeps_new() -> Bool {
   )
 }
 
+fn w_direct_nested_slot_reuses_child_box() -> Bool {
+  compile_dag_rust_emit_check(
+    "module dyb_nested_direct\n\nimport std.types { Int, List }\n\ntype Inner {\n  xs: List<Int>\n  k: Int\n}\n\ntype Outer {\n  inner: Inner\n  log: List<Int>\n  n: Int\n}\n\nfn step(o: Outer) -> Outer {\n  Outer { inner: Inner { xs: list_push(o.log, o.n), k: o.n }, log: o.log, n: o.n + 1 }\n}\n",
+    "src/dyb_nested_direct.rs",
+    ["Rc::get_mut(&mut __rb_r.inner)"],
+    []
+  )
+}
+
+fn w_optional_nested_slot_is_not_reused() -> Bool {
+  compile_dag_rust_emit_check(
+    "module dyb_nested_optional\n\nimport std.types { Int, List }\nimport std.optional { Optional, Present, Absent }\n\ntype Inner {\n  xs: List<Int>\n  k: Int\n}\n\ntype Outer {\n  child: Inner?\n  log: List<Int>\n  n: Int\n}\n\nfn step(o: Outer) -> Outer {\n  Outer { child: Inner { xs: list_push(o.log, o.n), k: o.n }, log: o.log, n: o.n + 1 }\n}\n",
+    "src/dyb_nested_optional.rs",
+    ["Rc::get_mut(&mut __rb_h)"],
+    ["Rc::get_mut(&mut __rb_r.child)"]
+  )
+}
+
 fn w_fold_branch_end_moves_acc() -> Bool {
   compile_dag_rust_emit_check(
     "module fa_fold_branch_end_moves_acc\n\nimport std.types { Int, Bool, List }\n\ntype Acc {\n  n: Int\n  done: Bool\n  xs: List<Int>\n}\n\nfn step(acc: Acc) -> Acc {\n  Acc { n: acc.n + 1, done: acc.done, xs: acc.xs }\n}\n\nfn flag(a: Acc) -> Bool {\n  a.done\n}\n\nfn mk(a: Acc, b: Acc) -> Acc {\n  Acc { n: a.n + b.n, done: a.done, xs: b.xs }\n}\n\nfn at(acc: Acc, k: Int) -> Acc {\n  Acc { n: k, done: acc.done, xs: acc.xs }\n}\n\nfn run(xs: List<Int>, init: Acc) -> Acc {\n  xs |> fold(init: init, f: (acc, e) => if acc.done { acc } else { step(acc: acc) })\n}\n",
@@ -124,4 +142,12 @@ test fn fold_condition_using_the_accumulator_whole_does_not_move() -> Bool {
 
 test fn fold_leaf_reading_an_accumulator_field_does_not_move() -> Bool {
   w_fold_leaf_reading_acc_field_clones()
+}
+
+test fn direct_nested_slot_reuses_the_child_box() -> Bool {
+  w_direct_nested_slot_reuses_child_box()
+}
+
+test fn optional_nested_slot_is_not_reused() -> Bool {
+  w_optional_nested_slot_is_not_reused()
 }

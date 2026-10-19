@@ -647,7 +647,7 @@ fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> Fold
 //
 // What the fact does NOT claim: that the box is uniquely held. Uniqueness is the runtime reading the
 // emitter's Rc::get_mut takes; a shared box takes the allocating arm, which is the arm without this
-// fact. So the fact decides WHERE reuse is attempted and a wrong claim costs a branch, never a value.
+// fact. So the fact decides WHERE reuse is attempted, and correctness does not depend on runtime uniqueness, provided eligibility, the field-storage conversions and the fallback construction are correct.
 fn terminal_record_literals(body: Node) -> List<Node> {
   match body.expr_data {
     ExprLet => match let_body(texpr: body) {

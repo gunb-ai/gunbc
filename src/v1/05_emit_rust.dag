@@ -16229,8 +16229,9 @@ fn emit_stored_record_field(f: Node, resolved_type: Node, outer_type_name: Strin
 // into a temporary first (they read the parameter, which is still whole), then Rc::get_mut decides.
 // Held uniquely, the fields are overwritten in place and no allocation happens; held by anyone else,
 // the same literal is built behind a fresh Rc, which is the arm the emitter took before the fact, so
-// the fact can only remove an allocation, never change a value or add one. A field that is itself a
-// plain literal of a shared, unboxed struct is reused the same way, because the slot it fills is
+// correctness does not depend on runtime uniqueness, provided eligibility, the field-storage conversions
+// and the fallback construction are correct. A field that is itself a plain literal of a shared struct
+// held in a direct Rc slot (record_field_slot_is_direct_rc) is reused the same way, because the slot it fills is
 // overwritten and so its old box is dead too. No field's type changes: every slot stays Rc<T>, so
 // no container element widens (recurring_failure_mode by_value_record_widens_container_slots).
 type DyingLitInit {
@@ -16283,6 +16284,15 @@ fn plain_shared_struct_literal_name(lit: Node, scope: InferScope, shared_types: 
   }
 }
 
+// A field slot that stores its value exactly as rendered: not optional (emit_stored_record_field
+// promotes to Some(..) there) and not callable- or Box-wrapped by wrap_rust_record_field_value. Only
+// such a slot is a direct Rc<Inner> that the dying-base form may Rc::get_mut; every other slot takes
+// the stored text whole, so one storage decision serves both forms.
+fn record_field_slot_is_direct_rc(f_name: String, summary_name: String, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>) -> Bool {
+  !is_optional_struct_field(emit_info: emit_info, struct_name: summary_name, field_name: f_name)
+    && wrap_rust_record_field_value(raw: "__slot", value_node: none, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: summary_name, field_name: f_name) == "__slot"
+}
+
 fn dying_literal_plan(lit: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> DyingLitPlan? {
   let si = scope.type_env.source_indices
   match plain_shared_struct_literal_name(lit: lit, scope: scope, shared_types: shared_types, emit_info: emit_info) {
@@ -16293,8 +16303,7 @@ fn dying_literal_plan(lit: Node, registry: Map<String, ItemInfo>, scope: InferSc
         let f_name = field_init_node_name_at(n: f, source_indices: si)
         let f_value = field_init_node_value(n: f)
         let stored = emit_stored_record_field(f: f, resolved_type: rt, outer_type_name: Present { value: tn }, summary_name: tn, ctor_name: tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-        let slot_unwrapped = wrap_rust_record_field_value(raw: "__slot", value_node: none, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: tn, field_name: f_name) == "__slot"
-        let inner_name = if slot_unwrapped { plain_shared_struct_literal_name(lit: f_value, scope: scope, shared_types: shared_types, emit_info: emit_info) } else { none }
+        let inner_name = if record_field_slot_is_direct_rc(f_name: f_name, summary_name: tn, scope: scope, emit_info: emit_info, shared_types: shared_types) { plain_shared_struct_literal_name(lit: f_value, scope: scope, shared_types: shared_types, emit_info: emit_info) } else { none }
         match inner_name {
           Present { value: inner_tn } =>
             let inner_rt = expand_type_for_field_access(n: resolved_type(n: f_value), env: scope.type_env, module_name: scope.module_name).resolved
