@@ -1523,8 +1523,6 @@ fn make_variant_node(occurrence_identity: NodeOccurrenceIdentity, name: String, 
 
 fn variant_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 fn variant_node_fields(n: Node) -> List<Node> { n.children }
-fn variant_node_span(n: Node) -> SourceSpan { n.span }
-
 type ChildRole {
   name: String
   accessor: String
@@ -1599,10 +1597,6 @@ data wrapper_child_roles: Map<String, List<ChildRole>> = {
 fn is_child_accessor_in_model(name: String) -> Bool {
   (map_values(expr_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
   || (map_values(wrapper_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
-}
-
-fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
-  map_get(expr_child_roles, variant_name)
 }
 
 type NodeFieldRole
@@ -2130,18 +2124,6 @@ fn transport_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: t.properties, prop_name: transport_verb_key, source_indices: source_indices)
 }
 
-fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
-
-// Transport KIND is discriminated by which marker property is present, not by a stored tag, and
-// that has a consequence which is easy to undo by accident: `rest_transport_node` ALWAYS writes a
-// `base_url` property, filled from the empty-string literal `parse_rest_fields` substitutes when
-// `url:` is omitted -- and omitting it is the NORM, since the base normally comes from the service
-// `config`. So that fabricated "" is load-bearing structure holding the discrimination up, not a
-// lazy default: remove it and every rest transport in the corpus reclassifies as `local`. The same
-// holds for `config`'s `endpoint`, where `config { }` is legal. This is also why
-// `is_local_transport` is defined negatively -- local is genuinely the residual, and there is no
-// marker for it to carry. The file arm is NOT in this class: an omitted `path:` has no such role,
-// and `parse_file_fields` refuses it (gunbc#8949).
 fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
 fn is_shell_transport(t: Node) -> Bool { t.body != none }
 fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
@@ -2444,20 +2426,12 @@ fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, aut
   concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop)
 }
 
-fn has_service_config(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  n.properties |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "svc_endpoint")
-}
-
 fn service_config_endpoint(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: n.properties, prop_name: "svc_endpoint", source_indices: source_indices)
 }
 
 fn service_config_auth(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: n.properties, prop_name: "svc_auth", source_indices: source_indices)
-}
-
-fn service_config_rate_limit(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_rate_limit", source_indices: source_indices)
 }
 
 fn service_config_auth_input(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
@@ -2819,13 +2793,6 @@ fn intern_find(table: InternTable, s: String) -> Int? {
   match map_get(table.index, s) {
     Present { value: id } => Present { value: id }
     Absent => none
-  }
-}
-
-fn intern_find_or_empty(table: InternTable, s: String) -> Int {
-  match map_get(table.index, s) {
-    Present { value: id } => id
-    Absent => 0
   }
 }
 
