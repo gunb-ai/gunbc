@@ -11,9 +11,19 @@ module gunbc.provisioning.altra_autoinstall_seed
 //
 // WHO CONSUMES THIS, declared per DESIGN 3c rather than left to be inferred.
 //   * CONSUMED IN THIS CHANGE: every refusal arm, both digest functions, the render, the audit, the selection
-//     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness (49 test fns, run by
-//     gunbc --claim-run). Nothing here is exercised only by its own module.
-//   * DECLARED FRONTIER, NAMED: AltraAutoinstallSeedBinding is consumed by cut 6 step 3 (the install-attempt
+//     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness. Nothing here is
+//     exercised only by its own module. The roster and its verdicts are OBTAINED, NEVER QUOTED here (DESIGN
+//     section 6: name the instrument, never transcribe its output): the count of test fns is derived from the
+//     witness file by gunbc.frontend_eval.control's test_fns, which reads the module-scope `test fn ` lines the
+//     parser itself requires, and each one's verdict comes from the claim run, which reports one PASS or FAIL
+//     line per test fn — `gunbc run --source-root dag --source-root src/v2 --entry
+//     dag/test/claim/altra_autoinstall_seed_witness.dag --claim-run --function <the fn>`. A number written into
+//     this comment would be a second, rotting copy of a fact both of those produce on demand; if the two ever
+//     disagree, the module has grown a rule nothing exercises and the run says so, not this sentence.
+//   * CONSUMED IN A NAMED SIBLING CUT: gunbc.provisioning.provisioning_arm (cut 6, S5, gunb-ai/gunbc#14378)
+//     imports AltraAutoinstallSeedBinding, so the binding record is not waiting on its own — it already has a
+//     production importer on that branch, which is the answer to "a module nothing imports".
+//   * DECLARED FRONTIER, NAMED: AltraAutoinstallSeedBinding is also consumed by cut 6 step 3 (the install-attempt
 //     record), which needs the digest of the seed a board booted and nothing else from this module. The
 //     projection into extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload is consumed by cut 6 step 4, where
 //     a seed becomes bytes an installer can fetch; until that step lands, project_autoinstall_identity and
@@ -36,7 +46,8 @@ module gunbc.provisioning.altra_autoinstall_seed
 // scheme token, the salt's width and forbidden characters, the digest's alphabet and its exact 86-character
 // width, and the cost field's class and range — belongs to libxcrypt, not to this repository or to Canonical.
 // It is therefore NOT stated here: it is one row in extdeps.libxcrypt.crypt_scheme, cited to the crypt(5)
-// mdoc source at the release this distro ships (libcrypt1 1:4.4.38-1), and consumed below by name. What stays
+// mdoc source at the release this distro ships (libcrypt1 1:4.4.36-4build1 on Noble arm64), and consumed
+// below by name. What stays
 // in this module is only what is ours: the segment grammar we walk, the order the refusals are reported in,
 // and which credential we will accept for a headless board. If a future edit re-types 86 or 16 here instead
 // of reading them from that row, the figures and their citation have come apart, which is the §4d failure the
@@ -65,13 +76,16 @@ import std.content_hash {
   content_hash_eq_structural,
   content_hash_tagged_structural,
 }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.libxcrypt.crypt_scheme {
   CryptSchemeFormat,
   Sha512CryptFormat,
   cost_field_is_well_formed,
+  crypt_acceptance_rules,
+  crypt_reserved_characters,
   digest_characters_are_admitted,
   salt_holds_only_admitted_characters,
+  shared_restriction_rejects,
   sha512_crypt_figure_read_obligation,
   sha512_crypt_format,
 }
@@ -81,7 +95,7 @@ import extdeps.os.ubuntu_autoinstall {
   AutoinstallStoragePolicy,
   StoragePolicyDirectLayout,
 }
-import extdeps.ssh.keys { SshPublicKey }
+import extdeps.ssh.keys { SshPublicKey, ssh_public_key_line }
 import extdeps.storage.types {
   BareDevice,
   CachedMirror,
@@ -320,6 +334,91 @@ fn altra_install_driver_package(driver: AltraInstallDriver) -> NonEmptyStr {
   }
 }
 
+// THE SILENT HALF OF THE LATE SET, AS ROWS RATHER THAN AS A CLAIM ABOUT ROWS. These are the packages a headless
+// Altra board needs present before anyone can log in: nvme-cli to read the SMART of the disk it just installed
+// onto, ipmitool to talk to the BMC that is its only console, dmidecode to read the board's own identity back so
+// the S2 probe can be checked against something other than itself, and rasdaemon so a memory or PCIe failure on
+// a board nobody is standing in front of is recorded rather than silent. Each of the four was admitted the same
+// way, and each row says so with the artifact it was read from: it is published for arm64 in the Noble archive at
+// the version named in its receipt, and the shipped .deb FOR THAT VERSION contains no config script in its
+// control tarball and no debconf templates in its data tarball — so nothing inside it can reach db_input at the
+// version the board will actually install.
+//
+// WHY A ROW AND NOT A BOOLEAN `prompts: Bool` BESIDE THE NAME, AND WHY NOT Unclassified. A silence claim without
+// an evidence arm is a guess with a confident type; and before this arm existed the only honest way to name a
+// package that asks nothing was UnclassifiedPackage, which the audit refuses — so a headless board's diagnostic
+// tooling could not be installed at all, and every "produced seed" fixture quietly passed `late_packages: []`
+// while a witness claimed the seed installs it. That witness was asserting properties of an empty list. Loosening
+// Unclassified into a pass would have fixed the witness by making it lie. A future checked-silent package adds a
+// row here with its own version and standing; a package nobody has checked still enters through
+// UnclassifiedPackage and is still refused.
+fn altra_required_late_package_rows() -> List<PackageIntent> {
+  [
+    PackageVerifiedSilent { name: "nvme-cli" as NonEmptyStr, silence: nvme_cli_silence_receipt },
+    PackageVerifiedSilent { name: "ipmitool" as NonEmptyStr, silence: ipmitool_silence_receipt },
+    PackageVerifiedSilent { name: "dmidecode" as NonEmptyStr, silence: dmidecode_silence_receipt },
+    PackageVerifiedSilent { name: "rasdaemon" as NonEmptyStr, silence: rasdaemon_silence_receipt },
+  ]
+}
+
+// ONE RECEIPT PER PACKAGE, EACH CARRYING THE BUILD ITS CLAIM IS ABOUT. Silence is a property of a BUILD, not of a
+// name: the point release that grows a config script invalidates the row while leaving every name-based check
+// intact, which is exactly why the version is a field of the receipt rather than a comment above it. The four
+// standings are identical today because all four were measured the same way; they are separate rows so that when
+// one of them is only transcribed, or is found to prompt, it can change its standing without touching the others.
+data nvme_cli_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  observed_version: "2.8-1build2" as NonEmptyStr,
+  standing: CitedToAuthority { authority: nvme_cli_deb_authority },
+}
+
+data ipmitool_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  observed_version: "1.8.19-7build2" as NonEmptyStr,
+  standing: CitedToAuthority { authority: ipmitool_deb_authority },
+}
+
+data dmidecode_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  observed_version: "3.5-3build1" as NonEmptyStr,
+  standing: CitedToAuthority { authority: dmidecode_deb_authority },
+}
+
+data rasdaemon_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  observed_version: "0.8.0-2" as NonEmptyStr,
+  standing: CitedToAuthority { authority: rasdaemon_deb_authority },
+}
+
+// THE ARTIFACTS THE SILENCE CLAIMS WERE READ FROM: the exact .deb in the arm64 archive, not the package's
+// documentation and not a wiki. A reviewer re-derives a row by downloading this path and opening its control
+// tarball, which is the whole test of whether a citation is worth its bytes — and note that the archive index is
+// NOT sufficient evidence here: the HTML package pages answer 200 for names that do not exist at all, so a claim
+// checked against them can look verified while nothing was checked.
+data nvme_cli_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ports.ubuntu.com/ubuntu-ports/pool/main/n/nvme-cli/nvme-cli_2.8-1build2_arm64.deb"
+  }
+}
+
+data ipmitool_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ports.ubuntu.com/ubuntu-ports/pool/universe/i/ipmitool/ipmitool_1.8.19-7build2_arm64.deb"
+  }
+}
+
+data dmidecode_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ports.ubuntu.com/ubuntu-ports/pool/main/d/dmidecode/dmidecode_3.5-3build1_arm64.deb"
+  }
+}
+
+data rasdaemon_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ports.ubuntu.com/ubuntu-ports/pool/universe/r/rasdaemon/rasdaemon_0.8.0-2_arm64.deb"
+  }
+}
+
 // THE KERNEL-MODULE AXIS, KEPT APART BECAUSE IT IS NOT CHECKABLE AGAINST APT. What the board must have loaded
 // inside the installer environment is not something the installer can apt-install: the installer's kernel is
 // already running, so a `.ko` is a claim about which kernel package carries it, verified against the source
@@ -449,37 +548,114 @@ data package_axis_authority: ExternalAuthority = ExternalAuthority {
 //     first-class verdict here rather than an error.
 // The name lives in exactly one place for the known arms (known_prompting_package_name, below), which is also
 // what makes a drift between the table and the audit impossible: there is no second spelling to drift.
-// A future requirement (a package whose prompting has been checked and found silent) adds a FOURTH arm —
-// PackageVerifiedSilent { name, checked_against } — with its own citation, rather than loosening Unclassified
-// into a pass.
+// THE FOURTH ARM, WHICH THIS TYPE ALWAYS SAID IT WOULD ONE DAY HAVE. A package whose prompting has been
+// checked and found SILENT is a fourth state of knowledge, not a fifth spelling of the third: it is neither
+// "answered" (nothing was asked, so nothing was answered) nor "unclassified" (someone looked). Its absence was
+// the reason a headless board's late package set could not be stated at all — nvme-cli, ipmitool and dmidecode
+// ask nothing, so under three arms the only honest way to name them was Unclassified, which the audit refuses,
+// which meant every "produced seed" fixture had to pass `late_packages: []` and the witness that claimed the
+// seed installs the BMC/diagnostic tooling was asserting properties of an empty list. Loosening Unclassified into
+// a pass would have fixed that witness by making it lie; this arm fixes it by making the claim checkable.
+//
+// WHAT MAKES A ROW LEGAL IS THE EVIDENCE IN THE ARM, NOT THE NAME. A silence claim means: the package exists in
+// THIS archive at THIS version, and the shipped control tarball for that version contains no config script and
+// its data tarball ships no debconf templates — i.e. nothing in the package can call db_input or db_fget at the
+// version the board will install. That is why the version travels with the claim: silence is a property of a
+// build, not of a name, and an upstream that adds a config script in the next point release has invalidated the
+// row while leaving the name intact. A future package adds a row to the set below (or a caller mints a receipt
+// of its own); nothing about the audit changes.
 type PackageIntent =
     QuestionAnswered { package: KnownPromptingPackage, debconf_seed: NonEmptyStr }
   | QuestionUnanswered { package: KnownPromptingPackage }
   | UnclassifiedPackage { name: NonEmptyStr, debconf_seed: Optional<NonEmptyStr> }
+  | PackageVerifiedSilent { name: NonEmptyStr, silence: PackageSilenceReceipt }
+
+// THE WARRANT BEHIND A SILENCE CLAIM, AND HOW FAR IT REACHES. `observed_version` is the build the claim was made
+// against, and it travels with the claim because silence is a property of a BUILD, not of a name: an upstream
+// that grows a config script in the next point release has invalidated the row while leaving the name — and any
+// check that looks only at the name — intact.
+//
+// THE STANDING IS THE SHARED ONE, NOT A LOCAL INVENTION. extdeps.external_authority carries
+// CitedFigureStanding precisely so that a second "cited / transcribed / observed" coproduct cannot be minted per
+// domain; a local twin would have let a silence row claim a rung the corpus does not recognise. Its third arm
+// (ObservedByReceipt) is sealed upstream, which is the right strictness: a receipt of our own observation is
+// minted only by a fold that reads committed data, never by hand.
+type PackageSilenceReceipt = SilentReceipt {
+  observed_version: NonEmptyStr
+  standing: CitedFigureStanding
+}
 
 // THE AUDIT'S VERDICT ON ONE INTENT, IN THE SAME THREE PARTS THE INTENT IS STATED IN. Derived, never stored:
 // an intent that carried its own classification could disagree with the table it was checked against. The
 // question text travels with the unanswered arm so a refusal names the debconf key to seed rather than
 // pointing at a package and leaving the operator to look it up.
+// THREE ANSWERS TO "DID IT ASK?", BECAUSE THEY SEND THE OPERATOR TO THREE DIFFERENT PLACES: closed needs
+// nothing, open means go answer the named question in the seed, unclassified means nobody knows and the install
+// is not authorised until somebody does. A fourth is now needed because the intent gained a fourth state:
 type PackagePromptingVerdict =
     ClosedQuestion { name: NonEmptyStr, question: NonEmptyStr }
   | OpenQuestion { name: NonEmptyStr, question: NonEmptyStr }
   | UnclassifiedPrompting { name: NonEmptyStr }
+  // SILENT IS NOT CLOSED. "Closed" would fold it into the same answer as "answered", and the tally's whole
+  // meaning is the number of questions the seed CLOSED — a package that never asked one closed nothing. Naming
+  // the receipt in the arm keeps the evidence attached to the verdict, so a consumer can refuse a silent row
+  // whose standing is still transcribed instead of having to go and find the row again.
+  | NothingToAsk { name: NonEmptyStr, silence: PackageSilenceReceipt }
 
+// THE KEYS A ROW REQUIRES, WHICH IS NOT ALWAYS ONE (review: merry-fox-82). The shipped tzdata asks two:
+// debian/tzdata.postinst does `db_get tzdata/Areas` and then `db_get "tzdata/Zones/$AREA"` — the zone key is
+// PARAMETRIC on the area answer. Counting tzdata as a single question was the defect: a seed that supplied only
+// the region closed the audit and still left the installer stopped on the zone, which is the hung unattended
+// install this cut exists to prevent, reported as a pass. So the verdict is computed over EVERY key a row names,
+// and the parametric key is spelled with its placeholder because the area is the operator's choice, not a fact
+// this repository may fix. A future package that asks three things adds a third string here and the audit follows
+// without an edit.
+fn required_debconf_keys(package: KnownPromptingPackage) -> List<NonEmptyStr> {
+  match package {
+    ConsoleSetupPackage => ["console-setup/ask_detect"]
+    KeyboardConfigurationPackage => ["keyboard-configuration/layout"]
+    TzdataPackage => ["tzdata/Areas", "tzdata/Zones/"]
+    PostfixPackage => ["postfix/main_mailer_type"]
+    NtpPackage => ["ntp/utc"]
+    OpenSshServerPackage => ["openssh-server/password-authentication"]
+    CloudInitPackage => ["cloud-init/datasources"]
+  }
+}
+
+// THE AUDIT ANSWERS KEYS, NOT PACKAGES. Every key the row requires must appear in the seeded text, so a partially
+// answered package stays an open question instead of being credited as closed. Matching is by key substring rather
+// than by parsing debconf's own "owner key type value" line format, because this repository does not implement
+// debconf-set-selections and must not pretend to: the seed field is the text handed to the installer, and what is
+// checkable here is that every key the package will ask is present in it.
 fn package_prompting_verdict(intent: PackageIntent) -> PackagePromptingVerdict {
   match intent {
-    QuestionAnswered { package: named, debconf_seed: _ } =>
-      ClosedQuestion {
-        name: known_prompting_package_name(package: named),
-        question: known_prompting_package_question(package: named),
+    QuestionAnswered { package: named, debconf_seed: answer } =>
+      match all_required_keys_present(package: named, seed: answer as String) {
+        False => OpenQuestion {
+          name: known_prompting_package_name(package: named),
+          question: known_prompting_package_question(package: named),
+        }
+        True => ClosedQuestion {
+          name: known_prompting_package_name(package: named),
+          question: known_prompting_package_question(package: named),
+        }
       }
-    QuestionUnanswered { package: named } =>
-      OpenQuestion {
-        name: known_prompting_package_name(package: named),
-        question: known_prompting_package_question(package: named),
-      }
-    UnclassifiedPackage { name: un, debconf_seed: _ } => UnclassifiedPrompting { name: un }
+    QuestionUnanswered { package: named } => OpenQuestion {
+      name: known_prompting_package_name(package: named),
+      question: known_prompting_package_question(package: named),
+    }
+    UnclassifiedPackage { name: un, debconf_seed: _ } =>
+      UnclassifiedPrompting { name: un }
+    PackageVerifiedSilent { name: nm, silence: receipt } => NothingToAsk { name: nm, silence: receipt }
   }
+}
+
+fn all_required_keys_present(package: KnownPromptingPackage, seed: String) -> Bool {
+  fold(
+    required_debconf_keys(package: package),
+    init: true,
+    f: (all_present, key) => all_present && seed.contains(needle: key as String),
+  )
 }
 
 // THE ONE PLACE A KNOWN PROMPTING PACKAGE'S NAME IS SPELLED, for the known arms of PackageIntent and for the
@@ -499,12 +675,27 @@ fn package_prompting_verdict(intent: PackageIntent) -> PackagePromptingVerdict {
 // case the old fail-open audit got wrong: openssh-server appeared in a fixture as an unseeded, unclassified
 // package and earned a green non-interactive proof. A row is added by citing its template, never by deciding a
 // package "probably" does not ask.
+//
+// AND A ROW LEAVES THE SAME WAY. ifupdown used to be listed against "ifupdown/interactive_loopback", a question
+// the Debian package asked in older releases. Noble's ifupdown 0.8.35ubuntu1 does not: extracting the shipped
+// arm64 .deb from the Ubuntu pool (ports.ubuntu.com noble main) with dpkg-deb -e yields only conffiles, control
+// and md5sums — there is no config script and no templates file, so there is nothing for debconf to ask with.
+// Keeping the row would have been the mirror image of the fail-open defect: a seed that refuses a package for a
+// question it cannot ask trains the operator to disbelieve the refusals, and an unclassified package that DOES
+// prompt then reads as another false alarm. Interface configuration is still covered — by the missing-mirror arm
+// below, which is the way an Altra netboot actually becomes interactive over networking.
+//
+// WHY tzdata's question is spelled with two keys and not one. The package's config script reads tzdata/Areas and
+// then tzdata/Zones/<area> — the zone key is PARAMETRIC on the area answer, which is why a single flat key name
+// was wrong twice over: it named a template that does not exist ("tzdata/configure_timezone" appears nowhere in
+// the shipped control scripts), and it implied one question where the installer must satisfy a pair in sequence.
+// An answer seeded for the wrong key leaves the other one live, so the install still stops; a model that said
+// "the timezone question" could not express that failure.
 type KnownPromptingPackage =
     ConsoleSetupPackage
   | KeyboardConfigurationPackage
   | TzdataPackage
   | PostfixPackage
-  | IfupdownPackage
   | NtpPackage
   | OpenSshServerPackage
   | CloudInitPackage
@@ -513,9 +704,8 @@ fn known_prompting_package_question(package: KnownPromptingPackage) -> NonEmptyS
   match package {
     ConsoleSetupPackage => "console-setup/ask_detect: which keyboard and font to use"
     KeyboardConfigurationPackage => "keyboard-configuration/layout: which layout"
-    TzdataPackage => "tzdata/configure_timezone: which timezone"
+    TzdataPackage => "tzdata/Areas then tzdata/Zones/<area>: which region, then which city within it"
     PostfixPackage => "postfix/main_mailer_type: which mail configuration"
-    IfupdownPackage => "ifupdown/interactive_loopback: whether to configure interfaces"
     NtpPackage => "ntp/utc: whether the hardware clock is UTC"
     OpenSshServerPackage =>
       "openssh-server/password-authentication: whether to allow password authentication"
@@ -529,7 +719,6 @@ fn known_prompting_package_name(package: KnownPromptingPackage) -> NonEmptyStr {
     KeyboardConfigurationPackage => "keyboard-configuration"
     TzdataPackage => "tzdata"
     PostfixPackage => "postfix"
-    IfupdownPackage => "ifupdown"
     NtpPackage => "ntp"
     OpenSshServerPackage => "openssh-server"
     CloudInitPackage => "cloud-init"
@@ -546,7 +735,6 @@ fn known_prompting_packages() -> List<KnownPromptingPackage> {
     KeyboardConfigurationPackage,
     TzdataPackage,
     PostfixPackage,
-    IfupdownPackage,
     NtpPackage,
     OpenSshServerPackage,
     CloudInitPackage,
@@ -725,8 +913,42 @@ type TargetDiskSelector =
 // which one" the ordinary, reportable outcome rather than an exception a caller can swallow. Multiple
 // carries the candidates' serials so the report says WHICH TWO — a refusal that cannot name the twins is
 // a refusal nobody can act on.
+// WHY THE SELECTION CARRIES ITS OWN PROVENANCE, AND WHY THAT IS A SEALED RECORD. (review: merry-fox-82) A
+// binding used to take the selection as a free argument while also taking the seed, so a caller could bind a
+// disk that had been selected under a DIFFERENT selector than the one the seed names — a valid disk, the wrong
+// rule, and nothing in the record to show it. That is the same class of defect this module has removed twice
+// already: a record asserting something no rule established. The provenance is minted only by
+// select_target_disk, from the selector it was actually handed, and it is a payload record under
+// sole_constructor rather than an arm modifier, because a union-level modifier is not a wall — enforcement is
+// keyed on payload identity, and any arm of a sealed sum can be written by hand. With the provenance on the
+// selection, the binding needs no selector argument at all: it reads the rule out of the evidence, so "seed
+// says rule A, binding says rule B" is not refused at runtime, it is unnameable.
+type DiskSelectionProvenance sole_constructor {
+  selector: TargetDiskSelector
+  // How many observed disks the rule picked out, and how many the probe reported. Both are recorded so a
+  // reader can see the rule's discriminating power without re-running it: one-in-eight and one-in-one are
+  // different amounts of luck, and the second is a rule that was never tested against competition.
+  matched: Int
+  observed: Int
+}
+
+// THE ONLY DOOR THAT CAN SAY "INSTALL HERE", and the only minter of the provenance above. Every field is read
+// from arguments this function has already validated: the selector is the one the caller asked about, and the
+// counts come from the same filter the refusal arms report. There is no parameter for the caller to get wrong,
+// which is the whole point — a provenance a caller could write is a provenance that proves nothing.
+fn disk_selection_provenance(
+  selector: TargetDiskSelector,
+  observed: List<StorageDevice>,
+) -> DiskSelectionProvenance {
+  DiskSelectionProvenance {
+    selector: selector,
+    matched: candidate_count(selector: selector, observed: observed),
+    observed: observed.length(),
+  }
+}
+
 type TargetDiskSelection
-  = DiskSelected { device: StorageDevice }
+  = DiskSelected { device: StorageDevice, provenance: DiskSelectionProvenance }
   | SelectionRefused { cause: DiskSelectionRefusalCause }
 
 type DiskSelectionRefusalCause
@@ -740,25 +962,34 @@ type DiskSelectionRefusalCause
 // refused as not-persistent, not selected-and-then-regretted: the failure mode is writing a root
 // filesystem onto a cache device. Ephemeral and CachedMirror are therefore excluded by rule, not by
 // convention.
-fn selector_admits_observed(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
-  match storage_device_persistence(d: device) {
-    Persistent =>
-      match selector {
-        ByObservedSerial { serial: wanted } =>
-          match storage_device_serial(d: device) {
-            Present { value: observed } => observed == wanted
-            Absent => false
-          }
-        ByCatalogIdentity { part_number: wanted_part, capacity_bytes: wanted_capacity } =>
-          match device {
-            NvmeDevice { catalog: c, serial: _, persistence: _ } =>
-              c.part_number == wanted_part && measure_le(a: c.capacity_bytes, b: wanted_capacity) && measure_le(a: wanted_capacity, b: c.capacity_bytes)
-            BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } => false
-          }
+// THE RULE AND THE ARDNESS OF THE DISK ARE TWO QUESTIONS, ANSWERED SEPARATELY. The rule answers "does the
+// selector reach this device at all"; persistence answers "is the device it reached something you may erase". They
+// were once one function, and the conflation was a live defect: one ephemeral disk that the selector reaches
+// was counted as NOTHING MATCHING, sending the operator to re-admit a unit whose disks are fine instead of
+// telling them the one disk they reached is a cache. Each refusal names a different remedy, so each needs its
+// own count. A future selector variant enters through the closed match below; it cannot skip the persistence
+// gate, because the gate lives in the caller, not in the arms.
+fn selector_matches_rule(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
+  match selector {
+    ByObservedSerial { serial: wanted } =>
+      match storage_device_serial(d: device) {
+        Present { value: observed } => observed == wanted
+        Absent => false
       }
-    Ephemeral => false
-    CachedMirror => false
+    ByCatalogIdentity { part_number: wanted_part, capacity_bytes: wanted_capacity } =>
+      match device {
+        NvmeDevice { catalog: c, serial: _, persistence: _ } =>
+          c.part_number == wanted_part && measure_le(a: c.capacity_bytes, b: wanted_capacity) && measure_le(a: wanted_capacity, b: c.capacity_bytes)
+        BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } => false
+      }
   }
+}
+
+// WHAT THE RULE REACHES *AND* WHAT MAY BE ERASED. A device the rule reaches but which is not persistent is
+// still not admissible, so the split above cannot widen what may be installed onto -- it only changes which
+// refusal you get, and the witness pins exactly that.
+fn selector_admits_observed(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
+  selector_matches_rule(selector: selector, device: device) && device_is_persistent(device: device)
 }
 
 // WHY THE EMPTY AND MULTIPLE ARMS CANNOT BE SKIPPED BY A CALLER. This is the only function that turns a
@@ -770,47 +1001,126 @@ fn select_target_disk(
 ) -> TargetDiskSelection {
   let unexamined = match first_unexamined_candidate(selector: selector, observed: observed) {
     Present { value: cause } => SelectionRefused { cause: cause }
-    Absent => match candidate_count(selector: selector, observed: observed) {
-      0 => SelectionRefused { cause: NoDiskMatches { selector: selector } }
-      1 => match matched_candidate(selector: selector, observed: observed) {
-        Present { value: device } => DiskSelected { device: device }
-        Absent => SelectionRefused { cause: NoDiskMatches { selector: selector } }
+    // TWO COUNTS, TWO QUESTIONS, IN THIS ORDER. "How many disks does the rule pick out" and "how many of
+    // those may be erased" are different questions, and collapsing them used to make one of the refusal arms
+    // dead (see device_is_persistent). The walk answers identity first, admissibility second, and reports the
+    // first question that has no answer.
+    Absent =>
+      match candidate_count(selector: selector, observed: observed) {
+        0 => SelectionRefused { cause: NoDiskMatches { selector: selector } }
+        _ =>
+          match admissible_count(selector: selector, observed: observed) {
+            // NOTHING THE RULE PICKED OUT IS A LEGAL TARGET. This is the arm the old filter kept unreachable,
+            // and it is a different page of the runbook from "your rule matched nothing": here the rule found
+            // the drive and the drive is volatile backing or a cache mirror, so the operator goes to the tray,
+            // not to the selector.
+            0 => match matched_candidate(selector: selector, observed: observed) {
+              Present { value: offender } => SelectionRefused {
+                cause: CandidateIsNotPersistent {
+                  serial: candidate_identity_label(device: offender),
+                  persistence: storage_device_persistence(d: offender),
+                },
+              }
+              // UNREACHABLE, AND STILL ANSWERED AS A REFUSAL. The count above just said at least one device
+              // matched; an absent match here would mean the count and the filter disagreed, which is a bug in
+              // this module rather than a state of the world. Reported as "nothing matched" because that is the
+              // closest truthful thing to say, and a refusal can be investigated; there is no panic, no
+              // default, and no silent success on the other side of this arm.
+              Absent => SelectionRefused { cause: NoDiskMatches { selector: selector } }
+            }
+            1 => match admissible_candidate(selector: selector, observed: observed) {
+              Present { value: only } => DiskSelected {
+                device: only,
+                provenance: disk_selection_provenance(selector: selector, observed: observed),
+              }
+              Absent => SelectionRefused { cause: NoDiskMatches { selector: selector } }
+            }
+            _ => SelectionRefused {
+              cause: MultipleDisksMatch {
+                selector: selector,
+                // THE NAMES ARE THE LEGAL ONES. The operator's job is to tell two installable drives apart;
+                // listing a drive that could never be installed anyway points them at the wrong bay.
+                candidates: admissible_candidate_labels(selector: selector, observed: observed),
+              },
+            }
+          }
       }
-      _ => SelectionRefused {
-        cause: MultipleDisksMatch {
-          selector: selector,
-          candidates: matched_candidate_serials(selector: selector, observed: observed),
-        },
-      }
-    },
   }
   unexamined
+}
+
+// THE PERSISTENCE TEST, NOW REACHABLE, AND WHY IT CANNOT BE MERGED BACK INTO THE PREDICATE. An nvme namespace
+// reported as ephemeral is one whose contents do not survive a reset — volatile backing, a ram-backed namespace,
+// a device the firmware hands out fresh — and an installer that lays a root filesystem on one has produced an
+// installed system that evaporates on the next power cycle, on a board with no console to notice. Refusing is
+// the only answer available at seed time. It has to run on the MATCHED candidate rather than as a filter, so
+// that the refusal says "the disk your rule picked is not a legal target" instead of the far more misleading
+// "your rule matched nothing" — the first sends the operator to the drive, the second sends them to the selector.
+fn device_is_persistent(device: StorageDevice) -> Bool {
+  match storage_device_persistence(d: device) {
+    Persistent => true
+    Ephemeral => false
+    CachedMirror => false
+  }
 }
 
 // THE COUNT IS THE RULE'S DISCRIMINATING POWER, MEASURED. A selector that matches every disk on the
 // board is not closer to working than one that matches none; both are guesses, and the shape of the
 // refusal is what makes the caller go tighten the rule instead of trusting the ordering of a probe.
+// Filtering on the MATCH predicate (identity, medium, model — never a device name), so that a match count
+// answers "how many disks does this rule pick out" and nothing else.
 fn candidate_count(selector: TargetDiskSelector, observed: List<StorageDevice>) -> Int {
-  observed.filter(device => selector_admits_observed(selector: selector, device: device)).length()
+  observed.filter(device => selector_matches_rule(selector: selector, device: device)).length()
 }
 
 fn matched_candidate(
   selector: TargetDiskSelector,
   observed: List<StorageDevice>,
 ) -> Optional<StorageDevice> {
-  observed.filter(device => selector_admits_observed(selector: selector, device: device)).first()
+  observed.filter(device => selector_matches_rule(selector: selector, device: device)).first()
 }
 
-// WHICH DISKS COLLIDED, BY SERIAL. A refusal that cannot name the twins is a refusal nobody can act on:
-// the operator's next step is reading the labels off the bays, and "two matched" does not say which two.
-// A candidate the probe never read a serial for is named by its part number, because an absent
-// observation is reported as absent, never as an empty string.
+// THE ADMISSIBLE FILTERS: the same rule, then the persistence test that keeps a cache mirror or volatile
+// namespace out of the installer's way. Kept beside the match helpers rather than folded into them so the two
+// questions stay countable separately — that separation is the whole fix, and it is what makes the witness able
+// to say "the rule matched, and it was refused for persistence" instead of "the rule matched nothing".
+fn admissible_count(selector: TargetDiskSelector, observed: List<StorageDevice>) -> Int {
+  observed
+    .filter(device => selector_matches_rule(selector: selector, device: device))
+    .filter(device => device_is_persistent(device: device))
+    .length()
+}
+
+fn admissible_candidate(
+  selector: TargetDiskSelector,
+  observed: List<StorageDevice>,
+) -> Optional<StorageDevice> {
+  observed
+    .filter(device => selector_matches_rule(selector: selector, device: device))
+    .filter(device => device_is_persistent(device: device))
+    .first()
+}
+
+fn admissible_candidate_labels(
+  selector: TargetDiskSelector,
+  observed: List<StorageDevice>,
+) -> List<NonEmptyStr> {
+  observed
+    .filter(device => selector_matches_rule(selector: selector, device: device))
+    .filter(device => device_is_persistent(device: device))
+    .map(device => candidate_identity_label(device: device))
+}
+
+// WHICH DISKS COLLIDED, BY SERIAL. A refusal that cannot name the twins is a refusal nobody can act on: the
+// operator's next step is reading the labels off the bays, and "two matched" does not say which two. A candidate
+// the probe never read a serial for is named by its part number, because an absent observation is reported as
+// absent, never as an empty string.
 fn matched_candidate_serials(
   selector: TargetDiskSelector,
   observed: List<StorageDevice>,
 ) -> List<NonEmptyStr> {
   observed
-    .filter(device => selector_admits_observed(selector: selector, device: device))
+    .filter(device => selector_matches_rule(selector: selector, device: device))
     .map(device => candidate_identity_label(device: device))
 }
 
@@ -1065,17 +1375,29 @@ fn first_blocking_refusal(intents: List<PackageIntent>) -> Optional<SeedInteract
 // OpenQuestion names the debconf key to seed; the unclassified arm deliberately carries NO question field,
 // because this module has not observed a question from that package and printing one would be fabricating the
 // very evidence the refusal is complaining about.
+// AN ANSWER COUNTS AS AN ANSWER ONLY IF IT ANSWERS EVERY KEY THE PACKAGE WILL ASK. This is the arm the audit
+// actually reaches, and this is what was wrong: the key-by-key check existed (all_required_keys_present) but was
+// reachable only through package_prompting_verdict, which nothing in the module called — so the audit credited a
+// package whose seed text supplied one of its two keys as fully answered. tzdata is exactly that case: its
+// postinst reads tzdata/Areas and then tzdata/Zones/$AREA, so a half-seeded tzdata closed the non-interactivity
+// audit and the installer would still have stopped on the zone at a console nobody is standing at. The check was
+// never missing; the wiring was. The audit now CLASSIFIES ONCE, through package_prompting_verdict, and maps that
+// one verdict onto its cause — so there is no second, weaker reading of the same intent for a future caller (or a
+// future witness) to reach by mistake, which is what the comment above this function has always claimed and the
+// code never did.
 fn blocking_refusal(intent: PackageIntent) -> Optional<SeedInteractiveCause> {
-  match intent {
-    QuestionAnswered { package: _, debconf_seed: _ } => Absent
-    QuestionUnanswered { package: named } => Present {
-      value: PackagePrompts {
-        name: known_prompting_package_name(package: named),
-        question: known_prompting_package_question(package: named),
-      },
+  match package_prompting_verdict(intent: intent) {
+    ClosedQuestion { name: _, question: _ } => Absent
+    // THE CAUSE IS THE VERDICT'S OWN, NOT A FRESH READING OF THE INTENT. name/question come from the closed
+    // vocabulary function (known_prompting_package_*), so a refusal an operator reads is spelled the way the
+    // archive spells it and no second copy of that spelling can drift.
+    OpenQuestion { name: prompted, question: asked } => Present {
+      value: PackagePrompts { name: prompted, question: asked },
     }
-    UnclassifiedPackage { name: un, debconf_seed: _ } =>
-      Present { value: PackagePromptingUnclassified { name: un } }
+    UnclassifiedPrompting { name: un } => Present { value: PackagePromptingUnclassified { name: un } }
+    // SILENT BLOCKS NOTHING. This arm is the whole point of the fourth state: the audit's green path becomes
+    // reachable for a board that installs BMC and diagnostic tooling, which under three arms it never was.
+    NothingToAsk { name: _, silence: _ } => Absent
   }
 }
 
@@ -1092,6 +1414,10 @@ fn intent_answered_its_question(intent: PackageIntent) -> Bool {
     QuestionAnswered { package: _, debconf_seed: _ } => true
     QuestionUnanswered { package: _ } => false
     UnclassifiedPackage { name: _, debconf_seed: _ } => false
+    // SILENT IS NOT ANSWERED. The tally counts questions the seed CLOSED; a package that never asked one closed
+    // nothing, so crediting it would let a seed pad its own proof of non-interactivity by installing packages.
+    // This arm and the blocking arm below are deliberately different answers about the same value.
+    PackageVerifiedSilent { name: _, silence: _ } => false
   }
 }
 
@@ -1213,7 +1539,16 @@ fn build_altra_autoinstall_seed(
 // that string — a sole_constructor guarded by a heuristic is a brand, against DESIGN §5 ("correctness by
 // construction, not validation") and §4b ("a brand is cosmetic until construction enforces it"). The seed never
 // holds this value: it is taken at the projection edge by whoever writes the file and dropped immediately.
-type AdminPasswordHashReceipt sole_constructor { crypt_digest: NonEmptyStr }
+// WHY THE RECEIPT CARRIES THE LOCATOR AND VERSION IT WAS READ FROM, AND NOT ONLY THE DIGEST. A receipt that
+// records only a hash can be paired with any handle at projection time: the projection could hand a board a hash
+// read from secret-v2 while the seed says the credential is secret-v7, and both records would look internally
+// consistent. That is the defect merry-fox-82 caught, and it is the one this module's own digest argument keeps
+// making — a record asserting a relationship nothing established. Binding the identity of the secret into the
+// receipt makes the join checkable, and the fields are a locator and a version STRING, never the secret itself:
+// the door's whole rule is that a credential leaves this module as a reference, and a receipt is the artifact
+// most likely to be logged. sole_constructor stays on the payload record, and the only minter (below) fills both
+// fields from the handle it was passed, so nobody can write a receipt whose provenance is invented.
+type AdminPasswordHashReceipt sole_constructor { crypt_digest: NonEmptyStr, secret_locator: NonEmptyStr, secret_version: NonEmptyStr }
 
 // ONE SUM, SO AN ATTEMPT ANSWERS "WHICH PART FAILED" WITHOUT A SECOND FUNCTION RECOMPUTING THE VERDICT (DESIGN
 // §5: every path succeeds fully or fails with a typed, located diagnostic; §2: the same answer computed twice is
@@ -1237,6 +1572,22 @@ type AdminPasswordRefusalCause
   | DigestAbsent
   | DigestWrongLength { length: CharacterCount, expected: CharacterCount }
   | DigestNotInCryptAlphabet
+  // THE SHARED RESERVED-CHARACTER REFUSAL, and why it is its own arm rather than a fold of the two above.
+  // libxcrypt scans the WHOLE setting — prefix, cost, salt and digest alike — before the scheme parser runs, and
+  // refuses ! * : ; \ and every non-printable byte wherever they appear. A '!' inside the DIGEST is therefore not
+  // DigestNotInCryptAlphabet with extra steps: the digest arm asks "is this a base64-crypt character", and '!'
+  // would be refused there too, but only by accident of the alphabet, while ':' IS a character the shared scan
+  // refuses and the digest alphabet does not contain either way. The remedies differ, which is the test for
+  // separate arms: an alphabet failure means the digest was not produced by a crypt generator, while a reserved
+  // character means the string was assembled by hand or truncated through a shell, and on a headless board those
+  // are different operators doing different things. No arm carries the offending character or any part of the
+  // candidate, for the reason the header gives: the candidate may itself be the secret.
+  | SettingHoldsReservedCharacter { reserved: NonEmptyStr }
+  // A RECEIPT FOR A CREDENTIAL THAT WAS DECLINED. The seed said "no password", so there is no secret to read a
+  // hash from; admitting one here would let a projection install a hash nobody sourced, and it would do so under
+  // a record that looks like a read. Separate from NotACryptDigest because the remedy is not "fix the string" —
+  // it is "the seed and the receipt disagree about whether this board has a password at all".
+  | CredentialHandleUnset
 
 // THE FIGURES COME FROM UPSTREAM, NOT FROM THIS FILE (review 81975). Scheme token, salt bounds, digest
 // alphabet, digest width and the cost class are one cited row in extdeps.libxcrypt.crypt_scheme; reading them
@@ -1264,23 +1615,124 @@ type AdminPasswordRefusalCause
 // bounded over fixed-width strings, so evaluating all of them costs nothing that a short-circuit would save, and
 // it keeps this function one flat list instead of a six-deep nest in which an arm can be forgotten.
 fn admin_password_hash_receipt(
+  credential: AdminCredentialPosture,
   crypt_digest: NonEmptyStr,
 ) -> AdminPasswordReceiptResult {
+  // A RECEIPT IS ONLY POSSIBLE FOR A CREDENTIAL THAT EXISTS. A seed that declined a password has no secret to
+  // have read a hash from, so a receipt naming that handle would be a record of a read that cannot have happened
+  // — and it is exactly the record that would let a projection install a hash nobody sourced. Refused, with the
+  // reason named rather than a bare absence: "no password was configured" and "the hash failed the format door"
+  // send the operator to different shelves.
+  match credential {
+    PasswordUnset => ReceiptRefused { cause: CredentialHandleUnset }
+    PasswordHandle { handle: source } =>
+      match admin_digest_refusal(crypt_digest: crypt_digest) {
+        Present { value: cause } => ReceiptRefused { cause: cause }
+        Absent => ReceiptAccepted {
+          receipt: AdminPasswordHashReceipt {
+            crypt_digest: crypt_digest,
+            // Filled from the handle the caller named, not from an argument. There is no parameter here for a
+            // caller to mislabel, which is the only reason the fields are worth trusting.
+            secret_locator: source.secret_locator,
+            secret_version: source.secret_version,
+          },
+        }
+      }
+  }
+}
+
+// THE FORMAT DOOR, SEPARATED FROM THE PROVENANCE SO ITS OWN TESTS STAY INTERESTING: this is the part that reads
+// the string, and nothing else.
+fn admin_digest_refusal(crypt_digest: NonEmptyStr) -> Optional<AdminPasswordRefusalCause> {
   let segments = (crypt_digest as String).split(sep: "$")
   let count = list_length(items: segments)
-  let verdict = first_refusal(
+  first_refusal(
     causes: [
+      // THE SHARED SCAN RUNS FIRST, BECAUSE UPSTREAM RUNS IT FIRST. libxcrypt checks the whole setting string in
+      // lib/crypt.c before it dispatches to the sha512 parser (crypt.c at the cited tag: check_badsalt_chars is
+      // called, and only after it returns does get_hashfn pick the scheme). Order is not cosmetic here: a
+      // candidate with a '!' in its digest breaks both the shared scan and the digest alphabet, and the diagnosis
+      // an operator acts on is the shared one — the string was assembled by something other than a crypt
+      // generator. Reporting the alphabet failure instead would send them to the secret store for a shell bug.
+      // See crypt_acceptance_rules in extdeps.libxcrypt.crypt_scheme, which states the same order as data and is
+      // swept by the witness so a reordering here cannot become silent.
+      reject_shared_scan(candidate: crypt_digest),
       reject_shape(segments: segments, count: count),
       reject_scheme(segments: segments, count: count),
-      reject_cost(segments: segments, count: count),
+      reject_cost(segments: segments),
       reject_salt(segments: segments, count: count),
       reject_digest(segments: segments, count: count),
     ],
   )
-  match verdict {
-    Present { value: cause } => ReceiptRefused { cause: cause }
-    Absent => ReceiptAccepted { receipt: AdminPasswordHashReceipt { crypt_digest: crypt_digest } }
-  }
+}
+
+// WHAT THE SHIPPING LIBRARY DOES, RECORDED WHERE THE OBSERVATION BELONGS (review 82734). These rows
+// used to sit in extdeps.libxcrypt.crypt_scheme, which is the wrong layer: DESIGN §3b puts
+// "observations this repository makes" in the CONSUMING layer, and §3's decomposition line says the
+// same thing from the other end -- "observations this repository makes are receipts in the observing
+// layer, not facts of the observed upstream". libxcrypt publishes a document; it does not publish
+// what its shipped .so did when this repository called it. Every row below is therefore ours, and it
+// is consumed here rather than shelved: the two sweep witnesses run every row through the door above
+// and require this module's verdict to agree with the recorded one, so the rows are a differential
+// against the library that ships in the target image, and deleting one or flipping one reddens a
+// witness. (The width disagreements -- a one-character salt, an 85-character digest, which the
+// LIBRARY accepts and this module's shadow-entry contract refuses -- are deliberately NOT in either
+// list: they are this module's own policy, and they are pinned by their own witnesses.)
+type CryptLibraryVerdict
+  = LibraryAccepted { setting: NonEmptyStr }
+  | LibraryRefused { setting: NonEmptyStr }
+
+// THE MEASUREMENT, AS A CLOSED ROW RATHER THAN A PROSE PARAGRAPH. Three arms and no free text: the
+// build the measurement was taken against, the rows, and the single thing still owed. The build is a
+// field and not a comment because a verdict recorded without its build is unusable later -- the same
+// candidate was refused on one Debian libcrypt1 and accepted on another, so "libxcrypt refuses this"
+// means nothing until the build is named. Absence is not modeled as an empty string anywhere here:
+// `owed` is Optional, because a measurement can be complete for its own purpose, and pretending it
+// always owes something would invent an obligation nobody can discharge.
+type CryptLibraryAcceptance {
+  observed_build: NonEmptyStr,
+  observed_on: List<NonEmptyStr>,
+  verdicts: List<CryptLibraryVerdict>,
+  owed: Optional<NonEmptyStr>,
+}
+
+data crypt_library_acceptance: CryptLibraryAcceptance = CryptLibraryAcceptance {
+  observed_build: "libcrypt1 1:4.4.36-4build1 (Ubuntu Noble), libcrypt.so.1.1.0, crypt_r(password, setting)" as NonEmptyStr,
+  observed_on: [
+    "amd64 Noble, the archive build linked directly" as NonEmptyStr,
+    "arm64 Noble native (the target architecture)" as NonEmptyStr,
+    "the CI image, Debian libcrypt1 4.4.38-1" as NonEmptyStr,
+  ],
+  verdicts: [
+    LibraryAccepted { setting: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // plain salt
+    LibraryAccepted { setting: "$6$rounds=1000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost at the documented floor
+    LibraryAccepted { setting: "$6$rounds=999999999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost at the documented ceiling
+    LibraryAccepted { setting: "$6$~a.b_c-d+e$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // punctuation the class admits
+    LibraryAccepted { setting: "$6$sa=ltx$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // an '=' inside the salt
+    LibraryAccepted { setting: "$6$ROUNDS=1000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // the marker written upper-case
+    LibraryAccepted { setting: "$6$s$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // one character
+    LibraryAccepted { setting: "$6$ssssssssssssssss$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // sixteen characters
+    LibraryRefused { setting: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
+    LibraryRefused { setting: "$6$sa:ltsa$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
+    LibraryRefused { setting: "$6$sa*tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
+    LibraryRefused { setting: "$6$sa ltx$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
+    LibraryRefused { setting: "$6$sa\tltx$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
+    LibraryRefused { setting: "$6$rounds=999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=1000000000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=-1$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=1 000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=05000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+    LibraryRefused { setting: "$6$rounds=1000rounds=garbage$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
+  ],
+  owed: Present { value: "*0 tells you the library refused, not WHY: reserved-character and malformed-setting both arrive as errno=22, and separating them needs the library source or a status field the probe does not read. The refusals above are established; their causes are not." as NonEmptyStr },
+}
+
+// THE ROWS, FOR A CONSUMER THAT MUST CHECK ITS OWN VERDICT AGAINST THEM. A function rather than the
+// record, so a witness folds the rows without unpacking the build twice.
+fn crypt_library_verdicts() -> List<CryptLibraryVerdict> {
+  crypt_library_acceptance.verdicts
 }
 
 // GRAMMAR ORDER IS THE ORDER OF DIAGNOSTIC USEFULNESS: "that is not a digest at all" is worth more than "and its
@@ -1301,6 +1753,42 @@ fn first_refusal(
 // FOUR SEGMENTS WITHOUT A COST, FIVE WITH ONE — and nothing else. The count is asserted rather than assumed, so a
 // candidate with an extra '$' inside the salt region is refused for the shape it actually has instead of being
 // truncated into something that looks well-formed.
+// THE SHARED SCAN, DELEGATED TO THE SHELF THAT OWNS THE RULE. This function owns only the naming: it turns the
+// shelf's boolean into the arm an operator acts on, and it names WHICH reserved character was found without
+// quoting anything else about the candidate. Naming the character is not a leak — the set is five characters,
+// all of them published in the citation — and it is the difference between "your string is wrong somewhere" and
+// "your string contains a colon", the second of which a person can fix at a keyboard on a board they cannot
+// reach. No other part of the candidate travels out of this function.
+fn reject_shared_scan(candidate: NonEmptyStr) -> Optional<AdminPasswordRefusalCause> {
+  match shared_restriction_rejects(candidate: candidate as String) {
+    False => Absent
+    True => Present { value: SettingHoldsReservedCharacter { reserved: first_reserved_character(candidate: candidate) } }
+  }
+}
+
+// WHICH CHARACTER, ANSWERED BY ASKING THE SHELF'S OWN LIST. Folded over the published reserved set rather than
+// scanning byte ranges locally: the set is upstream's, it is already data on the shelf, and a second copy here
+// would be a second place to be wrong. If nothing in the set matches, the refusal must still be answered — that
+// is the printable-range half of the rule (space, tab, DEL, high bytes), which is why the fallback names the
+// range rather than claiming one of the five.
+fn first_reserved_character(candidate: NonEmptyStr) -> NonEmptyStr {
+  match fold(
+    crypt_reserved_characters(),
+    init: "" as String,
+    f: (found, character) =>
+      match found == "" {
+        False => found
+        True => match (candidate as String).contains(needle: character as String) {
+          True => character as String
+          False => ""
+        }
+      },
+  ) {
+    "" => "non-printable"
+    found => found as NonEmptyStr
+  }
+}
+
 fn reject_shape(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
   match count == 4 || count == 5 {
     False => Present { value: NotACryptDigest }
@@ -1337,33 +1825,44 @@ fn reject_scheme(segments: List<String>, count: Int) -> Optional<AdminPasswordRe
   }
 }
 
-// THE COST EXISTS ONLY IN THE FIVE-SEGMENT SPELLING, and where it is spelled at all it must satisfy the
-// upstream class and range, which the cited row decides from the text alone. A salt can never be mistaken for
-// this slot: '=' is in no digest character and appears in no legal salt, so no valid salt begins with "rounds=".
-fn reject_cost(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
-  match count == 5 {
-    False => Absent
-    True =>
+// THE COST IS RECOGNISED AT ITS POSITION, NOT BY HOW MANY DELIMITERS THE CANDIDATE HAPPENS TO CONTAIN
+// (review: merry-fox-82). The old rule read `count == 5` and only then looked at the cost, which silently made
+// segment COUNT the thing that decides — and libxcrypt never counts segments. It memcmps "rounds=" at the start
+// of the field that follows the prefix. Measured consequences of the count rule, on the shipped library:
+//
+//   "$6$rounds=abc$<86>"  three fields, no salt   -> the LIBRARY REFUSES; the count rule called it a salt and
+//                                                    ACCEPTED it. A malformed cost admitted as a salt is exactly
+//                                                    the credential that looks valid until login fails.
+//   "$6$rounds=1000rounds=garbage$saltsalt$<86>"   -> refused either way, but by the count rule for the WRONG
+//                                                    reason (SaltTooLong), which sends the operator to the salt
+//                                                    instead of to the generator that emitted the string.
+//   "$6$sarounds=1000$<86>"                        -> a SALT that merely contains the marker; the library accepts
+//                                                    it (case-sensitive memcmp, and it is not at position zero).
+//                                                    So "does the candidate contain rounds=" cannot decide either.
+//
+// The rule now: look at the field that follows the scheme token; if it BEGINS with the marker, that field is a
+// cost and the WHOLE field must be marker + digits, with no trailing content behind it. If it does not begin with
+// the marker, there is no cost and this check has nothing to say — the salt check owns that field, including a
+// salt that contains the marker. Deliberately not a split on the marker anywhere in the string: the first split
+// was what let garbage hide after a valid cost, because the digits field it produced looked well-formed while the
+// rest of the field was never examined.
+fn reject_cost(segments: List<String>) -> Optional<AdminPasswordRefusalCause> {
+  match piece_at(pieces: segments, index: 2) {
+    // Nothing follows the scheme token: no cost, and reject_salt reports the absent salt.
+    Absent => Absent
+    Present { value: field } =>
       match sha512_crypt_format {
         Sha512CryptFormat {
           scheme_token: _, cost_marker: marker, salt_forbidden_characters: _, salt_least_characters: _,
           salt_greatest_characters: _, digest_alphabet: _, digest_exact_characters: _, cost_least_digits: _,
           cost_greatest_digits: _, figure_standing: _,
         } =>
-          match piece_at(pieces: segments, index: 2) {
-            Absent => Present { value: RoundsMalformed }
-            Present { value: cost } =>
-              match cost.starts_with(prefix: marker as String) {
+          match field.starts_with(prefix: marker as String) {
+            False => Absent
+            True =>
+              match cost_field_is_well_formed(digits: field.substring(start: marker.length(), end: field.length())) {
+                True => Absent
                 False => Present { value: RoundsMalformed }
-                True =>
-                  match piece_at(pieces: cost.split(sep: marker as String), index: 1) {
-                    Absent => Present { value: RoundsMalformed }
-                    Present { value: digits } =>
-                      match cost_field_is_well_formed(digits: digits) {
-                        True => Absent
-                        False => Present { value: RoundsMalformed }
-                      }
-                  }
               }
           }
       }
@@ -1394,6 +1893,17 @@ fn reject_salt(segments: List<String>, count: Int) -> Optional<AdminPasswordRefu
               match measure_le(a: measured_salt, b: greatest) {
                 False => Present { value: SaltTooLong { length: measured_salt, ceiling: greatest } }
                 True =>
+                  // THE SALT CLASS, WHICH THE SHARED SCAN ALREADY ENFORCES — AND WHY IT IS STILL HERE. Every
+                  // character this class forbids is refused before this line can be reached: '$' cannot occur in
+                  // the segment at all, because '$' is what the segmentation splits on, and ':', CR and LF are
+                  // refused by the shared scan that runs first. So the refusal below is unreachable while the
+                  // ordering holds, which is exactly why the ordering is a PINNED PROPERTY rather than an
+                  // assumption (witness: the_salt_character_class_is_subsumed_by_the_shared_scan) — if a future
+                  // edit reorders the walk or weakens the scan, this class is what still refuses a delimiter in
+                  // a salt, and the witness that pins the subsumption goes red at the same moment. It is NOT a
+                  // substitute for the scan: the class alone misses '!', ';', '*', backslash and every
+                  // non-printable byte, and a shelf that had only the class is what accepted "$6$sa!tsalt$..."
+                  // on the strength of the .hash grammar.
                   match salt_holds_only_admitted_characters(salt: salt) {
                     True => Absent
                     False => Present { value: SaltHoldsForbiddenCharacter }
@@ -1473,37 +1983,92 @@ fn piece_at(pieces: List<String>, index: Int) -> Optional<String> {
 // own constructor. Two independent refusals follow: PasswordUnset cannot fill a field upstream requires (a
 // shape gap reported upstream, not patched around here), and a receipt that is not a digest cannot reach the
 // projection at all.
+// THE PROJECTION JOINS THE RECEIPT TO THE CREDENTIAL THE SEED NAMES (review: merry-fox-82). Before this, the
+// receipt's content was trusted and its provenance was not looked at: a digest read from secret-v2 could be
+// projected onto a seed whose handle points at secret-v7, or onto a seed that declined a password entirely, and
+// both produced a successful identity. The join compares the receipt's locator and version against the handle the
+// seed carries — fields that only the door could have filled, from the handle it was passed — so agreement here
+// means a read actually happened against the named secret.
+//
+// WHY A TYPED VERDICT RATHER THAN Absent. Every way this can fail is a different operator action: no receipt
+// means nothing was read; a mismatch means the wrong secret was read (or the handle moved under the seed); a
+// declined credential means the seed and the caller disagree about whether the board has a password. Returning
+// `Absent` for all three is how a provisioning program ends up re-running a step forever on a mismatch it cannot
+// name. Absence of a password is NOT reported as an error either — it is its own arm, because a key-only board is
+// a legitimate seed and its identity legitimately has no hash.
+type IdentityProjection
+  = ProjectedIdentity { identity: AutoinstallIdentity }
+  | IdentityHasNoCredential { posture: NonEmptyStr }
+  | IdentityReceiptMissing
+  | IdentityReceiptIsForeign { expected: NonEmptyStr, presented: NonEmptyStr }
+
 fn project_autoinstall_identity(
   seed: AltraAutoinstallSeed,
   binding_hostname: NonEmptyStr,
   receipt: Optional<AdminPasswordHashReceipt>,
-) -> Optional<AutoinstallIdentity> {
+) -> IdentityProjection {
   match seed.credential {
-    PasswordUnset => Absent
-    PasswordHandle { handle: _ } =>
+    // THE POSTURE IS REPORTED, NOT THE ABSENCE. "No password on this seed" is the answer a caller needs; whether
+    // that is fine depends on the console and key posture the seed already proved at admission, and the caller can
+    // see it there. Nothing here pretends the identity is complete.
+    PasswordUnset => IdentityHasNoCredential { posture: "credential-unset" }
+    PasswordHandle { handle: source } =>
       match receipt {
-        Present { value: digest } =>
-          Present {
-            value: AutoinstallIdentity {
-              hostname: binding_hostname,
-              username: "gunbc-admin" as NonEmptyStr,
-              realname: "gunbc provisioning" as NonEmptyStr,
-              hashed_password: digest.crypt_digest,
-            },
+        Absent => IdentityReceiptMissing
+        Present { value: issued } =>
+          match issued.secret_locator == source.secret_locator && issued.secret_version == source.secret_version {
+            // A receipt from a different secret is refused by name — locator and version, both of which are
+            // references and neither of which is the secret. Naming them is how an operator tells "the vault
+            // moved" from "the seed is stale", and it is safe precisely because a locator is not a credential.
+            False => IdentityReceiptIsForeign {
+              expected: locator_version(locator: source.secret_locator, version: source.secret_version),
+              presented: locator_version(locator: issued.secret_locator, version: issued.secret_version),
+            }
+            True => ProjectedIdentity {
+              identity: AutoinstallIdentity {
+                hostname: binding_hostname,
+                username: "gunbc-admin" as NonEmptyStr,
+                realname: "gunbc provisioning" as NonEmptyStr,
+                hashed_password: issued.crypt_digest,
+              },
+            }
           }
-        Absent => Absent
       }
   }
+}
+
+fn locator_version(locator: NonEmptyStr, version: NonEmptyStr) -> NonEmptyStr {
+  concat(concat(locator, "@"), version) as NonEmptyStr
 }
 
 // THE DISK POLICY IS DERIVED FROM THE SELECTION, NEVER FROM A NAME. Upstream's storage policy is a two-member
 // enum with no selector field, which is exactly why the selection must happen HERE, before the projection: the
 // payload can only say "lay down directly", and which disk that means is decided by the rule over the probe's
 // observations. A projection that accepted a device name would be the guess this module exists to prevent.
-fn project_storage_policy(selection: TargetDiskSelection) -> Optional<AutoinstallStoragePolicy> {
+// THE PROJECTION KEEPS THE DISK, OR IT SAYS IT DID NOT. (review: merry-fox-82) The upstream
+// AutoinstallStoragePolicy is a two-arm switch with nowhere to put a device — it says "lay out one direct
+// filesystem", not "onto which disk" — and this module must not edit it. The old projection returned that
+// policy for a selected disk and dropped the disk on the floor, which is the worst shape a projection can
+// have: it reports success, and the field the whole decision turned on is gone. A downstream consumer reading
+// the policy alone could lay out the correct KIND of filesystem on the wrong drive, which is the failure this
+// cut was chartered to prevent.
+//
+// So the projection is a pair or a verdict, never a bare policy: a resolved projection carries the evidence
+// that the device is the one the seed's rule selected, and every way the selection can fail now has an arm that
+// says which. Adding a device-bearing policy upstream would add an arm here; quietly returning the policy by
+// itself is what the type now makes impossible.
+type StorageProjection
+  = Projected { policy: AutoinstallStoragePolicy, device: BoundDiskEvidence, provenance: DiskSelectionProvenance }
+  | ProjectionUnresolved { cause: DiskSelectionRefusalCause }
+
+fn project_storage_policy(selection: TargetDiskSelection) -> StorageProjection {
   match selection {
-    DiskSelected { device: _ } => Present { value: StoragePolicyDirectLayout }
-    SelectionRefused { cause: _ } => Absent
+    DiskSelected { device: chosen, provenance: provenance } => Projected {
+      policy: StoragePolicyDirectLayout,
+      device: bound_disk_evidence(device: chosen, provenance: provenance),
+      provenance: provenance,
+    }
+    SelectionRefused { cause: cause } => ProjectionUnresolved { cause: cause }
   }
 }
 
@@ -1614,9 +2179,15 @@ fn console_stanza_diagnostic(stanza: NonInteractiveConsoleStanza) -> NonEmptyStr
   }
 }
 
+// THE SEEDED SOURCE IS COBERED, NOT JUST ITS EXISTENCE. "seeded-netplan" alone says the operator supplied
+// addressing and nothing about WHAT it supplied, so two seeds with different Netplan — wrong VLAN, wrong static,
+// netplan that never brings the BMC-reachable interface up — render and digest identically and the receipt cannot
+// answer the question it exists to answer, "which configuration did this machine boot". The source's content is
+// hashed rather than pasted: it can carry addresses and credentials that have no business in a report line.
 fn addressing_diagnostic(addressing: SeedAddressing) -> NonEmptyStr {
   match addressing {
-    SeededNetplan { source: _ } => "seeded-netplan"
+    SeededNetplan { source: s } =>
+      concat("seeded-netplan,", content_coverage(label: "netplan", content: s as String)) as NonEmptyStr
     InstallerManaged => "installer-managed"
   }
 }
@@ -1665,8 +2236,41 @@ fn int_diagnostic(count: Int) -> NonEmptyStr {
 // makes unnameable, which is the kind of decoration a reader later mistakes for reachability. The key count is
 // rendered in BOTH rows, so dropping an authorized key still moves the digest, and the console story is stated
 // by matching the consumer's own sum type rather than by a Bool beside it.
+// MATERIAL CONTENT ENTERS THE DIGEST AS A HASH, NOT AS PLAINTEXT. Three of this seed's inputs are content that
+// the render must cover without reproducing: the authorized key material (so an equal-count swap of keys moves
+// the digest — the bug was that a COUNT was rendered, which two swapped keys leave unchanged), the Netplan
+// source (which decides the installed system's addressing, and a tag alone lets one source be swapped for
+// another), and each seeded debconf answer (which is the answer to the question this cut exists to close, so a
+// swapped value that still "answers" the question must not digest identically).
+//
+// WHY A HASH AND NOT THE STRING. This render is a diagnostic and an identity, not a config file (see the note on
+// render_altra_autoinstall_seed): it is printed in reports and compared in receipts, and key material and seeded
+// values have no business being copied into a log line. A digest is the honest middle: it makes the identity
+// depend on the bytes while publishing nothing, and it is the same primitive the seed digest itself is built
+// from, so there is no second hashing story to keep consistent. A future requirement to SHOW a value must add a
+// separate rendering function with its own consumers, not weaken this one.
+fn content_coverage(label: NonEmptyStr, content: String) -> NonEmptyStr {
+  concat(concat(label, "="), content_hash_atom(value: content as NonEmptyStr).digest as String) as NonEmptyStr
+}
+
+// THE KEY LIST IS FOLDED, NOT COUNTED. Folding with the same combine the digest uses makes the coverage depend on
+// the ORDER and the IDENTITY of every key: two keys in the other order, a duplicated key where two distinct ones
+// were, or one key replaced by another of the same length all move it. A count would survive all three, and that
+// is precisely the substitution this row exists to make visible.
+fn authorised_key_coverage(keys: List<SshPublicKey>) -> NonEmptyStr {
+  let folded = fold(
+    keys,
+    init: content_hash_atom(value: "gunbc.altra.authorised_keys/1"),
+    f: (acc, key) =>
+      content_hash_combine_structural(
+        left: acc,
+        right: content_hash_atom(value: ssh_public_key_line(k: key) as NonEmptyStr),
+      ),
+  )
+  concat(concat("keys=", folded.digest as String), concat(",count=", int_diagnostic(count: keys.length()))) as NonEmptyStr
+}
+
 fn entrypoint_diagnostic(entry: AdminAccessAuthorisation) -> NonEmptyStr {
-  let keys = to_string(authorised_key_count(authorisation: entry)) as NonEmptyStr
   match entry.console_entry {
     // THE UNLOCK REASON IS RENDERED, NOT DISCARDED. "Unlocked" alone cannot be acted on: a serial getty open
     // at the panel and a BMC SOL console open over the network are different exposures with different fixes,
@@ -1674,10 +2278,11 @@ fn entrypoint_diagnostic(entry: AdminAccessAuthorisation) -> NonEmptyStr {
     // (rather than storing a string beside it) means a new unlock kind must be stated in the type before it
     // can appear in a seed, and it moves the digest.
     ConsoleEntryUnlocked { reason: SerialConsoleGettyUnlocked } =>
-      concat("console=unlocked-serial-getty,keys=", keys) as NonEmptyStr
+      concat("console=unlocked-serial-getty,", authorised_key_coverage(keys: entry.authorised_keys)) as NonEmptyStr
     ConsoleEntryUnlocked { reason: BmcSolConsoleUnlocked } =>
-      concat("console=unlocked-bmc-sol,keys=", keys) as NonEmptyStr
-    ConsoleEntryLocked => concat("console=locked,keys=", keys) as NonEmptyStr
+      concat("console=unlocked-bmc-sol,", authorised_key_coverage(keys: entry.authorised_keys)) as NonEmptyStr
+    ConsoleEntryLocked =>
+      concat("console=locked,", authorised_key_coverage(keys: entry.authorised_keys)) as NonEmptyStr
   }
 }
 
@@ -1751,11 +2356,71 @@ fn package_list_diagnostic(intents: List<PackageIntent>) -> NonEmptyStr {
 // ONE TOKEN PER CLOSED ARM, DERIVED FROM THE VERDICT RATHER THAN FROM A PRESENCE PREDICATE. An answered
 // question, an unanswered one and an unclassified one are three different things to a reader comparing two
 // seed digests, and the old code could not tell the last two apart because both had no seed to print.
+// THE SEEDED VALUE IS COBERED, NOT JUST THE FACT THAT SOMETHING WAS SEEDED. The verdict arms carry the question
+// text for the report, and rendering from them alone meant an answer could be REPLACED — "postfix/main_mailer_type"
+// switched from "No configuration" to "Internet Site", tzdata's zone switched from the operator's city to any other
+// — and the seed digest stayed identical, because every part of the render saw was the name plus "+answered". An
+// answer that is wrong is still an answer to the audit, so the audit cannot catch it; only the digest can, and only
+// if the value is in it. Matched on the intent rather than on the verdict for that reason: the verdict is the
+// report's shape, and it correctly has no use for the value.
+//
+// WHY HASHED. A seeded debconf answer can be a hostname, a relay, or an administrator address, and this rendering
+// is a diagnostic that travels into reports and receipts, not a config file the installer consumes. Hashing keeps
+// the identity bound to the bytes while publishing none of them. An unclassified package that carries an answer is
+// rendered as a value too, because the audit refuses it either way and the refusal should still be attributable to
+// the exact thing that was tried.
 fn package_intent_diagnostic(intent: PackageIntent) -> NonEmptyStr {
-  match package_prompting_verdict(intent: intent) {
-    ClosedQuestion { name: n, question: _ } => concat(n, "+answered") as NonEmptyStr
-    OpenQuestion { name: n, question: _ } => concat(n, "+UNANSWERED") as NonEmptyStr
-    UnclassifiedPrompting { name: n } => concat(n, "+unclassified") as NonEmptyStr
+  match intent {
+    QuestionAnswered { package: named, debconf_seed: answer } =>
+      concat(
+        concat(known_prompting_package_name(package: named), "+answered,"),
+        content_coverage(label: "answer", content: answer as String),
+      ) as NonEmptyStr
+    QuestionUnanswered { package: named } =>
+      concat(known_prompting_package_name(package: named), "+UNANSWERED") as NonEmptyStr
+    UnclassifiedPackage { name: un, debconf_seed: answer } =>
+      match answer {
+        Absent => concat(un, "+unclassified") as NonEmptyStr
+        Present { value: given } =>
+          concat(concat(un, "+unclassified,"), content_coverage(label: "answer", content: given as String)) as NonEmptyStr
+      }
+    // THE SILENCE TRAVELS INTO THE DIGEST AS ITS OWN EVIDENCE: name, the version the silence was established at,
+    // and how it was established. A seed that carried a silent row at one version and another at a second
+    // version are two different installs — the second may prompt where the first could not — so they must not
+    // hash alike, and a transcribed claim must not hash the same as a measured one.
+    PackageVerifiedSilent { name: nm, silence: receipt } =>
+      concat(
+        concat(concat(nm, "+silent,"), silence_receipt_diagnostic(receipt: receipt)),
+        ",count=0",
+      ) as NonEmptyStr
+  }
+}
+
+// THE RECEIPT'S OWN DIAGNOSTIC, SHARED BY THE RENDER AND THE BINDING. Version and standing both appear: a
+// silent-at-4.4.36 row and a silent-according-to-somebody row are different risks, and a binding digest that
+// could not tell them apart could not later answer "what did this board actually get".
+fn silence_receipt_diagnostic(receipt: PackageSilenceReceipt) -> NonEmptyStr {
+  match receipt {
+    SilentReceipt { observed_version: version, standing: how } =>
+      concat(
+        concat("silent@", version),
+        match cited_figure_read_obligation(standing: how) {
+          // Nothing owed: the claim points at an artifact anyone can re-open. The arm does NOT record which
+          // artifact, because the artifact is in the standing and a second copy of it here could drift from it.
+          Absent => ",cited"
+          // Owed: name what has to be read. The obligation text is the standing's own, so it cannot be edited
+          // into silence here while the value keeps claiming to be a transcription.
+          Present { value: owed } => concat(",owed=", owed) as NonEmptyStr
+        },
+      ) as NonEmptyStr
+  }
+}
+
+// THE SILENCE CLAIM'S OUTSTANDING OBLIGATION, exposed so a consumer can refuse to believe a silent row that is
+// still transcribed rather than having to re-derive that it is. Absent means nothing is owed.
+fn silence_read_obligation(receipt: PackageSilenceReceipt) -> Optional<NonEmptyStr> {
+  match receipt {
+    SilentReceipt { observed_version: _, standing: how } => cited_figure_read_obligation(standing: how)
   }
 }
 
@@ -1808,7 +2473,14 @@ type AltraAutoinstallSeedBinding sole_constructor {
 // The unread arm carries NO payload: what it asserts is that the probe gave us no serial for the disk we
 // bound, and that is a property of the probe's answer, not a per-instance fact needing a sentence. A note
 // field here would be commentary stored as data — written in one place, read in none.
-type BoundDiskEvidence = BoundDisk { serial: NonEmptyStr } | BoundDiskUnread
+// THE DISK EVIDENCE IS A VERDICT, NOT A STRING. BoundDisk carries the rule's discriminating counts alongside
+// the serial; BoundDiskUnread is what the probe reported when it picked a device it could not identify — and it
+// is NOT collapsed into BoundDisk with an empty serial, which is how a receipt ends up "naming" a drive nobody
+// read. An unread identity on the device you are about to erase is its own answer, with the part number the
+// probe did manage to read.
+type BoundDiskEvidence
+  = BoundDisk { serial: NonEmptyStr, matched: Int, observed: Int }
+  | BoundDiskUnread { part_number: NonEmptyStr }
 
 // WHY THE REFUSAL IS A UNION AND NOT A BARE Absent. A caller who is handed nothing cannot tell whether the
 // board was never admissible or whether eight disks matched the rule — and those are different pages of the
@@ -1818,6 +2490,15 @@ type BoundDiskEvidence = BoundDisk { serial: NonEmptyStr } | BoundDiskUnread
 type BindingBlocker
   = TargetNotAdmitted { cause: TargetRefusalCause }
   | DiskSelectionRefused { cause: DiskSelectionRefusalCause }
+  // THE SEED AND THE SELECTION DISAGREE ABOUT THE RULE. Named rather than folded into DiskSelectionRefused
+  // because the operator's action is different: that one says "your rule cannot pick a disk", this one says
+  // "someone handed this seed a disk picked by some other rule", which is a wiring defect in whatever produced
+  // the call and not a fact about the bay.
+  // BOTH SIDES OF THE DISAGREEMENT, IN THE ORDER THE READER NEEDS THEM: what the seed commanded, then what
+  // was actually run. A one-sided payload (only the run provenance) forces the reader to go and find the seed
+  // to know which of the two is wrong; naming them `seed`/`run` rather than two `TargetDiskSelector`s keeps the
+  // executed side's evidence — the counts it matched — attached to the refusal.
+  | DiskSelectorDisagreesWithSeed { seed: TargetDiskSelector, run: DiskSelectionProvenance }
 
 // THE TWO OUTCOMES OF A BINDING ATTEMPT, as arms rather than Optional, for the reason above: the green arm
 // carries the record, the red arm carries why there is no record.
@@ -1841,26 +2522,65 @@ fn bind_altra_autoinstall_seed(
       match selection {
         SelectionRefused { cause: cause } =>
           BindRefused { blocker: DiskSelectionRefused { cause: cause } }
-        DiskSelected { device: chosen } =>
-          Bound {
-            binding: AltraAutoinstallSeedBinding {
-              unit_key: unit_key,
-              attempt: attempt,
-              seed_digest: altra_autoinstall_seed_digest(seed: seed),
-              seed_rendering: render_altra_autoinstall_seed(seed: seed),
-              delivery: seed.delivery,
-              disk: seed.disk,
-              disk_selection: bound_disk_evidence(device: chosen),
-            },
+        // THE DISK WAS PICKED BY THE RULE THE SEED NAMES, OR THERE IS NO BINDING. Provenance is minted only by
+        // select_target_disk from the selector it was handed, so comparing it against seed.disk is a comparison
+        // between two facts that were each established by a call, not between two claims someone typed. The
+        // defect this closes (review: merry-fox-82) was that a perfectly valid disk selected under a DIFFERENT
+        // rule could be bound to this seed: the disk existed, the serial matched something, and the receipt
+        // recorded a selector that had never been run against the probe.
+        DiskSelected { device: chosen, provenance: provenance } =>
+          match selectors_are_the_same(a: seed.disk, b: provenance.selector) {
+            // THE PAYLOAD NAMES BOTH RULES AND SAYS WHICH IS WHICH. "seed" is the rule the seed commanded;
+            // "run" is the rule that was actually executed against the probe and whose provenance is being
+            // presented. Naming them the other way round — as an earlier revision did, by putting the run
+            // provenance under `seed:` — tells an operator reading a refusal that their seed asked for the
+            // wrong disk, and sends them to edit a seed that was correct.
+            False => BindRefused { blocker: DiskSelectorDisagreesWithSeed { seed: seed.disk, run: provenance } }
+            True =>
+              Bound {
+                binding: AltraAutoinstallSeedBinding {
+                  unit_key: unit_key,
+                  attempt: attempt,
+                  seed_digest: altra_autoinstall_seed_digest(seed: seed),
+                  // THE RENDERING IS CARRIED, not just its digest, so the receipt can be re-checked without the
+                  // seed still existing. And the disk evidence is inside the digest below, so "the machine
+                  // booted seed X" cannot be answered for a machine that was pointed at a different drive.
+                  seed_rendering: render_altra_autoinstall_seed(seed: seed),
+                  delivery: seed.delivery,
+                  disk: seed.disk,
+                  disk_selection: bound_disk_evidence(device: chosen, provenance: provenance),
+                },
+              }
           }
       }
   }
 }
 
-fn bound_disk_evidence(device: StorageDevice) -> BoundDiskEvidence {
+// TWO WAYS TO SAY THE SAME RULE. Comparing structurally rather than by rendered text: two spellings of one rule
+// are a rendering bug elsewhere, and the selector is closed data whose fields ARE the rule.
+fn selectors_are_the_same(a: TargetDiskSelector, b: TargetDiskSelector) -> Bool {
+  match content_hash_eq_structural(
+    left: content_hash_atom(value: selector_diagnostic(selector: a)),
+    right: content_hash_atom(value: selector_diagnostic(selector: b)),
+  ) {
+    // The structural comparison is the answer; the diagnostic exists so a refusal can be printed, and hashing
+    // two identical spellings can only ever be equal. Written as an explicit match so there is no default arm
+    // for a future selector variant to fall through.
+    True => true
+    False => false
+  }
+}
+
+fn bound_disk_evidence(device: StorageDevice, provenance: DiskSelectionProvenance) -> BoundDiskEvidence {
   match storage_device_serial(d: device) {
-    Present { value: serial } => BoundDisk { serial: serial }
-    Absent => BoundDiskUnread
+    // THE EVIDENCE NAMES THE DISK AND THE RULE THAT CHOSE IT. A serial alone says "this drive"; the pairing
+    // says "this drive, because the seed's rule matched it against N of M observed devices", which is what a
+    // reviewer needs in order to disagree with the choice later.
+    Present { value: serial } => BoundDisk { serial: serial, matched: provenance.matched, observed: provenance.observed }
+    // The probe could not read an identity for the very device it picked. That is not a disk to install onto
+    // and it is not recorded as one: an unread identity is kept as its own verdict so the receipt cannot read
+    // as "installed on the drive whose serial is the empty string".
+    Absent => BoundDiskUnread { part_number: candidate_identity_label(device: device) }
   }
 }
 
@@ -1901,6 +2621,13 @@ fn check_binding_against_seed(
 // seed. A future requirement to store bindings content-addressed uses THIS and not the seed digest —
 // otherwise two units booting the same seed would collide in one address space, which is exactly the
 // ambiguity the separation exists to prevent.
+//
+// THE DISK IS IN THE ADDRESS (review: merry-fox-82). The disk evidence used to be a field on the record and
+// nowhere in its digest, so two bindings that differed only in which drive they targeted shared an address —
+// which is precisely the question this record exists to answer later, and an address that cannot answer it will
+// be overwritten by whichever write came second. Including it means "the receipt for this attempt" changes when
+// the target changes, and a silent change of drive in a stored receipt becomes a different receipt rather than
+// the same one.
 fn binding_digest(binding: AltraAutoinstallSeedBinding) -> Fnv1a64Structural {
   content_hash_tagged_structural(
     tag: "gunbc.provisioning.altra_autoinstall_seed.binding/1",
@@ -1910,9 +2637,30 @@ fn binding_digest(binding: AltraAutoinstallSeedBinding) -> Fnv1a64Structural {
         right: content_hash_atom(value: to_string(binding.attempt) as NonEmptyStr),
       ),
       right: content_hash_combine_structural(
-        left: binding.seed_digest,
-        right: content_hash_atom(value: binding.seed_rendering),
+        left: content_hash_combine_structural(
+          left: binding.seed_digest,
+          right: content_hash_atom(value: binding.seed_rendering),
+        ),
+        // The disk's own tagged structural hash, not a re-derivation of its fields: BoundDisk and
+        // BoundDiskUnread are different claims, and they must not be able to collide with each other or with a
+        // bound disk whose serial happens to read like a part number.
+        right: content_hash_atom(value: bound_disk_evidence_diagnostic(evidence: binding.disk_selection)),
       ),
     ),
   )
+}
+
+// THE EVIDENCE IN ONE LINE, AND THE TWO ARMS CANNOT PRODUCE THE SAME LINE. The verdict word is part of the
+// string precisely so the unread arm cannot be mistaken for a bound disk whose serial is strange: the shapes
+// differ in kind, and a rendering that flattens them is how a log line ends a claim the type refused to make.
+fn bound_disk_evidence_diagnostic(evidence: BoundDiskEvidence) -> NonEmptyStr {
+  match evidence {
+    BoundDisk { serial: named, matched: m, observed: o } =>
+      concat(
+        concat(concat("bound:", named), ",rule-matched="),
+        concat(int_diagnostic(count: m), concat("/of-", int_diagnostic(count: o))),
+      ) as NonEmptyStr
+    BoundDiskUnread { part_number: part } =>
+      concat("identity-unread:", part) as NonEmptyStr
+  }
 }
