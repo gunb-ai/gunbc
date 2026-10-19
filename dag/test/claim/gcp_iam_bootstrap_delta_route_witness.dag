@@ -9,12 +9,13 @@ import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, 
 import gunbc.auth.gcp_iam_bootstrap_model { BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding, IamBootstrapResource }
 import gunbc.auth.gcp_iam_bootstrap_delta { SubjectNotBootstrapped, SubjectUnbound, SubjectAbsentOrUnboundCannotTell }
 import gunbc.auth.gcp_iam_trust_roots { ceremony_trust_root_secrets }
+import gunbc.auth.gcp_operation_wait { OperationWaitOutcome, OperationWaitDone, OperationWaitFailed, OperationWaitBudgetSpent, OperationWaitIdentityMismatch, OperationWaitPacingRefused, OperationWaitNameUnparsed }
 import gunbc.auth.gcp_iam_bootstrap { PoolPublication, PoolPublicationSettled, PoolPublicationRefused, pool_publication_refused }
 import gunbc.auth.gcp_iam_bootstrap_delta_route {
   BootstrapDeltaRequestBody, BootstrapDeltaRequestable, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, RootCeremonyCellsMissing, bootstrap_delta_requestable,
   BootstrapCellsWrite, WriteBootstrapCells, BootstrapCellsAlreadyPresent, BootstrapCellsRefused, bootstrap_cells_write,
   approved_subjects, bootstrap_delta_preimage, root_cell_repair_ceremony,
-  SubjectStep, SubjectStepDone, SubjectStepRefused, step_refused, ApprovedSubjectsOutcome, AllApprovedSubjectsApplied, ApprovedSubjectRefused, approved_subjects_refusal_text,
+  SubjectStep, SubjectStepDone, SubjectStepRefused, step_refused, operation_step, fenced_readback_step, ApprovedSubjectsOutcome, AllApprovedSubjectsApplied, ApprovedSubjectRefused, approved_subjects_refusal_text,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -126,4 +127,24 @@ test fn an_empty_refusal_text_is_still_a_refusal() -> Bool {
     && (match pool_publication_refused(reason: "") { PoolPublicationRefused { reason: r } => (r as String) != ""  PoolPublicationSettled => false })
     && (match approved_subjects_refusal_text(o: ApprovedSubjectRefused { key: "k", reason: "r" as NonEmptyStr }) { Present { value: t } => t == "k: r"  Absent => false })
     && (match approved_subjects_refusal_text(o: AllApprovedSubjectsApplied) { Present { value: _ } => false  Absent => true })
+}
+
+// THE OPERATION WAIT AND THE FENCED READBACK ARE PURE STEPS (srv2 mutations T2, T4): only a done
+// operation and a readback carrying every approved cell are Done; every other answer refuses.
+fn is_done(st: SubjectStep) -> Bool {
+  match st { SubjectStepDone => true  SubjectStepRefused { reason: _ } => false }
+}
+
+test fn only_a_done_operation_is_a_done_step() -> Bool {
+  is_done(st: operation_step(o: OperationWaitDone))
+    && all([OperationWaitFailed { operation_name: "op", code: 9, message: "m" }, OperationWaitBudgetSpent { operation_name: "op" },
+        OperationWaitIdentityMismatch { operation_name: "op", returned_name: "other" }, OperationWaitPacingRefused { operation_name: "op" },
+        OperationWaitNameUnparsed { reason: "bad name" }], o => !is_done(st: operation_step(o: o)))
+}
+
+test fn only_a_readback_carrying_every_approved_cell_is_done() -> Bool {
+  is_done(st: fenced_readback_step(approved: [converge_cell, observe_cell], reading: PolicyObserved { policy: policy(cells: [converge_cell, observe_cell, foreign_cell], etag: "e2") }))
+    && !is_done(st: fenced_readback_step(approved: [converge_cell, observe_cell], reading: PolicyObserved { policy: policy(cells: [observe_cell], etag: "e2") }))
+    && !is_done(st: fenced_readback_step(approved: [converge_cell], reading: PolicyResourceAbsent))
+    && !is_done(st: fenced_readback_step(approved: [converge_cell], reading: PolicyUnreadable { cause: "status 503" }))
 }

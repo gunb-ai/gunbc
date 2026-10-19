@@ -338,18 +338,23 @@ fn first_publication(s: SubjectNotBootstrapped, approved: List<GcpIamBindingCell
   }
 }
 
+// THE READBACK AFTER A FENCED WRITE, pure: done only when every approved cell is read back in place.
+fn fenced_readback_step(approved: List<GcpIamBindingCell>, reading: PolicyReading) -> SubjectStep {
+  match reading {
+    PolicyObserved { policy: checked } => if all(approved, c => gcp_cell_in(c: c, xs: gcp_policy_cells(p: checked))) { SubjectStepDone }
+      else { step_refused(reason: "the write answered but the readback lacks an approved cell") }
+    PolicyResourceAbsent => step_refused(reason: "the write answered but the subject reads absent")
+    PolicyUnreadable { cause } => step_refused(reason: concat("the write answered but the readback is unreadable: ", cause))
+  }
+}
+
 fn fenced_cells_step(s: SubjectNotBootstrapped, approved: List<GcpIamBindingCell>, token: Secret) -> SubjectStep {
   match bootstrap_cells_write(approved: approved, reading: iam_bootstrap_read_policy(resource: s.subject, token: token)) {
     BootstrapCellsRefused { reason } => step_refused(reason: reason)
     BootstrapCellsAlreadyPresent => SubjectStepDone
     WriteBootstrapCells { policy, added: _ } => match iam_bootstrap_write_policy(resource: s.subject, policy: policy, token: token) {
       BootstrapPolicyWriteRefused { refusal } => step_refused(reason: concat("the fenced write was refused: ", rest_refusal_text(o: refusal)))
-      BootstrapPolicyWritten => match iam_bootstrap_read_policy(resource: s.subject, token: token) {
-        PolicyObserved { policy: checked } => if all(approved, c => gcp_cell_in(c: c, xs: gcp_policy_cells(p: checked))) { SubjectStepDone }
-          else { step_refused(reason: "the write answered but the readback lacks an approved cell") }
-        PolicyResourceAbsent => step_refused(reason: "the write answered but the subject reads absent")
-        PolicyUnreadable { cause } => step_refused(reason: concat("the write answered but the readback is unreadable: ", cause))
-      }
+      BootstrapPolicyWritten => fenced_readback_step(approved: approved, reading: iam_bootstrap_read_policy(resource: s.subject, token: token))
     }
   }
 }
