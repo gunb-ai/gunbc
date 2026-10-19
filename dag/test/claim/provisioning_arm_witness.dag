@@ -134,9 +134,15 @@ fn fixture_firmware_needs_boot_next() -> FirmwareNetworkBootStanding {
   standing_of(observation_of(options: [disk_option(), http_option()], order: [disk_entry()]))
 }
 
-// No network option exists at all: S0 answers a different blocker and a different route.
+// A different unit enumerating its network option under another reference: S0 binds the redirect to THAT
+// reference, so the standing differs in the route payload. (A unit with no network option at all is a
+// Refused standing in S0 -- the stack attribute is not bindable -- so it cannot serve as a second
+// NeedsPreparation.)
 fn fixture_firmware_needs_other() -> FirmwareNetworkBootStanding {
-  standing_of(observation_of(options: [disk_option()], order: [disk_entry()]))
+  standing_of(observation_of(
+    options: [disk_option(), boot_option(reference: "0002", kind: BootTargetUefiHttp, label: "UEFI IPv4 HTTP", enabled: true)],
+    order: [disk_entry()],
+  ))
 }
 
 fn fixture_firmware_ready() -> FirmwareNetworkBootStanding {
