@@ -1,0 +1,206 @@
+module product.electrical.bench_session
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { Millivolt, millivolt_count }
+import product.placement_supply { PhysicalAssetIdentity }
+import product.electrical.connectivity { ElectricalTerminalRef }
+import product.electrical.continuity {
+  BenchConditions,
+  EvidenceRef,
+  ProbeRecord,
+  probe_record_inferred,
+  terminal_text,
+}
+
+// WHAT A MULTIMETER READ ON A POWERED BOARD, AND WHAT HAPPENED TO THE BOARD BETWEEN READINGS.
+// product.electrical.continuity keeps unpowered buzzer and diode-mode receipts; this module keeps a
+// node's voltage against a reference while the board is energized, a resistance read on a stated
+// range, and the bench incidents that divide one session's readings from another's.
+//
+// A READING KNOWS WHERE IT STANDS AGAINST EACH INCIDENT. An accidental bridge on a live board can
+// change what a later reading means, so every reading here says whether it came before or after the
+// session's incidents, or that its order against them is unrecorded, and a standing derived from it
+// carries that; a reading taken after an incident, or of unrecorded order, is never presented as one
+// taken before.
+//
+// A STATED BOUND IS NOT A VALUE. "Well below 2.5 V" bounds the reading from above and says nothing
+// finer; a derivation may use the bound, never a number inside it. Whether the operator stated a
+// reading plainly or hedged it is kept beside it.
+
+type DamageInspection
+  = NoDamageSeen { looked_at: NonEmptyStr }
+  | DamageSeen { description: NonEmptyStr }
+  | NotInspected
+
+// An accidental bridge or similar event on the bench. bridged are the terminals the operator says the
+// probe joined; record says whether each point was recorded or inferred.
+type BenchIncident {
+  key: NonEmptyStr
+  asset: PhysicalAssetIdentity
+  bridged: List<ElectricalTerminalRef>
+  record: ProbeRecord
+  conditions: BenchConditions
+  observed: NonEmptyStr
+  inspection: DamageInspection
+  evidence: EvidenceRef
+}
+
+type ReadingOrder
+  = BeforeIncidents { keys: List<NonEmptyStr> }
+  | AfterIncidents { keys: List<NonEmptyStr> }
+  | OrderUnrecorded { relative_to: List<NonEmptyStr> }
+
+type StatementCertainty
+  = StatedPlainly
+  | StatedHedged { verbatim: NonEmptyStr }
+
+type VoltageValue
+  = ReadAbout { value: Millivolt }
+  | ReadBelow { bound: Millivolt }
+
+// at is the probed node, reference where the black probe sat.
+type NodeVoltageObservation {
+  asset: PhysicalAssetIdentity
+  at: ElectricalTerminalRef
+  reference: ElectricalTerminalRef
+  record: ProbeRecord
+  conditions: BenchConditions
+  value: VoltageValue
+  certainty: StatementCertainty
+  order: ReadingOrder
+  evidence: EvidenceRef
+}
+
+// A resistance range's full scale fixes the display's unit: on a 20 kohm range a display of 12 is
+// 12 kohm. Stability is whether the display held or kept moving, which a capacitor behind the path
+// makes it do.
+type ReadingStability
+  = HeldSteady
+  | KeptMoving
+  | StabilityUnrecorded
+
+type ResistanceObservation {
+  asset: PhysicalAssetIdentity
+  first: ElectricalTerminalRef
+  second: ElectricalTerminalRef
+  record: ProbeRecord
+  conditions: BenchConditions
+  range_full_scale_ohms: Nat
+  display: Nat
+  approximate: Bool
+  stability: ReadingStability
+  order: ReadingOrder
+  evidence: EvidenceRef
+}
+
+type BenchRecord {
+  incidents: List<BenchIncident>
+  voltages: List<NodeVoltageObservation>
+  resistances: List<ResistanceObservation>
+}
+
+data no_bench_record: BenchRecord = BenchRecord { incidents: [], voltages: [], resistances: [] }
+
+// Whether a reading may stand for the board's state before every incident it is ordered against.
+fn is_before_incidents(o: ReadingOrder) -> Bool {
+  match o {
+    BeforeIncidents { keys: _ } => true
+    AfterIncidents { keys: _ } => false
+    OrderUnrecorded { relative_to: _ } => false
+  }
+}
+
+// The upper bound a reading places on its node, in millivolts.
+fn value_ceiling(v: VoltageValue) -> Nat {
+  match v {
+    ReadAbout { value } => millivolt_count(v: value)
+    ReadBelow { bound } => millivolt_count(v: bound)
+  }
+}
+
+fn is_read_value(v: VoltageValue) -> Bool {
+  match v {
+    ReadAbout { value: _ } => true
+    ReadBelow { bound: _ } => false
+  }
+}
+
+fn is_hedged(c: StatementCertainty) -> Bool {
+  match c {
+    StatedPlainly => false
+    StatedHedged { verbatim: _ } => true
+  }
+}
+
+fn millivolt_text(n: Nat) -> String {
+  join([to_string(n / 1000), ".", if n % 1000 < 100 { if n % 1000 < 10 { "00" } else { "0" } } else { "" }, to_string(n % 1000), " V"], "")
+}
+
+fn value_text(v: VoltageValue) -> String {
+  match v {
+    ReadAbout { value } => join(["about ", millivolt_text(n: millivolt_count(v: value))], "")
+    ReadBelow { bound } => join(["below ", millivolt_text(n: millivolt_count(v: bound)), " (a stated bound, not a value)"], "")
+  }
+}
+
+fn certainty_text(c: StatementCertainty) -> String {
+  match c {
+    StatedPlainly => ""
+    StatedHedged { verbatim } => join([", hedged ('", verbatim as String, "')"], "")
+  }
+}
+
+fn keys_text(keys: List<NonEmptyStr>) -> String {
+  join(map(keys, k => join(["incident ", k as String], "")), " and ")
+}
+
+fn order_text(o: ReadingOrder) -> String {
+  match o {
+    BeforeIncidents { keys } => match keys.first() {
+      Absent => ""
+      Present { value: _ } => join([", read before ", keys_text(keys: keys)], "")
+    }
+    AfterIncidents { keys } => join([", read after ", keys_text(keys: keys)], "")
+    OrderUnrecorded { relative_to } => join([", order against ", keys_text(keys: relative_to), " unrecorded"], "")
+  }
+}
+
+fn node_voltage_text(o: NodeVoltageObservation) -> String {
+  join([
+    terminal_text(t: o.at), " read ", value_text(v: o.value), " against ", terminal_text(t: o.reference), certainty_text(c: o.certainty),
+    if probe_record_inferred(r: o.record) { ", on probe points inferred from the operator's words" } else { "" },
+    order_text(o: o.order),
+  ], "")
+}
+
+fn stability_text(s: ReadingStability) -> String {
+  match s {
+    HeldSteady => ", steady"
+    KeptMoving => ", still moving"
+    StabilityUnrecorded => ", stability unrecorded"
+  }
+}
+
+fn resistance_text(o: ResistanceObservation) -> String {
+  join([
+    terminal_text(t: o.first), " to ", terminal_text(t: o.second), " read ", if o.approximate { "about " } else { "" }, to_string(o.display),
+    " on the ", to_string(o.range_full_scale_ohms), " ohm range", stability_text(s: o.stability),
+    order_text(o: o.order),
+  ], "")
+}
+
+fn inspection_text(d: DamageInspection) -> String {
+  match d {
+    NoDamageSeen { looked_at } => join(["no damage seen (", looked_at as String, ")"], "")
+    DamageSeen { description } => join(["damage seen: ", description as String], "")
+    NotInspected => "not inspected"
+  }
+}
+
+fn incident_text(i: BenchIncident) -> String {
+  join([
+    "incident ", i.key as String, ": ", join(map(i.bridged, t => terminal_text(t: t)), " bridged to "), " (", i.observed as String, "; ", inspection_text(d: i.inspection), ")",
+  ], "")
+}

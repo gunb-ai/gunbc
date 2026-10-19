@@ -31,9 +31,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // A PART'S DATASHEET FACTS, BY PART CLASS. A photograph of a populated board shows top markings; a
 // datasheet binds a marking to an ordering code and to that class's ratings. A TVS diode, a capacitor,
-// a MOSFET, a temperature sensor and a connector have different relevant specifications, so each class
-// carries its own record and a row carries exactly one of them -- never one bag of optional fields
-// where a capacitor's "drain current" is merely absent.
+// a MOSFET, a temperature sensor, a connector and a hot-swap controller have different relevant
+// specifications, so each class carries its own record and a row carries exactly one of them -- never
+// one bag of optional fields where a capacitor's "drain current" is merely absent.
 //
 // Every figure is a typed measure; the only strings are transcriptions -- the ordering code, the
 // package designator, the top marking, a pin's datasheet name, a series name, and
@@ -115,6 +115,49 @@ type TemperatureSensorSpecification {
   pins: List<SensorPin>
 }
 
+// A HOT-SWAP CONTROLLER'S PINS, BY THE FUNCTION ITS DATASHEET GIVES EACH. Supply, ground and bus pins
+// carry the shared SensorPinRole rather than a second name for the same function.
+type ControllerPinRole
+  = GateDrive
+  | OutputFeedback
+  | CurrentSenseInput
+  | SupplyKelvinSense
+  | UndervoltageEnable
+  | OvervoltageLockout
+  | PowerGoodOutput
+  | PowerGoodFeedback
+  | FaultTimer
+  | FaultRetryMode
+  | PowerLimitSet
+  | CurrentLimitRange
+  | InternalRegulatorOutput
+  | ReferenceOutput
+  | TemperatureDiodeInput
+  | AuxiliaryVoltageInput
+  | NoConnection
+  | SharedPinRole { role: SensorPinRole }
+
+type ControllerPin {
+  number: Nat
+  name: NonEmptyStr
+  role: ControllerPinRole
+}
+
+// A datasheet threshold over its stated minimum, typical and maximum.
+type ThresholdWindow {
+  minimum: Millivolt
+  typical: Millivolt
+  maximum: Millivolt
+}
+
+// The pin thresholds a reading is judged against: below enable_threshold's minimum the gate is held
+// off; at or above overvoltage_threshold's minimum the controller may lock out.
+type HotSwapControllerSpecification {
+  pins: List<ControllerPin>
+  enable_threshold: ThresholdWindow
+  overvoltage_threshold: ThresholdWindow
+}
+
 type ConnectorOrientation
   = VerticalMount
   | RightAngleMount
@@ -144,6 +187,7 @@ type ComponentSpecification
   | MosfetSpec { mosfet: MosfetSpecification }
   | TemperatureSensorSpec { sensor: TemperatureSensorSpecification }
   | ConnectorSpec { connector: ConnectorSpecification }
+  | HotSwapControllerSpec { controller: HotSwapControllerSpecification }
 
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
@@ -156,7 +200,7 @@ type ElectronicComponentRow {
 
 // THE ONE PROJECTION A RAIL BOUND CONSUMES: the highest voltage the part tolerates across its rated
 // terminals, with what kind of limit it is. Each kind bounds the rail the part sits across from above;
-// none says what the rail IS. A sensor or connector projects nothing.
+// none says what the rail IS. A sensor, connector or controller projects nothing.
 type VoltageWithstandKind
   = TvsReverseStandoff
   | CapacitorRatedVoltage
@@ -175,5 +219,6 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     MosfetSpec { mosfet } => Present { value: VoltageWithstand { kind: DrainSourceMaximum, maximum: mosfet.drain_source_maximum } }
     TemperatureSensorSpec { sensor: _ } => Absent
     ConnectorSpec { connector: _ } => Absent
+    HotSwapControllerSpec { controller: _ } => Absent
   }
 }
