@@ -6,7 +6,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_e
 import std.list { distinct_by_key }
 import extdeps.google.userinfo
 import extdeps.auth.oidc { OidcStandardClaims }
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpService, GcpStorage, gcp_service_api_id }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpService, GcpStorage, gcp_service_api_id, GoogleRpcStatus }
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.iam_deny
 import extdeps.cloud.gcp.serviceusage { gcp_service_usage_state_from_wire, ServiceUsageStateEnabled, ServiceUsageStateDisabled }
@@ -38,6 +38,7 @@ import extdeps.cloud.gcp.storage { GcsBucketWire }
 import gunbc.auth.gcp_iam_bootstrap_journal { JournalSubject, JournalPoolFirstPublication, JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, JournalListing, JournalListed, JournalListingUnreadable, journal_list, journal_mark, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused, journal_listed_consents, journal_has, journal_object_name, journal_mark_named }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_journal_bucket, iam_bootstrap_journal_bucket_location, iam_bootstrap_journal_bucket_uniform_access, iam_bootstrap_journal_bucket_public_access_prevention,
+  iam_bootstrap_trust_root_tag_key_namespaced, iam_bootstrap_trust_root_tag_value_namespaced, iam_bootstrap_trust_root_tag_key_parent, iam_bootstrap_trust_root_tag_key_short, iam_bootstrap_trust_root_tag_value_short, iam_bootstrap_trust_root_tag_parents,
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_trust_bindings, iam_bootstrap_capability_bindings_over, iam_bootstrap_root_ceremony_bindings_over,
@@ -73,9 +74,9 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // iam_bootstrap_cell_owner: the ceremony folds iam_bootstrap_root_ceremony_bindings and nothing else).
 // Trust is last. Existing mismatched roles, providers and deny policies refuse instead of being
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
-type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapJournalBucket | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
+type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapTrustRootTags | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapJournalBucket | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
 
-data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapJournalBucket, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
+data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapJournalBucket, BootstrapTrustRootTags, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
 
 type IamBootstrapProgress { completed: List<IamBootstrapStage>, refusal: String }
 
@@ -83,8 +84,9 @@ fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBoo
   let required = match stage {
     BootstrapServices => []
     BootstrapIdentities => [BootstrapServices]
+    BootstrapTrustRootTags => [BootstrapIdentities]
     BootstrapRoles => [BootstrapIdentities]
-    BootstrapDeny => [BootstrapIdentities]
+    BootstrapDeny => [BootstrapIdentities, BootstrapTrustRootTags]
     BootstrapAuthorityCleanup => [BootstrapDeny]
     BootstrapCapabilities => [BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapJournalBucket]
     BootstrapJournalBucket => [BootstrapIdentities]
@@ -97,7 +99,7 @@ fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBoo
 }
 
 fn iam_bootstrap_stage_wire(stage: IamBootstrapStage) -> String {
-  match stage { BootstrapServices => "services" BootstrapIdentities => "identities" BootstrapRoles => "roles" BootstrapDeny => "deny" BootstrapAuthorityCleanup => "authority-cleanup" BootstrapCapabilities => "capabilities" BootstrapJournalBucket => "journal-bucket" BootstrapProbeAuthority => "probe-authority" BootstrapProbeCleanup => "probe-cleanup" BootstrapPrivilegeReadback => "privilege-readback" BootstrapWorkflowTrust => "workflow-trust" }
+  match stage { BootstrapServices => "services" BootstrapIdentities => "identities" BootstrapTrustRootTags => "trust-root-tags" BootstrapRoles => "roles" BootstrapDeny => "deny" BootstrapAuthorityCleanup => "authority-cleanup" BootstrapCapabilities => "capabilities" BootstrapJournalBucket => "journal-bucket" BootstrapProbeAuthority => "probe-authority" BootstrapProbeCleanup => "probe-cleanup" BootstrapPrivilegeReadback => "privilege-readback" BootstrapWorkflowTrust => "workflow-trust" }
 }
 
 fn iam_bootstrap_plan() -> CliWireResponse {
@@ -590,7 +592,7 @@ fn iam_bootstrap_ensure_fenced_binding(binding: IamBootstrapBinding, token: Secr
 fn iam_bootstrap_stage_bindings_over(stage: IamBootstrapStage, targets: List<DedicatedFederation>, grant_set_secrets: List<NonEmptyStr>) -> List<IamBootstrapBinding> {
   match stage {
     BootstrapCapabilities => iam_bootstrap_root_ceremony_bindings_over(targets: targets, grant_set_secrets: grant_set_secrets)
-    BootstrapServices => []  BootstrapIdentities => []  BootstrapRoles => []  BootstrapDeny => []  BootstrapAuthorityCleanup => []
+    BootstrapServices => []  BootstrapIdentities => []  BootstrapTrustRootTags => []  BootstrapRoles => []  BootstrapDeny => []  BootstrapAuthorityCleanup => []
     BootstrapJournalBucket => []  BootstrapProbeAuthority => []  BootstrapPrivilegeReadback => []  BootstrapProbeCleanup => []  BootstrapWorkflowTrust => []
   }
 }
@@ -598,7 +600,7 @@ fn iam_bootstrap_stage_bindings_over(stage: IamBootstrapStage, targets: List<Ded
 fn iam_bootstrap_stage_identities_over(stage: IamBootstrapStage, targets: List<DedicatedFederation>) -> List<IamBootstrapIdentity> {
   match stage {
     BootstrapIdentities => iam_bootstrap_ceremony_identity_population_over(targets: targets)
-    BootstrapServices => []  BootstrapCapabilities => []  BootstrapRoles => []  BootstrapDeny => []  BootstrapAuthorityCleanup => []
+    BootstrapServices => []  BootstrapCapabilities => []  BootstrapTrustRootTags => []  BootstrapRoles => []  BootstrapDeny => []  BootstrapAuthorityCleanup => []
     BootstrapJournalBucket => []  BootstrapProbeAuthority => []  BootstrapPrivilegeReadback => []  BootstrapProbeCleanup => []  BootstrapWorkflowTrust => []
   }
 }
@@ -620,6 +622,95 @@ fn iam_bootstrap_execute_identities(identities: List<IamBootstrapIdentity>, toke
   fold(identities, init: "", f: (prior, i) => if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: i.federation, own_trust: i.own_trust, token: token) })
 }
 
+// ── THE TRUST-ROOT TAG STAGE (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_trust_root_wall_rule) ──
+// Ensures the project-parented key gunbai-secrets/gunbc-trust-root, its value root, and a binding of
+// that value on each own-trust account, each read back. A create whose Operation is not done refuses
+// (no poll is modeled for Resource Manager operations; the stage is idempotent, so a rerun observes).
+// It runs before the deny stage, so the wall's condition names a tag that exists.
+type TrustRootTagsOutcome = TrustRootTagsBound | TrustRootTagsRefused { reason: NonEmptyStr }
+
+fn trust_root_tags_refused(reason: String) -> TrustRootTagsOutcome {
+  let stated = if reason == "" { "trust-root tag stage refused with no stated cause" } else { reason }
+  TrustRootTagsRefused { reason: stated as NonEmptyStr }
+}
+
+fn trust_root_tags_stage_text(o: TrustRootTagsOutcome) -> String {
+  match o { TrustRootTagsBound => ""  TrustRootTagsRefused { reason } => reason as String }
+}
+
+type TagResourceStanding = TagResourcePresent { name: NonEmptyStr } | TagResourcePending { what: String } | TagResourceRefused { reason: String }
+
+fn tag_create_standing(what: String, done: Bool?, error: GoogleRpcStatus?) -> TagResourceStanding {
+  match error {
+    Present { value: e } => TagResourceRefused { reason: join([what, ": create failed: ", e.message], "") }
+    Absent => TagResourcePending { what: what }
+  }
+}
+
+fn ensure_trust_root_tag_key(token: Secret) -> TagResourceStanding {
+  match gcp.ResourceManager.GetNamespacedTagKey(access_token: token, namespaced_name: iam_bootstrap_trust_root_tag_key_namespaced()) {
+    RestAnswered { answer: k } => if k.short_name == (iam_bootstrap_trust_root_tag_key_short as String) && k.parent == (iam_bootstrap_trust_root_tag_key_parent() as String) && k.name != "" { TagResourcePresent { name: k.name as NonEmptyStr } }
+      else { TagResourceRefused { reason: "the namespaced trust-root tag key reads with another parent or short name" } }
+    RestRefused { refusal } => if !outcome_is_not_found(o: refusal) { TagResourceRefused { reason: rest_refusal_text(o: refusal) } }
+      else { match gcp.ResourceManager.CreateTagKey(access_token: token, parent: iam_bootstrap_trust_root_tag_key_parent(), short_name: iam_bootstrap_trust_root_tag_key_short, description: "gunbc trust root: iam-bootstrap is denied account writes on resources carrying it") {
+        RestAnswered { answer: a } => tag_create_standing(what: "trust-root tag key", done: a.done, error: a.error)
+        RestRefused { refusal: c } => TagResourceRefused { reason: concat("trust-root tag key create refused: ", rest_refusal_text(o: c)) }
+      } }
+  }
+}
+
+fn ensure_trust_root_tag_value(key_name: NonEmptyStr, token: Secret) -> TagResourceStanding {
+  match gcp.ResourceManager.GetNamespacedTagValue(access_token: token, namespaced_name: iam_bootstrap_trust_root_tag_value_namespaced()) {
+    RestAnswered { answer: v } => if v.short_name == (iam_bootstrap_trust_root_tag_value_short as String) && v.parent == (key_name as String) && v.name != "" { TagResourcePresent { name: v.name as NonEmptyStr } }
+      else { TagResourceRefused { reason: "the namespaced trust-root tag value reads under another key or short name" } }
+    RestRefused { refusal } => if !outcome_is_not_found(o: refusal) { TagResourceRefused { reason: rest_refusal_text(o: refusal) } }
+      else { match gcp.ResourceManager.CreateTagValue(access_token: token, parent: key_name, short_name: iam_bootstrap_trust_root_tag_value_short, description: "the account is a gunbc trust root") {
+        RestAnswered { answer: a } => tag_create_standing(what: "trust-root tag value", done: a.done, error: a.error)
+        RestRefused { refusal: c } => TagResourceRefused { reason: concat("trust-root tag value create refused: ", rest_refusal_text(o: c)) }
+      } }
+  }
+}
+
+fn tag_bound_on(parent: String, value_name: NonEmptyStr, token: Secret) -> Bool? {
+  match gcp.ResourceManager.ListTagBindings(access_token: token, parent: parent as NonEmptyStr) {
+    RestRefused { refusal: _ } => none
+    RestAnswered { answer: l } => Present { value: match l.tag_bindings { Absent => false  Present { value: bs } => any(bs, b => match b.tag_value { Present { value: t } => t == (value_name as String)  Absent => false }) } }
+  }
+}
+
+fn ensure_trust_root_tag_binding(parent: String, value_name: NonEmptyStr, token: Secret) -> TrustRootTagsOutcome {
+  match tag_bound_on(parent: parent, value_name: value_name, token: token) {
+    Absent => trust_root_tags_refused(reason: concat(parent, ": tag bindings unreadable"))
+    Present { value: true } => TrustRootTagsBound
+    Present { value: false } => match gcp.ResourceManager.CreateTagBinding(access_token: token, parent: parent as NonEmptyStr, tag_value: value_name) {
+      RestRefused { refusal } => trust_root_tags_refused(reason: join([parent, ": tag binding create refused: ", rest_refusal_text(o: refusal)], ""))
+      RestAnswered { answer: a } => match a.error {
+        Present { value: e } => trust_root_tags_refused(reason: join([parent, ": tag binding failed: ", e.message], ""))
+        Absent => match tag_bound_on(parent: parent, value_name: value_name, token: token) {
+          Present { value: true } => TrustRootTagsBound
+          Present { value: false } => trust_root_tags_refused(reason: concat(parent, ": tag binding not yet visible on readback; rerun the ceremony once it is"))
+          Absent => trust_root_tags_refused(reason: concat(parent, ": tag binding readback unreadable"))
+        }
+      }
+    }
+  }
+}
+
+fn iam_bootstrap_ensure_trust_root_tags(token: Secret) -> TrustRootTagsOutcome {
+  match ensure_trust_root_tag_key(token: token) {
+    TagResourceRefused { reason } => trust_root_tags_refused(reason: reason)
+    TagResourcePending { what } => trust_root_tags_refused(reason: concat(what, " creation is not yet done; rerun the ceremony once it is"))
+    TagResourcePresent { name: key } => match ensure_trust_root_tag_value(key_name: key, token: token) {
+      TagResourceRefused { reason } => trust_root_tags_refused(reason: reason)
+      TagResourcePending { what } => trust_root_tags_refused(reason: concat(what, " creation is not yet done; rerun the ceremony once it is"))
+      TagResourcePresent { name: value } => fold(iam_bootstrap_trust_root_tag_parents(), init: TrustRootTagsBound, f: (acc, parent) => match acc {
+        TrustRootTagsRefused { reason: _ } => acc
+        TrustRootTagsBound => ensure_trust_root_tag_binding(parent: parent, value_name: value, token: token)
+      })
+    }
+  }
+}
+
 fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> String {
   match stage {
     BootstrapServices => fold(iam_bootstrap_required_services, init: "", f: (prior, api) => if prior != "" { prior } else { iam_bootstrap_ensure_service(service: api, token: token) })
@@ -628,6 +719,7 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
       if identities != "" { identities } else { fold(iam_bootstrap_bound_secrets(), init: "", f: (prior, secret) =>
         if prior != "" { prior } else { iam_bootstrap_ensure_custody_container(secret: secret, token: token) }) }
     }
+    BootstrapTrustRootTags => trust_root_tags_stage_text(o: iam_bootstrap_ensure_trust_root_tags(token: token))
     BootstrapRoles => fold(iam_bootstrap_roles, init: "", f: (prior, role) => if prior != "" { prior } else { iam_bootstrap_ensure_role(role: role, token: token) })
     BootstrapDeny => fold(iam_bootstrap_deny_policies(), init: "", f: (prior, d) => if prior != "" { prior } else {
       match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: d.policy_id) {
