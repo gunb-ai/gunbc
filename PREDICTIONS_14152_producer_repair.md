@@ -148,3 +148,36 @@ Two corrections to my own earlier reporting in this session, also recorded befor
   valid name` (a full SHA typed from memory). There was no such measurement until 11:19Z, above.
 - `MISSING_FATAL rc=0` in these logs meant "the --nocapture output split the result line", not
   "row missing"; fixed by deciding from the summary line (verified over all three summary shapes).
+
+## AMENDMENT 5 (11:52Z, fixed BEFORE the mutant is run): prediction for the name-keyed mutant
+
+Mutant built by `patch_producer_instantiate.py --mutate name-keyed` from the unpatched base
+`8d8d8aac0e1`, regenerated to a fixed point by the stage0 generator (mirror seed
+`3e62363f58c07132`, round 1 installed=1 / round 2 installed=0), grafted onto the candidate as
+`786e30feb1ffb74708e1cb439a38c9f1b869d239` on `refs/heads/probe/mut-namekeyed` (probe ref: never
+merged, never reviewed). Verified in the tree before running: `uninstantiated_call_generics`,
+`fresh_call_variables` and `map_merge(call_subst, ...)` all present (3 sites in the .dag, 4 in the
+mirror) and the shipped `id: concat(g, "@", span.file...` expression GONE -- so the mutant differs
+from the shipped repair in exactly one expression, `map_insert(acc, g, type_variable_node(id: g))`
+at 04_infer.dag:9275. (The other `id: g` at 11741 is the pre-existing
+`unbound_owner_param_variables` fold, not my site.)
+
+PREDICTION, per row, at the mutant (all rows at once, release profile):
+1. `collision_two_zero_arg_generic_calls_both_type` -- **FAIL**. Both calls mint `K`/`V` by
+   declared parameter name, so they share variable identity; the first call's constraint
+   (Map(Int,Int) via `takes_int_map`) binds K and V, and the second call's settled actual
+   Map(String,Int) then conflicts against that binding instead of being checked against a fresh
+   variable. Either a hard diagnostic appears where the program is correct, or a wrong binding is
+   accepted; the row asserts zero hard diagnostics, so either way it fails.
+2. `collision_pair_still_refuses_when_instantiated_twice` -- **PASS** (a fold-level refusal that
+   holds regardless; it is the twin, not the discriminator).
+3. `fold_accepts_a_binding_whose_arguments_are_all_fresh_call_variables` -- **PASS**, unchanged: it
+   builds node shapes directly and never enters the call arm.
+4. The five remaining fold rows -- **PASS**, unchanged, for the same reason.
+
+So exactly ONE row is expected to change under the mutation, and it is the collision row. If the
+collision row PASSES at the mutant, then this harness cannot expose call-site sharing and I will
+report the collision row as a fixture limit -- NOT as evidence for the freshness requirement, which
+would then rest only on the escape asymmetry (seed consumed in place at :11775 vs substituted type
+escaping at :9272). If MORE than one row fails, the mutant is not isolated and the comparison is
+void; I will say so rather than keep the favourable row.
