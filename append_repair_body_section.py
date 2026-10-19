@@ -27,9 +27,50 @@ def need(path, what):
     return path
 
 
-def counts(log_path, pattern):
-    need(log_path, "closure log")
-    return len([l for l in open(log_path, errors="replace") if re.search(pattern, l)])
+PRODUCED_RE = re.compile(r"produced (\d+) hard diagnostic\(s\)")
+
+
+def counts(log_path, pattern, label, rc=None, emitted=None):
+    """Count refusals in a closure log, cross-checked against the log's own produced line.
+
+    Two independent readings of the same file have to agree, and a third check rejects the file
+    shape that fooled an earlier run here: a gunbc invocation that printed its usage text instead
+    of compiling contains no diagnostics at all, so a naive line count reports 0 and 0 looks
+    exactly like main's control green. That is how a run that measured nothing came to be quoted
+    as a measurement, so a log with no `produced N hard diagnostic(s)` line is now rejected.
+    """
+    need(log_path, f"closure log for {label}")
+    text = open(log_path, errors="replace").read()
+    lines = len([l for l in text.splitlines() if re.search(pattern, l)])
+    m = PRODUCED_RE.search(text)
+    if m:
+        produced = int(m.group(1))
+        if produced != lines:
+            print(f"FATAL: {label} log states produced={produced} but {lines} lines match "
+                  f"{pattern!r} -- the counter and the compiler disagree")
+            sys.exit(4)
+        return lines
+    # No refusal header means the run never refused, which is what green looks like -- but ONLY if
+    # the run actually compiled. rc and the emitted marker come from the gate's own stamps, so a
+    # log that is a usage dump or an early exit (rc!=0, or nothing emitted) is rejected here rather
+    # than reported as zero. This is not a theoretical guard: the surviving log for an earlier run
+    # quoted in this PR body is exactly that -- gunbc's help text, which contains zero diagnostics
+    # and would otherwise be indistinguishable from main's control green.
+    if not (rc == 0 and emitted and emitted >= 1):
+        print(f"FATAL: {label} log has no 'produced N hard diagnostic(s)' line and is not asserted "
+              f"green either (rc={rc}, emitted={emitted}) -- zero from it would be an unmeasured "
+              f"run wearing a green hat")
+        sys.exit(4)
+    return 0
+
+
+CLOSURE_OF_LABEL = {"Acc self-host": "self-host", "Acc v2-native-cli": "v2-native-cli",
+                    "repaired self-host": "self-host", "repaired v2-native-cli": "v2-native-cli",
+                    "main self-host": "self-host", "main v2-native-cli": "v2-native-cli"}
+
+
+def c_of(lbl):
+    return CLOSURE_OF_LABEL[lbl]
 
 
 def main():
@@ -42,12 +83,16 @@ def main():
     g = gate_stamps()
 
     MISMATCH = r"type mismatch"
-    acc_sh = counts(f"/tmp/gate3out/head_self-host.log", MISMATCH)
-    acc_v2 = counts(f"/tmp/gate3out/head_v2-native-cli.log", MISMATCH)
-    rep_sh = counts(f"/tmp/gate_bothout/head_self-host.log", MISMATCH)
-    rep_v2 = counts(f"/tmp/gate_bothout/head_v2-native-cli.log", MISMATCH)
-    main_sh = counts(f"/tmp/gate_bothout/main_self-host.log", MISMATCH)
-    main_v2 = counts(f"/tmp/gate_bothout/main_v2-native-cli.log", MISMATCH)
+    acc_sh = counts(f"/tmp/gate3out/head_self-host.log", MISMATCH, "Acc self-host")
+    acc_v2 = counts(f"/tmp/gate3out/head_v2-native-cli.log", MISMATCH, "Acc v2-native-cli")
+    rep_sh = counts(f"/tmp/gate_bothout/head_self-host.log", MISMATCH, "repaired self-host")
+    rep_v2 = counts(f"/tmp/gate_bothout/head_v2-native-cli.log", MISMATCH, "repaired v2-native-cli")
+    main_sh = counts(f"/tmp/gate_bothout/main_self-host.log", MISMATCH, "main self-host",
+                     rc=g["run"]["main"]["self-host"]["rc"],
+                     emitted=g["run"]["main"]["self-host"]["emitted"])
+    main_v2 = counts(f"/tmp/gate_bothout/main_v2-native-cli.log", MISMATCH, "main v2-native-cli",
+                       rc=g["run"]["main"]["v2-native-cli"]["rc"],
+                       emitted=g["run"]["main"]["v2-native-cli"]["emitted"])
     # main must be zero or the whole instrument is unsound -- say so rather than tabulate.
     for name, v in (("main self-host", main_sh), ("main v2-native-cli", main_v2)):
         if v != 0:
@@ -120,17 +165,41 @@ def main():
     L.append("")
     L.append("Zero new identities in both closures is the gate: the repaired tree refuses nothing the "
              "Acc tree accepted. Every remaining diagnostic was already there.\n")
+    L.append("### Evidence basis, and what this section does not rely on\n")
+    L.append("Each figure above comes from a named log, and each log is only trusted if it states "
+             "its own count:\n")
+    for lbl, pth, val in (("Acc self-host", "/tmp/gate3out/head_self-host.log", acc_sh),
+                          ("Acc v2-native-cli", "/tmp/gate3out/head_v2-native-cli.log", acc_v2),
+                          ("repaired self-host", "/tmp/gate_bothout/head_self-host.log", rep_sh),
+                          ("repaired v2-native-cli", "/tmp/gate_bothout/head_v2-native-cli.log", rep_v2),
+                          ("main self-host", "/tmp/gate_bothout/main_self-host.log", main_sh),
+                          ("main v2-native-cli", "/tmp/gate_bothout/main_v2-native-cli.log", main_v2)):
+        prod = ""
+        if os.path.isfile(pth):
+            pm = PRODUCED_RE.search(open(pth, errors="replace").read())
+            if pm:
+                prod = f" (log says produced={pm.group(1)})"
+            else:
+                run = g["run"].get("main" if "main" in lbl else "head", {}).get(
+                    c_of(lbl), {})
+                prod = (f" (no refusal header, so green is asserted by rc={run.get('rc')} and "
+                        f"emitted={run.get('emitted')} -- both must be 0/>=0 and non-absent)")
+        L.append(f"- {lbl}: `{pth}` -> {val}{prod}")
+    L.append("")
+    L.append("The earlier table in this body quotes 76 at `23641bc8a97`, a head measured before main "
+             "was merged. **This section does not rely on it and I cannot confirm it from the "
+             "artifacts still on hand**: the surviving log for that run is a gunbc usage dump -- the "
+             "invocation printed its help text instead of compiling, so the file contains zero "
+             "diagnostics and a naive count of it would have looked like main's control green. The "
+             "pre-repair baseline used here is therefore my own re-measurement at the head the "
+             "repair was built on (" + str(acc_sh) + " at `" + acc_head[:11] + "`), whose log states "
+             "its own count. A count I cannot trace to a log that asserts it is not reported.\n")
     if between:
-        L.append("### Why the Acc-era count is not the repaired-era count for reasons outside this PR\n")
-        L.append("main moved between the two measurements, so a count difference is not automatically "
-                 "mine. Between them main changed how refusals are printed, among other things "
-                 "(sample of main-side commits touching these trees, most recent first):\n")
-        for l in between[:6]:
+        L.append("main also moved between the two measurements, so a count difference from the older "
+                 "table is not automatically mine; the main-side commits between them include\n")
+        for l in between[:4]:
             L.append(f"- {l}")
         L.append("")
-        L.append("So the older table's numbers and this section's numbers are not the same "
-                 "measurement of the same tree, and neither was edited to match the other.\n")
-
     L.append("### Rows, one invocation each\n")
     L.append("Per-row `--exact` runs with their own bound: the crate pins `RUST_TEST_THREADS=1` and "
              "every `compile_to_resolved` row recompiles the std closure, so one crate-filtered run "
