@@ -2,7 +2,8 @@ module test.claim.wire_schema_derivation_witness
 
 import std.types { String, List, Bool }
 import v2.std.decl_index { decl_facts, DeclFact }
-import v2.std.node { Node, Authored, StructuralLabel, Positional }
+import v2.std.node { Node, symbol_lexeme }
+import v2.std.node_query { declared_field_list }
 import test.claim.wire_strict_reader_witness { read_authentication_declared }
 
 // THE ONE INHABITANCE CLAIM for wire_strict_reader_witness: the batched decl_facts pass over
@@ -13,17 +14,10 @@ test fn derived_fields_of_read_authentication_are_the_supplied_list() -> Bool {
   count(hits) == 1 && all(hits, f => node_field_names(n: f.node) == read_authentication_declared)
 }
 
-// The fields a record type declaration's node carries: its direct children, one Authored edge per
-// field whose label is the field name and whose target is the field's type (a record type is not a
-// payload Conj of binders, which is why declared_field_list reads it as empty).
+// The field names of a declaration node, read through the one binder reader (declared_field_list);
+// decl_facts reflects a record's fields as binder nodes, so no second reader of the shape lives here.
 fn node_field_names(n: Node) -> List<String> {
-  fold(n.children, init: Empty, f: fn(acc, e) {
-    match e.label {
-      Authored { name: nm } => concat(acc, [nm as String])
-      StructuralLabel { label: _ } => acc
-      Positional => acc
-    }
-  })
+  fold(declared_field_list(payload: n), init: Empty, f: fn(acc, fld) { concat(acc, [symbol_lexeme(sym: fld.name)]) })
 }
 
 // RED: a field list that is not the declared one is not the derived one.
