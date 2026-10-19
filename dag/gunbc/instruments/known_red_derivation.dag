@@ -563,7 +563,8 @@ fn known_red_pack_groups(
       }
     Cons { head: g, tail: t } =>
       if length(xs: current) > 0
-        && length(xs: current) + length(xs: g.claims) > known_red_max_claims_per_child {
+        && (length(xs: current) + length(xs: g.claims) > known_red_max_claims_per_child
+          || known_red_child_has_name_clash(current: current, incoming: g.claims)) {
         known_red_pack_groups(
           groups: t,
           current: g.claims,
@@ -763,10 +764,54 @@ fn known_red_child_claims(child: KnownRedChildRun) -> List<ClaimRun> {
   }
 }
 
-fn known_red_all_verdict_lines(children: List<KnownRedChildRun>) -> List<String> {
-  children
-    |> fold(init: [], f: (acc, c) => concat(acc, known_red_child_verdict_lines(child: c)))
+// THE LINES A SUBJECT'S VERDICT MAY COME FROM: only the children that were ASKED to run it. This is the
+// identity join the module header promises, applied where it was missing. `claim_batch` prints each verdict
+// as the BARE function name (`src/v1/stage0/src/bin/claim_batch.rs:326-328`), so a name is only unique
+// within one child's run: two claims in different modules that share a function name would otherwise both
+// read the same line, and one PASS plus one FAIL made BOTH rows Absent while two FAILs made each row take
+// the other's failure as its own. Restricting the lookup to the child that carried this subject's claim
+// makes the module unnecessary -- the child identity is what disambiguates -- and is measured live rather
+// than assumed: two rows of the current roster DO share function names (`doc_graph_has_no_dangling_links`
+// and `doc_graph_has_no_orphan_docs`, held by `test.claim.doc_reachability_witness` and by
+// `v2.test.lens_doc_reachability.doc_reachability`), which is why the guard below is a construction and not
+// a refusal on an accident that never happens.
+fn known_red_lines_for_subject(subject: KnownRedSubject, children: List<KnownRedChildRun>) -> List<String> {
+  match subject.entry {
+    Placed { path: p } =>
+      fold(
+        xs: children,
+        init: [],
+        f: (acc, c) =>
+          if known_red_child_carries(child: c, entry: p, function: subject.function) {
+            concat(acc, known_red_child_verdict_lines(child: c))
+          } else {
+            acc
+          }
+      )
+    Underivable { name: _, cause: _ } => []
+  }
 }
+
+fn known_red_child_carries(child: KnownRedChildRun, entry: String, function: String) -> Bool {
+  any(
+    xs: known_red_child_claims(child: child),
+    predicate: fn(c) { c.entry == entry && c.function == function }
+  )
+}
+
+
+// A CHILD MUST NOT CARRY TWO CLAIMS WITH THE SAME VERDICT NAME: within one child the pooled lines cannot be
+// separated, so the packer splits them into different children instead (the cap already forces splits; this
+// adds name-clash as a second reason to flush). When no split is possible -- the same entry AND the same
+// function name, which is a duplicate identity, refused elsewhere -- `VerdictIdentityAmbiguous` below still
+// refuses rather than guessing.
+fn known_red_child_has_name_clash(current: List<ClaimRun>, incoming: List<ClaimRun>) -> Bool {
+  any(
+    xs: incoming,
+    predicate: fn(n) { any(xs: current, predicate: fn(c) { c.function == n.function }) }
+  )
+}
+
 
 // THE HARNESSED CHILDREN ONLY: those that actually ran. `exit_code` is consumed here, and this is the
 // consumer that keeps it honest — a child that exited non-zero while printing no verdict line is the
@@ -907,6 +952,72 @@ fn known_red_identity_dispatched(identity: WitnessIdentity, dispatched: List<Kno
   any(xs: dispatched, predicate: fn(x) { known_red_same_identity(a: identity, b: x.identity) })
 }
 
+// WHY THE VERDICT LOOKUP NEEDED A CONSTRUCTION, NOT A COUNT.
+// `claim_batch` spells each verdict `PASS <function>` / `FAIL <function>` -- the bare function name, with no
+// module (`src/v1/stage0/src/bin/claim_batch.rs:326-328`, and `:917` for the resolve-refusal form). The
+// fold used to pool EVERY child's stdout and match it against the subject's function name, so two claims in
+// different modules that share a function name had their verdicts merged: one passing and one failing made
+// BOTH rows `Absent`, and two failures made each row take the other's failure as its own. A silent wrong
+// answer, not a refusal -- and this is the exact place where the module header's promise ("completeness is
+// `ledger_is_complete`, an identity join") was false.
+//
+// Keying the lookup on `witness_identity_qualified_name` is what the reviewer proposed and it is the right
+// shape; it is not available to this file, because the harness does not print the module. Changing what
+// `claim_batch` prints is a production-Rust change with its own receipt, not a widening slipped into an
+// instrument. So the same guarantee is obtained by construction instead, in two parts:
+//   1. `known_red_lines_for_subject` restricts a subject's lookup to the children that were ASKED to run it
+//      (matched on entry AND function, i.e. the identity join), so a name shared across two children can no
+//      longer cross-contaminate; and
+//   2. `known_red_pack_groups` never packs two claims with the same function name into ONE child, because
+//      within a child the pooled lines genuinely are indistinguishable.
+// `VerdictIdentityAmbiguous` then refuses only the residue that no construction can resolve: the same child
+// carrying one function name twice, which is a duplicate identity.
+//
+// This is measured, not assumed: two rows of the CURRENT roster really do share function names
+// (`doc_graph_has_no_dangling_links` and `doc_graph_has_no_orphan_docs`, held by
+// `test.claim.doc_reachability_witness` and by `v2.test.lens_doc_reachability.doc_reachability`). A
+// population-wide refusal would therefore have bricked the label on real data; per-child attribution plus
+// the packing rule keeps those two claims correct AND keeps the run green.
+
+// THE NAMES THAT ARE UNRESOLVABLE: carried with the same function name BY ONE CHILD. Sharing a name across
+// the population is fine once attribution is per child and the packer splits those claims apart -- which is
+// what happens today, on measured data. What cannot be recovered is a clash inside a single child's stdout,
+// because there the two verdict lines are indistinguishable; that is what this refuses.
+fn known_red_ambiguous_verdict_names(children: List<KnownRedChildRun>) -> List<String> {
+  known_red_dedupe_texts(
+    xs: fold(
+      xs: children,
+      init: [],
+      f: (acc, c) => concat(xs: acc, ys: known_red_clashing_names_in_child(child: c))
+    )
+  )
+}
+
+fn known_red_clashing_names_in_child(child: KnownRedChildRun) -> List<String> {
+  fold(
+    xs: known_red_child_claims(child: child),
+    init: [],
+    f: (acc, n) =>
+      if length(xs: filter(xs: known_red_child_claims(child: child), predicate: fn(c) { c.function == n.function })) > 1
+        && !any(xs: acc, predicate: fn(a) { a == n.function })
+      {
+        list_snoc_item(xs: acc, item: n.function)
+      } else {
+        acc
+      }
+  )
+}
+
+fn known_red_dedupe_texts(xs: List<String>) -> List<String> {
+  fold(
+    xs: xs,
+    init: [],
+    f: (acc, x) => if any(xs: acc, predicate: fn(a) { a == x }) { acc } else { list_snoc_item(xs: acc, item: x) }
+  )
+}
+
+
+
 // Nothing in this function touches a service or a process, which is what lets the witness claims drive a
 // CONTROLLED enrolled-red identity through the real fold — made to fail, then to pass — instead of
 // asserting what the fold would have said. The live run stays separate from those arms on purpose: the
@@ -916,10 +1027,13 @@ fn known_red_fold(
   subjects: List<KnownRedSubject>,
   children: List<KnownRedChildRun>
 ) -> KnownRedDerivation {
-  let lines = known_red_all_verdict_lines(children: children)
+  // THE ROWS READ ONLY THE CHILD THAT WAS ASKED TO RUN THEM -- see `known_red_lines_for_subject`. Pooling
+  // every child's stdout and matching on the bare function name is what let two claims in different modules
+  // with the same function name trade verdicts.
   let rows = map(
     subjects,
-    s =>
+    s => {
+      let lines = known_red_lines_for_subject(subject: s, children: children)
       KnownRedDerivationRow {
         identity: s.identity,
         head: head,
@@ -929,6 +1043,7 @@ fn known_red_fold(
         observation: known_red_observation_of(lines: lines, function: s.function),
         disposition: known_red_projection(subject: s, lines: lines)
       }
+    }
   )
   let report = known_red_reconciliation(subjects: subjects, rows: rows)
   let defects = known_red_subject_defects(subjects: subjects)
@@ -1289,6 +1404,7 @@ type KnownRedDerivationRefusal
   | SubjectDefectsCarried { defects: List<String> }
   | DispatchedPopulationNotComplete { missing: List<String> }
   | ChildExitedNonzeroWithoutVerdicts { children: List<String> }
+  | VerdictIdentityAmbiguous { names: List<String> }
 
 fn known_red_refusal_name(r: KnownRedDerivationRefusal) -> String {
   match r {
@@ -1301,6 +1417,7 @@ fn known_red_refusal_name(r: KnownRedDerivationRefusal) -> String {
     SubjectDefectsCarried { defects: _ } => "SubjectDefectsCarried"
     DispatchedPopulationNotComplete { missing: _ } => "DispatchedPopulationNotComplete"
     ChildExitedNonzeroWithoutVerdicts { children: _ } => "ChildExitedNonzeroWithoutVerdicts"
+    VerdictIdentityAmbiguous { names: _ } => "VerdictIdentityAmbiguous"
   }
 }
 
@@ -1372,6 +1489,13 @@ fn known_red_refusals(
     } else {
       []
     }
+  let ambiguous = known_red_ambiguous_verdict_names(children: children)
+  let verdict_name_ambiguous =
+    if length(xs: ambiguous) > 0 {
+      [VerdictIdentityAmbiguous { names: map(ambiguous, a => concat(a, " carried twice by one child")) }]
+    } else {
+      []
+    }
   concat(
     concat(concat(no_spawn, bin_refused), concat(head_unreadable, incomplete)),
     concat(
@@ -1386,7 +1510,7 @@ fn known_red_refusals(
         } else {
           []
         },
-        concat(under_dispatched, concat(died_without_verdicts, carried))
+        concat(under_dispatched, concat(died_without_verdicts, concat(verdict_name_ambiguous, carried)))
       )
     )
   )
@@ -1629,6 +1753,8 @@ fn known_red_refusal_detail(r: KnownRedDerivationRefusal) -> String {
       concat(": owed and well-formed but handed to no child: ", join(ms, ", "))
     ChildExitedNonzeroWithoutVerdicts { children: ds } =>
       concat(": ", join(ds, " | "))
+    VerdictIdentityAmbiguous { names: ns } =>
+      concat(": claim_batch prints the bare function name, so these verdict names are shared and their verdicts would merge -- ", join(ns, " | "))
   }
 }
 
