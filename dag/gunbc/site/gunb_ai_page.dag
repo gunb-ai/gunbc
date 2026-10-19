@@ -1,6 +1,6 @@
 module gunbc.site.gunb_ai_page
 
-// gunb.ai's one page, as a typed Fragment tree.
+// gunb.ai's one page, as a typed std.markup MarkupDocument.
 //
 // THIS MODULE IS THE CONSUMER (§3c). It is the reason the layers under it are not modelled "for
 // later": every sentence, link, prompt and command line is read from gunbc.site.gunb_ai_content;
@@ -11,19 +11,18 @@ module gunbc.site.gunb_ai_page
 // this repo, and none of those rows exists without this module reading it.
 //
 // WHAT THIS MODULE DOES NOT OWN, and who does.
-//   Element and attribute SYNTAX, including escaping: std.markup's algebra and its medium. Element
-//     values, attribute values and text go through Element/attr/txt and std.markup's serializers —
-//     no attribute value is hand-quoted here, and there is no free-string line arm in PageLine, so
-//     nothing reaches the file that both escapes and the guards skip. RESIDUAL, NAMED: std.markup
-//     cannot express a bare close tag, a comment, or a doctype, so PageLine carries those three as
-//     INTENTS (CloseTag/Comment/DoctypeLine — a tag name and a body, not assembled markup) and the
-//     emitter assembles them from the medium's bracket fields plus three rows beside emit_line.
-//     Dissolution trigger: the std.markup PR adding Comment/Doctype/close-tag fragments deletes the
-//     three arms and the three rows. This gap is also tracked for the language layer itself, so it
-//     is a named frontier, not a permanent leaf workaround (§6b).
-//     The rest of what this module writes itself is LINE LAYOUT (indentation, blank lines),
-//     because serialize_fragment_with joins children with no separator and therefore has no notion
-//     of a line; see the line helpers.
+//   Element, attribute, comment and doctype SYNTAX, including escaping and the guards: std.markup
+//     and extdeps.languages.html. The page is ONE MarkupDocument whose root is a nested Element tree
+//     with MarkupComment nodes, and it reaches the file only through
+//     extdeps.languages.html.try_serialize_html_document_with, which runs the URL guard over every
+//     href/src, the doctype-name check, the comment-terminator check and the raw-text check. No
+//     line is ever written as a RawNode, so no content is hidden from a guard, and there is no
+//     second serializer here.
+//   Indentation. The served file is NOT depth-indented (<head> and <body> sit at column 0, the
+//     <pre> block is flush left inside an 8-space section), and whitespace between tags is real DOM
+//     text, so each node's leading whitespace is a FragmentText child that states its own column,
+//     measured from the served page (dag/test/fixture/gunb_ai/live_index.html). std.layout does
+//     not apply: it derives indentation from depth, which this page does not follow.
 //   CSS declarations, custom properties, colours as styles: gunbc.site.gunb_ai_tokens and
 //     gunbc.site.gunb_ai_layout. No style attribute appears in this file.
 //   Served sentences: gunbc.site.gunb_ai_content.
@@ -32,20 +31,18 @@ module gunbc.site.gunb_ai_page
 //     data-deck attribute is a mount hint the script reads, not a file request). This module emits
 //     the mount element and nothing else of the deck.
 //
-// FAIL CLOSED (§5). render_page yields Rendered only when the typed emitter's own two guards
-// accept the tree: extdeps.languages.html.find_first_rejected_url over every href/src, and
-// raw_text_hazard over raw-text content. Either yields PageRefused { refusal }, a named cause with
-// the offending value attached —
-// and the writer exits non-zero HAVING WRITTEN NOTHING — the bytes are produced before any Filesystem
-// call, so no path exists on which a refused render lands on disk, and there is no fallback markup
-// here to fall back to.
+// FAIL CLOSED (§5). render_page yields PageRendered only when the document serializes; a guard
+// refusal yields PageRefused { reason }, the language layer's own located reason (it names the
+// offending url, terminator or close sequence), and the writer exits non-zero HAVING WRITTEN
+// NOTHING — the bytes are produced before any Filesystem call, so no path exists on which a refused
+// render lands on disk, and there is no fallback markup here to fall back to.
 //
 // PARITY, AND THE INSTRUMENT. test.claim.site_gunb_ai_page_witness runs render_page inside a claim
 // and compares the emitted bytes to dag/test/fixture/gunb_ai/live_index.html — a committed copy of
-// what gunb.ai serves (cmp-verified byte-identical to the Pages repo's index.html at 3152d4c, 3593
-// bytes). The comparison is byte-exact except at the rows of parity_nullities (type
-// ParityDifference), each of which names one difference and the spec clause that makes it
-// semantically null; a difference of any other kind turns the claim red rather than passing quietly.
+// what gunb.ai serves (cmp-verified byte-identical to the Pages repo's index.html at 3152d4c).
+// The comparison is byte-exact except at the rows of parity_nullities (type ParityDifference),
+// each of which names one difference and the spec clause that makes it semantically null; a
+// difference of any other kind turns the claim red rather than passing quietly.
 // Same render outside the claim runner, in one dispatch:
 //   cargo build --release -p v1-compiler --bin gunbc
 //   mkdir -p /tmp/gunbai
@@ -59,13 +56,13 @@ import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
 import std.algebra { string_contains }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.markup {
-  Fragment, Element, FragmentText, RawNode, Attribute, attr,
-  MarkupMedium, EscapeHtml, SelfClose, serialize_fragment_with,
+  Fragment, Element, FragmentText, MarkupComment, MarkupDocument, Attribute, attr,
+  MarkupMedium, EscapeHtml, SelfClose, document_line_ending,
 }
 import extdeps.languages.html {
-  canonical_html_spellings, html5_void_tags, html5_raw_text_tags, raw_text_hazard,
+  canonical_html_spellings, html5_void_tags, html5_raw_text_tags, html_doctype_name,
+  html_markup_medium, try_serialize_html_document_with, EmitOk, EmitRejected,
 }
-import extdeps.uri_validation { find_first_rejected_url, RejectedUrl }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.design.palette { swatch_paint }
 import gunbc.site.markup { page_render_refusal_prefix }
@@ -86,16 +83,15 @@ data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
 
 // ── The medium, and the one thing this module spells itself ───────────────────────────────────
 //
-// std.markup's medium is where tag spelling lives, and this page differs from
-// extdeps.languages.html's default in exactly ONE field:
+// This page differs from extdeps.languages.html's default medium in exactly ONE field:
 //   void_rendering: the page spells its void elements (its meta and link tags) XHTML-style,
-//     `<meta />`, where html_medium_with spells them `<meta>`. SelfClose is the medium's own arm, so
-//     this is a spelling decision recorded where spelling is decided — not a string workaround, and
-//     not a per-tag exception. <script> is unaffected: it is raw-text, not void, so it still gets a
-//     close tag (its text is not entity-escaped, which is what killed the roadmap's child-combinator
-//     rule once).
-// void_tags, brackets, entity escaping and raw-text tags are the language module's unchanged, so the
-// whole difference between this medium and the default is one field, auditable in one read.
+//     `<meta />`, where html_markup_medium spells them `<meta>`. SelfClose is the medium's own arm,
+//     so this is a spelling decision recorded where spelling is decided — not a string workaround,
+//     and not a per-tag exception. <script> is unaffected: it is raw-text, not void, so it still
+//     gets a close tag.
+// plus the seal's <path> joining the void set (the served file closes it with "/>"). The comment and
+// document grammars are the language module's own rows, read off html_markup_medium, so the
+// delimiters exist once.
 data page_medium: MarkupMedium = MarkupMedium {
   tag_overrides: [],
   bracket: canonical_html_spellings,
@@ -103,26 +99,9 @@ data page_medium: MarkupMedium = MarkupMedium {
   void_tags: concat(html5_void_tags, [seal_tag]),
   void_rendering: SelfClose,
   raw_text_tags: html5_raw_text_tags,
-  comment_open: html_comment_open_sequence,
-  comment_close: html_comment_close_sequence,
-  line_indent_unit: html_indent_unit,
+  comment_grammar: html_markup_medium().comment_grammar,
+  document_grammar: html_markup_medium().document_grammar,
 }
-
-// ── Line layout ───────────────────────────────────────────────────────────────────────────────
-//
-// std.markup's algebra has no concept of a line: serialize_fragment_with joins children with no
-// separator, so any fragment tree serializes to a single line. The served page is indented by hand,
-// and NOT by nesting depth — its <pre> block starts at column 0 inside an 8-space section (flush
-// left, so command text carries no leading spaces). So indentation cannot be derived from the tree
-// and cannot be delegated to the serializer; each line states its own column, once, via these
-// helpers. Dissolution trigger: if the markup medium grows an indent policy (a field owning line
-// breaks), these helpers and the columns they carry go away and the tree is all that is left.
-data indent_unit: Int = 2
-
-fn indent(n: Int) -> String {
-  repeat_string(s: " ", n: n * indent_unit)
-}
-
 
 // ── Facts the document element and head carry ─────────────────────────────────────────────────
 //
@@ -238,142 +217,142 @@ fn hero_seal_d() -> String {
   )
 }
 
-// ── The page as lines, so the fail-closed guards cannot be bypassed ───────────────────────────
+
+// ── Whitespace as DOM text ────────────────────────────────────────────────────────────────────
 //
-// WHY A LINE TYPE EXISTS, and why it is not simply List<Fragment>. std.markup's two emit guards
-// (extdeps.languages.html.find_first_rejected_url, raw_text_hazard) walk Element and children and
-// return Absent on RawNode — a raw node is, by that module's own contract, already-fixed syntax.
-// If the page were a flat list of already-wrapped lines, every indentation wrapper would be a
-// RawNode and the guards would see nothing at all: the URL check would pass an <a href="javascript:…">
-// silently, which is the opposite of fail closed. So the page is authored as PageLine, which keeps
-// each line's NODES as nodes, and the guards are run over those nodes before any wrapping. The two
-// verbatim arms are the only places a string is emitted untouched, and neither carries a URL: the
-// doctype is fixed text and a comment is author commentary (checked by the witness, which asserts no
-// "href" appears inside any verbatim row).
-// There is deliberately NO "raw text" arm. An arm holding an arbitrary String would let any line be
-// emitted without the serializer, and that is how the masthead seal once shipped: its attributes were
-// hand-quoted, so their values skipped std.markup's escaping and skipped the URL and raw-text guards
-// (a guard that walks Element sees nothing in a string). §5 — "stronger than catching a wrong state
-// is making it unwritable" — so the vocabulary names only the four line kinds the document actually
-// needs, and three of them are intents the emitter spells from the medium's own bracket fields.
-type PageLine
-  = Blank
-  | One { depth: Int, node: Fragment }
-  | Inline { depth: Int, nodes: List<Fragment> }
-  | CloseTagLine { depth: Int, tag: String }
-  | CommentLine { depth: Int, text: String }
-  | DoctypeLine { language: String }
-
-// Every node the page renders, unwrapped — what the guards walk. Derived FROM the lines rather
-// than listed beside them, so a line added to the page is automatically guarded: a parallel node
-// list is a second source that a new line could be missing from, which is how a URL would slip
-// past the check. Same fold input as render_page, which calls page_lines() too.
-fn guard_nodes() -> List<Fragment> {
-  fold(page_lines(), init: [], f: fn(acc, l) {
-    match l {
-      Blank => acc
-      CloseTagLine { depth: _, tag: _ } => acc
-      CommentLine { depth: _, text: _ } => acc
-      DoctypeLine { language: _ } => acc
-      One { depth: _, node: n } => concat(acc, [n])
-      Inline { depth: _, nodes: ns } => concat(acc, ns)
-    }
-  })
+// Whitespace between tags is real text in the DOM, so it is a FragmentText child of the node it
+// sits in, never a join performed by a writer. `col` is the literal column the next token starts
+// at in the served file (measured from the fixture, not derived from depth). Text goes through the
+// medium's EscapeHtml, which leaves spaces and newlines alone.
+fn pg_spaces(n: Int) -> String {
+  repeat_string(s: " ", n: n)
 }
 
-// What can make this page refuse to render. A closed sum, so "the page was refused" is one of a
-// named set of causes with the offending value attached — not a String whose empty value happens to
-// mean "clean". §5: every path succeeds fully or fails with a typed, located diagnostic.
-// (Names carry their kind and are unique across the closure; RawTextHazard is the language module's
-// function name, so this arm is spelled differently to avoid colliding with it.)
-type PageGuardRefusal
-  = DisallowedUrl { url: String }
-  | RawTextEscapeHazard { content: String }
+// A line break, then the column the next node starts at.
+fn pg_break(col: Int) -> Fragment {
+  FragmentText { content: join(["\n", pg_spaces(n: col)], "") }
+}
 
-// Fold the guards over the page's nodes: Absent means clean, Present carries the cause. There is no
-// empty-string state to fail open into — an implementation that returned "" for a hazard could not
-// be written in this type.
-fn page_guard_refusal() -> Optional<PageGuardRefusal> {
-  let nodes = guard_nodes()
-  let root = Element { tag: "div", attributes: [], children: nodes }
-  match find_first_rejected_url(node: root) {
-    Present { value: r } => Present { value: DisallowedUrl { url: r.url } }
-    Absent => match raw_text_hazard(node: root) {
-      "" => Absent
-      hazard => Present { value: RawTextEscapeHazard { content: hazard } }
-    }
+// A blank line, then the column the next node starts at.
+fn pg_gap(col: Int) -> Fragment {
+  FragmentText { content: join(["\n\n", pg_spaces(n: col)], "") }
+}
+
+fn pg_text(s: String) -> Fragment {
+  FragmentText { content: s }
+}
+
+// An element whose children each start a new line at `col`, closing on its own line at `close_col`.
+fn pg_stacked(tag: String, attrs: List<Attribute>, col: Int, kids: List<Fragment>, close_col: Int) -> Fragment {
+  Element {
+    tag: tag,
+    attributes: attrs,
+    children: concat(
+      fold(kids, init: [], f: fn(acc, k) { concat(acc, [pg_break(col: col), k]) }),
+      [pg_break(col: close_col)],
+    ),
   }
 }
 
-// The one place a refusal becomes text: the CLI diagnostic. Kept as a wire over the sum so no caller
-// has to pattern-match to report, and so the type stays the source of the message's content.
-fn guard_refusal_text(r: PageGuardRefusal) -> String {
-  match r {
-    DisallowedUrl { url: u } => join(["url not allowed: ", u], "")
-    RawTextEscapeHazard { content: c } => join(["raw-text content would be corrupted by escaping: ", c], "")
+// An element holding one run of inline children on one line.
+fn pg_inline(tag: String, attrs: List<Attribute>, kids: List<Fragment>) -> Fragment {
+  Element { tag: tag, attributes: attrs, children: kids }
+}
+
+// An element whose body sits on its own line at `col + 2`, closing back at `col` — the shape the
+// served file uses for containers holding one paragraph.
+fn pg_wrapped(tag: String, attrs: List<Attribute>, col: Int, kids: List<Fragment>) -> Fragment {
+  Element {
+    tag: tag,
+    attributes: attrs,
+    children: concat([pg_break(col: col + 2)], concat(kids, [pg_break(col: col)])),
   }
+}
+
+fn class_attr(cls: String) -> Attribute {
+  attr(name: attr_class, value: cls)
+}
+
+fn pg_note(body: String) -> Fragment {
+  MarkupComment { body: body }
+}
+
+// ── The document ──────────────────────────────────────────────────────────────────────────────
+
+fn page_document() -> MarkupDocument {
+  MarkupDocument { doctype: html_doctype_name, root: page_root() }
+}
+
+fn page_root() -> Fragment {
+  pg_stacked(
+    tag: tag_html, attrs: [attr(name: "lang", value: page_language)], col: 0,
+    kids: [page_head(), page_body()], close_col: 0,
+  )
 }
 
 // The comments, as they are emitted. The witness reads this row to prove a comment still stands
-// where it stands; the only other reader is the guard above.
+// where it stands; the page builders read the same rows.
 fn comment_texts() -> List<String> {
   concat(
     [comment_masthead, comment_hero, comment_carved_rule, comment_footer],
-    [join(comment_deck_lines, "\n")],
+    [deck_comment_body()],
   )
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────────────────────
 // Variant names are unique across the whole closure (the resolver rejects a name shared by two
-// types), and generic names like Written/Refused are already taken by std modules reachable from
-// here — so each arm names the kind of event it is: a render refusal is not a filesystem refusal.
+// types), so each arm names the kind of event it is: a render refusal is not a filesystem refusal.
 type PageRender
   = PageRendered { bytes: String }
-  | PageRefused { refusal: PageGuardRefusal }
+  | PageRefused { reason: String }
 
-// The whole document, or a typed refusal naming what refused. No write happens here; the writer is
-// the only thing that touches the filesystem, and it writes only on PageRendered.
+// The whole document, or the language layer's located refusal. No write happens here; the writer is
+// the only thing that touches the filesystem, and it writes only on PageRendered. The served file
+// ends in a line break after </html>, which no node can carry (the root is one element), so it is
+// the file's terminator, written through the same line-ending row the doctype line uses.
 fn render_page() -> PageRender {
-  match page_guard_refusal() {
-    Present { value: r } => PageRefused { refusal: r }
-    Absent => PageRendered { bytes: emit_lines(lines: page_lines()) }
+  render_document(doc: page_document())
+}
+
+fn render_document(doc: MarkupDocument) -> PageRender {
+  match try_serialize_html_document_with(doc: doc, medium: page_medium) {
+    EmitOk { html: h } => PageRendered { bytes: concat(h, document_line_ending()) }
+    EmitRejected { reason: r } => PageRefused { reason: r }
   }
 }
 
-fn emit_lines(lines: List<PageLine>) -> String {
-  fold(lines, init: "", f: (acc, l) => join([acc, emit_line(l: l)], ""))
+// ── The head ──────────────────────────────────────────────────────────────────────────────────
+//
+// Every head tag is a typed element, so each href/src below is walked by the URL guard: a link that
+// ever pointed at a javascript: or disallowed scheme makes the whole page refuse rather than ship.
+
+fn meta_tag(name: String, content: String) -> Fragment {
+  pg_inline(tag: tag_meta, attrs: [attr(name: attr_name, value: name), attr(name: attr_content, value: content)], kids: [])
 }
 
-fn emit_line(l: PageLine) -> String {
-  match l {
-    Blank => "\n"
-    One { depth: d, node: n } => join([indent(n: d), serialize_fragment_with(frag: n, medium: page_medium), "\n"], "")
-    Inline { depth: d, nodes: ns } => join([indent(n: d), fold(ns, init: "", f: (acc, n) => join([acc, serialize_fragment_with(frag: n, medium: page_medium)], "")), "\n"], "")
-    CloseTagLine { depth: d, tag: tg } => join([indent(n: d), page_medium.bracket.end_tag_open, tg, page_medium.bracket.tag_close, "\n"], "")
-    CommentLine { depth: d, text: c } => join([indent(n: d), comment_open, c, comment_close, "\n"], "")
-    DoctypeLine { language: lg } => join([doctype_keyword, " ", lg, page_medium.bracket.tag_close, "\n"], "")
-  }
+fn link_tag(attrs: List<Attribute>) -> Fragment {
+  pg_inline(tag: tag_link, attrs: attrs, kids: [])
 }
 
-// The comment delimiters and the DOCTYPE keyword are the ONE piece of markup spelling this module
-// still owns, because the medium has no field for either (MarkupBracket carries tag_open,
-// end_tag_open, tag_close, attr_sep, attr_assign, attr_quote — nothing for "<!--" or "<!DOCTYPE").
-// They are rows, read by the emitter and by no caller, so the gap is visible in one place rather
-// than smeared through the page. Dissolution trigger: the std.markup PR that adds Comment and
-// Doctype fragments (with their spellings on the medium) deletes these three rows and the two arms
-// that read them; until then this is a named gap in the language layer, not a workaround in a leaf.
-// The document type named after the DOCTYPE keyword. NOT the same fact as page_language (the lang
-// attribute, "en"): <!DOCTYPE names the parsing mode, lang the content language. Conflating them
-// would emit <!DOCTYPE en>, which the browser then parses in quirks mode.
-data doctype_language: String = "html"
-data comment_open: String = "<!-- "
-data comment_close: String = " -->"
-data doctype_keyword: String = "<!DOCTYPE"
-
-fn page_lines() -> List<PageLine> {
-  concat(
-    [DoctypeLine { language: doctype_language }, root_open(), head_open()],
-    concat(head_lines(), concat([head_close()], concat([body_open()], concat(body_lines(), concat([body_close()], [root_close()]))))),
+fn page_head() -> Fragment {
+  pg_stacked(
+    tag: tag_head, attrs: [], col: 2, close_col: 0,
+    kids: [
+      pg_inline(tag: tag_meta, attrs: [attr(name: meta_charset_name, value: meta_charset_value)], kids: []),
+      meta_tag(name: meta_viewport_name, content: meta_viewport_content),
+      pg_inline(tag: tag_title, attrs: [], kids: [pg_text(s: document_title())]),
+      meta_tag(name: meta_description_name, content: meta_description_text()),
+      link_tag(attrs: [attr(name: attr_rel, value: rel_icon), attr(name: attr_type, value: icon_type), attr(name: attr_href, value: icon_href)]),
+      meta_tag(name: meta_theme_color_name, content: theme_color_value()),
+      link_tag(attrs: [attr(name: attr_rel, value: rel_preconnect), attr(name: attr_href, value: fonts_preconnect_host)]),
+      link_tag(attrs: [attr(name: attr_rel, value: rel_preconnect), attr(name: attr_href, value: fonts_static_host), attr(name: crossorigin_attribute, value: "")]),
+      link_tag(attrs: [attr(name: attr_href, value: fonts_stylesheet_url()), attr(name: attr_rel, value: rel_stylesheet)]),
+      link_tag(attrs: [attr(name: attr_rel, value: rel_stylesheet), attr(name: attr_href, value: stylesheet_href)]),
+      // The deck script. src goes through the URL guard; defer is a boolean attribute, spelled by
+      // std.markup as name="" (the repo's existing convention for boolean attributes) — the
+      // difference from the served page's bare form is recorded in parity_nullities below.
+      pg_inline(tag: tag_script, attrs: [attr(name: attr_src, value: cards_script_src), attr(name: script_defer_attribute, value: "")], kids: []),
+    ],
   )
 }
 
@@ -455,89 +434,11 @@ data hidden_true: String = "true"
 data seal_fill: String = "currentColor"
 data seal_fill_rule: String = "evenodd"
 
-// ── Line builders ─────────────────────────────────────────────────────────────────────────────
-//
-// An opening tag is a TYPED element with no children, so its attributes go through std.markup's
-// attr/escape route (and therefore through the URL guard). A closing tag is the CloseTag INTENT:
-// std.markup has no arm for a bare end tag, and rather than spell "</" + tag + ">" here, the line
-// records which tag closes and lets the emitter assemble it from the medium's end_tag_open /
-// tag_close fields. One fewer literal, and the spelling stays the medium's.
-fn open_line(n: Int, tag: String, attrs: List<Attribute>) -> PageLine {
-  One { depth: n, node: Element { tag: tag, attributes: attrs, children: [] } }
-}
-
-fn close_line(n: Int, tag: String) -> PageLine {
-  CloseTagLine { depth: n, tag: tag }
-}
-
-// One whole element on one line: open tag, children, close tag. Children are typed nodes, so the
-// guard sees any URL inside them.
-fn element_line(n: Int, tag: String, attrs: List<Attribute>, children: List<Fragment>) -> PageLine {
-  One { depth: n, node: Element { tag: tag, attributes: attrs, children: children } }
-}
-
-// An element whose body sits on its own line, indented one step further, with the close tag back at
-// the element's own column — the shape the served file uses for containers holding one paragraph.
-// The indent is data here because std.markup emits no layout at all.
-fn wrapped_element(n: Int, tag: String, attrs: List<Attribute>, children: List<Fragment>) -> Fragment {
-  Element {
-    tag: tag,
-    attributes: attrs,
-    children: concat(
-      [FragmentText { content: join(["\n", indent(n: n + 1)], "") }],
-      concat(children, [FragmentText { content: join(["\n", indent(n: n)], "") }]),
-    ),
-  }
-}
-
-fn class_attr(cls: String) -> Attribute {
-  attr(name: attr_class, value: cls)
-}
-
-fn comment_line(n: Int, text: String) -> PageLine {
-  CommentLine { depth: n, text: text }
-}
-
-// ── The head ──────────────────────────────────────────────────────────────────────────────────
-//
-// Every head tag is a typed element, so each href/src below is walked by the URL guard: a link that
-// ever pointed at a javascript: or disallowed scheme makes the whole page refuse rather than ship.
-
-fn head_lines() -> List<PageLine> {
-  concat(
-    meta_lines(),
-    concat(link_lines(), [head_script_line(), close_line(n: 1, tag: tag_head)]),
-  )
-}
-
-fn meta_lines() -> List<PageLine> {
-  [
-    open_line(n: 2, tag: tag_meta, attrs: [attr(name: attr_name, value: meta_charset_name), attr(name: attr_content, value: meta_charset_value)]),
-    open_line(n: 2, tag: tag_meta, attrs: [attr(name: attr_name, value: meta_viewport_name), attr(name: attr_content, value: meta_viewport_content)]),
-    element_line(n: 2, tag: tag_title, attrs: [], children: [FragmentText { content: document_title() }]),
-    open_line(n: 2, tag: tag_meta, attrs: [attr(name: attr_name, value: meta_description_name), attr(name: attr_content, value: meta_description_text())]),
-    open_line(n: 2, tag: tag_link, attrs: [attr(name: attr_rel, value: rel_icon), attr(name: attr_type, value: icon_type), attr(name: attr_href, value: icon_href)]),
-    open_line(n: 2, tag: tag_meta, attrs: [attr(name: attr_name, value: meta_theme_color_name), attr(name: attr_content, value: theme_color_value())]),
-  ]
-}
-
 // The theme colour comes from the palette, not from a hex literal typed into a tag: the swatch is
 // the upstream fact and srgb8_hex is the wire. Its home is the separate chrome set in
 // gunbc.design.gunb_ai_hues, which is why the page-chrome black is not a token role.
 fn theme_color_value() -> String {
   swatch_paint(sw: theme_chrome_black)
-}
-
-fn link_lines() -> List<PageLine> {
-  concat(
-    [
-      open_line(n: 2, tag: tag_link, attrs: [attr(name: attr_rel, value: rel_preconnect), attr(name: attr_href, value: fonts_preconnect_host)]),
-      open_line(n: 2, tag: tag_link, attrs: [attr(name: attr_rel, value: rel_preconnect), attr(name: attr_href, value: fonts_static_host), attr(name: crossorigin_attribute, value: "")]),
-      open_line(n: 2, tag: tag_link, attrs: [attr(name: attr_href, value: fonts_stylesheet_url()), attr(name: attr_rel, value: rel_stylesheet)]),
-      open_line(n: 2, tag: tag_link, attrs: [attr(name: attr_rel, value: rel_stylesheet), attr(name: attr_href, value: stylesheet_href)]),
-    ],
-    [],
-  )
 }
 
 // The css2 request, GENERATED from the family rows: the families and their weights are read from
@@ -578,155 +479,153 @@ fn display_request() -> String {
   join([font_display_directive, "=", font_display_value], "")
 }
 
-// The deck script. src goes through the URL guard; defer is a boolean attribute, spelled by
-// std.markup as name="" (the repo's existing convention for boolean attributes, as in
-// gunbc.site.document's own script tag) — the difference from the served page's bare form is
-// recorded in parity_nullities below.
-fn head_script_line() -> PageLine {
-  open_line(n: 2, tag: tag_script, attrs: [attr(name: attr_src, value: cards_script_src), attr(name: script_defer_attribute, value: "")])
-}
-
 // ── The body ──────────────────────────────────────────────────────────────────────────────────
 
-fn body_lines() -> List<PageLine> {
-  concat(
-    [Blank, open_line(n: 2, tag: tag_main, attrs: [class_attr(cls: class_page)]), Blank],
-    concat(masthead_lines(), concat(hero_lines(), concat(carved_rule_lines(), concat(deck_lines(), footer_lines())))),
-  )
+fn page_body() -> Fragment {
+  Element {
+    tag: tag_body,
+    attributes: [],
+    children: [pg_gap(col: 2), page_main(), pg_gap(col: 0)],
+  }
 }
 
-fn masthead_lines() -> List<PageLine> {
-  concat(
-    [comment_line(n: 4, text: comment_masthead), open_line(n: 4, tag: tag_header, attrs: [class_attr(cls: class_masthead)])],
-    concat(
-      [
-        open_line(n: 6, tag: tag_svg, attrs: [class_attr(cls: class_mark), attr(name: attr_view_box, value: seal_view_box), attr(name: attr_aria_hidden, value: hidden_true)]),
-        seal_line(),
-        close_line(n: 6, tag: tag_svg),
-        element_line(n: 6, tag: tag_span, attrs: [class_attr(cls: class_wordmark)], children: [FragmentText { content: site_wordmark }]),
-        element_line(n: 6, tag: tag_span, attrs: [class_attr(cls: class_eyebrow)], children: [FragmentText { content: site_eyebrow() }]),
-        open_line(n: 6, tag: tag_nav, attrs: [class_attr(cls: class_masthead_nav)]),
-        element_line(n: 8, tag: tag_a, attrs: [attr(name: attr_href, value: link_repository.href)], children: [FragmentText { content: link_repository.label }]),
-        close_line(n: 6, tag: tag_nav),
-        close_line(n: 4, tag: tag_header),
-      ],
-      [Blank],
-    ),
-  )
+// Each section is its comment, a line break, and the node the comment introduces; sections are
+// separated by a blank line, exactly as the served file lays them out.
+fn page_main() -> Fragment {
+  Element {
+    tag: tag_main,
+    attributes: [class_attr(cls: class_page)],
+    children: [
+      pg_gap(col: 4),
+      pg_note(body: comment_masthead), pg_break(col: 4), masthead(),
+      pg_gap(col: 4),
+      pg_note(body: comment_hero), pg_break(col: 4), hero(),
+      pg_gap(col: 4),
+      pg_note(body: comment_carved_rule), pg_break(col: 4), carved_rule(),
+      pg_gap(col: 4),
+      pg_note(body: deck_comment_body()), pg_break(col: 4), deck_mount(),
+      pg_gap(col: 4),
+      pg_note(body: comment_footer), pg_break(col: 4), footer(),
+      pg_gap(col: 2),
+    ],
+  }
 }
 
 data seal_view_box: String = "0 0 120 120"
 
-// The seal is an Element, not a spelled line. It used to be a string assembled from quotes — which
-// meant its three attribute values never passed through std.markup's escaping and the URL and
-// raw-text guards saw nothing (a guard that walks Element cannot see into a String). As an Element
-// the values go through escape_in and the guards, so a future attribute holding a URL is checked by
-// the same route every other attribute is.
-//
+fn masthead() -> Fragment {
+  pg_stacked(
+    tag: tag_header, attrs: [class_attr(cls: class_masthead)], col: 6, close_col: 4,
+    kids: [
+      pg_stacked(
+        tag: tag_svg, close_col: 6, col: 8,
+        attrs: [class_attr(cls: class_mark), attr(name: attr_view_box, value: seal_view_box), attr(name: attr_aria_hidden, value: hidden_true)],
+        kids: [seal()],
+      ),
+      pg_inline(tag: tag_span, attrs: [class_attr(cls: class_wordmark)], kids: [pg_text(s: site_wordmark)]),
+      pg_inline(tag: tag_span, attrs: [class_attr(cls: class_eyebrow)], kids: [pg_text(s: site_eyebrow())]),
+      pg_stacked(
+        tag: tag_nav, attrs: [class_attr(cls: class_masthead_nav)], col: 8, close_col: 6,
+        kids: [link_anchor(href: link_repository.href, label: link_repository.label)],
+      ),
+    ],
+  )
+}
+
+fn link_anchor(href: String, label: String) -> Fragment {
+  pg_inline(tag: tag_a, attrs: [attr(name: attr_href, value: href)], kids: [pg_text(s: label)])
+}
+
+// The seal is an Element whose attribute values pass through std.markup's escaping and the guards.
 // The cost is one byte: the served file closes the path as `d="…"/>` and the medium's SelfClose
 // spells ` />`. That is the fifth row of parity_nullities (whitespace before the solidus is
-// insignificant in a void element's syntax), and it is cheaper than a second emitter that does not
-// escape. The d= value still comes from gunbc.design.brand_mark's builders, and
-// witness_seal_is_built_by_the_brand_geometry asserts that exact text reaches the bytes.
-fn seal_line() -> PageLine {
-  One {
-    depth: 8,
-    node: Element {
-      tag: seal_tag,
-      attributes: [
-        attr(name: attr_fill_rule, value: seal_fill_rule),
-        attr(name: attr_fill, value: seal_fill),
-        attr(name: attr_d, value: hero_seal_d()),
-      ],
-      children: [],
-    },
-  }
+// insignificant in a void element's syntax). The d= value still comes from
+// gunbc.design.brand_mark's builders, and witness_seal_is_built_by_the_brand_geometry asserts that
+// exact text reaches the bytes.
+fn seal() -> Fragment {
+  pg_inline(
+    tag: seal_tag,
+    attrs: [
+      attr(name: attr_fill_rule, value: seal_fill_rule),
+      attr(name: attr_fill, value: seal_fill),
+      attr(name: attr_d, value: hero_seal_d()),
+    ],
+    kids: [],
+  )
 }
 
 // ── The hero ──────────────────────────────────────────────────────────────────────────────────
 //
 // The three prose paragraphs each sit on their own line inside a container, which is what
-// wrapped_element spells. The <strong> in the second paragraph is composed from gunb_ai_content's
+// pg_wrapped spells. The <strong> in the second paragraph is composed from gunb_ai_content's
 // rows: hero_emphasis_lead() is the word the page bolds, and hero_paragraph_two_tail is the rest
 // of the sentence, so the bolding is markup shape and the sentence stays one row.
-fn hero_lines() -> List<PageLine> {
-  concat(
-    [comment_line(n: 4, text: comment_hero), open_line(n: 4, tag: tag_section, attrs: [class_attr(cls: class_hero_spine)])],
-    concat(hero_left_lines(), concat(hero_right_lines(), [close_line(n: 4, tag: tag_section), Blank])),
+fn hero() -> Fragment {
+  pg_stacked(
+    tag: tag_section, attrs: [class_attr(cls: class_hero_spine)], col: 6, close_col: 4,
+    kids: [hero_left(), hero_right()],
   )
 }
 
-fn hero_left_lines() -> List<PageLine> {
-  concat(
-    [open_line(n: 6, tag: tag_div, attrs: [class_attr(cls: class_hero_left)])],
-    concat(
-      [
-        // The heading carries the sentence's terminal mark; the <title> does not. Both read
-        // gunb_ai_content.headline_text, which stores the sentence unpunctuated precisely so neither
-        // is a truncation of the other.
-        element_line(n: 8, tag: tag_h1, attrs: [], children: [FragmentText { content: join([headline_text, heading_terminal_mark], "") }]),
-        element_line(n: 8, tag: tag_p, attrs: [class_attr(cls: class_tagline)], children: [FragmentText { content: tagline_text }]),
-        close_line(n: 6, tag: tag_div),
-      ],
-      [],
-    ),
+fn hero_left() -> Fragment {
+  pg_stacked(
+    tag: tag_div, attrs: [class_attr(cls: class_hero_left)], col: 8, close_col: 6,
+    kids: [
+      // The heading carries the sentence's terminal mark; the <title> does not. Both read
+      // gunb_ai_content.headline_text, which stores the sentence unpunctuated precisely so neither
+      // is a truncation of the other.
+      pg_inline(tag: tag_h1, attrs: [], kids: [pg_text(s: join([headline_text, heading_terminal_mark], ""))]),
+      pg_inline(tag: tag_p, attrs: [class_attr(cls: class_tagline)], kids: [pg_text(s: tagline_text)]),
+    ],
   )
 }
 
-fn hero_right_lines() -> List<PageLine> {
-  concat(
-    [open_line(n: 6, tag: tag_div, attrs: [class_attr(cls: class_hero_right)])],
-    concat(
-      [
-        One { depth: 8, node: wrapped_element(n: 8, tag: tag_p, attrs: [], children: [FragmentText { content: hero_paragraph_one() }]) },
-        One { depth: 8, node: wrapped_element(n: 8, tag: tag_p, attrs: [], children: [Element { tag: tag_strong, attributes: [], children: [FragmentText { content: hero_emphasis_lead() }] }, FragmentText { content: hero_paragraph_two_tail }]) },
-        One { depth: 8, node: wrapped_element(n: 8, tag: tag_p, attrs: [], children: [FragmentText { content: hero_paragraph_three }]) },
-      ],
-      concat(install_lines(), [close_line(n: 6, tag: tag_div)]),
-    ),
+fn hero_right() -> Fragment {
+  pg_stacked(
+    tag: tag_div, attrs: [class_attr(cls: class_hero_right)], col: 8, close_col: 6,
+    kids: [
+      pg_wrapped(tag: tag_p, attrs: [], col: 8, kids: [pg_text(s: hero_paragraph_one())]),
+      pg_wrapped(tag: tag_p, attrs: [], col: 8, kids: [pg_inline(tag: tag_strong, attrs: [], kids: [pg_text(s: hero_emphasis_lead())]), pg_text(s: join([" ", hero_paragraph_two_tail], ""))]),
+      pg_wrapped(tag: tag_p, attrs: [], col: 8, kids: [pg_text(s: hero_paragraph_three)]),
+      install(),
+    ],
   )
 }
 
-// The install block. The <pre> is flush left in the served file (so its command text carries no
-// leading spaces — <pre> preserves whitespace) even though it sits in an 8-space section, which is
-// why this line is depth 0 while its siblings are 8. It is still a typed Element: each prompt is a
-// span element and each command is text from install_commands(), so the three lines are data, and
-// the closing </pre> follows the last command with no break.
-fn install_lines() -> List<PageLine> {
-  concat(
-    [open_line(n: 8, tag: tag_section, attrs: [class_attr(cls: class_install)])],
-    concat(
-      [
-        element_line(n: 10, tag: tag_span, attrs: [class_attr(cls: class_section_label)], children: [FragmentText { content: install_label() }]),
-        One { depth: 0, node: Element { tag: tag_pre, attributes: [class_attr(cls: class_command)], children: command_children() } },
-        close_line(n: 8, tag: tag_section),
-      ],
-      [],
-    ),
-  )
+// The install block. The <pre> starts at column 0 in the served file (so its command text carries
+// no leading spaces — <pre> preserves whitespace) even though it sits in an 8-space section: its
+// preceding break is a bare "\n". Each prompt is a span element and each command is text from
+// install_commands(), and </pre> follows the last command with no break.
+fn install() -> Fragment {
+  Element {
+    tag: tag_section,
+    attributes: [class_attr(cls: class_install)],
+    children: [
+      pg_break(col: 10),
+      pg_inline(tag: tag_span, attrs: [class_attr(cls: class_section_label)], kids: [pg_text(s: install_label())]),
+      pg_text(s: "\n"),
+      pg_inline(tag: tag_pre, attrs: [class_attr(cls: class_command)], kids: command_children()),
+      pg_break(col: 8),
+    ],
+  }
 }
 
 // One prompt span + command text per row of install_commands(), newline-separated between rows and
 // not after the last (the served <pre> closes on the final command's line).
 fn command_children() -> List<Fragment> {
-  children_of_rows(rows: install_commands())
-}
-
-fn children_of_rows(rows: List<String>) -> List<Fragment> {
-  children_from(rows: rows, i: 0)
+  children_from(rows: install_commands(), i: 0)
 }
 
 // Index-walked rather than pattern-matched: this language's match binds sum-type variants only, so
-// list shape is tested by position. The last row gets no trailing newline because the served <pre>
-// closes on its line — which is why the count matters and is checked by the witness.
+// list shape is tested by position.
 fn children_from(rows: List<String>, i: Int) -> List<Fragment> {
   let n = rows.length()
   if i >= n {
     []
   } else {
-    let one = concat([prompt_span()], [FragmentText { content: row_at(rows: rows, i: i) }])
+    let one = concat([prompt_span()], [pg_text(s: row_at(rows: rows, i: i))])
     if i + 1 == n { one } else {
-      concat(one, concat([FragmentText { content: "\n" }], children_from(rows: rows, i: i + 1)))
+      concat(one, concat([pg_text(s: "\n")], children_from(rows: rows, i: i + 1)))
     }
   }
 }
@@ -739,41 +638,27 @@ fn row_at(rows: List<String>, i: Int) -> String {
 }
 
 fn prompt_span() -> Fragment {
-  Element { tag: tag_span, attributes: [class_attr(cls: class_prompt)], children: [FragmentText { content: install_prompt }] }
+  pg_inline(tag: tag_span, attrs: [class_attr(cls: class_prompt)], kids: [pg_text(s: install_prompt)])
 }
 
 // ── The carved rule, the deck mount, the footer ───────────────────────────────────────────────
 
-fn carved_rule_lines() -> List<PageLine> {
-  concat(
-    [comment_line(n: 4, text: comment_carved_rule)],
-    [
-      element_line(n: 4, tag: tag_div, attrs: [class_attr(cls: class_carved_rule), attr(name: attr_aria_hidden, value: hidden_true)], children: [Element { tag: tag_span, attributes: [class_attr(cls: class_notch)], children: [] }]),
-      Blank,
-    ],
+fn carved_rule() -> Fragment {
+  pg_inline(
+    tag: tag_div,
+    attrs: [class_attr(cls: class_carved_rule), attr(name: attr_aria_hidden, value: hidden_true)],
+    kids: [pg_inline(tag: tag_span, attrs: [class_attr(cls: class_notch)], kids: [])],
   )
 }
 
 // The deck. Only the mount element is generated here: assets/cards.js selects on [data-deck] and
 // fills the element at runtime from its inline DECK_CARDS, so this page's job is the mount and its
-// attribute value. The deck's cards as typed data are the next layer; until they land, the mount is
-// the honest projection of what is served today, and the plan carrier names the gap.
-fn deck_lines() -> List<PageLine> {
-  concat(
-    [deck_comment()],
-    [
-      element_line(n: 4, tag: tag_div, attrs: [attr(name: deck_mount_attribute, value: deck_mount_value)], children: []),
-      Blank,
-    ],
-  )
+// attribute value. The deck's cards as typed data are the next layer.
+fn deck_mount() -> Fragment {
+  pg_inline(tag: tag_div, attrs: [attr(name: deck_mount_attribute, value: deck_mount_value)], kids: [])
 }
 
-// The deck's four-line comment. Continuation lines align to the column the first line's text starts
-// at, which is indent(deck_comment_indent) — a row, not an accident of the joiner.
-fn deck_comment() -> PageLine {
-  CommentLine { depth: 4, text: deck_comment_body() }
-}
-
+// The deck's four-line comment body. Continuation lines align to column comment_deck_indent.
 fn deck_comment_body() -> String {
   let n = comment_deck_lines.length()
   if n == 0 {
@@ -783,60 +668,30 @@ fn deck_comment_body() -> String {
   }
 }
 
-// Continuation lines align to column comment_deck_indent, and only the LAST line carries the closing
-// "-->", which is what makes the four lines one comment rather than four.
+// Only the LAST line is followed by the comment's close, which is what makes the lines one comment.
 fn continuation_block(lines: List<String>, i: Int, n: Int) -> String {
   if i >= n {
     ""
   } else {
     let tail = if i + 1 == n { "" } else { "\n" }
-    join([indent(n: comment_deck_indent), row_at(rows: lines, i: i), tail, continuation_block(lines: lines, i: i + 1, n: n)], "")
+    join([pg_spaces(n: comment_deck_indent), row_at(rows: lines, i: i), tail, continuation_block(lines: lines, i: i + 1, n: n)], "")
   }
 }
 
-fn footer_lines() -> List<PageLine> {
-  concat(
-    [comment_line(n: 4, text: comment_footer), open_line(n: 4, tag: tag_footer, attrs: [class_attr(cls: class_foot)])],
-    concat(
-      [
-        element_line(n: 6, tag: tag_a, attrs: [attr(name: attr_href, value: link_repository.href)], children: [FragmentText { content: link_repository.label }]),
-        element_line(n: 6, tag: tag_span, attrs: [class_attr(cls: class_sep)], children: [FragmentText { content: glyph_middle_dot }]),
-        element_line(n: 6, tag: tag_a, attrs: [attr(name: attr_href, value: link_contact.href)], children: [FragmentText { content: link_contact.label }]),
-        close_line(n: 4, tag: tag_footer),
-        Blank,
-      ],
-      [],
-    ),
+fn footer() -> Fragment {
+  pg_stacked(
+    tag: tag_footer, attrs: [class_attr(cls: class_foot)], col: 6, close_col: 4,
+    kids: [
+      link_anchor(href: link_repository.href, label: link_repository.label),
+      pg_inline(tag: tag_span, attrs: [class_attr(cls: class_sep)], kids: [pg_text(s: glyph_middle_dot)]),
+      link_anchor(href: link_contact.href, label: link_contact.label),
+    ],
   )
-}
-
-fn root_open() -> PageLine {
-  open_line(n: 0, tag: tag_html, attrs: [attr(name: "lang", value: page_language)])
-}
-
-fn root_close() -> PageLine {
-  close_line(n: 0, tag: tag_html)
-}
-
-fn head_open() -> PageLine {
-  open_line(n: 0, tag: tag_head, attrs: [])
-}
-
-fn head_close() -> PageLine {
-  close_line(n: 0, tag: tag_head)
-}
-
-fn body_open() -> PageLine {
-  open_line(n: 0, tag: tag_body, attrs: [])
-}
-
-fn body_close() -> PageLine {
-  close_line(n: 0, tag: tag_body)
 }
 
 // ── The parity differences, as an enumerable roster ───────────────────────────────────────────
 //
-// The witness compares render_page()'s bytes to the committed served page. Three byte positions
+// The witness compares render_page()'s bytes to the committed served page. The byte positions listed below
 // differ, each for a stated reason, and each is NULL — the rendered document behaves identically.
 // They are rows rather than prose so the comparison is not "everything matches except what the
 // author forgot to mention": the witness asserts the observed difference set EQUALS this roster, so
@@ -877,6 +732,16 @@ data parity_nullities: List<ParityDifference> = [
     generated: "\n        \" />",
     null_reason: "The seal's <path> is the only self-closed element the served file writes without a space before the solidus. In SGML-derived markup the space is not significant: the solidus alone terminates the tag and begins the self-close (HTML Living Standard, 'self-closing start tag state', which is entered on U+002F regardless of what precedes it). Both spellings produce the same SVG path element with the same three attributes. Both texts are anchored on the closing newline and eight-space indent so each occurs exactly once in its own file, which is what keeps the roster's uniqueness claim from passing on a substring shared with the nine link/meta lines that DO carry the space.",
   },
+  ParityDifference {
+    served: "M35,40 A8,8 0 0,1 35,56 A8,8 0 0,1 35,40 Z",
+    generated: "M27,48 A8,8 0 0,1 43,48 A8,8 0 0,1 27,48 Z",
+    null_reason: "Both subpaths trace the same circle: centre (cx,cy), radius 8, sweep flag 1 for both arcs, so two half-circle arcs joined at the ends of a diameter. The served file starts the diameter at the top and the brand_mark builder starts it at the left; the filled region under fill-rule evenodd is the same set of points (SVG 1.1 §8.3.8 elliptical arc curve, §11.3.1 fill-rule). The builder is shared with the studio mark, so the page keeps the builder's spelling rather than a second disc grammar.",
+  },
+  ParityDifference {
+    served: "M85,40 A8,8 0 0,1 85,56 A8,8 0 0,1 85,40 Z",
+    generated: "M77,48 A8,8 0 0,1 93,48 A8,8 0 0,1 77,48 Z",
+    null_reason: "Both subpaths trace the same circle: centre (cx,cy), radius 8, sweep flag 1 for both arcs, so two half-circle arcs joined at the ends of a diameter. The served file starts the diameter at the top and the brand_mark builder starts it at the left; the filled region under fill-rule evenodd is the same set of points (SVG 1.1 §8.3.8 elliptical arc curve, §11.3.1 fill-rule). The builder is shared with the studio mark, so the page keeps the builder's spelling rather than a second disc grammar.",
+  },
 ]
 
 // The roster's own identity, for the witness: the difference is identified by the served text, so a
@@ -898,7 +763,7 @@ type PageWrite
 // which content that failed a guard reaches disk.
 fn page_write(dir: String) -> PageWrite {
   match render_page() {
-    PageRefused { refusal: r } => PageWriteRefused { reason: guard_refusal_text(r: r) }
+    PageRefused { reason: r } => PageWriteRefused { reason: r }
     PageRendered { bytes: b } => {
       let path = join([dir, "/", output_name], "")
       let wrote = Filesystem.Write(path: path, content: b)

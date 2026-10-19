@@ -46,14 +46,13 @@ module test.claim.site_gunb_ai_page_witness
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
-import std.markup { Fragment, Element, FragmentText, Attribute, EscapeContext, UrlContext }
-import extdeps.languages.html { raw_text_hazard }
-import extdeps.uri_validation { find_first_rejected_url, RejectedUrl }
+import std.markup { Fragment, Element, FragmentText, MarkupComment, MarkupDocument, Attribute, EscapeContext, UrlContext }
+import extdeps.languages.html { html_doctype_name }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import test.fixture.text_scan { occurrences, index_of, occurs_before }
 import gunbc.site.gunb_ai_page {
   render_page, PageRender, PageRendered, PageRefused, parity_nullities, parity_served_texts,
-  page_classes, page_guard_refusal, guard_refusal_text, DisallowedUrl,
+  page_classes, render_document,
   comment_texts, hero_seal_d, theme_color_value,
 }
 import gunbc.site.gunb_ai_content {
@@ -78,7 +77,7 @@ fn served_page() -> String {
 fn rendered_page() -> String {
   match render_page() {
     PageRendered { bytes: b } => b
-    PageRefused { refusal: _ } => ""
+    PageRefused { reason: _ } => ""
   }
 }
 
@@ -136,7 +135,7 @@ test fn witness_hero_examples_keep_row_order() -> Bool {
   let out = rendered_page()
   let first = nth(rows: hero_examples, i: 0)
   let second = nth(rows: hero_examples, i: 1)
-  rows_length(rows: hero_examples) == 3
+  rows_length(rows: hero_examples) == 5
     && occurrences(s: out, pattern: first) == 1
     && occurrences(s: out, pattern: second) == 1
     && occurs_before(haystack: out, before: first, after: second)
@@ -225,32 +224,34 @@ test fn witness_comments_survive_where_they_stand() -> Bool {
 //     every build, so 12a asserts the real page is clean and 12b puts a real offence in front of each
 //     guard and requires a refusal.
 test fn witness_guards_are_clean_on_the_real_page() -> Bool {
-  match page_guard_refusal() {
-    Absent => true
-    Present { value: _ } => false
+  match render_page() {
+    PageRendered { bytes: _ } => true
+    PageRefused { reason: _ } => false
   }
 }
 
-// A refusal is a NAMED CAUSE with the offending value attached, not a string whose emptiness means
-// "clean" (§5: a typed, located diagnostic). The cause is built here and asserted to survive the
-// wire with its value intact: a guard that flattened causes to a constant message, or that could
-// report "clean" for a hazard, is not expressible in PageGuardRefusal.
-test fn witness_refusal_is_a_typed_cause_not_an_empty_string() -> Bool {
-  let r = DisallowedUrl { url: "javascript:alert(1)" }
-  string_contains(s: guard_refusal_text(r: r), pattern: "javascript:alert(1)")
-    && string_contains(s: guard_refusal_text(r: r), pattern: "url not allowed")
+// A refusal carries the language layer's located reason with the offending value attached, not an
+// empty string. The offence is put through the page's own route (render_document), so the claim
+// fails if the route stops consulting the guards.
+test fn witness_refusal_names_the_offending_value() -> Bool {
+  match render_document(doc: probe_document(child: link_probe(url: "javascript:alert(1)"))) {
+    PageRefused { reason: r } => string_contains(s: r, pattern: "javascript:alert(1)")
+    PageRendered { bytes: _ } => false
+  }
 }
 
 test fn witness_guards_are_live_not_vacuous() -> Bool {
   // Each guard: silent on what is allowed, loud on what is not. An implementation that always
-  // returned "clean" passes test 12a and dies here.
-  refuses_url(url: "javascript:alert(1)")
-    && refuses_url(url: "data:text/html;base64,AAAA")
-    && !refuses_url(url: "https://ok.example/x")
-    && !refuses_url(url: "mailto:hello@gunb.ai")
-    && !refuses_url(url: "assets/site.css")
-    && !refuses_raw_text("var a = 1;")
-    && refuses_raw_text("var a = '</script>';")
+  // rendered passes test 12a and dies here.
+  refuses(child: link_probe(url: "javascript:alert(1)"))
+    && refuses(child: link_probe(url: "data:text/html;base64,AAAA"))
+    && !refuses(child: link_probe(url: "https://ok.example/x"))
+    && !refuses(child: link_probe(url: "mailto:hello@gunb.ai"))
+    && !refuses(child: link_probe(url: "assets/site.css"))
+    && !refuses(child: script_probe(body: "var a = 1;"))
+    && refuses(child: script_probe(body: "var a = '</script>';"))
+    && refuses(child: MarkupComment { body: "a --> b" })
+    && !refuses(child: MarkupComment { body: "fine" })
 }
 
 // ── The roster itself ───────────────────────────────────────────────────────────────────────────
@@ -269,7 +270,7 @@ test fn witness_parity_rows_are_current() -> Bool {
 
 test fn witness_parity_roster_is_named_by_unique_served_text() -> Bool {
   let texts = parity_served_texts()
-  rows_length(rows: texts) == 5
+  rows_length(rows: texts) == 7
     && all(texts, t => occurrences(s: served_page(), pattern: t) == 1)
 }
 
@@ -313,15 +314,22 @@ fn listed(values: List<String>, wanted: String) -> Bool {
   fold(values, init: false, f: fn(acc, v) { acc || v == wanted })
 }
 
-// The two guards, driven directly with the same Element shape the page builds.
-fn refuses_url(url: String) -> Bool {
-  let probe = Element { tag: "a", attributes: [Attribute { name: "href", ctx: UrlContext, value: url }], children: [] }
-  match find_first_rejected_url(node: probe) {
-    Absent => false
-    Present { value: _ } => true
-  }
+// The guards, driven through the page's own render route with the same Element shapes the page builds.
+fn probe_document(child: Fragment) -> MarkupDocument {
+  MarkupDocument { doctype: html_doctype_name, root: Element { tag: "div", attributes: [], children: [child] } }
 }
 
-fn refuses_raw_text(body: String) -> Bool {
-  raw_text_hazard(node: Element { tag: "script", attributes: [], children: [FragmentText { content: body }] }) != ""
+fn link_probe(url: String) -> Fragment {
+  Element { tag: "a", attributes: [Attribute { name: "href", ctx: UrlContext, value: url }], children: [] }
+}
+
+fn script_probe(body: String) -> Fragment {
+  Element { tag: "script", attributes: [], children: [FragmentText { content: body }] }
+}
+
+fn refuses(child: Fragment) -> Bool {
+  match render_document(doc: probe_document(child: child)) {
+    PageRefused { reason: _ } => true
+    PageRendered { bytes: _ } => false
+  }
 }
