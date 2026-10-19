@@ -354,14 +354,6 @@ fn self_host_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
 }
 
-/// `gunbc.stage0.stage0_cargo_manifest` `stage0_package_root`. Where the stage0 crate lives is that
-/// module's fact; it has no emitted Rust mirror, so this producer arm passes it to the step as a
-/// parameter (the one remaining literal, replaced when the plan carries it) and
-/// `run_self_host_frontier` holds none.
-fn self_host_frontier_stage0_crate_dir() -> &'static str {
-    "src/v1/stage0"
-}
-
 /// `gunbc.instrument_targets` `v2_native_cli_source_roots`. Which corpus the v2-native CLI's closure
 /// is emitted FROM is this instrument's own fact, on the same rule its siblings follow.
 fn v2_native_cli_source_roots() -> Vec<String> {
@@ -1086,7 +1078,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         }
         TargetProducer::SelfHostFrontier => run_self_host_frontier(
             &self_host_source_roots(),
-            self_host_frontier_stage0_crate_dir(),
+            &crate::gunbc_stage0_stage0_cargo_manifest::stage0_package_root(),
         ),
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
