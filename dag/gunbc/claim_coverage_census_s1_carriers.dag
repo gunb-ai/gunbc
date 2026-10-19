@@ -30,7 +30,7 @@ import gunbc.rung_drop { RungDropDeclaration, TypedDeclaration, AuthoredProse }
 // THE DROP POPULATIONS ARRIVE UNTYPED AND THIS FILE DOES NOT REPAIR THEM. A TypedDeclaration
 // population is `List<String>` at the declaration; whether a member spells a path, an identity, or
 // neither is decided by the fold's shape check, not here — re-typing a member here would be the
-// repair the ruling forbids ("never by restating the string"). The 41 values that parse as neither
+// repair the ruling forbids ("never by restating the string"). The values that parse as neither
 // come out as UngroundedDropMember findings. An AuthoredProse drop declares no population at all and
 // contributes no rows: there is nothing to ground, and inventing members for a prose drop would be
 // hand-authoring a classifier.

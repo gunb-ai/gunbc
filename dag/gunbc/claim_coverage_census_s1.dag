@@ -18,7 +18,7 @@ import std.algebra { empty_map, map_insert, map_lookup, is_empty, string_contain
 // through `expand_file` — the discovered rows of that file, the same discovery that produced S1 —
 // so file-to-identity is exact and total, never a string match. A value that parses as neither a
 // path nor an identity is a typed `UngroundedDropMember` row and a finding, never a coercion into
-// whichever grain would pass. The 41 such values on main are findings the exit-1 arm prints;
+// whichever grain would pass. Whatever such values exist on main are findings the exit-1 arm prints --
 // repairing one drop's population to a grounded grain is a separate per-drop fix, made only where
 // its meaning is unambiguous, and NEVER by restating the string here.
 //
@@ -95,8 +95,11 @@ type ClassifierRow {
 type ClassifierStanding
   = StaleEnrolled { row: ClassifierRow }
   // A FileMember whose expansion finds no discovered identity: the row LOOKS populated while covering
-  // nothing. Typed refusal, and a finding — the 41 ungroundable drop values live here, refused through the
-  // join (no discovered file bears them) rather than through any test of how the string looks.
+  // nothing. Typed refusal, and a finding: every ungroundable drop-population value lives here, refused
+  // through the join (no discovered file and no discovered identity bears it) rather than through any test
+  // of how the string looks. Their number is this instrument's output --
+  // `gunbc test //gunbc/instruments:claim-coverage-census` -- and is never restated here (DESIGN §6: name
+  // the instrument, never transcribe its output, because a transcribed number rots unreachably).
   | UngroundedDropMember { row: ClassifierRow }
   // Joined to at least one S1 identity; `covers` is that expansion.
   | GroundedCover { row: ClassifierRow, covers: List<String> }
@@ -183,9 +186,9 @@ fn matches_member(relation: ClaimMemberMatch, member: String, path: String) -> B
 // findings; DESIGN §4: in a closed system a heuristic is never necessary, and the richer source -- the
 // discovered rows and the universe -- is right here.)
 //
-// THE 41 STILL REFUSE, through the join: a drop-population value that is neither a file discovery holds
-// nor anything else reaches an empty expansion and is typed `UngroundedDropMember`, printed with its drop
-// and its declared text. A SUBSTRING member (the frontier's own form) is refused the same way when it
+// UNSPELLABLE DROP MEMBERS STILL REFUSE, through the join: a drop-population value that is neither a file
+// discovery holds nor anything else reaches an empty expansion and is typed `UngroundedDropMember`, printed
+// with its drop and its declared text. A SUBSTRING member (the frontier's own form) is refused the same way when it
 // selects no discovered file: a pattern that matches nothing covers nothing, and printing that as grounded
 // would be the stale-present-tense lie DESIGN 3 names, in census form.
 fn classify_row(index: Map<String, Bool>, rows: List<ClaimRow>, row: ClassifierRow) -> ClassifierStanding {
@@ -304,23 +307,17 @@ fn s1_uncovered(census: S1Census) -> List<String> {
 // Rows standing StaleEnrolled, located at their carrier (jolly-boar-495's first consumer is the
 // fill-debt list; the same arm catches floor_expected_red and the frozen deferrals).
 fn s1_stale_rows(census: S1Census) -> List<ClassifierRow> {
-  filter_map(
-    census.stands,
-    standing => match standing {
-      StaleEnrolled { row: row } => Present { value: row }
-      _ => Absent
-    }
-  )
+  census.stands |> flat_map(standing => match standing {
+    StaleEnrolled { row: row } => [row]
+    _ => []
+  })
 }
 
 fn s1_ungrounded_rows(census: S1Census) -> List<ClassifierRow> {
-  filter_map(
-    census.stands,
-    standing => match standing {
-      UngroundedDropMember { row: row } => Present { value: row }
-      _ => Absent
-    }
-  )
+  census.stands |> flat_map(standing => match standing {
+    UngroundedDropMember { row: row } => [row]
+    _ => []
+  })
 }
 
 // THE RECEIPT: verdict lines, each located, and the head the facts were read at (executed evidence
@@ -398,17 +395,4 @@ fn s1_block(s1: S1Composition, head: String) -> S1Block {
       }
     }
   }
-}
-
-fn filter_map<T, U>(xs: List<T>, f: fn(T) -> Optional<U>) -> List<U> {
-  fold(
-    xs,
-    init: [],
-    f: fn(acc, x) {
-      match f(x) {
-        Present { value: y } => concat(acc, [y])
-        Absent => acc
-      }
-    }
-  )
 }

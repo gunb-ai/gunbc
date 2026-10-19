@@ -347,7 +347,10 @@ test fn a_claim_the_universe_holds_is_never_stale_enrolled_when_rows_are_filtere
     && covered(census: census, identity: "m.b")
 }
 
-// THE 41: A DROP MEMBER THAT GROUNDS IN NEITHER PATH NOR IDENTITY IS REFUSED, EACH ONE A FINDING. These
+// A DROP MEMBER THAT GROUNDS IN NEITHER POPULATION IS REFUSED, EACH ONE A FINDING. The size of that live
+// population is the instrument's output (`gunbc test //gunbc/instruments:claim-coverage-census`) and is
+// deliberately not restated here -- a transcribed count rots unreachably (DESIGN §6). What these claims
+// assert is the SHAPE's handling, over fixture instances of it. These
 // values are fixture instances of the shape warm-wolf-570 ruled must not be repaired by editing the
 // declaration: they parse as neither a `.dag` path nor a dotted identity. They travel at their declared text
 // and the census refuses them by carrier AND member, so every one of them is a located finding.
