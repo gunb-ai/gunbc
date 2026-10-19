@@ -1,5 +1,7 @@
 module gunbc.tier_o_artifact_emit
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_wildcard_found_by_join_measurement }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { List, String }
 import gunbc.generated_artifact {
   GeneratedArtifact, artifact_path,
@@ -140,3 +142,7 @@ fn tier_o_artifact_body(a: GeneratedArtifact) -> TierOArtifactBody {
     TierOArtifactNotTierO => TierOArtifactNotTierO
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "tier_o_unadorned_body" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+]

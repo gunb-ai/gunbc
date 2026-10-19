@@ -1,5 +1,7 @@
 module std.decision
 
+import gunbc.non_fold_residue { nfr_dissolve_scores_equal_ratio, nfr_reason_scores_equal_ratio }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { OrderedClosedInterval, degenerate_interval, interval_low, interval_high }
@@ -1794,3 +1796,6 @@ fn select_realization(
   bind_pick_to_subject_closure(assessment: assessment, pick: pick)
 }
 
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "scores_equal" }, reason: nfr_reason_scores_equal_ratio, dissolution: nfr_dissolve_scores_equal_ratio },
+]

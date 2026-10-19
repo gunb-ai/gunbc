@@ -1,6 +1,6 @@
 module v2.compiler.parse
 
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b, nfr_reason_wildcard_found_by_join_measurement }
 import std.types { List, SourceSpan, Map }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Rejected, Some, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton, node_locus, outcome_accepted, declaration_locus, invariant_port_locus, port_refusal_locus, source_port_locus }
@@ -5188,5 +5188,6 @@ fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "parse_extent_span_step" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "parse_sequence_capture" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]

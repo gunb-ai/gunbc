@@ -1,5 +1,7 @@
 module gunbc.host.host_budget_source
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_wildcard_found_by_join_measurement }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { NonEmptyStr, String, Bool, List }
 import std.measure { ByteSize, byte_size_count }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
@@ -454,3 +456,7 @@ fn read_floor_cgroup_level_row(line: String) -> FloorCgroupRowReading? {
       }
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "host_budget_with_external_executor" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+]

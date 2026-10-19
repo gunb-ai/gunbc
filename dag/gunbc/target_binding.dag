@@ -1,5 +1,7 @@
 module gunbc.target_binding
 
+import gunbc.non_fold_residue { nfr_dissolve_derived_variant_projection, nfr_reason_one_variant_projection }
+import std.roster_frontier { FrontierRow, PathSubject }
 import extdeps.bazel.label {
   Label, PackageName, LabelCanonicalityCause, LabelCanonical, LabelNonCanonical,
   render_label, label_canonicality,
@@ -618,3 +620,7 @@ type BareReferenceChannelSubjectCause
 type BareReferenceChannelStanding
   = BareReferenceChannelRead { readings: List<BareReferenceChannelEntryReading> }
   | BareReferenceChannelSubjectUnreached { cause: BareReferenceChannelSubjectCause }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "native_serve_probe_if_entry" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+]

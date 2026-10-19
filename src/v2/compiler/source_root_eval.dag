@@ -1,6 +1,6 @@
 module v2.compiler.source_root_eval
 
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import gunbc.non_fold_residue { nfr_dissolve_derived_variant_projection, nfr_dissolve_derived_variant_test, nfr_dissolve_owning_fold, nfr_reason_one_variant_projection, nfr_reason_typed_census_ca5ed1724b, nfr_reason_variant_test_predicate }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.compiler_entry {
   CompilerEntryDriver,
@@ -6687,6 +6687,10 @@ fn census_obligation_modules(rows: List<CensusObligationRow>) -> List<String> {
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "census_occurrence_from_locus" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "census_stage_behind_matches" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+  FrontierRow { subject: PathSubject { path: "native_census_at_locus" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "native_census_unbound_spelling" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
   FrontierRow { subject: PathSubject { path: "native_demand_occurrence_census_rows" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "native_demand_preparation_standing" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "native_demand_prepared" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },

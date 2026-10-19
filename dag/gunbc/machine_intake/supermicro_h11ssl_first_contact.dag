@@ -1,5 +1,7 @@
 module gunbc.machine_intake.supermicro_h11ssl_first_contact
 
+import gunbc.non_fold_residue { nfr_dissolve_derived_variant_test, nfr_reason_variant_test_predicate }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import gunbc.machine_intake.bmc_operator_credential_inventory { OperatorHeldSecretRef, FactoryLoginCredential, OobLicenceKey }
@@ -373,3 +375,10 @@ fn supermicro_h11ssl_receipt_bmc_identity_coherent(r: H11sslFirstContactReceipt)
   r.label.bmc_factory_credential.bmc_mac == r.bmc_mac
     && all(r.licences, l => licence_inventory_mac(l: l) == r.bmc_mac)
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "is_activation" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+  FrontierRow { subject: PathSubject { path: "is_root_answered" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+  FrontierRow { subject: PathSubject { path: "is_root_refused" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+  FrontierRow { subject: PathSubject { path: "rejects_factory_default" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+]
