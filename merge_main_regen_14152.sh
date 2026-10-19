@@ -140,10 +140,17 @@ while :; do
 done
 
 # The merged tree's mirrors must be the emitter's output and NOTHING else.
-CHANGED=$(git status --porcelain | awk '{print $2}')
-echo "CHANGED_AFTER_REGEN:"; echo "$CHANGED" | sed 's/^/  /'
-if [ -z "$(echo "$CHANGED" | grep -v '^src/v1/stage0/src/')" ]; then
-  echo "REGEN_SCOPE_CLEAN (only mirrors moved)"
+# porcelain gives XY then the path; the previous version did awk '{print $2}' which SILENTLY DROPPED
+# every rename (12 fields) and printed only the first token of others -- a scope guard that can
+# under-report is not a guard.
+echo "CHANGED_AFTER_REGEN:"; git status --porcelain | sed 's/^/  /'
+STRAY=$(git status --porcelain | sed -E 's/^.{3}//' | grep -v '^src/v1/stage0/src/[^/]+\.rs$' | grep -c . || true)
+ADDED=$(git status --porcelain | awk '$1=="??" || $1=="A" || $1=="??" {c++} END{print c+0}')
+if [ "$(git status --porcelain | sed -E 's/^.{3}//' | grep -c '^src/v1/stage0/src/')" != "$(git status --porcelain | grep -c .)" ]; then
+  STRAY=1
+fi
+if [ "$STRAY" = 0 ]; then
+  echo "REGEN_SCOPE_CLEAN (only top-level mirror .rs files moved; new files added: $ADDED)"
 else
   echo "VOID: regeneration touched non-mirror files -- inspect before shipping"
   exit 6
