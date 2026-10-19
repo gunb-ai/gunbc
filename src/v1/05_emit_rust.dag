@@ -439,6 +439,16 @@ fn rust_overlayless_alias_leaf_requires_peel(env: TypeEnv, n: Node) -> Bool {
     && closed_alias_peels_zero_param(env: env, n: n)
 }
 
+// A LEAF DECLARATION REFERENCE'S RUST SPELLING: the realization's primitive/host spelling of the
+// authored name, then the layer asked once of the declaration (render_rust_declaration_position), then
+// the optional layer. It replaces the target-generic render_node_type, which spelled the name and read
+// the layer from a spelling-keyed shared_types membership; no Rust-emit position calls that renderer.
+fn render_rust_leaf_declaration_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  let tn = authored_name_at(source_indices: source_indices, node: n)
+  let base = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: Rust), dag_name: tn)
+  rust_carrier_optional_wrap(n: n, rendered: render_rust_declaration_position(n: with_required_cardinality(n: n), spelled: base, shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names))
+}
+
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices, env: emit_info.fn_type_env) {
@@ -462,7 +472,9 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
           let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
           emit_rust_compile_error_expr(message: concat("Set element type ", elem_name, rust_set_element_ineligibility_reason(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)))
         } else {
-          render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+          let set_name = authored_name_at(source_indices: source_indices, node: n)
+          let set_base = emit_container(name: set_name, inner: render_rust_type(n: elem_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info), target: Rust)
+          render_rust_shared_type_with_optional(n: n, type_name: set_name, rendered: set_base, shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items)
         }
       Absent => emit_rust_compile_error_expr(message: "Set missing element type")
     }
@@ -488,7 +500,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
           target: Rust
         )
         render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items)
-      Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      Absent => emit_rust_compile_error_expr(message: "Keyed collection missing key type")
     }
   } else if node_is_element_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
@@ -498,7 +510,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
         let tn = authored_name_at(source_indices: source_indices, node: n)
         let base = emit_container(name: tn, inner: inner_str, target: Rust)
         render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items)
-      Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      Absent => emit_rust_compile_error_expr(message: "Element collection missing element type")
     }
   } else {
     let tn = authored_name_at(source_indices: source_indices, node: n)
@@ -509,12 +521,12 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     } else if rust_overlayless_alias_leaf_requires_peel(env: emit_info.fn_type_env, n: n) {
       match lookup_type_for(env: emit_info.fn_type_env, node: n) {
         Present { value: binding } => render_rust_type(n: resolved_type(n: binding), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-        Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+        Absent => emit_rust_compile_error_expr(message: "Alias peel binding absent")
       }
     } else {
       match realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: n, dag_name: qualified_last_segment(name: tn), env: emit_info.fn_type_env, source_indices: source_indices)) {
         Present { value: host } => rust_carrier_optional_wrap(n: n, rendered: host)
-        Absent => render_rust_declaration_position(n: n, spelled: render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices), shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names)
+        Absent => render_rust_leaf_declaration_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
       }
     }
   }
@@ -12681,7 +12693,7 @@ fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, so
       if elem_is_type_var || elem_is_error { "" }
       else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info) { "" }
       else {
-        render_node_type(n: elem_node, target: Rust, shared_types: shared_types, source_indices: source_indices)
+        render_rust_type(n: elem_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
       }
     Absent => ""
   }
@@ -19640,7 +19652,7 @@ fn rust_test_signature_comment(projection: TestProjection, type_decl_items: Type
     "(",
     params_str,
     ") -> ",
-    emit_node_type(n: projection.inferred, target: Rust, source_indices: projection.source_indices))
+    render_rust_type(n: projection.inferred, shared_types: empty_set(), source_indices: projection.source_indices, emit_info: emit_info_with_type_decl_items(emit_info: empty_emit_graph_info(), type_decl_items: type_decl_items)))
 }
 
 fn emit_operation_test(projection: TestProjection, depth: Int, type_decl_items: TypeDeclIndex) -> String {
