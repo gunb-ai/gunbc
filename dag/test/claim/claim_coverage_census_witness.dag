@@ -2,7 +2,7 @@ module test.claim.claim_coverage_census_witness
 
 import std.types { String, Bool, List }
 import std.process { ExitFailure }
-import gunbc.cli_wire { CliWirePrintable }
+import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 import gunbc.claim_coverage_census {
   ClaimSource, ExecutesScheduleOf, ExecutesNoClaims, ClaimExecutorRow, ClaimCoverageInputs,
@@ -75,5 +75,6 @@ test fn the_live_entry_exits_one_while_the_wet_lane_has_no_executor() -> Bool {
   match claim_coverage_census_exit() {
     CliWirePrintable { bytes: _, exit: ExitFailure { code: 1, reason: _ } } => true
     CliWirePrintable { bytes: _, exit: _ } => false
+    CliWireUnprintable { cause: _ } => false
   }
 }
