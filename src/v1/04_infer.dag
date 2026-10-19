@@ -9094,8 +9094,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             diagnostics: concat(formal_authority_diags, arg_diags)
           }
         } else {
+
+        let uninstantiated_call_generics = call_sig_split.generic_names
+          |> filter(g => !map_has(call_subst, g))
+        let fresh_call_variables = fold(uninstantiated_call_generics, init: empty_map(), f: (acc, g) =>
+          map_insert(acc, g, type_variable_node(id: g)))
         let resolved_type = match sig {
-          Present { value: s } => substitute_generics(n: s.inferred, subst: call_subst, source_indices: scope.type_env.source_indices)
+          Present { value: s } => substitute_generics(n: s.inferred, subst: map_merge(call_subst, fresh_call_variables), source_indices: scope.type_env.source_indices)
           Absent => error_type
         }
         let value_params_for_check = call_sig_split.value_params
