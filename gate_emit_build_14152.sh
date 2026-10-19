@@ -45,9 +45,17 @@ grep -ac "EmittedCompilerBuildFailed" "$WORK/self_host.log" | sed 's/^/EMITTED_B
 grep -aoE "retained_probe_root=[^ ]+" "$WORK/self_host.log" | sort -u | head -3
 grep -aoE "error\[E[0-9]+\][^@]*@ [^ ]+" "$WORK/self_host.log" | sort -u | head -12
 # If the probe root survived, show the exact emitted line CI blamed.
+# Locate the emitted file by glob, NOT by the retained_probe_root= token: that token's value is
+# followed by an em dash, and earlier greps cut the path away and silently skipped this section.
 pr=$(grep -aoE "retained_probe_root=[^ ]+" "$WORK/self_host.log" | head -1 | cut -d= -f2)
-if [ -n "${pr:-}" ] && [ -d "$pr" ]; then
-  f=$(find "$pr" -name std_realization_measurement.rs | head -1)
+f=""
+[ -n "${pr:-}" ] && f=$(find "$pr" -name std_realization_measurement.rs 2>/dev/null | head -1)
+if [ -z "$f" ]; then
+  f=$(find /tmp -maxdepth 6 -path '*gunbc-emit-compile*' -name std_realization_measurement.rs 2>/dev/null | head -1)
+  echo "LOCATED_BY_GLOB=${f:-NONE}"
+fi
+if [ -n "$f" ] && [ -f "$f" ]; then
+  echo "EMITTED_FOUND=$f"
   if [ -n "$f" ]; then
     echo "=== EMITTED $f 335-345 ==="
     sed -n '335,345p' "$f" | cat -n | cut -c1-200
@@ -55,8 +63,10 @@ if [ -n "${pr:-}" ] && [ -d "$pr" ]; then
     grep -ac 'S@' "$f" | sed 's/^/S_AT_COUNT=/'
     grep -ac 'UNRESOLVED_TypeVariable' "$f" | sed 's/^/UNRESOLVED_TypeVariable_COUNT=/'
     grep -ac 'UNRESOLVED_CompilerError' "$f" | sed 's/^/UNRESOLVED_CompilerError_COUNT=/'
+    echo "EMITTED_SHA256 $(sha256sum "$f" | cut -c1-16)"
+    echo "BEGIN_EMITTED_GZ"; gzip -c "$f" | base64 -w 100; echo "END_EMITTED_GZ"
   else
-    echo "EMITTED_FILE_ABSENT under $pr"
+    echo "EMITTED_FILE_ABSENT under ${pr:-NONE}"
   fi
 fi
 echo "T=$(date +%T) done"
