@@ -3,7 +3,7 @@ module gunbc.auth.gcp_iam_bootstrap_model
 import std.types { String, NonEmptyStr, List, Bool }
 import std.list { distinct_by_key }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in, IamCondition, GcpTagCondition, ResourceMatchTag, gcp_tag_condition_expression, gcp_service_account_full_resource_name }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number, federated_service_account_member }
 import gunbc.auth.gcp_iam_converge {
@@ -439,9 +439,63 @@ fn iam_bootstrap_delta_principal() -> String {
   concat("principal://iam.googleapis.com/projects/-/serviceAccounts/", iam_bootstrap_service_account as String)
 }
 
+// ── THE TRUST-ROOT WALL IN THE CREDENTIAL LAYER (retires gunbc.rung_drop
+// gcp_iam_bootstrap_trust_root_wall_in_code) ─────────────────────────────────────────────────────
+// The three own-trust accounts carry a project-parented tag, gunbai-secrets/gunbc-trust-root = root, and
+// a deny rule refuses iam-bootstrap every permission it could use to rewrite or become them when the
+// resource carries that tag. Denial conditions recognize only resource tag functions (deny-overview);
+// resource.matchTag takes the namespaced key `<project id>/<short name>` (conditions attribute
+// reference); every permission below is on the deny-supported list (deny-permissions-support, read
+// 2026-10-19). The pools stay walled in code alone (gunbc.rung_drop gcp_iam_bootstrap_trust_pool_untaggable).
+data iam_bootstrap_trust_root_tag_key_short: NonEmptyStr = "gunbc-trust-root"
+data iam_bootstrap_trust_root_tag_value_short: NonEmptyStr = "root"
+
+fn iam_bootstrap_trust_root_tag_key_parent() -> NonEmptyStr {
+  concat("projects/", fleet_secrets_project_id as String) as NonEmptyStr
+}
+
+fn iam_bootstrap_trust_root_tag_key_namespaced() -> NonEmptyStr {
+  join([fleet_secrets_project_id as String, "/", iam_bootstrap_trust_root_tag_key_short as String], "") as NonEmptyStr
+}
+
+fn iam_bootstrap_trust_root_tag_value_namespaced() -> NonEmptyStr {
+  join([iam_bootstrap_trust_root_tag_key_namespaced() as String, "/", iam_bootstrap_trust_root_tag_value_short as String], "") as NonEmptyStr
+}
+
+fn iam_bootstrap_trust_root_tag_condition() -> GcpTagCondition {
+  ResourceMatchTag { key_namespaced_name: iam_bootstrap_trust_root_tag_key_namespaced(), value_short_name: iam_bootstrap_trust_root_tag_value_short }
+}
+
+// THE TAGGED POPULATION IS THE OWNER RELATION'S OWN-TRUST ACCOUNTS, never a list: widening the targets
+// cannot add or drop one.
+fn iam_bootstrap_trust_root_tagged_accounts() -> List<ServiceAccountEmail> {
+  map(own_trust_federations(), f => f.service_account)
+}
+
+fn iam_bootstrap_trust_root_tag_parents() -> List<String> {
+  map(iam_bootstrap_trust_root_tagged_accounts(), a => gcp_service_account_full_resource_name(project_id: fleet_secrets_project_id, account: a))
+}
+
+data iam_bootstrap_trust_root_walled_permissions: List<String> = [
+  "iam.googleapis.com/serviceAccounts.setIamPolicy",
+  "iam.googleapis.com/serviceAccounts.update",
+  "iam.googleapis.com/serviceAccounts.delete",
+  "iam.googleapis.com/serviceAccounts.disable",
+  "iam.googleapis.com/serviceAccounts.enable",
+  "iam.googleapis.com/serviceAccounts.undelete",
+]
+
+fn iam_bootstrap_trust_root_wall_rule() -> GcpDenyPolicyRule {
+  GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule { denied_principals: [iam_bootstrap_delta_principal()],
+    denied_permissions: iam_bootstrap_trust_root_walled_permissions, exception_principals: none, exception_permissions: none,
+    denial_condition: Present { value: IamCondition { title: "gunbc trust-root wall", expression: gcp_tag_condition_expression(c: iam_bootstrap_trust_root_tag_condition()),
+      description: Present { value: "iam-bootstrap may not rewrite, alter or remove a gunbc trust-root account" } } } } } }
+}
+
 fn iam_bootstrap_delta_deny_rules() -> List<GcpDenyPolicyRule> {
   [GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule { denied_principals: [iam_bootstrap_delta_principal()],
-    denied_permissions: iam_bootstrap_denied_permissions, exception_principals: none, exception_permissions: none, denial_condition: none } } }]
+    denied_permissions: iam_bootstrap_denied_permissions, exception_principals: none, exception_permissions: none, denial_condition: none } } },
+   iam_bootstrap_trust_root_wall_rule()]
 }
 
 // ── WHO OWNS A DECLARED SECRET'S IAM: exactly two arms ───────────────────────────────────────
