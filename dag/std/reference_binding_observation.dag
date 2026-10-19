@@ -36,7 +36,14 @@ type StructuralBindingResolution
   = StructuralBindingResolved {
       binding_outcome: OccurrenceReferenceBindingOutcome,
     }
-  | StructuralBindingIndexTransportRefused {
+  | StructuralBindingRefused {
+      cause: StructuralBindingRefusal,
+    }
+
+// The one declaration of why a structural binding resolution was refused. The admission
+// projection carries this type whole rather than mirroring its arms.
+type StructuralBindingRefusal
+  = StructuralBindingIndexTransportRefused {
       refusal: OccurrenceTransportRefusal,
     }
   | StructuralBindingIndexModulePathRefused {
@@ -142,14 +149,24 @@ fn structural_binding_resolution_from_candidates(
         ),
       }
     OccurrenceCandidateIndexTransportRefused { refusal: refusal } =>
-      StructuralBindingIndexTransportRefused { refusal: refusal }
+      StructuralBindingRefused {
+        cause: StructuralBindingIndexTransportRefused { refusal: refusal },
+      }
     OccurrenceCandidateIndexModulePathRefused { refusal: refusal } =>
-      StructuralBindingIndexModulePathRefused { refusal: refusal }
+      StructuralBindingRefused {
+        cause: StructuralBindingIndexModulePathRefused { refusal: refusal },
+      }
     OccurrenceCandidateIndexExposureRefused { refusal: refusal } =>
-      StructuralBindingIndexExposureRefused { refusal: refusal }
+      StructuralBindingRefused {
+        cause: StructuralBindingIndexExposureRefused { refusal: refusal },
+      }
     OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal } =>
-      StructuralBindingIndexAuthoredOrderRefused { refusal: refusal }
+      StructuralBindingRefused {
+        cause: StructuralBindingIndexAuthoredOrderRefused { refusal: refusal },
+      }
     OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence } =>
-      StructuralBindingIndexDeclarationBucketRefused { occurrence: occurrence }
+      StructuralBindingRefused {
+        cause: StructuralBindingIndexDeclarationBucketRefused { occurrence: occurrence },
+      }
   }
 }

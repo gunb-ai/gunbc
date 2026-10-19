@@ -121,35 +121,29 @@ test fn the_resolved_arm_is_provenance_distinguished() -> Bool {
   }
 }
 
-// THIS CONTROL ASSERTS THE DEFECT. GOING RED MEANS THE DEFECT WAS REPAIRED, WHICH IS SUCCESS --
-// DELETE THIS ROW, DO NOT RESTORE THE BEHAVIOUR.
-//
-// The label is here rather than only in the module's prose because nobody arrives at this function
-// by reading the file top to bottom. They arrive at a red test name in a CI log, where
-// "is_not_distinguished" reads like a broken invariant, and the obvious repair is to make the two
-// renders differ -- which is what a fix would already have done. Same class as the count oracle one
-// level up: a true signal the reader misclassifies.
-//
-// It goes green today because a typed index-build refusal and a resolved-but-non-matching binding
-// produce the same admission at the consumer.
-test fn a_typed_index_refusal_is_not_distinguished_from_a_structural_non_match() -> Bool {
-  cell_render(kind: SameFileNeighbourKind, arm: IndexTransportRefusedArm)
-    == non_matching_render(kind: SameFileNeighbourKind)
+// REGRESSION CONTROL, RETAINED FROM THE DEFECT-ASSERTING PROBE THAT THE BINDING-REFUSAL ARM TURNED GREEN.
+// A typed index-build refusal once rendered the same admission as a resolved-but-non-matching
+// binding (binding_outcome_from_resolution collapsed it to Absent). It now carries its cause in
+// ReferenceDerivedClosureBindingRefused; this goes red if any refusal re-collapses into a structural
+// non-match.
+test fn a_typed_index_refusal_is_distinguished_from_a_structural_non_match() -> Bool {
+  fold(calibration_resolution_arms, init: true, f: fn(ok, arm) {
+    ok && match arm {
+      ResolvedArm => true
+      _ => cell_render(kind: SameFileNeighbourKind, arm: arm)
+        != non_matching_render(kind: SameFileNeighbourKind)
+    }
+  })
 }
 
-// THIS CONTROL ASSERTS THE DEFECT. GOING RED MEANS THE DEFECT WAS REPAIRED, WHICH IS SUCCESS --
-// DELETE THIS ROW, DO NOT RESTORE THE BEHAVIOUR.
-//
-// A partial repair makes it red too, and that is correct: it says the six arms are no longer ALL
-// indistinguishable, which is progress and not a regression. Read the matrix to see which arms
-// separated, then delete or narrow this row to the arms that still collapse.
-test fn all_six_non_resolved_arms_render_identically_to_each_other() -> Bool {
-  let t = cell_render(kind: DistinctHomonymKind, arm: IndexTransportRefusedArm)
-  cell_render(kind: DistinctHomonymKind, arm: IndexModulePathRefusedArm) == t
-    && cell_render(kind: DistinctHomonymKind, arm: IndexExposureRefusedArm) == t
-    && cell_render(kind: DistinctHomonymKind, arm: IndexAuthoredOrderRefusedArm) == t
-    && cell_render(kind: DistinctHomonymKind, arm: IndexDeclarationBucketRefusedArm) == t
-    && cell_render(kind: DistinctHomonymKind, arm: ProductionRefusedArm) == t
+// REGRESSION CONTROL, RETAINED FROM THE PROBE THAT ASSERTED ALL SIX NON-RESOLVED ARMS RENDER
+// IDENTICALLY. Each of the six now renders its own cause, pairwise distinct, for every kind.
+test fn all_six_non_resolved_arms_render_distinctly() -> Bool {
+  fold(calibration_observation_kinds, init: true, f: fn(ok, kind) {
+    ok && fold(calibration_resolution_arms, init: true, f: fn(inner, arm) {
+      inner && list_length(items: collisions_for(kind: kind, arm: arm)) == 0
+    })
+  })
 }
 
 // THIS ASSERTS THE VERDICT ITSELF, WHICH IS THE THIRD REPAIR OF ONE DEFECT IN THIS FILE.

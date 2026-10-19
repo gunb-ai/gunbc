@@ -3,6 +3,7 @@
 
 use self::ReferenceBindingObservation::*;
 use self::ReferenceBindingProductionGap::*;
+use self::StructuralBindingRefusal::*;
 use self::StructuralBindingResolution::*;
 use self::StructuralObservationSubjectModule::*;
 use crate::std_occurrence_binding_candidates::AuthoredOrderIndexRefusal::*;
@@ -40,6 +41,14 @@ pub enum StructuralBindingResolution {
     StructuralBindingResolved {
         binding_outcome: Rc<OccurrenceReferenceBindingOutcome>,
     },
+    StructuralBindingRefused {
+        cause: Rc<StructuralBindingRefusal>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum StructuralBindingRefusal {
     StructuralBindingIndexTransportRefused {
         refusal: Rc<OccurrenceTransportRefusal>,
     },
@@ -130,20 +139,30 @@ pub fn structural_binding_resolution_from_candidates(
     OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => Rc::new(StructuralBindingResolution::StructuralBindingResolved {
     binding_outcome: crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding_validated(index.validated.clone(), reference.occurrence.clone(), crate::std_occurrence_binding_candidates::candidate_occurrence_ids_for_reference(index.clone(), reference.clone())),
 }),
-    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingIndexTransportRefused {
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingRefused {
+    cause: Rc::new(StructuralBindingRefusal::StructuralBindingIndexTransportRefused {
     refusal: refusal.clone(),
 }),
-    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingIndexModulePathRefused {
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingRefused {
+    cause: Rc::new(StructuralBindingRefusal::StructuralBindingIndexModulePathRefused {
     refusal: refusal.clone(),
 }),
-    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingIndexExposureRefused {
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingRefused {
+    cause: Rc::new(StructuralBindingRefusal::StructuralBindingIndexExposureRefused {
     refusal: refusal.clone(),
 }),
-    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingIndexAuthoredOrderRefused {
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingRefused {
+    cause: Rc::new(StructuralBindingRefusal::StructuralBindingIndexAuthoredOrderRefused {
     refusal: refusal.clone(),
 }),
-    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence, .. } => Rc::new(StructuralBindingResolution::StructuralBindingIndexDeclarationBucketRefused {
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence, .. } => Rc::new(StructuralBindingResolution::StructuralBindingRefused {
+    cause: Rc::new(StructuralBindingRefusal::StructuralBindingIndexDeclarationBucketRefused {
     occurrence: occurrence.clone(),
+}),
 }),
 }
 }

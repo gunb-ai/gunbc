@@ -7,6 +7,7 @@ import std.occurrence_binding_candidates {
 }
 import std.reference_binding_observation {
   ReferenceBindingObservation,
+  StructuralBindingRefused,
   StructuralBindingProductionRefused,
   ReferenceBindingParserTransportRefused,
   ReferenceBindingNamedReferenceAbsent,
@@ -146,8 +147,10 @@ fn sibling_branch_observation(
                   SiblingBranchObservation {
                     own_branch_declaration: else_branch_binder.occurrence,
                     sibling_branch_declaration: then_branch_binder.occurrence,
-                    resolution: StructuralBindingProductionRefused {
-                      gap: ReferenceBindingNamedReferenceAbsent,
+                    resolution: StructuralBindingRefused {
+                      cause: StructuralBindingProductionRefused {
+                        gap: ReferenceBindingNamedReferenceAbsent,
+                      },
                     },
                   }
                 Present { value: else_branch_ref } =>

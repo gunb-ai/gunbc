@@ -15868,6 +15868,45 @@ fn reference_derived_closure_admission_value(
                 (ctx.sym("failure"), scenario_failure(failure)),
             ])),
         },
+        A::ReferenceDerivedClosureBindingRefused {
+            capability: c,
+            cause,
+        } => {
+            use crate::std_reference_binding_observation::{
+                ReferenceBindingProductionGap as G, StructuralBindingRefusal as R,
+            };
+            // Only the production refusal reaches this encoder: the `.dag` producer feeds no
+            // index. Any other cause has no encoder here, so it stops visibly rather than
+            // being narrowed to a cause it is not (DESIGN 5).
+            let gap = match &**cause {
+                R::StructuralBindingProductionRefused { gap } => match gap {
+                    G::ReferenceBindingParserTransportRefused => "ReferenceBindingParserTransportRefused",
+                    G::ReferenceBindingNamedReferenceAbsent => "ReferenceBindingNamedReferenceAbsent",
+                    G::ReferenceBindingNamedDeclarationAbsent => "ReferenceBindingNamedDeclarationAbsent",
+                },
+                other => panic!(
+                    "reference_derived_closure_admission_value: no encoder for binding refusal cause {other:?}"
+                ),
+            };
+            Value::Variant {
+                type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
+                variant_name: ctx.sym("ReferenceDerivedClosureBindingRefused"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("capability"), capability(c)),
+                    (
+                        ctx.sym("cause"),
+                        Value::Variant {
+                            type_name: ctx.sym("StructuralBindingRefusal"),
+                            variant_name: ctx.sym("StructuralBindingProductionRefused"),
+                            fields: Rc::new(sorted_fields(vec![(
+                                ctx.sym("gap"),
+                                nullary("ReferenceBindingProductionGap", gap.to_string()),
+                            )])),
+                        },
+                    ),
+                ])),
+            }
+        }
         A::ReferenceDerivedClosureUnavailable {
             capability: c,
             trigger,

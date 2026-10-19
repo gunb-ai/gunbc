@@ -29,6 +29,8 @@ import std.reference_binding_observation {
   ReferenceBindingObservation,
   StructuralBindingResolution,
   StructuralBindingResolved,
+  StructuralBindingRefused,
+  StructuralBindingRefusal,
   StructuralBindingIndexTransportRefused,
   StructuralBindingIndexModulePathRefused,
   StructuralBindingIndexExposureRefused,
@@ -52,6 +54,7 @@ import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureEstablished,
   ReferenceDerivedClosureRefused,
   ReferenceDerivedClosureUnavailable,
+  ReferenceDerivedClosureBindingRefused,
   ReferenceDerivedClosureCapability,
   ReferenceDerivedClosureScenarioFailure,
   ReferenceDerivedClosureTrigger,
@@ -196,12 +199,15 @@ fn resolution_arm_label(a: CalibrationResolutionArm) -> String {
 fn arm_of_resolution(r: StructuralBindingResolution) -> CalibrationResolutionArm {
   match r {
     StructuralBindingResolved { binding_outcome: _ } => ResolvedArm
-    StructuralBindingIndexTransportRefused { refusal: _ } => IndexTransportRefusedArm
-    StructuralBindingIndexModulePathRefused { refusal: _ } => IndexModulePathRefusedArm
-    StructuralBindingIndexExposureRefused { refusal: _ } => IndexExposureRefusedArm
-    StructuralBindingIndexAuthoredOrderRefused { refusal: _ } => IndexAuthoredOrderRefusedArm
-    StructuralBindingIndexDeclarationBucketRefused { occurrence: _ } => IndexDeclarationBucketRefusedArm
-    StructuralBindingProductionRefused { gap: _ } => ProductionRefusedArm
+    StructuralBindingRefused { cause } =>
+      match cause {
+        StructuralBindingIndexTransportRefused { refusal: _ } => IndexTransportRefusedArm
+        StructuralBindingIndexModulePathRefused { refusal: _ } => IndexModulePathRefusedArm
+        StructuralBindingIndexExposureRefused { refusal: _ } => IndexExposureRefusedArm
+        StructuralBindingIndexAuthoredOrderRefused { refusal: _ } => IndexAuthoredOrderRefusedArm
+        StructuralBindingIndexDeclarationBucketRefused { occurrence: _ } => IndexDeclarationBucketRefusedArm
+        StructuralBindingProductionRefused { gap: _ } => ProductionRefusedArm
+      }
   }
 }
 
@@ -348,25 +354,37 @@ fn resolution_for_arm(
   match arm {
     ResolvedArm => resolved(supplied_candidates: matching_supply(kind: kind))
     IndexTransportRefusedArm =>
-      StructuralBindingIndexTransportRefused {
+      StructuralBindingRefused {
+        cause: StructuralBindingIndexTransportRefused {
         refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: fixture_span() },
+      },
       }
     IndexModulePathRefusedArm =>
-      StructuralBindingIndexModulePathRefused {
+      StructuralBindingRefused {
+        cause: StructuralBindingIndexModulePathRefused {
         refusal: MissingOccurrenceModulePathRow { occurrence: oid(value: 10) },
+      },
       }
     IndexExposureRefusedArm =>
-      StructuralBindingIndexExposureRefused {
+      StructuralBindingRefused {
+        cause: StructuralBindingIndexExposureRefused {
         refusal: MissingDeclarationExposure { occurrence: oid(value: 10) },
+      },
       }
     IndexAuthoredOrderRefusedArm =>
-      StructuralBindingIndexAuthoredOrderRefused {
+      StructuralBindingRefused {
+        cause: StructuralBindingIndexAuthoredOrderRefused {
         refusal: MissingAuthoredOrderRow { occurrence: oid(value: 10) },
+      },
       }
     IndexDeclarationBucketRefusedArm =>
-      StructuralBindingIndexDeclarationBucketRefused { occurrence: oid(value: 10) }
+      StructuralBindingRefused {
+        cause: StructuralBindingIndexDeclarationBucketRefused { occurrence: oid(value: 10) },
+      }
     ProductionRefusedArm =>
-      StructuralBindingProductionRefused { gap: ReferenceBindingNamedReferenceAbsent }
+      StructuralBindingRefused {
+        cause: StructuralBindingProductionRefused { gap: ReferenceBindingNamedReferenceAbsent },
+      }
   }
 }
 
@@ -444,6 +462,17 @@ fn trigger_word(t: ReferenceDerivedClosureTrigger) -> String {
   }
 }
 
+fn refusal_cause_word(c: StructuralBindingRefusal) -> String {
+  match c {
+    StructuralBindingIndexTransportRefused { refusal: _ } => "IndexTransportRefused"
+    StructuralBindingIndexModulePathRefused { refusal: _ } => "IndexModulePathRefused"
+    StructuralBindingIndexExposureRefused { refusal: _ } => "IndexExposureRefused"
+    StructuralBindingIndexAuthoredOrderRefused { refusal: _ } => "IndexAuthoredOrderRefused"
+    StructuralBindingIndexDeclarationBucketRefused { occurrence: _ } => "IndexDeclarationBucketRefused"
+    StructuralBindingProductionRefused { gap: _ } => "ProductionRefused"
+  }
+}
+
 fn admission_render(a: ReferenceDerivedClosureAdmission) -> String {
   match a {
     ReferenceDerivedClosureEstablished { receipt } =>
@@ -454,6 +483,9 @@ fn admission_render(a: ReferenceDerivedClosureAdmission) -> String {
     ReferenceDerivedClosureUnavailable { capability, trigger } =>
       concat("Unavailable(", concat(capability_word(c: capability),
         concat(",", concat(trigger_word(t: trigger), ")"))))
+    ReferenceDerivedClosureBindingRefused { capability, cause } =>
+      concat("BindingRefused(", concat(capability_word(c: capability),
+        concat(",", concat(refusal_cause_word(c: cause), ")"))))
   }
 }
 
@@ -513,7 +545,7 @@ fn cell_distinguishability(
   if list_length(items: colliding) > 0 {
     ProvenanceCollapsed {
       collapses_with: join_labels(labels: colliding),
-      mechanism: "gunbc.namespace_cut.namespace_reference_derived_closure_admission.binding_outcome_from_resolution maps every non-Resolved arm to Absent, and each consumer arm maps Absent to the same refused(capability, failure) as a structural non-match",
+      mechanism: "two cells of this kind render to the same admission",
     }
   } else {
     ProvenanceDistinguished { admission: cell_render(kind: kind, arm: arm) }
