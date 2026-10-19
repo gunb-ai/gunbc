@@ -1,0 +1,200 @@
+module extdeps.swift_toolchain
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.content_hash { content_hash_validate_lower_hex_length }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE SWIFT COMPILER TOOLCHAIN, PINNED AS AN EXTERNAL UPSTREAM.
+//
+// swiftc is an external tool in DESIGN section 3's sense: the Swift project's release archive is the
+// authority over what `swiftc -typecheck` accepts, so the version that produced a receipt and the
+// content identity of the archive that carried it are facts a rung must state before its verdict means
+// anything. A rung whose compiler floats can be re-run into a different answer. This names ONE
+// archived swift.org release (version, distribution, URL, byte size, archive SHA-256) as the toolchain
+// a Linux swiftc rung is stated against, the way extdeps.rust pins rustup and
+// extdeps.provisioning.ubuntu_install_media pins a downloaded image.
+//
+// WHAT IT IS FOR, AND WHAT IT IS NOT. The one Linux rung this pin was established for is the L1 probe
+// of apps/approve-ios: -typecheck over the Foundation-only generated sources, and the ApproveTests
+// vector suites against dag/test/fixture/approval_device_redemption/vectors.json through
+// swift-corelibs-xctest. It runs today as a probe (one ctrl-build --remote dispatch on an amd64 runner,
+// fresh clone at a printed head), NOT as a CI job: the CI roster is closed to growth and nothing here
+// registers one. A rung citing a different archive is a different rung and says so.
+//
+// WHY A DISTRIBUTION ROW AND NOT THE TAG ALONE. swift.org ships the same version per distribution with
+// no guarantees across them; the tarballs differ in content and in loader expectations. Debian 13
+// (trixie) is the pinned row because that is what the BuildBuddy amd64 runner image reports, so it is
+// the archive its loader can satisfy. The Ubuntu rows are declared so a runner that moves to Ubuntu
+// picks a pinned row instead of a floating download; their digests are left unfilled rather than
+// guessed, and swift_toolchain_pin_is_declared refuses an unfilled row. A guessed digest would let a
+// row pass as pinned while naming bytes nobody verified.
+//
+// THE TRANSPORT GAP, RECORDED NOT SILENTLY PATCHED. On swift-corelibs-foundation the HTTP transport
+// types (URLRequest, URLResponse, HTTPURLResponse, URLSession) live in a separate FOUNDATIONNETWORKING
+// module; on Apple platforms they are inside Foundation. apps/approve-ios/Approve/Wire.swift imports
+// only Foundation and uses all four, so on Linux it does not compile unedited (observed: 8 typecheck
+// errors, all at those uses in the transport functions). The probe reaches green only by ADDING a
+// separate file that re-exports FoundationNetworking under #if canImport(FoundationNetworking): no
+// shipped file is edited and the iOS build is untouched, but the rung must name the added file and must
+// not let it grow into a place where behavior is patched. Protocol.swift and EnrolmentMachine.swift
+// typecheck against Foundation alone; Protocol.swift still cannot be typecheckED on its own, because it
+// references Wire.swift's `Route`, so the three files are one typechecking unit, not three.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "swift.org/download/#releases"
+  }
+}
+
+// The distribution the archive was built for. `OtherLinux` is representable so an unlisted
+// distribution has to be named rather than mapped onto a neighbouring row.
+type SwiftToolchainDistribution
+  = Debian13
+  | Ubuntu2404
+  | Ubuntu2204
+  | OtherLinux { name: NonEmptyStr }
+
+fn swift_toolchain_distribution_name(distribution: SwiftToolchainDistribution) -> NonEmptyStr {
+  match distribution {
+    Debian13 => "debian13"
+    Ubuntu2404 => "ubuntu24.04"
+    Ubuntu2204 => "ubuntu22.04"
+    OtherLinux { name: n } => n
+  }
+}
+
+// One archived release, named by everything a re-run needs to get the same bytes back.
+//
+// ARCHIVE_SHA256_HEX IS A NonEmptyStr, AND THE RESOLVER ENFORCES THAT AGAINST LITERALS — so an
+// unfilled row cannot be written at all, and "we have not verified this one" has to be said where it
+// belongs: in SwiftToolchainRowVerification.Unverified, which carries no size and no digest to believe.
+// (std.content_hash's 64-lower-hex carrier is not used as the field type here: its predicate is admitted
+// by the resolver only for a restricted carrier shape, and a pin row is a record of an observation, not a
+// hash tree node.) What refuses a row that contradicts ITSELF — a truncated digest, a zero size, a URL
+// naming another distribution — is swift_toolchain_pin_is_declared below, which is the level where all
+// three claims about one artifact can be checked together.
+type SwiftToolchainArchiveRow {
+  distribution: SwiftToolchainDistribution
+  version: NonEmptyStr
+  url: NonEmptyStr
+  archive_size_bytes: Int
+  archive_sha256_hex: NonEmptyStr
+}
+
+// Whether anyone has actually observed the bytes a row names. The distinction is in the TYPE because
+// "declared" and "pinned" are different claims and the repository must not be able to confuse them: a
+// row that has never been fetched carries no size and no digest, so there is nothing for a rung to
+// believe. An Unverified row is kept on the books deliberately — it records the URL a future runner
+// should be fetched from, which is worth stating, while making it unrepresentable as a pin.
+type SwiftToolchainRowVerification
+  = Unverified { reason: NonEmptyStr }
+  | Verified { archive: SwiftToolchainArchiveRow }
+
+type SwiftToolchainDeclaredRow {
+  distribution: SwiftToolchainDistribution
+  version: NonEmptyStr
+  url: NonEmptyStr
+  verification: SwiftToolchainRowVerification
+}
+
+fn swift_toolchain_row_is_pinned(row: SwiftToolchainDeclaredRow) -> Bool {
+  match row.verification {
+    Verified { archive } => swift_toolchain_pin_is_declared(row: archive)
+    Unverified { reason } => false
+  }
+}
+
+// THE PIN. Size and digest were read off two independent fetches of this exact URL on the runner, which
+// agreed byte for byte; that agreement across separate fetches is what makes the digest a fact about the
+// archive rather than about one download.
+data pinned_swift_toolchain: SwiftToolchainArchiveRow = SwiftToolchainArchiveRow {
+  distribution: Debian13
+  version: "6.4.1"
+  url: "https://download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz"
+  archive_size_bytes: 1122730813
+  archive_sha256_hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313"
+}
+
+// What is known about every distribution this rung is stated for, verified or not. The two Ubuntu rows
+// name where a future runner would be fetched from and carry NO size or digest, because nobody has
+// fetched them on that distribution — recording a digest there would be the guess this module exists to
+// prevent. Their reasons say what is missing rather than merely leaving it blank.
+data swift_toolchain_declared_rows: List<SwiftToolchainDeclaredRow> = [
+  SwiftToolchainDeclaredRow {
+    distribution: Debian13
+    version: "6.4.1"
+    url: "https://download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz"
+    verification: Verified { archive: pinned_swift_toolchain }
+  },
+  SwiftToolchainDeclaredRow {
+    distribution: Ubuntu2404
+    version: "6.4.1"
+    url: "https://download.swift.org/swift-6.4.1-release/ubuntu2404/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubuntu24.04.tar.gz"
+    verification: Unverified { reason: "no fetch of this archive has been observed on an Ubuntu 24.04 runner, so neither its size nor its digest is known" }
+  },
+  SwiftToolchainDeclaredRow {
+    distribution: Ubuntu2204
+    version: "6.4.1"
+    url: "https://download.swift.org/swift-6.4.1-release/ubuntu2204/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubuntu22.04.tar.gz"
+    verification: Unverified { reason: "no fetch of this archive has been observed on an Ubuntu 22.04 runner, so neither its size nor its digest is known" }
+  }
+]
+
+// Runtime closures the archive needs beyond the base image. Named because a probe that skips them fails
+// at `swift --version` with a missing-library error that reads like a corrupt download, and because a
+// rung installing a different closure is not the rung this pin was observed on.
+data swift_toolchain_runtime_dependency_closure: List<NonEmptyStr> = [
+  "libncurses6",
+  "libcurl4",
+  "libxml2",
+  "libedit2",
+  "libsqlite3-0",
+  "libz3-4"
+]
+
+fn swift_toolchain_archive_digest_width_is_right(hex: String) -> Bool {
+  content_hash_validate_lower_hex_length(text: hex, expected_hex_digits: 64)
+}
+
+// A row is a PIN, usable by a rung, only when its own fields agree with each other: three separate
+// claims about one artifact checked together, so a row copied from another version or truncated in
+// transit is refused instead of believed.
+fn swift_toolchain_pin_is_declared(row: SwiftToolchainArchiveRow) -> Bool {
+  swift_toolchain_archive_digest_width_is_right(hex: row.archive_sha256_hex)
+    && row.archive_size_bytes > 0
+    && string_contains(s: row.url, pattern: swift_toolchain_distribution_name(distribution: row.distribution))
+    && string_contains(s: row.url, pattern: row.version)
+}
+
+// The one row currently satisfying its own declaration. A rung asks for THIS rather than the literal, so
+// a row that drifts out of agreement with itself stops being reachable.
+fn swift_toolchain_pinned_row() -> SwiftToolchainArchiveRow? {
+  if swift_toolchain_pin_is_declared(row: pinned_swift_toolchain) {
+    Present { value: pinned_swift_toolchain }
+  } else {
+    Absent
+  }
+}
+
+// Does a row name the same archive as the pin? Stated as a function so a caller cannot compare three of
+// the four fields and think it compared all four.
+fn swift_toolchain_row_matches_pin(row: SwiftToolchainArchiveRow, expected_sha256_hex: NonEmptyStr) -> Bool {
+  swift_toolchain_pin_is_declared(row: row)
+    && row.archive_sha256_hex == expected_sha256_hex
+    && row.archive_sha256_hex == pinned_swift_toolchain.archive_sha256_hex
+    && row.version == pinned_swift_toolchain.version
+}
+
+// The transport gap as a claim a rung can check rather than as prose: the shipped files whose Linux
+// compile depends on FoundationNetworking being brought in from outside.
+data linux_transport_module_gap_files: List<NonEmptyStr> = [
+  "apps/approve-ios/Approve/Wire.swift"
+]
+
+fn swift_toolchain_file_needs_foundation_networking(path: NonEmptyStr) -> Bool {
+  linux_transport_module_gap_files.any(candidate => candidate == path)
+}
