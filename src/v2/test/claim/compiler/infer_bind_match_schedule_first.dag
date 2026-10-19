@@ -231,3 +231,27 @@ test fn bms_the_stated_groups_do_not_permute_the_stored_order() -> Bool {
     && bms_schedule(n: unannotated_bind, pred: infer_gather_schedules_first) == unannotated_bind.children
     && bms_schedule(n: two_arm_match, pred: infer_gather_schedules_first) == two_arm_match.children
 }
+
+// (6) THE PREDICATE CLASSIFIES THE EDGE, NOT ITS TARGET. The normalized tree may share one node at several
+// positions, so a Bind whose annotation targets the very node its value does is admitted by the producer
+// (lower_bind_annotated). The annotation edge must stay in the rest group and the schedule must stay the
+// stored order; a predicate comparing targets alone selects the annotation and reorders it ahead of the
+// body (side-chat review on #14387).
+test fn bms_a_shared_target_does_not_select_the_annotation() -> Bool {
+  let shared = dag_type_atom_node(identity: ^bms_shared)
+  let bind = lower_bind_annotated(
+    key_binding: dag_type_atom_node(identity: ^bms_key),
+    value: shared,
+    body_binding: dag_type_atom_node(identity: ^bms_body),
+    annotation: shared
+  )
+  match bind.children {
+    Cons { head: key, tail: Cons { head: value, tail: Cons { head: body, tail: Cons { head: annotation, tail: Empty } } } } =>
+      infer_gather_schedules_first(parent: bind, edge: key)
+        && infer_gather_schedules_first(parent: bind, edge: value)
+        && !infer_gather_schedules_first(parent: bind, edge: body)
+        && !infer_gather_schedules_first(parent: bind, edge: annotation)
+        && bms_schedule(n: bind, pred: infer_gather_schedules_first) == bind.children
+    _ => false
+  }
+}
