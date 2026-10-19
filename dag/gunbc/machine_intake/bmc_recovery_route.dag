@@ -633,8 +633,91 @@ fn recovery_write_was_attempted(record: RecoveryWriteRecord, kind: RecoveryActua
 // passed where the other is expected, so the fold's match on each is complete with three arms: admitted,
 // refused, nothing else. No Bool in between: a predicate that answered "is this admitted?" and was then
 // followed by a second match on the same value was the Bool standing where the match belonged.
+// THE TICKETS THAT SAY A PRIVILEGED WRITE WAS ADMITTED -- AND FOR WHICH CHASSIS AND WHICH WRITE
+// (side-chat HOLD blocker 1). The admitted arms used to carry only "who admitted this", which meant two
+// things: any module could spell the arm without asking either gate, and nothing on the value said which
+// chassis or which write it authorized -- so a password admission minted for one unit could be spent on
+// another, and the fold had to re-derive that pairing from the records beside it. Each admitted arm now
+// carries a SEALED RECORD naming the subject the gate read, the actuation it verified and the issuer it
+// asked, so the pairing travels with the authorization instead of being assumed next to it.
+//
+// WHY SEALED RECORDS AND NOT SEALED SUMS -- the part worth recording because it nearly went in wrong.
+// This corpus MEASURES that sole_constructor on a COPRODUCT does not refuse cross-module variant
+// construction: test.claim.sole_constructor_completeness_audit_probe carries that as a declared red arm
+// (f13_variant_construction_refuses). Sealing the two sums below would therefore have been permanently
+// green by construction, which is worse than absent: the annotation would advertise a wall the compiler
+// does not build. What the compiler DOES refuse is constructing a sealed RECORD in another module, which
+// is why test.claim.fleet_observation_seal seals the records a sum carries rather than the sums. Same
+// arrangement here, and both paths are probed rather than asserted --
+// test.claim.machine_intake.machine_intake_bmc_recovery_authorization_seal_witness measures the forged
+// spelling and the unadmitted mint call, direct AND through a wrapper.
+type PasswordWriteAdmissionTicket sole_constructor {
+  subject: MachineIntakeSubject
+  operation: RecoveryActuationKind
+  authorized_by: DeclarationRef
+}
+
+// The reset ticket additionally carries the disposition that was actuated and the ruling under which it
+// ran, so the fold files the write it believes FROM the ticket: a ResetAll cannot be admitted under one
+// arm, filed under another, or re-ruled after the fact.
+type ResetWriteAdmissionTicket sole_constructor {
+  subject: MachineIntakeSubject
+  operation: RecoveryActuationKind
+  reset_type: RedfishResetToDefaultsType
+  authorized_by: DeclarationRef
+  operator_ruling: StandingDestructiveAuthorization
+}
+
+// THE ONLY MINT OF THE PASSWORD TICKET, admitted by roster to the gate that earns it and to the fixture
+// that stands in for a controller whose policy was measured. The roster is the point: unrostered, this fn
+// would be a second, unpoliced mint beside the gate -- the hole blocker 1 names. A new caller has to be
+// declared here before it can be used, and a roster entry that fails to collect is refused by the
+// compiler rather than silently emptying the wall (test.claim.admit_callers_roster_integrity_witness).
+fn recovery_mint_password_admission_ticket(
+  subject: MachineIntakeSubject,
+  operation: RecoveryActuationKind,
+  authorized_by: DeclarationRef,
+) -> PasswordWriteAdmissionTicket
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "password_write_admitted_after_ledger"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "recovery_admitted_in_band_write"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "recovery_password_admission_for_another_unit"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "recovery_password_admission_for_another_operation"),
+  ]
+{
+  PasswordWriteAdmissionTicket {
+    subject: subject,
+    operation: operation,
+    authorized_by: authorized_by,
+  }
+}
+
+// THE ONLY MINT OF THE RESET TICKET, admitted to its gate and its fixture, for the same reason.
+fn recovery_mint_reset_admission_ticket(
+  subject: MachineIntakeSubject,
+  operation: RecoveryActuationKind,
+  reset_type: RedfishResetToDefaultsType,
+  authorized_by: DeclarationRef,
+  operator_ruling: StandingDestructiveAuthorization,
+) -> ResetWriteAdmissionTicket
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "reset_write_admitted_after_ledger"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "recovery_admitted_reset_write"),
+  ]
+{
+  ResetWriteAdmissionTicket {
+    subject: subject,
+    operation: operation,
+    reset_type: reset_type,
+    authorized_by: authorized_by,
+    operator_ruling: operator_ruling,
+  }
+}
+
+// THE AUTHORIZATION THE FOLD ASKS FOR: an arm carrying a ticket, or the ledger's refusal. The sum is
+// open deliberately, per the measured coproduct hole above; the ticket inside is what cannot be spelled.
 type PasswordWriteAuthorization
-  = PasswordWriteAdmitted { authorized_by: DeclarationRef }
+  = PasswordWriteAdmitted { ticket: PasswordWriteAdmissionTicket }
   // THE LEDGER'S OWN VERDICT, PASSED THROUGH. When the census refused, the refusal is the census's: the
   // defects, needs, survivors, causes and divergence it computed travel in the arm. Rendering them into a
   // sentence here would have thrown away the detail that makes the refusal actionable -- six upstream
@@ -644,13 +727,9 @@ type PasswordWriteAuthorization
   // this gate, so they name what they checked.
   | PasswordWriteRefused { cause: NonEmptyStr }
 
+// The reset authorization, same shape. The census refusal keeps the census's own computed detail.
 type ResetWriteAuthorization
-  = ResetWriteAdmitted {
-      reset_type: RedfishResetToDefaultsType
-      authorized_by: DeclarationRef
-      operator_ruling: StandingDestructiveAuthorization
-    }
-  // As above: the census's refusal keeps the census's own computed detail.
+  = ResetWriteAdmitted { ticket: ResetWriteAdmissionTicket }
   | ResetWriteRefusedByLedger { site: DeclarationRef, cause: LedgerRefusalCause }
   | ResetWriteRefused { cause: NonEmptyStr }
 
@@ -992,7 +1071,13 @@ fn password_write_admitted_after_ledger(
   } else if recovery_write_was_attempted(record: write, kind: kind) == false {
     PasswordWriteRefused { cause: "the write handed over does not name the in-band password actuation this gate classifies" as NonEmptyStr }
   } else {
-    PasswordWriteAdmitted { authorized_by: recovery_in_band_password_write_site() }
+    PasswordWriteAdmitted {
+      ticket: recovery_mint_password_admission_ticket(
+        subject: route.subject,
+        operation: kind,
+        authorized_by: recovery_in_band_password_write_site(),
+      ),
+    }
   }
 }
 
@@ -1104,9 +1189,13 @@ fn reset_write_admitted_after_ledger(
         // see WHICH approval purchased WHICH destructive actuation. `reset_type: a` is the arm matched at the
         // top of this function -- the same value the disposition above was decided on.
         ResetWriteAdmitted {
-          reset_type: a,
-          authorized_by: recovery_manager_reset_site(),
-          operator_ruling: under_ruling,
+          ticket: recovery_mint_reset_admission_ticket(
+            subject: route.subject,
+            operation: kind,
+            reset_type: a,
+            authorized_by: recovery_manager_reset_site(),
+            operator_ruling: under_ruling,
+          ),
         }
       }
   }
@@ -1789,14 +1878,29 @@ fn converge_in_band_recovery(
                 cause: cause,
               },
             }
-          PasswordWriteAdmitted { authorized_by: issuer } =>
-            if declaration_ref_eq(a: issuer, b: recovery_in_band_password_write_site()) == false {
+          PasswordWriteAdmitted { ticket: ticket } =>
+            if declaration_ref_eq(a: ticket.authorized_by, b: recovery_in_band_password_write_site()) == false {
               InBandRecoveryStanding {
                 subject: route.subject,
                 route: route,
                 outcome: RecoveryWriteNotAdmitted {
                   kind: recovery_in_band_password_actuation(),
                   cause: "the password admission was issued by a declaration other than the gate its census row is filed at" as NonEmptyStr,
+                },
+              }
+            } else if ticket.subject != route.subject
+              || ticket.operation != recovery_in_band_password_actuation() {
+              // THE ADMISSION IS NOT ABOUT THIS WRITE, OR NOT ABOUT THIS CHASSIS. The sealed ticket is what
+              // makes this check possible at all: it carries the subject the gate read and the actuation it
+              // verified, so a password admission minted for one unit cannot be spent on another, and one
+              // naming a different operation is refused here rather than re-derived downstream (side-chat
+              // HOLD blocker 1: authorization-bearing payloads bound to subject + operation).
+              InBandRecoveryStanding {
+                subject: route.subject,
+                route: route,
+                outcome: RecoveryWriteNotAdmitted {
+                  kind: recovery_in_band_password_actuation(),
+                  cause: "the password admission names a different subject or operation than this route and its in-band write" as NonEmptyStr,
                 },
               }
             } else {
@@ -1820,14 +1924,24 @@ fn converge_in_band_recovery(
                       cause: cause,
                     },
                   }
-                ResetWriteAdmitted { reset_type: _, authorized_by: issuer, operator_ruling: _ } =>
-                  if declaration_ref_eq(a: issuer, b: recovery_manager_reset_site()) == false {
+                ResetWriteAdmitted { ticket: reset_ticket } =>
+                  if declaration_ref_eq(a: reset_ticket.authorized_by, b: recovery_manager_reset_site()) == false {
                     InBandRecoveryStanding {
                       subject: route.subject,
                       route: route,
                       outcome: RecoveryWriteNotAdmitted {
                         kind: recovery_reset_actuation(),
                         cause: "the reset admission was issued by a declaration other than the gate its census row is filed at" as NonEmptyStr,
+                      },
+                    }
+                  } else if reset_ticket.subject != route.subject
+                    || reset_ticket.operation != recovery_reset_actuation() {
+                    InBandRecoveryStanding {
+                      subject: route.subject,
+                      route: route,
+                      outcome: RecoveryWriteNotAdmitted {
+                        kind: recovery_reset_actuation(),
+                        cause: "the reset admission names a different subject or operation than this route and its ResetToDefaults write" as NonEmptyStr,
                       },
                     }
                   } else {
@@ -2458,18 +2572,19 @@ test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
     // non-destructive, an admission without a ruling, and a password admission wearing the reset's arm all
     // have no constructor.
     && (match recovery_admitted_reset_write() {
-          ResetWriteAdmitted { reset_type: rt, authorized_by: issuer, operator_ruling: r } =>
-            rt == ResetAll
-              && declaration_ref_eq(a: issuer, b: recovery_manager_reset_site())
-              && r.ruling_text == recovery_reset_operator_ruling.ruling_text
+          ResetWriteAdmitted { ticket: t } =>
+            t.reset_type == ResetAll
+              && declaration_ref_eq(a: t.authorized_by, b: recovery_manager_reset_site())
+              && t.operator_ruling.ruling_text == recovery_reset_operator_ruling.ruling_text
           ResetWriteRefused { cause: _ } => false
           ResetWriteRefusedByLedger { site: _, cause: _ } => false
         })
     // ...and the password write's admission is its OWN type: it cannot even be asked whether it stands
     // under the reset's gate, so no refusal has to be written for that question.
     && (match recovery_admitted_in_band_write() {
-          PasswordWriteAdmitted { authorized_by: issuer } =>
-            declaration_ref_eq(a: issuer, b: recovery_in_band_password_write_site())
+          PasswordWriteAdmitted { ticket: t } =>
+            t.operation == recovery_in_band_password_actuation()
+              && declaration_ref_eq(a: t.authorized_by, b: recovery_in_band_password_write_site())
           PasswordWriteRefused { cause: _ } => false
           PasswordWriteRefusedByLedger { site: _, cause: _ } => false
         })
@@ -2646,7 +2761,7 @@ test fn the_reset_gate_refuses_an_unmeasured_controller_by_its_warrant_and_not_b
       starts_with(s: cause as String, prefix: "no refusal was ever measured on this controller")
         // and NOT the hold sentence: the warrant refused before the hold was ever asked
         && starts_with(s: cause as String, prefix: "the durable unit hold was never acquired") == false
-    ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+    ResetWriteAdmitted { ticket: _ } => false
     ResetWriteRefusedByLedger { site: _, cause: _ } => false
   })
     // THE SAME GATE, THE SAME MISSING HOLD, THE MEASURED READING: the warrant no longer refuses, so the
@@ -2660,7 +2775,7 @@ test fn the_reset_gate_refuses_an_unmeasured_controller_by_its_warrant_and_not_b
     ) {
       ResetWriteRefused { cause: cause } =>
         starts_with(s: cause as String, prefix: "the durable unit hold was never acquired")
-      ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+      ResetWriteAdmitted { ticket: _ } => false
       ResetWriteRefusedByLedger { site: _, cause: _ } => false
     })
 }
@@ -2939,15 +3054,85 @@ fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
 // (UnitHoldProof is sole_constructor there, unit_hold_minted is admit_callers-gated). So no caller -- not
 // even this module's own laws -- can manufacture a reset that the ledger admits with the unit held. That is
 // the gate working, and the laws below assert exactly that at the refusals.
-fn recovery_admitted_in_band_write() -> PasswordWriteAuthorization {
-  PasswordWriteAdmitted { authorized_by: recovery_in_band_password_write_site() }
+// ADMITTED ONLY TO THE FOUR NAMED CLAIMS BELOW, which is the whole set of callers this fixture has
+// (git grep; nothing outside this module calls it). A fixture that produces a privileged admission is
+// itself an authorization-bearing payload: left open, it is a second, unpoliced mint beside the gate,
+// and DESIGN 3c's "a witness asserting existence rather than exercising behavior" is the failure it
+// invites. Confining it to named claims means a new consumer has to be declared, and a claim that
+// quietly stops exercising the route loses its fixture (side-chat HOLD blocker 1).
+// THE TWO MISMATCH FIXTURES, which exist so the fold's binding checks can be REACHED. Minted through the
+// rostered mint -- an unadmitted caller is a compile refusal, which is the point of the roster -- and
+// admitted to it by name above. A check that can never fire is a comment in code's clothing, so each is
+// paired with the claim below that asks the fold about it.
+fn recovery_password_admission_for_another_unit() -> PasswordWriteAuthorization {
+  PasswordWriteAdmitted {
+    ticket: recovery_mint_password_admission_ticket(
+      subject: MachineIntakeSubject {
+        // a DIFFERENT chassis: same attempt id, so the only thing that differs is which unit the gate
+        // was reading when it decided
+        subject: QualificationSubject {
+          unit_key: "bmc-recovery-another-unit",
+          assembly_manifest_digest: content_hash_of_value(value: "assembly-digest-for-in-band-recovery-fixtures"),
+          firmware_manifest_digest: content_hash_of_value(value: "firmware-digest-for-in-band-recovery-fixtures"),
+        },
+        attempt_id: "in-band-recovery-attempt-1",
+      },
+      operation: recovery_in_band_password_actuation(),
+      authorized_by: recovery_in_band_password_write_site(),
+    ),
+  }
 }
 
-fn recovery_admitted_reset_write() -> ResetWriteAuthorization {
+// Same chassis, WRONG OPERATION: an admission the password gate really issued, being presented where a
+// reset admission belongs. The types already stop most of this -- the fold takes two differently-typed
+// admissions -- so what is exercised here is the operation the ticket itself carries.
+fn recovery_password_admission_for_another_operation() -> PasswordWriteAuthorization {
+  PasswordWriteAdmitted {
+    ticket: recovery_mint_password_admission_ticket(
+      subject: recovery_test_subject(),
+      operation: recovery_reset_actuation(),
+      authorized_by: recovery_in_band_password_write_site(),
+    ),
+  }
+}
+
+fn recovery_admitted_in_band_write() -> PasswordWriteAuthorization
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "a_reset_arm_that_keeps_the_user_table_is_never_a_recovery"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "the_standing_refuses_to_hand_off_without_the_readback"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recovered"),
+  ]
+{
+  PasswordWriteAdmitted {
+    ticket: recovery_mint_password_admission_ticket(
+      subject: recovery_test_subject(),
+      operation: recovery_in_band_password_actuation(),
+      authorized_by: recovery_in_band_password_write_site(),
+    ),
+  }
+}
+
+// Same confinement as the password fixture: the four claims that exercise the admitted arms, and no
+// one else. This is the one whose mint the compiler already refuses elsewhere (UnitHoldProof is sealed
+// at its source), so the fixture is the only path to the admitted reset arm -- which is exactly why it
+// needs a roster.
+fn recovery_admitted_reset_write() -> ResetWriteAuthorization
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "a_reset_arm_that_keeps_the_user_table_is_never_a_recovery"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "the_standing_refuses_to_hand_off_without_the_readback"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recovered"),
+  ]
+{
   ResetWriteAdmitted {
-    reset_type: ResetAll,
-    authorized_by: recovery_manager_reset_site(),
-    operator_ruling: recovery_reset_operator_ruling,
+    ticket: recovery_mint_reset_admission_ticket(
+      subject: recovery_test_subject(),
+      operation: recovery_reset_actuation(),
+      reset_type: ResetAll,
+      authorized_by: recovery_manager_reset_site(),
+      operator_ruling: recovery_reset_operator_ruling,
+    ),
   }
 }
 
@@ -3009,7 +3194,7 @@ test fn the_reset_gate_refuses_by_naming_the_hold_mistake() -> Bool {
   ) {
     ResetWriteRefused { cause: cause } =>
       starts_with(s: cause as String, prefix: "the durable unit hold was never acquired")
-    ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+    ResetWriteAdmitted { ticket: _ } => false
     ResetWriteRefusedByLedger { site: _, cause: _ } => false
   })
     // REFUSED BY THE STORE: the store's own words travel into the cause -- the half the Bool discarded.
@@ -3024,7 +3209,7 @@ test fn the_reset_gate_refuses_by_naming_the_hold_mistake() -> Bool {
       ResetWriteRefused { cause: cause } =>
         starts_with(s: cause as String, prefix: "the durable unit hold was refused by the store: ")
           && string_contains(s: cause as String, pattern: "boot-run-41")
-      ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+      ResetWriteAdmitted { ticket: _ } => false
       ResetWriteRefusedByLedger { site: _, cause: _ } => false
     })
     // THE REFUSALS ARE NOT THE SAME STRING, which is what the Bool made all three of them.
@@ -3042,10 +3227,10 @@ test fn the_reset_gate_refuses_by_naming_the_hold_mistake() -> Bool {
           reset_write: recovery_reset_write_record(),
         ) {
           ResetWriteRefused { cause: never_taken } => (refused_by_store as String) != (never_taken as String)
-          ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+          ResetWriteAdmitted { ticket: _ } => false
           ResetWriteRefusedByLedger { site: _, cause: _ } => false
         }
-      ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+      ResetWriteAdmitted { ticket: _ } => false
       ResetWriteRefusedByLedger { site: _, cause: _ } => false
     })
     // THE KEY DECISION, BOTH WAYS. Two units whose keys share a prefix are two chassis; the refusal keeps
@@ -3178,14 +3363,14 @@ test fn a_census_refusal_reaches_the_next_action_with_the_census_words_intact() 
 test fn the_password_gate_admits_the_captured_channel_and_refuses_the_wrong_kind() -> Bool {
   let route = recovery_test_route(reading: recovery_measured_identity())
   (match admit_recovery_in_band_password_write(route: route, write: recovery_in_band_write_record()) {
-    PasswordWriteAdmitted { authorized_by: authorized_by } =>
+    PasswordWriteAdmitted { ticket: t } =>
       declaration_ref_eq(a: authorized_by, b: recovery_in_band_password_write_site())
     PasswordWriteRefused { cause: _ } => false
     PasswordWriteRefusedByLedger { site: _, cause: _ } => false
   })
     && (match admit_recovery_in_band_password_write(route: route, write: recovery_reset_write_record()) {
       PasswordWriteRefused { cause: cause } => string_length(cause) > 0
-      PasswordWriteAdmitted { authorized_by: _ } => false
+      PasswordWriteAdmitted { ticket: _ } => false
       PasswordWriteRefusedByLedger { site: _, cause: _ } => false
     })
 }
@@ -3286,6 +3471,79 @@ test fn the_channel_reading_follows_the_reset_the_device_node_precedes_it() -> B
       earlier: recovery_reset_instant(),
       later: recovery_inband_channel_instant(),
     )
+}
+
+// AN ADMISSION FOR ANOTHER CHASSIS, OR FOR ANOTHER WRITE, IS REFUSED BY THE FOLD (side-chat HOLD blocker
+// 1). The sealed ticket is what makes this checkable at all: it carries the subject the gate read and the
+// actuation it verified, so the fold can ask whether the authorization in hand is about THIS route and
+// THIS write instead of assuming it. Both refusals are asked for by name, with the two mismatch fixtures,
+// and each is checked on three things: the typed arm arrives, it names the write it is about, and it
+// survives the projection as its own outgoing refusal rather than collapsing into "readback inconclusive"
+// -- which is blocker 5's requirement applied to blocker 1's new arms. If either binding check were
+// deleted, the mismatched admission would be accepted and this claim goes red; that is what the fixtures
+// are for, and why a check with no fixture would not count as one.
+test fn an_admission_bound_to_another_unit_or_another_operation_is_refused() -> Bool {
+  let route = recovery_test_route(reading: recovery_measured_identity())
+  let for_another_unit = converge_in_band_recovery(
+    route: route,
+    in_band_write: recovery_in_band_write_record(),
+    reset_write: recovery_reset_write_record(),
+    readback: recovery_factory_credential_readback(),
+    in_band_admission: recovery_password_admission_for_another_unit(),
+    reset_admission: recovery_admitted_reset_write(),
+  )
+  let for_another_operation = converge_in_band_recovery(
+    route: route,
+    in_band_write: recovery_in_band_write_record(),
+    reset_write: recovery_reset_write_record(),
+    readback: recovery_factory_credential_readback(),
+    in_band_admission: recovery_password_admission_for_another_operation(),
+    reset_admission: recovery_admitted_reset_write(),
+  )
+  // the admitted pair, as the control: the same fold with a ticket bound to THIS route hands off, so the
+  // two refusals above cannot be what every call returns
+  let control = converge_in_band_recovery(
+    route: route,
+    in_band_write: recovery_in_band_write_record(),
+    reset_write: recovery_reset_write_record(),
+    readback: recovery_factory_credential_readback(),
+    in_band_admission: recovery_admitted_in_band_write(),
+    reset_admission: recovery_admitted_reset_write(),
+  )
+  match for_another_unit.outcome {
+    RecoveryWriteNotAdmitted { kind: k, cause: c } =>
+      k == recovery_in_band_password_actuation()
+        && string_non_empty(value: c)
+        && (match recovery_route_unavailability(standing: for_another_unit) {
+             // the outgoing refusal is the withheld-write one, carrying the same kind, and it is NOT the
+             // generic readback answer
+             Present { value: RecoveryWriteWithheldByAdmission { kind: pk, cause: _ } } =>
+               pk == recovery_in_band_password_actuation()
+             Present { value: _ } => false
+             none => false
+           })
+        && (match for_another_unit.outcome {
+             RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => false
+             _ => true
+           })
+    _ => false
+  }
+    && (match for_another_operation.outcome {
+      RecoveryWriteNotAdmitted { kind: k2, cause: c2 } =>
+        k2 == recovery_in_band_password_actuation()
+          && string_non_empty(value: c2)
+          && (match recovery_route_unavailability(standing: for_another_operation) {
+               Present { value: RecoveryWriteWithheldByAdmission { kind: pk2, cause: _ } } =>
+                 pk2 == recovery_in_band_password_actuation()
+               Present { value: _ } => false
+               none => false
+             })
+      _ => false
+    })
+    && (match control.outcome {
+      RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => true
+      _ => false
+    })
 }
 
 // THE DEVICE NODE IS COMPARED AS AN ARM, AND THE TEXT A CAPTURE SHOWS IS DERIVED FROM THE ARM (review
