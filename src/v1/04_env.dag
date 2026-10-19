@@ -1828,7 +1828,7 @@ fn kernel_or_unidentified(n: Node, source_indices: Map<String, NewlineIndex>, au
     Present { value: TypeVariable { id: v } } => TypeReferenceIsTypeVariable { id: v }
     _ =>
       if is_kernel_type(name: nm) || node_is_kernel_mint(n: n) { TypeReferenceIsKernelType { name: nm } }
-      else if is_type_variable_name(name: nm) { TypeReferenceUninstantiatedTypeParameter { name: nm } }
+      else if is_type_variable_name(name: nm) || is_type_variable_name(name: n.name) { TypeReferenceUninstantiatedTypeParameter { name: nm } }
       else { TypeReferenceUnidentified { authored: authored, resolved: resolved } }
   }
 }
