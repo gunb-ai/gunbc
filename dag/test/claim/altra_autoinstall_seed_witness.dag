@@ -1,0 +1,1793 @@
+module test.claim.altra_autoinstall_seed_witness
+
+// WITNESSES FOR THE Altra autoinstall SEED and its BINDING (gunbc.provisioning.altra_autoinstall_seed).
+// Each test names the failure it exists to catch, and every one of them goes RED when the invariant it
+// guards is inverted — the required CI jobs do not evaluate witnesses, so this file is the only gate those
+// invariants have. The two that matter most are named in their own comments: the disk rule's two halves
+// (zero-match and multi-match refusals are different arms caught by different tests, because the worst
+// thing this cut can do is install onto the wrong disk of an 8-bay board) and the credential posture
+// (a headless box nobody can log into must be unrepresentable as valid).
+
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.measure { byte_size }
+import std.optional { Optional, Absent, Present }
+import extdeps.storage.types { storage_device_serial }
+import extdeps.libxcrypt.crypt_scheme {
+  Sha512CryptFormat,
+  sha512_crypt_figure_read_obligation,
+  sha512_crypt_format,
+}
+import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import std.measure { CharacterCount, character_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_eq_structural,
+}
+import extdeps.storage.types {
+  BareDevice,
+  CachedMirror,
+  Ephemeral,
+  EphemeralFs,
+  NvmeDevice,
+  Persistent,
+  StorageDevice,
+}
+import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
+import extdeps.ssh.keys { Ed25519, SshPublicKey }
+import extdeps.toolchain.types { Aarch64, X86_64 }
+import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.provisioning.network_boot { LegacyBiosPxe, UefiHttpBoot, UefiPxe }
+import extdeps.uri { Https, Uri }
+import extdeps.os.ubuntu_kernel_nic_coverage { Noble2404GaLinux68 }
+import gunbc.machine_intake.bmc_first_contact_standing {
+  BmcFirmwareFamilyStanding,
+  FamilyObserved,
+  FamilyUnobserved,
+}
+import gunbc.machine_intake.subject {
+  BoardSerialAbsent,
+  IntakeAttemptId,
+  UnitKey,
+  UnitKeyBound,
+  UnitKeyRefused,
+  UnitKeyStanding,
+}
+import gunbc.provisioning.altra_autoinstall_seed {
+  AddressingIsInstallerManaged,
+  AdminAccessAuthorisation,
+  AdminCredentialPosture,
+  AltraAutoinstallSeed,
+  AltraAutoinstallSeedBinding,
+  AltraAutoinstallTarget,
+  AltraAutoinstallTargetRole,
+  AltraProvisioningTarget,
+  ArchiveMirror,
+  BmcSolConsoleUnlocked,
+  BootedADifferentSeed,
+  BootedThisSeed,
+  BindingIsForeign,
+  BoundDisk,
+  CandidateIdentityUnobserved,
+  ConsoleEntryAuthorisation,
+  ConsoleEntryLocked,
+  ConsoleEntryUnlocked,
+  ConsoleSuppressed,
+  ConsoleAnsweredByUnattended,
+  DiskSelected,
+  DiskSelectionRefusalCause,
+  DualStack,
+  EnUsUtf8,
+  InstallerManaged,
+  Ipv4Only,
+  MirrorAbsent,
+  MultipleDisksMatch,
+  NamedMirror,
+  NoDiskMatches,
+  NoEntrypointAtAll,
+  NonInteractiveConsoleStanza,
+  PackageIntent,
+  PackagePrompts,
+  PasswordHandle,
+  PasswordUnset,
+  PxeStrategy,
+  RunnerBacked,
+  SeededNetplan,
+  SeedAddressFamily,
+  SeedAddressing,
+  SeedAudit,
+  SeedDeliveryStrategy,
+  SeedIsNonInteractive,
+  SeedLocale,
+  SeedNetworkPosture,
+  SeedRefused,
+  SelectionRefused,
+  ByObservedSerial,
+  ByCatalogIdentity,
+  NvmeCliDriver,
+  LinuxFirmwareDriver,
+  AhciPlatformModule,
+  NvmeBlockModule,
+  KipmiSiDriver,
+  IpmiWatchdogDriver,
+  ConsoleEntryLocked,
+  ConsoleEntryUnlocked,
+  QuestionAnswered,
+  QuestionUnanswered,
+  UnclassifiedPackage,
+  OpenSshServerPackage,
+  PostfixPackage,
+  KeyboardConfigurationPackage,
+  TzdataPackage,
+  known_prompting_packages,
+  known_prompting_package_name,
+  TzdataPackage,
+  unexamined_candidate,
+  install_driver_list_diagnostic,
+  loadable_module_list_diagnostic,
+  late_driver_list_diagnostic,
+  ArchiveMirrorAbsent,
+  PackagePromptingUnclassified,
+  Bound,
+  BindRefused,
+  BindingBlocker,
+  BindingResult,
+  TargetNotAdmitted,
+  DiskSelectionRefused,
+  AltraLoadableModule,
+  audit_altra_autoinstall_seed,
+  binding_digest,
+  SerialConsoleGettyUnlocked,
+  TargetAdmitted,
+  TargetDiskSelection,
+  UnitKeyUnbound,
+  TargetDiskSelector,
+  TargetRefused,
+  UsLayout,
+  VirtualMediaStrategy,
+  admit_admin_access_authorisation,
+  admit_altra_autoinstall_target,
+  admin_password_handle,
+  altra_autoinstall_seed_digest,
+  bind_altra_autoinstall_seed,
+  build_altra_autoinstall_seed,
+  check_binding_against_seed,
+
+  AdminPasswordRefusalCause,
+  DigestAbsent,
+  DigestNotInCryptAlphabet,
+  DigestWrongLength,
+  NotACryptDigest,
+  RoundsMalformed,
+  SaltAbsent,
+  SaltHoldsForbiddenCharacter,
+  SaltTooLong,
+  ReceiptAccepted,
+  ReceiptRefused,
+  SchemeUnsupported,
+  admin_password_hash_receipt,
+  console_stanza_for,
+  project_autoinstall_identity,
+  render_altra_autoinstall_seed,
+  select_target_disk,
+  selector_admits_observed,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ---------------------------------------------------------------------------
+// Fixtures. A witness's evidence should be readable without a builder call chain; nothing here names a
+// fleet host, and the two disks that collide are named by serial alone.
+// ---------------------------------------------------------------------------
+
+data unit_a_key: UnitKey = "altra-unit-a" as UnitKey
+data unit_b_key: UnitKey = "altra-unit-b" as UnitKey
+data attempt_one: IntakeAttemptId = "intake-20261017-0001" as IntakeAttemptId
+data attempt_two: IntakeAttemptId = "intake-20261017-0002" as IntakeAttemptId
+
+data unit_key_bound_a: UnitKeyStanding = UnitKeyBound { key: unit_a_key }
+data unit_key_bound_b: UnitKeyStanding = UnitKeyBound { key: unit_b_key }
+data unit_key_unbound: UnitKeyStanding = UnitKeyRefused { cause: BoardSerialAbsent }
+data bmc_family_observed: BmcFirmwareFamilyStanding = FamilyObserved { family: AmiMegaRac }
+data bmc_family_unobserved: BmcFirmwareFamilyStanding = FamilyUnobserved {
+  discriminator: "AST2500 firmware string never read" as NonEmptyStr,
+}
+
+data target_altra: AltraAutoinstallTarget = admit_altra_autoinstall_target(
+  unit_key: unit_key_bound_a,
+  architecture: Aarch64,
+  bmc_firmware: bmc_family_observed,
+  role: AltraProvisioningTarget,
+  kernel_flavour: Noble2404GaLinux68,
+)
+
+data target_altra_b: AltraAutoinstallTarget = admit_altra_autoinstall_target(
+  unit_key: unit_key_bound_b,
+  architecture: Aarch64,
+  bmc_firmware: bmc_family_observed,
+  role: AltraProvisioningTarget,
+  kernel_flavour: Noble2404GaLinux68,
+)
+
+// Two bays carrying the SAME serial: the population an 8-bay board really presents when a tray is swapped
+// or a label copied, and the case a device-name selector would silently resolve by enumeration order.
+data twin_disk_one: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Present { value: "TWIN-SERIAL-0001" },
+  persistence: Persistent,
+}
+
+data twin_disk_two: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Present { value: "TWIN-SERIAL-0001" },
+  persistence: Persistent,
+}
+
+data unique_disk: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Present { value: "UNIQUE-SERIAL-0007" },
+  persistence: Persistent,
+}
+
+// The same serial on a disk that is NOT persistent: identity matches, kind does not.
+data ephemeral_disk: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Present { value: "UNIQUE-SERIAL-0007" },
+  persistence: Ephemeral,
+}
+
+data cached_mirror_disk: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Present { value: "UNIQUE-SERIAL-0007" },
+  persistence: CachedMirror,
+}
+
+// A disk the probe could not read a serial for — reported as unexamined, never as "nothing matches".
+data serial_unread_disk: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Absent,
+  persistence: Persistent,
+}
+
+// BMC virtual media presents the install image as an attached device on the board itself, so an extra
+// device really does appear in the probe's view during such an install. Only an identity-bearing rule
+// keeps the install off it.
+data bmc_virtual_media_device: StorageDevice = BareDevice {
+  capacity: byte_size(8589934592),
+  medium: EphemeralFs,
+  serial: Present { value: "BMC-VIRTUAL-CDROM" },
+  read_bandwidth: Absent,
+  write_bandwidth: Absent,
+  persistence: Ephemeral,
+}
+
+data bay_population: List<StorageDevice> = [unique_disk, twin_disk_one, twin_disk_two]
+
+data serial_selector: TargetDiskSelector = ByObservedSerial { serial: "UNIQUE-SERIAL-0007" }
+data twin_selector: TargetDiskSelector = ByObservedSerial { serial: "TWIN-SERIAL-0001" }
+data absent_selector: TargetDiskSelector = ByObservedSerial { serial: "NO-SUCH-DISK" }
+data catalog_selector: TargetDiskSelector = ByCatalogIdentity {
+  part_number: "WDS200T2X0E",
+  capacity_bytes: byte_size(2000398934016),
+}
+data wrong_capacity_selector: TargetDiskSelector = ByCatalogIdentity {
+  part_number: "WDS200T2X0E",
+  capacity_bytes: byte_size(1000000000000),
+}
+
+data provisioning_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIProvisioningKeyMaterialIsPublicAndNotASecret" as NonEmptyStr,
+  comment: "gunbc-provisioning",
+}
+
+data one_key: List<SshPublicKey> = [provisioning_key]
+data no_keys: List<SshPublicKey> = []
+
+data network_posture: SeedNetworkPosture = SeedNetworkPosture {
+  addressing: SeededNetplan { source: "00-gunbc.yaml" as NonEmptyStr },
+  family: Ipv4Only,
+  mirror: NamedMirror { host: "mirror.internal.invalid" as NonEmptyStr },
+}
+
+data posture_no_mirror: SeedNetworkPosture = SeedNetworkPosture {
+  addressing: SeededNetplan { source: "00-gunbc.yaml" as NonEmptyStr },
+  family: Ipv4Only,
+  mirror: MirrorAbsent,
+}
+
+data posture_installer_managed: SeedNetworkPosture = SeedNetworkPosture {
+  addressing: InstallerManaged,
+  family: DualStack,
+  mirror: NamedMirror { host: "mirror.internal.invalid" as NonEmptyStr },
+}
+
+// EVERY PACKAGE HERE DECLARES WHICH OF THE THREE KNOWLEDGE ARMS IT IS IN. openssh-server and postfix both
+// ship debconf config scripts that ask something on a fresh install, so each carries an ANSWER; nothing in the
+// green fixtures is left as an unexamined string, because an unexamined package is a refusal, not a pass.
+data clean_packages: List<PackageIntent> = [
+  QuestionAnswered {
+    package: OpenSshServerPackage,
+    debconf_seed: "openssh-server/password-authentication boolean false" as NonEmptyStr,
+  },
+  QuestionAnswered {
+    package: PostfixPackage,
+    debconf_seed: "postfix postfix/main_mailer_type select No configuration" as NonEmptyStr,
+  },
+]
+
+// THE SAME TWO PACKAGES, OTHER ORDER. The digest must not move, or it stops meaning "the same
+// configuration" and starts meaning "the same configuration, typed the same way".
+data reversed_packages: List<PackageIntent> = [
+  QuestionAnswered {
+    package: PostfixPackage,
+    debconf_seed: "postfix postfix/main_mailer_type select No configuration" as NonEmptyStr,
+  },
+  QuestionAnswered {
+    package: OpenSshServerPackage,
+    debconf_seed: "openssh-server/password-authentication boolean false" as NonEmptyStr,
+  },
+]
+
+// THE ARMS THE AUDIT MUST REFUSE, ONE EACH. QuestionUnanswered is a known question nobody answered;
+// UnclassifiedPackage is a package nobody checked — which the old audit let through as answerless-and-fine.
+data unseeded_tzdata_packages: List<PackageIntent> = [
+  QuestionAnswered {
+    package: OpenSshServerPackage,
+    debconf_seed: "openssh-server/password-authentication boolean false" as NonEmptyStr,
+  },
+  QuestionUnanswered { package: TzdataPackage },
+]
+
+// CLEAN_PACKAGES plus one more ANSWERED question: the only difference is a question that was closed.
+data two_answered_packages: List<PackageIntent> = [
+  QuestionAnswered {
+    package: OpenSshServerPackage,
+    debconf_seed: "openssh-server/password-authentication boolean false" as NonEmptyStr,
+  },
+  QuestionAnswered {
+    package: PostfixPackage,
+    debconf_seed: "postfix postfix/main_mailer_type select No configuration" as NonEmptyStr,
+  },
+  QuestionAnswered {
+    package: KeyboardConfigurationPackage,
+    debconf_seed: "keyboard-configuration/layout select English (US)" as NonEmptyStr,
+  },
+]
+
+data unclassified_packages: List<PackageIntent> = [
+  QuestionAnswered {
+    package: OpenSshServerPackage,
+    debconf_seed: "openssh-server/password-authentication boolean false" as NonEmptyStr,
+  },
+  UnclassifiedPackage {
+    name: "some-fleet-exporter" as NonEmptyStr,
+    debconf_seed: Absent,
+  },
+]
+
+// THE UNCLASSIFIED ARM WITH A CLEAN HEAD — the same shape unseeded_tzdata_packages gives the open-question
+// arm. A scan that stops at the head, or drops the tail, reports the seed non-interactive here and installs a
+// board that hangs on the first debconf question with nobody at the console.
+data clean_head_then_unclassified_tail: List<PackageIntent> = [
+  QuestionAnswered {
+    package: PostfixPackage,
+    debconf_seed: "postfix postfix/main_mailer_type select No configuration" as NonEmptyStr,
+  },
+  UnclassifiedPackage {
+    name: "some-fleet-exporter" as NonEmptyStr,
+    debconf_seed: Absent,
+  },
+]
+
+// A BLOCKER HIDING BEHIND A CLEAN HEAD STILL REFUSES THE SEED, AND NAMES A PACKAGE FROM THE LIST. Both arms
+// are checked; each is checked on its own list so a defect in one arm cannot be covered by the other. Which
+// of two simultaneous blockers a scan reports first is deliberately NOT pinned — package order is not
+// semantic for the digest (see package_order_does_not_move_the_digest), so freezing a scan direction would
+// turn an implementation detail into a contract.
+test fn a_blocker_anywhere_in_the_list_refuses_the_seed() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      audit_refuses_naming_one_of_its_own_packages(
+        packages: unseeded_tzdata_packages,
+        entry: entry,
+      )
+        && audit_refuses_naming_one_of_its_own_packages(
+          packages: clean_head_then_unclassified_tail,
+          entry: entry,
+        )
+    Absent => false
+  }
+}
+
+// ONE AUDIT, THE CLAIM STATED AS A SUM-TYPE MATCH. The green arm must be false, and the only true arms are the
+// two causes naming the packages these fixtures actually contain ("tzdata" and "some-fleet-exporter"); every
+// other cause is false, so the witness cannot be satisfied by an unrelated refusal leaking in from elsewhere in
+// the seed, nor by a cause naming a package nobody asked for. Called only on those two fixtures.
+fn audit_refuses_naming_one_of_its_own_packages(
+  packages: List<PackageIntent>,
+  entry: AdminAccessAuthorisation,
+) -> Bool {
+  match audit_altra_autoinstall_seed( network: network_posture, install_packages: packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+    SeedIsNonInteractive => false
+    SeedRefused { cause: cause } =>
+      match cause {
+        PackagePrompts { name: named, question: _ } => named == "tzdata" as NonEmptyStr
+        PackagePromptingUnclassified { name: named } =>
+          named == "some-fleet-exporter" as NonEmptyStr
+        AddressingIsInstallerManaged => false
+        ArchiveMirrorAbsent => false
+        NoEntrypointAtAll => false
+      }
+  }
+}
+
+// THE SAME UNCHECKED PACKAGE, WITH AN ANSWER ATTACHED. The answer cannot make it classifiable: what is missing
+// is not a value but the knowledge of whether the package asks anything at all, and a seed must not be able to
+// launder that by stuffing a string into the field.
+data unclassified_but_seeded_packages: List<PackageIntent> = [
+  UnclassifiedPackage {
+    name: "some-fleet-exporter" as NonEmptyStr,
+    debconf_seed: Present { value: "some-fleet-exporter/dummy string true" as NonEmptyStr },
+  },
+]
+
+data pxe_strategy: SeedDeliveryStrategy = PxeStrategy {
+  boot_mode: UefiPxe { tftp_root: Uri { scheme: Https, locator: "tftp.internal.invalid" } },
+}
+
+data http_boot_strategy: SeedDeliveryStrategy = PxeStrategy { boot_mode: UefiHttpBoot }
+
+data virtual_media_strategy: SeedDeliveryStrategy = VirtualMediaStrategy {
+  media_stem: "gunbc-altra-arm64-2026-10-17" as NonEmptyStr,
+}
+
+// BIOS PXE IS THE THIRD TRANSPORT AND THE ONLY ONE THAT SHARES A CONSOLE STANZA WITH VIRTUAL MEDIA: both
+// suppress the console, so any test of "the transport reaches the digest" that compares PXE against virtual
+// media can pass on the console clause alone. This fixture is what forces the transport token itself to
+// carry the difference.
+data legacy_bios_strategy: SeedDeliveryStrategy = PxeStrategy {
+  boot_mode: LegacyBiosPxe { tftp_root: Uri { scheme: Https, locator: "pxe-edge.internal.invalid" } },
+}
+
+data same_stem_virtual_media: SeedDeliveryStrategy = VirtualMediaStrategy {
+  media_stem: "gunbc-altra-arm64-2026-10-17" as NonEmptyStr,
+}
+
+data unlocked_console: ConsoleEntryAuthorisation = ConsoleEntryUnlocked {
+  reason: BmcSolConsoleUnlocked,
+}
+
+// THE OTHER UNLOCK KIND. Same posture, different exposure: a getty on the panel serial versus SOL over the
+// BMC network. On a headless board only the second is reachable, which is why the distinction is worth a type.
+data unlocked_serial_console: ConsoleEntryAuthorisation = ConsoleEntryUnlocked {
+  reason: SerialConsoleGettyUnlocked,
+}
+
+// THE SAME SECRET, IN A DIFFERENT STORE. A credential's version moving within one store and the store itself
+// moving are different operator events with different remedies, and a digest that could see only the first
+// would answer "the machine booted seed X" wrongly after a migration. Both fixtures differ in the LOCATOR only,
+// so this pair is what proves the locator is digested rather than decorative — a field no witness observes is a
+// field a refactor may drop.
+data relocated_handle: AdminCredentialPosture = PasswordHandle {
+  handle: admin_password_handle(
+    secret_locator: "vault://gunbc-alternate-store/provisioning/altra/admin" as NonEmptyStr,
+    secret_version: "v7" as NonEmptyStr,
+  ),
+}
+
+data locked_console: ConsoleEntryAuthorisation = ConsoleEntryLocked
+
+data seeded_handle: AdminCredentialPosture = PasswordHandle {
+  handle: admin_password_handle(
+    secret_locator: "vault://gunbc/provisioning/altra/admin" as NonEmptyStr,
+    secret_version: "v7" as NonEmptyStr,
+  ),
+}
+
+data rotated_handle: AdminCredentialPosture = PasswordHandle {
+  handle: admin_password_handle(
+    secret_locator: "vault://gunbc/provisioning/altra/admin" as NonEmptyStr,
+    secret_version: "v8" as NonEmptyStr,
+  ),
+}
+
+// ---------------------------------------------------------------------------
+// The disk rule, in BOTH halves. Zero and many are different arms, caught by different tests: a single
+// test over both would pass if one arm were deleted.
+// ---------------------------------------------------------------------------
+
+// CATCHES: a selector matching nothing being treated as "fine, install anyway".
+test fn zero_match_selection_is_refused_not_defaulted() -> Bool {
+  match select_target_disk(selector: absent_selector, observed: [unique_disk]) {
+    SelectionRefused { cause: NoDiskMatches { selector: _ } } => true
+    _ => false
+  }
+}
+
+// CATCHES: a selector matching several disks resolving to the first one — the wrong-disk install on an
+// 8-bay board, and the mutation that a "pick head" refactor would introduce.
+test fn multiple_match_selection_is_refused_and_names_no_single_disk() -> Bool {
+  match select_target_disk(selector: twin_selector, observed: bay_population) {
+    SelectionRefused { cause: MultipleDisksMatch { selector: _, candidates: candidates } } =>
+      list_length_is(candidates: candidates, expected: 2)
+    _ => false
+  }
+}
+
+// CATCHES: the refusal arms being swapped for each other (zero reported as many, many as zero).
+test fn zero_and_multiple_are_distinguishable_arms() -> Bool {
+  match select_target_disk(selector: absent_selector, observed: [unique_disk]) {
+    SelectionRefused { cause: MultipleDisksMatch { selector: _, candidates: _ } } => false
+    _ =>
+      match select_target_disk(selector: twin_selector, observed: bay_population) {
+        SelectionRefused { cause: NoDiskMatches { selector: _ } } => false
+        _ => true
+      }
+  }
+}
+
+// CATCHES: the discriminating count being computed wrongly, e.g. counting all observed disks rather
+// than admitted ones (which would make every rule refuse).
+test fn exactly_one_match_selects_that_device() -> Bool {
+  match select_target_disk(selector: serial_selector, observed: bay_population) {
+    DiskSelected { device: _ } => true
+    SelectionRefused { cause: _ } => false
+  }
+}
+
+// CATCHES: the BMC's virtual-media device being installable onto. Such a device appears on the board
+// during a virtual-media install, and any rule that admits it has erased the operator's own image.
+test fn virtual_media_device_is_never_admitted() -> Bool {
+  !selector_admits_observed(selector: serial_selector, device: bmc_virtual_media_device)
+    && !selector_admits_observed(selector: catalog_selector, device: bmc_virtual_media_device)
+}
+
+// CATCHES: the persistence check being dropped, so an ephemeral drive with a matching serial is
+// selected — a root filesystem written onto a cache device.
+test fn matching_serial_on_a_non_persistent_disk_is_refused() -> Bool {
+  !selector_admits_observed(selector: serial_selector, device: ephemeral_disk)
+    && !selector_admits_observed(selector: serial_selector, device: cached_mirror_disk)
+}
+
+// CATCHES: "the probe could not read the serial" being laundered into "no disk matches", which tells the
+// operator to tighten a rule that is already correct.
+test fn unread_serial_is_reported_as_unexamined_not_as_no_match() -> Bool {
+  match select_target_disk(selector: serial_selector, observed: [serial_unread_disk]) {
+    SelectionRefused { cause: CandidateIdentityUnobserved { part_number: _ } } => true
+    _ => false
+  }
+}
+
+// THE UNREAD DISK BEHIND A CLEAN ONE. The unread case above is a one-element list, so an implementation that
+// looked only at the head and never scanned the tail would still refuse it, and would then silently install
+// onto the disk whose serial nobody read — the exact disk this rule exists to stop. With a readable disk
+// first, only a full scan reaches the refusal, and the cause must still name the UNREAD disk by part number,
+// not the one at the head.
+test fn an_unread_disk_behind_a_readable_one_is_still_caught() -> Bool {
+  match select_target_disk(selector: serial_selector, observed: [unique_disk, serial_unread_disk]) {
+    SelectionRefused { cause: CandidateIdentityUnobserved { part_number: number } } =>
+      number == ("WDS200T2X0E" as NonEmptyStr)
+    _ => false
+  }
+}
+
+// CATCHES: the fixture lying about the probe — if the unread-serial disk actually carries a serial, or a
+// bare device is counted as an unexamined candidate, the refusal above is meaningless.
+test fn the_probe_really_did_not_read_that_serial() -> Bool {
+  match storage_device_serial(d: serial_unread_disk) {
+    Absent =>
+      match unexamined_candidate(selector: serial_selector, device: serial_unread_disk) {
+        Present { value: _ } =>
+          match unexamined_candidate(selector: serial_selector, device: unique_disk) {
+            Absent =>
+              match unexamined_candidate(selector: serial_selector, device: bmc_virtual_media_device) {
+                Absent => true
+                Present { value: _ } => false
+              }
+            Present { value: _ } => false
+          }
+        Absent => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+// CATCHES: the catalog identity's capacity being decorative — a rule naming the right part number and
+// the wrong size must refuse, not select.
+test fn catalog_identity_requires_the_measured_capacity_to_agree() -> Bool {
+  match select_target_disk(selector: catalog_selector, observed: [unique_disk]) {
+    DiskSelected { device: _ } =>
+      match select_target_disk(selector: wrong_capacity_selector, observed: [unique_disk]) {
+        SelectionRefused { cause: _ } => true
+        DiskSelected { device: _ } => false
+      }
+    SelectionRefused { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Credentials: a handle, and no-valid-way-in is unrepresentable.
+// ---------------------------------------------------------------------------
+
+// CATCHES: the guard being removed from the only constructor, so zero authorized keys and a locked
+// console becomes a legal record — a headless box that installs and then admits nobody.
+test fn no_keys_and_locked_console_cannot_be_constructed() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: locked_console) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// CATCHES: the console-unlocked escape being widened into "no keys is always fine", which would make
+// the guard above decorative.
+test fn no_keys_is_admitted_only_when_the_console_is_deliberately_unlocked() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: unlocked_console) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// CATCHES: the entrypoint audit arm firing for a unit that DOES have a way in (the guard inverted), or
+// failing to fire when the only way in was removed.
+test fn an_unlocked_console_is_not_refused_as_having_no_entrypoint() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: unlocked_console) {
+    Present { value: entry } =>
+      match audit_altra_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+        SeedRefused { cause: NoEntrypointAtAll } => false
+        _ => true
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: the credential posture being decorative — a seed that dropped its password and one that kept
+// it would render identically, so a boot log could not tell "this unit authenticates by key alone" from
+// "someone forgot the handle", even though the operational consequences differ completely.
+test fn dropping_the_password_handle_changes_the_seed() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: with_handle } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: PasswordUnset, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: without_handle } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: with_handle),
+            right: altra_autoinstall_seed_digest(seed: without_handle),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Non-interactivity: the four accidental-prompt mechanisms, each refused by name.
+// ---------------------------------------------------------------------------
+
+// CATCHES: a prompting package entering the seed unseeded (the hang nobody can answer), or the audit
+// refusing seeded packages.
+test fn unseeded_prompting_package_refuses_the_seed() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: unseeded_tzdata_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// CATCHES: the missing mirror being treated as harmless. With no archive authority the installer has
+// nothing to answer the archive-location question with, so the seed is interactive although no package
+// prompts.
+test fn absent_mirror_refuses_the_seed() -> Bool {
+  match build_seed_fixture( network: posture_no_mirror, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// EACH REFUSAL NAMES ITS OWN MECHANISM. "Refused" is cheap and four causes are available, so a witness that
+// only asks "was it refused?" survives a cause being swapped for a sibling — and the cause arm IS the diagnosis:
+// a missing archive and installer-managed addressing send the operator to two different files. Each posture is
+// therefore matched against the one cause it must produce, which makes any swap between the arms fail at least
+// two assertions rather than none. The unclassified arm has its own witness (it must also carry NO question).
+test fn each_refusal_names_its_own_mechanism() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      match audit_altra_autoinstall_seed( network: posture_no_mirror, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+        SeedRefused { cause: ArchiveMirrorAbsent } =>
+          match audit_altra_autoinstall_seed( network: posture_installer_managed, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+            SeedRefused { cause: AddressingIsInstallerManaged } =>
+              match audit_altra_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+                SeedRefused { cause: PackagePrompts { name: named, question: _ } } =>
+                  match named {
+                    "tzdata" =>
+                      match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+                        SeedRefused { cause: PackagePromptingUnclassified { name: un } } =>
+                          un == "some-fleet-exporter" as NonEmptyStr
+                        _ => false
+                      }
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// THE ENTRYPOINT TOKEN DISTINGUISHES THE TWO POSTURES A SEED CAN ACTUALLY INHABIT. The token table has exactly
+// two rows because the third (no key AND a locked console) is unnameable; this asserts both rows are observable
+// and that they say different things, which is what keeps a swap of the two tokens from surviving. It also
+// asserts the key count rides in the token, so dropping an authorized key moves the render.
+test fn the_entrypoint_token_distinguishes_the_two_reachable_postures() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: via_console } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: via_keys } => entrypoint_tokens_are_distinguishable(
+          console_seed: via_console,
+          keys_seed: via_keys,
+        )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: installer-managed addressing (the multi-NIC "which interface?" prompt) being accepted.
+test fn installer_managed_addressing_refuses_the_seed() -> Bool {
+  match build_seed_fixture( network: posture_installer_managed, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// CATCHES: the audit being replaced by a constant, so a well-formed seed stops being accepted (the
+// other half of every refusal test above: those prove refusal, this proves acceptance).
+test fn a_fully_answerless_seed_is_accepted_with_its_proof() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The target gate: an absent observation is turned away, never defaulted.
+// ---------------------------------------------------------------------------
+
+// CATCHES: an unbound unit key being admitted (a seed bound to nothing is a seed replayable onto any
+// unit).
+test fn unbound_unit_key_cannot_reach_a_target_standing() -> Bool {
+  match admit_altra_autoinstall_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: _ } => true
+    TargetAdmitted { standing: _ } => false
+  }
+}
+
+// CATCHES: defaulting an unobserved BMC firmware family, which would silently choose a console stanza
+// nobody observed the hardware to support.
+test fn unobserved_bmc_family_cannot_reach_a_target_standing() -> Bool {
+  match admit_altra_autoinstall_target( unit_key: unit_key_bound_a, architecture: Aarch64, bmc_firmware: bmc_family_unobserved, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: _ } => true
+    TargetAdmitted { standing: _ } => false
+  }
+}
+
+// CATCHES: a seed being rendered for a role whose disks are not its own to erase.
+test fn a_runner_role_is_refused_a_seed() -> Bool {
+  match admit_altra_autoinstall_target( unit_key: unit_key_bound_a, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: RunnerBacked, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: _ } => true
+    TargetAdmitted { standing: _ } => false
+  }
+}
+
+// CATCHES: the architecture gate, i.e. the arm64 package and driver set reaching an x86 unit.
+test fn a_non_aarch64_unit_is_refused() -> Bool {
+  match admit_altra_autoinstall_target( unit_key: unit_key_bound_a, architecture: X86_64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: _ } => true
+    TargetAdmitted { standing: _ } => false
+  }
+}
+
+// CATCHES: a seed being buildable for a refused target.
+test fn a_refused_target_yields_no_seed() -> Bool {
+  match admit_altra_autoinstall_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: _ } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: admit_altra_autoinstall_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ),
+      ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    TargetAdmitted { standing: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The digest: a function of decisions, insensitive to order and sensitive to substance.
+// ---------------------------------------------------------------------------
+
+// CATCHES: a rendering that reads a list in call order, which would make two callers with the same
+// package set produce two different seed identities.
+test fn package_order_does_not_move_the_digest() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: first } =>
+      match build_seed_fixture( network: network_posture, packages: reversed_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: second } =>
+          content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: first),
+            right: altra_autoinstall_seed_digest(seed: second),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: the delivery strategy being decorative in the digest — two installs that differ in transport
+// would be indistinguishable in a boot log.
+test fn the_transport_moves_the_digest() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: via_media } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: pxe_strategy, target: target_altra, ) {
+        Present { value: via_pxe } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: via_media),
+            right: altra_autoinstall_seed_digest(seed: via_pxe),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: a rotated credential leaving the digest alone, which would let a boot log claim "seed X" for
+// an install that used a stale secret.
+test fn a_rotated_credential_moves_the_digest() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: before } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: rotated_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: after } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: before),
+            right: altra_autoinstall_seed_digest(seed: after),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: the console stanza being stored rather than derived from the transport — a virtual-media seed
+// must not promise a console a PXE seed may allow, and vice versa.
+test fn the_console_stanza_is_derived_from_the_transport() -> Bool {
+  match console_stanza_for(strategy: virtual_media_strategy) {
+    ConsoleSuppressed =>
+      match console_stanza_for(strategy: pxe_strategy) {
+        ConsoleAnsweredByUnattended => true
+        ConsoleSuppressed => false
+      }
+    ConsoleAnsweredByUnattended => false
+  }
+}
+
+// CATCHES: the transport token collapsing every ClientNetworkBootMode member to one spelling. BIOS PXE and
+// BMC virtual media both suppress the console, so these two seeds differ ONLY in the transport axis; if they
+// hash alike, the digest cannot answer "which transport did this board boot", and the pair of states a boot
+// log most needs to tell apart — firmware-side PXE vs BMC-served media — become one answer.
+test fn two_transports_sharing_a_console_stanza_do_not_share_a_digest() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: legacy_bios_strategy, target: target_altra, ) {
+    Present { value: via_bios } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: same_stem_virtual_media, target: target_altra, ) {
+        Present { value: via_media } =>
+          match console_stanza_for(strategy: legacy_bios_strategy) {
+            ConsoleSuppressed =>
+              match console_stanza_for(strategy: same_stem_virtual_media) {
+                ConsoleSuppressed =>
+                  !content_hash_eq_structural(
+                    left: altra_autoinstall_seed_digest(seed: via_bios),
+                    right: altra_autoinstall_seed_digest(seed: via_media),
+                  )
+                ConsoleAnsweredByUnattended => false
+              }
+            ConsoleAnsweredByUnattended => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: a boot-mode token with a default arm. UEFI-PXE and UEFI-HTTP-boot answer the same console
+// question and differ only in who owns the delivery failure, so the digest is the only place that
+// distinction survives — and a future ClientNetworkBootMode member must not be able to borrow either
+// spelling silently.
+test fn the_boot_mode_moves_the_digest_within_one_transport() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: pxe_strategy, target: target_altra, ) {
+    Present { value: via_tftp } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: http_boot_strategy, target: target_altra, ) {
+        Present { value: via_http } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: via_tftp),
+            right: altra_autoinstall_seed_digest(seed: via_http),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The projection edge: upstream wants a hashed_password string, and the only door admits a digest.
+// ---------------------------------------------------------------------------
+
+// THE DOOR IS A PARSE, NOT A PREFIX TEST, AND THESE ARE THE CANDIDATES THAT PROVE IT. Every string below is a
+// REAL sha512-crypt digest or a deliberately malformed one; the accepted fixture is a digest generated locally
+// with `openssl passwd -6 -salt saltsalt hunter2`, quoted verbatim so the acceptance claim is reproducible and
+// not a shape the author drew from memory. The old fixtures were 64 fabricated characters and passed only
+// because the previous door's floor was 20 — which is exactly how a validation pass masquerades as a parse.
+//
+// CATCHES: a caller putting a plaintext password into the field subiquity writes to the image's shadow entry.
+// "$6$hunter2hunter2hunter2" is the case that used to be accepted: it starts with "$6$" and is longer than 20
+// characters, so the old heuristic waved it through. It is refused now because it has three '$'-segments, not
+// the four a digest must have.
+test fn a_plaintext_password_is_refused_by_the_receipt() -> Bool {
+  match refuses(crypt_digest: "hunter2")
+    && refuses(crypt_digest: "password12345678901234")
+    && refuses(crypt_digest: "$6$hunter2hunter2hunter2")
+    && refuses(crypt_digest: "6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj")
+    && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnjXX")
+    && refuses(crypt_digest: "$5$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && accepts(crypt_digest: "$6$saltsaltX$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // A SALT MAY HOLD PUNCTUATION. libxcrypt's salt class is a FORBIDDEN set (any character except '", ':',
+    // CR, LF), so "sa!tsalt" is a legal salt and refusing it would deny a real credential to a board whose only
+    // console is the BMC. This line used to be a `refuses`, which is the defect the spec reading caught.
+    && accepts(crypt_digest: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // ...and the class really is a forbidden set rather than a preference: a COLON is what must be refused.
+    && refuses(crypt_digest: "$6$sa:tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6d!9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "x$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$saltsalt$")
+    // AN EMPTY SALT WITH OTHERWISE-EVERYTHING-VALID. Four segments, a legal scheme token, a legal 86-character
+    // digest: the ONLY defect is that the salt holds no character at all, so only the width floor can reject it.
+    // Without this candidate, deleting the too-short check was invisible (measured GREEN at 60/60) — every other
+    // short-salt string on file also broke an earlier rule. An empty salt is the case that matters most: shadow
+    // would store a digest with no salt, which makes every credential sharing that digest identical.
+    && refuses(crypt_digest: "$6$$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // THE COST FIELD, AS ITS CLASS IS WRITTEN: `rounds=[1-9][0-9]+` within 1000..999,999,999. Both bounds are
+    // powers of ten, so the range is decidable from the digit COUNT — which is why a single digit, three digits
+    // and ten digits are each refused without the door ever converting the text to a number. "rounds=5" is not a
+    // cheap-but-valid cost, it is a malformed one: silently parsing it would install a credential whose cost
+    // nobody chose, on a board nobody can reach to fix.
+    && refuses(crypt_digest: "$6$rounds=5$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$rounds=999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && refuses(crypt_digest: "$6$rounds=10000000000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // A LEADING ZERO is outside [1-9], so "rounds=05000" is malformed rather than a slower spelling of 5000.
+    && refuses(crypt_digest: "$6$rounds=05000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // A NON-NUMERIC COST OF LEGAL WIDTH. "rounds=abc" above is only three characters, so it is refused by the
+    // width check and the digit-strip check is never reached -- a mutation that disabled the strip would be
+    // invisible. At four characters the width check passes and ONLY the strip can reject it.
+    && refuses(crypt_digest: "$6$rounds=abcd$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // ...AND A COST THAT STARTS WITH A DIGIT AND THEN DEVIATES: "rounds=abcd" above is caught by the leading
+    // class as much as by the digit strip, so disabling the strip alone was invisible. At "1abc" the first
+    // character is a legal [1-9], the width is legal, and ONLY the strip can reject it.
+    && refuses(crypt_digest: "$6$rounds=1abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // ...and the two documented ENDS of the range are accepted, so the check is not secretly a smaller range.
+    && accepts(crypt_digest: "$6$rounds=1000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && accepts(crypt_digest: "$6$rounds=999999999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // A DIGEST LONGER THAN 86, as well as the 85-character truncation above. Refusing "at least 86" instead of
+    // "exactly 86" accepts this one, and both directions have to be on file or the width is a floor in disguise.
+    && refuses(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.XX")
+    && accepts(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    // '.' and '/' both occur in real digests; an alphabet missing either would refuse these.
+    && accepts(crypt_digest: "$6$sa.lt/sa$d7hkejY7HJ5ZGqHGdfuXgD/tCnk8xlC1ExIqtNkaEkqudX/tH4520c9i883Ib3JvJBsBfcFvy.XSsiW.zAtL01")
+    // The explicit-cost spelling is what some generators emit and shadow accepts.
+    && accepts(crypt_digest: "$6$rounds=5000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+    True => true
+    False => false
+  }
+}
+
+fn refuses(crypt_digest: String) -> Bool {
+  match admin_password_hash_receipt(crypt_digest: crypt_digest as NonEmptyStr) {
+    ReceiptRefused { cause: _ } => true
+    ReceiptAccepted { receipt: _ } => false
+  }
+}
+
+// A COUNT, ON THE SAME AXIS THE ROW USES. The witness compares the door's reported widths against the row and
+// against the spec's own numbers; writing `seen == 85` against a CharacterCount would be comparing a host integer
+// to a measure, which is the mix the carrier exists to prevent. Written once here, so no count in this file is a
+// bare Int by accident.
+fn chars(n: Int) -> CharacterCount {
+  character_count(count: n)
+}
+
+fn accepts(crypt_digest: String) -> Bool {
+  match admin_password_hash_receipt(crypt_digest: crypt_digest as NonEmptyStr) {
+    ReceiptRefused { cause: _ } => false
+    ReceiptAccepted { receipt: _ } => true
+  }
+}
+
+// THE FIGURES ARE CITED, AND THE DOOR READS THEM RATHER THAN RESTATING THEM. Two sides, both needed. (1) The
+// row's standing must actually be a citation and its read obligation must be Absent: if the standing is ever
+// downgraded to a bare constant, or quietly re-typed as an uncited transcription, the obligation appears and this
+// goes red — a citation that only exists in a comment is the §4d failure DESIGN says a reader cannot see later.
+// (2) The refusal's payload must equal the ROW's figures, not literals in this file: that is what proves the door
+// reads upstream. Together they are two-sided — widen the row and the spec pins below go red; hard-code the door
+// and the comparison to the row goes red. Either edit alone leaves one witness standing.
+//
+// The literals are the sha512crypt `.hash` line of crypt(5) at libcrypt1 1:4.4.38-1: salt {1,16}, digest
+// [./0-9A-Za-z]{86}, cost [1-9][0-9]+ within 1000..999,999,999 (which, both bounds being powers of ten, is the
+// digit-count pair 4..9).
+test fn the_crypt_figures_are_cited_and_the_door_reads_them() -> Bool {
+  match sha512_crypt_figure_read_obligation() {
+    // Cited, so nothing is owed before the figures are believed.
+    Absent =>
+      match sha512_crypt_format {
+        Sha512CryptFormat {
+          scheme_token: token, cost_marker: marker, salt_forbidden_characters: forbidden,
+          salt_least_characters: salt_min, salt_greatest_characters: salt_max, digest_alphabet: alphabet,
+          digest_exact_characters: width, cost_least_digits: cost_min, cost_greatest_digits: cost_max,
+          figure_standing: standing,
+        } =>
+          match (token as String) == "6"
+            && (marker as String) == "rounds="
+            && salt_min == chars(1) && salt_max == chars(16)
+            && width == chars(86)
+            && cost_min == chars(4) && cost_max == chars(9)
+            && list_length(items: alphabet) == 64
+            && list_length(items: forbidden) == 4
+          {
+            False => false
+            True =>
+              // THE STANDING IS THE CITATION, NOT A PLACEHOLDER.
+              match standing {
+                CitedToAuthority { authority: source } =>
+                  match (source.uri.locator as String).contains("besser82/libxcrypt") {
+                    False => false
+                    True =>
+                      // AND THE DOOR'S REFUSALS QUOTE THE ROW. An 85-character digest must report the ROW's
+                      // width, and a 17-character salt the ROW's ceiling: if the door carried its own copy of
+                      // either number, these two comparisons are where the split shows.
+                      match cause_of(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj") {
+                        Present { value: DigestWrongLength { length: reported, expected: quoted_width } } =>
+                          match quoted_width == width && reported == chars(85) {
+                            False => false
+                            True =>
+                              match cause_of(crypt_digest: "$6$12345678901234567$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                                Present { value: SaltTooLong { length: seen_salt, ceiling: quoted_ceiling } } =>
+                                  seen_salt == chars(17) && quoted_ceiling == salt_max && salt_min == chars(1)
+                                _ => false
+                              }
+                          }
+                        _ => false
+                      }
+                  }
+                // An uncited transcription would make the figures a bet consumed as fact. Red on purpose.
+                TranscribedUncited { read_obligation: _ } => false
+                ObservedByReceipt { observed: _ } => false
+              }
+          }
+      }
+    // Somebody owes a read: the figures are not admissible as fact yet.
+    Present { value: _ } => false
+  }
+}
+
+// THE REFUSAL IS TYPED, AND EACH ARM IS REACHED BY ITS OWN CANDIDATE. A refusal that names the wrong part is a
+// worse outcome than no refusal at all, because the operator acts on the name: "your digest is 85 characters"
+// says re-copy it, "your salt is not over the crypt alphabet" says the credential store handed out something
+// that was never a digest. These are different shelves, and a door that collapsed them into one cause (or into a
+// bare Absent) would send whoever is holding the secret to the wrong one. Each candidate differs from the
+// accepted digest in exactly ONE part, so a cause can only appear if the check that owns that part produced it.
+test fn each_refusal_arm_names_the_part_that_failed() -> Bool {
+  match cause_of(crypt_digest: "hunter2") {
+    Present { value: NotACryptDigest } =>
+      match cause_of(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj") {
+        Present { value: DigestWrongLength { length: seen, expected: wanted } } =>
+          seen == chars(85) && wanted == chars(86)
+          && match cause_of(crypt_digest: "$5$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+            Present { value: SchemeUnsupported } =>
+              match cause_of(crypt_digest: "$6$sa:tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                Present { value: SaltHoldsForbiddenCharacter } =>
+                  match cause_of(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                    Present { value: RoundsMalformed } =>
+                      match cause_of(crypt_digest: "$6$12345678901234567$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                        Present { value: SaltTooLong { length: seen_salt, ceiling: allowed } } =>
+                          seen_salt == chars(17) && allowed == chars(16)
+                          // AND A SALT LONG ENOUGH TO BE REFUSED OUTRIGHT must be refused, not merely reported:
+                          // a witness that only ever read the payload would stay green with the ceiling raised to
+                          // 64, because 17 > 16 would no longer be true and no check would fire.
+                          && match cause_of(crypt_digest: "$6$123456789012345678$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                            Present { value: SaltTooLong { length: longer, ceiling: same_ceiling } } =>
+                              longer == chars(18) && same_ceiling == chars(16)
+                              // AND THE FLOOR MUST BLAME THE ABSENT SALT, not the digest: four segments, a legal
+                              // token, a legal 86-character digest, and a salt holding no character at all. Only
+                              // the width floor can reject that, so it is blamed on SaltAbsent by name -- a
+                              // refusal that reached DigestAbsent instead would send the operator to re-paste a
+                              // digest that is already correct.
+                              && match cause_of(crypt_digest: "$6$$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+                                Present { value: SaltAbsent } => true
+                                _ => false
+                              }
+                            _ => false
+                          }
+                        _ => false
+                      }
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn cause_of(crypt_digest: String) -> Optional<AdminPasswordRefusalCause> {
+  match admin_password_hash_receipt(crypt_digest: crypt_digest as NonEmptyStr) {
+    ReceiptRefused { cause: cause } => Present { value: cause }
+    ReceiptAccepted { receipt: _ } => Absent
+  }
+}
+
+// THREE CANDIDATES, EACH DEFECTIVE IN EXACTLY ONE WAY, AND THE BLAME MUST LAND ON THAT PART. Refusing is half
+// the job: a refusal naming the wrong part sends the operator off to fix something that is not broken, and on a
+// headless board the only diagnosis is the one this returns. These three exist because the one-line mutations
+// that disabled the digest-alphabet check, the leading-segment check and the segment-count check all came back
+// GREEN at 58/58 -- every candidate already on file was defective in several ways at once and was rejected by an
+// earlier check, so no witness could see the arm that had been switched off. Isolating one defect per candidate
+// is what makes each check load-bearing (DESIGN §4b: an obligation nobody can falsify is not a test).
+test fn a_single_defect_candidate_is_blamed_on_the_part_that_is_broken() -> Bool {
+  // 86 characters and otherwise well formed, so ONLY the digest-alphabet check can reject it.
+  match cause_of(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6d!9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+    Present { value: DigestNotInCryptAlphabet } =>
+      // four well-formed segments; fails only because the leading segment is not empty.
+      match cause_of(crypt_digest: "x$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+        Present { value: NotACryptDigest } =>
+          // nothing after the final separator: the digest is absent, not malformed.
+          match cause_of(crypt_digest: "$6$saltsalt$") {
+            Present { value: DigestAbsent } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE ONE CASE THAT MUST NOT BE A FALSE REFUSAL. An alphabet missing '.' or '/' refuses a credential that was
+// generated correctly, and on a board with no console that failure mode is discovered only when nobody can log
+// in. This pins both characters as admitted, in a digest produced by a real generator.
+test fn a_digest_containing_dot_and_slash_is_accepted() -> Bool {
+  accepts(crypt_digest: "$6$sa.lt/sa$d7hkejY7HJ5ZGqHGdfuXgD/tCnk8xlC1ExIqtNkaEkqudX/tH4520c9i883Ib3JvJBsBfcFvy.XSsiW.zAtL01")
+}
+
+// CATCHES: the projection accepting an absent receipt, which would put a fabricated string into the
+// upstream record.
+test fn the_projection_needs_a_receipt() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match project_autoinstall_identity(
+        seed: pair.seed,
+        binding_hostname: "unit-a-altra" as NonEmptyStr,
+        receipt: Absent,
+      ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// THE HEADER'S CLAIM ABOUT THE CALLER-SUPPLIED LABEL, CHECKED. The hostname reaches the upstream identity
+// VERBATIM — not dropped, not defaulted to a constant — and two different labels produce two different
+// identities. Why this is the right test rather than a digest comparison: the label cannot move the seed
+// digest because `altra_autoinstall_seed_digest` takes ONLY a seed, so there is no signature in which to
+// write "mix the hostname into the digest" — the guarantee is the parameter list, and the digest's actual
+// content is pinned axis-by-axis by the digest witnesses below. What IS falsifiable here, and what this
+// catches, is the projection substituting a baked hostname (a per-unit special case wearing a config
+// field, which is precisely what the module forbids) or dropping the label.
+test fn the_projection_carries_the_supplied_label_verbatim_and_never_invents_one() -> Bool {
+  match admin_password_hash_receipt( crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr, ) {
+    ReceiptRefused { cause: _ } => false
+    ReceiptAccepted { receipt: receipt } =>
+      match built_seed_and_binding() {
+        Absent => false
+        Present { value: pair } =>
+          match project_autoinstall_identity( seed: pair.seed, binding_hostname: "unit-a-altra" as NonEmptyStr, receipt: Present { value: receipt }, ) {
+            Absent => false
+            Present { value: first } =>
+              match project_autoinstall_identity( seed: pair.seed, binding_hostname: "an-entirely-different-label" as NonEmptyStr, receipt: Present { value: receipt }, ) {
+                Absent => false
+                Present { value: second } =>
+                  first.hostname == ("unit-a-altra" as NonEmptyStr)
+                    && second.hostname
+                      == ("an-entirely-different-label" as NonEmptyStr)
+                    && first.hostname != second.hostname
+              }
+          }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The binding.
+// ---------------------------------------------------------------------------
+
+// CATCHES: a binding whose digest was not computed from the seed it names — the evidence-free claim the
+// sole_constructor exists to forbid, checked by asking the binding to re-verify the seed.
+test fn a_binding_confirms_the_very_seed_it_was_built_from() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match check_binding_against_seed( binding: pair.binding, seed: pair.seed, unit_key: unit_a_key, attempt: attempt_one, ) {
+        BootedThisSeed => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: a digest comparison that always says "same", which would let a wrong seed be reported as the
+// one that booted.
+test fn a_different_seed_is_reported_as_a_different_seed() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: rotated_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: other } =>
+          match check_binding_against_seed( binding: pair.binding, seed: other, unit_key: unit_a_key, attempt: attempt_one, ) {
+            BootedADifferentSeed => true
+            _ => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: a binding answering a question about a different unit or attempt, which is the "answer from
+// memory" failure the binding record exists to remove.
+test fn a_binding_for_another_unit_or_attempt_is_foreign() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match check_binding_against_seed( binding: pair.binding, seed: pair.seed, unit_key: unit_b_key, attempt: attempt_one, ) {
+        // THE ARM IS NAMED, NOT WILDCARDED. Accepting "anything but BootedThisSeed" would also accept a
+        // missing-arm defect that routed a foreign binding to BootedADifferentSeed -- the two verdicts have
+        // opposite remedies (wrong machine vs same machine, stale seed), so only the foreign verdict proves
+        // the identity check ran.
+        BindingIsForeign =>
+          match check_binding_against_seed( binding: pair.binding, seed: pair.seed, unit_key: unit_a_key, attempt: attempt_two, ) {
+            BindingIsForeign => true
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: the same seed on two units colliding in the binding address space — the seeds must agree (one
+// config, one digest) while the bindings must not (two events).
+test fn two_units_sharing_a_seed_do_not_share_a_binding_identity() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: seed } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra_b, ) {
+        Present { value: sibling } =>
+          content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: seed),
+            right: altra_autoinstall_seed_digest(seed: sibling),
+          )
+            && !content_hash_eq_structural(
+              left: binding_digest_of(seed: seed, unit: unit_a_key, attempt: attempt_one),
+              right: binding_digest_of(seed: seed, unit: unit_b_key, attempt: attempt_one),
+            )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: a binding existing for a disk the rules refused — a record of an install that could not have
+// happened.
+// The binding carries WHICH gate refused it, and does not swap them. A binding over a refused
+// target that blamed the disk would send the operator to the storage shelf for a firmware
+// standing that was never observed.
+test fn a_refused_target_binds_with_a_target_blocker_not_a_disk_blocker() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed( seed: seed, target: target_refused_by_unbound_key(), unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+        ) {
+        BindRefused { blocker: TargetNotAdmitted { cause: UnitKeyUnbound { cause: BoardSerialAbsent } } } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// A target turned away for the same reason the witness above pins, built once so the refusal under test is
+// the door's own output rather than a hand-written record that could drift from it.
+fn target_refused_by_unbound_key() -> AltraAutoinstallTarget {
+  admit_altra_autoinstall_target(
+    unit_key: unit_key_unbound,
+    architecture: Aarch64,
+    bmc_firmware: bmc_family_observed,
+    role: AltraProvisioningTarget,
+    kernel_flavour: Noble2404GaLinux68,
+  )
+}
+
+test fn a_binding_cannot_exist_over_a_refused_disk_selection() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: twin_selector, observed: bay_population),
+        ) {
+        BindRefused { blocker: _ } => true
+        Bound { binding: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: the selected disk's identity not being recorded in the binding, which is what makes "what did
+// that install write to?" answerable from the record alone.
+test fn a_binding_records_the_serial_it_wrote_to() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match pair.binding.disk_selection {
+        BoundDisk { serial: recorded } => recorded == ("UNIQUE-SERIAL-0007" as NonEmptyStr)
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers. Each returns Optional so the tests above stay single-assertion.
+// ---------------------------------------------------------------------------
+
+type SeedAndBinding {
+  seed: AltraAutoinstallSeed
+  binding: AltraAutoinstallSeedBinding
+}
+
+fn built_seed_and_binding() -> Optional<SeedAndBinding> {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+        ) {
+        Bound { binding: binding } => Present { value: SeedAndBinding { seed: seed, binding: binding } }
+        BindRefused { blocker: _ } => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn binding_digest_of(
+  seed: AltraAutoinstallSeed,
+  unit: UnitKey,
+  attempt: IntakeAttemptId,
+) -> Fnv1a64Structural {
+  match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit, attempt: attempt, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+    ) {
+    Bound { binding: binding } => binding_digest(binding: binding)
+    BindRefused { blocker: _ } => binding_digest_of_unbound_placeholder()
+  }
+}
+
+// An unbound binding cannot be constructed — that is the point — so the comparison helper needs SOME
+// digest for the impossible case, and the honest one is the digest of an empty rendering rather than a
+// reused binding digest that could make two distinct bindings look equal.
+fn binding_digest_of_unbound_placeholder() -> Fnv1a64Structural {
+  content_hash_atom(value: "no-binding-exists" as NonEmptyStr)
+}
+
+// THE SAME BUILDER, WITH THE MODULE LIST AS A PARAMETER, so one witness can vary ONLY the loadable-module axis.
+// A variant builder rather than a defaulted parameter: the default would silently make every other witness
+// pass with an empty module list, and "empty" is exactly the state this axis is meant to refuse.
+fn build_seed_fixture_with_modules(
+  network: SeedNetworkPosture,
+  packages: List<PackageIntent>,
+  entry_keys: List<SshPublicKey>,
+  console: ConsoleEntryAuthorisation,
+  credential: AdminCredentialPosture,
+  delivery: SeedDeliveryStrategy,
+  target: AltraAutoinstallTarget,
+  modules: List<AltraLoadableModule>,
+) -> Optional<AltraAutoinstallSeed> {
+  match admit_admin_access_authorisation(authorised_keys: entry_keys, console_entry: console) {
+    Present { value: entry } =>
+      build_altra_autoinstall_seed(
+        target: target,
+        network: network,
+        install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
+        loadable_modules: modules,
+        late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
+        install_packages: packages,
+        late_packages: [],
+        disk: serial_selector,
+        entry: entry,
+        credential: credential,
+        locale: EnUsUtf8,
+        delivery: delivery,
+        keyboard: UsLayout,
+      )
+    Absent => Absent
+  }
+}
+
+fn build_seed_fixture(
+  network: SeedNetworkPosture,
+  packages: List<PackageIntent>,
+  entry_keys: List<SshPublicKey>,
+  console: ConsoleEntryAuthorisation,
+  credential: AdminCredentialPosture,
+  delivery: SeedDeliveryStrategy,
+  target: AltraAutoinstallTarget,
+) -> Optional<AltraAutoinstallSeed> {
+  match admit_admin_access_authorisation(authorised_keys: entry_keys, console_entry: console) {
+    Present { value: entry } =>
+      build_altra_autoinstall_seed(
+        target: target,
+        network: network,
+        install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
+        loadable_modules: [AhciPlatformModule, NvmeBlockModule],
+        late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
+        install_packages: packages,
+        late_packages: [],
+        disk: serial_selector,
+        entry: entry,
+        credential: credential,
+        locale: EnUsUtf8,
+        delivery: delivery,
+        keyboard: UsLayout,
+      )
+    Absent => Absent
+  }
+}
+
+// THE TWO REFUSALS AN OPERATOR HAS TO TELL APART, held apart deliberately. "No disk matched your rule" and
+// "we could not read the serials" send the operator to different remedies — the first says tighten the rule,
+// the second says go re-probe the board — and a selection path that collapsed them would send someone to
+// tighten a rule that is already correct. Distinguishing them here (rather than only asserting both refuse) is
+// what makes the arms load-bearing.
+test fn unreadable_serial_and_zero_match_are_different_refusals() -> Bool {
+  match select_target_disk(selector: serial_selector, observed: [serial_unread_disk]) {
+    SelectionRefused { cause: CandidateIdentityUnobserved { part_number: _ } } =>
+      match select_target_disk(selector: absent_selector, observed: [unique_disk]) {
+        SelectionRefused { cause: NoDiskMatches { selector: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE HEAD OF THE FIX FOR THE FAIL-OPEN AUDIT. A package nobody has classified used to reach the green arm as
+// "answerless, therefore nothing to answer". It is now a refusal in its own right, and the refusal must NOT
+// carry a question — this module has not observed one, and printing a plausible question is the fabricated
+// output the audit exists to prevent.
+test fn an_unclassified_package_refuses_the_seed_without_inventing_a_question() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: unclassified_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: _ } => false
+    Absent =>
+      match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+        Present { value: entry } =>
+          match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+            SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
+            _ => false
+          }
+        Absent => false
+      }
+  }
+}
+
+// AN ANSWER CANNOT CLASSIFY A PACKAGE. A caller who does not know whether a package prompts must not be able to
+// launder it into the green arm by stuffing a string into the seed field: what is missing is knowledge, not a
+// value. This is the difference between this audit and a flag.
+test fn a_debconf_seed_cannot_classify_an_unchecked_package() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_but_seeded_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+        SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// THE CONSOLE STANZA IS DERIVED FROM THE TRANSPORT ARM BY ARM. Each of the four transports states which of the
+// two console stories it gets, so a collapsed arm (the mutation this row exists for) shows up here rather than
+// being inferred from a digest. Asserting the mapping directly is the honest test: two transports that share a
+// console story can still differ in the digest via the transport token, so digest equality would prove nothing
+// about this function, and digest inequality would prove the wrong thing.
+test fn each_transport_states_its_own_console_story() -> Bool {
+  console_stanza_is_suppressed(stanza: console_stanza_for(strategy: legacy_bios_strategy))
+    && console_stanza_is_suppressed(stanza: console_stanza_for(strategy: virtual_media_strategy))
+    && console_stanza_is_answered(stanza: console_stanza_for(strategy: pxe_strategy))
+    && console_stanza_is_answered(stanza: console_stanza_for(strategy: http_boot_strategy))
+}
+
+// THE STANZA'S RENDERED SPELLING, NOT JUST ITS ARM. The witness above checks the semantic arm; this checks
+// the token that reaches a boot log and the digest. They are different guarantees: an implementation that
+// rendered ConsoleAnsweredByUnattended with the suppression spelling kept every arm-level witness green while
+// making the two postures indistinguishable in the only artifact anyone reads after the fact — and a seed
+// that claims its prompts were suppressed when UEFI in fact prints to a console is a false non-interactivity
+// proof. Each transport must say exactly one of the two, and must not say the other.
+test fn the_stanza_token_says_suppression_or_answering_and_never_both() -> Bool {
+  suppressed_transports_render_suppressed() && answered_transports_render_unattended_answer()
+}
+
+fn suppressed_transports_render_suppressed() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: legacy_bios_strategy, target: target_altra, ) {
+    Absent => false
+    Present { value: bios } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Absent => false
+        Present { value: media } =>
+          render_altra_autoinstall_seed(seed: bios).contains("console=suppressed")
+            && render_altra_autoinstall_seed(seed: media).contains("console=suppressed")
+            && !render_altra_autoinstall_seed(seed: bios).contains("console=unattended-answer")
+            && !render_altra_autoinstall_seed(seed: media).contains("console=unattended-answer")
+      }
+  }
+}
+
+fn answered_transports_render_unattended_answer() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: pxe_strategy, target: target_altra, ) {
+    Absent => false
+    Present { value: pxe } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: http_boot_strategy, target: target_altra, ) {
+        Absent => false
+        Present { value: http } =>
+          render_altra_autoinstall_seed(seed: pxe).contains("console=unattended-answer")
+            && render_altra_autoinstall_seed(seed: http).contains("console=unattended-answer")
+            && !render_altra_autoinstall_seed(seed: pxe).contains("console=suppressed")
+            && !render_altra_autoinstall_seed(seed: http).contains("console=suppressed")
+      }
+  }
+}
+
+fn console_stanza_is_suppressed(stanza: NonInteractiveConsoleStanza) -> Bool {
+  match stanza {
+    ConsoleSuppressed => true
+    ConsoleAnsweredByUnattended => false
+  }
+}
+
+fn console_stanza_is_answered(stanza: NonInteractiveConsoleStanza) -> Bool {
+  match stanza {
+    ConsoleSuppressed => false
+    ConsoleAnsweredByUnattended => true
+  }
+}
+
+// THE PROOF COUNTS ONLY QUESTIONS THAT WERE ACTUALLY ANSWERED. Without this witness the count is decorative:
+// a reader of a seed digest sees "N questions closed" as the module's own evidence of independence, and a count
+// that credited an unclassified package would inflate the rung the evidence establishes (DESIGN.md §4b
+// meta-obligation 1). Two seeds that differ by exactly one ANSWERED question must differ in the count; if the
+// count moved for an unclassified package too, the mutation the reviewer named would be invisible.
+test fn the_closed_question_count_moves_only_with_answers() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      match audit_altra_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+        SeedIsNonInteractive { evidence: one_answer } =>
+          match audit_altra_autoinstall_seed( network: network_posture, install_packages: two_answered_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+            SeedIsNonInteractive { evidence: two_answers } =>
+              two_answers.questions_closed > one_answer.questions_closed
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// THE REFUSAL NAMES THE PACKAGE IN THE ARCHIVE'S OWN SPELLING. Nothing else in this module or any other is
+// allowed to spell a prompting package's name, so the refusal an operator reads has to be the one spelling the
+// table holds — and it has to be the ARCHIVE spelling, because that string is what they will type into a debconf
+// preseed. A witness that only matched `PackagePrompts { name: _ }` would let the table's names drift to anything
+// and stay green, which is precisely the second source of truth review 81772 removed.
+test fn the_refusal_names_the_package_in_its_archive_spelling() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      match audit_altra_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+        SeedRefused { cause: PackagePrompts { name: named, question: asked } } =>
+          named == "tzdata" as NonEmptyStr
+            && asked.contains("tzdata/configure_timezone")
+            && known_prompting_package_name(package: TzdataPackage) == named
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// THE COUNT IS PINNED TO A NUMBER, not merely shown to move. A monotonic witness ("more answers, higher
+// count") survives a mutation that shifts the whole count by a constant, and the arithmetic has four terms
+// (answered intents, seeded addressing, present mirror, earned entrypoint) of which three are +1 each — exactly
+// the kind of term that silently disappears in a refactor. Pinning the exact total for a fixture whose every
+// term is known is the only version of this claim that can go red.
+test fn the_closed_question_count_is_the_exact_arithmetic() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      match audit_altra_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+        // TWO answered debconf questions + seeded addressing + present mirror + the entrypoint the caller had
+        // to earn. Not a magic number: two packages each in the QuestionAnswered arm, then one each of the
+        // three structural terms questions_closed_count adds.
+        SeedIsNonInteractive { evidence: proof } => proof.questions_closed == 5
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// THE RENDERED AUTHORITY OF EACH DRIVER ROW IS IN THE SEED, not merely the spelling. A package and a module can
+// share a plausible name; the axis prefix and the Kconfig symbol in the token are what keep them from sharing a
+// digest. If either token part were dropped, two different configurations would hash alike and the binding
+// could not later say which one the board booted.
+test fn each_driver_token_carries_its_axis_and_authority() -> Bool {
+  let pkg_token = install_driver_list_diagnostic(drivers: [NvmeCliDriver])
+  let mod_token = loadable_module_list_diagnostic(modules: [NvmeBlockModule])
+  let late_token = late_driver_list_diagnostic(drivers: [KipmiSiDriver])
+  pkg_token.contains("pkg:nvme-cli")
+    && !pkg_token.contains("mod:")
+    && mod_token.contains("mod:nvme")
+    && mod_token.contains("BLK_DEV_NVME")
+    && late_token.contains("mod:ipmi_si")
+    && late_token.contains("IPMI_SI")
+}
+
+// WHAT THE SEED SAYS ABOUT ITS OWN PACKAGES AND MODULES. The digest witnesses prove the render MOVES; this one
+// proves it SAYS something: each package is named with its package-axis warrant and each module with its
+// module-axis warrant, so an operator reading a seed (or a boot log carrying its digest) can tell which kind of
+// thing the board was told to have. A render that lost either prefix would keep producing digests and would be
+// invisible to every equality witness here.
+test fn the_seed_names_its_packages_and_modules_by_axis() -> Bool {
+  match build_seed_fixture_with_modules(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+    modules: [AhciPlatformModule, NvmeBlockModule],
+  ) {
+    Present { value: seed } =>
+      let rendered = render_altra_autoinstall_seed(seed: seed)
+      rendered.contains("pkg:nvme-cli")
+        && rendered.contains("pkg:linux-firmware")
+        && rendered.contains("mod:ahci_platform")
+        && rendered.contains("mod:nvme")
+        && rendered.contains("SATA_AHCI_PLATFORM")
+        && rendered.contains("drivers/ata/Kconfig")
+    Absent => false
+  }
+}
+
+// THE CREDENTIAL LOCATOR IS OBSERVED, NOT DECORATIVE. The handle's locator is a string because no module in
+// this repository owns secret-store addressing syntax (extdeps.cloud.gcp.secret_ref is GCP-specific and this
+// fleet is on-premises, so importing it would state a requirement the board does not have; and extdeps.uri has
+// no scheme for a vault, which I will not add to a file I do not own). That makes the string the honest type
+// today — which is precisely why it needs a witness: an unobserved string is where a placeholder survives.
+// Rotating a version is already covered (a_rotated_credential_moves_the_digest); this covers MOVING THE STORE.
+test fn a_relocated_credential_moves_the_digest() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: in_store } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: relocated_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: relocated } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: in_store),
+            right: altra_autoinstall_seed_digest(seed: relocated),
+          )
+            && render_altra_autoinstall_seed(seed: relocated).contains("gunbc-alternate-store")
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// THE PASSWORD STANZA STATES THE POSTURE, IN BOTH DIRECTIONS. The posture is a two-member sum and the token is
+// the ONLY thing a boot log carries about it, so both spellings are pinned: an implementation that rendered the
+// same token for both postures ("always handle") is the failure this module was asked to make unrepresentable —
+// "the operator forgot the credential" and "the operator decided on key-only entry" would be indistinguishable
+// after the fact, when the remedies are opposite. Pinning the spelling rather than only digest-inequality is
+// what makes the collapse go red even if some other token happens to differ.
+test fn the_password_stanza_states_which_posture_was_chosen() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: PasswordUnset, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: unset_seed } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: handle_seed } =>
+          render_altra_autoinstall_seed(seed: unset_seed).contains("password=unset")
+            && !render_altra_autoinstall_seed(seed: unset_seed).contains("password=handle")
+            && !render_altra_autoinstall_seed(seed: handle_seed).contains("password=unset")
+            && render_altra_autoinstall_seed(seed: handle_seed).contains("password=locator=")
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// THE MODULE AXIS REACHES THE DIGEST, ON ITS OWN. Two seeds that differ only in which kernel modules they
+// demand are different configurations — one may not be able to see its disk at all — so the digest must move
+// when the module list moves while every package list stays identical. Without this the module axis would be
+// decoration: authorable, rendered nowhere, digested by nothing.
+test fn the_loadable_module_axis_moves_the_digest() -> Bool {
+  match build_seed_fixture_with_modules(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+    modules: [AhciPlatformModule, NvmeBlockModule],
+  ) {
+    Present { value: with_modules } =>
+      match build_seed_fixture_with_modules(
+        network: network_posture,
+        packages: clean_packages,
+        entry_keys: one_key,
+        console: locked_console,
+        credential: seeded_handle,
+        delivery: virtual_media_strategy,
+        target: target_altra,
+        modules: [],
+      ) {
+        Present { value: without_modules } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: with_modules),
+            right: altra_autoinstall_seed_digest(seed: without_modules),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// THE TWO REACHABLE ENTRYPOINT POSTURES, RENDERED. Kept as a function of the two seeds so the lets sit at the
+// top of a body (the form this dialect allows) and the assertions read as one claim: the tokens differ, each
+// says what it means, and the digests follow.
+fn entrypoint_tokens_are_distinguishable(
+  console_seed: AltraAutoinstallSeed,
+  keys_seed: AltraAutoinstallSeed,
+) -> Bool {
+  let console_render = render_altra_autoinstall_seed(seed: console_seed)
+  let keys_render = render_altra_autoinstall_seed(seed: keys_seed)
+  console_render.contains("console=unlocked-bmc-sol,keys=0")
+    && keys_render.contains("console=locked,keys=1")
+    && !content_hash_eq_structural(
+      left: altra_autoinstall_seed_digest(seed: console_seed),
+      right: altra_autoinstall_seed_digest(seed: keys_seed),
+    )
+}
+
+// WHICH CONSOLE IS OPEN IS NOT DECORATIVE. A serial getty at the panel and a BMC SOL console over the network
+// are different exposures with different remedies, and on a headless board only one is reachable — so a seed
+// that renders both identically hides the thing an operator would act on. Both must render, differently, and
+// both must move the digest.
+test fn the_two_unlock_kinds_are_distinguishable_in_the_render() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: sol } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_serial_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: getty } =>
+          render_altra_autoinstall_seed(seed: sol).contains("console=unlocked-bmc-sol")
+            && render_altra_autoinstall_seed(seed: getty).contains("console=unlocked-serial-getty")
+            && !render_altra_autoinstall_seed(seed: sol).contains("console=unlocked-serial-getty")
+            && !content_hash_eq_structural(
+              left: altra_autoinstall_seed_digest(seed: sol),
+              right: altra_autoinstall_seed_digest(seed: getty),
+            )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn list_length_is(candidates: List<NonEmptyStr>, expected: Int) -> Bool {
+  list_length(items: candidates) == expected
+}
