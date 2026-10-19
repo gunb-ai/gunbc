@@ -14,7 +14,8 @@ import gunbc.instruments.known_red_derivation {
   ClaimRun, KnownRedChildRun, KnownRedSubject, KnownRedSubjectPopulation,
   known_red_chunks, known_red_entries_owed, known_red_fold, known_red_int_text,
   known_red_roster_entry, KnownRedEntryPlacement, Placed, Underivable,
-  known_red_defect_of, known_red_dispatchable, known_red_entry_path, known_red_entry_print,
+  known_red_defect_of, known_red_dispatchable, KnownRedPlacedSubject,
+  known_red_placed_identity_claim, known_red_entry_print, known_red_missing_dispatch,
   known_red_subject_defect_text,
   known_red_is_green, known_red_held_rows, known_red_max_claims_per_child,
   known_red_refusal_name, known_red_stale_enrolments, known_red_unaccounted_reds,
@@ -92,9 +93,17 @@ fn known_red_no_subject() -> KnownRedSubject {
   }
 }
 
-// THE CLAIM THE CHILD WAS HANDED, built from the subject itself so the arm cannot drift from its subject.
+// THE CLAIM THE CHILD WAS HANDED -- built by the instrument's OWN gateway. The arm asks
+// `known_red_dispatchable` for the placed subject and takes its identity-bearing claim from
+// `known_red_placed_identity_claim`, so the join the fold performs is against the very value the spawner
+// would pass to the harness. An arm that hand-built a `ClaimRun` could drift from what is really dispatched
+// and still pass; this one cannot, and there is no path projection left to build one from.
 fn claim_of(subject: KnownRedSubject) -> ClaimRun {
-  ClaimRun { entry: known_red_entry_path(entry: subject.entry), function: subject.function }
+  fold(
+    xs: known_red_dispatchable(subjects: [subject]),
+    init: ClaimRun { entry: "SUBJECT-WAS-NOT-PLACEABLE", function: "SUBJECT-WAS-NOT-PLACEABLE" },
+    f: (acc, x) => known_red_placed_identity_claim(placed: x)
+  )
 }
 
 fn fail_verdict(subject: KnownRedSubject) -> String {
@@ -285,12 +294,12 @@ test fn a_child_that_exited_nonzero_with_no_verdict_lines_refuses_and_is_not_rea
 // real chunker, and asserts the property that matters — every entry's claims reach ONE child together —
 // plus the property that keeps it honest: nothing is dropped or duplicated by the packing.
 test fn chunking_never_splits_an_entry_across_children_and_loses_no_witness() -> Bool {
-  let subjects = wide_subjects(entries: ["kd_chunk_a", "kd_chunk_b", "kd_chunk_c"], per_entry: 40)
-  let chunks = known_red_chunks(subjects: subjects)
+  let subjects = wide_subjects(entries: chunk_entry_paths(), per_entry: 40)
+  let chunks = known_red_chunks(placed: known_red_dispatchable(subjects: subjects))
   let total = fold(xs: chunks, init: 0, f: (n, c) => n + length(xs: c))
   total == 120
     && known_red_no_entry_split(chunks: chunks)
-    && (known_red_entries_owed(subjects: subjects)) == 3
+    && known_red_entries_owed(placed: known_red_dispatchable(subjects: subjects)) == 3
     && (chunks |> length) > 1
     && all(xs: chunks, predicate: fn(c) { length(xs: c) <= known_red_max_claims_per_child })
 }
@@ -327,13 +336,15 @@ fn count_of_entry_in(chunk: List<ClaimRun>, entry: String) -> Int {
 // CLAIMS ARE SYNTHESISED FROM THE SUBJECT SHAPE, not copied: n distinct functions per entry path, so the
 // chunker sees the same (entry, function) structure a real schedule row carries.
 fn wide_subjects(entries: List<String>, per_entry: Int) -> List<KnownRedSubject> {
-  fold(
-    xs: entries,
-    init: [],
-    f: (acc, e) => concat(acc, subjects_for_entry(entry: e, per_entry: per_entry))
-  )
+  fold(xs: entries, init: [], f: (acc, e) => concat(acc, subjects_for_entry(entry: e, per_entry: per_entry)))
 }
 
+// ONE ENTRY, MANY CLAIMS ON IT -- the shape that made the positional cut a defect (one entry's resolve is
+// re-paid per child it lands in). The three entries are REAL witness files, deliberately: the arm routes
+// through `known_red_dispatchable`, which refuses a subject whose entry file is absent, and an arm that
+// invented basenames would have packed nothing and proven nothing. The per-entry function NAMES are
+// synthetic (the packing property is about entry grouping and the cap, not about which names a file
+// declares), while each subject's identity is the module the path really is.
 fn subjects_for_entry(entry: String, per_entry: Int) -> List<KnownRedSubject> {
   fold(
     xs: counted_up_to(n: per_entry),
@@ -343,14 +354,35 @@ fn subjects_for_entry(entry: String, per_entry: Int) -> List<KnownRedSubject> {
         acc,
         [
           KnownRedSubject {
-            identity: WitnessIdentity { module_path: entry, function: concat("f", known_red_int_text(n: i)) },
-            entry: Placed { path: concat("dag/test/claim/examples/", concat(entry, ".dag")) },
+            identity: WitnessIdentity { module_path: known_red_module_of_path(path: entry), function: concat("f", known_red_int_text(n: i)) },
+            entry: Placed { path: entry },
             function: concat("f", known_red_int_text(n: i)),
             origin: WetLane
           }
         ]
       )
   )
+}
+
+// The three entries this arm packs over: real files under the witness root.
+fn chunk_entry_paths() -> List<String> {
+  [
+    "dag/test/claim/examples/blackjack_hand_witness.dag",
+    "dag/test/claim/examples/blackjack_round_witness.dag",
+    "dag/test/claim/examples/blackjack_shuffle_witness.dag"
+  ]
+}
+
+// The IDENTITY the packing arm gives a subject is derived FROM THE PATH it was built with, so the arm
+// cannot assert a module that its own path does not live at.
+fn known_red_module_of_path(path: String) -> String {
+  if string_contains(s: path, pattern: "blackjack_hand") {
+    "test.claim.examples.blackjack_hand_witness"
+  } else if string_contains(s: path, pattern: "blackjack_round") {
+    "test.claim.examples.blackjack_round_witness"
+  } else {
+    "test.claim.examples.blackjack_shuffle_witness"
+  }
 }
 
 // 1..n, by counting rather than by a literal list.
@@ -459,8 +491,8 @@ test fn subjects_carry_the_paths_the_authorities_publish_and_the_instrument_inve
   let floor = filter(xs: known_red_subjects(), predicate: fn(s) { s.origin == RequiredFloor })
   (schedule |> length) > 0
     && (floor |> length) > 0
-    && join(map(wet, s => known_red_entry_path(entry: s.entry)), "\n") == join(map(schedule, w => w.entry), "\n")
-    && all(xs: floor, predicate: fn(s) { known_red_entry_path(entry: s.entry) == known_red_authority_path(name: s.identity.module_path) })
+    && join(map(known_red_dispatchable(subjects: wet), x => x.path), "\n") == join(map(schedule, w => w.entry), "\n")
+    && all(xs: known_red_dispatchable(subjects: floor), predicate: fn(x) { x.path == known_red_authority_path(name: x.identity.module_path) })
 }
 
 // THE RULE ITSELF, SPOT-CHECKED AGAINST TWO REAL FILES, BECAUSE A DELEGATION THAT NEVER EXERCISES EITHER
@@ -511,15 +543,34 @@ fn unplaceable_subject(name: String) -> KnownRedSubject {
   }
 }
 
-// THE UNPLACEABLE SUBJECT IS NEVER DISPATCHED, and never silently dropped either: it is defective (so no
-// child is handed its empty path as argv) while remaining OWED, which is what makes the reconciliation
-// refuse instead of printing a population that is one claim short.
+// THE UNPLACEABLE SUBJECT IS NEVER HANDED A PATH, by construction rather than by check: it does not appear
+// in the placed list at all, so there is no value to pack, no `--entry` to build, and no claim for a child
+// to be asked about. And it is never silently dropped either -- it stays OWED and is reported as a defect,
+// which is what makes the run refuse instead of printing a population that is one claim short.
 test fn an_unplaceable_roster_name_is_never_handed_a_path_and_is_never_dropped() -> Bool {
   let ghost = unplaceable_subject(name: "v2")
   let real = enrolled_fixture()
   length(xs: known_red_dispatchable(subjects: [ghost])) == 0
-    && known_red_entries_owed(subjects: [ghost, real]) == 2
-    && known_red_entry_path(entry: ghost.entry) == ""
+    && length(xs: known_red_dispatchable(subjects: [ghost, real])) == 1
+    && length(xs: known_red_missing_dispatch(subjects: [ghost, real], dispatched: known_red_dispatchable(subjects: [real]))) == 0
+}
+
+// THE OWED-BUT-NOT-DISPATCHED JOIN KEYS ON THE IDENTITY, not on a claim string that might coincidentally
+// match (or fail to match) an empty one: a placed subject whose claims no child carried IS accused, and the
+// unplaced one -- which was never placeable, so was never owed a spawn -- is not. Both halves matter: the
+// previous draft could only 'not dispatch' the ghost by giving it an empty path, which made its absence
+// from every child the mechanism instead of the consequence.
+test fn the_undispatched_join_accuses_a_placed_subject_no_child_carried_and_not_the_unplaced_one() -> Bool {
+  let ghost = unplaceable_subject(name: "v2")
+  let real = enrolled_fixture()
+  let real_placed = known_red_dispatchable(subjects: [real])
+  // The first line: the same identity, a DIFFERENT function in the placed record -- so a join keyed on the
+  // claim pair would say 'dispatched' by accident or 'missing' for the wrong reason, and this asserts the
+  // join says MISSING because no child carried this identity's claims.
+  length(xs: known_red_missing_dispatch(subjects: [real], dispatched: real_placed)) == 0
+    && length(xs: known_red_missing_dispatch(subjects: [ghost, real], dispatched: real_placed)) == 0
+    && length(xs: known_red_missing_dispatch(subjects: [real], dispatched: [])) == 1
+    && length(xs: known_red_missing_dispatch(subjects: [ghost], dispatched: [])) == 0
 }
 
 // THE POPULATION EXERCISES BOTH BRANCHES, MEASURED RATHER THAN ASSERTED: the derived entries are printed by
@@ -527,8 +578,8 @@ test fn an_unplaceable_roster_name_is_never_handed_a_path_and_is_never_dropped()
 // tree, the roster would silently stop pointing at 19 of its own 80 claims.
 test fn the_roster_population_derives_under_both_roots_rather_than_collapsing_into_one() -> Bool {
   let floor = filter(xs: known_red_subjects(), predicate: fn(s) { s.origin == RequiredFloor })
-  any(xs: floor, predicate: fn(s) { known_red_under_src_v2(entry: known_red_entry_path(entry: s.entry)) })
-    && any(xs: floor, predicate: fn(s) { known_red_under_dag(entry: known_red_entry_path(entry: s.entry)) })
+  any(xs: known_red_dispatchable(subjects: floor), predicate: fn(x) { known_red_under_src_v2(entry: x.path) })
+    && any(xs: known_red_dispatchable(subjects: floor), predicate: fn(x) { known_red_under_dag(entry: x.path) })
 }
 
 fn known_red_authority_path(name: String) -> String {

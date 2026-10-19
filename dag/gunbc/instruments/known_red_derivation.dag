@@ -361,17 +361,52 @@ fn known_red_derived_entry(name: String) -> KnownRedEntryPlacement {
   }
 }
 
-// THE PATH, WHEN THE RULE PLACED THE NAME. For the unplaced case it is the EMPTY string rather than a
-// plausible path, because there is nothing to extract and inventing one is the defect this type exists to
-// prevent; the empty string also cannot name an entry file, so it can never be executed. Its only jobs are
-// to keep `ClaimRun` well-typed for an unplaced subject (which then matches no child's claim, and is
-// correctly reported as NOT dispatched) and to keep the defect print complete. Unplaced subjects are
-// excluded from every child's argv by `known_red_asked_claims`, which is what actually keeps them out.
-fn known_red_entry_path(entry: KnownRedEntryPlacement) -> String {
-  match entry {
-    Placed { path: p } => p
-    Underivable { name: _, cause: _ } => ""
-  }
+// THE SUBJECTS A CHILD MAY BE ASKED TO RUN -- the single gateway from the owed population into the dispatch
+// path. This is a derivation, not a filter the author controls: the harness's own argv builder refuses an
+// ENTIRE batch when any --entry does not exist (its message: '... which does not exist; refusing'). So a
+// defective identity is carried as owed-and-defective and never handed over -- and that is only honest if
+// the run SAYS SO, which is what `DispatchedPopulationNotComplete` is for: every well-formed subject must
+// appear in exactly one child's claims, or the run quietly asked for less than it owed.
+//
+// A SUBJECT THE DISPATCH PATH IS ALLOWED TO SEE. The previous draft projected an unplaced entry to `""`
+// and let that string travel into the packer, the argv builder, and the 'was it asked' join — which made
+// the unplaced case writable again, exactly the in-band encoding the type was introduced to prevent (an
+// `--entry ""` reaching the harness, or a caller skipping a filter, would have quietly revived it). There is
+// no extractor from a placement to a path any more. A path exists only inside this record, and the ONLY
+// producer of one is `known_red_dispatchable`: it matches on the placement, and the `Underivable` arm
+// returns nothing. Packing, argv, and the dispatched join below therefore cannot be handed an unplaced
+// subject — not 'are checked so they aren't', but 'the value does not exist to hand them'.
+type KnownRedPlacedSubject {
+  identity: WitnessIdentity
+  path: String
+  function: String
+}
+
+fn known_red_dispatchable(subjects: List<KnownRedSubject>) -> List<KnownRedPlacedSubject> {
+  fold(
+    xs: subjects,
+    init: [],
+    f: (acc, s) =>
+      if !known_red_is_well_formed(subject: s) {
+        acc
+      } else {
+        match s.entry {
+          Placed { path: p } =>
+            list_snoc_item(
+              xs: acc,
+              item: KnownRedPlacedSubject { identity: s.identity, path: p, function: s.function }
+            )
+          Underivable { name: _, cause: _ } => acc
+        }
+      }
+  )
+}
+
+// THE IDENTITY A DISPATCHED CHILD WAS ASKED ABOUT, keyed on the identity rather than on a string claim that
+// might coincidentally match: the reconciliation's owed-but-never-dispatched check asks whether this
+// identity appears among the claims a child actually carried.
+fn known_red_placed_identity_claim(placed: KnownRedPlacedSubject) -> ClaimRun {
+  ClaimRun { entry: placed.path, function: placed.function }
 }
 
 fn known_red_placement_underivable(name: String, cause: String) -> KnownRedEntryPlacement {
@@ -473,8 +508,8 @@ type KnownRedChildRun
 // child rather than being cut (cutting it would re-pay exactly the resolve the grouping exists to avoid).
 // No entry in the schedule owes that many at this commit, and the run prints its largest child so the
 // number is observed, never transcribed.
-fn known_red_chunks(subjects: List<KnownRedSubject>) -> List<List<ClaimRun>> {
-  known_red_pack_groups(groups: known_red_entry_groups(subjects: subjects), current: [], out: [])
+fn known_red_chunks(placed: List<KnownRedPlacedSubject>) -> List<List<ClaimRun>> {
+  known_red_pack_groups(groups: known_red_entry_groups(placed: placed), current: [], out: [])
 }
 
 // ALL OF ONE ENTRY'S CLAIMS, TOGETHER, in the order the schedule owes them. The entry is the unit of
@@ -484,16 +519,17 @@ type KnownRedEntryGroup {
   claims: List<ClaimRun>
 }
 
-fn known_red_entry_groups(subjects: List<KnownRedSubject>) -> List<KnownRedEntryGroup> {
-  fold(xs: subjects, init: [], f: (acc, s) => known_red_group_add(groups: acc, s: s))
+fn known_red_entry_groups(placed: List<KnownRedPlacedSubject>) -> List<KnownRedEntryGroup> {
+  fold(xs: placed, init: [], f: (acc, x) => known_red_group_add(groups: acc, placed_subject: x))
 }
 
-fn known_red_group_add(groups: List<KnownRedEntryGroup>, s: KnownRedSubject) -> List<KnownRedEntryGroup> {
-  // `known_red_collect_at` is only ever handed `known_red_dispatchable` subjects, and an `Underivable`
-  // subject is by construction defective (see `known_red_defect_of`), so it is filtered out before
-  // packing. That is why this may read the path out of the placement: the unplaced case never arrives.
-  let path = known_red_entry_path(entry: s.entry)
-  let claim = ClaimRun { entry: path, function: s.function }
+fn known_red_group_add(groups: List<KnownRedEntryGroup>, placed_subject: KnownRedPlacedSubject) -> List<KnownRedEntryGroup> {
+  // A FIELD ACCESS, NOT A PROJECTION FROM A PLACEMENT: this function cannot be handed an unplaced subject
+  // at all, because `KnownRedPlacedSubject` is only produced by `known_red_dispatchable`, whose
+  // `Underivable` arm adds nothing. So there is no empty-string entry that could be packed, and no
+  // `--entry ""` that could reach the harness.
+  let path = placed_subject.path
+  let claim = ClaimRun { entry: path, function: placed_subject.function }
   if known_red_has_entry(groups: groups, entry: path) {
     map(
       groups,
@@ -542,16 +578,16 @@ fn known_red_pack_groups(
 // THE COST SHAPE THE RUN OBSERVES OF ITSELF, printed so the envelope claim above can be checked against a
 // receipt instead of a promise: how many children, and how large the largest one got. Both are read off
 // the chunks, never written down.
-fn known_red_largest_child_claims(subjects: List<KnownRedSubject>) -> Int {
+fn known_red_largest_child_claims(placed: List<KnownRedPlacedSubject>) -> Int {
   fold(
-    xs: known_red_chunks(subjects: subjects),
+    xs: known_red_chunks(placed: placed),
     init: 0,
     f: (acc, c) => if length(xs: c) > acc { length(xs: c) } else { acc }
   )
 }
 
-fn known_red_entries_owed(subjects: List<KnownRedSubject>) -> Int {
-  length(xs: known_red_entry_groups(subjects: subjects))
+fn known_red_entries_owed(placed: List<KnownRedPlacedSubject>) -> Int {
+  length(xs: known_red_entry_groups(placed: placed))
 }
 
 // THE SPAWN, THROUGH THE READINESS GATE. `gunbc_claims_readiness` is the host prelude's own gate: a
@@ -599,13 +635,17 @@ fn known_red_uninvoked_child(claims: List<ClaimRun>, cause: String) -> KnownRedC
 // THE EXECUTED POPULATION: one serial child per chunk. The gate is asked ONCE and its refusal applied to
 // every chunk, because a binary that cannot be built is not built by trying harder. This call is the
 // line the anti-hollow RED deletes, and the refusal it then produces is the point.
+//
+// It takes SUBJECTS and places them here, in one place: `known_red_dispatchable` is the single gateway, so
+// a caller cannot pass an unplaced subject to the spawner even by accident -- the value the spawner wants
+// does not exist outside this function.
 fn known_red_collect(subjects: List<KnownRedSubject>) -> List<KnownRedChildRun> {
   let root = git.Inspect.Toplevel()
-  known_red_collect_at(root: root.path, subjects: subjects)
+  known_red_collect_at(root: root.path, placed: known_red_dispatchable(subjects: subjects))
 }
 
-fn known_red_collect_at(root: String, subjects: List<KnownRedSubject>) -> List<KnownRedChildRun> {
-  let chunks = known_red_chunks(subjects: subjects)
+fn known_red_collect_at(root: String, placed: List<KnownRedPlacedSubject>) -> List<KnownRedChildRun> {
+  let chunks = known_red_chunks(placed: placed)
   let readiness = gunbc_claims_readiness()
   if known_red_readiness_is_ready(r: readiness) {
     map(chunks, c => known_red_run_child(root: root, claims: c))
@@ -803,7 +843,7 @@ type KnownRedDerivation {
   head: String
   children: Int
   subjects_owed: List<KnownRedSubject>
-  dispatched: List<KnownRedSubject>
+  dispatched: List<KnownRedPlacedSubject>
   rows: List<KnownRedDerivationRow>
   coverage: List<KnownRedPopulationCoverage>
   reconciliation: LedgerReconciliation
@@ -818,16 +858,6 @@ type KnownRedPopulationCoverage {
   uncovered_cause: String
 }
 
-// THE SUBJECTS A CHILD MAY BE ASKED TO RUN. This is a derivation, not a filter the author controls: the
-// harness's own argv builder refuses an ENTIRE batch when any --entry does not exist (its message:
-// '... which does not exist; refusing'). So a defective identity is carried as owed-and-defective and
-// never handed over — and that is only honest if the run SAYS SO, which is what
-// `DispatchedPopulationNotComplete` is for: every well-formed subject must appear in exactly one child's
-// claims, or the run quietly asked for less than it owed.
-fn known_red_dispatchable(subjects: List<KnownRedSubject>) -> List<KnownRedSubject> {
-  filter(xs: subjects, predicate: fn(s) { known_red_is_well_formed(subject: s) })
-}
-
 fn known_red_is_well_formed(subject: KnownRedSubject) -> Bool {
   match known_red_defect_of(subject: subject) {
     Present { value: _ } => false
@@ -838,11 +868,11 @@ fn known_red_is_well_formed(subject: KnownRedSubject) -> Bool {
 // WHO WAS ACTUALLY ASKED, read back out of the children's own claims rather than from a list kept
 // alongside them — a child that was built with a subject in it is the evidence that the subject was asked.
 fn known_red_dispatched(
-  subjects: List<KnownRedSubject>,
+  placed: List<KnownRedPlacedSubject>,
   children: List<KnownRedChildRun>
-) -> List<KnownRedSubject> {
+) -> List<KnownRedPlacedSubject> {
   let asked = known_red_asked_claims(children: children)
-  filter(xs: subjects, predicate: fn(s) { known_red_subject_was_asked(subject: s, asked: asked) })
+  filter(xs: placed, predicate: fn(x) { known_red_placed_was_asked(placed_subject: x, asked: asked) })
 }
 
 fn known_red_asked_claims(children: List<KnownRedChildRun>) -> List<ClaimRun> {
@@ -853,30 +883,28 @@ fn known_red_asked_claims(children: List<KnownRedChildRun>) -> List<ClaimRun> {
   )
 }
 
-fn known_red_subject_was_asked(subject: KnownRedSubject, asked: List<ClaimRun>) -> Bool {
-  contains(xs: asked, item: known_red_subject_claim(subject: subject), eq: known_red_same_claim)
-}
-
-// An `Underivable` subject's path is the empty string, so it matches NO child's claim and is correctly
-// reported as never dispatched — which is the honest answer, since it was never handed to a child.
-fn known_red_subject_claim(subject: KnownRedSubject) -> ClaimRun {
-  ClaimRun { entry: known_red_entry_path(entry: subject.entry), function: subject.function }
+fn known_red_placed_was_asked(placed_subject: KnownRedPlacedSubject, asked: List<ClaimRun>) -> Bool {
+  contains(xs: asked, item: known_red_placed_identity_claim(placed: placed_subject), eq: known_red_same_claim)
 }
 
 fn known_red_same_claim(a: ClaimRun, b: ClaimRun) -> Bool {
   a.entry == b.entry && a.function == b.function
 }
 
-fn known_red_missing_dispatch(subjects: List<KnownRedSubject>, dispatched: List<KnownRedSubject>) -> List<String> {
+// WHO WAS OWED A SPAWN AND NEVER GOT ONE, KEYED ON THE IDENTITY. Both sides of this join come from
+// `known_red_dispatchable`, so an unplaced subject is absent from BOTH: it is not counted as dispatched,
+// and it is not accused of being undispatched either -- it is reported where it belongs, as a defect, and
+// it stays in the owed population so the run still refuses. Nothing here compares an empty-string claim.
+fn known_red_missing_dispatch(subjects: List<KnownRedSubject>, dispatched: List<KnownRedPlacedSubject>) -> List<String> {
   let well_formed = known_red_dispatchable(subjects: subjects)
   map(
-    filter(xs: well_formed, predicate: fn(s) { !contains(xs: dispatched, item: s, eq: known_red_same_subject) }),
-    s => known_red_subject_qualified(s: s)
+    filter(xs: well_formed, predicate: fn(x) { !known_red_identity_dispatched(identity: x.identity, dispatched: dispatched) }),
+    x => witness_identity_qualified_name(identity: x.identity)
   )
 }
 
-fn known_red_same_subject(a: KnownRedSubject, b: KnownRedSubject) -> Bool {
-  a.identity.module_path == b.identity.module_path && a.identity.function == b.identity.function
+fn known_red_identity_dispatched(identity: WitnessIdentity, dispatched: List<KnownRedPlacedSubject>) -> Bool {
+  any(xs: dispatched, predicate: fn(x) { known_red_same_identity(a: identity, b: x.identity) })
 }
 
 // Nothing in this function touches a service or a process, which is what lets the witness claims drive a
@@ -904,7 +932,10 @@ fn known_red_fold(
   )
   let report = known_red_reconciliation(subjects: subjects, rows: rows)
   let defects = known_red_subject_defects(subjects: subjects)
-  let dispatched = known_red_dispatched(subjects: subjects, children: children)
+  // The placed list is derived here, once, from the subjects: it is the only thing the spawn-join and the
+  // owed-but-undispatched check are allowed to see, and an unplaced subject is not in it.
+  let placed = known_red_dispatchable(subjects: subjects)
+  let dispatched = known_red_dispatched(placed: placed, children: children)
   KnownRedDerivation {
     head: head,
     children: length(xs: children),
@@ -982,18 +1013,31 @@ fn known_red_entry_exists(entry: String) -> Bool {
 // THE ARGV THE HARNESS WOULD ACTUALLY SPAWN WITH. Going through the harness's own builder is the point:
 // a row its builder refuses to carry is a row that could never have produced a verdict, and claiming it
 // as 'not run' without saying why is the silent narrowing this instrument exists to refuse.
-fn known_red_argv_of(subject: KnownRedSubject) -> List<String> {
+fn known_red_argv_of(placed_subject: KnownRedPlacedSubject) -> List<String> {
   claim_batch_claims_argv(
     source_roots: witness_layer_roots(),
-    claims: [ClaimRun { entry: known_red_entry_path(entry: subject.entry), function: subject.function }]
+    claims: [ClaimRun { entry: placed_subject.path, function: placed_subject.function }]
   )
 }
 
 // THE SHAPE THE HARNESS REFUSES: its builder carries one --entry and one --function per ClaimRun, so a
 // row whose qualified name does not split, or whose function is empty, is refused. Derived from the
 // builder's OWN output (it must emit both flags and exactly one pair), never from a predicate here.
+// THE WELL-FORMEDNESS TEST RUNS ON THE SUBJECT, BEFORE IT IS PLACED, because it asks whether the harness's
+// own builder would carry the row at all -- and it builds the argv from the placement the subject already
+// carries. Feeding it a `KnownRedPlacedSubject` would make the test unfalsifiable: by the time a subject is
+// placed its path exists, so an empty function would be the only thing left to catch.
 fn known_red_argv_is_well_formed(subject: KnownRedSubject) -> Bool {
-  known_red_has_pair(argv: known_red_argv_of(subject: subject))
+  match subject.entry {
+    Placed { path: p } =>
+      known_red_has_pair(
+        argv: claim_batch_claims_argv(
+          source_roots: witness_layer_roots(),
+          claims: [ClaimRun { entry: p, function: subject.function }]
+        )
+      )
+    Underivable { name: _, cause: _ } => false
+  }
 }
 
 fn known_red_has_pair(argv: List<String>) -> Bool {
@@ -1267,7 +1311,7 @@ fn known_red_refusal_name(r: KnownRedDerivationRefusal) -> String {
 fn known_red_refusals(
   subjects: List<KnownRedSubject>,
   children: List<KnownRedChildRun>,
-  dispatched: List<KnownRedSubject>,
+  dispatched: List<KnownRedPlacedSubject>,
   rows: List<KnownRedDerivationRow>,
   report: LedgerReconciliation,
   defects: List<KnownRedSubjectDefect>
@@ -1426,14 +1470,14 @@ fn known_red_report(d: KnownRedDerivation) -> String {
               concat(
                 " witnesses over ",
                 concat(
-                  known_red_int_text(n: known_red_entries_owed(subjects: d.subjects_owed)),
+                  known_red_int_text(n: known_red_entries_owed(placed: known_red_dispatchable(subjects: d.subjects_owed))),
                   concat(
                     " entries, dispatched ",
                     concat(
                       known_red_int_text(n: length(xs: d.dispatched)),
                       concat(
                         " largest child ",
-                        known_red_int_text(n: known_red_largest_child_claims(subjects: d.subjects_owed))
+                        known_red_int_text(n: known_red_largest_child_claims(placed: known_red_dispatchable(subjects: d.subjects_owed)))
                       )
                     )
                   )
@@ -1636,7 +1680,7 @@ fn known_red_derivation_exit() -> CliWireResponse {
       let subjects = known_red_subjects()
       let children = known_red_collect_at(
         root: git.Inspect.Toplevel().path,
-        subjects: known_red_dispatchable(subjects: subjects)
+        placed: known_red_dispatchable(subjects: subjects)
       )
       let derived = known_red_fold(head: head, subjects: subjects, children: children)
       let bytes = known_red_report(d: derived)
