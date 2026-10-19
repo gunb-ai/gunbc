@@ -1110,3 +1110,12 @@ test fn a_refused_follow_up_enqueue_keeps_the_action_status_and_names_the_refusa
     && string_contains(s: refused.body, pattern: "user manager unread")
     && string_contains(s: refused.body, pattern: "the write stands")
 }
+
+// The shared builder refuses a duplicate (method, path literal) (extdeps.http.server
+// serve_build_route_table); the production roadmap table has none, so it still builds.
+test fn roadmap_production_route_table_builds_clean_under_the_duplicate_refusal() -> Bool {
+  match roadmap_serve_route_table_build() {
+    ServedRouteTableBuilt { table: _ } => true
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
+  }
+}
