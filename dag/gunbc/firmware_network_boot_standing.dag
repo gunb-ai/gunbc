@@ -1358,12 +1358,19 @@ fn procedure_demands_existing_option(route: FirmwareNetworkBootPreparationRoute)
 // supplied by the caller that actually knows the edge. The DHCP direction is a wire fact the site
 // edge receipts (S7) observe; it is not the unit's standing.
 
-// READY IS NOT AUTHORABLE. ReadyEvidence is sole_constructor and its only constructor takes the
-// observation it was computed from, the authority that published it, and the moment it was taken.
-// So "ready" without evidence is not a thing that can be written down, and a Ready that someone
-// hand-rolled cannot be distinguished from a computed one — because there is no second way to
-// get one. The observation stays INSIDE the evidence rather than being dropped after the check,
-// so a later reader can re-derive the verdict instead of trusting it.
+// READY IS NOT AUTHORABLE, and it takes THREE seals to make that true, which is why they are named
+// here rather than left to be discovered one review at a time (merry's HOLD 1).
+//  1. THIS record seals the PROVENANCE: authority, moment, and the observation the verdict was
+//     computed from. Its only constructor takes all three, so "ready" without evidence is not a
+//     thing that can be written down, and the observation stays INSIDE the evidence rather than
+//     being dropped after the check -- a later reader can re-derive the verdict instead of trusting it.
+//  2. AdmittedReadyConclusion (below) seals the CONCLUSION: mode, interface, and boot target. This
+//     second record is the repair, and its absence was a real hole: with only seal 1, lawful evidence
+//     could be rewrapped around a DIFFERENT conclusion, because the three conclusion fields sat in the
+//     unsealed Ready arm. Do not read this comment as if it were seal 2's work.
+//  3. admit_callers on the minting folds decides WHO may combine 1 and 2 into a verdict.
+// A claim about any one of these three is not a claim about the verdict's authorability; the witness
+// the_conclusion_seal_is_a_wall_measured_as_a_delta_not_a_lone_count checks the delta they produce.
 type ReadyEvidence sole_constructor {
   observation_authority: CitedFigureStanding
   observed_at: EpochMs
