@@ -11,8 +11,9 @@ module gunbc.provisioning.altra_autoinstall_seed
 //
 // WHO CONSUMES THIS, declared per DESIGN 3c rather than left to be inferred.
 //   * CONSUMED IN THIS CHANGE: every refusal arm, both digest functions, the render, the audit, the selection
-//     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness (49 test fns, run by
-//     gunbc --claim-run). Nothing here is exercised only by its own module.
+//     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness (98 test fns at the
+//     time of writing, run by gunbc --claim-run; if that number and this sentence ever disagree, the module has
+//     grown a rule nothing exercises). Nothing here is exercised only by its own module.
 //   * DECLARED FRONTIER, NAMED: AltraAutoinstallSeedBinding is consumed by cut 6 step 3 (the install-attempt
 //     record), which needs the digest of the seed a board booted and nothing else from this module. The
 //     projection into extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload is consumed by cut 6 step 4, where

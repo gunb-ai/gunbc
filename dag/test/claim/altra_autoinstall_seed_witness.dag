@@ -133,6 +133,10 @@ import gunbc.provisioning.altra_autoinstall_seed {
   ConsoleEntryUnlocked,
   QuestionAnswered,
   PackageVerifiedSilent,
+  SilentReceipt,
+  ipmitool_silence_receipt,
+  dmidecode_silence_receipt,
+  rasdaemon_silence_receipt,
   altra_required_late_package_rows,
   QuestionUnanswered,
   UnclassifiedPackage,
@@ -2650,6 +2654,310 @@ test fn different_key_material_at_equal_count_moves_the_digest() -> Bool {
               left: altra_autoinstall_seed_digest(seed: with_first),
               right: altra_autoinstall_seed_digest(seed: with_other),
             )
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CONTROLS FOR THE RULES AND DERIVED SPELLINGS THAT NO EARLIER WITNESS CONSTRAINED.
+// Every block below exists because a mutation of the rule underneath it was MEASURED GREEN: the suite reported a
+// full pass while the rule was deleted, widened, or frozen to a constant. The method is to ask what a mutation
+// could HIDE BEHIND rather than what it changes — a rule that is never the sole arm able to fire, or a derived
+// spelling no assertion reads, reports exactly as green as it did before the rule was quietly removed. Kept apart
+// from the defect fixtures above because the subject here is the test surface rather than the wire format.
+// ---------------------------------------------------------------------------
+
+// A SECOND KEY, so the authorised-key line can be shown to COUNT rather than to echo a fixture. The material
+// differs from provisioning_key's, so this is two keys and not one key written twice.
+data two_distinct_keys: List<SshPublicKey> = [
+  SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIElit9Z0mQ2vT7xKpA4sR1nVb6YcUeJ0dGgHmLqXwZt3rN8oP5uV1yB7cD2eF9gK4hJ6lM0aS8dX3wQ6tR1zY5bN2mK4pL7oI9uE0yT3r" as NonEmptyStr,
+    comment: "gunbc-operator-a",
+  },
+  SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIOr9k0pQz0W7sPqTgk3l0M1sXqz2nS7bHm0KQxK4Y1pZ8oQ2m7VnJ0lP6yT3rW9uX1sD4fG7hJkL0mN3pQ5rS7tU9vW1xY3zA5bC7dE9fG1h" as NonEmptyStr,
+    comment: "gunbc-operator-b",
+  },
+]
+
+// THE SEGMENT-COUNT RULE MUST BE AN ASSERTION, NOT A FLOOR — AND IT MUST BE THE ONLY ARM THAT CAN FIRE.
+// crypt.5 says a setting is four segments without a cost and five with one. This candidate is SIX, and it is
+// built so that nothing else can refuse it: the shared scan sees only printable characters, the scheme token is
+// the cited "6", the cost is read at position two and reads as a well-formed rounds field, the salt is read one
+// segment from the END (so it reads "extra" — ten legal printable characters), and the digest is the cited 86
+// characters from the fixtures above. So the permissive bound that a mutation of this rule produces, `count >= 4`,
+// mints a receipt for a string that is not a sha512-crypt setting at all, and the credential would be accepted
+// with an unexamined '$' sitting inside its salt region. It must come back NotACryptDigest, which is the only
+// honest cause: nothing about that text is malformed in its cost, its salt or its digest — it is not the format.
+// The ceiling side (four and five both admitted) is already pinned above by the cost-bearing accepted digest, so
+// the bound cannot be silently narrowed to a flat `count == 4` either; together the two make this a rule rather
+// than a guess.
+test fn an_unexpected_segment_count_is_refused_as_not_a_digest() -> Bool {
+  match admin_password_hash_receipt(
+    credential: seeded_handle,
+    crypt_digest: "$6$rounds=1000$saltsalt$extra$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr,
+  ) {
+    ReceiptAccepted { receipt: _ } => false
+    ReceiptRefused { cause: NotACryptDigest } => true
+    ReceiptRefused { cause: _ } => false
+  }
+}
+
+// AN ANSWER SUPPLIED FOR AN UNKNOWN PACKAGE IS ATTRIBUTED IN THAT ROW'S RENDER SPELLING. The builder refuses an
+// unclassified row, so no seed can ever carry one — which is also why nothing above could see this arm: the
+// spelling is asserted directly on the function that produces it, because that string is what the render would
+// carry the day the refusal is relaxed (and the day it is relaxed is the day an operator needs it). The coverage
+// is the whole content of the row: an unclassified row deliberately reports NO question, because this module has
+// not observed one and printing a question would fabricate the very evidence the refusal complains about. So if
+// the answer's coverage goes too, a refused seed states only "some package we do not know" and the operator
+// cannot tell the attempt where an answer was supplied from the one where nothing was — different work was done
+// for each, and the digest cannot tell them apart. Asserted both ways: the coverage is present, and a seeded row
+// does not spell the same as an unseeded one.
+test fn an_unclassified_row_carries_the_answer_it_was_given() -> Bool {
+  let seeded = package_intent_diagnostic(intent: UnclassifiedPackage {
+    name: "some-fleet-exporter" as NonEmptyStr,
+    debconf_seed: Present { value: "some-fleet-exporter/dummy string true" as NonEmptyStr },
+  })
+  let unseeded = package_intent_diagnostic(intent: UnclassifiedPackage {
+    name: "some-fleet-exporter" as NonEmptyStr,
+    debconf_seed: Absent,
+  })
+  seeded.contains("some-fleet-exporter")
+    && seeded.contains("unclassified")
+    // THE ANSWER'S COVERAGE IS IN THE SEEDED SPELLING AND IN NO OTHER, so the row records that an answer was
+    // supplied without reproducing it: an unseeded row says only that the package is unknown.
+    && seeded.contains("answer=")
+    && !unseeded.contains("answer=")
+}
+
+// THE AUTHORISED-KEY LINE COUNTS THE KEYS IT WAS GIVEN. Two mutations hide here and they hide from each other:
+// dropping the count (leaving the digest of the key list as the only trace, so the line no longer states how many
+// keys are authorised) and freezing it (so the line states a number that has stopped tracking the list — and a
+// dropped authorised key then moves the digest while the render keeps reassuringly claiming one key). Four
+// assertions, and the last is what separates the two: the line appears verbatim in the render, it carries the
+// posture the seed was admitted under, its count is the length of the list the entry actually carries, and the
+// SAME fixture under two keys renders count=2 and no longer contains count=1.
+test fn the_authorised_key_line_counts_the_keys_it_was_given() -> Bool {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Absent => false
+    Present { value: one } =>
+      match build_seed_fixture(
+        network: network_posture,
+        packages: clean_packages,
+        entry_keys: two_distinct_keys,
+        console: locked_console,
+        credential: seeded_handle,
+        delivery: virtual_media_strategy,
+        target: target_altra,
+      ) {
+        Absent => false
+        Present { value: two } =>
+          list_length(items: one.entry.authorised_keys) == 1
+            && list_length(items: two.entry.authorised_keys) == 2
+            && render_altra_autoinstall_seed(seed: one).contains("keys=")
+            && render_altra_autoinstall_seed(seed: one).contains("count=1")
+            && render_altra_autoinstall_seed(seed: two).contains("count=2")
+            // THE COUNT IS NOT A CONSTANT: one key and two keys cannot both read "count=1".
+            && !render_altra_autoinstall_seed(seed: two).contains("count=1")
+      }
+  }
+}
+
+// A VERIFIED SILENCE CLOSES NO QUESTION, AND IS STILL SHIPPED. The four required late rows are the packages this
+// board cannot be reached without — nvme-cli, ipmitool, dmidecode, rasdaemon — and each was verified silent
+// against its own shipped .deb. Three assertions, each killing a defect the suite previously let through:
+//   - THE TALLY DOES NOT COUNT THEM. The shipped late set closes exactly the same five questions the bare set
+//     does, while adding one genuinely answered debconf question raises the count to six. That second half is what
+//     makes the first a claim about silence rather than about a fixture that happens to ask nothing: the mutation
+//     this exists for credits a silent row as an answered question, which inflates the tally by four — and the
+//     tally is RENDERED and hashed, so two seeds differing only in how many packages were CLAIMED silent would be
+//     told apart by luck.
+//   - THE SEED IS NOT REFUSED. A package whose silence is cited asks nothing; refusing it is a bug, and was the
+//     original one, which had every produced-seed fixture pass an empty late list to get green at all.
+//   - THE BUILD AND THE STANDING ARE IN THE RENDER. The build is what the silence is ABOUT, and the standing says
+//     how far to trust it: without them "nvme-cli, silently, according to somebody" hashes the same as "nvme-cli
+//     2.8-1build2, per its shipped package", and the binding — the record an operator quotes years later to answer
+//     "what did this board actually get" — would carry neither.
+test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Absent => false
+    Present { value: entry } =>
+      match audit_altra_autoinstall_seed(
+        network: network_posture,
+        install_packages: clean_packages,
+        late_packages: [],
+        locale: EnUsUtf8,
+        entry: entry,
+        strategy: virtual_media_strategy,
+      ) {
+        SeedRefused { cause: _ } => false
+        SeedIsNonInteractive { evidence: bare } =>
+          match audit_altra_autoinstall_seed(
+            network: network_posture,
+            install_packages: clean_packages,
+            late_packages: altra_required_late_package_rows(),
+            locale: EnUsUtf8,
+            entry: entry,
+            strategy: virtual_media_strategy,
+          ) {
+            SeedRefused { cause: _ } => false
+            SeedIsNonInteractive { evidence: silent } =>
+              // THE CONTROL, in the SAME LIST the four silent rows occupy: one genuinely answered row there
+              // raises the tally by one. Without it, "silent == bare" could be read as "this tally never moves".
+              match audit_altra_autoinstall_seed(
+                network: network_posture,
+                install_packages: clean_packages,
+                late_packages: [QuestionAnswered {
+                  package: CloudInitPackage,
+                  debconf_seed: "cloud-init/datasources multiselect None" as NonEmptyStr,
+                }],
+                locale: EnUsUtf8,
+                entry: entry,
+                strategy: virtual_media_strategy,
+              ) {
+                SeedRefused { cause: _ } => false
+                SeedIsNonInteractive { evidence: answered } =>
+                  // FOUR SILENT ROWS AND NOTHING CLOSED — and pinned to the ARITHMETIC, not merely shown equal:
+                  // the fixture's three answered install rows, plus netplan, plus a named mirror, plus the locale
+                  // term. A mutation that credits a silent row as an answered question reads 10 here, which no
+                  // relative comparison would catch. The third audit is the control that makes the equality above
+                  // a claim about SILENCE rather than about a fixture that happens to ask nothing: it drops the
+                  // four silent rows and keeps the same three answered ones, so the only difference between the
+                  // two counts is the four rows that must contribute zero.
+                  silent.questions_closed == bare.questions_closed
+                    && silent.questions_closed == 5
+                    && answered.questions_closed == 6
+                    // THE SHIPPED RENDER, build and standing included.
+                    && match build_seed_fixture(
+                      network: network_posture,
+                      packages: clean_packages,
+                      entry_keys: one_key,
+                      console: locked_console,
+                      credential: seeded_handle,
+                      delivery: virtual_media_strategy,
+                      target: target_altra,
+                    ) {
+                      Absent => false
+                      Present { value: built } =>
+                        render_altra_autoinstall_seed(seed: built)
+                          .contains("nvme-cli+silent,silent@2.8-1build2,cited,count=0")
+                          && render_altra_autoinstall_seed(seed: built)
+                            .contains("ipmitool+silent,silent@1.8.19-7build2,cited,count=0")
+                    }
+              }
+          }
+      }
+  }
+}
+
+// A SEED UNDER THE SHIPPED DISK RULE WITH AN EXPLICIT LATE SET. The shared builder pins the shipped rows, which
+// is right for every witness that cares about the seed's other axes and wrong for the two that care about the late
+// set's spelling: those must be able to restate one row (at another build, or under another standing) without
+// touching a shared fixture.
+fn build_seed_with_late(late: List<PackageIntent>) -> Optional<AltraAutoinstallSeed> {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      build_altra_autoinstall_seed(
+        target: target_altra,
+        network: network_posture,
+        install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
+        loadable_modules: [AhciPlatformModule, NvmeBlockModule],
+        late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
+        install_packages: clean_packages,
+        late_packages: late,
+        disk: serial_selector,
+        entry: entry,
+        credential: seeded_handle,
+        locale: EnUsUtf8,
+        delivery: virtual_media_strategy,
+        keyboard: UsLayout,
+      )
+    Absent => Absent
+  }
+}
+
+// AN OWED READING IS SPOKEN, NOT IMPLIED. The silence diagnostic has two arms: a cited claim ends ",cited", and
+// a claim whose reading is still owed must carry the text that says what has to be read. The cited arm is pinned
+// by the witness above; NOTHING pinned this one, which is how a mutation that deletes the obligation text (leaving
+// a bare ",owed" marker, or nothing at all) survives: the row would still read as a silence claim, and the only
+// reader that could tell a transcribed figure from a cited one — the one that cannot re-open the artifact — loses
+// the sentence that tells it what to go read. Asserted on the render, because the render is the artifact that
+// travels; and asserted as CONTAINMENT of the standing's own text rather than a literal, so the diagnostic cannot
+// invent its own obligation and cannot paraphrase the standing into silence.
+test fn a_silence_whose_reading_is_owed_says_what_must_be_read() -> Bool {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Absent => false
+    Present { value: built } =>
+      // The shipped rows are cited, so the render carries ",cited" and no owed text...
+      render_altra_autoinstall_seed(seed: built).contains("nvme-cli+silent,silent@2.8-1build2,cited,count=0")
+        // ...and a row whose standing owes a reading carries the obligation itself, verbatim from the standing.
+        && match build_seed_with_late(
+          late: [
+            PackageVerifiedSilent {
+              name: "nvme-cli" as NonEmptyStr,
+              silence: SilentReceipt {
+                observed_version: "2.8-1build2" as NonEmptyStr,
+                standing: TranscribedUncited {
+                  read_obligation: "read the Noble arm64 archive index before believing this row" as NonEmptyStr,
+                },
+              },
+            },
+            PackageVerifiedSilent { name: "ipmitool" as NonEmptyStr, silence: ipmitool_silence_receipt },
+            PackageVerifiedSilent { name: "dmidecode" as NonEmptyStr, silence: dmidecode_silence_receipt },
+            PackageVerifiedSilent { name: "rasdaemon" as NonEmptyStr, silence: rasdaemon_silence_receipt },
+          ]
+        ) {
+          Absent => false
+          Present { value: owed } =>
+            render_altra_autoinstall_seed(seed: owed)
+              .contains(",owed=read the Noble arm64 archive index before believing this row")
+              && !render_altra_autoinstall_seed(seed: owed).contains("nvme-cli+silent,silent@2.8-1build2,cited")
+        }
+  }
+}
+
+// THE BOUND DISK IS THE PROBE'S OWN LABEL, NEVER AN INVENTED CONSTANT. The unread arm has no serial to report, so
+// it reports the label the probe gave the device when it read the model and nothing else. The mutation this exists
+// for is the laundering that makes a fabrication look like evidence: recording an unread disk as a BOUND disk with
+// a placeholder serial, which answers "what did that install write to?" with a serial nobody observed — and the
+// binding digest then agrees with itself, so nothing downstream can tell the two records apart. The fixture is a
+// CATALOG rule over the drive whose serial the probe could not read: a catalog rule is the one rule the upstream
+// module lets an unread serial through, because its identity is part number and capacity and both WERE measured.
+// So no other part of the projection may be the reason it resolves, and the honest arm is the only one left to
+// test against. The provenance is asserted in the same breath: the record must say which rule chose the disk and
+// out of how many, which is what lets a reviewer disagree with the choice later.
+test fn an_unread_selected_disk_is_recorded_as_unread_not_as_a_fabricated_serial() -> Bool {
+  match project_storage_policy(selection: select_target_disk(selector: catalog_selector, observed: [serial_unread_disk])) {
+    ProjectionUnresolved { cause: _ } => false
+    Projected { policy: _, device: evidence, provenance: provenance } =>
+      match evidence {
+        // THE ONLY HONEST ANSWER: unread, named by the one thing that WAS observed — the catalog's own part
+        // number, so an unread disk stays findable in the fleet without anybody guessing at it.
+        BoundDiskUnread { part_number: part } =>
+          part == ("WDS200T2X0E" as NonEmptyStr)
+            && provenance.selector == catalog_selector
+            && provenance.matched == 1
+            && provenance.observed == 1
+        // A serial in this arm is a fabrication: the probe read none, so no arm that reports a serial can be right.
+        BoundDisk { serial: _, matched: _, observed: _ } => false
       }
   }
 }
