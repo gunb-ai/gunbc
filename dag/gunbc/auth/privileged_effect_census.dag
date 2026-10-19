@@ -1031,18 +1031,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: Present { value: interim_cloudflare_adapter_unlanded },
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_converge_with_supplied_token"),
-    effect: accessor_grant(subject: "the fleet accessor roster: spark administrator password, mtcollins1 BMC credential, both approval MAC keys, the OpenRouter free-tier key" as NonEmptyStr),
-    realized: RealizedOperatorSession { arm: OperatorTokenFile },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.spark.secret_access_ensure", decl_name: "spark_secret_access_converge"),
-    effect: accessor_grant(subject: "spark administrator password accessor cell (interactive entry)" as NonEmptyStr),
-    realized: RealizedOperatorSession { arm: GcloudInteractive },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
-  },
-  PrivilegedEffectSite {
     site: site(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_admin_app_key_access_converge_with_supplied_token"),
     effect: accessor_grant(subject: "gunbai-ci App key accessor cell" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
