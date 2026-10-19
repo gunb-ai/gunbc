@@ -236,12 +236,73 @@ fn witness_run(code: Int, out: String, err: String) -> SudoDecision {
   witness_run_under(version: witness_supported_version, code: code, out: out, err: err)
 }
 
-// THE -ll TEXT FIXTURES. FORMAT PENDING RECORDED BYTES: these are shaped after the entry layout the
-// design reads (Sudoers entry / RunAsUsers / Options / Commands) and are REPLACED by the side chat's
-// verbatim recorded outputs when they arrive; until then the controls below establish the MAPPING from
-// that shape, not the shape itself (§4d), and the wet exec stays the unpaired gap.
+// THE -ll TEXT FIXTURES: recorded external facts (§4d), capture pr14345-sudo-raw-12np58fh, 2026-10-19T02:51:01Z,
+// sudo 1.9.16p2-3+deb13u2, locale C, listing principal `probe`. `witness_listing` reproduces the recorded layout
+// byte for byte (Sudoers entry: <file> / RunAsUsers / Options / Commands + tab argv / Matched) with the varied
+// field substituted; the six RECORDED specimens below are the verbatim bytes and are the discriminating controls.
 fn witness_listing(runas: String, options: String, command: String) -> String {
-  join(["User probe may run the following commands on host:", "", "Sudoers entry:", concat("    RunAsUsers: ", runas), concat("    Options: ", options), "    Commands:", concat("\t", command), ""], "\n")
+  concat("Sudoers entry: /etc/sudoers\n    RunAsUsers: ", concat(runas, concat("\n    Options: ", concat(options, concat("\n    Commands:\n\t", concat(command, concat("\n    Matched: ", concat(command, "\n"))))))))
+}
+
+data recorded_true_query: SudoDecisionQuery = SudoDecisionQuery { runas: "root" as NonEmptyStr, argv: ["/usr/bin/true" as NonEmptyStr] }
+
+fn recorded_decision(code: Int, out: String) -> SudoDecision {
+  sudo_decision_from_run(query: recorded_true_query, version: witness_supported_version, outcome: ProcessRan { observation: process_observation(exit_code: code, stdout: out, stderr: "") })
+}
+
+// (a) `Defaults listpw=any` / `probe ALL=(root) NOPASSWD: /usr/bin/true` -> the only recorded admission.
+test fn recorded_a_genuine_nopasswd_admits() -> Bool {
+  match recorded_decision(code: 0, out: "Sudoers entry: /etc/sudoers\n    RunAsUsers: root\n    Options: !authenticate\n    Commands:\n\t/usr/bin/true\n    Matched: /usr/bin/true\n") {
+    SudoDecisionAdmits => true
+    _ => false
+  }
+}
+
+// (b) `NOPASSWD: /usr/bin/false, PASSWD: /usr/bin/true`: lists with exit 0 and the short listing names the argv, yet authenticates.
+test fn recorded_b_passwd_beside_an_unrelated_nopasswd_needs_a_password() -> Bool {
+  match recorded_decision(code: 0, out: "Sudoers entry: /etc/sudoers\n    RunAsUsers: root\n    Options: authenticate\n    Commands:\n\t/usr/bin/true\n    Matched: /usr/bin/true\n") {
+    SudoDecisionNeedsPassword => true
+    _ => false
+  }
+}
+
+// (c) a later `PASSWD: /usr/bin/true` rule overrides an earlier NOPASSWD one: the recorded bytes equal (b).
+test fn recorded_c_a_later_passwd_override_needs_a_password() -> Bool {
+  match recorded_decision(code: 0, out: "Sudoers entry: /etc/sudoers\n    RunAsUsers: root\n    Options: authenticate\n    Commands:\n\t/usr/bin/true\n    Matched: /usr/bin/true\n") {
+    SudoDecisionNeedsPassword => true
+    _ => false
+  }
+}
+
+// (d) `Defaults listpw=never` / `PASSWD: /usr/bin/true`: the recorded bytes again equal (b).
+test fn recorded_d_listpw_never_with_passwd_needs_a_password() -> Bool {
+  match recorded_decision(code: 0, out: "Sudoers entry: /etc/sudoers\n    RunAsUsers: root\n    Options: authenticate\n    Commands:\n\t/usr/bin/true\n    Matched: /usr/bin/true\n") {
+    SudoDecisionNeedsPassword => true
+    _ => false
+  }
+}
+
+// (e) `(nobody) NOPASSWD:` only and (f) an explicit `!/usr/bin/true` denial both record exit 1, empty stdout and stderr.
+test fn recorded_e_wrong_run_as_is_denied() -> Bool {
+  match recorded_decision(code: 1, out: "") {
+    SudoDecisionDenied { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn recorded_f_explicit_denial_is_denied() -> Bool {
+  match recorded_decision(code: 1, out: "") {
+    SudoDecisionDenied { reason: _ } => true
+    _ => false
+  }
+}
+
+// The unprivileged `sudo -V` capture: its first line is the banner the supported range names.
+test fn recorded_sudo_dash_v_probe_output_yields_the_supported_banner() -> Bool {
+  match sudo_version_from_run(outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: "Sudo version 1.9.16p2\nSudoers policy plugin version 1.9.16p2\nSudoers file grammar version 50\nSudoers I/O plugin version 1.9.16p2\nSudoers audit plugin version 1.9.16p2\n", stderr: "") }) {
+    SudoVersionObserved { banner: b } => (b as String) == "Sudo version 1.9.16p2"
+    SudoVersionUnobserved { cause: _ } => false
+  }
 }
 
 fn witness_listing_decision(options: String) -> SudoDecision {

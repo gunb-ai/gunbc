@@ -2,7 +2,7 @@ module extdeps.sudo.nopasswd_decision
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.optional { Present, Absent }
-import std.algebra { trim, length, count_where, list_at_optional }
+import std.algebra { trim, length, list_at_optional }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand }
@@ -155,7 +155,7 @@ fn sudo_listing_unparsed(why: String) -> SudoListingReading {
 // THE EFFECTIVE AUTHENTICATION OF THE ONE SELECTED ENTRY, or why it is not established.
 fn sudo_listing_reading(query: SudoDecisionQuery, stdout: String) -> SudoListingReading {
   let lines = map(split(s: stdout, delimiter: "\n"), l => trim(s: l))
-  let entries = count_where(xs: lines, predicate: l => l == sudo_listing_entry_marker)
+  let entries = length(xs: sudo_listing_field_values(lines: lines, label: sudo_listing_entry_marker))
   if entries != 1 {
     sudo_listing_unparsed(why: concat("expected exactly one listed entry, found ", to_string(entries)))
   } else {
