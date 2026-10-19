@@ -1433,7 +1433,7 @@ type CompilerGateContractStampForgedForm
   | ForgedDuplicate           // the member declared twice with the same value
   // THE TWO SPELLINGS OF A SECOND MEMBER THAT A PREFIX-MATCHING RECOGNISER LET THROUGH, and which were
   // executed against the previous program to show it exited 0 as paired. They are the same kind of defect
-  // as the seven above, one level earlier: those proved the reader must not INVENT a value, these prove it
+  // as the six above, one level earlier: those proved the reader must not INVENT a value, these prove it
   // must not MISS a member. A duplicate check that only fires when the duplicate is spelled exactly as the
   // check expects is a check on nothing -- the well-spelled case is the one that would have been caught by
   // any counter at all.

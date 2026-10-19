@@ -213,7 +213,11 @@ forge_stamp() {
   case "$form" in
     wrapped)    val="XYZ${base}XYZ" ;;
     expression) val="\${{ '${base}' }}" ;;
-    quoted)     val="'${base}'" ;;
+    # NO `quoted` BRANCH, ON PURPOSE. A quoted scalar is not a forgery -- the ingest unquotes it, so it
+    # declares the same stamp (see quote_stamp and SubjectQuotedScalar) -- and it is run as a CONTROL on
+    # its own subject. The branch that forged one was deleted along with the model's ForgedQuoted variant
+    # rather than left here as a branch no model row can reach: a harness case list that can outlive the
+    # model's is a second authority over what gets tested, and the drift is silent.
     truncated)  val="${base%?}" ;;
     extended)   val="${base}0" ;;
     uppercased) val="$(printf '%s' "$base" | tr '0123456789abcdef' '0123456789ABCDEF')" ;;
@@ -228,7 +232,7 @@ forge_stamp() {
     duplicate)         val="$base"; extra="  $stamp_key: $base" ;;
     second-empty)      val="$base"; extra="  $stamp_key:" ;;
     second-quoted-key) val="$base"; extra="  \"$stamp_key\": deadbeefcafe0123" ;;
-    *) bail "unknown forged form '$form' (modelled: wrapped, expression, quoted, truncated, extended, uppercased, duplicate, second-empty, second-quoted-key)" ;;
+    *) bail "unknown forged form '$form' (modelled: wrapped, expression, truncated, extended, uppercased, duplicate, second-empty, second-quoted-key)" ;;
   esac
   case "$form" in
     # THE FORGERY MUST ACTUALLY BE A FORGERY. If the written value happened to be the one supported
