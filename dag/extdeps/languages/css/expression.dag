@@ -1,0 +1,129 @@
+module extdeps.languages.css.expression
+
+import std.types { String, Int, List, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.css.values {
+  CssDecimal, CssVarRef, CssHsl, css_decimal_wire, css_var_ref_wire, css_hsl_wire,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/css-values-4/"
+  }
+}
+
+// Cited upstream: W3C CSS Values and Units Level 4. The generic component-value grammar the stylesheet
+// right-hand sides are written in: a <dimension> (number + unit), a <number>, a keyword <ident>, a
+// var() reference (css-variables-1), a function call over component values, and the two list forms,
+// whitespace-separated and comma-separated. Shapes measured in the served gunb.ai sheet: var(),
+// lengths in px/rem/em/ch/vw/%, times in s, one angle in deg, clamp/min/calc/minmax/rotate/
+// cubic-bezier calls, and one empty <string>. No hex colours, !important or var() fallbacks occur, so
+// none are modeled (a value outside this grammar is unwritable here, not a raw string).
+
+type CssDimensionUnit
+  = DimPx
+  | DimRem
+  | DimEm
+  | DimCh
+  | DimVw
+  | DimPercent
+  | DimSeconds
+  | DimDegrees
+  | DimFr
+
+fn css_dimension_unit_token(u: CssDimensionUnit) -> String {
+  match u {
+    DimPx => "px"
+    DimRem => "rem"
+    DimEm => "em"
+    DimCh => "ch"
+    DimVw => "vw"
+    DimPercent => "%"
+    DimSeconds => "s"
+    DimDegrees => "deg"
+    DimFr => "fr"
+  }
+}
+
+type CssFunctionName
+  = FnClamp
+  | FnMin
+  | FnCalc
+  | FnMinmax
+  | FnRotate
+  | FnCubicBezier
+
+fn css_function_name_token(f: CssFunctionName) -> String {
+  match f {
+    FnClamp => "clamp"
+    FnMin => "min"
+    FnCalc => "calc"
+    FnMinmax => "minmax"
+    FnRotate => "rotate"
+    FnCubicBezier => "cubic-bezier"
+  }
+}
+
+type CssOperator
+  = OpSub
+  | OpAdd
+
+type CssValue
+  = ValIdent { ident: String }
+  | ValString { text: String }
+  | ValNumber { n: CssDecimal }
+  | ValDimension { magnitude: CssDecimal, unit: CssDimensionUnit }
+  | ValVar { reference: CssVarRef }
+  | ValHsl { color: CssHsl }
+  | ValCall { function: CssFunctionName, args: List<CssValue> }
+  | ValOperator { operator: CssOperator }
+  | ValSpaceList { items: List<CssValue> }
+  | ValCommaList { items: List<CssValue> }
+
+fn css_operator_token(o: CssOperator) -> String {
+  match o {
+    OpSub => "-"
+    OpAdd => "+"
+  }
+}
+
+// CSS Values 4 section 5.1: a zero <length> may drop its unit, and the served sheet writes bare 0 for
+// zero lengths. Percentage, time, angle and flex units keep theirs (0s, 0deg, 0%, 0fr are not lengths).
+fn css_dimension_unit_is_length(u: CssDimensionUnit) -> Bool {
+  match u {
+    DimPx => true
+    DimRem => true
+    DimEm => true
+    DimCh => true
+    DimVw => true
+    DimPercent => false
+    DimSeconds => false
+    DimDegrees => false
+    DimFr => false
+  }
+}
+
+fn css_dimension_wire(magnitude: CssDecimal, unit: CssDimensionUnit) -> String {
+  if magnitude.milli == 0 && css_dimension_unit_is_length(u: unit) {
+    "0"
+  } else {
+    join([css_decimal_wire(d: magnitude), css_dimension_unit_token(u: unit)], "")
+  }
+}
+
+fn css_value_wire(v: CssValue) -> String {
+  match v {
+    ValIdent { ident: i } => i
+    ValString { text: t } => join(["\"", t, "\""], "")
+    ValNumber { n: n } => css_decimal_wire(d: n)
+    ValDimension { magnitude: m, unit: u } => css_dimension_wire(magnitude: m, unit: u)
+    ValVar { reference: r } => css_var_ref_wire(v: r)
+    ValHsl { color: c } => css_hsl_wire(c: c)
+    ValCall { function: f, args: a } => join([css_function_name_token(f: f), "(", join(map(a, x => css_value_wire(v: x)), ", "), ")"], "")
+    ValOperator { operator: o } => css_operator_token(o: o)
+    ValSpaceList { items: xs } => join(map(xs, x => css_value_wire(v: x)), " ")
+    ValCommaList { items: xs } => join(map(xs, x => css_value_wire(v: x)), ", ")
+  }
+}
