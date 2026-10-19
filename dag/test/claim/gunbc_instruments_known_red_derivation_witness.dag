@@ -11,10 +11,11 @@ import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
 import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
 import gunbc.instruments.known_red_derivation {
-  ClaimRun, KnownRedChildRun, KnownRedSubject, KnownRedSubjectPopulation,
+  ClaimRun, KnownRedChildRun, KnownRedDerivationRow, KnownRedSubject, KnownRedSubjectPopulation,
   known_red_chunks, known_red_entries_owed, known_red_fold, known_red_int_text,
   known_red_roster_entry, KnownRedEntryPlacement, Placed, Underivable,
-  known_red_defect_of, known_red_dispatchable, KnownRedPlacedSubject,
+  known_red_defect_of, known_red_dispatchable, KnownRedPlacedSubject, known_red_refusal_detail,
+  known_red_ambiguous_verdict_names,
   known_red_placed_identity_claim, known_red_entry_print, known_red_missing_dispatch,
   known_red_subject_defect_text,
   known_red_is_green, known_red_held_rows, known_red_max_claims_per_child,
@@ -576,6 +577,187 @@ test fn the_undispatched_join_accuses_a_placed_subject_no_child_carried_and_not_
 // THE POPULATION EXERCISES BOTH BRANCHES, MEASURED RATHER THAN ASSERTED: the derived entries are printed by
 // the run, and here both prefixes must occur. If the authority ever collapsed every roster row into one
 // tree, the roster would silently stop pointing at 19 of its own 80 claims.
+// THE VERDICT JOIN, WHERE THE HARNESS PRINTES ONLY THE BARE FUNCTION NAME. `claim_batch` prints
+// `PASS <function>` with no module, so a function name is unique only WITHIN one child's run. Two subjects
+// whose names collide therefore had their verdicts merged whenever their lines were pooled. These arms pin
+// what the construction now guarantees, in both directions.
+//
+// RED: two claims with the SAME function name carried by ONE child are indistinguishable in that child's
+// pooled stdout -- there is no construction that can separate them -- so the run refuses by name rather than
+// crediting one verdict twice.
+test fn two_claims_sharing_a_verdict_name_inside_one_child_refuse() -> Bool {
+  let a = wet_subject(module_path: "test.claim.examples.known_red_alpha", function: "the_ambiguous_witness")
+  let b = wet_subject(module_path: "test.claim.examples.known_red_beta", function: "the_ambiguous_witness")
+  let merged = known_red_fold(
+    head: "0000000000000000000000000000000000000007",
+    subjects: [a, b],
+    children: [child(
+      claims: [claim_run(function: "the_ambiguous_witness"), claim_run(function: "the_ambiguous_witness")],
+      stdout: "PASS the_ambiguous_witness\n"
+    )]
+  )
+  let names = join(map(merged.refusals, r => known_red_refusal_name(r: r)), ",")
+  string_contains(s: names, pattern: "VerdictIdentityAmbiguous") && !known_red_is_green(d: merged)
+}
+
+// THE CONTROL, AND IT IS THE HALF THAT MAKES THE ARM ABOVE MEAN SOMETHING: the same two colliding names, in
+// DIFFERENT children, are attributed correctly and produce NO ambiguity refusal. Without this the arm above
+// would pass even if the guard fired on every run -- and this is not a hypothetical shape: two rows of the
+// live roster really do share `doc_graph_has_no_dangling_links` and `doc_graph_has_no_orphan_docs`.
+test fn a_shared_verdict_name_across_children_is_attributed_to_each_and_not_refused() -> Bool {
+  // DIFFERENT ENTRIES, as the live roster case really is: `doc_graph_has_no_dangling_links` is held by two
+  // distinct module paths, hence two distinct entry files. Two subjects sharing an entry AND a function name
+  // would be a duplicate identity, refused by `DuplicateIdentityVsEqualCounts` rather than attributed.
+  let hand = "dag/test/claim/examples/blackjack_hand_witness.dag"
+  let round = "dag/test/claim/examples/blackjack_round_witness.dag"
+  let a = subject_at(entry: hand, module_path: "test.claim.examples.blackjack_hand_witness", function: "the_shared_witness")
+  let b = subject_at(entry: round, module_path: "test.claim.examples.blackjack_round_witness", function: "the_shared_witness")
+  let split = known_red_fold(
+    head: "0000000000000000000000000000000000000007",
+    subjects: [a, b],
+    children: [
+      child(claims: [claim_at(entry: hand, function: "the_shared_witness")], stdout: "PASS the_shared_witness\n"),
+      child(claims: [claim_at(entry: round, function: "the_shared_witness")], stdout: "FAIL the_shared_witness (refused)\n")
+    ]
+  )
+  let names = join(map(split.refusals, r => known_red_refusal_name(r: r)), ",")
+  !string_contains(s: names, pattern: "VerdictIdentityAmbiguous")
+    && (split.rows |> length) == 2
+    && any(xs: split.rows, predicate: fn(r) { known_red_row_holds(r: r, holds: true) })
+    && any(xs: split.rows, predicate: fn(r) { known_red_row_holds(r: r, holds: false) })
+    // THE HALF THAT MAKES THIS A TEST OF ATTRIBUTION AND NOT OF LUCK: read as the OLD pooled way, one child
+    // said PASS and the other FAIL, so BOTH rows would have come back with no observation at all. A single
+    // subject looked up across the pooled lines finds nothing; only its own child's line can answer it.
+    && all(xs: split.rows, predicate: fn(r) { known_red_row_observed(r: r) })
+}
+
+// THE PACKER NEVER PUTS A CLASH INSIDE A CHILD. Two entries carrying the same function name must land in
+// different children, because inside one child they would hit the arm above. Measured over the same shape
+// the label runs, with real entry files so the gateway admits them.
+test fn the_packer_splits_clashing_names_into_separate_children() -> Bool {
+  // BOTH ENTRIES CARRY THE SAME FUNCTION NAME -- the clash the pooled-lines lookup could not resolve, and
+  // the shape two of the roster's own rows actually have. If the packer put them in one child, no
+  // construction could separate the two verdict lines afterwards.
+  let subjects = concat(
+    subjects_for_entry_named(
+      entry: "dag/test/claim/examples/blackjack_hand_witness.dag",
+      module_path: "test.claim.examples.blackjack_hand_witness",
+      function: "a_shared_name"
+    ),
+    subjects_for_entry_named(
+      entry: "dag/test/claim/examples/blackjack_round_witness.dag",
+      module_path: "test.claim.examples.blackjack_round_witness",
+      function: "a_shared_name"
+    )
+  )
+  let chunks = known_red_chunks(placed: known_red_dispatchable(subjects: subjects))
+  // Two children (the split happened) AND no child carries the name twice (the split was the right one).
+  (chunks |> length) == 2
+    && all(xs: chunks, predicate: fn(c) { !known_red_chunk_has_duplicate_name(chunk: c) })
+}
+
+// THE LIVE POPULATION, MEASURED. Two of the roster's own rows share function names, so this is the shape the
+// label actually meets. The instrument must neither refuse on it nor merge it: no child it builds may carry
+// one function name twice, AND the shared names must really be present (otherwise the arm proves nothing --
+// it would pass on a population that had no clash to handle).
+test fn the_live_population_shares_names_yet_no_child_is_asked_to_carry_one_twice() -> Bool {
+  let subjects = known_red_subjects()
+  let chunks = known_red_chunks(placed: known_red_dispatchable(subjects: subjects))
+  (subjects |> length) > 0
+    && all(xs: chunks, predicate: fn(c) { !known_red_chunk_has_duplicate_name(chunk: c) })
+    && known_red_population_has_a_shared_name(subjects: subjects)
+}
+
+// THE POPULATION REALLY DOES SHARE A NAME -- asserted, so the arm above cannot be satisfied by a population
+// that happens to have none. Measured against the roster: `doc_graph_has_no_dangling_links` and
+// `doc_graph_has_no_orphan_docs` are each held by two distinct identities.
+fn known_red_population_has_a_shared_name(subjects: List<KnownRedSubject>) -> Bool {
+  any(
+    xs: subjects,
+    predicate: fn(s) {
+      length(xs: filter(xs: subjects, predicate: fn(o) {
+        o.function == s.function && o.identity.module_path != s.identity.module_path
+      })) > 0
+    }
+  )
+}
+
+fn known_red_chunk_has_duplicate_name(chunk: List<ClaimRun>) -> Bool {
+  any(
+    xs: chunk,
+    predicate: fn(c) {
+      length(xs: filter(xs: chunk, predicate: fn(o) { o.function == c.function })) > 1
+    }
+  )
+}
+
+// A SUBJECT WITH AN EXPLICIT FUNCTION NAME, for the packing arms: `subjects_for_entry` numbers its functions,
+// which is what makes entries distinct; these arms need two entries to share one.
+fn subjects_for_entry_named(entry: String, module_path: String, function: String) -> List<KnownRedSubject> {
+  [subject_at(entry: entry, module_path: module_path, function: function)]
+}
+
+// A SUBJECT AT AN EXPLICIT ENTRY, so an arm can place two subjects in two DIFFERENT files with the same
+// function name -- the live shared-name shape. The module path is given, not guessed from the path, because
+// these arms are asserting facts about specific identities.
+fn subject_at(entry: String, module_path: String, function: String) -> KnownRedSubject {
+  KnownRedSubject {
+    identity: WitnessIdentity { module_path: module_path, function: function },
+    entry: Placed { path: entry },
+    function: function,
+    origin: WetLane
+  }
+}
+
+fn claim_at(entry: String, function: String) -> ClaimRun {
+  ClaimRun { entry: entry, function: function }
+}
+
+fn known_red_first_row(rows: List<KnownRedDerivationRow>) -> KnownRedDerivationRow {
+  match rows {
+    Cons { head: h, tail: _ } => h
+    Empty => known_red_no_row()
+  }
+}
+
+fn known_red_no_row() -> KnownRedDerivationRow {
+  KnownRedDerivationRow {
+    identity: WitnessIdentity { module_path: "no.row", function: "no_row" },
+    head: "0000000000000000000000000000000000000000",
+    entry: Underivable { name: "no.row", cause: "no row was produced" },
+    origin: WetLane,
+    expectation: ExpectedToHold {},
+    observation: Absent,
+    disposition: claim_disposition(
+      row: ClaimTerminalRow {
+        identity: WitnessIdentity { module_path: "no.row", function: "no_row" },
+        expectation: ExpectedToHold {},
+        terminal: NotAttempted { halted_by: "no row" }
+      }
+    )
+  }
+}
+
+// A ROW WAS OBSERVED: its observation is a Present verdict of some kind, not an absent one. Written as a
+// match so an arm cannot be satisfied by a row that merely exists in the list.
+fn known_red_row_observed(r: KnownRedDerivationRow) -> Bool {
+  match r.observation {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn known_red_row_holds(r: KnownRedDerivationRow, holds: Bool) -> Bool {
+  match r.observation {
+    // The unrepresentable arm is NOT collapsed into `false` alongside Absent: an observation that exists but
+    // cannot be read is a different fact from no observation at all, and folding them would make the arm
+    // above unable to tell its own rows apart.
+    Present { value: ObservedVerdict { holds: h } } => h == holds
+    Present { value: ObservationUnrepresentable { reason: _ } } => false
+    Absent => false
+  }
+}
+
 test fn the_roster_population_derives_under_both_roots_rather_than_collapsing_into_one() -> Bool {
   let floor = filter(xs: known_red_subjects(), predicate: fn(s) { s.origin == RequiredFloor })
   any(xs: known_red_dispatchable(subjects: floor), predicate: fn(x) { known_red_under_src_v2(entry: x.path) })
