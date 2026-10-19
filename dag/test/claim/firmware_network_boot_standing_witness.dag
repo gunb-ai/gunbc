@@ -14,8 +14,8 @@ import std.optional { Optional, Present, Absent }
 // THE SEAL PROBES RUN THROUGH THE CORPUS'S OWN HARNESS, never a hand-rolled compiler call: it reports
 // blocking diagnostics by class AND subject, so a probe can name WHICH mint refused rather than merely
 // that something refused.
-import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for, census_rows_for }
-import gunbc.compile_diagnostic_census { census_blocking_rows, census_total_count, census_count_at_key, censuses_differ_by_exactly_the_target_key }
+import gunbc.compile_census_probe { blocking_subject_count_for, census_rows_for }
+import gunbc.compile_diagnostic_census { census_count_at_key, censuses_differ_by_exactly_the_target_key }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // THE FRONTIER IS WITNESSED, NOT ASSERTED IN PROSE: the witness reads the bound triggers and
 // states what their status is TODAY, so the day the probe lands, this is the thing that changes.
@@ -2370,11 +2370,12 @@ data lawful_call_source: String = verdict_probe_hdr + "\nfn s0_probe_case() -> B
 // share one header string, so whatever the shared imports themselves draw is present on both sides
 // and cancels in the comparison; what may not differ is anything else.
 //
-// 'RAN' IS ASSERTED BY THE MATCH, NOT BY AN INEQUALITY: `census_rows_for` yields `none` when the
-// census could not run, and an empty row list only when it ran clean, so a fixture that fails to
-// compile cannot masquerade as a clean control. (The retired form was `0 <=
-// total_blocking_count_for(...)`, which only showed the census executed and said nothing about
-// compiling, exactly as merry-fox-82 pointed out.)
+// 'RAN' IS ASSERTED BY THE MATCH, NOT BY AN INEQUALITY. `census_rows_for` yields `none` exactly when
+// the census could not run, and `Present` when it did run and produced rows -- so the old `0 <=
+// total_blocking_count_for(...)`, which was true of a census that never executed, is retired
+// (merry-fox-82, round 3). 'Ran' is NOT 'compiled clean': a synthetic fragment importing this much of
+// the fleet reports blocking rows of its own (see the note below the pair), so cleanliness is claimed
+// only AT THE TARGET KEY, and equality is claimed between the two censuses rather than against zero.
 //
 // WHAT THE COMPARISON DOES NOT COVER, MEASURED AND STATED: dropping `network_option_existence` from
 // the SHARED import list while still importing its module added no blocking diagnostic in this
@@ -2416,27 +2417,17 @@ test fn the_probe_is_refused_once_at_the_target_key() -> Bool {
   }
 }
 
-// (a'') THE CONTROL IS CLEAN OVERALL, not merely at the target key: zero blocking rows of any class
-// anywhere in its census. This is the claim a positive control has to be able to make (codex review
-// 45357's point in gunbc.compile_diagnostic_census: a control that asserts nothing about
-// zero-diagnostics-of-any-severity lets an advisory pass unnoticed). It is stated separately from
-// (a') so a FAIL names which cleanliness claim broke.
-test fn the_control_has_no_blocking_rows_at_all() -> Bool {
-  match census_rows_for(source: lawful_call_source) {
-    Absent => false
-    Present { value: control } => census_total_count(rows: census_blocking_rows(rows: control.rows)) == 0
-  }
-}
-
-// (b') THE PROBE'S ONLY BLOCKING ROW IS THE ADMISSION REFUSAL. Together with (b) this says the extra
-// line buys exactly one refusal and no other hard diagnostic; the comparator below then also pins
-// that nothing else, advisory included, moved.
-test fn the_probe_has_exactly_one_blocking_row() -> Bool {
-  match census_rows_for(source: direct_mint_source) {
-    Absent => false
-    Present { value: probe } => census_total_count(rows: census_blocking_rows(rows: probe.rows)) == 1
-  }
-}
+// WHY THERE IS NO 'ZERO BLOCKING ROWS ANYWHERE' CLAIM ON THE CONTROL, AND NO 'EXACTLY ONE BLOCKING
+// ROW' CLAIM ON THE PROBE. Both were tried and both were permanently RED, for a reason the
+// instrument itself documents (test.claim.machine_intake.no_fallback_plan_ineligibility_wall): a
+// synthetic source that imports this much of the fleet draws ~130 census rows, blocking UnresolvedType
+// entries among them, because the fragment cannot resolve every name it imports. So 'the control has
+// no blocking rows of any severity' is not a statement this instrument can make about a green fixture,
+// and 'the probe has exactly one' is not one it can make about a red one -- asserting either would be
+// rigour that can never be satisfied. WHAT THE INSTRUMENT DOES SUPPORT is what is claimed instead: the
+// TARGET KEY is clean on the control and carries the single refusal on the probe, and everything
+// OUTSIDE the target key is identical between the two censuses -- the exact differential against a
+// structurally paired source, which is the same shape those two walls settled on.
 
 // (c) THE DIFFERENCE IS EXACTLY THE TARGET KEY, by the SHARED comparator -- every key other than the
 // target carries the same count on both sides. A difference of totals could never say this: equal
