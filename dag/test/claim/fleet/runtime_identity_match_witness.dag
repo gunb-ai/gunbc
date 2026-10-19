@@ -1733,7 +1733,7 @@ test fn test_silence_and_refusal_gaps_offer_no_remedy() -> Bool {
   }
   let refused_pre = PreBootIdentityStanding {
     unit: fixture_unit,
-    board_serial: AxisWasRefused { refusal: BmcCredentialsRejected { detail: "the BMC rejected the credentials" } },
+    board_serial: AxisWasRefused { refusal: AuthenticationFailed { detail: "the BMC rejected the credentials" } },
     bios_version: AxisWasRead { value: fixture_bios },
     model: AxisWasRead { value: fixture_model },
     nics: AxisWasRead { value: [permanent_report(addr: fixture_mac_b())] },
