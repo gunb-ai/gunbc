@@ -22,7 +22,10 @@ import v2.std.compilers.target_model { TargetRealizationCatalog, PrimitiveRealiz
   target_value_expression_to_concrete_tokens
 }
 import v2.std.diagnostic { Accepted, Rejected, None, Outcome, bind_outcome }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, Edge, Authored, Positional, StructuralLabel }
+import v2.std.node_query { child_lookup_step, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
+import std.algebra { list_append }
+import std.types { List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -191,4 +194,43 @@ fn rust_primitive_bare_text() -> String {
     Accepted { value: s, diagnostics: _ } => s
     Rejected { diagnostics: _ } => "REFUSED"
   }
+}
+
+fn rust_primitive_marker_edges(wire: Node) -> List<Edge> {
+  match fold(wire.children, init: NamedChildMissing, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      StructuralLabel { label: _ } => acc
+      Authored { name: n } => child_lookup_step(acc: acc, hit: n == ^target_value_expr_field_resolved_primitive, target: e.target)
+    }
+  }) {
+    NamedChildFound { target: t } => [Edge { label: Authored { name: ^target_value_expr_field_resolved_primitive }, target: t }]
+    NamedChildMissing => []
+    NamedChildAmbiguous => []
+  }
+}
+
+// A duplicated resolved-primitive marker edge is ambiguous, not "still primitive" (review 82774).
+fn rust_primitive_duplicated_marker_call() -> TargetValueExpression {
+  let one = rust_primitive_string_length_call()
+  TargetValueExpression {
+    kind: one.kind,
+    node: Node {
+      kind: one.node.kind,
+      children: list_append(left: one.node.children, right: rust_primitive_marker_edges(wire: one.node)),
+      occurrence_id: one.node.occurrence_id
+    }
+  }
+}
+
+// RED: the duplicated marker refuses typed as ambiguous.
+test fn rust_primitive_duplicated_marker_edge_refuses_as_ambiguous() -> Bool {
+  rust_primitive_refusal_names(
+    outcome: rust_primitive_emit(
+      expr: rust_primitive_duplicated_marker_call(),
+      catalog: rust_operator_realizations_catalog_node(),
+      primitives: rust_primitive_rows_wired()
+    ),
+    reason: ^target_value_expr_resolved_primitive_marker_ambiguous
+  )
 }

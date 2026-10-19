@@ -18,7 +18,7 @@ import v2.std.type_binder { cast_target_optional, type_annotation_optional, type
 import v2.std.node { positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, Occupancy, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node }
 import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import v2.std.node_query { declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
+import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional }
 import v2.std.host_transport { EmitHostRuntimeRow, TargetEmitHostRuntimeRow, configured_emit_host_runtime_row_from_target_row }
 import v2.std.integer { integer_decimal_magnitude_node_to_int }
@@ -6009,18 +6009,24 @@ fn target_value_expression_resolved_primitive_call(
   }
 }
 
-fn target_value_expr_callable_apply_is_resolved_primitive(wire: Node) -> Bool {
-  fold(
-    wire.children,
-    init: false,
-    f: fn(acc, edge) {
-      acc || match edge.label {
-        Authored { name: n } => n == ^target_value_expr_field_resolved_primitive
-        StructuralLabel { label: _ } => false
-        Positional => false
-      }
+// WHETHER THE CALLABLE-APPLY WIRE CARRIES THE RESOLVED-PRIMITIVE MARKER: one found / missing / ambiguous decision from
+// v2.std.node_query child_lookup_step (named_child_lookup itself reads only Conj/Computation roots; this wire is an Atom). A duplicated marker edge is ambiguous and refuses typed (review 82774).
+fn target_value_expr_callable_apply_is_resolved_primitive(wire: Node) -> Outcome<Bool> {
+  match fold(wire.children, init: NamedChildMissing, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      StructuralLabel { label: _ } => acc
+      Authored { name: edge_name } => child_lookup_step(acc: acc, hit: edge_name == ^target_value_expr_field_resolved_primitive, target: e.target)
     }
-  )
+  }) {
+    NamedChildFound { target: _ } => outcome_accepted(value: true)
+    NamedChildMissing => outcome_accepted(value: false)
+    NamedChildAmbiguous => outcome_rejected(Diagnostic {
+      reason: ^target_value_expr_resolved_primitive_marker_ambiguous,
+      at: node_locus(node: wire),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    })
+  }
 }
 
 // WHETHER A RESOLVED CALLEE NODE IS THE std.primitives CONTRACT DECLARATION OF ITS OWN LEAF: its resolved qualified path
@@ -9048,7 +9054,10 @@ fn target_value_expression_callable_apply_to_concrete_tokens(
       bind_outcome(
         o: target_value_expr_callable_apply_args_from_wire(wire: expr.node),
         f: fn(args) {
-          if target_value_expr_callable_apply_is_resolved_primitive(wire: expr.node) {
+          bind_outcome(
+            o: target_value_expr_callable_apply_is_resolved_primitive(wire: expr.node),
+            f: fn(is_primitive) {
+          if is_primitive {
             target_value_expression_primitive_row_call_to_concrete_tokens(
               callee: callee, args: args, projection: projection, catalog: catalog, at: expr.node
             )
@@ -9089,6 +9098,8 @@ fn target_value_expression_callable_apply_to_concrete_tokens(
             }
           )
           }
+            }
+          )
         }
       )
     }
