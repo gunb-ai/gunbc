@@ -168,6 +168,21 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
     },
     DeclarationRef {
       module_path: "v1_compiler.target_invocation_host",
+      decl_name: "registry_rows_identity_tests",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "registry_matches_rows",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "a_mutated_registry_entry_fails_by_name",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
       decl_name: "InvocationRefusal",
       field: WholeDeclaration
     },
