@@ -107,7 +107,7 @@ fn at_nonempty(section: String, message: String) -> SwiftStmt {
 fn at_load_fn() -> SwiftDecl {
   sw_doc(c: ["Absence is a failure, never a skip: a green run with no vectors would establish nothing."], d: sw_func(m: [SwiftPrivateModifier], n: "load", p: [], th: true, r: Present { value: sw_t(n: "Vectors") }, b: [
     sw_let(n: "url", e: sw_try(e: sw_calln(f: "XCTUnwrap", a: [
-      sw_pos(v: sw_call(f: sw_mem(b: sw_calln(f: "Bundle", a: [sw_arg(l: "for", v: sw_path(b: "Self", m: "self"))]), m: "url"), a: [sw_arg(l: "forResource", v: sw_str(s: "vectors")), sw_arg(l: "withExtension", v: sw_str(s: "json"))])),
+      sw_pos(v: sw_call(f: sw_mem(b: sw_calln(f: "Bundle", a: [sw_arg(l: "for", v: sw_path(b: "Self", m: "self"))]), m: "url"), a: [sw_arg(l: "forResource", v: sw_str(s: approve_ios_vectors_resource_stem())), sw_arg(l: "withExtension", v: sw_str(s: approve_ios_vectors_resource_extension()))])),
       sw_pos(v: sw_str(s: "vectors.json missing from the test bundle — the .dag witness has not emitted it")),
     ]))),
     sw_let(n: "v", e: sw_try(e: sw_call(f: sw_mem(b: sw_calln(f: "JSONDecoder", a: []), m: "decode"), a: [sw_pos(v: sw_path(b: "Vectors", m: "self")), sw_arg(l: "from", v: sw_calln(f: "Data", a: [sw_arg(l: "contentsOf", v: sw_id(n: "url"))]))]))),
@@ -453,6 +453,57 @@ data approve_ios_tests_header: List<String> = [
   "GENERATED from gunbc.approve_ios_swift_protocol_vector_tests from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.",
 ]
 
+// The test bundle's resource name is DERIVED, never re-spelled (DESIGN §5: the fact lives in exactly
+// one .dag declaration). Bundle(for:).url(forResource:withExtension:) takes the stem and extension
+// apart, and the only authority for the file's name is gunbc.generated_artifact's location row for
+// ApprovalDeviceVectorsArtifact (generated_artifact.dag:161, name: "vectors.json") — so the stem and
+// extension below are that row's `name` split on its dot. A hand-typed "vectors"/"json" was a second
+// authority: renaming the emitted fixture left load() looking for a file that no longer existed, and
+// nothing but the MacBook-only XCTest noticed.
+fn approve_ios_vectors_artifact_name() -> String {
+  artifact_location(a: ApprovalDeviceVectorsArtifact).name
+}
+
+fn approve_ios_vectors_resource_stem() -> String {
+  let parts = split(s: approve_ios_vectors_artifact_name(), delimiter: ".")
+  match parts.first() {
+    Present { value: stem } => stem
+    Absent => ""
+  }
+}
+
+fn approve_ios_vectors_resource_extension() -> String {
+  let parts = split(s: approve_ios_vectors_artifact_name(), delimiter: ".")
+  match parts.last() {
+    Present { value: ext } => ext
+    Absent => ""
+  }
+}
+
+// A resource name is admissible only as <stem>.<extension>: exactly one dot, neither side empty.
+// Parameterised over the name so the witness can drive BOTH directions through the one predicate —
+// the positive at the row's real name, the RED at names that must not load. `approve_ios_vectors_resource_join_ok`
+// is this on the artifact row's own name, so guard and witness cannot drift apart.
+fn approve_ios_vectors_resource_name_ok(name: String) -> Bool {
+  let parts = split(s: name, delimiter: ".")
+  if count(parts) != 2 {
+    false
+  } else {
+    match parts.first() {
+      Present { value: stem } =>
+        match parts.last() {
+          Present { value: ext } => stem != "" && ext != ""
+          Absent => false
+        }
+      Absent => false
+    }
+  }
+}
+
+fn approve_ios_vectors_resource_join_ok() -> Bool {
+  approve_ios_vectors_resource_name_ok(name: approve_ios_vectors_artifact_name())
+}
+
 fn approve_ios_protocol_vector_tests_swift_file() -> SwiftSourceFile {
   SwiftSourceFile {
     declarations: [
@@ -464,6 +515,14 @@ fn approve_ios_protocol_vector_tests_swift_file() -> SwiftSourceFile {
   }
 }
 
+// One name shared by the refusal and the positive witness, so the two cannot disagree about what was
+// refused. Carried as a value, not baked into the emitted bytes: no Swift text is produced on this arm.
+data approve_ios_vectors_resource_refusal_reason: Symbol = "approve-ios-vectors-resource-name-not-a-stem-and-extension"
+
 fn expected_approve_ios_protocol_vector_tests_swift() -> SwiftRowEmission {
-  swift_rows_emit_source_file(f: approve_ios_protocol_vector_tests_swift_file())
+  if approve_ios_vectors_resource_join_ok() {
+    swift_rows_emit_source_file(f: approve_ios_protocol_vector_tests_swift_file())
+  } else {
+    SwiftRowEmissionRefused { reason: approve_ios_vectors_resource_refusal_reason }
+  }
 }
