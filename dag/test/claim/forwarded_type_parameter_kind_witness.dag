@@ -130,9 +130,12 @@ test fn a_parameter_forwarded_into_an_unkinded_slot_is_not_repudiated() -> Bool 
 // Review 81998 asked for the Arrow branch's witness (a function's OWN kinded type parameter forwarded
 // into a kinded slot). It is not authorable today: `fn width_of<b: Resolution>(s: Slot<b>) -> Nat { 0 }`
 // assembles -- no parse, unbound-symbol, arity or arrow-stage reason fires -- and the refusal is this
-// judgment's own resolve_reason_forwarded_parameter_kind_unresolved, because symbol_index_fill_declaration
-// records a type-parameter conjunct only through type_decl_view, under which an `fn` item is NotATypeDecl
-// and answers binders: optional_absent. Measured against the control that the same index reading SUCCEEDS
+// judgment's own resolve_reason_forwarded_parameter_kind_unresolved, because the symbol index records no type-parameter
+// conjunct for an fn header: symbol_index_fill_declared_child takes it from symbol_index_declared,
+// which reads it through type_decl_view, under which an `fn` item is NotATypeDecl and answers
+// binders: optional_absent, so symbol_index_mark_declared_binders never inserts into the
+// declared_type_params map that symbol_index_declared_binders_at reads. What an fn does get is
+// symbol_index_fill_kinded_type_params, a value reading at <fn>.<name> in a different map. Measured against the control that the same index reading SUCCEEDS
 // at a type declaration's path, so the empty record is specific to fn headers.
 // gunbc.recurring_failure_mode fn_type_parameter_header_is_never_indexed carries the specimen, the
 // per-stage measurements and the trigger: when the fill records an fn header's binders, the two rows
