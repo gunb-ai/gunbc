@@ -2304,11 +2304,15 @@ test fn the_shared_scan_refuses_reserved_characters_wherever_they_sit() -> Bool 
 // nowhere in this file, because a candidate cannot carry either and stay a single-line setting; had I spliced an
 // escape for them, the escape itself is what the parser would have complained about, not the rule.
 //
-// THE DENOMINATOR IS PINNED BECAUSE A SWEEP OVER AN EMPTY LIST SCORES PERFECTLY. list_length must equal the
-// refused tally, and a zero-length shelf is reported as a failure outright; without that, emptying the list —
-// deleting the entire alphabet rule from the shelf — would leave every fold at 0 == 0 and the suite green while
-// the module began accepting settings the board's crypt(3) refuses. That is the exact catastrophe this shelf
-// exists to prevent, so a vacuous pass here is the worst possible outcome of a test written to prevent it.
+// THE DENOMINATOR IS DERIVED FROM THE SAME STORED LIST THE SWEEP ITERATES, AND AN EMPTY LIST IS A FAILURE.
+// `testable` counts the shelf's own members (minus the delimiter case explained above) and both splice tallies
+// must equal it, so the denominator is not a number someone typed: widen the stored list and the expectation
+// widens with it, and empty the list and `testable > 0` fails the row outright. That guard is load-bearing in a
+// way the tallies are not -- a fold over an empty list reports 0 == 0 == 0 and every comparison above passes, so
+// deleting the entire alphabet rule from the shelf would keep this row green while the module began accepting
+// settings the board's crypt(3) refuses. That is the exact catastrophe this shelf exists to prevent, which is why
+// a vacuous sweep is reported as a failure rather than a pass. Mutation M46 is this row's only test, and only the
+// `testable > 0` guard catches it.
 test fn every_reserved_character_the_shelf_claims_is_actually_refused_in_both_positions() -> Bool {
   let reserved = crypt_reserved_characters()
   let digest = "8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj."
