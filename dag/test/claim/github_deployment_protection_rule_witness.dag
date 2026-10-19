@@ -388,7 +388,7 @@ test fn the_wait_names_its_environment_through_the_object() -> Bool {
 // WHAT UPSTREAM OWNS ABOUT THE READBACK: the SHAPE of a row. The pin's deployment-protection-rule is
 // four REQUIRED fields (id, node_id, enabled, app), and app is custom-deployment-rule-app with id and
 // slug. So a row can state "enabled: false" and cannot state an installation id -- the two facts the
-// ownership verdict in gunbc.auth.deployment_gate_authorization::ownership_from_readback depends on.
+// ownership verdict in gunbc.auth.deployment_gate_authorization::observe_rule_ownership depends on.
 // WHAT COUNTS AS OURS is not witnessed here, because it is not GitHub's claim: that test moved to
 // test.claim.deployment_gate_authorization_witness with the verdict it checks (§3b).
 test fn the_enabled_rule_row_carries_exactly_the_four_fields_the_pin_requires() -> Bool {
@@ -410,9 +410,13 @@ test fn the_enabled_rule_row_carries_exactly_the_four_fields_the_pin_requires() 
            enabled: false,
            app: RuleOwningApp { id: 1900000001, slug: "gunbc-deployment-gate" },
          }).enabled
-    // The App row has no installation field to read, which is why the installation the token is minted
-    // for is operator-recorded configuration rather than a readback observation.
-    && !(row.app.slug as String).contains("installation")
+  // THE OTHER HALF OF THE CLAIM — that the App row has no installation field — is NOT tested here, and
+  // cannot be: the field list is what the compiler enforces from the pinned schema, and an expression
+  // like `!slug.contains("installation")` would only ever measure the fixture's own prose. The
+  // consequence lives where it is a fact: gunbc.auth makes the installation identity a READ
+  // (observe_gate_installation) rather than a field of this row, and
+  // test.claim.deployment_gate_authorization_witness's
+  // the_identity_readback_refuses_by_name_and_by_status is the red on that read.
 }
 
 test fn the_enabled_rules_endpoint_is_the_one_cited_not_the_catalogue() -> Bool {
