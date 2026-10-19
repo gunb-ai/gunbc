@@ -83,8 +83,8 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_finalize_source_outcomes, floor_discovery_walk_state_zero
 }
 import gunbc.claim_coverage_census_s1 {
-  ClaimRow, S1Census, S1Composition, S1Composed, S1InputsUnread,
-  classify_rows, derive_executed, s1_census_lines, s1_block, s1_stale_rows, s1_ungrounded_rows, s1_uncovered
+  ClaimRow, S1Census, S1Block, S1Composition, S1Composed, S1InputsUnread,
+  classify_rows, derive_executed, s1_block, s1_stale_rows, s1_ungrounded_rows, s1_uncovered
 }
 import gunbc.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
 
@@ -462,8 +462,10 @@ fn census_head_reading() -> String {
   return "UNREADABLE (git rev-parse --short HEAD refused and GITHUB_SHA unset)"
 }
 
-// The receipt lines of a composed census, at the head the facts were read at, with the notes beside them
-// -- an unattributable required-job label changes what `executed` can mean, so it prints.
-fn s1_receipt_lines(census: S1Census, notes: List<String>, head: String) -> List<String> {
-  concat(notes, s1_census_lines(census: census, head: head))
+// THE LIVE ENTRY'S BLOCK: the one pure exit policy (`gunbc.claim_coverage_census_s1 s1_block`) applied to
+// what this checkout actually says, at the head it was read at. Composed here so the fold's unread channel,
+// the standings and the head all pass through the single policy function -- the live entry never decides an
+// exit itself, and a witness never has to read this module to assert one.
+fn s1_live_block() -> S1Block {
+  s1_block(s1: s1_compose(), head: census_head_reading())
 }

@@ -51,17 +51,18 @@ fn cover_identity(carrier: String, member: String) -> ClassifierRow {
   ClassifierRow {
     carrier: carrier,
     member: IdentityMember { identity: member },
-    cover: true
+    role: CoverRole
   }
 }
 
-// An ENROLLMENT row (floor_expected_red's shape): same arm, cover false, because an expectation excuses
-// nothing.
+// An ENROLLMENT row (floor_expected_red's shape): same member arm, the EnrollmentRole, because an
+// expectation excuses nothing. Review 82845: the role is a coproduct fixed by this constructor, not a Bool
+// a caller passes -- a wrong `true` used to be writable and silent.
 fn expectation_identity(member: String) -> ClassifierRow {
   ClassifierRow {
     carrier: "v2.workflow.floor_route_authority.floor_expected_red",
     member: IdentityMember { identity: member },
-    cover: false
+    role: EnrollmentRole
   }
 }
 
@@ -71,7 +72,7 @@ fn cover_file(carrier: String, member: String) -> ClassifierRow {
   ClassifierRow {
     carrier: carrier,
     member: FileMember { path: member, match_: ExactMemberMatch, function: Absent },
-    cover: true
+    role: CoverRole
   }
 }
 
@@ -81,7 +82,7 @@ fn cover_file_fn(carrier: String, member: String, function: String) -> Classifie
   ClassifierRow {
     carrier: carrier,
     member: FileMember { path: member, match_: ExactMemberMatch, function: Present { value: function } },
-    cover: true
+    role: CoverRole
   }
 }
 
@@ -91,7 +92,7 @@ fn frontier_pattern(pattern: String) -> ClassifierRow {
   ClassifierRow {
     carrier: "gunbc.ci.ci_layer_roots.witness_exclusion_frontier",
     member: FileMember { path: pattern, match_: SubstringMemberMatch, function: Absent },
-    cover: true
+    role: CoverRole
   }
 }
 
@@ -102,7 +103,7 @@ fn declared_member(carrier: String, text: String) -> ClassifierRow {
   ClassifierRow {
     carrier: carrier,
     member: DeclaredMember { text: text },
-    cover: true
+    role: CoverRole
   }
 }
 
@@ -225,7 +226,7 @@ test fn removing_a_covered_claim_from_its_drop_makes_the_census_name_it() -> Boo
     && string_contains(s: block.reason, pattern: "did not hold")
 }
 
-// AN EXPECTATION EXCUSES NOTHING. floor_expected_red is carried with cover:false, so naming an uncovered
+// AN EXPECTATION EXCUSES NOTHING. floor_expected_red rows carry EnrollmentRole, so naming an uncovered
 // claim in it cannot green the census: the claim stays uncovered and the census exits 1. The other arm of
 // the same fixture is a cover row holding the census (above), so this is about cover vs expectation and not
 // about the fixture.

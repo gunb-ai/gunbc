@@ -40,40 +40,66 @@ import gunbc.rung_drop { RungDropDeclaration, TypedDeclaration, AuthoredProse }
 // path plus the relation that selects files, plus the function the carrier itself named beside it. A row
 // that could once be written as `IdentityGrain` + `SubstringMemberMatch` -- a demand no identity grain can
 // answer -- is now unwriteable, which is the point.
-fn identity_row(carrier: String, identity: String, cover: Bool) -> ClassifierRow {
+// THE ROLE IS FIXED BY WHICH CONSTRUCTOR A CARRIER CALLS (review 82845: a role is a closed coproduct, set
+// once per carrier, never threaded through call sites). A carrier that credits coverage calls a `cover_*`
+// constructor; a carrier that only enrolls an expectation calls `enroll_*`. There is no `cover: Bool`
+// argument left to get wrong, so the silent failure the review named -- a wrong `true` crediting claims
+// with coverage and firing no refusal -- has no spelling.
+fn cover_identity_row(carrier: String, identity: String) -> ClassifierRow {
   ClassifierRow {
     carrier: carrier,
     member: IdentityMember { identity: identity },
-    cover: cover
+    role: CoverRole
+  }
+}
+
+// An ENROLLMENT row: the same arm, a different role. It grounds exactly as cover does -- and goes stale
+// exactly as cover does -- but contributes nothing to the covered population, which is what makes an
+// expectation excusable and a false cover not.
+fn enroll_identity_row(carrier: String, identity: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: carrier,
+    member: IdentityMember { identity: identity },
+    role: EnrollmentRole
   }
 }
 
 // A file cover over the whole file: the carrier's authority stopped at the path it declared.
-fn file_row(carrier: String, path: String, cover: Bool) -> ClassifierRow {
+fn cover_file_row(carrier: String, path: String) -> ClassifierRow {
   ClassifierRow {
     carrier: carrier,
     member: FileMember { path: path, match_: ExactMemberMatch, function: Absent },
-    cover: cover
+    role: CoverRole
   }
 }
 
 // A file cover the carrier narrowed to one function it named beside the path. The narrowing is the
 // carrier's own declaration; a census that dropped it would credit the lane with claims it never scheduled.
-fn file_fn_row(carrier: String, path: String, function: String, cover: Bool) -> ClassifierRow {
+fn cover_file_fn_row(carrier: String, path: String, function: String) -> ClassifierRow {
   ClassifierRow {
     carrier: carrier,
     member: FileMember { path: path, match_: ExactMemberMatch, function: Present { value: function } },
-    cover: cover
+    role: CoverRole
   }
 }
 
 // The frontier's own form: a pattern selected by CONTAINMENT, the only carrier permitted that relation
 // because the frontier is what declares patterns.
-fn frontier_row(carrier: String, pattern: String, cover: Bool) -> ClassifierRow {
+fn cover_frontier_row(carrier: String, pattern: String) -> ClassifierRow {
   ClassifierRow {
     carrier: carrier,
     member: FileMember { path: pattern, match_: SubstringMemberMatch, function: Absent },
-    cover: cover
+    role: CoverRole
+  }
+}
+
+// A drop population member, whose arm declares no grain, so the fold joins it against both discovered
+// populations and refuses it only when neither bears it.
+fn cover_declared_row(carrier: String, text: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: carrier,
+    member: DeclaredMember { text: text },
+    role: CoverRole
   }
 }
 
@@ -83,29 +109,27 @@ fn frontier_row(carrier: String, pattern: String, cover: Bool) -> ClassifierRow 
 fn fill_debt_classifier_rows() -> List<ClassifierRow> {
   map(
     floor_single_claim_fill_debt_active_claims(),
-    claim => identity_row(
+    claim => cover_identity_row(
       carrier: "v2.workflow.floor_pure_producer_share.floor_single_claim_fill_debt",
-      identity: claim,
-      cover: true
-    )
+      identity: claim
+      )
   )
 }
 
 // floor_expected_red: an EXPECTATION carrier, not a lane — it predicts which claims are red, and
 // silent-bee-194's known-red instrument now consumes it. Classified here so a red prediction naming
 // a claim discovery does not find is StaleEnrolled at no extra cost, as ruled. The carrier stores
-// each row as a `module + "." + function` string already; `cover: false` because a red prediction
+// each row as a `module + "." + function` string already; the `enroll_*` constructor because a red prediction
 // excuses nothing — it enrolls an expectation, not a lane membership.
 fn floor_expected_red_classifier_rows() -> List<ClassifierRow> {
   flat_map(
     floor_expected_red_chunks(),
     chunk => map(
       chunk,
-      identity => identity_row(
+      identity => enroll_identity_row(
         carrier: "v2.workflow.floor_expected_red",
-        identity: identity,
-        cover: false
-      )
+        identity: identity
+        )
     )
   )
 }
@@ -118,11 +142,10 @@ fn floor_expected_red_classifier_rows() -> List<ClassifierRow> {
 fn bin_wet_classifier_rows() -> List<ClassifierRow> {
   map(
     bin_witness_wet_entries,
-    entry => file_row(
+    entry => cover_file_row(
       carrier: "gunbc.ci.ci_layer_roots.bin_witness_wet_entries",
-      path: entry.entry,
-      cover: true
-    )
+      path: entry.entry
+      )
   )
 }
 
@@ -135,11 +158,10 @@ fn bin_wet_classifier_rows() -> List<ClassifierRow> {
 fn exclusion_frontier_classifier_rows() -> List<ClassifierRow> {
   map(
     witness_exclusion_frontier,
-    row => frontier_row(
+    row => cover_frontier_row(
       carrier: "gunbc.ci.ci_layer_roots.witness_exclusion_frontier",
-      pattern: row.pattern,
-      cover: true
-    )
+      pattern: row.pattern
+      )
   )
 }
 
@@ -149,11 +171,10 @@ fn exclusion_frontier_classifier_rows() -> List<ClassifierRow> {
 fn frozen_deferral_classifier_rows() -> List<ClassifierRow> {
   map(
     frozen_path_deferrals,
-    deferral => file_row(
+    deferral => cover_file_row(
       carrier: "gunbc.witness.witness_deferral_freeze.frozen_path_deferrals",
-      path: deferral.entry,
-      cover: true
-    )
+      path: deferral.entry
+      )
   )
 }
 
@@ -164,11 +185,10 @@ fn frozen_deferral_classifier_rows() -> List<ClassifierRow> {
 fn explicit_admission_classifier_rows() -> List<ClassifierRow> {
   map(
     explicit_witness_admissions,
-    admission => file_row(
+    admission => cover_file_row(
       carrier: "gunbc.explicit_witness_admission.explicit_witness_admissions",
-      path: admission.witness.entry,
-      cover: true
-    )
+      path: admission.witness.entry
+      )
   )
 }
 
@@ -183,11 +203,10 @@ fn rung_drop_population_classifier_rows() -> List<ClassifierRow> {
     drop => match drop.declaration {
       TypedDeclaration { population: population } => map(
         population,
-        member => ClassifierRow {
+        member => cover_declared_row(
           carrier: concat("gunbc.rung_drop.", drop.identity),
-          member: DeclaredMember { text: member },
-          cover: true
-        }
+          text: member
+        )
       )
       AuthoredProse { legacy: _, authored: _ } => []
     }
@@ -204,11 +223,10 @@ fn rung_drop_population_classifier_rows() -> List<ClassifierRow> {
 // STALE-ENROLLED, which is exactly what a literal whose identity no longer resolves is for.
 fn module_real_path_pairing_classifier_rows() -> List<ClassifierRow> {
   [
-    identity_row(
+    cover_identity_row(
       carrier: "gunbc.module_real_path_pairing_claim.infer_record_construct_field_inhabitance_witness",
-      identity: "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness.rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds",
-      cover: true
-    )
+      identity: "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness.rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds"
+      )
   ]
 }
 

@@ -81,14 +81,25 @@ type ClassifierMember
   | DeclaredMember { text: String }
   | FileMember { path: String, match_: ClaimMemberMatch, function: Optional<String> }
 
-// One classifier row: which carrier claims this member, at the grain its arm declares, as cover or as
-// enrollment. `carrier` names the declaration the row was read from, so every printed finding is located
-// and the RED arm — delete a covered claim from its drop, the census must name it — lands on a file the
-// reader can open.
+// WHAT A ROW IS FOR, as a closed coproduct (review 82845, DESIGN §5: "stronger than catching a wrong
+// state is making it unwritable -- correctness by construction, not validation"). `cover: Bool` was the
+// defect this PR had already fixed once for the grain: the flag decided which standing arm a row reached
+// (`GroundedCover` vs `GroundedEnrollment`) and which rows count toward the uncovered population, yet every
+// builder set it by hand -- and a wrong `true` silently credits claims with coverage and fires no refusal.
+// A row's role is now declared, and each carrier's builder fixes it, so the value is not threaded through
+// call sites at all.
+type ClassifierRole
+  = CoverRole
+  | EnrollmentRole
+
+// One classifier row: which carrier claims this member, at the grain its arm declares, in the role its
+// constructor fixed. `carrier` names the declaration the row was read from, so every printed finding is
+// located and the RED arm — delete a covered claim from its drop, the census must name it — lands on a file
+// the reader can open.
 type ClassifierRow {
   carrier: String
   member: ClassifierMember
-  cover: Bool
+  role: ClassifierRole
 }
 
 // The verdict for one classifier row after joining it against S1.
@@ -231,14 +242,19 @@ fn classify_row(index: Map<String, Bool>, rows: List<ClaimRow>, row: ClassifierR
   }
 }
 
+// The role decides the standing, by `match` -- no branch on a flag, and no standing reachable by a value
+// that was passed by hand.
 fn grounded(row: ClassifierRow, covers: List<String>) -> ClassifierStanding {
-  if row.cover {
-    GroundedCover { row: row, covers: covers }
-  } else {
-    GroundedEnrollment { row: row, covers: covers }
+  match row.role {
+    CoverRole => GroundedCover { row: row, covers: covers }
+    EnrollmentRole => GroundedEnrollment { row: row, covers: covers }
   }
 }
 
+// THE ONE MEMBERSHIP ACCESSOR (review 82845, ctrl predicate-dissolution policy; DESIGN §6b: a second local
+// implementation of one rule is the trigger). `Present => true / Absent => false` over `Optional` was
+// written out three times in this file -- here, in `derive_executed`, and twice in `s1_uncovered`. No
+// `std.algebra` map-membership helper exists to call, so the rule is defined once and every site calls it.
 fn in_index(index: Map<String, Bool>, key: String) -> Bool {
   match map_lookup(m: index, key: key) {
     Present { value: _ } => true
@@ -264,13 +280,7 @@ fn classify_rows(universe: List<String>, rows: List<ClaimRow>, classifier_rows: 
 // step over an ordinary fn report honestly instead of closing the census's gap).
 fn derive_executed(rows: List<ClaimRow>, produced: List<String>) -> List<String> {
   let universe_set = universe_index(universe: map(rows, r => r.identity))
-  filter(
-    produced,
-    name => match map_lookup(m: universe_set, key: name) {
-      Present { value: _ } => true
-      Absent => false
-    }
-  )
+  filter(produced, name => in_index(index: universe_set, key: name))
 }
 
 // Every S1 identity neither executed by a bound producer nor reached by any grounded COVER row:
@@ -294,13 +304,7 @@ fn s1_uncovered(census: S1Census) -> List<String> {
   )
   filter(
     census.universe,
-    id => match map_lookup(m: executed_set, key: id) {
-      Present { value: _ } => false
-      Absent => match map_lookup(m: covered_set, key: id) {
-        Present { value: _ } => false
-        Absent => true
-      }
-    }
+    id => !in_index(index: executed_set, key: id) && !in_index(index: covered_set, key: id)
   )
 }
 
