@@ -1,12 +1,12 @@
 module gunbc.scratch_census_timing
 
-import std.types { String, List, Int }
+import std.types { String, List, Int, Map }
 import std.algebra { take_prefix, is_empty }
 import std.process { ExitSuccess }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import v2.cli.repository_layout { repository_storage_layout }
-import v2.compiler.module_acquisition { AcquisitionEnvReady, AcquisitionEnvUnprepared, acquisition_env }
+import v2.compiler.module_acquisition { AcquisitionEnv, AcquisitionEnvReady, AcquisitionEnvUnprepared, acquisition_env }
 import v2.workflow.floor_discovery_producer { FloorDiscoverySourcesObserved, FloorDiscoverySourcesRefused, floor_discovery_source_inventory_live }
 import gunbc.claim_coverage_census_s1_live { governed_bindings, content_index, marked_over_files, discovery_walk }
 
