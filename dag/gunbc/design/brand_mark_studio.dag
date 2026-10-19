@@ -310,6 +310,7 @@ data studio_palettes: List<StudioPalette> = [
   StudioPalette { key: "ink", title: "Ink on stone", ground: "#f4f1ec", body: "#0f0f0f", feature: "#f4f1ec", accessory: "#0f0f0f", trim: "#f4f1ec", accent: "#d9826f", side: "#5a5650" },
   StudioPalette { key: "ci", title: "gunbai-ci green", ground: "#ebe9e0", body: "#194025", feature: "#ebe9e0", accessory: "#194025", trim: "#ebe9e0", accent: "#7fb08a", side: "#0a2213" },
   StudioPalette { key: "halloween", title: "Halloween", ground: "#24182f", body: "#141414", feature: "#ff9a1f", accessory: "#e2531b", trim: "#8c4fff", accent: "#ff9a1f", side: "#4b3566" },
+  StudioPalette { key: "manga", title: "Manga ink on paper", ground: "#fbf8f1", body: "#ffffff", feature: "#111111", accessory: "#e5484d", trim: "#111111", accent: "#ff9db0", side: "#c9c4bb" },
   StudioPalette { key: "christmas", title: "Christmas", ground: "#f4f1ec", body: "#0f0f0f", feature: "#f4f1ec", accessory: "#c8202f", trim: "#ffffff", accent: "#2f8f4e", side: "#5a5650" },
 ]
 
@@ -332,7 +333,10 @@ fn studio_paint(p: StudioPalette, role: StudioRole) -> String {
 //   diffuse and specular light).
 // - Carved: the pillow body with the face pressed into it (an inner shadow on the top rim of each
 //   feature, a highlight on the bottom one).
-type StudioRelief = ReliefFlat | ReliefCoin | ReliefPillow | ReliefCarved
+// - Cel: anime/manga lighting, hard-edged. The body keeps its flat paint, with one shadow crescent
+//   where it turns away from the light (bottom right) and one highlight sliver where it faces it (top
+//   left), each the body's own outline offset against itself, so it fits every shape and costume.
+type StudioRelief = ReliefFlat | ReliefCoin | ReliefPillow | ReliefCarved | ReliefCel
 
 type StudioReliefOption {
   key: String
@@ -346,6 +350,7 @@ data studio_reliefs: List<StudioReliefOption> = [
   StudioReliefOption { key: "coin", title: "Coin", note: "A solid side under the body, like a thick token. Flat colours only, so it holds up at favicon size.", relief: ReliefCoin },
   StudioReliefOption { key: "pillow", title: "Pillow", note: "Light from the top left on a softly rounded body: puffy, slightly 3D.", relief: ReliefPillow },
   StudioReliefOption { key: "carved", title: "Carved", note: "Pillow body with the eyes and mouth pressed in.", relief: ReliefCarved },
+  StudioReliefOption { key: "cel", title: "Cel", note: "Anime/manga shading: one hard shadow crescent and one hard highlight, no gradients.", relief: ReliefCel },
 ]
 
 // The coin's side: the body repeated in steps down to its thickness, in the palette's side paint.
@@ -374,11 +379,25 @@ fn studio_relief_defs(r: StudioRelief, id: String) -> List<Fragment> {
     el_attrs("feComposite", [attr(name: "in2", value: "lip"), attr(name: "operator", value: "in"), attr(name: "result", value: "shine")], []),
     el_attrs("feMerge", [], [el_attrs("feMergeNode", [attr(name: "in", value: "SourceGraphic")], []), el_attrs("feMergeNode", [attr(name: "in", value: "shadow")], []), el_attrs("feMergeNode", [attr(name: "in", value: "shine")], [])]),
   ])
+  // Each band is the body minus the body shifted toward the light (shadow) or away from it
+  // (highlight): no blur, so the edge is a hard line, as in cel animation.
+  let cel = el_attrs("filter", [attr(name: "id", value: concat(id, "-cel")), attr(name: "x", value: "-10%"), attr(name: "y", value: "-10%"), attr(name: "width", value: "120%"), attr(name: "height", value: "120%")], [
+    el_attrs("feOffset", [attr(name: "in", value: "SourceAlpha"), attr(name: "dx", value: "-70"), attr(name: "dy", value: "-90"), attr(name: "result", value: "toward")], []),
+    el_attrs("feComposite", [attr(name: "in", value: "SourceAlpha"), attr(name: "in2", value: "toward"), attr(name: "operator", value: "out"), attr(name: "result", value: "crescent")], []),
+    el_attrs("feFlood", [attr(name: "flood-color", value: "#1b1530"), attr(name: "flood-opacity", value: "0.42")], []),
+    el_attrs("feComposite", [attr(name: "in2", value: "crescent"), attr(name: "operator", value: "in"), attr(name: "result", value: "shadow")], []),
+    el_attrs("feOffset", [attr(name: "in", value: "SourceAlpha"), attr(name: "dx", value: "26"), attr(name: "dy", value: "34"), attr(name: "result", value: "away")], []),
+    el_attrs("feComposite", [attr(name: "in", value: "SourceAlpha"), attr(name: "in2", value: "away"), attr(name: "operator", value: "out"), attr(name: "result", value: "sliver")], []),
+    el_attrs("feFlood", [attr(name: "flood-color", value: "#ffffff"), attr(name: "flood-opacity", value: "0.55")], []),
+    el_attrs("feComposite", [attr(name: "in2", value: "sliver"), attr(name: "operator", value: "in"), attr(name: "result", value: "shine")], []),
+    el_attrs("feMerge", [], [el_attrs("feMergeNode", [attr(name: "in", value: "SourceGraphic")], []), el_attrs("feMergeNode", [attr(name: "in", value: "shadow")], []), el_attrs("feMergeNode", [attr(name: "in", value: "shine")], [])]),
+  ])
   match r {
     ReliefFlat => []
     ReliefCoin => []
     ReliefPillow => [pillow]
     ReliefCarved => [pillow, carve]
+    ReliefCel => [cel]
   }
 }
 
@@ -405,7 +424,7 @@ fn studio_filtered(id: String, children: List<Fragment>) -> Fragment {
 
 // ═══ MATERIALS (paint by role; never name a part) ═══
 
-type StudioMaterial = MaterialFlat | MaterialLit | MaterialWool | MaterialCuphead
+type StudioMaterial = MaterialFlat | MaterialLit | MaterialWool | MaterialCuphead | MaterialManga
 
 type StudioMaterialOption {
   key: String
@@ -419,6 +438,7 @@ data studio_materials: List<StudioMaterialOption> = [
   StudioMaterialOption { key: "lit", title: "Lit", note: "Soft top light and bottom shade on every solid part: a glossy object.", material: MaterialLit },
   StudioMaterialOption { key: "wool", title: "Wool", note: "Yarn: fuzzy displaced edges and knit strands (Yoshi's Woolly World).", material: MaterialWool },
   StudioMaterialOption { key: "cuphead", title: "Cuphead", note: "1930s ink: heavy outlines, film grain and vignette.", material: MaterialCuphead },
+  StudioMaterialOption { key: "manga", title: "Manga", note: "Crisp ink outlines and screentone dots: pairs with the cel relief.", material: MaterialManga },
 ]
 
 fn studio_url(id: String) -> String {
@@ -455,6 +475,12 @@ fn studio_material_defs(m: StudioMaterial, id: String) -> List<Fragment> {
       ]),
       el_attrs("radialGradient", [attr(name: "id", value: concat(id, "-vig"))], [studio_stop(offset: "0.6", color: "#2b1a08", opacity: "0"), studio_stop(offset: "1", color: "#2b1a08", opacity: "0.5")]),
     ]
+    // Screentone: a 45-degree dot grid, the printed halftone manga uses for mid-tones.
+    MaterialManga => [
+      el_attrs("pattern", [attr(name: "id", value: concat(id, "-tone")), attr(name: "width", value: "26"), attr(name: "height", value: "26"), attr(name: "patternUnits", value: "userSpaceOnUse"), attr(name: "patternTransform", value: "rotate(45)")], [
+        el_attrs("circle", [attr(name: "cx", value: "13"), attr(name: "cy", value: "13"), attr(name: "r", value: "5"), attr(name: "fill", value: "#111111"), attr(name: "fill-opacity", value: "0.28")], []),
+      ]),
+    ]
   }
 }
 
@@ -473,6 +499,14 @@ fn studio_part_fragment(part: StudioPart, m: StudioMaterial, p: StudioPalette, i
       [el_attrs("g", [attr(name: "filter", value: studio_url(id: concat(id, "-wool")))], [el_attrs("path", base, []), el_attrs("path", [attr(name: "d", value: part.d), attr(name: "fill", value: studio_url(id: concat(id, "-knit")))], [])])]
     } else {
       [el_attrs("g", [attr(name: "filter", value: studio_url(id: concat(id, "-wool")))], [el_attrs("path", base, [])])]
+    }
+    MaterialManga => if solid {
+      [
+        el_attrs("path", concat(base, [attr(name: "stroke", value: "#111111"), attr(name: "stroke-width", value: "18"), attr(name: "stroke-linejoin", value: "round"), attr(name: "paint-order", value: "stroke")]), []),
+        el_attrs("path", [attr(name: "d", value: part.d), attr(name: "fill", value: studio_url(id: concat(id, "-tone")))], []),
+      ]
+    } else {
+      [el_attrs("path", base, [])]
     }
     MaterialCuphead => if solid {
       [el_attrs("path", concat(base, [attr(name: "stroke", value: "#1b1209"), attr(name: "stroke-width", value: "28"), attr(name: "stroke-linejoin", value: "round"), attr(name: "paint-order", value: "stroke")]), [])]
@@ -526,6 +560,7 @@ fn studio_svg(pick: StudioPick, id: String, px: Int) -> Fragment {
     ReliefCoin => concat(studio_coin_side(body: layers.body, p: pick.palette), body)
     ReliefPillow => [studio_filtered(id: concat(id, "-pillow"), children: body)]
     ReliefCarved => [studio_filtered(id: concat(id, "-pillow"), children: body)]
+    ReliefCel => [studio_filtered(id: concat(id, "-cel"), children: body)]
   }
   let set_face = match pick.relief {
     ReliefCarved => [studio_filtered(id: concat(id, "-carve"), children: face)]
@@ -699,6 +734,8 @@ fn studio_page_presets() -> String {
     StudioPreset { key: "halloween-devil", title: "Halloween: devil", note: "devil, wink, coin, Cuphead, Halloween", pick: StudioPick { silhouette: s, relief: ReliefCoin, costume: CostumeDevil, expression: ExprWink, material: MaterialCuphead, palette: studio_palette_named(key: "halloween") } },
     StudioPreset { key: "halloween-witch", title: "Halloween: trick-or-treater", note: "witch, happy, pillow, wool, Halloween", pick: StudioPick { silhouette: s, relief: ReliefPillow, costume: CostumeWitch, expression: ExprHappy, material: MaterialWool, palette: studio_palette_named(key: "halloween") } },
     StudioPreset { key: "xmas", title: "Christmas: Santa", note: "santa, happy, carved, lit, Christmas", pick: StudioPick { silhouette: s, relief: ReliefCarved, costume: CostumeSanta, expression: ExprHappy, material: MaterialLit, palette: studio_palette_named(key: "christmas") } },
+    StudioPreset { key: "manga", title: "Manga", note: "plain, happy, cel, manga, manga ink", pick: StudioPick { silhouette: s, relief: ReliefCel, costume: CostumePlain, expression: ExprHappy, material: MaterialManga, palette: studio_palette_named(key: "manga") } },
+    StudioPreset { key: "manga-cat", title: "Manga cat", note: "cat, wink, cel, manga, manga ink", pick: StudioPick { silhouette: s, relief: ReliefCel, costume: CostumeCat, expression: ExprWink, material: MaterialManga, palette: studio_palette_named(key: "manga") } },
     StudioPreset { key: "cat", title: "Cat", note: "cat, neutral, pillow, wool, ink", pick: StudioPick { silhouette: s, relief: ReliefPillow, costume: CostumeCat, expression: ExprNeutral, material: MaterialWool, palette: studio_palette_named(key: "ink") } },
   ]
   studio_page(title: "Presets", lead: "Named combinations: one pick per axis. The GitHub Apps and seasonal looks are presets.", body: studio_cards(cards: map(presets, p => studio_card(title: p.title, note: p.note, pick: p.pick, id: concat("pre-", p.key)))))
