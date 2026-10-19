@@ -20,16 +20,6 @@ import gunbc.machine_intake.sol_hold
 // record — the KVM observer and the loopback BMC transport hold their processes through these
 // types, and gunbc.machine_intake.mtcollins1_boot_run reads the SOL collector's record through
 // owned_process_record too, so the record format has one parser.
-//
-// DELETED 2026-10-19 (Charter 2 transport-shell census): the LaunchOwned operation, its
-// `transport shell` argv-through-shim block (`sh -c 'exec "$0" "$@"'`), the launch script and its
-// publication-failure lines, and their Scaffold/dissolution pair. The operation had ZERO callers
-// outside this module (no service consumer of `gunbc.process`/launch anywhere in dag, src, or
-// fixtures; docs included) — a transport no one called, whose replacement is typed argv:
-// gunbc.host.host_effect_realize run_typed_argv_transport for foreground argv, and
-// extdeps.posix.process StartDetached/Reap for detached start with observed exit. §3c: the
-// standing-record types above stay, and their provenance (records come from sol_hold's supervisor)
-// is unchanged by the deletion.
 
 type OwnedProcessRecord
   = OwnedRecorded { pid: String, start_time: String }
