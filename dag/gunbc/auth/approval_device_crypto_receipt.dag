@@ -2,6 +2,7 @@ module gunbc.auth.approval_device_crypto_receipt
 
 import std.types { String, List, NonEmptyStr }
 import gunbc.native_serve { NativeServeStartup, NativeServeStartupPassed, NativeServeStartupRefused }
+import gunbc.auth.approval_device_crypto_wire { device_crypto_obligation_wire, device_crypto_obligation_of_wire }
 import gunbc.auth.approval_device_crypto_realization {
   DeviceCryptoObligation, DeviceCryptoHandlerReceipt, NativeDeviceCryptoBound, device_crypto_admission, device_crypto_obligations, device_crypto_handler_identity,
   DeviceCryptoAdmitted, DeviceCryptoRefused,
@@ -14,18 +15,43 @@ import gunbc.auth.approval_device_crypto_realization {
 // (gunbc.instruments.native_serve_startup_refusal_fixture). A receipt that omits an obligation is refused by
 // device_crypto_admission naming the evidence it lacks; the startup carries that refusal and the door then refuses to bind.
 
-// The receipt a startup note names. A note exists only for a receipt device_crypto_admission admitted, so the
-// population it covers is the whole of device_crypto_obligations; a note of any other shape is no receipt.
+// The receipt a startup note names. The note carries the admitted receipt whole -- handler, revision AND the covered
+// obligations by their wire names -- and the reader re-judges it with device_crypto_admission, so a note that names a
+// partial population, an unknown obligation or any other shape is no receipt, and coverage is read, never restated.
 data device_crypto_note_separator: String = " @ sha256:"
+data device_crypto_note_covers: String = " covers "
+
+fn device_crypto_covered_note(covered: List<DeviceCryptoObligation>) -> String {
+  join(map(covered, o => device_crypto_obligation_wire(o: o)), ",")
+}
+
+fn device_crypto_covered_of_note(text: String) -> List<DeviceCryptoObligation>? {
+  let found = split(text, separator: ",") |> flat_map(w => match device_crypto_obligation_of_wire(w: w) { Present { value: o } => [o]  Absent => [] })
+  if count(found) != count(split(text, separator: ",")) { none } else { Present { value: found } }
+}
 
 fn device_crypto_receipt_of_note(note: String) -> DeviceCryptoHandlerReceipt? {
-  let parts = split(note, separator: device_crypto_note_separator)
-  if count(parts) != 2 { none }
+  let halves = split(note, separator: device_crypto_note_covers)
+  if count(halves) != 2 { none }
   else {
+    let head = match halves.first() { Present { value: v } => v Absent => "" }
+    let tail = match halves.skip(n: 1).first() { Present { value: v } => v Absent => "" }
+    let parts = split(head, separator: device_crypto_note_separator)
     let h = match parts.first() { Present { value: v } => v Absent => "" }
     let r = match parts.skip(n: 1).first() { Present { value: v } => v Absent => "" }
-    if h == "" || r == "" { none }
-    else { Present { value: DeviceCryptoHandlerReceipt { handler_identity: h as NonEmptyStr, exact_revision: r as NonEmptyStr, covered: device_crypto_obligations } } }
+    if count(parts) != 2 || h == "" || r == "" { none }
+    else {
+      match device_crypto_covered_of_note(text: tail) {
+        Absent => none
+        Present { value: covered } => {
+          let receipt = DeviceCryptoHandlerReceipt { handler_identity: h as NonEmptyStr, exact_revision: r as NonEmptyStr, covered: covered }
+          match device_crypto_admission(r: NativeDeviceCryptoBound { receipt: receipt }) {
+            DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } => Present { value: receipt }
+            DeviceCryptoRefused { status: _, reason: _ } => none
+          }
+        }
+      }
+    }
   }
 }
 
@@ -37,7 +63,7 @@ fn device_crypto_receipt_startup(covered: List<DeviceCryptoObligation>, exact_re
   }
   match device_crypto_admission(r: NativeDeviceCryptoBound { receipt: receipt }) {
     DeviceCryptoAdmitted { handler_identity: h, exact_revision: r } =>
-      NativeServeStartupPassed { note: concat(h as String, concat(device_crypto_note_separator, r as String)) }
+      NativeServeStartupPassed { note: join([h as String, device_crypto_note_separator, r as String, device_crypto_note_covers, device_crypto_covered_note(covered: covered)], "") }
     DeviceCryptoRefused { status: _, reason: why } => NativeServeStartupRefused { reason: why }
   }
 }
