@@ -32,6 +32,7 @@ import gunbc.stage0_partition_rebuild_scope {
   stage0_partition_rebuild_release_scope_empty_today,
   stage0_next_pass_executable_assembly,
   regen_convergence_bound_exceeded,
+  stage0_stage_rebuild_is_whole_compiler,
   regen_convergence_generation_bound,
   stage0_partition_authority_storage_path,
   stage0_partition_move_explained_by_changed_paths
@@ -556,4 +557,11 @@ test fn witness_shell_crate_root_has_an_owner_holds() -> Bool {
 test fn witness_regen_bound_getter_and_predicate_agree_holds() -> Bool {
   !regen_convergence_bound_exceeded(generation_ordinal: regen_convergence_generation_bound() - 1)
     && regen_convergence_bound_exceeded(generation_ordinal: regen_convergence_generation_bound())
+}
+
+// A stage that installs boundary files is whole-compiler by what it installs; one carrying none
+// keeps the route its mirrors derive (the partitioned route is not widened).
+test fn witness_boundary_carrying_stage_is_whole_compiler_holds() -> Bool {
+  stage0_stage_rebuild_is_whole_compiler(boundary_files: ["src/v1/stage0_std_core/lib.rs"])
+    && !stage0_stage_rebuild_is_whole_compiler(boundary_files: [])
 }
