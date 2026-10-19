@@ -68,6 +68,10 @@ fi
 # SUBSET, which is how the 9 rows are split across two dispatches. Positional args survive
 # ctrl-build's arg join; env-prefix args do not (they become the -c command).
 MOD=cross_coproduct_generic_locate_test::
+# The SHA and LABEL are still in $3..; selecting from "$@" unshifted ran two bogus
+# --exact invocations (the SHA and the label) which reported MISSING_FATAL rc=0 -- noise that
+# also cost two cargo starts. Shift past them explicitly.
+shift 2 || true
 SELECT=("$@")
 if [ "${#SELECT[@]}" -eq 0 ]; then SELECT=($ROWS); fi
 : > "$LOG"
