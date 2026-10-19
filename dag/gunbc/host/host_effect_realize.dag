@@ -272,7 +272,7 @@ import gunbc.live_deploy.retract_legs {
 }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
-  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport,
+  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegHelperGrant,
 }
 import gunbc.systemctl_show_read { systemctl_show_load_state_read, SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
@@ -5545,13 +5545,15 @@ type DeployApplyPorts {
   command: fn(ArgvCommand) -> RunArgvTransportOutcome
   stdin: fn(ArgvCommand, String) -> RunArgvTransportOutcome
   ensure_directory: fn(OwnedDirectoryTarget) -> OwnedDirectoryEnsureOutcome
+  helper_grant: fn(ReleaseRevisionBinding) -> Optional<String>
 }
 
-fn deploy_apply_ports_on_host(transport: HostEffectTransport) -> DeployApplyPorts {
+fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> DeployApplyPorts {
   DeployApplyPorts {
     command: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) },
     stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
     ensure_directory: fn(t) { live_deploy_apply_ensure_directory_on_host(target: t, transport: transport) },
+    helper_grant: fn(r) { live_deploy_apply_helper_grant_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
   }
 }
 
@@ -5598,6 +5600,15 @@ type DeployApplyRun
   = ApplyRunOk { legs_run: Int, reports: List<String> }
   | ApplyRunFailed { step: String, reason: String, legs_run: Int }
 
+// C3: THE HELPER GRANT, THROUGH THE SHARED STAGES. The same dark_helper_grant_install the dark install
+// runs; a DarkFailed becomes the leg's refusal naming its step.
+fn live_deploy_apply_helper_grant_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  match dark_helper_grant_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
+    DarkOk => Absent
+    DarkFailed { step: s, reason: r } => Present { value: join(["helper grant refused at step ", dark_install_step_name(step: s), ": ", r], "") }
+  }
+}
+
 fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optional<String> {
   let command = ports.command
   let ensure = ports.ensure_directory
@@ -5610,6 +5621,7 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
     ApplyLegCommand { step: _, command: c } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegInstallFile { step: _, command: c, payload: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
     ApplyLegReport { step: _, line: _ } => Absent
+    ApplyLegHelperGrant { revision: r } => ports.helper_grant(r)
   }
 }
 
@@ -5620,6 +5632,7 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
     ApplyLegInstallFile { step: _, command: _, payload: _ } => []
+    ApplyLegHelperGrant { revision: _ } => []
   }
 }
 
@@ -6282,43 +6295,66 @@ fn approval_broker_dark_install(
       reason: join(["the dark install was reached with a deployment that does not own this host's broker unit; gunbc-approval-broker.service is a host singleton owned by the spec holding the prod role. instance=", spec.instance_id as String], ""),
     }
   } else {
-    dark_stage_device_store(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport })
+    match dark_helper_grant_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
+      DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+      DarkOk => dark_stage_broker_tree(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport })
+    }
   }
 }
 
-fn dark_stage_device_store(i: DarkInstallInputs) -> DarkInstallVerdict {
-  match managed_directory_admit(d: approval_device_store_directory()) {
-    ManagedDirectoryRefused { member: m, path: p, writer: w } =>
-      DarkInstallRefused { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
-    ManagedDirectoryAdmitted { dir: d } =>
-      match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
-        step: DarkStepDeviceStore,
-        command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
-          mode: managed_directory_permissions(d: d).mode, owner: d.owner.name, group: d.group_principal.name, path: d.path as String)),
-      }) {
-        DarkOk => dark_stage_grant_admission(i: i)
-        DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+// THE HELPER-GRANT STAGES, ONE SEQUENCE, TWO CALLERS: the dark install (approval_broker_dark_install)
+// and the live_deploy apply (the helper-grant leg's port). device store -> grant admission -> root-owned
+// snapshot tree -> sudoers (stage, visudo, install, rename, readback) -> retire of the superseded snapshot.
+// Each stage yields DarkOk or the typed DarkFailed naming its step; the first failure ends the sequence.
+fn dark_helper_grant_install(i: DarkInstallInputs) -> DarkState {
+  match dark_helper_device_store(i: i) {
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+    DarkOk =>
+      match dark_helper_grant_admission(i: i) {
+        DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+        DarkOk =>
+          match dark_helper_snapshot(i: i) {
+            DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+            DarkOk =>
+              match dark_helper_sudoers(i: i) {
+                DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+                DarkOk => dark_helper_retire(i: i)
+              }
+          }
       }
   }
 }
 
-fn dark_stage_grant_admission(i: DarkInstallInputs) -> DarkInstallVerdict {
-  match approval_broker_helper_grant_admission(revision: i.revision) {
-    HelperGrantAdmitted => dark_stage_snapshot(i: i)
-    HelperGrantWordRefused { word: w } =>
-      DarkInstallRefused { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w }) }
-    HelperGrantLocusWritableByGrantee { owner: o } =>
-      DarkInstallRefused { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o }) }
+fn dark_helper_device_store(i: DarkInstallInputs) -> DarkState {
+  match managed_directory_admit(d: approval_device_store_directory()) {
+    ManagedDirectoryRefused { member: m, path: p, writer: w } =>
+      DarkFailed { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
+    ManagedDirectoryAdmitted { dir: d } =>
+      dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
+        step: DarkStepDeviceStore,
+        command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
+          mode: managed_directory_permissions(d: d).mode, owner: d.owner.name, group: d.group_principal.name, path: d.path as String)),
+      })
   }
 }
 
-fn dark_stage_snapshot(i: DarkInstallInputs) -> DarkInstallVerdict {
+fn dark_helper_grant_admission(i: DarkInstallInputs) -> DarkState {
+  match approval_broker_helper_grant_admission(revision: i.revision) {
+    HelperGrantAdmitted => DarkOk
+    HelperGrantWordRefused { word: w } =>
+      DarkFailed { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w }) }
+    HelperGrantLocusWritableByGrantee { owner: o } =>
+      DarkFailed { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o }) }
+  }
+}
+
+fn dark_helper_snapshot(i: DarkInstallInputs) -> DarkState {
   let dir = helper_locus_dir(locus: approval_broker_helper_snapshot_locus(), revision: i.revision)
   match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
     step: DarkStepSnapshot,
     command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
   }) {
-    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
     DarkOk =>
       match approval_broker_tree_install_at(
         owner: approval_broker_helper_root_principal,
@@ -6329,22 +6365,19 @@ fn dark_stage_snapshot(i: DarkInstallInputs) -> DarkInstallVerdict {
         transport: i.transport,
       ) {
         TreeInstallRefused { step: ts, reason: r } =>
-          DarkInstallRefused { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
+          DarkFailed { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
         TreeInstallConverged { installed_digest: _, files_installed: _ } =>
-          match dark_run_legs(legs: dark_snapshot_readback_legs(dir: dir), transport: i.transport) {
-            DarkOk => dark_stage_sudoers(i: i)
-            DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
-          }
+          dark_run_legs(legs: dark_snapshot_readback_legs(dir: dir), transport: i.transport)
       }
   }
 }
 
-fn dark_stage_sudoers(i: DarkInstallInputs) -> DarkInstallVerdict {
+fn dark_helper_sudoers(i: DarkInstallInputs) -> DarkState {
   match run_argv_over_host_effect_transport(command: mktemp_directory_command(template: dark_scratch_template), transport: i.transport) {
-    RunArgvTransportRefused { reason: r } => DarkInstallRefused { step: DarkStepScratchAcquire, reason: r }
+    RunArgvTransportRefused { reason: r } => DarkFailed { step: DarkStepScratchAcquire, reason: r }
     RunArgvTransportObserved { observed: o } =>
       match (if o.success { admitted_scratch_path(prefix: dark_scratch_prefix, stdout: o.stdout) } else { none }) {
-        Absent => DarkInstallRefused { step: DarkStepScratchAcquire, reason: join(["mktemp -d did not yield an admitted scratch directory (exit ", to_string(o.exit_code), "): ", o.stdout, o.stderr], "") }
+        Absent => DarkFailed { step: DarkStepScratchAcquire, reason: join(["mktemp -d did not yield an admitted scratch directory (exit ", to_string(o.exit_code), "): ", o.stdout, o.stderr], "") }
         Present { value: scratch } => {
           let state = dark_run_legs(legs: dark_sudoers_legs(revision: i.revision, principal: i.principal, scratch: scratch), transport: i.transport)
           let cleanup = dark_failed_of_outcome(
@@ -6354,13 +6387,13 @@ fn dark_stage_sudoers(i: DarkInstallInputs) -> DarkInstallVerdict {
           match state {
             DarkFailed { step: s, reason: r } =>
               match cleanup {
-                DarkOk => DarkInstallRefused { step: s, reason: r }
-                DarkFailed { step: _, reason: cr } => DarkInstallRefused { step: s, reason: join([r, "; scratch cleanup of ", scratch, " also failed: ", cr], "") }
+                DarkOk => DarkFailed { step: s, reason: r }
+                DarkFailed { step: _, reason: cr } => DarkFailed { step: s, reason: join([r, "; scratch cleanup of ", scratch, " also failed: ", cr], "") }
               }
             DarkOk =>
               match cleanup {
-                DarkFailed { step: cs, reason: cr } => DarkInstallRefused { step: cs, reason: join(["removing scratch ", scratch, ": ", cr], "") }
-                DarkOk => dark_stage_retire(i: i)
+                DarkFailed { step: cs, reason: cr } => DarkFailed { step: cs, reason: join(["removing scratch ", scratch, ": ", cr], "") }
+                DarkOk => DarkOk
               }
           }
         }
@@ -6370,18 +6403,15 @@ fn dark_stage_sudoers(i: DarkInstallInputs) -> DarkInstallVerdict {
 
 // The previous release's snapshot is removed after the rename took its grant away: the sweep is
 // confined to the root-owned base and keeps exactly this release's directory.
-fn dark_stage_retire(i: DarkInstallInputs) -> DarkInstallVerdict {
-  match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
+fn dark_helper_retire(i: DarkInstallInputs) -> DarkState {
+  dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
     step: DarkStepRetire,
     command: find_other_children_exec_command(
       root: approval_broker_helper_snapshot_base,
       keep_name: release_revision_execstart_text(binding: i.revision),
       exec_argv: sudo_elevate_argv(command: [fleet_rm_binary_path as String, coreutils_rm_force_recursive_flags as String, "--"]),
     ),
-  }) {
-    DarkOk => dark_stage_broker_tree(i: i)
-    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
-  }
+  })
 }
 
 fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {

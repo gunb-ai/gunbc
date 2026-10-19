@@ -24,10 +24,12 @@ import gunbc.owned_directory { OwnedDirectoryEnsureOutcome, OwnedDirectoryEnsure
 import gunbc.host.host_axis_caps { CapMember, CapConvergeAuthorized, CapConvergeWithheld }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
-  ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory,
+  ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegHelperGrant,
   deploy_apply_memory_cap_plan, deploy_apply_leg_step,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+import std.types { CommitSha }
 import product.host_identity { HostIdentity }
 
 fn observed(code: Int, err: String) -> RunArgvTransportOutcome {
@@ -49,6 +51,7 @@ fn ports(command_code: Int, stdin_code: Int) -> DeployApplyPorts {
     command: fn(c) { observed(code: command_code, err: "cmd-boom") },
     stdin: fn(c, p) { observed(code: stdin_code, err: "stdin-boom") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
+    helper_grant: fn(r) { Present { value: "grant-boom" } },
   }
 }
 
@@ -97,6 +100,7 @@ test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
         ApplyLegInstallFile { step: _, command: _, payload: _ } => false
         ApplyLegEnsureDirectory { target: _ } => false
         ApplyLegRepairDirectoryEntries { command: _ } => false
+        ApplyLegHelperGrant { revision: _ } => false
       }
     ApplyPlanReady { legs: _ } => false
     ApplyPlanRefused { step: _, reason: _ } => false
@@ -145,6 +149,18 @@ test fn the_install_leg_reaches_the_stdin_port_and_stops_the_run() -> Bool {
 test fn a_mid_run_refusal_dispatches_no_later_leg() -> Bool {
   match deploy_apply_run_legs(legs: authorized_legs(), ports: ports(command_code: 5, stdin_code: 0)) {
     ApplyRunFailed { step: s, reason: _, legs_run: n } => s == "memory-cap-reload" && n == 1
+    ApplyRunOk { legs_run: _, reports: _ } => false
+  }
+}
+
+// The helper-grant leg reaches its port: the port's refusal stops the run at the leg named helper-grant,
+// and the install leg before it still ran.
+test fn the_helper_grant_leg_reaches_its_port_and_stops_the_run() -> Bool {
+  match deploy_apply_run_legs(
+    legs: [ApplyLegHelperGrant { revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" as CommitSha } }],
+    ports: ports(command_code: 0, stdin_code: 0),
+  ) {
+    ApplyRunFailed { step: s, reason: r, legs_run: n } => s == "helper-grant" && r == "grant-boom" && n == 0
     ApplyRunOk { legs_run: _, reports: _ } => false
   }
 }

@@ -15,12 +15,12 @@ import gunbc.managed_directory {
 }
 import gunbc.membership_reconcile { EffectsReady, ApplyRefused, membership_effects }
 import gunbc.live_deploy.lab_host_plan { LabPlanReady, LabPlanRefused, lab_plan_refusal_reason }
-import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan, plan_writes_unit }
 import gunbc.live_deploy.emit { deployment_apply_plan, owned_directory_will_install }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands, deployment_owns_the_host_approval_broker }
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.tools.gnu_coreutils { coreutils_install_file_owned_argv }
-import gunbc.live_deploy.release_locus { approval_broker_helper_root_principal }
+import gunbc.live_deploy.release_locus { approval_broker_helper_root_principal, ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.emit { install_file_shared_mode }
 import gunbc.host.host_axis_caps {
   CapConvergeDecision, CapAuthorizationWithheld, CapAuthorizationRefused, CapAuthorizedForThisHost, CapMember,
@@ -44,6 +44,7 @@ type DeployApplyLeg
   | ApplyLegCommand { step: String, command: ArgvCommand }
   | ApplyLegInstallFile { step: String, command: ArgvCommand, payload: String }
   | ApplyLegReport { step: String, line: String }
+  | ApplyLegHelperGrant { revision: ReleaseRevisionBinding }
 
 type DeployApplyPlan
   = ApplyPlanReady { legs: List<DeployApplyLeg> }
@@ -56,6 +57,7 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegCommand { step: st, command: _ } => st
     ApplyLegInstallFile { step: st, command: _, payload: _ } => st
     ApplyLegReport { step: st, line: _ } => st
+    ApplyLegHelperGrant { revision: _ } => "helper-grant"
   }
 }
 
@@ -201,12 +203,26 @@ fn deploy_apply_chain(first: DeployApplyPlan, rest: DeployApplyPlan) -> DeployAp
   }
 }
 
+// THE APPROVAL BROKER'S HELPER GRANT: one leg whose execution is the shared typed sequence
+// (device store, grant admission, root-owned snapshot, sudoers, retire) that the dark install runs.
+// Owed only on the host whose spec owns the broker and only when the plan writes the broker unit.
+fn deploy_apply_helper_grant_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
+  if deployment_owns_the_host_approval_broker(spec: spec) && plan_writes_unit(plan: plan) {
+    ApplyPlanReady { legs: [ApplyLegHelperGrant { revision: RevisionBoundAtEmission { revision: plan.target.revision } }] }
+  } else {
+    ApplyPlanReady { legs: [] }
+  }
+}
+
 fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision) -> DeployApplyPlan {
   deploy_apply_chain(
     first: deploy_apply_directories_plan(spec: spec, plan: plan),
     rest: deploy_apply_chain(
       first: deploy_apply_memory_cap_plan(spec: spec, authorization: authorization),
-      rest: deploy_apply_slice_control_plan(spec: spec),
+      rest: deploy_apply_chain(
+        first: deploy_apply_slice_control_plan(spec: spec),
+        rest: deploy_apply_helper_grant_plan(spec: spec, plan: plan),
+      ),
     ),
   )
 }
