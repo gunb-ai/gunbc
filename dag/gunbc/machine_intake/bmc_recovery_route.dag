@@ -3240,8 +3240,14 @@ test fn a_channel_that_passed_a_credential_on_the_command_line_is_not_passwordle
     // invisible to the credential scan. A credential write over an authenticating remote transport is the
     // failure extdeps/bmc/ipmi.dag was built to make unconstructible.
     && (match in_band_channel_from_argv(argv_words: ["-I", "lanplus", "-f", "/tmp/pw", "-H", "10.0.0.5", "user", "set", "password", "1", "0penBmc"]) {
-      InBandChannelNotObserved { refusal: RefusalTransportOutOfBand { wire: w, why_not_in_band: why } } =>
-        w == "lanplus" && string_contains(s: why, pattern: "credential") == false
+      // THE ARM IS THE ASSERTION. An invocation that both names an out-of-band transport and passes a
+      // password file must land on the never-observed arm, not on the arm naming a credential option: had
+      // the parse decided credentials first, this pattern could not match and the conjunct would be false.
+      // The reason text is NOT checked. An earlier version demanded it not contain "credential", which was
+      // unsatisfiable -- the published reason for lanplus says it REQUIRES a credential, which is true and
+      // is the reason to refuse. Checking that prose would have tested wording, not the decision.
+      InBandChannelNotObserved { refusal: RefusalTransportOutOfBand { wire: w, why_not_in_band: _ } } =>
+        w == "lanplus"
       _ => false
     })
     // the argv the capture actually used: no credential option, so the credential-free arm
@@ -3257,8 +3263,10 @@ test fn a_channel_that_passed_a_credential_on_the_command_line_is_not_passwordle
     })
     // and an out-of-band name cannot produce a channel at all: no value exists for the gate to be fooled by
     && (match in_band_channel_from_argv(argv_words: ["-I", "lanplus", "user", "list", "1"]) {
-      InBandChannelNotObserved { refusal: RefusalTransportOutOfBand { wire: w, why_not_in_band: why } } =>
-        w == "lanplus" && string_length(why) > 0
+      InBandChannelNotObserved { refusal: RefusalTransportOutOfBand { wire: w, why_not_in_band: _ } } =>
+        // only the wire is checked: why_not_in_band is NonEmptyStr, so "it is not empty" is a type fact,
+        // not something this claim could ever make go red
+        w == "lanplus"
       _ => false
     })
     // LAST -I WINS, which only an authority that pairs -I with its argument can see (case 'I' in
@@ -3330,8 +3338,9 @@ test fn the_transport_sums_place_every_wire_name_on_exactly_one_side() -> Bool {
   })
     // out-of-band: the parse answers with the other sum AND says why, so the refusal is not a bare no
     && (match ipmi_command_interface_from_wire(wire: "lanplus") {
-      IpmiCommandInterfaceParsed { wire: _, transport: NotInBandHostTransport { transport: t, why_not_in_band: why } } =>
-        t == LanPlusTransport && string_length(why) > 0
+      IpmiCommandInterfaceParsed { wire: _, transport: NotInBandHostTransport { transport: t, why_not_in_band: _ } } =>
+        // the OTHER SUM is the assertion; the reason field is NonEmptyStr, so length is a type fact
+        t == LanPlusTransport
       _ => false
     })
     // in-band arms the parse can produce, obtained through the parse rather than asserted
@@ -3365,7 +3374,10 @@ test fn the_transport_sums_place_every_wire_name_on_exactly_one_side() -> Bool {
       _ => false
     })
     && (match in_band_command_from_argv(argv_words: ["user", "list", "1"]) {
-      IpmiCommandTransportAbsent { detail: d } => string_length(d) > 0
+      // the arm, not its wording: detail is NonEmptyStr, so a length test could never fail. What this
+      // conjunct rules out is the other two arms -- a build-time default being applied silently would land
+      // on IpmiCommandParsed, and the case above shows the same words reaching no channel at all.
+      IpmiCommandTransportAbsent { detail: _ } => true
       _ => false
     })
 }
@@ -4273,7 +4285,10 @@ test fn the_password_gate_admits_the_captured_channel_and_refuses_the_wrong_kind
     PasswordWriteRefusedByLedger { site: _, cause: _ } => false
   })
     && (match admit_recovery_in_band_password_write(route: route, write: recovery_reset_write_record()) {
-      PasswordWriteRefused { cause: cause } => string_length(cause) > 0
+      // cause is NonEmptyStr, so a length test could never go red; what this conjunct rules out is the
+      // OTHER two arms -- the wrong write handed to the gate must be refused, not admitted and not
+      // bounced to the ledger
+      PasswordWriteRefused { cause: _ } => true
       PasswordWriteAdmitted { ticket: _ } => false
       PasswordWriteRefusedByLedger { site: _, cause: _ } => false
     })
