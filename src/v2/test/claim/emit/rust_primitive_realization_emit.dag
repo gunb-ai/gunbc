@@ -3,11 +3,12 @@ module v2.test.claim.emit.rust_primitive_realization_emit
 import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.rust {
   rust_production_lex,
+  rust_primitive_realization_rows,
   rust_operator_realizations_catalog_node,
   rust_value_expression_projection
 }
 import v2.extdeps.languages.rust_fixtures { rust_target_model_with_operators_and_lex }
-import v2.std.compilers.target_model { TargetRealizationCatalog, PrimitiveRealizationsUnwired,
+import v2.std.compilers.target_model { TargetRealizationCatalog, PrimitiveRealizationsUnwired, PrimitiveRealizationsWired, TargetPrimitiveRealizations,
   TargetModel,
   TargetValueExpression,
   canonical_operation_op_add,
@@ -21,7 +22,8 @@ import v2.std.compilers.target_model { TargetRealizationCatalog, PrimitiveRealiz
   target_value_expression_to_concrete_tokens
 }
 import v2.std.diagnostic { Accepted, Rejected, None, Outcome, bind_outcome }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
+import std.algebra { fold_list }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -57,12 +59,20 @@ fn rust_primitive_operators_only_catalog() -> Node {
   ])
 }
 
-fn rust_primitive_emit(expr: TargetValueExpression, catalog: Node) -> Outcome<String> {
+fn rust_primitive_rows_wired() -> TargetPrimitiveRealizations {
+  PrimitiveRealizationsWired { rows: rust_primitive_realization_rows() }
+}
+
+fn rust_primitive_emit(
+  expr: TargetValueExpression,
+  catalog: Node,
+  primitives: TargetPrimitiveRealizations
+) -> Outcome<String> {
   bind_outcome(
     o: target_value_expression_to_concrete_tokens(
       expr: expr,
       projection: rust_value_expression_projection(),
-      catalog: TargetRealizationCatalog { operators: catalog, primitives: PrimitiveRealizationsUnwired }
+      catalog: TargetRealizationCatalog { operators: catalog, primitives: primitives }
     ),
     f: fn(tokens) {
       bind_outcome(
@@ -80,7 +90,8 @@ fn rust_primitive_emit(expr: TargetValueExpression, catalog: Node) -> Outcome<St
 test fn rust_primitive_string_length_row_realizes_shared_reference_call() -> Bool {
   match rust_primitive_emit(
     expr: rust_primitive_string_length_call(),
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: rust_operator_realizations_catalog_node(),
+    primitives: rust_primitive_rows_wired()
   ) {
     Accepted { value: s, diagnostics: d } => (s == "string_length(&x)") && (d == None)
     Rejected { diagnostics: _ } => false
@@ -91,18 +102,51 @@ test fn rust_primitive_string_length_row_realizes_shared_reference_call() -> Boo
 test fn rust_primitive_without_row_refuses() -> Bool {
   match rust_primitive_emit(
     expr: rust_primitive_string_length_call(),
-    catalog: rust_primitive_operators_only_catalog()
+    catalog: rust_primitive_operators_only_catalog(),
+    primitives: PrimitiveRealizationsUnwired
   ) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
+fn rust_primitive_refusal_names(outcome: Outcome<String>, reason: Symbol) -> Bool {
+  match outcome {
+    Rejected { diagnostics: ds } => fold_list(xs: ds, empty: false, cons: fn(acc, d) { acc || d.reason == reason })
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// RED: a target that states no primitive rows refuses with the Unwired cause, not "missing".
+test fn rust_primitive_on_an_unwired_target_refuses_as_unwired() -> Bool {
+  rust_primitive_refusal_names(
+    outcome: rust_primitive_emit(
+      expr: rust_primitive_string_length_call(),
+      catalog: rust_operator_realizations_catalog_node(),
+      primitives: PrimitiveRealizationsUnwired
+    ),
+    reason: ^target_primitive_realizations_unwired
+  )
+}
+
+// RED: a wired target whose rows do not name the primitive refuses as missing: the two causes stay distinct.
+test fn rust_primitive_absent_from_wired_rows_refuses_as_missing() -> Bool {
+  rust_primitive_refusal_names(
+    outcome: rust_primitive_emit(
+      expr: rust_primitive_string_length_call(),
+      catalog: rust_operator_realizations_catalog_node(),
+      primitives: PrimitiveRealizationsWired { rows: [] }
+    ),
+    reason: ^target_primitive_realization_missing
+  )
+}
+
 // A name that is not a std.primitives contract keeps the ordinary call path.
 test fn rust_non_primitive_call_is_not_row_gated() -> Bool {
   match rust_primitive_emit(
     expr: rust_primitive_unknown_call(),
-    catalog: rust_primitive_operators_only_catalog()
+    catalog: rust_primitive_operators_only_catalog(),
+    primitives: PrimitiveRealizationsUnwired
   ) {
     Accepted { value: s, diagnostics: _ } => s == "string_to_upper(x)"
     Rejected { diagnostics: _ } => false
@@ -114,7 +158,8 @@ test fn rust_non_primitive_call_is_not_row_gated() -> Bool {
 test fn rust_user_fn_spelled_like_a_primitive_is_not_the_primitive() -> Bool {
   match rust_primitive_emit(
     expr: rust_user_string_length_call(),
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: rust_operator_realizations_catalog_node(),
+    primitives: rust_primitive_rows_wired()
   ) {
     Accepted { value: s, diagnostics: _ } => s == "string_length(x)"
     Rejected { diagnostics: _ } => false
@@ -125,7 +170,8 @@ test fn rust_user_fn_spelled_like_a_primitive_is_not_the_primitive() -> Bool {
 test fn rust_user_fn_spelled_like_a_primitive_needs_no_row() -> Bool {
   match rust_primitive_emit(
     expr: rust_user_string_length_call(),
-    catalog: rust_primitive_operators_only_catalog()
+    catalog: rust_primitive_operators_only_catalog(),
+    primitives: PrimitiveRealizationsUnwired
   ) {
     Accepted { value: s, diagnostics: _ } => s == "string_length(x)"
     Rejected { diagnostics: _ } => false
@@ -135,14 +181,14 @@ test fn rust_user_fn_spelled_like_a_primitive_needs_no_row() -> Bool {
 // The emitted text of each call, for the execution recipe (v2.test.claim.emit.rust_primitive_realization_emit is run
 // with --function and the text is compiled against the seed runtime's string_length by rustc).
 fn rust_primitive_row_text() -> String {
-  match rust_primitive_emit(expr: rust_primitive_string_length_call(), catalog: rust_operator_realizations_catalog_node()) {
+  match rust_primitive_emit(expr: rust_primitive_string_length_call(), catalog: rust_operator_realizations_catalog_node(), primitives: rust_primitive_rows_wired()) {
     Accepted { value: s, diagnostics: _ } => s
     Rejected { diagnostics: _ } => "REFUSED"
   }
 }
 
 fn rust_primitive_bare_text() -> String {
-  match rust_primitive_emit(expr: rust_user_string_length_call(), catalog: rust_operator_realizations_catalog_node()) {
+  match rust_primitive_emit(expr: rust_user_string_length_call(), catalog: rust_operator_realizations_catalog_node(), primitives: rust_primitive_rows_wired()) {
     Accepted { value: s, diagnostics: _ } => s
     Rejected { diagnostics: _ } => "REFUSED"
   }

@@ -151,8 +151,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   PrimitivePassByValue,
   TargetPrimitiveArgumentPassing,
   PrimitiveResultAsReturned,
-  target_primitive_realization_node,
-  target_realizations_catalog_node,
+  PrimitiveRealizationsWired,
   target_bind_let_separator_present,
   IntLiteralDecimal,
   TargetCapabilityKey,
@@ -1325,7 +1324,7 @@ fn rust_primitive_realization_rows() -> List<TargetPrimitiveRealization> {
 data rust_primitive_realization_seed_spelling_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the frozen v1 seed no longer reads rt_function_registry and rust_simple_method_specs (extdeps.languages.rust.emit) and no longer special-cases to_string and map in v1_compiler_emit_rust; those rows then dissolve into rust_primitive_realization_rows, and the differential witness v2.test.claim.emit.rust_primitive_seed_differential is deleted with them")
 
 fn rust_operator_realizations_catalog_node() -> Node {
-  target_realizations_catalog_node(primitive_rows: list_map(xs: rust_primitive_realization_rows(), f: fn(r) { target_primitive_realization_node(row: r) }), operator_rows: [
+  target_operator_realizations_catalog_node(rows: [
     rust_operator_realization_row(operation: canonical_operation_op_or(), token: ^rust_token_oror),
     rust_operator_realization_row(operation: canonical_operation_op_and(), token: ^rust_token_andand),
     rust_operator_realization_row(operation: canonical_operation_op_eq(), token: ^rust_token_eqeq),
@@ -2240,7 +2239,7 @@ fn rust_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_target_model_staging() -> TargetModel {
   TargetModel {
-    primitive_realizations: PrimitiveRealizationsUnwired,
+    primitive_realizations: PrimitiveRealizationsWired { rows: rust_primitive_realization_rows() },
     produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_bundle_core(),
     lex: rust_staging_lex(),
@@ -2364,7 +2363,7 @@ fn rust_target_model_node() -> Node {
 
 fn rust_target_model() -> TargetModel {
   TargetModel {
-    primitive_realizations: PrimitiveRealizationsUnwired,
+    primitive_realizations: PrimitiveRealizationsWired { rows: rust_primitive_realization_rows() },
     produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_node(),
     lex: rust_production_lex(),
