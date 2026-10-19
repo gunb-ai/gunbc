@@ -1,5 +1,6 @@
 module test.claim.fleet.fleet_converge_launch_scope_non_interference
 
+import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
 import gunbc.fleet.fleet_converge_terminal { fleet_converge_apply_terminal_wire, FullyApplied, PartiallyApplied, AwaitingCapability }
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
@@ -275,6 +276,7 @@ fn full_host_srv1(slots: List<RunnerSlotMember>) -> FleetConvergeRequest {
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
     observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
     observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+    observed_host_grants: witness_grants_rendered(host: host_srv1),
   }
 }
 
@@ -302,6 +304,7 @@ test fn the_same_cap_population_moves_the_full_host_projection() -> Bool {
       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
       observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
       observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+      observed_host_grants: witness_grants_rendered(host: host_srv1),
     },
   )
 }
@@ -317,6 +320,7 @@ test fn the_same_fabric_observation_refuses_where_it_is_owned() -> Bool {
       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
       observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
       observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+      observed_host_grants: witness_grants_rendered(host: operator_host_srv3 as NonEmptyStr),
     },
     prior_generation: 0,
   ) {

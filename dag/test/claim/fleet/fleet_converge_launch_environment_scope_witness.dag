@@ -1,5 +1,6 @@
 module test.claim.fleet.fleet_converge_launch_environment_scope_witness
 
+import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
 
 import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, AwaitingCapability, fleet_converge_apply_terminal_wire }
@@ -94,6 +95,7 @@ fn witness_full_host_request() -> FleetConvergeRequest {
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  observed_host_grants: witness_grants_rendered(host: witness_unmodeled_host),
   }
 }
 
@@ -247,6 +249,7 @@ test fn the_full_host_plan_body_still_carries_the_slot_and_activation_counters()
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  observed_host_grants: witness_grants_rendered(host: witness_unmodeled_host),
   ) {
       Absent => false
       Present { value: artifact } => {
@@ -286,6 +289,7 @@ test fn cap_drift_is_visible_under_full_host_and_unconstructible_under_launch() 
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  observed_host_grants: witness_grants_rendered(host: witness_host_srv1),
   ) {
     Absent => false
     Present { value: full_with_drift } => {
@@ -333,6 +337,7 @@ test fn a_refusing_fabric_observation_moves_full_host_and_cannot_enter_launch() 
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  observed_host_grants: witness_grants_rendered(host: operator_host_srv3 as NonEmptyStr),
   ) {
     Absent => false
     Present { value: fh } => {
@@ -531,6 +536,7 @@ fn srv1_full_host_request() -> FleetConvergeRequest {
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  observed_host_grants: witness_grants_rendered(host: witness_host_srv1),
   }
 }
 
@@ -580,6 +586,7 @@ test fn the_excluded_families_still_refuse_loudly_under_the_scope_that_owns_them
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  observed_host_grants: witness_grants_rendered(host: witness_host_srv1),
   ) {
       Absent => false
       Present { value: artifact } => {
