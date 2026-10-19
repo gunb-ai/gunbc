@@ -24,10 +24,10 @@ import std.types {
   Timestamp,
 }
 import std.measure {
-  second_count,
   minute,
+  measure_le,
 }
-import std.optional { Present }
+import std.optional { Optional, Present, Absent }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.github.deployment_protection_rule {
   InstallationAccessToken,
@@ -51,9 +51,6 @@ import extdeps.github.deployment_protection_rule {
   installation_field_app_slug,
   installation_readback_success_status,
   ReviewState,
-  review_call,
-  human_review_call,
-  pending_deployments_poll_call,
   custom_rule_response_timeout,
 }
 import extdeps.github.actions_runs {
@@ -90,7 +87,6 @@ import gunbc.auth.deployment_gate_authorization {
   capability_binds_request,
   review_answers_capability,
   review_matches_decision,
-  review_was_accepted,
   gate_credential_refusal,
   CredentialRefusal,
   OperatorOwnedCredential,
@@ -98,8 +94,7 @@ import gunbc.auth.deployment_gate_authorization {
   for_answer_pending_gate,
   gate_pattern_redeems_a_human_decision,
   documented_example_is_not_the_gated_environment,
-  gate_ceiling_in_seconds,
-  documented_timer_maximum_in_seconds,
+  documented_wait_timer_ceiling,
   gate_ceilings_agree,
   EnvironmentRuleOwnership,
   OwnedByGateApp,
@@ -648,17 +643,13 @@ test fn an_unestablished_or_mismatched_ownership_never_answers() -> Bool {
 // 2. Success is one status on one call
 // ---------------------------------------------------------------------------
 
-// 204 and nothing else. The poll and the human reviewer endpoint answer 200 WITH A BODY; reading either
-// as an accepted review reports an approval that was never given — the specific way this feature could
-// tell the operator "approved" while the deployment stayed waiting.
-test fn success_is_one_status_on_the_right_call() -> Bool {
-  review_was_accepted(status: review_call.success_status)
-    && !review_was_accepted(status: human_review_call.success_status)
-    && !review_was_accepted(status: pending_deployments_poll_call.success_status)
-    && !review_was_accepted(status: 200)
-    && !review_was_accepted(status: 201)
-    && !review_was_accepted(status: 202)
-}
+// 204 and nothing else is UPSTREAM's fact, exercised where it lives:
+// test.claim.github_deployment_protection_rule_witness calls review_call_succeeded directly with 204 /
+// 200 / 201 / 304 / 500 and with each of the three endpoints' own success status. What this layer owns is
+// the POLICY — a call that did not succeed cannot produce a receipt — and that is
+// the_mint_refuses_a_status_it_does_not_accept, which goes through the mint rather than restating the
+// status table next to it (review 82392 deleted review_was_accepted, a second name for
+// review_call_succeeded; a duplicate of the upstream test would have been the second defect).
 
 // A concluded run is not answered: its deployment has settled, and a review now changes nothing while
 // looking like it did. Both arms of GitHub's own settlement sum are exercised, so "we did not look" is
@@ -747,10 +738,13 @@ test fn the_selected_route_follows_the_standing_and_adds_no_exposure() -> Bool {
 // check written against the seconds reading waves through a job that has waited a month. The two
 // clauses differ only in unit.
 test fn the_wait_timer_is_minutes_and_not_seconds() -> Bool {
-  documented_timer_maximum_in_seconds() == gate_ceiling_in_seconds()
-    && documented_timer_maximum_in_seconds() == 30 * 86400
-    && documented_timer_maximum_in_seconds() != 43200
-    && second_count(s: custom_rule_response_timeout()) == gate_ceiling_in_seconds()
+  // The reading under test: 43,200 is a MINUTES value. Read as minutes it is exactly the 30-day
+  // ceiling; read as seconds it is twelve hours, and a break-glass check written against the seconds
+  // reading waves through a job that has waited a month. CARRIER TO CARRIER — review 82392 deleted the
+  // helpers that unwrapped both quantities to Int, because an Int whose unit survives only in its name
+  // is the same defect one layer up. No number is compared here; two Second carriers are, both ways.
+  measure_le(a: documented_wait_timer_ceiling(), b: rule_gate_approval_ceiling())
+    && measure_le(a: rule_gate_approval_ceiling(), b: documented_wait_timer_ceiling())
     && gate_ceilings_agree()
 }
 
@@ -768,175 +762,227 @@ test fn the_documented_example_is_not_our_gate() -> Bool {
 // corroborated rejection on two DIFFERENT runs of the gated environment. There is no admitted
 // DeploymentGateTrialEvidence to build by hand: the type is sole_constructor, so a literal outside the
 // minting module is refused by the compiler, which the probe below enrolls and asserts.
-test fn an_admission_comes_only_from_the_mint_and_the_mint_refuses_shortcuts() -> Bool {
-  // Both arms are ACCEPTED CALL RECEIPTS, minted by the only producer, on two different runs. An
-  // earlier revision of this test minted them from run + pending readbacks — which was the wrong
-  // evidence, not merely a weaker one: during the staged swap a HUMAN reviewer can still release the
-  // deployment, and an admin can bypass protection rules, so "the job stopped waiting" is a state a
-  // person caused. The readbacks are corroborators now; they mint nothing.
+// THE ADMISSION COMES ONLY FROM THE MINTED PAIR — and every shortcut a caller could take is refused by
+// name. The finding this replaces: an earlier revision minted both arms from run + pending readbacks,
+// which was the WRONG evidence, not merely a weaker one. During the staged swap a HUMAN reviewer can
+// still release the deployment and an admin can bypass protection rules, so "the job stopped waiting" is
+// a state a person caused, not the rule's answer. Both arms here are ACCEPTED CALL RECEIPTS from the one
+// producer, on two different runs; the readbacks are corroborators and mint nothing.
+//
+// Split into three tests on purpose: this file's reds are the seal, and a 200-line conjunction that
+// returns false tells a reader nothing about which shortcut got through.
+test fn the_honest_pair_is_admitted_and_carries_the_receipts_it_was_built_from() -> Bool {
   match fx_receipt(run_id: 35447067113, state: Approved) {
     Present { value: good_approve } => match fx_receipt(run_id: 35447067114, state: Rejected) {
       Present { value: good_reject } =>
-        // The honest pair admits, and the evidence carries the receipts it was built from.
-        (match admit_reviewer_removal(
-               approved: Present { value: good_approve },
-               rejected: Present { value: good_reject },
-               environment_name: gated_env,
-             ) {
-               RemovalAdmitted { evidence: e } =>
-                 e.approved.run_id == 35447067113
-                   && e.rejected.run_id == 35447067114
-                   && e.environment_name == gated_env
-                   && e.approved.state == Approved
-                   && e.rejected.state == Rejected
-               RemovalRefused { missing: _ } => false
-             })
-          // Nothing witnessed: refused, and the frontier row is exactly that refusal.
-          && (match admit_reviewer_removal(
-                approved: none,
-                rejected: none,
-                environment_name: gated_env,
-              ) {
-                RemovalRefused { missing: NoApprovingReview } => true
-                RemovalRefused { missing: _ } => false
-                RemovalAdmitted { evidence: _ } => false
-              })
-          // One arm missing, named. An earlier version asked the reason to CONTAIN the word
-          // "rejecting", which passed for a sentence and broke on a rewording; the reason is a closed
-          // sum, so a fold that mixed two blockers up is caught and a rewording is not.
-          && (match admit_reviewer_removal(
-                approved: Present { value: good_approve },
-                rejected: none,
-                environment_name: gated_env,
-              ) {
-                RemovalRefused { missing: NoRejectingReview } => true
-                RemovalRefused { missing: _ } => false
-                RemovalAdmitted { evidence: _ } => false
-              })
-          // AN ARM THAT IS NOT WHAT IT CLAIMS: a second approval cannot stand in for the rejection.
-          // Without this the "both arms witnessed" claim would be satisfied by two approvals, which is
-          // precisely the run that shows nothing about refusing.
-          && (match admit_reviewer_removal(
-                approved: Present { value: good_approve },
-                rejected: Present { value: good_approve },
-                environment_name: gated_env,
-              ) {
-                RemovalRefused { missing: RejectingArmWasNotARejection } => true
-                RemovalRefused { missing: _ } => false
-                RemovalAdmitted { evidence: _ } => false
-              })
-          // BOTH ARMS ON ONE DISPATCH: one fortunate run dressed as two trials. Both receipts are
-          // genuine and carry the rule and installation identity, so nothing but the run-id comparison
-          // refuses it — which is why it is checked at the mint.
-          && (match admit_reviewer_removal(
-                approved: Present { value: good_approve },
-                rejected: fx_receipt(run_id: 35447067113, state: Rejected),
-                environment_name: gated_env,
-              ) {
-                RemovalRefused { missing: BothArmsOneDispatch } => true
-                RemovalRefused { missing: _ } => false
-                RemovalAdmitted { evidence: _ } => false
-              })
-          // EVIDENCE FROM ANOTHER ENVIRONMENT. The environment the removal is FOR is an argument, not a
-          // constant, because two environments are on this route (srv1-production and the sibling lane's
-          // gcp-iam-bootstrap). A pair witnessed elsewhere must not unlock this one's reviewer.
-          && (match admit_reviewer_removal(
-                approved: Present { value: good_approve },
-                rejected: Present { value: good_reject },
-                environment_name: other_env,
-              ) {
-                RemovalRefused { missing: EvidenceFromAnotherEnvironment } => true
-                RemovalRefused { missing: _ } => false
-                RemovalAdmitted { evidence: _ } => false
-              })
-      none => false
+        match admit_reviewer_removal(
+          approved: Present { value: good_approve },
+          rejected: Present { value: good_reject },
+          environment_name: gated_env,
+        ) {
+          RemovalAdmitted { evidence: e } =>
+            e.approved.run_id == 35447067113
+              && e.rejected.run_id == 35447067114
+              && e.environment_name == gated_env
+              && e.approved.state == Approved
+              && e.rejected.state == Rejected
+          RemovalRefused { missing: _ } => false
+        }
+      Absent => false
     }
-    none => false
+    Absent => false
   }
-    // A 204 for a body that releases a DIFFERENT environment mints no receipt: GitHub answers 204 just
-    // as happily for the wrong environment, so the refusal has to happen at the mint.
-    && fx_mint_probe(
+}
+
+// NOTHING WITNESSED IS REFUSED, and the frontier row is exactly that refusal. An earlier version asked
+// the reason to CONTAIN the word "rejecting", which passed for a sentence and broke on a rewording; the
+// reason is a closed sum, so a fold that mixed two blockers up is caught and a rewording is not.
+test fn nothing_witnessed_is_admitted_neither_nor_left_unnamed() -> Bool {
+  (match admit_reviewer_removal(
+        approved: Absent,
+        rejected: Absent,
+        environment_name: gated_env,
+      ) {
+        RemovalRefused { missing: NoApprovingReview } => true
+        RemovalRefused { missing: _ } => false
+        RemovalAdmitted { evidence: _ } => false
+      })
+    // ONE ARM MISSING, NAMED.
+    && (match admit_reviewer_removal(
+          approved: fx_receipt(run_id: 35447067113, state: Approved),
+          rejected: Absent,
+          environment_name: gated_env,
+        ) {
+          RemovalRefused { missing: NoRejectingReview } => true
+          RemovalRefused { missing: _ } => false
+          RemovalAdmitted { evidence: _ } => false
+        })
+}
+
+// AN ARM THAT IS NOT WHAT IT CLAIMS: a second approval cannot stand in for the rejection. Without this
+// the "both arms witnessed" claim would be satisfied by two approvals — the run that shows nothing about
+// refusing.
+test fn an_approving_arm_dressed_as_the_rejecting_arm_is_refused() -> Bool {
+  match fx_receipt(run_id: 35447067113, state: Approved) {
+    Present { value: good_approve } =>
+      match admit_reviewer_removal(
+        approved: Present { value: good_approve },
+        rejected: Present { value: good_approve },
+        environment_name: gated_env,
+      ) {
+        RemovalRefused { missing: RejectingArmWasNotARejection } => true
+        RemovalRefused { missing: _ } => false
+        RemovalAdmitted { evidence: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// BOTH ARMS ON ONE DISPATCH: one fortunate run dressed as two trials. Both receipts are genuine and
+// carry the rule and installation identity, so nothing but the run-id comparison refuses it.
+test fn one_dispatch_dressed_as_two_trials_is_refused() -> Bool {
+  match admit_reviewer_removal(
+    approved: fx_receipt(run_id: 35447067113, state: Approved),
+    rejected: fx_receipt(run_id: 35447067113, state: Rejected),
+    environment_name: gated_env,
+  ) {
+    RemovalRefused { missing: BothArmsOneDispatch } => true
+    RemovalRefused { missing: _ } => false
+    RemovalAdmitted { evidence: _ } => false
+  }
+}
+
+// EVIDENCE FROM ANOTHER ENVIRONMENT. The environment the removal is FOR is an argument, not a constant,
+// because two environments are on this route (srv1-production and the sibling lane's
+// gcp-iam-bootstrap — sleek-bee-335 gates that one with this same rule). A pair witnessed elsewhere must
+// not unlock this one's reviewer.
+test fn a_pair_witnessed_on_another_environment_unlocks_nothing_here() -> Bool {
+  match fx_receipt(run_id: 35447067113, state: Approved) {
+    Present { value: good_approve } => match fx_receipt(run_id: 35447067114, state: Rejected) {
+      Present { value: good_reject } =>
+        match admit_reviewer_removal(
+          approved: Present { value: good_approve },
+          rejected: Present { value: good_reject },
+          environment_name: other_env,
+        ) {
+          RemovalRefused { missing: EvidenceFromAnotherEnvironment } => true
+          RemovalRefused { missing: _ } => false
+          RemovalAdmitted { evidence: _ } => false
+        }
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// THE MINT REFUSES THE SHORTCUTS. Each probe hands the mint a call that LOOKS right and is wrong in
+// exactly one place, and asserts the mint's own refusal variant — the discriminating red on the
+// BINDING: mutate the run id or the environment anywhere and nothing is approved.
+test fn the_mint_refuses_a_body_for_another_environment() -> Bool {
+  match fx_mint_probe(
+    run_id: 35447067113,
+    environment_name: gated_env,
+    claimed: Approved,
+    path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
+    review: DeploymentProtectionRuleReview {
+      environment_name: other_env,
+      state: Approved,
+      comment: Present { value: "wrong environment" },
+    },
+    status: 204,
+    ownership: minted_ownership(),
+  ) {
+    AcceptedReviewRefused {
+      because: BodyNamesAnotherEnvironment { body_environment: b, claimed: c },
+    } => b == other_env && c == gated_env
+    Accepted { receipt: _ } => false
+  }
+}
+
+// A 200 is not an accepted review, even though the poll and the human-reviewer endpoint answer 200. This
+// is the red that keeps one status code from standing in for two different endpoints.
+test fn the_mint_refuses_a_status_it_does_not_accept() -> Bool {
+  match fx_mint_probe(
+    run_id: 35447067113,
+    environment_name: gated_env,
+    claimed: Approved,
+    path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
+    review: DeploymentProtectionRuleReview {
+      environment_name: gated_env,
+      state: Approved,
+      comment: Present { value: "ok" },
+    },
+    status: 200,
+    ownership: minted_ownership(),
+  ) {
+    AcceptedReviewRefused { because: NotAcceptedStatus { status: s } } => s == 200
+    Accepted { receipt: _ } => false
+  }
+}
+
+// A path that is not this run's. The endpoint template carries {run_id}; a caller that pasted another
+// run's path would be reviewing a deployment nobody tapped.
+test fn the_mint_refuses_a_path_from_another_run() -> Bool {
+  match fx_mint_probe(
+    run_id: 35447067113,
+    environment_name: gated_env,
+    claimed: Approved,
+    path: "/repos/gunb-ai/gunbc/actions/runs/999/deployment_protection_rule",
+    review: DeploymentProtectionRuleReview {
+      environment_name: gated_env,
+      state: Approved,
+      comment: Present { value: "ok" },
+    },
+    status: 204,
+    ownership: minted_ownership(),
+  ) {
+    AcceptedReviewRefused { because: PathNotForThisRun { run_id: r } } => r == 35447067113
+    Accepted { receipt: _ } => false
+  }
+}
+
+// NO OWNERSHIP, NO RECEIPT: an unattributed readback cannot authorise a review, and the installation the
+// token would be minted from is readable only off a JOINED ownership — never off the operator's claim.
+test fn no_receipt_and_no_token_without_an_attributed_ownership() -> Bool {
+  (match fx_mint_probe(
          run_id: 35447067113,
          environment_name: gated_env,
          claimed: Approved,
          path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
          review: DeploymentProtectionRuleReview {
-           environment_name: other_env,
+           environment_name: gated_env,
            state: Approved,
-           comment: Present { value: "wrong environment" },
+           comment: Present { value: "ok" },
          },
          status: 204,
-         ownership: minted_ownership(),
-       )
-         == AcceptedReviewRefused {
-           because: BodyNamesAnotherEnvironment {
-             body_environment: other_env,
-             claimed: gated_env,
-           },
-         }
-    // A 200 is not an accepted review, even though the poll and the human reviewer answer 200.
-    && (match fx_mint_probe(
-          run_id: 35447067113,
-          environment_name: gated_env,
-          claimed: Approved,
-          path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
-          review: DeploymentProtectionRuleReview {
-            environment_name: gated_env,
-            state: Approved,
-            comment: Present { value: "ok" },
-          },
-          status: 200,
-          ownership: minted_ownership(),
-        ) {
-          AcceptedReviewRefused { because: NotAcceptedStatus { status: s } } => s == 200
-          _ => false
-        })
-    // A path that is not this run's. The endpoint template carries {run_id}; a caller that pasted a
-    // different run's path would be reviewing a deployment nobody tapped.
-    && (match fx_mint_probe(
-          run_id: 35447067113,
-          environment_name: gated_env,
-          claimed: Approved,
-          path: "/repos/gunb-ai/gunbc/actions/runs/999/deployment_protection_rule",
-          review: DeploymentProtectionRuleReview {
-            environment_name: gated_env,
-            state: Approved,
-            comment: Present { value: "ok" },
-          },
-          status: 204,
-          ownership: minted_ownership(),
-        ) {
-          AcceptedReviewRefused { because: PathNotForThisRun { run_id: r } } => r == 35447067113
-          _ => false
-        })
-    // NO OWNERSHIP, NO RECEIPT — the unattributed readback cannot authorise a review.
-    && (match fx_mint_probe(
-          run_id: 35447067113,
-          environment_name: gated_env,
-          claimed: Approved,
-          path: "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule",
-          review: DeploymentProtectionRuleReview {
-            environment_name: gated_env,
-            state: Approved,
-            comment: Present { value: "ok" },
-          },
-          status: 204,
-          ownership: unattributed_ownership(),
-        ) {
-          AcceptedReviewRefused { because: _ } => true
-          Accepted { receipt: _ } => false
-        })
+         ownership: unattributed_ownership(),
+       ) {
+         AcceptedReviewRefused { because: _ } => true
+         Accepted { receipt: _ } => false
+       })
     // THE TOKEN'S SOURCE IS THE OBSERVATION, never the claim.
-    && mintable_installation_id(ownership: minted_ownership())
-      == Present { value: 888800001 }
-    && mintable_installation_id(ownership: unattributed_ownership()) == none
+    && (match mintable_installation_id(ownership: minted_ownership()) {
+          Present { value: i } => i == 888800001
+          Absent => false
+        })
+    && (match mintable_installation_id(ownership: unattributed_ownership()) {
+          Present { value: _ } => false
+          Absent => true
+        })
 }
 
 // The configured installation is a fact the operator recorded, never something a readback handed over:
 // the enabled-rules response carries an App id and slug and no installation id at all.
 test fn the_configured_installation_carries_both_ids_and_no_readback_can() -> Bool {
-  let configured = GateInstallationClaim { installation_id: 1900000001, app_id: gate_app_id }
-  configured.installation_id == 1900000001
+  // SEPARATE NAMESPACES, AND THE TEST ONLY DISCRIMINATES IF THEY ARE KEPT APART. An installation id is
+  // not an App id: the enabled-rules readback carries an App id and slug and no installation id at all,
+  // so a claim that confused the two would be caught only by a value that differs. Reusing one number
+  // here would have made the last clause vacuous.
+  let configured = GateInstallationClaim { installation_id: 888800001, app_id: gate_app_id }
+  configured.installation_id == 888800001
     && configured.app_id == gate_app_id
     && configured.app_id != configured.installation_id
+    // and no readback can supply it: the enabled-rule row has exactly three fields, none of them an
+    // installation id — which is why the identity has to be READ from the installation endpoint.
+    && (fx_enabled_rule().app.id == gate_app_id)
 }

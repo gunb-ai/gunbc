@@ -32,6 +32,7 @@ import std.types {
 import std.measure {
   Second,
   second_count,
+  measure_le,
 }
 import std.optional {
   Present,
@@ -667,12 +668,6 @@ fn review_matches_decision(review: DeploymentProtectionRuleReview, decision: Pro
   }
 }
 
-// 204 and nothing else, on the App's endpoint. The two pending_deployments calls answer 200 with a
-// body; reading a poll's 200 as an accepted review reports an approval that was never given.
-fn review_was_accepted(status: HttpStatus) -> Bool {
-  review_call_succeeded(status: status)
-}
-
 // ---------------------------------------------------------------------------
 // 7. WHAT MUST BE WITNESSED BEFORE A HUMAN REVIEWER IS REMOVED
 // ---------------------------------------------------------------------------
@@ -758,7 +753,7 @@ fn mint_accepted_rule_review(
   ]
 {
   // the status first: nothing else is worth checking if GitHub did not accept the call
-  if !review_was_accepted(status: status) {
+  if !review_call_succeeded(status: status) {
     AcceptedReviewRefused { because: NotAcceptedStatus { status: status } }
   } else if review_releases_environment(review: review) != environment_name {
     // THE BODY-MUTATION RED, at the mint rather than after the response: a 204 comes back just as
@@ -977,18 +972,20 @@ fn documented_example_is_not_the_gated_environment() -> Bool {
 // CONFIGURED wait_timer is not that quantity — it is a configured delay in minutes, capped by upstream
 // at exactly this ceiling, so comparing the two could never fire. The elapsed-wait seam is owed by
 // stage 2: a real clock observation, a parse of GitHub's ISO-8601, and a subtraction in Second.
-fn gate_ceiling_in_seconds() -> Int {
-  second_count(s: custom_rule_response_timeout())
-}
-
-fn documented_timer_maximum_in_seconds() -> Int {
-  second_count(s: wait_minutes_as_seconds(minutes: wait_timer_maximum))
-}
-
-// The ceiling itself: 30 days, from the duration carrier rather than from an Int whose unit survives
-// only in its name. Two independent upstream statements, one magnitude, and a divergence between them
-// would show up here.
+// The ceiling itself: 30 days, CARRIER TO CARRIER. Both quantities start life as `std.measure`
+// `Second` values, and the comparison stays in that carrier — unwrapping them to `Int` to compare would
+// leave the unit living only in the function name, which is exactly what this file's own comment above
+// rules out. Two independent upstream statements of one magnitude: a divergence between them fails in
+// one direction or the other, which is what the two `measure_le` calls are for.
 fn gate_ceilings_agree() -> Bool {
-  gate_ceiling_in_seconds() == second_count(s: rule_gate_approval_ceiling())
+  measure_le(a: custom_rule_response_timeout(), b: rule_gate_approval_ceiling())
+    && measure_le(a: rule_gate_approval_ceiling(), b: custom_rule_response_timeout())
     && custom_rule_timeout_run_conclusion == RunFailure
+}
+
+// The documented maximum configured wait, as the carrier it is documented in: MINUTES, converted by
+// std.measure rather than by a hand-written factor. Compared against the ceiling by the function above,
+// never against a bare number.
+fn documented_wait_timer_ceiling() -> Second {
+  wait_minutes_as_seconds(minutes: wait_timer_maximum)
 }
