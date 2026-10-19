@@ -67,8 +67,11 @@ type AdmissionClosure = | AdmissionMaskOnly
 
 data runner_host_cap_admission_closure: AdmissionClosure = AdmissionMaskOnly
 
-// THE WAIT BOUND IS A POLICY ROW. 45 minutes covers the longest CI job the fleet's jobs declare; the
-// operator may change the number here and nowhere else. The poll interval paces the re-reads.
+// THE WAIT BOUND IS A POLICY ROW (ratified by the operator: 2700s wait, 15s poll). It must exceed the
+// longest expected job on a runner slot, so a drain does not refuse on normal work; the cost is up to
+// 45 minutes of a host's slots out of admission per cap change, a rare event. The figure is a policy
+// choice, not a measurement: the generated workflows' step timeouts reach 30 minutes, which it exceeds,
+// but no source declares the longest job. The number changes here and nowhere else.
 type HostCapDrainPolicy {
   wait_bound: Second
   poll_interval: Second
