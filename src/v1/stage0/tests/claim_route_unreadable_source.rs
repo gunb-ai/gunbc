@@ -129,23 +129,14 @@ fn a_directory_named_like_a_dag_source_refuses_naming_the_path() {
     );
 }
 
-// Root bypasses file permissions, so as root a mode-000 file is genuinely readable and the RED
-// cannot discriminate. It is reported NOT OBSERVED (printed SKIPPED with the reason), never as a
-// pass of the refusal.
+// A dangling symlink named like a source cannot be read by ANY uid, root included (a mode-000 file
+// can, because root bypasses permissions), so this RED discriminates wherever it runs and never
+// takes a skip branch.
 #[test]
 fn an_unreadable_claim_source_refuses_naming_the_file() {
-    use std::os::unix::fs::PermissionsExt;
-    let root = scratch_claim_root(
-        "chmod000",
-        "zz_scratch.dag",
-        "module test.claim.zz_scratch\n\ntest fn zz_claim() -> Bool {\n  true\n}\n",
-    );
-    let file = std::path::Path::new(&root).join("test/claim/zz_scratch.dag");
-    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0)).expect("chmod 000");
-    if std::fs::read(&file).is_ok() {
-        eprintln!("SKIPPED (not observed): this process can read a mode-000 file (root)");
-        return;
-    }
+    let root = scratch_claim_root("dangling", "ok.dag", "module test.claim.zz_ok\n");
+    let link = std::path::Path::new(&root).join("test/claim/zz_dangling.dag");
+    std::os::unix::fs::symlink("/nonexistent/zz_target.dag", &link).expect("dangling symlink");
     let err = route(root).expect_err("an unreadable claim source must refuse, not panic");
-    assert!(err.contains("zz_scratch.dag"), "must name the file: {err}");
+    assert!(err.contains("zz_dangling.dag"), "must name the file: {err}");
 }
