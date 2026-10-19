@@ -1406,6 +1406,7 @@ fn admit_recovery_in_band_password_write(
 fn password_write_admitted_after_ledger(
   route: RecoveryInBandRoute,
   write: RecoveryWriteRecord,
+) -> PasswordWriteAuthorization
   // THE HOLE THAT OPENED ONE LEVEL DOWN (side-chat HOLD blocker 1, second round). The tickets are sealed
   // and their mints are rostered, but an UNROSTERED helper that hands one out is the same wall with a
   // door in it: any module could call this directly and receive a real ticket without the ledger
@@ -1414,7 +1415,7 @@ fn password_write_admitted_after_ledger(
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_in_band_password_write"),
   ]
-) -> PasswordWriteAuthorization {
+{
   let kind = recovery_in_band_password_actuation()
   if match route.in_band.channel {
     // Matched, not queried: a channel that carried its credential on the argv, or was never read, has an
@@ -1487,12 +1488,13 @@ fn reset_write_admitted_after_ledger(
   under_ruling: StandingDestructiveAuthorization,
   unit_hold: UnitHoldAcquisition?,
   reset_write: RecoveryWriteRecord,
+) -> ResetWriteAuthorization
   // AS ABOVE, FOR THE RESET: sealed tickets behind an unrostered helper are a seal any import can lift.
   // Only the gate that checks the ruling, the hold, the destructive class and the reset type is admitted.
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
   ]
-) -> ResetWriteAuthorization {
+{
   match recovery_write_reset_arm(record: reset_write) {
     Absent => ResetWriteRefused {
       cause: "the write record names no ResetToDefaults arm at all, so there is nothing to check clears the user table" as NonEmptyStr
@@ -2356,6 +2358,7 @@ fn converge_after_admissions(
   in_band_write: RecoveryWriteRecord,
   reset_write: RecoveryWriteRecord,
   readback: RecoveryFactoryCredentialReadback,
+) -> InBandRecoveryStanding
   // THE STANDING AND ITS HAND-OFF ARE PRODUCED IN ONE PLACE. A helper that could assemble a completed
   // standing from any arguments would let a caller skip reachability, the channel, the per-release policy
   // and the hold -- so the fold that checked all of them is its only caller, and a standing for a unit
@@ -2363,7 +2366,7 @@ fn converge_after_admissions(
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "converge_in_band_recovery"),
   ]
-) -> InBandRecoveryStanding {
+{
   if recovery_write_was_attempted(record: in_band_write, kind: InBandTemporaryAdministratorPassword) == false {
         InBandRecoveryStanding {
           subject: route.subject,
