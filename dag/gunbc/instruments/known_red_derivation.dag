@@ -109,8 +109,9 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 //   - COUNTS AS CRITERIA. Completeness is `ledger_is_complete`, an identity join; row counts are printed
 //     as a CONSEQUENCE of the join, never compared to a number written in this file.
 //   - SILENT DROPS. A subject whose entry file is absent, or whose argv the harness refuses, is carried
-//     as a typed `KnownRedSubjectDefect` and printed, never filtered. One such row is real today (see
-//     `known_red_subject_defect_name`).
+//     as a typed `KnownRedSubjectDefect` and printed, never filtered. One such row is real today: a
+//     schedule row whose entry suffix points at a file that does not exist, printed by
+//     `known_red_subject_defect_text` with the identity that named it.
 //   - A RECEIPT AGAINST A COMMIT IT DID NOT RUN ON. The head is read from the repository
 //     (`git.Inspect.HeadCommit`) and echoed into every printed row; it is never a parameter.
 //
@@ -200,52 +201,29 @@ fn known_red_subject_population_name(p: KnownRedSubjectPopulation) -> String {
 // no row can claim to be a known-red by carrying a flag.
 type KnownRedSubject {
   identity: WitnessIdentity
-  entry: String
+  entry: KnownRedEntryPlacement
   function: String
   origin: KnownRedSubjectPopulation
 }
+
+// WHERE A SUBJECT'S CLAIM FILE IS, AS THE LAYOUT RULE SAID IT IS. A coproduct and not a `String`, because
+// the alternative — encoding 'the rule could not place this name' inside the path the rule was supposed to
+// produce — makes the discriminator in-band: the absence of a file is then the only thing that distinguishes
+// 'the name has no place' from 'the file at its place is missing', so the first is printed as the second and
+// the typed cause the rule returned is thrown away. That is the §5 in-band encoding, and the earlier draft
+// of this instrument did exactly it (`"underivable:" ++ name`). Here an unplaceable name is not a path that
+// happens to be missing, it is a case with no path in it, and it is never handed to a child as argv.
+type KnownRedEntryPlacement
+  = Placed { path: String }
+  | Underivable { name: String, cause: String }
 
 // A subject this instrument is required to execute and could not prepare, as a typed reason. The value of
 // the type is the difference between "this identity is not in the population" and "this identity was
 // dropped on the way to the child" — the second is the bug class this file exists to make loud.
 type KnownRedSubjectDefect
   = WetEntryFileAbsent { identity: WitnessIdentity, entry: String }
+  | RosterNameUnderivable { identity: WitnessIdentity, name: String, cause: String }
   | ClaimArgvRefused { identity: WitnessIdentity, entry: String, function: String }
-
-fn known_red_subject_defect_name(d: KnownRedSubjectDefect) -> String {
-  match d {
-    WetEntryFileAbsent { identity: _, entry: _ } => "WetEntryFileAbsent"
-    ClaimArgvRefused { identity: _, entry: _, function: _ } => "ClaimArgvRefused"
-  }
-}
-
-fn known_red_subject_defect_qualified(d: KnownRedSubjectDefect) -> String {
-  match d {
-    WetEntryFileAbsent { identity: i, entry: _ } => witness_identity_qualified_name(identity: i)
-    ClaimArgvRefused { identity: i, entry: _, function: _ } => witness_identity_qualified_name(identity: i)
-  }
-}
-
-// WHY `WetEntryFileAbsent` IS NOT FILTERED, AND WHY IT IS NOT A PARANOIA ARM. One row of
-// `local_repo_wet_schedule()` —
-//   module_path test.claim.examples.blackjack_shuffle_wet_witness_test
-//   function    wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution
-//   entry       dag/test/claim/examples/blackjack_shuffle_wet_witness_test.dag
-// names a file that does not exist: the real file is
-// `dag/test/claim/examples/blackjack_shuffle_wet_witness.dag`, and the schedule row carries a stale
-// `_test` suffix in BOTH `module_path` and `entry`. The harness refuses a batch containing an entry it
-// cannot stat ('resolved against the process working directory ... which does not exist; refusing'), so
-// the easy implementation drops the row and prints a clean population that is one claim short. This one
-// keeps the identity, reports the cause, and lets the reconciliation refuse. Forwarded to the census
-// owner as a `StaleEnrolled` candidate.
-fn known_red_subject_defect_cause(d: KnownRedSubjectDefect) -> String {
-  match d {
-    WetEntryFileAbsent { identity: _, entry: e } =>
-      concat("no such entry file, and the harness refuses a batch containing it: ", e)
-    ClaimArgvRefused { identity: _, entry: _, function: _ } =>
-      "the pooled claim_batch argv builder refused this row"
-  }
-}
 
 // ONE PRINTED ROW. `head` is carried IN the row rather than only in a banner because a disposition is
 // attributable to a commit or it is nothing: a known-red list without its SHA is prose. `observation`
@@ -254,7 +232,7 @@ fn known_red_subject_defect_cause(d: KnownRedSubjectDefect) -> String {
 type KnownRedDerivationRow {
   identity: WitnessIdentity
   head: String
-  entry: String
+  entry: KnownRedEntryPlacement
   origin: KnownRedSubjectPopulation
   expectation: ClaimExpectation
   observation: Optional<ClaimObservation>
@@ -291,7 +269,7 @@ fn known_red_wet_subjects() -> List<KnownRedSubject> {
     row =>
       KnownRedSubject {
         identity: row.identity,
-        entry: row.entry,
+        entry: Placed { path: row.entry },
         function: row.function,
         origin: WetLane
       }
@@ -372,22 +350,43 @@ fn known_red_identity_of(q: String) -> WitnessIdentity {
 // the two vocabularies. This instrument therefore ASKS and never guesses: the derived path is what the
 // subject carries, and when the filesystem says that path does not exist the subject is carried as
 // `WetEntryFileAbsent`. Absence is a finding about the roster, not a licence to try a different path.
-fn known_red_roster_entry(module_path: String) -> String {
+fn known_red_roster_entry(module_path: String) -> KnownRedEntryPlacement {
   known_red_derived_entry(name: module_path)
 }
 
-fn known_red_derived_entry(name: String) -> String {
+fn known_red_derived_entry(name: String) -> KnownRedEntryPlacement {
   match module_file(layout: repository_storage_layout(), name: name) {
-    ModuleFileDerived { file: f } => repository_path_of_module_file(file: f)
-    ModuleNameUnderivable { name: n, cause: _ } => known_red_underivable_marker(name: n)
+    ModuleFileDerived { file: f } => Placed { path: repository_path_of_module_file(file: f) }
+    ModuleNameUnderivable { name: n, cause: c } => known_red_placement_underivable(name: n, cause: c)
   }
 }
 
-// A NAME THE RULE CANNOT PLACE is not given a plausible path either. It is marked, so the subject reaches
-// the children as a path that cannot exist and is reported as a defect with its name in it — 'underivable'
-// stays visible instead of becoming a guess that quietly resolves to the wrong file.
-fn known_red_underivable_marker(name: String) -> String {
-  concat("underivable:", name)
+// THE PATH, WHEN THE RULE PLACED THE NAME. For the unplaced case it is the EMPTY string rather than a
+// plausible path, because there is nothing to extract and inventing one is the defect this type exists to
+// prevent; the empty string also cannot name an entry file, so it can never be executed. Its only jobs are
+// to keep `ClaimRun` well-typed for an unplaced subject (which then matches no child's claim, and is
+// correctly reported as NOT dispatched) and to keep the defect print complete. Unplaced subjects are
+// excluded from every child's argv by `known_red_asked_claims`, which is what actually keeps them out.
+fn known_red_entry_path(entry: KnownRedEntryPlacement) -> String {
+  match entry {
+    Placed { path: p } => p
+    Underivable { name: _, cause: _ } => ""
+  }
+}
+
+fn known_red_placement_underivable(name: String, cause: String) -> KnownRedEntryPlacement {
+  Underivable { name: name, cause: cause }
+}
+
+// WHAT THE PRINTED LIST SAYS WHERE THE ENTRY WOULD HAVE GONE. The unplaced case prints the authority's OWN
+// cause text: the point of the coproduct is that the cause survives to the row, so a reader of the list can
+// tell 'this identity has a name the layout rule cannot place' from 'the file at its place is missing'
+// without consulting this file's source.
+fn known_red_entry_print(entry: KnownRedEntryPlacement) -> String {
+  match entry {
+    Placed { path: p } => p
+    Underivable { name: n, cause: c } => concat("<name not placeable: ", concat(n, concat(" -- ", concat(c, ">"))))
+  }
 }
 
 // THE POPULATION THE INSTRUMENT OWES: the union of what the executing lane schedules and what the roster
@@ -490,19 +489,23 @@ fn known_red_entry_groups(subjects: List<KnownRedSubject>) -> List<KnownRedEntry
 }
 
 fn known_red_group_add(groups: List<KnownRedEntryGroup>, s: KnownRedSubject) -> List<KnownRedEntryGroup> {
-  let claim = ClaimRun { entry: s.entry, function: s.function }
-  if known_red_has_entry(groups: groups, entry: s.entry) {
+  // `known_red_collect_at` is only ever handed `known_red_dispatchable` subjects, and an `Underivable`
+  // subject is by construction defective (see `known_red_defect_of`), so it is filtered out before
+  // packing. That is why this may read the path out of the placement: the unplaced case never arrives.
+  let path = known_red_entry_path(entry: s.entry)
+  let claim = ClaimRun { entry: path, function: s.function }
+  if known_red_has_entry(groups: groups, entry: path) {
     map(
       groups,
       g =>
-        if g.entry == s.entry {
+        if g.entry == path {
           KnownRedEntryGroup { entry: g.entry, claims: list_snoc_item(xs: g.claims, item: claim) }
         } else {
           g
         }
     )
   } else {
-    list_snoc_item(xs: groups, item: KnownRedEntryGroup { entry: s.entry, claims: [claim] })
+    list_snoc_item(xs: groups, item: KnownRedEntryGroup { entry: path, claims: [claim] })
   }
 }
 
@@ -854,8 +857,10 @@ fn known_red_subject_was_asked(subject: KnownRedSubject, asked: List<ClaimRun>) 
   contains(xs: asked, item: known_red_subject_claim(subject: subject), eq: known_red_same_claim)
 }
 
+// An `Underivable` subject's path is the empty string, so it matches NO child's claim and is correctly
+// reported as never dispatched — which is the honest answer, since it was never handed to a child.
 fn known_red_subject_claim(subject: KnownRedSubject) -> ClaimRun {
-  ClaimRun { entry: subject.entry, function: subject.function }
+  ClaimRun { entry: known_red_entry_path(entry: subject.entry), function: subject.function }
 }
 
 fn known_red_same_claim(a: ClaimRun, b: ClaimRun) -> Bool {
@@ -980,7 +985,7 @@ fn known_red_entry_exists(entry: String) -> Bool {
 fn known_red_argv_of(subject: KnownRedSubject) -> List<String> {
   claim_batch_claims_argv(
     source_roots: witness_layer_roots(),
-    claims: [ClaimRun { entry: subject.entry, function: subject.function }]
+    claims: [ClaimRun { entry: known_red_entry_path(entry: subject.entry), function: subject.function }]
   )
 }
 
@@ -1000,23 +1005,47 @@ fn known_red_has_flag(argv: List<String>, flag: String) -> Bool {
   length(xs: filter(xs: argv, predicate: fn(a) { a == flag })) == 1
 }
 
-// THE DEFECT FOR ONE SUBJECT: absent entry file (stale enrolment in the schedule), or an argv the
-// harness would refuse. `Absent` means the subject is well-formed and was really asked to run.
+// WHY NEITHER ARM IS FILTERED. A dropped subject is the exact bug class this file exists to make loud:
+// `claim_batch` refuses a WHOLE batch that contains one entry it cannot stat, so the easy implementation
+// is to drop the offending row and print a clean population that is quietly one claim short — which is
+// what was happening to `test.claim.examples.blackjack_shuffle_wet_witness` here before this instrument
+// ran, its schedule row carrying a stale `_test` suffix in both `module_path` and `entry` while the real
+// file has none. The row is repaired in its owning carrier (`local_repo_wet_schedule`), the arm is kept
+// because the failure mode is a property of the harness and not of that one row, and it is claimed below
+// rather than asserted in prose.
+//
+// THE DEFECT FOR ONE SUBJECT. The roster side is a TYPE TEST on `entry`, not a stat: a name the layout
+// authority could not place is `Underivable`, and its typed cause is carried here verbatim rather than
+// flattened into a path that would then fail the file check below and be printed as a wet-file absence —
+// the wrong name for the wrong cause. `WetEntryFileAbsent` keeps its meaning for the case where a
+// filesystem question IS the right question: an entry column that points at no file (the schedule's
+// phantom-row failure mode). `ClaimArgvRefused` is the harness's own pre-condition.
 fn known_red_defect_of(subject: KnownRedSubject) -> Optional<KnownRedSubjectDefect> {
-  if !known_red_entry_exists(entry: subject.entry) {
-    Present {
-      value: WetEntryFileAbsent { identity: subject.identity, entry: subject.entry }
-    }
-  } else if !known_red_argv_is_well_formed(subject: subject) {
-    Present {
-      value: ClaimArgvRefused {
-        identity: subject.identity,
-        entry: subject.entry,
-        function: subject.function
+  match subject.entry {
+    Underivable { name: n, cause: c } =>
+      Present {
+        value: RosterNameUnderivable {
+          identity: subject.identity,
+          name: n,
+          cause: c
+        }
       }
-    }
-  } else {
-    Absent
+    Placed { path: p } =>
+      if !known_red_entry_exists(entry: p) {
+        Present {
+          value: WetEntryFileAbsent { identity: subject.identity, entry: p }
+        }
+      } else if !known_red_argv_is_well_formed(subject: subject) {
+        Present {
+          value: ClaimArgvRefused {
+            identity: subject.identity,
+            entry: p,
+            function: subject.function
+          }
+        }
+      } else {
+        Absent
+      }
   }
 }
 
@@ -1345,8 +1374,28 @@ fn known_red_row_is_enrolled(row: KnownRedDerivationRow) -> Bool {
   row.expectation == ExpectedRed
 }
 
+// WHAT A DEFECT PRINTS, IN ONE PLACE. The unplaced case prints the authority's OWN cause text — the whole
+// point of carrying `cause` instead of a path is that a reader of the list can tell 'this identity has a
+// name the layout rule cannot place' from 'the file at its place is gone' without opening this file.
+fn known_red_subject_defect_text(d: KnownRedSubjectDefect) -> String {
+  match d {
+    WetEntryFileAbsent { identity: i, entry: e } =>
+      concat("WetEntryFileAbsent ",
+        concat(witness_identity_qualified_name(identity: i),
+          concat(" entry=", concat(e, " (the harness refuses a whole batch containing an entry it cannot stat)"))))
+    RosterNameUnderivable { identity: i, name: n, cause: c } =>
+      concat("RosterNameUnderivable ",
+        concat(witness_identity_qualified_name(identity: i),
+          concat(" name=", concat(n, concat(" cause=", c)))))
+    ClaimArgvRefused { identity: i, entry: e, function: f } =>
+      concat("ClaimArgvRefused ",
+        concat(witness_identity_qualified_name(identity: i),
+          concat(" entry=", concat(e, concat(" function=", f)))))
+  }
+}
+
 fn known_red_defect_texts(defects: List<KnownRedSubjectDefect>) -> List<String> {
-  map(defects, d => concat(known_red_subject_defect_name(d: d), concat(" ", known_red_subject_defect_qualified(d: d))))
+  map(defects, d => known_red_subject_defect_text(d: d))
 }
 
 fn known_red_held_rows(rows: List<KnownRedDerivationRow>) -> List<KnownRedDerivationRow> {
@@ -1422,8 +1471,7 @@ fn known_red_report(d: KnownRedDerivation) -> String {
   let unaccounted_lines = map(unaccounted, r => known_red_row_line(row: r))
   let coverage_lines = map(d.coverage, c => known_red_coverage_line(c: c))
   let reconciliation_lines = known_red_reconciliation_lines(report: d.reconciliation)
-  let defect_lines = map(d.defects, x => concat("  defect ", concat(known_red_subject_defect_name(d: x),
-    concat(" ", known_red_subject_defect_qualified(d: x)))))
+  let defect_lines = map(d.defects, x => concat("  defect ", known_red_subject_defect_text(d: x)))
   let refusal_lines = map(d.refusals, r => concat("  REFUSED ", concat(known_red_refusal_name(r: r), known_red_refusal_detail(r: r))))
   concat(
     join(
@@ -1468,7 +1516,8 @@ fn known_red_row_line(row: KnownRedDerivationRow) -> String {
       known_red_row_qualified(r: row),
       concat(" @", concat(row.head, concat("  disposition=",
         concat(known_red_disposition_name(d: row.disposition),
-          concat(" expectation=", known_red_expectation_name(e: row.expectation)))))
+          concat(" expectation=", concat(known_red_expectation_name(e: row.expectation),
+            concat(" entry=", known_red_entry_print(entry: row.entry)))))))
       )
     )
   )
