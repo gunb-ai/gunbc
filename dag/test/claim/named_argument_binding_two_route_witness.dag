@@ -66,3 +66,9 @@ test fn the_v1_routes_accept_the_declaration_order_call_which_is_their_positive_
 test fn the_v1_routes_bind_out_of_declaration_order_by_name_which_is_the_contract() -> Bool {
   total_blocking_count_for(source: nab_reordered_source) == 0
 }
+
+data nab_wrong_label_source: String = "module nab_wrong_label\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(a: 1, c: true)\n}\n"
+
+test fn the_v1_routes_refuse_a_label_the_callee_does_not_declare() -> Bool {
+  total_blocking_count_for(source: nab_wrong_label_source) > 0
+}
