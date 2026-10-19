@@ -24,8 +24,9 @@ import extdeps.bmc.ipmi {
   ipmi_device_identity_runs_same_firmware,
 }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_openbmc_3_22_00_capabilities }
-import std.content_hash { Sha256Digest }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.types { Bool, List }
+import gunbc.machine_intake.receipt { EvidenceRef }
 
 // ── CAN THE PUBLISHED FACTORY PASSWORD BE WRITTEN BACK IN? A PER-RELEASE FACT ─────────────────
 //
@@ -38,9 +39,22 @@ import std.types { Bool, List }
 //   Set User Password command failed (user 1)
 //   exit=1
 //
-// and the 20-byte form fails identically -- which is the observation that rules password LENGTH out
-// as the explanation. A refused Set User Password changes nothing, so the unit stays locked and a
-// recovery route cannot be "write the factory password, then log in". It has to actuate a reset.
+// and a second invocation with a trailing width argument fails identically. WHAT THAT SECOND FAILURE DOES
+// AND DOES NOT SAY. ipmitool's own usage line is `set password <user id> [<password> [<16|20>]]`
+// (lib/ipmi_user.c), so the trailing token selects the password FIELD WIDTH the tool encodes into, not a
+// different password: the same seven bytes go into a 16- or a 20-byte field. Both encodings were refused
+// with the same completion code, which says the refusal is not specific to one field width. It does NOT
+// rule out a password-length policy: the payload bytes are the same in both attempts, so an implementation
+// rejecting the string's length would reject both, identically. The refusal is therefore recorded as what
+// it is -- the firmware declined this credential write at this account, for a reason the completion code
+// does not itemise -- and no cause is selected among the candidates on this evidence (§4d: do not assert as
+// deduced what is only inferred).
+//
+// WHAT IS ON THE RECORD IS THE ATTEMPT AND ITS AFTERMATH. The attempt ended exit 1 and the unit was still
+// locked afterwards -- the same two invocations, re-run after the reset recorded in 01_summary.txt, produce
+// the same refusal -- so this module files no route that goes through writing the factory password in.
+// Whether some other credential write would succeed on this release is a different measurement, and is
+// NotMeasured rather than answered here.
 //
 // WHY THIS SITS ON A RELEASE ROW AND NOT IN extdeps.bmc.openbmc. The refusal is a property of one
 // vendor build, not of OpenBMC in general: another build, or another vendor's firmware, may accept
@@ -122,6 +136,50 @@ data asrock_altrad8ud_published_factory_password_write_policy_catalog: List<Publ
   asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
 ]
 
+// ── THE POST-RESET READBACK, FILED AGAINST THE CONTROLLER THAT ANSWERED ──────────────────────
+//
+// WHY A ROW AND NOT A CONSTANT. The proving arm of a recovery standing cites the bytes its readback came
+// from. While that citation was a constant sitting in the module that consumes it, a proof could be shown
+// pointing at the right file by anyone who knew the file's name: nothing connected the bytes to the
+// controller, so the same "evidence" would have proved a reset on any board at all. Filed HERE, keyed by
+// the same IpmiDeviceIdentity the write-policy row above is keyed by, the citation becomes a LOOKUP that
+// can fail: a standing whose readback cites bytes that were not taken from this controller has no row to
+// cite, and the absence is the refusal (§5: "a failure arm refuses, never widens").
+//
+// THE IDENTITY IS THE KEY AND THE ANSWER CARRIES IT BACK, so the fold compares one join rather than
+// assembling three facts from three places. That is the shape the recovery proof needs: unit, controller and
+// readback are one claim, not three claims that happen to be true.
+type RecoveryPostResetReadbackRecord sole_constructor {
+  taken_from: IpmiDeviceIdentity
+  capture: EvidenceRef
+}
+
+// The 04_post_reset_readback.txt capture of the same session that produced the in-band digest above --
+// 403 with Base.1.16.0.PasswordChangeRequired, quoted with its bytes in
+// artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/. Same session, same board, same reading of
+// Get Device ID: that is what entitles this row to claim it came from the controller the row above
+// identifies. The digest is the SHA256SUMS entry for 04_post_reset_readback.txt.
+data asrock_altrad8ud_1l2t_post_reset_readback_record: RecoveryPostResetReadbackRecord = RecoveryPostResetReadbackRecord {
+  taken_from: asrock_altrad8ud_1l2t_inband_device_identity,
+  capture: EvidenceRef {
+    label: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/04_post_reset_readback.txt",
+    digest: Sha256Hash(Sha256Digest { hex: "9837b3a8e47ff2ec59ecc3ddd41b81c7f3757b3d47082bec969d1fb75be5751c" }),
+  },
+}
+
+// THE LOOKUP. Absent is an answer about the filing, and it is the only answer available for a controller
+// nobody read: this repository has one post-reset readback on file, and inventing a row for a second board
+// would be exactly the invented-fact failure this module exists to avoid.
+fn asrock_altrad8ud_post_reset_readback_record_for(
+  observed: IpmiDeviceIdentity,
+) -> Optional<RecoveryPostResetReadbackRecord> {
+  match filter([asrock_altrad8ud_1l2t_post_reset_readback_record], r =>
+    ipmi_device_identity_runs_same_firmware(a: r.taken_from, b: observed)) |> first() {
+    Present { value: r } => Present { value: r }
+    Absent => Absent
+  }
+}
+
 // The policy for a release, read off the catalog. A lookup and never a default: an unmeasured
 // release answers NotMeasured with ITS OWN version attached, so the refusal can be reported against
 // the firmware that was actually observed.
@@ -202,6 +260,18 @@ type PublishedPasswordWritePolicySighting
       matched: List<PublishedFactoryPasswordWritePolicy>
     }
   | CatalogIndexesDisagree { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
+  // A ROW THAT DISAGREES WITH ITSELF. The row matched the reading, and then its own two readings failed to
+  // agree: it claims a refusal for one release while naming a Get Device ID answer taken under another (see
+  // published_password_refusal_row_agrees_with_its_reading). This is NOT "never measured" -- somebody did
+  // measure this controller, and telling them otherwise sends them to re-measure a board that has a
+  // measurement on file, and leaves the mislabelled row in the catalog to do it again. It is its own arm
+  // because the repair belongs to whoever maintains the filing, not to whoever owns the board (§5: "every
+  // degradation is typed, located and countable"; §3b: a failure cause keeps its own meaning and may not be
+  // absorbed by its neighbour). The row itself travels, so the bad filing is findable from the refusal.
+  | RowDisagreesWithItsOwnReading {
+      row: PublishedFactoryPasswordWritePolicy
+      observed: IpmiDeviceIdentity
+    }
 
 // THE FOLD, AT ITS OWN INTERFACE. The catalog is a parameter so a claim can hand it zero rows and two
 // rows without inventing a second measurement in the FILED catalog: the fold is what is being tested, and
@@ -211,16 +281,20 @@ fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
   catalog: List<PublishedFactoryPasswordWritePolicy>,
   observed: IpmiDeviceIdentity,
 ) -> PublishedPasswordWritePolicySighting {
+  // THE TWO TESTS ARE NOT COMBINED INTO ONE FILTER. This one asks only whether the row is ABOUT the
+  // controller in front of us. Whether the row is internally consistent is asked BELOW, where a failure can
+  // be reported as itself. The previous version ANDed the two and dropped an inconsistent row here, which
+  // made a mislabelled filing arrive as ControllerNeverMeasured -- the one cause it was not (see
+  // RowDisagreesWithItsOwnReading, and the same class of loss fixed for the duplicated-row case in
+  // CatalogAmbiguousForController).
   let matches = filter(catalog, p =>
     match p {
       FirmwareRefusesPublishedPassword {
-        firmware: f,
+        firmware: _,
         completion_code: _,
         capture: _,
         measured_under: measured_under,
-      } =>
-        ipmi_device_identity_runs_same_firmware(a: measured_under, b: observed)
-          && published_password_refusal_row_agrees_with_its_reading(firmware: f, measured_under: measured_under)
+      } => ipmi_device_identity_runs_same_firmware(a: measured_under, b: observed)
       NotMeasured { firmware: _ } => false
     })
   // THREE outcomes, not two. They are three different failures and the operator has to be told which one
@@ -245,13 +319,19 @@ fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
               firmware: f,
               completion_code: _,
               capture: _,
-              measured_under: _,
+              measured_under: measured_under,
             } =>
-              // Compared STRUCTURALLY against the release the row itself names: the lookup above is keyed
-              // on that same BmcFirmwareVersion, so asking it back which release it is about would be
-              // asking a question the index already answered, and would let a row whose key resolved to a
-              // DIFFERENT row's body pass as agreeing.
-              if match asrock_altrad8ud_published_factory_password_write_policy_for(firmware: f) {
+              // THE ROW'S OWN TWO READINGS, ASKED NOW RATHER THAN IN THE FILTER ABOVE, so that a row whose
+              // catalogued release and Get Device ID answer disagree reports itself as that disagreement
+              // instead of vanishing and leaving "nobody measured this" in its place. IPMI reports Firmware
+              // Revision as major.minor only, so those two numbers are what can be checked against the
+              // catalogued release.
+              if !published_password_refusal_row_agrees_with_its_reading(
+                firmware: f,
+                measured_under: measured_under,
+              ) {
+                RowDisagreesWithItsOwnReading { row: row, observed: observed }
+              } else if match asrock_altrad8ud_published_factory_password_write_policy_for(firmware: f) {
                 FirmwareRefusesPublishedPassword { firmware: g, completion_code: _, capture: _, measured_under: _ } => g == f
                 NotMeasured { firmware: _ } => false
               } {

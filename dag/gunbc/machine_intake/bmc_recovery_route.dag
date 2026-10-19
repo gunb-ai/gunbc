@@ -27,7 +27,7 @@ import extdeps.bmc.ipmi {
 // published password is a measurement this repository took, so it is read from the observing layer's own
 // shelf; extdeps.boards.asrock_rack keeps only what ASRock Rack publishes about the board.
 import gunbc.machine_intake.bmc_inband_recovery_receipts {
-  PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured, CatalogAmbiguousForController, CatalogIndexesDisagree, asrock_altrad8ud_published_factory_password_write_policy_sighted_on, asrock_altrad8ud_published_factory_password_write_policy_for, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy, asrock_altrad8ud_1l2t_inband_device_identity,
+  PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured, CatalogAmbiguousForController, CatalogIndexesDisagree, RowDisagreesWithItsOwnReading, asrock_altrad8ud_published_factory_password_write_policy_sighted_on, asrock_altrad8ud_published_factory_password_write_policy_for, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy, asrock_altrad8ud_1l2t_inband_device_identity, RecoveryPostResetReadbackRecord, asrock_altrad8ud_post_reset_readback_record_for,
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
 // THE PRIVILEGE FACT IS NOT RE-MINTED HERE. §2: "Decomposing a leaf by minting a fresh authority for a
@@ -42,7 +42,9 @@ import extdeps.bmc.ipmi_channel {
   IpmiUserChannelAccess, ipmi_user_channel_access,
 }
 import extdeps.bmc.redfish {
-  RedfishResetToDefaultsType, ResetAll, PreserveNetworkAndUsers, PreserveNetwork, redfish_message_id_is_password_change_required,
+  RedfishResetToDefaultsType, ResetAll, PreserveNetworkAndUsers, PreserveNetwork,
+  redfish_message_id_is_password_change_required, redfish_password_change_verdict,
+  RedfishPasswordChangeRequired, RedfishPasswordChangeNotIndicated, RedfishResponseBodyUnreadable,
 }
 import extdeps.linux.kernel { LinuxKernelModuleName }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute }
@@ -508,10 +510,15 @@ fn in_band_channel_admits(
 //     configuration and the user table to factory state, on a board being brought into the fleet rather
 //     than serviced. Operator approval, and it owes a readback.
 //
-// WHY NOT PATCH THE PASSWORD VIA REDFISH INSTEAD: because that is the write the firmware refuses
-// (PublishedFactoryPasswordWritePolicy), and because even where it were allowed it would be a
-// credential write standing in for the reset the unit needs -- the board is arriving from a prior
-// life, and gunbc.machine_intake.prior_life_boundary is the module that prices leaving one.
+// WHY NOT WRITE THE FACTORY PASSWORD INSTEAD: because the write that would do it is the one the firmware
+// refuses, and the refusal is captured as an IPMI refusal, not a Redfish one:
+//   sudo ipmitool user set password 1 ...  ->  "IPMI command failed: Invalid data field in request",
+//   "Set User Password command failed (user 1)", exit 1 (02_inband_channel.txt, quoted with its bytes in
+//   gunbc.machine_intake.bmc_inband_recovery_receipts). A Redfish PATCH to the account is a DIFFERENT
+//   write, on a different transport, and nothing was captured about it -- so nothing here asserts what it
+//   would do; it is simply not the route this unit needs. Even where a password write were allowed it
+//   would be a credential write standing in for the reset the unit needs -- the board is arriving from a
+//   prior life, and gunbc.machine_intake.prior_life_boundary is the module that prices leaving one.
 // RedfishResetToDefaultsType (ResetAll | PreserveNetworkAndUsers | PreserveNetwork) and its arms are
 // imported from extdeps.bmc.redfish, where the DMTF enum is declared with its citation: this module's
 // judgement is WHICH arm clears the user table, not what the enum contains.
@@ -1131,6 +1138,15 @@ type RecoveryResetWarrant
       matched: List<PublishedFactoryPasswordWritePolicy>
     }
   | ReleaseKeyUnresolvableInCatalog { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
+  // A ROW THAT DISAGREES WITH ITSELF, kept as its own refusal rather than folded into
+  // NeverMeasuredOnThisController. Somebody measured this controller; the row they filed names a release
+  // that does not match the Get Device ID answer recorded beside it. Telling that person "go measure it"
+  // leaves the bad row on the shelf to produce the same refusal tomorrow, and the repair belongs to whoever
+  // maintains the filing. The row travels so the bad filing is findable from the refusal alone.
+  | RowFiledUnderTheWrongReading {
+      row: PublishedFactoryPasswordWritePolicy
+      observed: IpmiDeviceIdentity
+    }
 
 // WHY THE TWO REFUSALS ARE DIFFERENT ARMS AND NOT ONE STRING: they send different people to different
 // work. An unmeasured controller needs a MEASUREMENT -- nobody has put a device under this one and read
@@ -1147,6 +1163,8 @@ fn recovery_reset_warrant(sighting: PublishedPasswordWritePolicySighting) -> Rec
       CatalogAmbiguousForThisController { observed: observed, matched: matched }
     CatalogIndexesDisagree { firmware: firmware, observed: observed } =>
       ReleaseKeyUnresolvableInCatalog { firmware: firmware, observed: observed }
+    RowDisagreesWithItsOwnReading { row: row, observed: observed } =>
+      RowFiledUnderTheWrongReading { row: row, observed: observed }
   }
 }
 
@@ -1174,6 +1192,8 @@ fn recovery_reset_warrant_refusal_text(warrant: RecoveryResetWarrant) -> NonEmpt
       "this board's catalog answers the reading on this route with more than one refusal row, so no single measured refusal warrants a ResetAll: the catalog has to be de-duplicated before the reset can be admitted"
     ReleaseKeyUnresolvableInCatalog { firmware: _, observed: _ } =>
       "the measured row's release key does not resolve in this board's capability catalog, so the reset would rest on a release nobody can name"
+    RowFiledUnderTheWrongReading { row: _, observed: _ } =>
+      "a refusal row was found for this controller and then refused its own filing: the release it is catalogued under does not match the Get Device ID answer recorded with it, so it warrants nothing until the row is corrected"
     WarrantedOnMeasuredRefusal { refusal: _, observed: _ } =>
       "the reset is warranted: a refusal was measured on this controller"
   }
@@ -1285,14 +1305,28 @@ fn recovery_hold_refusal_text(unit_key: UnitKey, hold: UnitHoldAcquisition?) -> 
 // The verdict comes from the Redfish message predicate rather than a literal equality here, because
 // the registry version travels with the service (Base.1.16.0 on these units today) and a hard
 // equality would stop matching silently the day a firmware bumps it.
+// THE THREE ANSWERS A POST-RESET LOGIN CAN GIVE. THE INSTANT AND THE BODY TRAVEL IN EVERY ARM.
+//
+// The proving arm carries the MessageId THE SERVICE SENT, not one this module knows it will receive: the
+// verdict is read by extdeps.bmc.redfish out of the body, and the id comes along with it. A mint that
+// re-typed the expected id would make the check in recovery_readback_proves_reset circular -- it would be
+// comparing a string this repository wrote against a string this repository wrote, and reporting agreement
+// as though a BMC had been consulted. The registry version is the reason for the read: Base.1.16.0 today,
+// whatever the service ships tomorrow, and only the body knows which.
+//
+// `observed_at` is on every arm rather than only the proving one, for the same reason the evidence ref is:
+// an unproven readback is still a reading that happened at an instant, and a fold that compares it against
+// the actuations needs the instant whether or not the message arrived. Dropping it from the failure arms
+// would force any ordering check to be written around the sum, and the fold that does the ordering is exactly
+// where a missing instant would quietly become "not checked".
 type RecoveryFactoryCredentialReadback
   = FactoryCredentialActiveAwaitingChange {
-      message_id: NonEmptyStr
+      message_id: String
       evidence: EvidenceRef
       observed_at: CapturedInstant
     }
   | CredentialNotAccepted { evidence: EvidenceRef, observed_at: CapturedInstant }
-  | ReadbackInconclusive { detail: NonEmptyStr }
+  | ReadbackInconclusive { detail: NonEmptyStr, evidence: EvidenceRef, observed_at: CapturedInstant }
 
 // THE ONLY MINT OF ProvenResetReadback, AND IT REFUSES. It used to return a Bool, which left the caller
 // still holding the unproven readback and free to decide what to believe with it -- which is exactly how
@@ -1303,7 +1337,11 @@ type RecoveryFactoryCredentialReadback
 fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -> ProvenResetReadback? {
   match readback {
     FactoryCredentialActiveAwaitingChange { message_id: message_id, evidence: evidence, observed_at: observed_at } =>
-      if redfish_message_id_is_password_change_required(id: message_id as String) {
+      // THE ID IS CHECKED, NOT ASSUMED -- and it is checked as the string that was read, so this predicate
+      // and the mint above cannot agree with each other in the absence of a BMC: the only way a proving value
+      // exists is for a body to have named a Base-registry PasswordChangeRequired and for that body's own
+      // evidence ref to have been handed to recovery_readback_of with it.
+      if redfish_message_id_is_password_change_required(id: message_id) {
         // BOUND BEFORE BEING WRAPPED, not nested inside `value:`: `value: ProvenResetReadback { ... }`
         // reads as a type annotation followed by a block, and the compiler resolved the two if-branches
         // to ProvenResetReadback vs Optional and refused the function.
@@ -1311,16 +1349,13 @@ fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -
           message_id: message_id,
           evidence: evidence,
           observed_at: observed_at,
-          // the bytes the proof rests on travel with it, so a reader of the standing reaches the
-          // capture without leaving the model
-          capture: recovery_post_reset_readback_capture_ref,
         }
-        optional_present(value: proven_readback)
+        Present { value: proven_readback }
       } else {
-        optional_absent()
+        Absent
       }
     CredentialNotAccepted { evidence: _, observed_at: _ } => Absent
-    ReadbackInconclusive { detail: _ } => Absent
+    ReadbackInconclusive { detail: _, evidence: _, observed_at: _ } => Absent
   }
 }
 
@@ -1329,26 +1364,53 @@ fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -
 // a proving PasswordChangeRequired readback can construct", rather than a predicate asking afterwards. A
 // value of this type IS the evidence -- message identity, the EvidenceRef that recorded it, the instant, and
 // the capture digest.
+// WHAT THE PROOF CARRIES IS WHAT THE READBACK CARRIED, and nothing else. There is deliberately no `capture`
+// field here that the constructor could fill in by itself: an earlier version of this type held a
+// `capture: EvidenceRef` that recovery_readback_proves_reset populated with a module-level constant naming
+// the post-reset capture file. That made the proof constructor attach EVIDENCE TO A CLAIM IT HAD NOT READ --
+// a standing could be shown pointing at the right bytes whoever had read them, and the digest a reader
+// checked was a digest of the file this module chose rather than of the response the readback came from. The
+// evidence ref now travels from the reading, through the readback, into the proof, unmodified and unfilled
+// (see recovery_readback_of, which is the only thing that puts an EvidenceRef into a readback in the first
+// place).
 type ProvenResetReadback sole_constructor {
-  message_id: NonEmptyStr
+  message_id: String
   evidence: EvidenceRef
   observed_at: CapturedInstant
-  capture: EvidenceRef
 }
 
 // The arms as the message decides them, so they cannot be chosen by taste: a body that does not name
 // the message is inconclusive, and a readback is never built from an operator's account of the
 // status line alone.
+// THE ONE MINT OF A READBACK, AND IT ONLY TRANSFERS WHAT WAS READ. `body` is the bytes that came back over
+// the SSIF/Redfish channel and `evidence` is the reference to THOSE bytes: the mint never invents an id and
+// never supplies a capture, and every field of the result is either read out of the body or handed in by the
+// caller that took the reading. That is what lets the proof constructor below be believed -- it has nothing
+// it was not given.
 fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: CapturedInstant) -> RecoveryFactoryCredentialReadback {
   match redfish_password_change_verdict(body: body) {
-    RedfishPasswordChangeRequired =>
+    RedfishPasswordChangeRequired { message_id: message_id } =>
       FactoryCredentialActiveAwaitingChange {
-        message_id: "Base.1.16.0.PasswordChangeRequired",
+        message_id: message_id,
         evidence: evidence,
         observed_at: observed_at,
       }
+    // Read, and it does not name the message.
     RedfishPasswordChangeNotIndicated =>
-      ReadbackInconclusive { detail: "the post-reset response named no PasswordChangeRequired message" }
+      ReadbackInconclusive {
+        detail: "the post-reset response named no PasswordChangeRequired message",
+        evidence: evidence,
+        observed_at: observed_at,
+      }
+    // NOT READ, which is a different fact and says so: the response body never arrived, or arrived truncated,
+    // or was not JSON. Concluding "the service did not ask for a password change" from that would be an
+    // inference about a controller drawn from the state of our own capture (§4d).
+    RedfishResponseBodyUnreadable { cause: cause } =>
+      ReadbackInconclusive {
+        detail: join(["the post-reset response could not be read as a Redfish body: ", cause as String], "") as NonEmptyStr,
+        evidence: evidence,
+        observed_at: observed_at,
+      }
   }
 }
 
@@ -1376,6 +1438,130 @@ type RecoveryInBandRoute {
   in_band_device_identity: IpmiDeviceIdentity
 }
 
+// THE BOUND JOIN: UNIT, CONTROLLER AND READBACK AS ONE CLAIM, MINTED NOWHERE ELSE.
+//
+// WHY A JOIN AND NOT THREE FIELDS. A standing used to carry the controller observation, the proven readback
+// and a writes list side by side, and the fold asserted each was well-formed: the readback named a
+// PasswordChangeRequired id, the writes had both actuations, the controller named an endpoint. Every one of
+// those could hold while the readback came from a DIFFERENT BOARD, because no check crossed the boundary
+// between them — the same shape of defect as a signed certificate with the wrong hostname in it, where each
+// field is valid and the pair is a lie. So the binding is put in the type instead: there is exactly one way
+// to build this carrier, it is sealed, and the only way through it is a lookup of the filed post-reset
+// capture BY THE CONTROLLER'S IPMI IDENTITY. Absent from that lookup is not a missing row, it is a refusal —
+// no bound join, no hand-off arm, no standing that can be mistaken for a recovered unit (§5: "a failure arm
+// refuses, never widens").
+//
+// WHAT IT DELIBERATELY DOES NOT DO: it does not re-check the MessageId. That read happened in
+// recovery_readback_of, from the body, and the id travels as the string the service sent — re-checking it
+// here from a constant would put the constant back into the module that is supposed to be reading.
+type RecoveryBoundRecoveryObservation sole_constructor {
+  subject: MachineIntakeSubject
+  controller: BmcAccessObservation
+  in_band_device_identity: IpmiDeviceIdentity
+  readback: RecoveryFactoryCredentialReadback
+}
+
+// THE ONLY ROUTE INTO THAT CARRIER.
+//
+// Three things have to be true and the third is the one that was never asked:
+//   1. the observation and the route are about one unit — matched, not compared loosely;
+//   2. the readback was read at all, and carries the bytes it was read from;
+//   3. those bytes are the ones FILED AGAINST THE CONTROLLER THIS ROUTE TOUCHED over its in-band channel.
+// (3) is the join. The filed row is keyed by the controller's IPMI identity (device id, manufacturer id,
+// product id, firmware major/minor) in gunbc.machine_intake.bmc_inband_recovery_receipts, so a readback
+// citing bytes from another specimen fails the lookup even when its own fields are impeccable, and a board
+// nobody post-reset-read has no row to cite. Both come back Absent, and the fold turns Absent into a named
+// refusal rather than a hand-off.
+fn recovery_bind_observation(
+  route: RecoveryInBandRoute,
+  readback: RecoveryFactoryCredentialReadback,
+) -> Optional<RecoveryBoundRecoveryObservation> {
+  // (1) THE TWO READINGS MUST BE READINGS OF ONE CONTROLLER, or there is nothing to bind. See the function:
+  // this is the Redfish release against the IPMI release, across transports, and it fails when the two
+  // readings are of different machines.
+  match recovery_controller_readings_agree(
+    controller: route.controller,
+    in_band_device_identity: route.in_band_device_identity,
+  ) {
+    Present { value: _ } => Absent
+    Absent =>
+    // (2) the bytes must be there to be checked. Every arm of the readback carries its evidence ref now,
+    // including the inconclusive one, so this extracts rather than asks a question of the sum.
+    match recovery_readback_evidence(readback: readback) {
+      Absent => Absent
+      Present { value: cited } =>
+        // (3) THE JOIN. Looked up by the controller's identity; the cited bytes must be the bytes filed for
+        // that identity. Both halves are needed: identity alone would pass a standing that cited nothing,
+        // and digest alone would pass a capture filed against a different board.
+        match asrock_altrad8ud_post_reset_readback_record_for(observed: route.in_band_device_identity) {
+          Absent => Absent
+          Present { value: record } =>
+            if record.capture != cited {
+              Absent
+            } else {
+              Present {
+                value: RecoveryBoundRecoveryObservation {
+                  subject: route.subject,
+                  controller: route.controller,
+                  in_band_device_identity: route.in_band_device_identity,
+                  readback: readback,
+                },
+              }
+            }
+        }
+    }
+  }
+}
+
+// THE TWO READINGS OF THE SAME CONTROLLER, ASKED WHETHER THEY AGREE.
+//
+// WHY THIS IS THE JOIN THAT MATTERS AND WHY IT IS NOT A FIELD-WISE VALIDATION. The route holds two readings
+// of the machine it is about to reset, taken over two DIFFERENT transports by two different upstreams:
+//   * the Redfish discovery reading — a BmcAccessObservation whose identity reports a firmware release;
+//   * the in-band Get Device ID reading — an IpmiDeviceIdentity whose device id, manufacturer id, product id
+//     and firmware major/minor came back over SSIF.
+// Each is well-formed on its own, and a standing that paired the Redfish answer about one board with the
+// in-band answer about another would satisfy every check this module ever had. The agreement is therefore
+// demanded ACROSS the carriers, on the release both of them report: the Redfish string against the two
+// numbers IPMI publishes for the same field. It can fail, which is the test of whether it is a check — feed
+// a controller observation whose release is 9.99 against an in-band 3.22 and the bind below refuses.
+//
+// WHY NOT A BOOL NAMED `is_same_controller`. It would be a bool over two records whose meaning is "these
+// two readings agree on what they read", and the fold that consumes it needs to say WHICH reading disagreed;
+// the refusal below carries the release each side reported, which a Bool throws away.
+fn recovery_controller_readings_agree(
+  controller: BmcAccessObservation,
+  in_band_device_identity: IpmiDeviceIdentity,
+) -> Optional<NonEmptyStr> {
+  // THE COMPARISON. IPMI's Get Device ID publishes Firmware Revision as major.minor only (the third field is
+  // the auxiliary/audit byte, which is not part of a release identity), so those two numbers are what both
+  // sides genuinely hold in common, and the Redfish string must be exactly them, dotted. Absent when they
+  // agree; the cause when they do not. The release is carried non-optionally on BmcObservedIdentity, so
+  // there is no "no release reported" arm to write: a reading that got that far always has one.
+  let ipmi_release = join([to_string(value: in_band_device_identity.firmware_revision_major),
+                          ".",
+                          to_string(value: in_band_device_identity.firmware_revision_minor)], "")
+  if controller.identity.firmware.raw_version != ipmi_release {
+    Present {
+      value: join(["the Redfish reading reported firmware ", controller.identity.firmware.raw_version as String,
+                  " while the in-band Get Device ID reported ", ipmi_release as String,
+                  " -- two readings of two different controllers"], "") as NonEmptyStr,
+    }
+  } else {
+    Absent
+  }
+}
+
+// THE CITED BYTES, from whichever arm the readback landed in.
+fn recovery_readback_evidence(readback: RecoveryFactoryCredentialReadback) -> Optional<EvidenceRef> {
+  match readback {
+    FactoryCredentialActiveAwaitingChange { message_id: _, evidence: evidence, observed_at: _ } =>
+      Present { value: evidence }
+    CredentialNotAccepted { evidence: evidence, observed_at: _ } => Present { value: evidence }
+    ReadbackInconclusive { detail: _, evidence: evidence, observed_at: _ } => Present { value: evidence }
+  }
+}
+
 // ── THE TERMINAL STANDING ──────────────────────────────────────────────────────────────────────
 //
 // ONE SEALED CARRIER, AND THE HANDOFF IS ITS ONLY SUCCESS ARM. RecoveryHandedToOnboarding carries no
@@ -1387,7 +1573,19 @@ type RecoveryInBandRoute {
 // standing at the machine.
 type InBandRecoveryOutcome
   = RecoveryHandedToOnboarding {
-      controller: BmcAccessObservation
+      // ONE BOUND JOIN, NOT THREE FACTS THAT HAPPEN TO BE TRUE. This field used to be the
+      // BmcAccessObservation: an endpoint host string and a firmware triple a caller could type by hand,
+      // sitting next to a readback whose evidence ref this module attached by itself. Each fact was
+      // individually well-formed and nothing bound them: the standing said "controller X", "readback Y",
+      // "evidence Z" and the fold checked that Y's id was a PasswordChangeRequired id and that Z was the
+      // file this module names. None of those checks asked whether the readback came from X.
+      //
+      // recovery_bound_recovery_observation is now the single thing that says unit, controller and readback
+      // are about the same machine: it is sealed, its only mint looks the filed capture up BY THE CONTROLLER'S
+      // IPMI IDENTITY, and the fold consumes the join rather than re-assembling its parts. A standing whose
+      // readback cites bytes taken from another board has no value to put in this field (§5: construction over
+      // validation).
+      bound: RecoveryBoundRecoveryObservation
       // SEALED, AND MINTED ONLY FROM A READBACK THAT PROVES THE RESET. The only mint of
       // ProvenResetReadback is recovery_readback_proves_reset, it answers Absent unless the message identity
       // matches, and the type is sole_constructor so nothing outside this module can build one. A hand-off
@@ -1411,6 +1609,17 @@ type InBandRecoveryOutcome
   // re-made, one layer down, the loss the carrier was added to prevent.
   | RecoveryWriteRefusedByLedger { kind: RecoveryActuationKind, site: DeclarationRef, cause: LedgerRefusalCause }
   | RecoveryReadbackRefusedFactoryCredential { readback: RecoveryFactoryCredentialReadback }
+  // THE READBACK ANSWERED, BUT IT IS NOT THIS CONTROLLER'S ANSWER. The proof above asks whether the body
+  // names the password-change refusal; this asks the question the fold never used to ask -- whether that body
+  // came from the board in front of us. A standing that paired a genuine 403 from one specimen with the
+  // route of another would have satisfied every check this module had before the bound join existed, so this
+  // arm exists to say which of the two readings disagreed and to keep the readback with the refusal. The
+  // cause is the same Optional the bind consulted, not a paraphrase of it: Absent here means the two readings
+  // agreed and it was the FILED BYTES that were not this controller's.
+  | RecoveryReadbackNotBoundToThisController {
+      readback: RecoveryFactoryCredentialReadback
+      cause: Optional<NonEmptyStr>
+    }
 
 type InBandRecoveryStanding sole_constructor {
   subject: MachineIntakeSubject
@@ -1526,6 +1735,7 @@ fn converge_in_band_recovery(
         ControllerNeverMeasured { observed: _ } => true
         CatalogAmbiguousForController { observed: _, matched: _ } => true
         CatalogIndexesDisagree { firmware: _, observed: _ } => true
+        RowDisagreesWithItsOwnReading { row: _, observed: _ } => true
       } {
         // The reset's warrant has to be a measurement OF THIS CONTROLLER, so the outcome carries which
         // of the two refusals it is: "never measured here" sends someone to measure, "the catalog's two
@@ -1648,6 +1858,11 @@ fn converge_after_admissions(
         // arm; the hand-off arm below is the only place ProvenResetReadback is ever consumed, and nothing
         // outside this module can build one (type ProvenResetReadback sole_constructor), so the value in
         // it is this mint's answer about THIS readback and nothing else.
+        // THE PROOF AND THE BINDING ARE BOTH ASKED, AND EITHER CAN REFUSE. The proof answers whether the
+        // readback names the password-change refusal; the binding answers whether that readback, its cited
+        // bytes and the controller this route touched are one machine. The hand-off needs both, and the
+        // bound carrier is what carries the proven value -- so a hand-off with an unproven readback, or a
+        // proven readback bound to another board, is not a case to handle but a value that does not exist.
         match recovery_readback_proves_reset(readback: readback) {
           Absent =>
             InBandRecoveryStanding {
@@ -1656,14 +1871,31 @@ fn converge_after_admissions(
               outcome: RecoveryReadbackRefusedFactoryCredential { readback: readback },
             }
           Present { value: proven } =>
-            InBandRecoveryStanding {
-              subject: route.subject,
-              route: route,
-              outcome: RecoveryHandedToOnboarding {
-                controller: route.controller,
-                proven: proven,
-                writes: [in_band_write, reset_write],
-              },
+            match recovery_bind_observation(route: route, readback: readback) {
+              Absent =>
+                InBandRecoveryStanding {
+                  subject: route.subject,
+                  route: route,
+                  outcome: RecoveryReadbackNotBoundToThisController {
+                    readback: readback,
+                    // the cause is recomputed by the same function the bind used, so what the operator reads
+                    // is the disagreement itself and not a paraphrase of it
+                    cause: recovery_controller_readings_agree(
+                      controller: route.controller,
+                      in_band_device_identity: route.in_band_device_identity,
+                    ),
+                  },
+                }
+              Present { value: bound } =>
+                InBandRecoveryStanding {
+                  subject: route.subject,
+                  route: route,
+                  outcome: RecoveryHandedToOnboarding {
+                    bound: bound,
+                    proven: proven,
+                    writes: [in_band_write, reset_write],
+                  },
+                }
             }
         }
       }
@@ -1721,7 +1953,35 @@ type RecoveryRouteUnavailable
   // A row was found by reading and then failed the release-keyed lookup: the catalog disagrees with
   // itself, so no release can be named for the measurement the reset would rest on.
   | RecoveryCatalogIndexesDisagree { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
+  // A refusal row was matched to the controller and then contradicted its own filing. Distinct from
+  // RecoveryControllerNeverMeasured: the board HAS a measurement, and sending someone to take another one
+  // is how a mislabelled row survives. The row travels with the refusal.
+  | RecoveryRowFiledUnderTheWrongReading {
+      row: PublishedFactoryPasswordWritePolicy
+      observed: IpmiDeviceIdentity
+    }
   | RecoveryReadbackInconclusive { detail: NonEmptyStr }
+  // THE FOUR WAYS THIS ROUTE IS BLOCKED, KEPT APART WHERE THEY WERE KEPT APART UPSTREAM. These three arms
+  // exist because the projection used to flatten them into RecoveryReadbackInconclusive above, which was a
+  // loss twice over. It told a person monitoring a half-populated ledger to re-read a controller, and it
+  // erased the distinction the outcome sum had gone to the trouble of drawing -- §5's "every degradation is
+  // typed, located and countable" is worthless if the counting layer collapses the types on the way out.
+  // Each one names its own repair, and none of the three is "re-read the controller".
+  | RecoveryChannelNeverObserved { detail: NonEmptyStr }
+  | RecoveryWriteNeverAttempted { kind: RecoveryActuationKind }
+  | RecoveryWriteWithheldByAdmission { kind: RecoveryActuationKind, cause: NonEmptyStr }
+  // The readback arrived and did NOT name the password-change refusal: the reset's effect is unconfirmed,
+  // which is a different question from "no readback was taken" and a different one again from "the census
+  // would not admit the write". Distinct from RecoveryReadbackInconclusive, which is for a readback that
+  // could not be read at all.
+  | RecoveryReadbackDoesNotConfirmReset { readback: RecoveryFactoryCredentialReadback }
+  // THE READBACK BELONGS TO ANOTHER CONTROLLER, and the disagreement between the two readings is carried
+  // rather than summarised: a reader of the refusal sees which release each side reported.
+  | RecoveryReadbackFromAnotherController { readback: RecoveryFactoryCredentialReadback, cause: NonEmptyStr }
+  // THE TWO READINGS AGREE AND THE BYTES ARE STILL NOT THIS BOARD'S: the readback cites a capture that was
+  // never filed against this controller's IPMI identity. Distinguished from the arm above because the repair
+  // is different -- one is a mis-paired route, this one is a citation that came from somewhere else.
+  | RecoveryReadbackBytesNotFiledForThisController { readback: RecoveryFactoryCredentialReadback }
   // WHICH WRITE THE CENSUS WOULD NOT ADMIT, WITH WHAT THE CENSUS COMPUTED. Distinct from
   // RecoveryReadbackInconclusive because the two send different people to different work: one re-reads a
   // controller, the other fixes a census row or funds an evidence need.
@@ -1766,8 +2026,48 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
             " -- the refusal carries the rows; reconcile them against the capture"], "") as NonEmptyStr
     RecoveryCatalogIndexesDisagree { firmware: _, observed: _ } =>
       "this board's catalog files a refusal whose release key does not resolve in its own capability catalog: fix the filing before any reset is admitted" as NonEmptyStr
+    // NOT the sentence above, and not the never-measured one: this row resolves, and it is the row's own
+    // two readings that disagree, so the repair is to the row rather than to the catalog's index or to a
+    // new measurement of a board that has been measured.
+    RecoveryRowFiledUnderTheWrongReading { row: _, observed: _ } =>
+      "this board's catalog files a refusal whose release does not match the Get Device ID answer recorded with it: correct the row, or measure the controller again under the release it now claims -- re-measuring alone leaves the bad row filed" as NonEmptyStr
     RecoveryReadbackInconclusive { detail: _ } =>
       "re-read the controller after the reset: the route is only believed once the login answers with the password-change refusal" as NonEmptyStr
+    // The channel was never looked at. No module is loaded and no node is bound for want of a reading that
+    // nobody took, so the repair is the observation itself -- not the module-loading sentence above, which
+    // presumes a reading that already reported missing modules.
+    RecoveryChannelNeverObserved { detail: _ } =>
+      "take the in-band channel observation this route has never had: read the device node and the ipmi module set on the rescue host before any privileged write is admitted" as NonEmptyStr
+    // An un-attempted write is not a failed write. Re-reading the controller answers nothing, because the
+    // chassis was never touched; the missing actuation is named with its own kind so the operator knows
+    // which of the two writes is outstanding.
+    RecoveryWriteNeverAttempted { kind: kind } =>
+      join(["the ", match kind {
+              InBandTemporaryAdministratorPassword => "in-band temporary administrator password write"
+              RedfishManagerResetToDefaults { reset_type: _ } => "Manager.ResetToDefaults actuation"
+            } as String,
+            " of this unit's reset sequence was never attempted: perform it, or hand the unit back as un-recovered",
+            " -- re-reading the controller proves nothing about an action nobody took"], "") as NonEmptyStr
+    // The census would not admit it, and the detail the census computed is carried rather than paraphrased.
+    RecoveryWriteWithheldByAdmission { kind: kind, cause: cause } =>
+      join(["the ", match kind {
+              InBandTemporaryAdministratorPassword => "in-band temporary administrator password write"
+              RedfishManagerResetToDefaults { reset_type: _ } => "Manager.ResetToDefaults actuation"
+            } as String,
+            " is withheld by this route's admission, not by the board: ", cause as String,
+            " -- no re-read lifts an admission, only the admission does"], "") as NonEmptyStr
+    // The readback came back and said something else. Distinct sentence from RecoveryReadbackInconclusive
+    // because the readback is not the thing at fault here: the reset's EFFECT is unconfirmed, so the next
+    // action is to establish the effect, not to fetch a body that was already fetched.
+    RecoveryReadbackDoesNotConfirmReset { readback: _ } =>
+      "the post-reset login answered, but not with the password-change refusal that proves the factory credential took: establish the reset's effect before handing this unit to onboarding" as NonEmptyStr
+    // NOT the sentence above: nothing is wrong with the answer, it is the wrong board's answer, and
+    // re-establishing a reset effect on this unit would not move it.
+    RecoveryReadbackFromAnotherController { readback: _, cause: cause } =>
+      join(["the readback this standing rests on is not this controller's: ", cause as String,
+            " -- pair the route, the readings and the capture for one board before anything is handed to onboarding"], "") as NonEmptyStr
+    RecoveryReadbackBytesNotFiledForThisController { readback: _ } =>
+      "the readback cites capture bytes that were never filed against this controller's Get Device ID answer: file the reading with the controller it came from, or read this one" as NonEmptyStr
     // The census refusal's sentence is DERIVED from the carrier it holds, never written beside it: which
     // write was refused, at which site, and what the census said about why.
     RecoveryCensusDoesNotAdmit { kind: _, site: site, cause: cause } =>
@@ -1779,9 +2079,14 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
 
 fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRouteUnavailable? {
   match standing.outcome {
-    RecoveryHandedToOnboarding { controller: _, proven: _, writes: _ } => none
+    RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => none
     RecoveryHostUnreachable { cause: c } => Present { value: NoReachableRescueHost { cause: c } }
-    RecoveryChannelUnobserved { detail: d } => Present { value: RecoveryReadbackInconclusive { detail: d } }
+    // THE CAUSE IS CARRIED OUT AS THE CAUSE THAT WAS COMPUTED UPSTREAM.
+    // A standing whose channel was never observed used to arrive here as RecoveryReadbackInconclusive, and
+    // the sentence rendered from that arm sent someone to re-read a controller nobody had written to (§5:
+    // "every degradation is typed, located and countable" -- which the counting layer voids if it collapses
+    // the types on the way out).
+    RecoveryChannelUnobserved { detail: d } => Present { value: RecoveryChannelNeverObserved { detail: d } }
     RecoveryControllerPolicyUnavailable { sighting: sighting } =>
       match sighting {
         RefusalMeasuredOnThisController { refusal: _, observed: _ } => none
@@ -1790,18 +2095,36 @@ fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRo
           Present { value: RecoveryCatalogAmbiguousForController { observed: observed, matched: matched } }
         CatalogIndexesDisagree { firmware: f, observed: observed } =>
           Present { value: RecoveryCatalogIndexesDisagree { firmware: f, observed: observed } }
+        RowDisagreesWithItsOwnReading { row: row, observed: observed } =>
+          Present { value: RecoveryRowFiledUnderTheWrongReading { row: row, observed: observed } }
       }
-    RecoveryWriteUnverified { kind: _ } =>
-      Present { value: RecoveryReadbackInconclusive { detail: "a privileged write of the reset sequence was not attempted against the arm the route names" } }
+    // An arm naming an un-attempted write arrives naming it, with the kind: which of the two writes is
+    // outstanding is the whole content of the refusal, and it was previously dropped on the floor (kind: _)
+    // while the sentence said "was not attempted against the arm the route names" -- the same fact, once,
+    // in the arm that holds it.
+    RecoveryWriteUnverified { kind: kind } =>
+      Present { value: RecoveryWriteNeverAttempted { kind: kind } }
     // A write the ledger does not admit leaves the unit locked AND the route blocked, so it is a
     // named requirement rather than a silent stop: the reader has to be told which write was refused,
     // because "go find a rescue USB" would be the wrong next action for it.
-    RecoveryWriteNotAdmitted { kind: _, cause: cause } =>
-      Present { value: RecoveryReadbackInconclusive { detail: cause } }
+    RecoveryWriteNotAdmitted { kind: kind, cause: cause } =>
+      Present { value: RecoveryWriteWithheldByAdmission { kind: kind, cause: cause } }
     RecoveryWriteRefusedByLedger { kind: kind, site: site, cause: cause } =>
       Present { value: RecoveryCensusDoesNotAdmit { kind: kind, site: site, cause: cause } }
-    RecoveryReadbackRefusedFactoryCredential { readback: _ } =>
-      Present { value: RecoveryReadbackInconclusive { detail: "the post-reset readback named no PasswordChangeRequired message" } }
+    // The readback itself travels: which answer arrived is what an operator re-checks against the capture,
+    // and the arm is not the "could not be read" arm -- the body was read, and it did not confirm the reset.
+    RecoveryReadbackRefusedFactoryCredential { readback: r } =>
+      Present { value: RecoveryReadbackDoesNotConfirmReset { readback: r } }
+    // AND IT IS NOT THE SAME REFUSAL AS THE ONE ABOVE, which is the point. Collapsing "the body said the
+    // wrong thing" with "the body was not this controller's" would send someone to re-read a board that is
+    // fine, chasing a firmware answer nobody disputed.
+    RecoveryReadbackNotBoundToThisController { readback: r, cause: cause } =>
+      match cause {
+        Present { value: c } =>
+          Present { value: RecoveryReadbackFromAnotherController { readback: r, cause: c } }
+        Absent =>
+          Present { value: RecoveryReadbackBytesNotFiledForThisController { readback: r } }
+      }
   }
 }
 
@@ -2261,7 +2584,7 @@ test fn a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset() 
         ControllerNeverMeasured { observed: o } =>
           o.firmware_revision_major == 3 && o.firmware_revision_minor == 6
             && match standing.outcome {
-              RecoveryHandedToOnboarding { controller: _, proven: _, writes: _ } => false
+              RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => false
               _ => true
             }
             // matched, not compared: an optional compared against a Present literal answers by
@@ -2363,13 +2686,13 @@ test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
   // is no ProvenResetReadback value to put in the hand-off arm for a ReadbackInconclusive, so the fold
   // cannot reach that arm at all -- which is a stronger claim than the Bool this replaces ever made.
   (match without_readback.outcome {
-    RecoveryHandedToOnboarding { controller: _, proven: _, writes: _ } => false
+    RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => false
     RecoveryReadbackRefusedFactoryCredential { readback: _ } => true
     _ => false
   })
     && (match with_readback.outcome {
-      RecoveryHandedToOnboarding { controller: c, proven: p, writes: w } =>
-        c == route.controller && list_length(items: w) == 2
+      RecoveryHandedToOnboarding { bound: b, proven: p, writes: w } =>
+        b.in_band_device_identity == route.in_band_device_identity && list_length(items: w) == 2
           // the carrier carries the identity it was minted from, and that identity is still the one
           // extdeps.bmc.redfish recognises -- checked by ITS predicate, not against a literal here
           && redfish_message_id_is_password_change_required(id: p.message_id as String)
@@ -2379,12 +2702,21 @@ test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
       RecoveryReadbackRefusedFactoryCredential { readback: _ } => true
       _ => false
     }
-    // matched rather than compared against a Present literal, for the reason recorded in
+    // AND THE OUTGOING REFUSAL IS THE REFUSAL, NOT A GENERIC ONE. The readback that arrived travels with
+    // it, so a reader can check the answer against the capture: this is not the arm for a readback nobody
+    // could read, and it must not arrive wearing that arm's clothes. Matched rather than compared against a
+    // Present literal, for the reason recorded in
     // gunbc.recurring_failure_mode.optional_equality_answers_by_representation
-    && matches_the_readback_inconclusive(
-      cause: recovery_route_unavailability(standing: without_readback),
-      detail: "the post-reset readback named no PasswordChangeRequired message",
-    )
+    && (match recovery_route_unavailability(standing: without_readback) {
+         Present { value: RecoveryReadbackDoesNotConfirmReset { readback: rb } } =>
+           // the answer that arrived is the one the fold refused on, and it says so by its own predicate
+           match rb.proven {
+             Absent => true
+             Present { value: _ } => false
+           }
+         Present { value: _ } => false
+         none => false
+       })
 }
 
 // AN UNATTEMPTED WRITE IS NOT A RECOVERY. The record is evidence of an ATTEMPT, never of success; here
@@ -2400,19 +2732,25 @@ test fn an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recov
   )
   match standing.outcome {
     RecoveryWriteUnverified { kind: RedfishManagerResetToDefaults { reset_type: ResetAll } } =>
-      match standing.outcome {
-        RecoveryHandedToOnboarding { controller: _, proven: _, writes: _ } => false
-        _ => true
-      }
-    _ => false
-  }
-}
-
-// matched rather than compared against a Present literal, for the reason recorded in
-// gunbc.recurring_failure_mode.optional_equality_answers_by_representation.
-fn matches_the_readback_inconclusive(cause: RecoveryRouteUnavailable?, detail: NonEmptyStr) -> Bool {
-  match cause {
-    Present { value: RecoveryReadbackInconclusive { detail: d } } => d == detail
+      // THE OUTGOING REFUSAL NAMES THE WRITE THAT IS MISSING. The projection used to hand this case to the
+      // generic "readback inconclusive" arm and drop the kind on the floor (kind: _), so the reader was told
+      // to re-read a controller that had never been written to, and never told which of the two writes was
+      // outstanding. Now the kind survives the whole way out.
+      (match recovery_route_unavailability(standing: standing) {
+         Present { value: RecoveryWriteNeverAttempted { kind: k } } =>
+           k == RedfishManagerResetToDefaults { reset_type: ResetAll }
+         Present { value: _ } => false
+         none => false
+       })
+      && (match recovery_route_unavailability(standing: standing) {
+           Present { value: RecoveryReadbackInconclusive { detail: _ } } => false
+           Present { value: _ } => true
+           none => false
+         })
+      && (match standing.outcome {
+           RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => false
+           _ => true
+         })
     _ => false
   }
 }
@@ -2679,12 +3017,21 @@ fn recovery_reset_write_record() -> RecoveryWriteRecord {
   }
 }
 
+// THE BODY THE CAPTURE HOLDS, AND NOTHING ELSE. The readback below is produced by handing these bytes to
+// recovery_readback_of, so the MessageId in the proving arm is READ OUT OF THEM by extdeps.bmc.redfish --
+// there is no fixture that types the id by hand, and therefore no fixture that can be green because the
+// author knew what a 403 from this firmware looks like. The bytes are the 403 body recorded in
+// 04_post_reset_readback.txt; the digest of that file is what the evidence ref below cites, and the same
+// digest is the one the post-reset readback record in gunbc.machine_intake.bmc_inband_recovery_receipts is
+// keyed by -- which is what lets the bind succeed for this specimen and refuse every other one.
+data recovery_post_reset_readback_body: String = "{\"error\":{\"@Message.ExtendedInfo\":[{\"@odata.type\":\"#Message.v1_1_1.Message\",\"Message\":\"Password change required before accessing other resources\",\"MessageId\":\"Base.1.16.0.PasswordChangeRequired\",\"Resolution\":\"none\",\"Severity\":\"Warning\"}],\"code\":\"Base.1.16.0.PasswordChangeRequired\",\"message\":\"Password change required before accessing other resources\"}}"
+
 fn recovery_factory_credential_readback() -> RecoveryFactoryCredentialReadback {
-  FactoryCredentialActiveAwaitingChange {
-    message_id: "Base.1.16.0.PasswordChangeRequired",
+  recovery_readback_of(
+    body: recovery_post_reset_readback_body,
     evidence: recovery_post_reset_readback_capture_ref,
     observed_at: recovery_post_reset_instant(),
-  }
+  )
 }
 
 // THE GATES ARE CALLED, NOT JUST NAMED. Until now nothing in this file CALLed either admission gate --

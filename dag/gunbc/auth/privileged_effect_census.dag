@@ -545,8 +545,8 @@ data recovery_reset_operator_ruling: StandingDestructiveAuthorization = Standing
   // parameter spelled `ResetToDefaultsType` where DMTF publishes `ResetType` (01_summary.txt records both the
   // 400 for the published spelling and the 200 for its own). That mismatch is a REPORTED OBSERVATION about
   // this specimen and is quoted here as one; the spelling the interface publishes is unchanged by it (§3: an
-  // observation this repository makes is a receipt downstream, never a property of the upstream).'s own
-  // LAN address (192.168.1.250 per the capture), so the reset went out-of-band over the management
+  // observation this repository makes is a receipt downstream, never a property of the upstream). The
+  // reset went to the controller's own LAN address (192.168.1.250 per the capture), so the reset went out-of-band over the management
   // interface, and only the temporary password write used the in-band SSIF channel (01_summary.txt's
   // "PRIVILEGED WRITE 1 -- set temp admin password over the in-band SSIF channel"). §4d: "Do not assert as
   // deduced what is only inferred" -- and this text is what a per-effect operator approval is FILED

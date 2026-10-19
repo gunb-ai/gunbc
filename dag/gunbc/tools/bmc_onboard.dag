@@ -38,7 +38,10 @@ import gunbc.auth.netrc_binding {
   NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains,
   place_netrc_binding,
 }
-import extdeps.bmc.redfish { redfish_password_change_verdict, RedfishPasswordChangeRequired, RedfishPasswordChangeNotIndicated }
+import extdeps.bmc.redfish {
+  redfish_password_change_verdict, RedfishPasswordChangeRequired, RedfishPasswordChangeNotIndicated,
+  RedfishResponseBodyUnreadable,
+}
 import gunbc.bmc.bmc_onboarding {
   BmcOnboardingPlan,
   srv1_onboarding_plan,
@@ -465,8 +468,15 @@ fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
 // onboarding at its first step on a freshly flashed BMC.
 fn factory_login_accepted(succeeded: Bool, body: String) -> Bool {
   succeeded || (match redfish_password_change_verdict(body: body) {
-    RedfishPasswordChangeRequired => true
+    // the id the service named is not consulted here: onboarding wants the yes/no, and the arm that has to
+    // be answered is whether the published credential may be treated as active
+    RedfishPasswordChangeRequired { message_id: _ } => true
     RedfishPasswordChangeNotIndicated => false
+    // AN UNREADABLE BODY IS NOT A REFUSAL, and it is not an acceptance either: it is a probe that produced
+    // no answer. It fails closed here -- a probe could not tell us the credential is live -- and it fails
+    // closed as ITSELF rather than by wearing RedfishPasswordChangeNotIndicated's clothes, so the operator
+    // running this probe can tell "the BMC said no" from "we could not read what the BMC said".
+    RedfishResponseBodyUnreadable { cause: _ } => false
   })
 }
 
