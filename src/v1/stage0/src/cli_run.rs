@@ -3801,7 +3801,10 @@ fn refuse_unparseable_module_sources(
             headerless_claim_sources.len()
         );
         for path in headerless_claim_sources {
-            eprintln!("  {}", claim_source_refusal_rendered(path, None));
+            eprintln!(
+                "  {}",
+                claim_source_refusal_rendered(path, &ClaimSourceRefusalCause::ModuleHeaderAbsent)
+            );
         }
     }
     std::process::exit(1);
@@ -20932,16 +20935,32 @@ fn claim_source_location(path: &Path) -> String {
         .into_owned()
 }
 
-/// `gunbc.target_invocation` `claim_source_refusal_rendered`, mirrored for both
-/// `ClaimSourceRefusalCause` arms. Hand-written beside the carrier like `target_invocation_host`.
-fn claim_source_refusal_rendered(path: &str, unparseable_diagnostic: Option<&str>) -> String {
-    match unparseable_diagnostic {
-        Some(d) => format!("claim source refused: {path}: the file does not parse: {d}"),
-        None => format!(
-            "claim source refused: {path}: a .dag under the claim root declares no module, so no \
-             claim label can name it (paths follow names)"
-        ),
-    }
+/// `gunbc.target_invocation` `ClaimSourceRefusalCause`, mirrored arm for arm. Hand-written beside
+/// the carrier like `target_invocation_host`; `tests/claim_route_unreadable_source.rs` pins the
+/// rendered text of every arm against the same literals the `.dag` witness
+/// `a_claim_source_refusal_names_the_file_and_its_cause` pins, so either side drifting reds one.
+pub enum ClaimSourceRefusalCause {
+    Unparseable { diagnostic: String },
+    ModuleHeaderAbsent,
+    Unreadable { reason: String },
+    RootUnreadable { reason: String },
+}
+
+/// `gunbc.target_invocation` `claim_source_refusal_rendered`, mirrored.
+pub fn claim_source_refusal_rendered(path: &str, cause: &ClaimSourceRefusalCause) -> String {
+    let tail = match cause {
+        ClaimSourceRefusalCause::Unparseable { diagnostic } => {
+            format!(": the file does not parse: {diagnostic}")
+        }
+        ClaimSourceRefusalCause::ModuleHeaderAbsent => ": a .dag under the claim root declares no \
+             module, so no claim label can name it (paths follow names)"
+            .to_string(),
+        ClaimSourceRefusalCause::Unreadable { reason } => format!(": unreadable: {reason}"),
+        ClaimSourceRefusalCause::RootUnreadable { reason } => {
+            format!(": unreadable source root: {reason}")
+        }
+    };
+    format!("claim source refused: {path}{tail}")
 }
 
 /// EVERY SOURCE THE CLAIM ROUTE CANNOT READ, LOCATED AND COUNTED, WITHOUT STOPPING THE PROCESS.
@@ -20963,8 +20982,9 @@ pub(crate) fn claim_source_refusals(source_roots: &[String]) -> Vec<String> {
         let claim_root = claim_root_of(&anchored);
         let mut files = Vec::new();
         if let Err(e) = collect_dag_files_result(Path::new(&anchored), &mut files) {
-            out.push(format!(
-                "claim source refused: {anchored}: unreadable source root: {e}"
+            out.push(claim_source_refusal_rendered(
+                &anchored,
+                &ClaimSourceRefusalCause::RootUnreadable { reason: e },
             ));
             continue;
         }
@@ -20973,9 +20993,11 @@ pub(crate) fn claim_source_refusals(source_roots: &[String]) -> Vec<String> {
             let content = match source.read() {
                 Ok(c) => c,
                 Err(e) => {
-                    out.push(format!(
-                        "claim source refused: {}: unreadable: {e}",
-                        path.display()
+                    out.push(claim_source_refusal_rendered(
+                        &claim_source_location(path),
+                        &ClaimSourceRefusalCause::Unreadable {
+                            reason: e.to_string(),
+                        },
                     ));
                     continue;
                 }
@@ -20986,13 +21008,15 @@ pub(crate) fn claim_source_refusals(source_roots: &[String]) -> Vec<String> {
                     if path.starts_with(&claim_root) {
                         out.push(claim_source_refusal_rendered(
                             &claim_source_location(path),
-                            None,
+                            &ClaimSourceRefusalCause::ModuleHeaderAbsent,
                         ));
                     }
                 }
                 Err(refusal) => out.push(claim_source_refusal_rendered(
                     &refusal.source_path,
-                    Some(&refusal.rendered()),
+                    &ClaimSourceRefusalCause::Unparseable {
+                        diagnostic: refusal.rendered(),
+                    },
                 )),
             }
         }

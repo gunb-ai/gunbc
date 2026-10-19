@@ -73,3 +73,33 @@ fn a_healthy_claim_source_is_selected_and_holds() {
     );
     assert_eq!(route(root).expect("a healthy claim must not refuse"), 1);
 }
+
+// THE RUST RENDERER IS PINNED TO THE SAME LITERALS AS THE `.dag` CARRIER. The `.dag` witness
+// `a_claim_source_refusal_names_the_file_and_its_cause` asserts these exact strings for
+// `gunbc.target_invocation` `claim_source_refusal_rendered`; if either renderer's wording or cause
+// set moves alone, one of the two reds.
+#[test]
+fn the_rust_renderer_matches_the_dag_carrier_for_every_cause() {
+    use v1_compiler::cli_run::{claim_source_refusal_rendered as r, ClaimSourceRefusalCause as C};
+    assert_eq!(
+        r(
+            "dag/test/claim/x.dag",
+            &C::Unparseable {
+                diagnostic: "d".into()
+            }
+        ),
+        "claim source refused: dag/test/claim/x.dag: the file does not parse: d"
+    );
+    assert_eq!(
+        r("dag/test/claim/y.dag", &C::ModuleHeaderAbsent),
+        "claim source refused: dag/test/claim/y.dag: a .dag under the claim root declares no module, so no claim label can name it (paths follow names)"
+    );
+    assert_eq!(
+        r("p", &C::Unreadable { reason: "r".into() }),
+        "claim source refused: p: unreadable: r"
+    );
+    assert_eq!(
+        r("p", &C::RootUnreadable { reason: "r".into() }),
+        "claim source refused: p: unreadable source root: r"
+    );
+}
