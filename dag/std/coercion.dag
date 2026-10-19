@@ -330,6 +330,15 @@ fn dag_subtraction_refinement(operand: DeclarationRef) -> SubtractionRefinement 
   }
 }
 
+// THE UPCAST OF A REFINEMENT (operator Ruling 3, 2026-07-15: a Nat IS an Int). A refinement row says
+// every to_type value IS a from_type value, so the same row grounds the total, exact, unique, pure
+// upcast to_declaration -> from_type; no second table states it. The operand is matched by its
+// resolved DECLARATION, never its spelling: v2.std.nat.Nat shares the spelling, is not a refinement
+// of Int, and matches no row, so it still refuses at an Int formal.
+fn dag_refinement_upcast(operand: DeclarationRef, target_type: String) -> Bool {
+  refinement_cast_rules |> any(r => r.from_type == target_type && declaration_ref_eq(a: r.to_declaration, b: operand))
+}
+
 fn dag_can_cast(source_type: String, target_type: String) -> Bool {
   (dag_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type))
     || (grounded_primitive_coproduct_identities |> any(r => r.from_type == source_type && r.to_type == target_type))
