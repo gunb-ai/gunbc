@@ -12,7 +12,7 @@ import v2.compiler.module_header { ModuleHeaderReader, module_header_tail }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
-import v2.compiler.reference_site_collector { HeadBindingUndecided, HeadBoundAtRootValue, HeadBoundInFrame, HeadLexicallyUnbound, HeadNotAValuePosition, ScopedReferenceSite, ScopedReferenceSiteCollection, SiteHeadBinding, collect_scoped_module_reference_sites, scoped_reference_site_collection_is_total }
+import v2.compiler.reference_site_collector { HeadBindingUndecided, HeadBoundAtRootValue, HeadBoundInFrame, HeadLexicallyUnbound, ScopedReferenceSite, ScopedReferenceSiteCollection, SiteHeadBinding, collect_scoped_module_reference_sites, scoped_reference_site_collection_is_total }
 import v2.compiler.source_authority { ModuleFileAbsent, ModuleFileDerived, ModuleFilePresent, ModuleFileProbe, ModuleFileRef, ModuleFileRefused, ModuleNameUnderivable, DagSourceReadWitness, ReferenceContinue, ReferenceCrossTreeDenied, ReferenceDecided, ReferenceLookup, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, SourceRootIngest, SourceStorageLayout, module_file, module_file_key, reference_after_probe, reference_next_read, reference_prefixes, source_root_ref_label, text_set_has, text_set_of }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
@@ -389,20 +389,24 @@ fn acquisition_reference_texts(collection: ScopedReferenceSiteCollection) -> Lis
 // value binder binds is a projection; a head the walk could not classify (HeadBindingUndecided) might be one,
 // and probing storage for it could deny a valid program or read a file the program does not mention, so
 // neither of those requests anything or reads anything.
+// THE BINDING FACT, ALONE -- the position is deliberately NOT consulted here (tidy-ant-251's D3
+// ruling). Acquisition asks "could this head be a module's member?", which a value frame answers: an
+// unbound head is the only reading with no local explanation, so it is the only candidate. Reading the
+// POSITION here is what would widen acquisition: an imported qualified tag (`Choice.Yes` with Choice
+// imported) sits at a label position, and "non-value position => candidate" would make a head the tree
+// already says is undecided into a module request. The roster reads BOTH fields instead, because it
+// asks the different question "would importing this name be wrong?".
+//
+// The two consumers therefore never re-decide anything: each reads one fact that ONE authority issued,
+// and the claim that a non-value head still requests its module is carried by the head reading (a type
+// mention in a signature is not a value binder's name, so it reads unbound), not by a position arm --
+// which is why v2.test.claim.module_acquisition's binder-type and annotation positives stay green here.
 fn acquisition_head_is_candidate_module(head: SiteHeadBinding) -> Bool {
   match head {
     HeadLexicallyUnbound => true
     HeadBoundInFrame => false
     HeadBoundAtRootValue => false
     HeadBindingUndecided => false
-    // A NON-VALUE HEAD IS STILL A CANDIDATE MODULE, AND IT IS THE ONLY THING THAT CAN OWN ONE. The
-    // other arms refuse because a value binder in scope explains the name; a head at a type annotation,
-    // a binder type, a label or a pattern tag is not explained by a value binder at all, so a module is
-    // the only remaining authority for it. That is why a `T?` still requests std.optional.Optional and a
-    // sibling parameter's `x.T` still requests v2.std.x (module_acquisition's own claims), while the SAME
-    // head is never a free name to the roster (v2.workflow.roster_import_sweep reads the same variant as
-    // "not free"): the two consumers ask different questions of one position fact, neither re-decides it.
-    HeadNotAValuePosition => true
   }
 }
 
@@ -548,7 +552,10 @@ fn acquisition_identity_checked(front: AcquisitionFrontEnd, module: String, file
       if qualified_name_to_dotted_string(qn: parsed) == module {
         acquisition_sites_requests(
           front: front,
-          sites: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })),
+          sites: collect_scoped_module_reference_sites(
+            root: front.tree.root,
+            imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })
+          ),
           module: module,
           file: file
         )

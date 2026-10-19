@@ -1,0 +1,172 @@
+module v2.workflow.roster_home_kind
+
+import std.algebra { FreeMonoid, fold_list }
+import std.types { Bool, List, String }
+import std.occurrence_identity {
+  LabelPosition,
+  PatternTagPosition,
+  ReferencePosition,
+  ReturnPosition,
+  TypeAnnotationPosition,
+  ValuePosition
+}
+import v2.std.decl_index { DataItem, DeclFact, FnItem, ItemKind, OtherItem, ServiceItem, TypeItem, decl_facts_at }
+import v2.compiler.reference_site_collector {
+  HeadBoundAtRootValue,
+  HeadBoundInFrame,
+  HeadBindingUndecided,
+  HeadLexicallyUnbound,
+  ScopedReferenceSite
+}
+import v2.lens.enforcement.standing_intent { whole_corpus_scope }
+
+// THE POSITION-TO-HOME-KIND RULE (tidy-ant-251's roster correction on #14435, msg_66a5409b). A site needs its home's
+// import when its head is unbound AND its reference position is compatible with the KIND its home declaration declares
+// -- the kind is read from the home's declaration identity, NEVER from the spelling:
+//   Value                    <-> a value declaration (fn, service, other)
+//   TypeAnnotation, Return   <-> a type or data declaration
+//   Label, PatternTag        <-> neither, unless the home declaration says so
+// The manager's third type position, BinderType, is not a separate ReferencePosition arm: occurrence_role issues a
+// binder's type annotation as TypeAnnotationPosition through CoreMarker{CoreBinderTypeEdge} (its one marker table), so
+// the three named type kinds land on two arms -- verified by execution on the fixture whose `xs: List<Int>` binder-type
+// site reads TypeAnnotationPosition. "No such declaration" (zero keyed rows) reads as not-a-match in BOTH directions,
+// so a home whose declaration cannot be located imports nothing rather than importing on a guess.
+//
+// WHY THIS MODULE HOLDS IT, AND WHY IT IS THE SWEEP'S ONLY CORPUS READ. v2.workflow.roster_import_sweep has no
+// file-read primitive -- its sweep is pure over (path, text) for one file -- and the home's declared kind is a corpus
+// fact keyed by qualified name. v2.std.decl_index decl_facts_at is the one home for that question ("THE KEYED READ...
+// Both project one census"); this module is its only consumer on the roster route. The pool roots are READ from
+// v2.lens.enforcement.standing_intent whole_corpus_scope -- the repo's one corpus-scope row, the same input
+// v2.workflow.enforcement_live enforcement_corpus_facts hands decl_facts -- never repeated here, so no second table
+// decides which files can declare a roster home.
+//
+// THE BINDING FACT STAYS WHERE IT WAS. site.head is v2.compiler.reference_site_collector's own classification and this
+// module reads it, never re-decides it (DESIGN 3). What was missing, and what this file adds, is only the
+// position<->kind compatibility neither the collector nor the sweep could express alone.
+
+// THE RULE THE SWEEP CALLS, for the import count and the label plan alike: one classifier, both questions.
+fn roster_site_needs_home_import(
+  site: ScopedReferenceSite,
+  home: String,
+  import_name: String,
+  imported_from_home: Bool
+) -> Bool {
+  match site.head {
+    HeadLexicallyUnbound => position_matches_home_kind(position: site.position, home: home, import_name: import_name)
+    // THE BINDING FACT, UNCHANGED FROM BEFORE THIS PR for a head the collector cannot decide. An undecided head is the
+    // free name only when the import that made it undecided comes from the home the row claims (the sweep's own
+    // roster_symbol_imported decides that, never this module); undecided for any other reason is free for NO position,
+    // which is what keeps an imported qualified tag (`count.Yes` under v2.std.node ConstructTagEdge, with count
+    // imported -- the D4 control) out of the rows while v2.compiler.module_acquisition keeps the same head a
+    // non-candidate from the binding alone. No position is consulted here: an undecided head is not a name the position
+    // rule was ever asked about.
+    HeadBindingUndecided => imported_from_home
+    HeadBoundAtRootValue => false
+    HeadBoundInFrame => false
+  }
+}
+
+// THE ONE COMPATIBILITY PREDICATE. A type position (annotation, return) matches a type or data declaration; a value
+// position matches a value declaration; a label or pattern tag matches nothing unless the home declaration says so,
+// and no declaration in the row table's homes says so, so neither position imports anything.
+fn position_matches_home_kind(position: ReferencePosition, home: String, import_name: String) -> Bool {
+  match position {
+    ValuePosition => roster_home_declaration_is_value(home: home, import_name: import_name)
+    TypeAnnotationPosition => roster_home_declaration_is_type(home: home, import_name: import_name)
+    ReturnPosition => roster_home_declaration_is_type(home: home, import_name: import_name)
+    LabelPosition => false
+    PatternTagPosition => false
+  }
+}
+
+// The keyed census read, opened for the sweep and the controls: the corpus facts under <home>.<import_name>.
+fn roster_home_declarations(home: String, import_name: String) -> List<DeclFact> {
+  decl_facts_at(pool_roots: roster_corpus_pool_roots(), qualified_name: home + "." + import_name)
+}
+
+fn roster_home_declaration_is_type(home: String, import_name: String) -> Bool {
+  fold_list(
+    xs: roster_home_declarations(home: home, import_name: import_name),
+    empty: false,
+    cons: fn(found, fact) { found || kind_is_type_declaration(kind: fact.kind) }
+  )
+}
+
+fn roster_home_declaration_is_value(home: String, import_name: String) -> Bool {
+  fold_list(
+    xs: roster_home_declarations(home: home, import_name: import_name),
+    empty: false,
+    cons: fn(found, fact) { found || kind_is_value_declaration(kind: fact.kind) }
+  )
+}
+
+// THE POOL ROOTS ARE READ, NOT REPEATED (see the header): the same ScopeRoster.roots the enforcement census reads.
+fn roster_corpus_pool_roots() -> List<String> {
+  whole_corpus_scope.roots
+}
+
+fn kind_is_type_declaration(kind: ItemKind) -> Bool {
+  match kind {
+    TypeItem => true
+    DataItem => true
+    FnItem => false
+    ServiceItem => false
+    OtherItem => false
+  }
+}
+
+fn kind_is_value_declaration(kind: ItemKind) -> Bool {
+  match kind {
+    FnItem => true
+    ServiceItem => true
+    OtherItem => true
+    TypeItem => false
+    DataItem => false
+  }
+}
+
+// THE WITNESS, asked for only when a count disagrees: every recorded site as its position, its head and its scope path,
+// so a control that goes red says WHICH reading moved without a second run. It lives here because this is the module
+// that matches these two coproducts (review 82610: import what you match, and only that).
+fn roster_home_kind_sites_text(sites: FreeMonoid<ScopedReferenceSite>) -> String {
+  fold_list(xs: sites, empty: "", cons: fn(acc, st) {
+    acc + "| " + roster_home_kind_position_text(position: st.position) + "/" + roster_home_kind_head_text(head: st.head) + " "
+  })
+}
+
+fn roster_home_kind_position_text(position: ReferencePosition) -> String {
+  match position {
+    ValuePosition => "value"
+    TypeAnnotationPosition => "type"
+    ReturnPosition => "return"
+    LabelPosition => "label"
+    PatternTagPosition => "tag"
+  }
+}
+
+fn roster_home_kind_head_text(head: SiteHeadBinding) -> String {
+  match head {
+    HeadLexicallyUnbound => "unbound"
+    HeadBindingUndecided => "undecided"
+    HeadBoundAtRootValue => "root"
+    HeadBoundInFrame => "frame"
+  }
+}
+
+// THE PREMISE OF THE FOUR SPECIMEN CONTROLS, checked before they run: v2.std.decl_index must actually know the two
+// homes, and must know them as OPPOSITE kinds. Without this the four specimen controls could pass because the census
+// reads NOTHING anywhere (both directions of the rule answer false), which is the decoration reading. The homes are
+// the corpus's own: dag/std/types.dag `type List<element>` and dag/std/host_text.dag `fn chars(text: HostText)`.
+fn roster_control_census_knows_the_homes() -> String {
+  let wrong = (if roster_home_declaration_is_type(home: "std.types", import_name: "List") { "" } else { "type-home std.types.List reads no type declaration" })
+    + (if roster_home_declaration_is_value(home: "std.host_text", import_name: "chars") { "" } else { "; value-home std.host_text.chars reads no value declaration" })
+    + (if !roster_home_declaration_is_type(home: "std.host_text", import_name: "chars") { "" } else { "; std.host_text.chars reads a TYPE declaration" })
+    + (if !roster_home_declaration_is_value(home: "std.types", import_name: "List") { "" } else { "; std.types.List reads a VALUE declaration" })
+  if wrong == "" { "" } else { "CONTROL-FAIL census-homes: " + wrong + " (v2.std.decl_index decl_facts_at over " + roster_corpus_pool_roots_text() + ")\n" }
+}
+
+// The roots the census was read under, in the failure message only: a home missing under one root list is a different
+// fact from a home missing under all of them, and the reader must be able to tell which.
+fn roster_corpus_pool_roots_text() -> String {
+  fold_list(xs: roster_corpus_pool_roots(), empty: "", cons: fn(acc, r) { acc + r + " " })
+}
