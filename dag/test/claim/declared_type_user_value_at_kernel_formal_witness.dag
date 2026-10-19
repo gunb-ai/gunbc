@@ -57,7 +57,7 @@ test fn ut_user_value_at_its_own_declared_type_still_compiles() -> Bool {
 }
 
 fn ut_newtype_source() -> String {
-  "module ut.probe\n\ntype Meters {{\n  value: Int\n}}\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Meters) -> Int {\n  takes(x: q)\n}\n"
+  "module ut.probe\n\ntype Meters {\n  value: Int\n}\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Meters) -> Int {\n  takes(x: q)\n}\n"
 }
 
 fn ut_alias_source() -> String {
@@ -83,4 +83,12 @@ fn ut_std_nat_source() -> String {
 
 test fn ut_std_nat_at_int_formal_still_compiles() -> Bool {
   compile_dag_rust_emit_check(ut_std_nat_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_newtype_to_newtype_source() -> String {
+  "module ut.probe\n\ntype Meters {\n  value: Int\n}\n\nfn takes_meters(x: Meters) -> Meters {\n  x\n}\n\nfn probe(q: Meters) -> Meters {\n  takes_meters(x: q)\n}\n"
+}
+
+test fn ut_newtype_at_its_own_declared_type_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_newtype_to_newtype_source(), "src/ut_probe.rs", [], [])
 }
