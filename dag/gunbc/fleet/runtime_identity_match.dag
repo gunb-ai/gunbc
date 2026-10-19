@@ -662,12 +662,18 @@ fn axes_agree(pair: AxisReadingPair) -> Bool {
 // sources actually report: one interface can hand over a burned-in address and a software-set one in the
 // same listing, and that distinction lives on the address, not on the side.
 //
-// WHY THIS PATH IS CONCRETE AND NOT SHARED WITH THE GENERIC `examine_axis`. The v2 resolver does not
-// substitute a type variable carried out of a generic fn inside a sum type: taking `AxisReport<T>` apart at
-// a call site where T is a list leaves the payload typed `Primitive(T)` and every method on it fails to
-// resolve. So the address axis answers its own four combinations instead of borrowing the generic report.
-// When nested generic instantiation lands, this fn collapses back onto `standing_report` and the duplication
-// goes away.
+// WHY THIS PATH IS CONCRETE AND NOT SHARED WITH THE GENERIC `examine_axis`: a language-layer deficit, not a
+// choice about this domain. Taking `AxisReport<T>` apart at a call site leaves the payload typed `Primitive(T)`
+// and every use that needs its SURFACE -- a method, an optional's present arm -- is refused. Measured, not
+// assumed: collapsing this axis onto `standing_report` at T = `List<ReportedNetworkAddress>` was refused on
+// this module, at both a monomorphic literal call site and a declared-parameter one, with the collapsing fn
+// dead AND live from a `test fn`. Field reads on a non-list payload survive, and so does handing the payload
+// to a fn whose parameter names the concrete type -- which is why the two helpers below are concrete and
+// small rather than general. The deficit and its climb trigger are tracked as
+// gunbc.recurring_failure_mode.nested_field_read_through_a_binder_of_an_inferred_generic_result (third
+// specimen); when that row climbs, `nic_examination` collapses onto `standing_report` and `resolve_nic_side`
+// loses its duplicated table. Until then the duplication here is the tracked cost of the deficit, and it is
+// the ONLY reason these two fns exist -- the four combinations they enumerate are otherwise the generic's.
 //
 // ONE ADDRESS AS THIS AXIS SEES IT: the octets, and where they came from. A record rather than a pair of
 // booleans, because a bool can only ever record a conclusion -- `is_perm_addr: Bool` would let a caller
