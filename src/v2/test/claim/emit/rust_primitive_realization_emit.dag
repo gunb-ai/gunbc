@@ -1,0 +1,153 @@
+module v2.test.claim.emit.rust_primitive_realization_emit
+
+import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
+import v2.extdeps.languages.rust {
+  rust_production_lex,
+  rust_operator_realizations_catalog_node,
+  rust_value_expression_projection
+}
+import v2.extdeps.languages.rust_fixtures { rust_target_model_with_operators_and_lex }
+import v2.std.compilers.target_model {
+  TargetModel,
+  TargetValueExpression,
+  canonical_operation_op_add,
+  InfixToken,
+  render_target_text,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node,
+  target_value_expression_binding_ref,
+  target_value_expression_callable_apply,
+  LocalCallee,
+  PrimitiveRowCallee,
+  target_value_expression_to_concrete_tokens
+}
+import v2.std.diagnostic { Accepted, Rejected, None, Outcome, bind_outcome }
+import v2.std.node { Node }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rust_primitive_string_length_call() -> TargetValueExpression {
+  target_value_expression_callable_apply(
+    callee: ^string_length,
+    kind: PrimitiveRowCallee,
+    args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
+  )
+}
+
+// The same spelling resolved to a user declaration: no resolved-primitive identity, so an ordinary call.
+fn rust_user_string_length_call() -> TargetValueExpression {
+  target_value_expression_callable_apply(
+    callee: ^string_length,
+    kind: LocalCallee,
+    args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
+  )
+}
+
+fn rust_primitive_unknown_call() -> TargetValueExpression {
+  target_value_expression_callable_apply(
+    callee: ^string_to_upper,
+    kind: LocalCallee,
+    args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
+  )
+}
+
+fn rust_primitive_operators_only_catalog() -> Node {
+  target_operator_realizations_catalog_node(rows: [
+    target_operator_realization_node(
+      operation: canonical_operation_op_add(),
+      shape: InfixToken { token: ^rust_token_plus }
+    )
+  ])
+}
+
+fn rust_primitive_emit(expr: TargetValueExpression, catalog: Node) -> Outcome<String> {
+  bind_outcome(
+    o: target_value_expression_to_concrete_tokens(
+      expr: expr,
+      projection: rust_value_expression_projection(),
+      catalog: catalog
+    ),
+    f: fn(tokens) {
+      bind_outcome(
+        o: serialize_concrete_syntax_tokens_to_source_string(
+          target: rust_target_model_with_operators_and_lex(operator_catalog: catalog, lex: rust_production_lex()),
+          tokens: tokens
+        ),
+        f: fn(carrier) { Accepted { value: render_target_text(t: carrier), diagnostics: None } }
+      )
+    }
+  )
+}
+
+// GREEN: the row, not a seed fact, supplies the shared-reference passing the seed runtime's `&str` parameter needs.
+test fn rust_primitive_string_length_row_realizes_shared_reference_call() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_primitive_string_length_call(),
+    catalog: rust_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: s, diagnostics: d } => (s == "string_length(&x)") && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// RED: a primitive with no row refuses (typed, located) instead of passing the bare name through.
+test fn rust_primitive_without_row_refuses() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_primitive_string_length_call(),
+    catalog: rust_primitive_operators_only_catalog()
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// A name that is not a std.primitives contract keeps the ordinary call path.
+test fn rust_non_primitive_call_is_not_row_gated() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_primitive_unknown_call(),
+    catalog: rust_primitive_operators_only_catalog()
+  ) {
+    Accepted { value: s, diagnostics: _ } => s == "string_to_upper(x)"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// RED for the name-keyed join: a user fn spelled string_length, under a catalog that HAS the string_length row, must
+// emit the ordinary call and not the primitive shape (`string_length(&x)`).
+test fn rust_user_fn_spelled_like_a_primitive_is_not_the_primitive() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_user_string_length_call(),
+    catalog: rust_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: s, diagnostics: _ } => s == "string_length(x)"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The same user call under a catalog with no primitive rows still emits: it never consults the row family.
+test fn rust_user_fn_spelled_like_a_primitive_needs_no_row() -> Bool {
+  match rust_primitive_emit(
+    expr: rust_user_string_length_call(),
+    catalog: rust_primitive_operators_only_catalog()
+  ) {
+    Accepted { value: s, diagnostics: _ } => s == "string_length(x)"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The emitted text of each call, for the execution recipe (v2.test.claim.emit.rust_primitive_realization_emit is run
+// with --function and the text is compiled against the seed runtime's string_length by rustc).
+fn rust_primitive_row_text() -> String {
+  match rust_primitive_emit(expr: rust_primitive_string_length_call(), catalog: rust_operator_realizations_catalog_node()) {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+fn rust_primitive_bare_text() -> String {
+  match rust_primitive_emit(expr: rust_user_string_length_call(), catalog: rust_operator_realizations_catalog_node()) {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
