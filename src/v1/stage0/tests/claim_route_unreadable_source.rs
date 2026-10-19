@@ -13,7 +13,11 @@
 use std::path::PathBuf;
 
 fn scratch_claim_root(name: &str, file: &str, body: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("gunbc_claim_route_{name}"));
+    // Under the workspace root: the resolve normalizes every source path to a workspace-relative
+    // key and refuses a root outside it, so a system temp dir cannot host the healthy control.
+    let dir = v1_compiler::cli_run::workspace_root()
+        .join("target")
+        .join(format!("gunbc_claim_route_{name}"));
     let _ = std::fs::remove_dir_all(&dir);
     let claim_dir: PathBuf = dir.join("test").join("claim");
     std::fs::create_dir_all(&claim_dir).expect("scratch claim dir");
