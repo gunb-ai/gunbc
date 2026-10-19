@@ -1158,9 +1158,11 @@ fn run_cli_wire_census(
             };
         }
     };
-    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-        graph.diagnostics.clone(),
-    );
+    let blocking =
+        crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+            graph.diagnostics.clone(),
+            source_indices.clone(),
+        );
     if !blocking.is_empty() {
         return InvocationOutcome {
             termination: Termination::Refused,
@@ -1247,9 +1249,11 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
             };
         }
     };
-    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-        graph.diagnostics.clone(),
-    );
+    let blocking =
+        crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+            graph.diagnostics.clone(),
+            source_indices.clone(),
+        );
     if !blocking.is_empty() {
         return InvocationOutcome {
             termination: Termination::Refused,

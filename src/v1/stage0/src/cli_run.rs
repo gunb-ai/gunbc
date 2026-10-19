@@ -15267,16 +15267,27 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                     let mut lock = errors.lock().expect("parse error lock");
                     for d in fill.diagnostics.iter() {
                         let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
-                        let located = if span.file == path_str {
-                            let lc =
-                                crate::v1_std_core::byte_to_line_col(index.clone(), span.start);
-                            format!("{path_str}:{}:{}", lc.line, lc.col)
-                        } else {
-                            path_str.clone()
-                        };
+                        // THE LOCATION IS THE AUTHORITY'S. This site used to decide the shape of a
+                        // location itself -- `format!("{path_str}:{}:{}", lc.line, lc.col)` -- and to
+                        // special-case the one span shape it knew about (a synthetic span rendering
+                        // as the bare path). That is a third renderer in host Rust: it could only
+                        // ever answer "located" or "the path", never "this refusal has no position,
+                        // and here is why". It now CALLS the function emitted from the span
+                        // authority in `src/v1/00_core.dag`, which owns `file:line:col` AND the
+                        // typed unlocated arms, so the CLI, the compile lane, the module index and
+                        // this sweep all answer in the same units.
+                        //
+                        // The index is keyed by the span's OWN file, not by the path being swept:
+                        // a diagnostic may point at the file it was parsed from, and pinning the
+                        // key here would silently locate it against the wrong text.
+                        let mut source_indices = std::collections::HashMap::new();
+                        source_indices.insert(span.file.clone(), index.clone());
                         lock.push(format!(
                             "{}: {}",
-                            located,
+                            crate::v1_std_core::render_span_location(
+                                (*span).clone(),
+                                std::rc::Rc::new(source_indices),
+                            ),
                             crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
                         ));
                     }

@@ -7,6 +7,7 @@ import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
 
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
+  render_span_location,
   is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,
   diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span, Connective,
   NoConnective, Arrow, Cardinality, resource_use_name_at, resource_use_resource,
@@ -1579,7 +1580,18 @@ fn compile_sources_with_options(sources: List<SourceFile>, target: RenderTarget,
   )
 }
 
-fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> List<String> {
+// THE COMPILE LANE'S REFUSAL LINE. The location inside the parentheses is rendered by the ONE
+// AUTHORITY in 00_core.dag, in the units the author reads -- not by this site. This line and the
+// emitted CLI's `error[file:line:col]:` block describe the SAME diagnostic, and they used to
+// disagree: measured at the head, this printed `(m.dag:133-134)` while the CLI printed
+// `error[m.dag:9:5]` for one call-shape refusal. Same place, two units, and the author reading the
+// lane line (the CLI block is the part that gets truncated) cannot open the file where the refusal
+// says to. `source_indices` is threaded from the caller, which already holds it on the
+// PipelineResult; it is not rebuilt here, so there is one index and one renderer.
+fn interpreter_blocking_diagnostic_messages_with_source_indices(
+  diagnostics: List<ErrorNode>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
   diagnostics
     |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
     |> map(d => {
@@ -1587,14 +1599,33 @@ fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> Lis
       concat(
         diagnostic_to_message(d: d.diagnostic),
         " (",
-        span.file,
-        ":",
-        to_string(value: span.start),
-        "-",
-        to_string(value: span.end),
+        render_span_location(span: span, source_indices: source_indices),
         ")"
       )
     })
+}
+
+// THE SAME ONE RENDERER, FOR A CALLER THAT HAS NO INDEX TO OFFER -- A STAGED SHAPE, NOT A SECOND
+// ENTRY POINT (DESIGN 6b, admitted at a gap-intolerant boundary). It delegates with an empty index,
+// so every line it returns carries a TYPED unlocated cause and none carries a byte offset dressed
+// as a position. WHY THE BOUNDARY IS gap-intolerant: the regenerator's own verify compiles the
+// emitted candidate together with the hand-maintained files copied from the working tree
+// (`copy_hand_maintained_support`), so an exported arity change cannot land atomically -- the round
+// that emits the 2-arg mirror fails its step-1 or verify build on the hand-written callers, and
+// reverts. Measured: REGEN-EXIT=1 with the arity changed, five reverted files.
+//
+// DISSOLUTION (this name is deleted, not kept): when the committed mirror carries
+// `interpreter_blocking_diagnostic_messages_with_source_indices` AND its only remaining caller, the
+// blocking COUNT at `src/v1/stage0/src/cli_run.rs` `run_dag_parse_sweep`'s tally, has moved to that
+// name. Then this function is removed and the located name is the only exported one. No PRINTING
+// caller uses this name today: the five printing call sites (`cli_run/emit_host.rs` x3,
+// `target_invocation_host.rs` x2) and the seed's own `stage0_self_compile_refusal_message` all pass
+// their real index to the located name; the only caller here counts lines and prints none.
+fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> List<String> {
+  interpreter_blocking_diagnostic_messages_with_source_indices(
+    diagnostics: diagnostics,
+    source_indices: empty_map()
+  )
 }
 
 // The SUBJECT is the caller's fact, never this function's. Both arms once hardcoded
@@ -1602,7 +1633,10 @@ fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> Lis
 // their own fixture was told a compile they never ran had failed -- a false subject
 // costs the next reader's search, the stale-citation harm class.
 fn stage0_self_compile_refusal_message(subject: String, result: PipelineResult) -> String? {
-  let hard_messages = interpreter_blocking_diagnostic_messages(diagnostics: result.diagnostics)
+  let hard_messages = interpreter_blocking_diagnostic_messages_with_source_indices(
+    diagnostics: result.diagnostics,
+    source_indices: fold(result.newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
+  )
   if hard_messages |> count > 0 {
     Present {
       value: concat(

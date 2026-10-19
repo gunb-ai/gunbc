@@ -36,6 +36,10 @@ pub struct ModuleBindingRefusal {
     /// distinguishable and the location stays host-independent.
     pub source_path: String,
     pub diagnostic: Rc<CompilerDiagnostic>,
+    /// The file's own text, carried so the location can be RENDERED rather than guessed.
+    /// Without it this host site had no way to ask the seed where the span is, and it printed
+    /// byte offsets instead -- see `rendered`.
+    pub source: String,
 }
 
 impl ModuleBindingRefusal {
@@ -43,14 +47,34 @@ impl ModuleBindingRefusal {
         diagnostic_to_span(self.diagnostic.clone())
     }
 
-    /// Rendering is for display only; the typed diagnostic above is the authority.
+    /// THE LOCATION IS THE AUTHORITY'S. This is host Rust, and it used to own its own format:
+    /// `format!("{}:{}-{}: {}", path, span.start, span.end, message)` -- two byte offsets wearing
+    /// a `file:line:col` shape, which is why a refusal whose span landed past a trailing comment
+    /// (`…m.dag:90-90`) was unlocatable: the reader has no line 90 and no way to find what `90`
+    /// means. It now CALLS the function emitted from `00_core.dag`'s span authority, so there is
+    /// one renderer for the whole compiler -- the CLI, the compile lane, the parse sweep, and this
+    /// line. A second renderer written here in Rust is the fork that work removes.
+    ///
+    /// The index is built from the file's own text, so the coordinates are computed against the
+    /// same bytes the span indexes into; a refusal about a file this site never read would come
+    /// back as the authority's typed unlocated line, which is the honest answer.
     pub fn rendered(&self) -> String {
         let span = self.span();
+        let index =
+            crate::v1_std_core::build_newline_index(self.source_path.clone(), self.source.clone());
+        let mut source_indices: std::collections::HashMap<
+            String,
+            std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+        > = std::collections::HashMap::new();
+        // `build_newline_index` already RETURNS `Rc<NewlineIndex>`; the map's value type is
+        // `Rc<NewlineIndex>`, so the index goes in exactly as built.
+        source_indices.insert(self.source_path.clone(), index);
         format!(
-            "{}:{}-{}: {}",
-            self.source_path,
-            span.start,
-            span.end,
+            "{}: {}",
+            crate::v1_std_core::render_span_location(
+                (*span).clone(),
+                std::rc::Rc::new(source_indices),
+            ),
             diagnostic_to_message(self.diagnostic.clone())
         )
     }
@@ -149,6 +173,7 @@ pub fn parse_module_binding(
             return Err(ModuleBindingRefusal {
                 source_path: key,
                 diagnostic: err.diagnostic.clone(),
+                source: content.to_string(),
             });
         }
         // UNCHANGED, and still a conflation: see `module_declaration_line_present`.

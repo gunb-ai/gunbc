@@ -3213,10 +3213,28 @@ pub fn render_finding(
     let located = match finding.offset {
         Some(offset) => match std::fs::read_to_string(workspace.join(&finding.rel_path)) {
             Ok(content) => {
+                // THE ONE AUTHORITY, NOT A SECOND RENDERER. Composing byte_to_line_col into a
+                // `path:line:col` string HERE would be a fork of the format the seed owns -- the
+                // arithmetic would agree and the printed shape could still drift. The index is
+                // keyed by the SAME path the span carries, which is what the authority looks up.
                 let index =
                     crate::v1_std_core::build_newline_index(finding.rel_path.clone(), content);
-                let lc = crate::v1_std_core::byte_to_line_col(index, offset);
-                format!("{}:{}:{}", finding.rel_path, lc.line, lc.col)
+                let mut source_indices: std::collections::HashMap<
+                    String,
+                    std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                > = std::collections::HashMap::new();
+                // `build_newline_index` already RETURNS `Rc<NewlineIndex>` -- the map's value type
+                // is `Rc<NewlineIndex>`, so the index goes in as built. Wrapping it again is a
+                // second pointer to the same fact, and the compiler says so.
+                source_indices.insert(finding.rel_path.clone(), index);
+                crate::v1_std_core::render_span_location(
+                    crate::v1_std_core::SourceSpan {
+                        file: finding.rel_path.clone(),
+                        start: offset,
+                        end: offset,
+                    },
+                    std::rc::Rc::new(source_indices),
+                )
             }
             Err(_) => finding.rel_path.clone(),
         },
