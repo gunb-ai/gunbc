@@ -4,7 +4,9 @@ import std.types { List, Map }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, inputs_root_only }
 import extdeps.communication.medium { Medium }
+import v2.compiler.eval { inputs_for_emit_host }
 import v2.compiler.emit_host {
+  run_emit_host,
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
 }
@@ -41,6 +43,7 @@ import std.optional {
   optional_present,
   optional_absent
 }
+import v2.std.host_run { EmitHostRunReceipt }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -511,3 +514,30 @@ test fn probe_a1() -> Bool { probe_arm(n: 1) }
 test fn probe_a2() -> Bool { probe_arm(n: 2) }
 test fn probe_a3() -> Bool { probe_arm(n: 3) }
 test fn probe_a4() -> Bool { probe_arm(n: 4) }
+
+fn probe_receipt() -> Outcome<EmitHostRunReceipt> {
+  match probe_emit() {
+    Accepted { value: src, diagnostics: _ } =>
+      run_emit_host(target: rust_list_fold_target_model_staging(), source: src,
+        fixture_inputs: inputs_for_emit_host(claim_input_root: emit_fold_eval_call_node(), expected_eval_root: emit_fold_eval_call_node(), claim_pin: ^emit_fold_eval_evaluator_pin))
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+test fn probe_run_rejected() -> Bool {
+  match probe_receipt() { Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true }
+}
+test fn probe_exit_ok() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } =>
+      match r.exit.outcome { Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false }
+    Rejected { diagnostics: _ } => false }
+}
+test fn probe_source_has_fn() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => string_contains(s: r.source_text, pattern: "fold_call_callee(vec![e1, e2, e3], z, |acc, h|")
+    Rejected { diagnostics: _ } => false }
+}
+test fn probe_compile_skipped() -> Bool {
+  match probe_receipt() { Accepted { value: r, diagnostics: _ } => r.compile_skipped
+    Rejected { diagnostics: _ } => false }
+}
