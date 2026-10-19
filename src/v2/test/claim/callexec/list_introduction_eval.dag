@@ -2,110 +2,56 @@ module v2.test.claim.callexec.list_introduction_eval
 
 import v2.compiler.eval { eval, inputs_root_only }
 import v2.compiler.infer { infer }
-import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty }
-import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.program_assembly { assemble_program_from_ingest_located }
-import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_fixture_two }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
-import v2.std.list_introduction { list_introduction_elements_optional }
-import v2.std.node { Node, NodeFold, Symbol, fold_node, symbol_eq }
+import v2.std.node { ComputationNode, Edge, Node, Positional, Transform }
+import v2.std.qualified_name { declaration_reference_node }
 import v2.std.runtime { RuntimeAggregate, RuntimeFieldValue, RuntimePrimitive, RuntimeValue }
-import v2.std.text { String }
+import std.algebra { Cons, Empty, list_snoc_item }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE SUBJECT IS EVAL OF A LIST LITERAL. A literal lowers to one Transform headed by the marked
-// reference to std.algebra FreeMonoid (v2.std.list_introduction); infer reads it, but eval read the
-// head as a callee and refused eval_rejected_runtime_binding_lookup_miss though nothing was unbound.
-// The control is the value: the literal evaluates to a RuntimeAggregate whose fields are the element
-// values IN ORDER. Two literals over the same elements in opposite order separate, so a reversed or
-// element-dropping arm cannot pass.
-data list_introduction_eval_types_source: String = "module std.types\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = FreeMonoid<T>\n"
+// THE SUBJECT IS EVAL OF A LIST LITERAL, AT ITS OWN INTERFACE. A literal lowers to one Transform headed by
+// the marked reference to std.algebra FreeMonoid (v2.std.list_introduction); infer reads it, but eval read
+// the head as a callee and refused. The input is SUPPLIED -- the resolved shape lower_list_introduction
+// builds, the same supplied shape v2.test.claim.infer_list_introduction uses -- and the pairing claim that
+// the production route emits it is v2.test.claim.namespace_xl0 list_literal_value_lowering. The control
+// is the value: the literal evaluates to a RuntimeAggregate whose fields are the element values IN ORDER,
+// and [1, 2] against [2, 1] separates a reversed or element-dropping arm.
+fn lie_head() -> Node {
+  declaration_reference_node(qn: [^std, ^algebra, ^FreeMonoid], occurrence_id: OccurrenceSynthetic)
+}
 
-data list_introduction_eval_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
-
-fn list_introduction_eval_witness(source: String, id: Symbol, path: String, cu: Symbol) -> DagSourceReadWitness {
-  DagSourceReadWitness {
-    source: Medium { carried: source, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
-    compilation_unit: cu,
-    source_root: V2Tree
+fn lie_list(elements: List<Node>) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: fold(elements, init: [Edge { label: Positional, target: lie_head() }], f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: Edge { label: Positional, target: e })
+    }),
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
-fn list_introduction_eval_ingest(probe: String) -> SourceRootIngest {
-  Cons {
-    head: list_introduction_eval_witness(source: probe, id: ^list_introduction_eval_artifact, path: "src/v2/list_introduction_eval_probe.dag", cu: ^list_introduction_eval_cu),
-    tail: Cons {
-      head: list_introduction_eval_witness(source: list_introduction_eval_types_source, id: ^list_introduction_eval_types_artifact, path: "src/v2/std/types.dag", cu: ^list_introduction_eval_types_cu),
-      tail: Cons {
-        head: list_introduction_eval_witness(source: list_introduction_eval_algebra_source, id: ^list_introduction_eval_algebra_artifact, path: "src/v2/std/algebra.dag", cu: ^list_introduction_eval_algebra_cu),
-        tail: Empty
-      }
-    }
-  }
-}
+data lie_forward: Node = lie_list(elements: [dag_int_literal_fixture_one(), dag_int_literal_fixture_two()])
 
-data list_introduction_eval_forward_source: String = "module list_introduction_eval_probe\n\nimport std.types { List }\n\nfn list_introduction_eval_value() -> List<Int> {\n  [10, 20]\n}\n"
+data lie_reversed: Node = lie_list(elements: [dag_int_literal_fixture_two(), dag_int_literal_fixture_one()])
 
-data list_introduction_eval_reversed_source: String = "module list_introduction_eval_probe\n\nimport std.types { List }\n\nfn list_introduction_eval_value() -> List<Int> {\n  [20, 10]\n}\n"
-
-fn list_introduction_eval_first_list(n: Node) -> Optional<Node> {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(n0) {
-        match list_introduction_elements_optional(node: n0) {
-          Present { value: _ } => optional_present(value: n0)
-          Absent => optional_absent()
-        }
-      },
-      step: fn(acc, _, child) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child
-        }
-      }
-    }
-  )
-}
-
-fn list_introduction_eval_of(source: String) -> Optional<Outcome<RuntimeValue>> {
-  let assembled = assemble_program_from_ingest_located(
-    ingest: list_introduction_eval_ingest(probe: source),
-    admission: Admission {
-      subject: ResolutionSubject { name: Cons { head: ^list_introduction_eval_probe, tail: Empty } },
-      imports: Empty
-    },
-    lm: dag_language_model()
-  )
-  match bind_outcome(o: assembled.program, f: fn(p) { infer(tree: p) }) {
+fn lie_eval(list: Node) -> Optional<Outcome<RuntimeValue>> {
+  match infer(tree: claim_resolved_tree_without_declarations(root: list)) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: inferred, diagnostics: _ } =>
-      match list_introduction_eval_first_list(n: inferred.root) {
-        Absent => optional_absent()
-        Present { value: list } =>
-          optional_present(
-            value: eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: list))
-          )
-      }
+      optional_present(value: eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: list)))
   }
 }
 
-fn list_introduction_eval_field_int(f: RuntimeFieldValue) -> Optional<Int> {
-  list_introduction_eval_int(v: f.value)
-}
-
-fn list_introduction_eval_int(v: RuntimeValue) -> Optional<Int> {
+fn lie_int(v: RuntimeValue) -> Optional<Int> {
   match v {
     RuntimePrimitive { value: p } =>
       match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
@@ -116,15 +62,11 @@ fn list_introduction_eval_int(v: RuntimeValue) -> Optional<Int> {
   }
 }
 
-// The elements as Ints in field order; Absent unless the value is an aggregate of two Int elements.
-fn list_introduction_eval_pair(o: Optional<Outcome<RuntimeValue>>) -> Optional<List<Int>> {
-  match o {
-    Absent => optional_absent()
-    Present { value: outcome } => list_introduction_eval_pair_of(o: outcome)
-  }
+fn lie_field_int(f: RuntimeFieldValue) -> Optional<Int> {
+  lie_int(v: f.value)
 }
 
-fn list_introduction_eval_pair_of(o: Outcome<RuntimeValue>) -> Optional<List<Int>> {
+fn lie_pair_of(o: Outcome<RuntimeValue>) -> Optional<List<Int>> {
   match o {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: v, diagnostics: _ } =>
@@ -132,9 +74,9 @@ fn list_introduction_eval_pair_of(o: Outcome<RuntimeValue>) -> Optional<List<Int
         RuntimeAggregate { value: a } =>
           match a.fields {
             Cons { head: f0, tail: Cons { head: f1, tail: Empty } } =>
-              match list_introduction_eval_field_int(f: f0) {
+              match lie_field_int(f: f0) {
                 Present { value: x } =>
-                  match list_introduction_eval_field_int(f: f1) {
+                  match lie_field_int(f: f1) {
                     Present { value: y } => optional_present(value: [x, y])
                     Absent => optional_absent()
                   }
@@ -147,190 +89,27 @@ fn list_introduction_eval_pair_of(o: Outcome<RuntimeValue>) -> Optional<List<Int
   }
 }
 
-fn list_introduction_eval_is(o: Optional<Outcome<RuntimeValue>>, x: Int, y: Int) -> Bool {
-  match list_introduction_eval_pair(o: o) {
+fn lie_is(list: Node, x: Int, y: Int) -> Bool {
+  match lie_eval(list: list) {
     Absent => false
-    Present { value: Cons { head: a, tail: Cons { head: b, tail: Empty } } } => a == x && b == y
-    Present { value: _ } => false
+    Present { value: outcome } =>
+      match lie_pair_of(o: outcome) {
+        Present { value: Cons { head: a, tail: Cons { head: b, tail: Empty } } } => a == x && b == y
+        _ => false
+      }
   }
 }
 
 test fn list_literal_evaluates_to_its_elements_in_order_holds() -> Bool {
-  list_introduction_eval_is(o: list_introduction_eval_of(source: list_introduction_eval_forward_source), x: 10, y: 20)
+  lie_is(list: lie_forward, x: 1, y: 2)
 }
 
 test fn list_literal_order_is_discriminated_holds() -> Bool {
-  list_introduction_eval_is(o: list_introduction_eval_of(source: list_introduction_eval_reversed_source), x: 20, y: 10)
+  lie_is(list: lie_reversed, x: 2, y: 1)
 }
 
-fn list_introduction_eval_assembled(source: String) -> Bool {
-  match assemble_program_from_ingest_located(
-    ingest: list_introduction_eval_ingest(probe: source),
-    admission: Admission {
-      subject: ResolutionSubject { name: Cons { head: ^list_introduction_eval_probe, tail: Empty } },
-      imports: Empty
-    },
-    lm: dag_language_model()
-  ).program {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn list_introduction_eval_inferred(source: String) -> Optional<Node> {
-  match bind_outcome(
-    o: assemble_program_from_ingest_located(
-      ingest: list_introduction_eval_ingest(probe: source),
-      admission: Admission {
-        subject: ResolutionSubject { name: Cons { head: ^list_introduction_eval_probe, tail: Empty } },
-        imports: Empty
-      },
-      lm: dag_language_model()
-    ).program,
-    f: fn(p) { infer(tree: p) }
-  ) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: inferred, diagnostics: _ } => optional_present(value: inferred.root)
-  }
-}
-
-test fn list_introduction_eval_stage_assembled() -> Bool {
-  list_introduction_eval_assembled(source: list_introduction_eval_forward_source)
-}
-
-test fn list_introduction_eval_stage_inferred() -> Bool {
-  match list_introduction_eval_inferred(source: list_introduction_eval_forward_source) {
-    Absent => false
-    Present { value: _ } => true
-  }
-}
-
-test fn list_introduction_eval_stage_list_found() -> Bool {
-  match list_introduction_eval_inferred(source: list_introduction_eval_forward_source) {
-    Absent => false
-    Present { value: root } =>
-      match list_introduction_eval_first_list(n: root) {
-        Absent => false
-        Present { value: _ } => true
-      }
-  }
-}
-
-test fn list_introduction_eval_stage_eval_accepted() -> Bool {
-  match list_introduction_eval_of(source: list_introduction_eval_forward_source) {
-    Absent => false
-    Present { value: Accepted { value: _, diagnostics: _ } } => true
-    Present { value: Rejected { diagnostics: _ } } => false
-  }
-}
-
-test fn list_introduction_eval_stage_refusal_is_lookup_miss() -> Bool {
-  match list_introduction_eval_of(source: list_introduction_eval_forward_source) {
-    Absent => false
-    Present { value: Accepted { value: _, diagnostics: _ } } => false
-    Present { value: Rejected { diagnostics: ds } } => symbol_eq(a: ds.head.reason, b: ^eval_rejected_runtime_binding_lookup_miss)
-  }
-}
-
-fn list_introduction_eval_reason_is(wanted: Symbol) -> Bool {
-  match list_introduction_eval_of(source: list_introduction_eval_forward_source) {
-    Absent => false
-    Present { value: Accepted { value: _, diagnostics: _ } } => false
-    Present { value: Rejected { diagnostics: ds } } => symbol_eq(a: ds.head.reason, b: wanted)
-  }
-}
-
-test fn list_introduction_eval_reason_grounding_not_derived() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_grounding_not_derived)
-}
-
-test fn list_introduction_eval_reason_invalid_node() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_invalid_node)
-}
-
-test fn list_introduction_eval_reason_resolved_type_mismatch() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_resolved_type_mismatch)
-}
-
-test fn list_introduction_eval_reason_inhabitance_mismatch() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_inhabitance_mismatch)
-}
-
-test fn list_introduction_eval_reason_canonical_mismatch() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_canonical_mismatch)
-}
-
-test fn list_introduction_eval_reason_type_node() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_type_node)
-}
-
-test fn list_introduction_eval_reason_pending_children() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_pending_children)
-}
-
-test fn list_introduction_eval_reason_callee_absent() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_callee_absent)
-}
-
-test fn list_introduction_eval_reason_unsupported_callee() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_unsupported_callee)
-}
-
-test fn list_introduction_eval_reason_grounding_node_mismatch() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_grounding_node_mismatch)
-}
-
-test fn list_introduction_eval_reason_runtime_value_node_unrepresentable() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_runtime_value_node_unrepresentable)
-}
-
-test fn list_introduction_eval_stage_eval_ran() -> Bool {
-  match list_introduction_eval_of(source: list_introduction_eval_forward_source) {
-    Absent => false
-    Present { value: _ } => true
-  }
-}
-
-test fn list_introduction_eval_reason_runtime_binding_lookup_miss() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^eval_rejected_runtime_binding_lookup_miss)
-}
-
-test fn list_introduction_eval_reason_infer_facts_lookup_miss() -> Bool {
-  list_introduction_eval_reason_is(wanted: ^infer_facts_lookup_miss)
-}
-
-// WHICH NODE MISSES: the list itself, or something the walk reached under it.
-fn list_introduction_eval_locus(source: String) -> Optional<Node> {
-  match bind_outcome(
-    o: assemble_program_from_ingest_located(
-      ingest: list_introduction_eval_ingest(probe: source),
-      admission: Admission {
-        subject: ResolutionSubject { name: Cons { head: ^list_introduction_eval_probe, tail: Empty } },
-        imports: Empty
-      },
-      lm: dag_language_model()
-    ).program,
-    f: fn(p) { infer(tree: p) }
-  ) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: inferred, diagnostics: _ } =>
-      match list_introduction_eval_first_list(n: inferred.root) {
-        Absent => optional_absent()
-        Present { value: list } =>
-          match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: list)) {
-            Accepted { value: _, diagnostics: _ } => optional_absent()
-            Rejected { diagnostics: ds } =>
-              match ds.head.at {
-                NodeLocus { anchor: a } => if a.at == list { optional_present(value: list) } else { optional_absent() }
-                _ => optional_absent()
-              }
-          }
-      }
-  }
-}
-
-test fn list_introduction_eval_locus_is_the_list() -> Bool {
-  match list_introduction_eval_locus(source: list_introduction_eval_forward_source) {
+test fn list_literal_eval_is_reached_holds() -> Bool {
+  match lie_eval(list: lie_forward) {
     Present { value: _ } => true
     Absent => false
   }
