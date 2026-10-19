@@ -163,6 +163,24 @@ while :; do
     fi
   done
   stamp "regen round $round installed=$installed"
+  # THE EMITTER'S VERDICT, NOT MY INSTALL COUNT, DECIDES CONVERGENCE. installed=0 only means "nothing
+  # I was ALLOWED to write changed" -- with REGEN_TARGETS restricting the set, a candidate that still
+  # disagrees with the tree elsewhere reports a false convergence. That happened: round 1 installed=0
+  # while the emitter said first_generation_equal=false with FAIL generated surface drift:
+  # std_decimal.rs. Convergence is the emitter's own equality (or rc=0), and until then the run stops
+  # and names the drift rather than shipping a tree that is not a fixed point.
+  DRIFT=$(grep -aoE "FAIL generated surface drift: [^ ]+" "$LOGS/regen_$round.log" | sed 's/.*: //' | sort -u | tr '\n' ' ')
+  FGE=$(grep -aoE "first_generation_equal=(true|false)" "$LOGS/regen_$round.log" | tail -1)
+  DECL=$(grep -aoE "declared_divergent=[0-9]+ \[[^]]*\]" "$LOGS/regen_$round.log" | tail -1)
+  echo "EMITTER_VERDICT round=$round $FGE drift=[${DRIFT:-none}] $DECL"
+  if [ -n "${DRIFT:-}" ]; then
+    for d in $DRIFT; do
+      # A declared divergence is an exemption, not drift to fix: installing the candidate would
+      # overwrite bytes the project has agreed the emitter may not reproduce.
+      case "$DECL" in *"[$d]"*|*"$d]"*) echo "  EXEMPT $d (declared divergent -- leave committed bytes alone)";;
+        *) echo "  REAL_DRIFT $d (not declared divergent)";; esac
+    done
+  fi
   # What did the emitter actually say, and WHAT moved? A merge of two fixed points should install
   # nothing; anything else needs naming rather than accepting. The emit log is the only place that
   # says whether a change is a declared divergence (the normal case) or real drift, and it lives in
@@ -173,7 +191,22 @@ while :; do
   for f in $(git status --porcelain | sed -E 's/^.{3}//' | grep '\.rs$'); do
     echo "MOVED_DETAIL $f ours_vs_candidate_lines=$(diff <(git show HEAD:"$f" 2>/dev/null) "$f" 2>/dev/null | grep -c '^[<>]') ours_vs_main_lines=$(diff <(git show "$MAIN":"$f" 2>/dev/null) "$f" 2>/dev/null | grep -c '^[<>]')"
   done
-  [ "$installed" -eq 0 ] && { echo "CONVERGED after $round round(s)"; break; }
+  if [ "$installed" -eq 0 ]; then
+    if [ "$FGE" = "first_generation_equal=true" ]; then
+      echo "CONVERGED after $round round(s) (emitter agrees with the tree)"
+      break
+    fi
+    # Real, undeclared drift outside my install set: the head is not a fixed point. Ship it and CI's
+    # own regen check says so; better to stop here and name it.
+    if [ -n "${DRIFT:-}" ] && [ "$DRIFT" != "main.rs" ]; then
+      echo "VOID: the emitter disagrees with the merged tree on undeclared files: $DRIFT"
+      echo "  either they must be regenerated and committed, or the drift is pre-existing on main --"
+      echo "  run main_regen_baseline_14152.sh <main-sha> before deciding which"
+      exit 7
+    fi
+    echo "CONVERGED after $round round(s) (only declared-divergent drift remains: ${DRIFT:-none})"
+    break
+  fi
   [ $round -ge 4 ] && { echo "FATAL not converged after $round rounds -- do not ship a half-regenerated tree"; exit 6; }
 done
 
@@ -217,7 +250,7 @@ git show "$MAIN:src/v1/stage0/src/v1_compiler_infer.rs" > /tmp/main_infer.rs 2>/
        || echo "MIRROR_VS_MAIN differs (expected: it carries the repair)"; }
 printf 'SEED_DAG %s\n' "$(sha256sum src/v1/04_infer.dag | cut -c1-16)"
 echo "REPAIR_MARKS $(grep -c 'fresh_call_variables' src/v1/stage0/src/v1_compiler_infer.rs)"
-echo "FOLD_REFS $(grep -c 'fold=' src/v1/stage0/src/v1_compiler_infer.rs || true)"
+echo "FOLD_REFS $(grep -c UnifyGenericsAcc src/v1/stage0/src/v1_compiler_infer.rs || true) (pattern UnifyGenericsAcc, same as the gate)"
 
 # Commit the regenerated mirrors (hooks enabled: the artifact gate is the thing being satisfied).
 git add -- src/v1/stage0/src/
