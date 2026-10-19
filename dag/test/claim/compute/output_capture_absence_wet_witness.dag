@@ -1,0 +1,402 @@
+module test.claim.compute.output_capture_absence_wet_witness
+
+// WET EXECUTING-ROUTE WITNESS FOR THE BUILD-OUTPUT CAPTURE (Charter 2; manager ruling of
+// 2026-10-19: the inhabittance rows must EXECUTE production's route -- "a grep is not a
+// consumer", DESIGN 5).
+//
+// WHAT THIS FILE ADDS OVER THE HERMETIC ONE.
+// test.claim.compute.output_capture_absence_witness supplies readings as data and pins the route
+// with the compiler-reflected call walk. That shows production's route CAN reach the capture step;
+// it cannot show the route RAN, nor that the refusal it returns carries what the real git printed.
+// This file EXECUTES production's own
+//   compute_return_outputs(instance, layout, declared)
+// -- no wrapper, no re-fold, no supplied pair, no new transport mock arm -- against a real
+// temporary checkout and the real /usr/bin/git, on the runner's own host. The effects are the ones
+// the self-host runs: compute_exec -> gunbc.WitnessBin.Run for `git hash-object` and for the
+// staging install. Wet is what `gunbc run --claim-run` gets without --dry-run
+// (src/v1/stage0/src/main.rs:1308-1313: "absence means Wet").
+//
+// THE TWO CLAIMS THE RULING ASKED FOR.
+//  (1) PRESENT. One declared output exists on disk. The route must return it with a blob that
+//      EQUALS git hash-object's OWN stdout. Nothing here is typed from memory: the expected value
+//      is captured in the same run by the same /usr/bin/git, twice over -- `hash-object <path>` in
+//      the same workdir on the same absolute path, and `hash-object --no-filters --stdin` over the
+//      same bytes -- and all three live readings plus capture_bytes_oid must agree with the blob
+//      production returned.
+//  (2) ABSENT. One declared output was never written. The route must refuse, and the detail must
+//      carry git's REAL exit code and stderr AS CAPTURED IN THIS RUN: the expected exit and stderr
+//      are taken by running that same `git hash-object <that absolute path>` in that same workdir
+//      through the independent compute_exec route, outside the capture step. If git ever changes
+//      its exit or its message, this row follows git rather than a string I wrote.
+//
+// CONTAINMENT, as the ruling asked -- a claim a row must return, not a promise in a comment.
+// Everything this file creates lives under ONE shell.Mktemp.Dir root, and it reaches that root
+// through the INSTANCE's own roots, so what stays contained is production's path derivation, not
+// mine: instance_root (hence compute_root, hence layout.checkout / work_dir / target_dir /
+// attempts) and the materialization store are both under the root, and the store is
+// WitnessScratchRoot so layout.staging_dir is <root>/store-staging rather than the fleet's
+// /tmp/gunbc_compute_<frame> frame scratch. Each case snapshots four population listings BEFORE
+// and AFTER the run -- the fleet frame-scratch prefix, the durable host volume, $HOME, and /tmp --
+// and requires each unchanged; it also lists everything under the root and removes the tree,
+// requiring the listing to be readable and the tree gone. A row's Bool is ANDed with contained, so
+// a write that escaped the root fails the row: it would have to leave a new entry in one of the
+// four snapshots, or make a listing unreadable. The repo tree itself is proved untouched by the
+// dispatch header's `git add -A && git write-tree` check, reported alongside this run.
+//
+// ENROLLMENT (the three rows the wet lane takes, per the note in
+// test.claim.compute.host_capacity_wet_witness):
+//   1. v2.workflow.local_repo_wet_terminal local_repo_wet_schedule -- one WetScheduledClaim per
+//      identity below. This is the ROUTE; without it nothing executes these rows.
+//   2. gunbc.ci.ci_layer_roots witness_exclusion_frontier -- pattern
+//      "output_capture_absence_wet_witness.dag", LocalRepoWetLane: hermetic CI must not discover a
+//      file whose effects it cannot serve.
+//   3. v2.workflow.floor_route_gap -- the expectation rows for each identity, which reaches
+//      gunbc.WitnessBin.Run (through production), shell.Mktemp.Dir, shell.Remove.RecursiveForce and
+//      the Filesystem reads/writes with no mock_response.
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { string_contains, to_string, trim }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git.plumbing
+import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import gunbc.compute.work_request { DeclaredOutput, CheckoutRoot }
+import gunbc.compute.work_provider_local {
+  ComputeExec,
+  ComputeExecFailed,
+  ComputeExecOk,
+  ComputeLayout,
+  OutputsMismatch,
+  OutputsReturned,
+  compute_exec,
+  compute_ensure_dir,
+  compute_layout,
+  compute_program,
+  compute_return_outputs,
+  compute_staged_path,
+}
+import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  IsolatedJobToolchainHomes,
+  DashboardExistingProviderState,
+  DashboardExistingRepo,
+  DashboardLocalProvision,
+  DashboardObserveOnly,
+  DashboardToolchain,
+  DispatchStateInstanceOwned,
+  WorkerIsServiceUser,
+  admitted_single_session_binding,
+  codex_roadmap_account_evidence,
+  dashboard_execution_environment_for_toolchain,
+  dashboard_instance_child,
+  dashboard_named_tmux_server,
+  dispatch_worker_memory_ceiling,
+  fleet_admitted_revision_source,
+  fleet_compute_hermetic_dashboard_id,
+  fleet_compute_hermetic_deployment,
+  fleet_compute_hermetic_directory_owner,
+  fleet_compute_hermetic_toolchain,
+}
+import std.materialization_store_grant { WitnessScratchRoot }
+
+// THE ONE FACT THIS FILE TYPES: the bytes of the present declared output. Used three times --
+// written into the checkout, hashed independently by git to name the expected blob, and hashed by
+// production's own route.
+data capture_bytes: String = "gunbc capture wet witness fixed bytes 0123456789\n"
+
+// WHAT GIT ITSELF PRINTS FOR THOSE BYTES (measured on the runner: `git hash-object --no-filters
+// --stdin` over capture_bytes). Pinned so that a silent change in WHAT the capture hashes -- e.g.
+// hashing the staged file instead of the source, or a different filter -- shows up as a
+// disagreement between live readings, not as a number I could rewrite to match the bug.
+data capture_bytes_oid: String = "cc815613cfd8c8f3870be038765d840d7c656d02"
+
+// The declared output paths, relative to the checkout root.
+data capture_rel: String = "out/captured/plan.json"
+data capture_rel_absent: String = "out/captured/absent.json"
+
+// THE POPULATIONS A CONTAINED RUN MUST NOT DISTURB. Snapshotted before and after each case; any
+// write that escaped the temp root lands in one of these four listings.
+data containment_snapshot_dirs: List<String> = [
+  "/tmp",
+  "/var/lib/gunbc/materialization-store",
+  "/home/runner",
+  "/var/lib/gunbc",
+]
+
+// THE FRAME THIS WITNESS PASSES. The fleet allocates small frame numbers; passing the run's
+// unix-millis means the fleet's own frame path /tmp/gunbc_compute_<frame> is a name no run of this
+// file can address, and the /tmp population snapshot above would show any new one anyway.
+fn witness_frame() -> Int {
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail: _ } => 0
+    ClockUnixMillisObserved { millis } => millis
+  }
+}
+
+// THE WITNESS'S OWN HOST: the production constructor shape (cf.
+// fleet_compute_hermetic_dashboard_instance_at) with exactly two departures, both toward
+// containment -- repo_root/origin are the temp checkout, and BOTH roots production derives capture
+// paths from (instance_root, and the materialization store, which is WitnessScratchRoot here) sit
+// under one temp root.
+fn witness_instance(temp_root: String, frame: Int) -> HostDashboardInstance {
+  let homes = IsolatedJobToolchainHomes {
+    cargo_home: dashboard_instance_child(root: temp_root as FilePath, child: "homes/cargo"),
+    rustup_home: dashboard_instance_child(root: temp_root as FilePath, child: "homes/rustup"),
+  }
+  let toolchain: DashboardToolchain = fleet_compute_hermetic_toolchain(homes: homes)
+  HostDashboardInstance {
+    deployment: fleet_compute_hermetic_deployment,
+    instance_id: fleet_compute_hermetic_dashboard_id,
+    host_identity: "wet-capture-witness" as NonEmptyStr,
+    provision_parent_root: temp_root as FilePath,
+    instance_root: temp_root as FilePath,
+    local_origin_root: dashboard_instance_child(root: temp_root as FilePath, child: "origin"),
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: dashboard_instance_child(root: temp_root as FilePath, child: "checkout"),
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    publication_base_branch: "main" as NonEmptyStr,
+    dispatch_state_scope: DispatchStateInstanceOwned {
+      worktree_child: "attempts" as NonEmptyStr,
+      attempt_state_child: "attempt-state" as NonEmptyStr,
+    },
+    execution_environment: dashboard_execution_environment_for_toolchain(
+      toolchain: toolchain,
+      serve_binary: dashboard_instance_child(root: temp_root as FilePath, child: "bin/gunbc"),
+    ),
+    provider_state: DashboardExistingProviderState {
+      root: dashboard_instance_child(root: temp_root as FilePath, child: "codex"),
+      executable: none,
+      binding: admitted_single_session_binding(
+        selection: CodexDefaultAccount,
+        evidence: codex_roadmap_account_evidence,
+      ),
+    },
+    serve_binary: dashboard_instance_child(root: temp_root as FilePath, child: "bin/gunbc"),
+    serve_function: "roadmap_serve_handle" as NonEmptyStr,
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    listen_port: 18099,
+    tmux_server: dashboard_named_tmux_server(instance_id: fleet_compute_hermetic_dashboard_id),
+    actuation: DashboardObserveOnly,
+    provision_transport: DashboardLocalProvision,
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    admitted_revision: fleet_admitted_revision_source,
+    toolchain: toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    directory_owner: fleet_compute_hermetic_directory_owner,
+    worker: WorkerIsServiceUser,
+    materialization_store_root: Present {
+      value: WitnessScratchRoot {
+        root: dashboard_instance_child(root: temp_root as FilePath, child: "store") as String,
+      },
+    },
+  }
+}
+
+// ONE POPULATION SNAPSHOT. An unreadable listing is named as such so a row cannot read a refusal
+// as "nothing there".
+fn snapshot_of(dir: String) -> String {
+  let listed = Filesystem.List(path: dir)
+  if listed.success {
+    listed.entries
+  } else {
+    join(["<unreadable:", dir, ":", listed.error, ">"], "")
+  }
+}
+
+// ALL FOUR SNAPSHOTS, concatenated: equality before/after is the containment witness.
+fn snapshots() -> String {
+  let a = snapshot_of(dir: "/tmp")
+  let b = snapshot_of(dir: "/var/lib/gunbc/materialization-store")
+  let c = snapshot_of(dir: "/home/runner")
+  let d = snapshot_of(dir: "/var/lib/gunbc")
+  join([a, "#", b, "#", c, "#", d], "")
+}
+
+// WHAT ONE WET CASE PRODUCES. Every field is a live reading or a live effect check; a row asserts
+// on these, so no claim here can be satisfied by a string I prepared.
+type WetCaptureCase {
+  // production's verdict, rendered: "<declared>=<blob>" for a return, the detail text for a refusal.
+  verdict_text: String
+  // For the present case: the staged file exists in the layout's staging tree (the install ran).
+  // For an refusing case: that tree is EMPTY (no install ran at all).
+  staging_as_expected: Bool
+  // The four population snapshots matched before and after, the root listing was readable, the
+  // root is inside /tmp, and the tree was removed.
+  contained: Bool
+  // git's OWN exit code as a string, for `hash-object <the absent absolute path>` in the same
+  // workdir, taken outside the capture step. "<ok>" when git unexpectedly succeeds.
+  truth_exit: String
+  // git's OWN stderr for that same command. "" when git unexpectedly succeeds.
+  truth_stderr: String
+  // git's OWN oid for the present bytes, read two ways: `hash-object <path>` in the same workdir,
+  // and `hash-object --no-filters --stdin` over the bytes. Both must equal this and each other.
+  live_path_oid: String
+  live_stdin_oid: String
+}
+
+// THE CASE, EXECUTED. write_output=true puts the declared output on disk in the production
+// checkout path; false leaves it unwritten. second_output_present adds a SECOND, present declared
+// output AFTER the absent one, so only a stop at the first refusal can keep its install from
+// running.
+fn wet_capture_case(write_output: Bool, second_output_present: Bool) -> WetCaptureCase {
+  let root = shell.Mktemp.Dir().path as String
+  let frame = witness_frame()
+  let instance = witness_instance(temp_root: root, frame: frame)
+  let before = snapshots()
+  let layout_opt = compute_layout(instance: instance, identity_hex: "wetcapturewitnessidentity0000000000")
+  let checkout = match layout_opt {
+    Absent => join([root, "/no-layout"], "")
+    Present { value: layout } => layout.checkout
+  }
+  let dirs_ready = match layout_opt {
+    Absent => false
+    Present { value: layout } =>
+      compute_ensure_dir(instance: instance, path: layout.checkout)
+        && compute_ensure_dir(instance: instance, path: layout.target_dir)
+        && compute_ensure_dir(instance: instance, path: layout.staging_dir)
+  }
+  let present_path = join([checkout, "/", capture_rel], "")
+  let absent_path = join([checkout, "/", capture_rel_absent], "")
+  let written =
+    !write_output
+      || Filesystem.Write(path: present_path, content: capture_bytes).success
+  let second_written =
+    !second_output_present
+      || Filesystem.Write(path: present_path, content: capture_bytes).success
+  // THE INDEPENDENT READINGS, from the same /usr/bin/git the instance's capability table names, on
+  // the SAME absolute paths in the SAME workdir -- taken here, outside the capture step, so the
+  // expectation each row compares against is git's own output in this run.
+  let git_program = compute_program(instance: instance, cap: GitWorkspaceCapability)
+  let truth = compute_exec(program: git_program, workdir: checkout, args: ["hash-object", absent_path])
+  let path_reading = compute_exec(program: git_program, workdir: checkout, args: ["hash-object", present_path])
+  let stdin_reading = git.Plumbing.HashObjectStdinNoWrite(content: capture_bytes)
+  let truth_exit = match truth {
+    ComputeExecFailed { exit_code, stdout: _, stderr: _ } => to_string(value: exit_code)
+    ComputeExecOk { stdout: _, stderr: _ } => "<ok>"
+  }
+  let truth_stderr = match truth {
+    ComputeExecFailed { exit_code: _, stdout: _, stderr } => trim(s: stderr)
+    ComputeExecOk { stdout: _, stderr: _ } => ""
+  }
+  let live_path_oid = match path_reading {
+    ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => "<path hash failed>"
+    ComputeExecOk { stdout, stderr: _ } => trim(s: stdout)
+  }
+  let live_stdin_oid = trim(s: stdin_reading.oid)
+  let declared =
+    if write_output {
+      [DeclaredOutput { root: CheckoutRoot, path: capture_rel }]
+    } else if second_output_present {
+      // ORDER IS THE POINT: the absent one first, the present one second.
+      [
+        DeclaredOutput { root: CheckoutRoot, path: capture_rel_absent },
+        DeclaredOutput { root: CheckoutRoot, path: capture_rel },
+      ]
+    } else {
+      [DeclaredOutput { root: CheckoutRoot, path: capture_rel_absent }]
+    }
+  // >>> THE ROUTE ITSELF, production's, executed wet.
+  let verdict = match layout_opt {
+    Absent => OutputsMismatch { detail: "setup failed: the scratch instance carries no materialization store" }
+    Present { value: layout } =>
+      compute_return_outputs(instance: instance, layout: layout, declared: declared)
+  }
+  // The staging tree: present case expects the staged file (install ran); refusing cases expect it
+  // empty (no install ran at all -- including for the SECOND output, which is on disk).
+  let staging_as_expected = match layout_opt {
+    Absent => false
+    Present { value: layout } =>
+      if write_output {
+        Filesystem.Read(path: compute_staged_path(layout: layout, declared: capture_rel)).success
+      } else {
+        let listed = Filesystem.List(path: layout.staging_dir)
+        listed.success && trim(s: listed.entries) == ""
+      }
+  }
+  let after = snapshots()
+  let tree = Filesystem.List(path: root)
+  let cleaned = shell.Remove.RecursiveForce(path: root as FilePath).success
+    && !Filesystem.List(path: root).success
+  let contained =
+    before == after
+      && !string_contains(s: before, pattern: "<unreadable:")
+      && tree.success
+      && string_contains(s: root, pattern: "/tmp/")
+      && cleaned
+  let verdict_text = match verdict {
+    OutputsMismatch { detail: d } => d
+    OutputsReturned { outputs: outs } =>
+      if length(xs: outs) == 0 {
+        "<empty return>"
+      } else {
+        join([outs[0].declared, "=", outs[0].blob], "|")
+      }
+  }
+  if !(dirs_ready && written && second_written && contained) {
+    WetCaptureCase {
+      verdict_text: "setup-or-containment failed",
+      staging_as_expected: false,
+      contained: false,
+      truth_exit: truth_exit,
+      truth_stderr: truth_stderr,
+      live_path_oid: live_path_oid,
+      live_stdin_oid: live_stdin_oid,
+    }
+  } else {
+    WetCaptureCase {
+      verdict_text: verdict_text,
+      staging_as_expected: staging_as_expected,
+      contained: contained,
+      truth_exit: truth_exit,
+      truth_stderr: truth_stderr,
+      live_path_oid: live_path_oid,
+      live_stdin_oid: live_stdin_oid,
+    }
+  }
+}
+
+// (1) THE PRESENT CLAIM, EXECUTED WET. Production's own route returns the declared output, and its
+// blob equals git hash-object's OWN stdout -- four live readings of the same bytes agreeing: the
+// route's blob, `hash-object <path>` in the same workdir, `hash-object --stdin` over the bytes, and
+// the byte-pinned oid. The staged file exists, so the install ran for real.
+test fn the_wet_route_returns_the_blob_git_hash_object_itself_printed() -> Bool {
+  let c = wet_capture_case(write_output: true, second_output_present: false)
+  c.contained
+    && c.staging_as_expected
+    && c.live_stdin_oid == capture_bytes_oid
+    && c.live_path_oid == capture_bytes_oid
+    && c.verdict_text == join([capture_rel, "=", capture_bytes_oid], "|")
+}
+
+// (2) THE ABSENT CLAIM, EXECUTED WET. Production's own route over a declared output that was never
+// written refuses, and the refusal carries git's REAL exit code and stderr as captured in this run
+// -- the same command, the same workdir, the same absolute path, taken outside the capture step.
+// The row demands git itself refused (truth_stderr non-empty, exit non-zero) so the comparison
+// cannot be vacuous.
+test fn the_wet_route_refuses_an_absent_output_with_gits_own_exit_and_stderr() -> Bool {
+  let c = wet_capture_case(write_output: false, second_output_present: false)
+  c.contained
+    && c.staging_as_expected
+    && c.truth_stderr != ""
+    && c.truth_exit != "0"
+    && c.truth_exit != "<ok>"
+    && string_contains(s: c.verdict_text, pattern: "could not be hashed")
+    && string_contains(s: c.verdict_text, pattern: "git hash-object exited")
+    && string_contains(s: c.verdict_text, pattern: capture_rel_absent)
+    && string_contains(s: c.verdict_text, pattern: c.truth_exit)
+    && string_contains(s: c.verdict_text, pattern: c.truth_stderr)
+}
+
+// (3) THE EFFECT STOP, EXECUTED WET. With the FIRST of two declared outputs absent and the SECOND
+// really on disk, production's route refuses at the first and runs no further effect: the staging
+// tree stays empty -- the second output's install never happened -- and the refusal names the
+// absent output, never the blob of the present one.
+test fn the_wet_route_stops_at_the_first_absent_output_and_stages_nothing_after_it() -> Bool {
+  let c = wet_capture_case(write_output: false, second_output_present: true)
+  c.contained
+    && c.staging_as_expected
+    && string_contains(s: c.verdict_text, pattern: capture_rel_absent)
+    && !string_contains(s: c.verdict_text, pattern: capture_bytes_oid)
+}
