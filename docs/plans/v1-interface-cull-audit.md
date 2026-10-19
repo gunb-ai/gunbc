@@ -262,8 +262,9 @@ Each repair must also state beforehand which multiplicity collapses (§6b).
 This combines the §3a profile with the source review at `56b18b20cc7`. The review found the shape
 behind the waste: **information produced at one boundary, then discarded or carried incompletely,
 then reconstructed downstream.** Order rule: delete demand that has no consumer first, share a value
-that is computed twice next, and only then repair contracts. A cache is never the fix (§2,
-`std.materialization_ladder`).
+that is computed twice next, and only then repair contracts. A cache never conceals authored duplication.
+A provider is admissible only for unavoidable recurrence, after demand is minimized and identity is
+complete (§2, `std.materialization_ladder`).
 
 Each item lands as its own PR. Each one must:
 - name the multiplicity it collapses before the change;
@@ -271,7 +272,11 @@ Each item lands as its own PR. Each one must:
 - run the required self-host / native routes;
 - re-profile, so the price comes from measurement, not from this table.
 
-**~s** is the profiled inclusive cost of the enclosing frame, an upper bound on what the item saves.
+**~s** is a *baseline enclosing-frame estimate*: an inclusive sample share times the phase wall. It
+is a clue, not a measured saving and not a strict upper bound. Items overlap: annotation deletion
+competes with the annotation-sort fix, and name materialization overlaps record, alias and import
+work. Re-profile targeted before/after when a PR claims a saving, and fully after an interacting
+group lands.
 **src** means the item comes from the source review and was not seen as a separate frame in the
 profile.
 
