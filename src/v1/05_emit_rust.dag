@@ -554,7 +554,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types, type_decl_items: emit_info.type_decl_items))
     } else if rust_overlayless_alias_leaf_requires_peel(env: emit_info.fn_type_env, n: n) {
       match lookup_type_for(env: emit_info.fn_type_env, node: n) {
-        Present { value: binding } => render_rust_type(n: resolved_type(n: binding), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+        Present { value: binding } => rust_carrier_optional_wrap(n: n, rendered: render_rust_type(n: with_required_cardinality(n: resolved_type(n: binding)), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
         Absent => emit_rust_compile_error_expr(message: "Alias peel binding absent")
       }
     } else {
