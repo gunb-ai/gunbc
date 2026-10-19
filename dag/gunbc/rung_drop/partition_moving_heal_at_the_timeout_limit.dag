@@ -12,9 +12,10 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // converge step at 75m07s; the non-moving baseline run 39284218586 took 32m40s. The worst case, boundary
 // drift that first appears after the mirrors converge (an extra rebuild and regen), exceeds 90m.
 //
-// RE-MEASURED with the round.built_seed_regen marks (draft measurement run 39332816440, same specimen
-// tree, 89.6m of 90m): the 75m converge is 40.7m of between-stage regens (821s, 742s, 877s; 54%), 13m
-// of rebuilds (280s, 274s, 223s; 17%), the 651s first-generation regen, and the seed build. The cut this
+// RE-MEASURED with the round.built_seed_regen marks (instrument: `claim_executor --regen-round-cost`,
+// whose receipt lists every phase per stage; specimen run 39332816440, 89.6m of 90m): the converge is
+// dominated by the between-stage regens (over half), then the rebuilds, the first-generation regen and
+// the seed build. The cut this
 // row first named, a stage rebuilding only what its install changed, does not apply: every installed
 // file lives in the v1-compiler crate, which is also the emitter AND the frontend, so each stage's binary
 // is a new producer and both its regen and that regen's corpus_load/frontend/reconcile are demanded by
