@@ -9,8 +9,7 @@ module test.fixture.bootstrap_repository_fixture
 // mint sites instead of leaving witnesses a private shell dialect (snappy-bat-554 ruling (b):
 // fixtures at the plumbing level from ops that already exist; gaps are LISTED, never invented).
 // neat-pike-202's witnesses 7/8 (repository_convergence, pre_swap_admission) extend THIS module
-// rather than forking it; their four gap ops (plain non-CAS update-ref, remote add, pack-refs,
-// checkout --detach as an op) are raised with snappy-bat-554 and are not built here.
+// rather than forking it; the gap ops (pack-refs, remote add, checkout --detach) are not built: pack-refs and remote add have no production site and W7 drops them, and a detached primary is the typed HEAD write (gitrepository-layout(5): a detached HEAD holds the raw object name).
 //
 // THE FIXTURE BUILDS PRE-STATE, NEVER POST-STATE: it authors the repository the production path is
 // pointed at, and the claim's asserted facts still come only from the production path's own
@@ -141,4 +140,30 @@ fn fixture_commit_tracked_file(repo: String, tracked_path: String, tracked_bytes
 // leftover tree means the run left the host dirty — so success is returned, not swallowed.
 fn fixture_remove_tree(path: String) -> Bool {
   shell.Remove.RecursiveForce(path: path as FilePath).success
+}
+
+// The W7 BARE SEED (Charter 2, witness 7): a bare repository holding `commit_hex` at refs/heads/main,
+// built by the typed InitBareAt (git.Plumbing) and a typed push from the fixture repo that already
+// owns the commit's objects. The remote a convergence witness hands the production fetch is this
+// bare path itself, so no `remote add` and no remote.origin.* config is authored: the production
+// fetch takes its remote as a string, and a config entry production's own explicit argument
+// overrides would be inert (see the recurring-failure-mode row this PR files). `Absent` is
+// success; a refusal names the step and carries git's own stderr.
+fn fixture_seed_bare_remote(parent_address: GitRepositoryAddress, bare: String, source_repo: String, commit_hex: String, home: String) -> Optional<FixtureRepoOutcome> {
+  let init = git.Plumbing.InitBareAt(address: parent_address, path: bare as FilePath)
+  if init.exit_code != 0 {
+    Present { value: FixtureRepoRefused { step: "init --bare", cause: trim(s: init.stderr) } }
+  } else {
+    let pushed = git.Core.PushRefInRepo(
+      repo: source_repo as FilePath,
+      remote: bare,
+      refspec: concat(commit_hex, ":refs/heads/main"),
+      home: home as FilePath,
+    )
+    if pushed.exit_code != 0 {
+      Present { value: FixtureRepoRefused { step: "push to bare seed", cause: trim(s: pushed.stderr) } }
+    } else {
+      Absent
+    }
+  }
 }

@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_fixture_injects_through_a_config_path_production_overrides
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_fixture_injects_through_a_config_path_production_overrides: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_fixture_injects_through_a_config_path_production_overrides" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a witness injects its adversary (a fake upload-pack that advances the base ref, or takes index.lock, mid-fetch) through git config (remote.origin.uploadpack), while the production route under test passes the same knob as an EXPLICIT command-line argument (--upload-pack='git -c safe.directory=<gitdir> upload-pack', derived inside repository_converge_wet by convergence_fetch_upload_pack). A command-line argument beats the config, so the fake never runs and the race arm never executes the race.",
+
+    "HARM: cas_race_is_observed_after_fetch and reset_refusal_after_successful_cas_is_nonzero in test.claim.repository_convergence_wet_witness were red on every run and never exercised the race. Measured on head fc47548c9419 inside gunbc.bound (memory.max=25769803776, swap.max=0): the unmodified old witness gave 6 PASS and FAIL for those two rows; with both fake scripts patched to append a marker to /tmp/fired.log, the file was never created (cat: No such file or directory). The fake did not fire.",
+
+    "DISTINGUISHING FACT: a test that is always red discriminates nothing, and the shell-script fixture hid that the injection point was unreachable. A config-path fake looks like a mock of the real route; it is a mock of a route production does not take.",
+
+    "RECOGNITION RULE: a fixture that sets a git config key (or env var) to place a fake, where the production argv for that operation already carries the same knob as an argument; check by adding a marker write to the fake and asserting it fired.",
+
+    "RUNG FOUND AT: mitigatable (a red row the suite carried). CEILING: structurally guaranteed once the race fake is supplied through an injection point on the real route. NEXT TRIGGER: CAS-race coverage for repository_converge_wet needs a typed injection point on the real route (for example the upload_pack derivation becoming an input supplied by the caller); that is a production-signature decision and is not this change's. Until then the two race rows are REMOVED, not carried red, and the race arms are uncovered, declared here.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.live_deploy.repository_convergence", decl_name: "repository_converge_wet", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.live_deploy.repository_convergence", decl_name: "convergence_fetch_upload_pack", field: WholeDeclaration },
+  ],
+}
