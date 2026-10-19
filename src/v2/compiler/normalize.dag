@@ -863,7 +863,7 @@ fn zz_diag_count(d: Diagnostics) -> String {
 }
 
 fn zz_depth(n: Node) -> Int {
-  fold(n.children, init: 0, f: fn(m: Int, e: Edge) { zz_max(a: m, b: zz_depth(n: e.target)) }) + 1
+  fold_node(n: n, algebra: NodeFold { init: fn(_) { 1 }, step: fn(acc, _edge, child) { zz_max(a: acc, b: child + 1) } })
 }
 
 fn zz_max(a: Int, b: Int) -> Int {
