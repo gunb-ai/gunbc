@@ -3728,7 +3728,8 @@ pub fn alias_rhs_with_index_identity(
         match declaration_named_in_module(spelled.clone(), alias.module_path.clone(), env.clone()) {
             std::option::Option::None => std::option::Option::None,
             Some(d) => {
-                if ((d.module_path.clone() == alias.module_path.clone())
+                if ((crate::std_types::is_kernel_type(spelled.clone())
+                    && (d.module_path.clone() == alias.module_path.clone()))
                     && (d.decl_name.clone() == alias.decl_name.clone()))
                 {
                     std::option::Option::None

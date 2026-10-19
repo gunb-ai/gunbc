@@ -32184,15 +32184,6 @@ pub fn bindings_accum_insert(
     }
 }
 
-pub fn alias_rhs_reference(pre: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
-    match crate::v1_compiler_infer_env::transparent_alias_rhs(pre.clone()) {
-        Some(rhs) => Some(
-            crate::v1_compiler_infer_resolve::reference_with_declaration(rhs.clone(), env.clone()),
-        ),
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
 pub fn resolve_env_bindings(
     env: Rc<TypeEnv>,
     module_name: String,

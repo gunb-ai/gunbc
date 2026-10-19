@@ -17887,18 +17887,6 @@ fn bindings_accum_insert(acc: BindingsAccum, ident: Int, updated_binding: TypeBi
   }
 }
 
-// THE ALIAS'S RIGHT-HAND-SIDE REFERENCE, RETAINED ON ITS ENV BINDING (quiet-gull-780 ruling B). A
-// transparent alias item (`type A = B`, `type A = B<C>`: a bare, required, unannotated item whose
-// `inferred` is its authored RHS) keeps that RHS reference node, with the head's identity written by
-// the one writer in THIS module's env, the alias's declaring scope. Every other binding answers none.
-// The resolved binding itself is unchanged; this is the reference a reader asks "what does the alias
-// name", so nothing downstream re-resolves the spelling.
-fn alias_rhs_reference(pre: Node, env: TypeEnv) -> Node? {
-  match transparent_alias_rhs(pre: pre) {
-    Present { value: rhs } => Present { value: reference_with_declaration(n: rhs, env: env) }
-    Absent => none
-  }
-}
 
 fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Int, Bool>, deps_map: Map<String, List<String>>) -> EnvResolveResult {
   let remaining = map(
