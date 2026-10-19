@@ -3,10 +3,12 @@ module gunbc.fleet.flex_pass_run
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String, EpochMs }
 import std.optional { Present, Absent }
 import std.list { first_where }
+import std.induction { int_pow_bounded }
+import std.decimal { ExactDecimal }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.integer { int_to_decimal_string }
-import std.measure { money_amount_micro_count, money_per_hour_micros }
+import std.measure { money_amount_micro_count, money_per_hour_micros, milliseconds_per_second }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.vast_ai
@@ -194,7 +196,7 @@ fn flex_cheapest_member(screened: List<FlexScreenedOffer>) -> FlexScreenedOffer?
       match acc {
         Absent => Present { value: s }
         Present { value: best } =>
-          if (s.offer.min_bid.units * pow10(n: best.offer.min_bid.fraction_digits)) < (best.offer.min_bid.units * pow10(n: s.offer.min_bid.fraction_digits)) {
+          if flex_decimal_less(a: s.offer.min_bid, b: best.offer.min_bid) {
             Present { value: s }
           } else {
             acc
@@ -203,8 +205,17 @@ fn flex_cheapest_member(screened: List<FlexScreenedOffer>) -> FlexScreenedOffer?
   )
 }
 
-fn pow10(n: Int) -> Int {
-  if n <= 0 { 1 } else { 10 * pow10(n: n - 1) }
+// a < b for two non-negative decimals, compared exactly by cross-scaling (std.induction int_pow_bounded).
+// A scale that does not fit refuses the comparison as false, so it never picks an offer it cannot compare.
+fn flex_decimal_less(a: ExactDecimal, b: ExactDecimal) -> Bool {
+  match int_pow_bounded(base: 10, exp: b.fraction_digits) {
+    Absent => false
+    Present { value: sb } =>
+      match int_pow_bounded(base: 10, exp: a.fraction_digits) {
+        Absent => false
+        Present { value: sa } => (a.units * sb) < (b.units * sa)
+      }
+  }
 }
 
 // THE INTENT: the cheapest member, its screened standing and quote, the admission it can have with no bid
@@ -289,7 +300,7 @@ fn flex_intent_wire(i: FlexIntentStanding) -> String {
 // ---- THE PASS.
 fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) -> String uses net: Network {
   let instances = flex_instances_standing(walk: flex_walk_instances(key: key, after: none, walk: FlexInstanceWalk { pages: [], refused: none }, budget: flex_walk_page_budget))
-  let filter = vast_ai_charges_day_filter(range: VastAiChargesDayRange { gte: flex_trial_charges_from, lte: now / 1000 })
+  let filter = vast_ai_charges_day_filter(range: VastAiChargesDayRange { gte: flex_trial_charges_from / milliseconds_per_second(), lte: now / milliseconds_per_second() })
   let charges = flex_charges_standing(walk: flex_walk_charges(key: key, filter: filter, after: none, walk: FlexChargeWalk { pages: [], refused: none }, budget: flex_walk_page_budget))
   match flex_vast_offer_query(recipe: flex_serving_recipe) {
     Absent =>

@@ -1,7 +1,7 @@
 module product.fabric.flex_vast_shadow
 
 import std.apply_mode { ApplyMode, Plan, Apply }
-import std.types { NonEmptyStr, String, Bool, Int, List, Port }
+import std.types { NonEmptyStr, String, Bool, Int, List, Port, EpochMs }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.gpu.types { GpuModelCatalogRow }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog, nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
@@ -10,7 +10,7 @@ import std.measure {
   MoneyPerHour, MoneyAmountMicro, MoneyPerSecond, MoneyRate, ByteSize,
   money_amount_micro, money_per_hour_micros, measure_le,
   Bandwidth, bandwidth, bandwidth_count, mebibyte_count, mebibyte_ceiling,
-  second, Second, second_count, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  second, Second, second_count, scale_exponent, Giga, gibibyte_scale_factor_bytes, seconds_per_minute, minutes_per_hour, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
   byte_size_count, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
   money_amount_micro_count, exact_decimal_to_money_amount_micro_ceil, DecimalMoneyConverted,
 }
@@ -53,6 +53,7 @@ import extdeps.cloud.vast_ai {
 }
 import std.rational { NonzeroNatFraction }
 import std.nat { Nat }
+import std.induction { int_pow_bounded }
 import std.decimal { ExactDecimal, decimal_pow10 }
 import extdeps.nvidia.cuda_toolkit_release { cuda_13_0_driver_requirement }
 import std.optional { Absent, Present }
@@ -396,10 +397,10 @@ data flex_trial_fleet_rate_cap_authority: DeclarationRef = decl_ref(module_path:
 
 data flex_trial_total: MoneyAmountMicro = money_amount_micro(count: 50000000)
 
-// The first day the trial's charges are read from, unix seconds UTC (2026-10-16T00:00Z, the day the operator
-// set the trial's cap and total). Only rows under our label count (flex_vast_loop flex_spent), so an earlier
-// start could only add rows that are not ours; a later one could hide ours, so it is never moved later.
-data flex_trial_charges_from: Int = 1792108800
+// The instant the trial's charges are read from: 2026-10-16T00:00Z, the day the operator set the trial's cap
+// and total. Only rows under our label count (flex_vast_loop flex_spent), so an earlier start could only add
+// rows that are not ours; a later one could hide ours, so it is never moved later.
+data flex_trial_charges_from: EpochMs = 1792108800000
 
 data flex_trial_policy: FlexPolicy = FlexPolicy {
   fleet_rate_cap: flex_trial_fleet_rate_cap,
@@ -710,18 +711,32 @@ data flex_vast_storage_billing_month: FlexStorageBillingMonth = FlexStorageBilli
   },
 }
 
-// $/GB-month to $/GiB-hour, rounded up: x * (2^30 / 10^9) GiB-per-GB * 3600 s-per-hour / period seconds.
+// Bytes in a decimal gigabyte, from std.measure's Giga exponent (Vast's storage_cost is per GB).
+fn flex_bytes_per_gigabyte() -> Int? {
+  match scale_exponent(s: Giga) {
+    Absent => none
+    Present { value: e } => int_pow_bounded(base: 10, exp: e)
+  }
+}
+
+// $/GB-month to $/GiB-hour, rounded up: x * (bytes per GiB / bytes per GB) * (seconds per hour / seconds
+// per billing month). Every factor is std.measure's own; the month is the one uncited figure.
 fn flex_offer_disk_rate(offer: VastAiOffer, month: FlexStorageBillingMonth) -> ServingDiskRate? {
   match exact_decimal_to_money_amount_micro_ceil(d: offer.storage_cost) {
     DecimalMoneyConverted { amount: per_gb_month } =>
-      let denominator = 1000000000 * flex_billing_month_seconds(m: month)
-      Present {
-        value: ServingDiskRate {
-          rate: MoneyRate {
-            amount: money_amount_micro(count: (money_amount_micro_count(m: per_gb_month) * 1073741824 * 3600 + (denominator - 1)) / denominator),
-            currency: vast_ai_quote_currency,
-          },
-        },
+      match flex_bytes_per_gigabyte() {
+        Absent => none
+        Present { value: bytes_per_gb } =>
+          let seconds_per_hour = seconds_per_minute() * minutes_per_hour()
+          let denominator = bytes_per_gb * flex_billing_month_seconds(m: month)
+          Present {
+            value: ServingDiskRate {
+              rate: MoneyRate {
+                amount: money_amount_micro(count: (money_amount_micro_count(m: per_gb_month) * gibibyte_scale_factor_bytes() * seconds_per_hour + (denominator - 1)) / denominator),
+                currency: vast_ai_quote_currency,
+              },
+            },
+          }
       }
     _ => none
   }
