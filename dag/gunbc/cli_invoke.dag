@@ -24,12 +24,10 @@ fn source_root_transport_argv(roots: List<String>) -> List<String> {
   fold(roots, init: [], f: (acc, r) => concat(acc, ["--source-root", r]))
 }
 
-// The release bin dir under a build root is cargo's DEFAULT output tree (extdeps.rust.cargo):
-// the directory name is not spelled here, only what cargo itself does not put in that name.
-data release_bin_dir_rel: String = cargo_default_release_dir_rel
-
+// The release bin dir is cargo's DEFAULT output tree, named by its one home in
+// extdeps.rust.cargo -- this module adds no name for it, only the bin name cargo does not own.
 fn release_bin_rel_path(bin_name: String) -> String {
-  concat(concat(release_bin_dir_rel, "/"), bin_name)
+  concat(concat(cargo_default_release_dir_rel, "/"), bin_name)
 }
 
 fn release_bin_shell_path(bin_name: String) -> String {
