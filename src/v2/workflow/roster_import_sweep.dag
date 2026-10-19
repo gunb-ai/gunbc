@@ -199,10 +199,10 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       home: qualified_name_from_dotted_string(dotted: "std.host_text"),
       // std.host_text declares fn chars(text: HostText); the ambient spelling's callers wrote s:.
       labels: [RosterLabelRename { from: "s", to: "text" }]
-    }
-    , RosterHeadRow { call: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] }
-    , RosterHeadRow { call: "Map", import_name: "Map", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] }
-    , RosterHeadRow { call: "Set", import_name: "Set", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] }
+    },
+    RosterHeadRow { call: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] },
+    RosterHeadRow { call: "Map", import_name: "Map", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] },
+    RosterHeadRow { call: "Set", import_name: "Set", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] }
   ]
 }
 
