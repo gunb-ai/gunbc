@@ -7,7 +7,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.bmc.ipmi {
   IpmiCompletionCode, ipmi_completion_code_invalid_data_field,
 }
-// THE RECEIPT SHELF, NOT THE VENDOR MODULE (review 81926). The measurements -- the capture digest, the
+// THE RECEIPT SHELF, NOT THE VENDOR MODULE. The measurements -- the capture digest, the
 // Get Device ID reading, what the firmware answered -- are read from the observing layer's own shelf,
 // which is where production reads them too. extdeps.boards.asrock_rack keeps only what ASRock Rack
 // publishes, and the witness's remaining import there is exactly that: the board's release capability
@@ -179,7 +179,7 @@ test fn the_measured_row_is_keyed_by_the_catalog_version_and_not_by_a_rerollable
   }
 }
 
-// AN AMBIGUOUS CATALOG MUST NOT BLAME THE MEASUREMENT (review 81926). The fold used to test
+// AN AMBIGUOUS CATALOG MUST NOT BLAME THE MEASUREMENT. The fold used to test
 // `list_length(matches) != 1` and answer ControllerNeverMeasured for BOTH zero and two matches -- so a
 // catalog with a duplicated row reported itself as never measured, while the sum declared a distinct arm
 // for the case and nothing could ever produce it. The fold is asked here at its own interface (the catalog
@@ -653,8 +653,7 @@ test fn each_recovery_refusal_carries_its_own_next_action() -> Bool {
 }
 
 
-// THE TWO ABSENCES ARE ROSTERED, AND THE ROSTER IS WHAT MAKES THEM VISIBLE (side-chat HOLD blocker 4,
-// review 82424). The route's missing production consumer and the missing hold-owning pairing used to be
+// THE TWO ABSENCES ARE ROSTERED, AND THE ROSTER IS WHAT MAKES THEM VISIBLE. The route's missing production consumer and the missing hold-owning pairing used to be
 // stated only in `//` text, which DESIGN section 3c does not accept as a classification and section 4c
 // does not accept as evidence. They are rows now, and a row differs from a comment in one way that
 // matters: it is read by a fold, so it can turn red.

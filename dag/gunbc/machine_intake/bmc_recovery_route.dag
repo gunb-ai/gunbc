@@ -29,7 +29,7 @@ import extdeps.bmc.ipmi {
 import gunbc.machine_intake.bmc_inband_recovery_receipts {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured, CatalogAmbiguousForController, CatalogIndexesDisagree, RowDisagreesWithItsOwnReading, asrock_altrad8ud_published_factory_password_write_policy_sighted_on, asrock_altrad8ud_published_factory_password_write_policy_for, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy, asrock_altrad8ud_1l2t_inband_device_identity, RecoveryPostResetReadbackRecord, asrock_altrad8ud_post_reset_readback_record_for,
   // WHEN a capture was taken is the notebook's fact, not the route's: the carrier, every mint and
-  // the two folds over it are imported, never re-declared (review 82481).
+  // the two folds over it are imported, never re-declared (DESIGN section 3, one home for a fact).
   CapturedInstant, CaptureTimeBand, CaptureTimeBandInverted, recovery_capture_day,
   captured_epoch_millisecond, captured_band, captured_instant_band, captured_band_precedes,
   captured_band_ordering, CapturedBandOrdering, BandPrecedes, BandDoesNotPrecede,
@@ -335,7 +335,7 @@ type InBandAccessWithoutCredential
       transport: InBandHostTransport
       credential_option: IpmiArgvCredentialOption
     }
-  // THE PARSE'S REFUSAL SUM, CARRIED — NOT A SENTENCE ABOUT IT (review 82692). in_band_command_from_argv
+  // THE PARSE'S REFUSAL SUM, CARRIED — NOT A SENTENCE ABOUT IT (DESIGN section 4c). in_band_command_from_argv
   // already tells six causes apart, and this arm used to collapse all six into one prose `detail` that the
   // claims then grepped by substring: a wording change silently voided six controls, two causes could be
   // swapped with no row turning red, and one check was merely string_length(d) > 0 -- green for any refusal
@@ -412,7 +412,7 @@ type IpmiCommandInvocation
   | IpmiCommandOptionNeedsValue { option: String, detail: NonEmptyStr }
   | IpmiCommandRemoteHostWithInBandName { host: NonEmptyStr, wire: String }
 
-// THE SIX WAYS A CAPTURED INVOCATION FAILS TO PROVE AN IN-BAND CHANNEL, AS A DECLARED SUM (review 82692).
+// THE SIX WAYS A CAPTURED INVOCATION FAILS TO PROVE AN IN-BAND CHANNEL, AS A DECLARED SUM.
 // The parse's own refusals, carried by value into the channel sum. The rule against an undeclared sum
 // applies here as much as to the transport names: a cause carried as the text of a string is a sum with no
 // members written down, and nothing in the compiler notices when two are swapped or when one loses its
@@ -782,7 +782,7 @@ type InBandChannelObservation {
 // Bool asked first and then re-matched to build the answer, and a diagnostic whose content was invented at
 // print time instead of computed where the refusal was made ("no plausible output is fabricated"). So this
 // MATCHES the arms and returns the reason with the verdict. `reason` is a declared sum, and the refusal
-// standing carries that sum rather than prose (review 82692). The admitted arm has no field a credential
+// standing carries that sum rather than prose (DESIGN section 4c). The admitted arm has no field a credential
 // could have been written into, so nothing about it has to be re-checked.
 type InBandChannelAdmission
   = ChannelAdmits
@@ -804,7 +804,7 @@ type RecoveryChannelAbsence
   | AbsenceDeviceNodeDisagrees
   | AbsenceKernelModulesDisagree
   | AbsenceNodeCreatedAfterTheReading
-  // A BAND THAT WILL NOT CONSTRUCT IS NEITHER EARLY NOR LATE (review 82765). The ordering used to answer
+  // A BAND THAT WILL NOT CONSTRUCT IS NEITHER EARLY NOR LATE. The ordering used to answer
   // Bool, and a band whose bounds refused to build came back "does not precede" -- so the fold reported
   // "the node was created after the reading" about a pair it had never managed to compare. Which side
   // failed is the fact worth having: a device-node time that will not build is a defect in the device-node
@@ -838,7 +838,7 @@ fn in_band_channel_admission(
               } else if observation.device_node != ipmi.device_node {
                 ChannelRefused { reason: AbsenceDeviceNodeDisagrees }
               // THE QUEUE HAD TO EXIST BEFORE THESE BYTES WERE READ. The node's creation minute and the
-              // reading's minute are separate facts on the carrier (review 82404), and this fold is what
+              // reading's minute are separate facts on the carrier, and this fold is what
               // keeps them separate: an observation stamping the node as created after the reading was
               // taken cannot have read it, so it refuses rather than being admitted on a plausible
               // ordering. THE ORDERING IS MATCHED, NOT ASKED OF AS A BOOL, so the three ways it can fail
@@ -2578,7 +2578,7 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
     // new measurement of a board that has been measured.
     RecoveryRowFiledUnderTheWrongReading { row: _, observed: _ } =>
       "this board's catalog files a refusal whose release does not match the Get Device ID answer recorded with it: correct the row, or measure the controller again under the release it now claims -- re-measuring alone leaves the bad row filed" as NonEmptyStr
-    // TWO GAPS, TWO SENTENCES, BECAUSE THEY ARE NOT TWO WAYS OF SAYING THE SAME THING (review 82692).
+    // TWO GAPS, TWO SENTENCES, BECAUSE THEY ARE NOT TWO WAYS OF SAYING THE SAME THING.
     // A body that arrived and named no password-change message is an ANSWER FROM THE CONTROLLER: the
     // reset did not do what it was asked, so the work is the reset and the controller. A body that
     // never arrived is a hole in OUR notebook, and telling someone to re-check a BMC they may have reset
@@ -3011,7 +3011,7 @@ test fn the_credential_bearing_channel_names_the_option_that_carried_it() -> Boo
     })
 }
 
-// A CHANNEL THAT WAS NEVER READ KEEPS THE CAUSE THE PARSE FOUND. This is the arm review 82692 turned on:
+// A CHANNEL THAT WAS NEVER READ KEEPS THE CAUSE THE PARSE FOUND. The failure this shape closes:
 // the six parse refusals used to be flattened into one prose string, so a reader could not tell "no -I"
 // from "-I named an out-of-band transport". Each is checked to arrive as itself, with its own payload.
 test fn a_channel_never_read_carries_the_parse_refusal_that_caused_it() -> Bool {
@@ -4189,7 +4189,7 @@ fn recovery_reset_write_record() -> RecoveryWriteRecord {
 // 04_post_reset_readback.txt; the digest of that file is what the evidence ref below cites, and the same
 // digest is the one the post-reset readback record in gunbc.machine_intake.bmc_inband_recovery_receipts is
 // keyed by -- which is what lets the bind succeed for this specimen and refuse every other one.
-data recovery_post_reset_readback_body: String = "{\"error\":{\"@Message.ExtendedInfo\":[{\"@odata.type\":\"#Message.v1_1_1.Message\",\"Message\":\"Password change required before accessing other resources\",\"MessageId\":\"Base.1.16.0.PasswordChangeRequired\",\"Resolution\":\"none\",\"Severity\":\"Warning\"}],\"code\":\"Base.1.16.0.PasswordChangeRequired\",\"message\":\"Password change required before accessing other resources\"}}"
+data recovery_post_reset_readback_body: String = "{\"@Message.ExtendedInfo\":[{\"@odata.type\":\"#Message.v1_1_1.Message\",\"Message\":\"The password provided for this account must be changed before access is granted.  PATCH the Password property for this account located at the target URI '/redfish/v1/AccountService/Accounts/root' to complete this process.\",\"MessageArgs\":[\"/redfish/v1/AccountService/Accounts/root\"],\"MessageId\":\"Base.1.16.0.PasswordChangeRequired\",\"MessageSeverity\":\"Critical\",\"Resolution\":\"Change the password for this account using a PATCH to the Password property at the URI provided.\"}]}"
 
 fn recovery_factory_credential_readback() -> RecoveryFactoryCredentialReadback {
   recovery_readback_of(
@@ -4487,7 +4487,7 @@ test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool 
     })
 }
 
-// THE READING FOLLOWS THE RESET, AND THE DEVICE NODE PRECEDES IT (review 82404). The one timestamp these
+// THE READING FOLLOWS THE RESET, AND THE DEVICE NODE PRECEDES IT. The one timestamp these
 // facts used to share said the channel was read at 06:27, which put an observation of the post-reset
 // factory state BEFORE the destructive write it is evidence about. Each fact now carries its own band,
 // and what is asserted is the ORDER the artifact records: node created, then the reset, then the

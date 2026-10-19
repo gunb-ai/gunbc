@@ -47,7 +47,7 @@ fn bmc_recovery_route_consumer_frontier_rows() -> List<FrontierRow> {
         module_path: "gunbc.machine_intake.bmc_recovery_route",
         decl_name: "converge_in_band_recovery",
       ),
-      reason: "the fold and its 3.4k-line route module have no production consumer: git grep shows every caller of gunbc.machine_intake.arrival_converge's access_discover passes locked: none, and the only caller supplying a real InBandRecoveryStanding is test.claim.machine_intake.machine_intake_bmc_recovery_route_witness. The route is honest about being un-consumed -- the recorded specimen (altrad8ud-1l2t-6) is a DIFFERENT unit from mtjade1, which is why no live caller exists -- but the deferral has to be a row a fold reads, not a comment",
+      reason: "the fold and its route module have no production consumer: git grep shows every caller of gunbc.machine_intake.arrival_converge's access_discover passes locked: none, and the only caller supplying a real InBandRecoveryStanding is test.claim.machine_intake.machine_intake_bmc_recovery_route_witness. The route is honest about being un-consumed -- the recorded specimen (altrad8ud-1l2t-6) is a DIFFERENT unit from mtjade1, which is why no live caller exists -- but the deferral has to be a row a fold reads, not a comment",
       dissolution: bound_dissolution(
         ref: decl_ref(
           module_path: "gunbc.machine_intake.arrival_converge",
