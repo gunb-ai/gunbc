@@ -929,3 +929,150 @@ Lane D's 9.3 s per-module setup (`build_type_env` + `build_module_context`) is n
 ## 5e. Preamble correction: branch base
 
 "Branch from origin/main" applies to **code** lanes. A lane whose deliverable is a section of this doc commits to `v1-interface-cull-audit`, because a main-based PR would delete the doc. Lanes D, H and K already did this.
+
+## 8. Module-index admission inventory (lane K, §7 Wave 2; inventory only)
+
+Produced from the tree at `63a464edf01fd94ea7a6ef9393f4af7b15479015` + lane merges. Scope: every output
+and refusal of `src/v1/stage0/src/module_path_index/` and its consumers, each classified **locate**,
+**read-admission**, or **whole-pool validation**. Nothing here is executed, measured, or removed; the
+lane ends in one operator decision (§8.5). Purpose statement (§5b.3): the index exists to answer
+"which path declares module *m*" once per process at minimum reading; every artifact that answers a
+different question is listed under its own owner so P1.2 (drop whole-file tokenization) can be decided
+without silently deleting a validation.
+
+### 8.1 The producer — `parse_module_binding` (`module_path_index/index.rs:120`)
+
+One heads reading per file per process, projected from `pool_acquire::heads_reading_for`
+(`cli_run/pool_acquire.rs:219`); the producer never tokenizes a body beyond the heads the pool census
+already pays for (`index.rs:142-146`).
+
+| # | artifact | condition | class |
+|---|----------|-----------|-------|
+| O1 | `Bound(ParsedModuleBinding{module_path, ident_span})` (`index.rs:169-171`) | heads parse clean, `module` header present, parsed name non-empty | locate |
+| O2 | `ModuleBindingUnclassified` — heads error, no module line (`index.rs:147-158`) | unparseable file with no recognizable leading `module` line | read-admission (silent) |
+| O3 | `ModuleBindingUnclassified` — no header (`index.rs:159-161`) | heads parse clean, no `module` header | read-admission (silent) |
+| O4 | `ModuleBindingUnclassified` — empty parsed name (`index.rs:162-167`) | header present, parsed name empty (third candidate refusal, deliberately unchanged) | read-admission (silent) |
+| R1 | `ModuleBindingRefusal` (`index.rs:34-52`) — typed `CompilerDiagnostic`, path + span | heads parse error **and** `module_declaration_line_present` (`index.rs:82`) | read-admission, per-file |
+
+Inventory findings on the producer:
+- **O2 is a documented conflation, not a verdict.** Admitted parse failures and genuine fragments land
+  in one class and are indistinguishable (`index.rs:17-28`, `82`, `152-156` state this). The lane's
+  position: P1.2 makes this visible — once names come from the path, "no binding" must split into
+  *fragment* vs *unparseable*, and O2 currently cannot. This artifact needs an owner (see 8.5).
+- **`ident_span` is produced and unconsumed.** The field (`index.rs:12`, set from `node_name_span`,
+  `index.rs:170`) has no reader outside the module's own tests (`index.rs:255`). Every real consumer
+  reads `module_path` only (the walk visitor, `cli_run/entry_resolve.rs:127-130`).
+- **R1's operation-level outcome is a process exit, not a typed result.** The walk accumulates refusals,
+  then `refuse_unparseable_module_sources` (`cli_run.rs:3774-3787`) prints every offender plus a count
+  and `process::exit(1)` — the line completes (ledger-first, §5), the run does not. Per-file it is typed
+  and located; the aggregate is structural only until rendered.
+
+### 8.2 The family and its caches
+
+| entry point | file:line | reading it pays | notes |
+|---|---|---|---|
+| `build_module_path_index` | `entry_resolve.rs:96` | heads of every `.dag` under the roots | name⇄path map only; thread-local cache `MODULE_PATH_INDEX_CACHE` keyed on joined roots (`entry_resolve.rs:105-123`) |
+| `build_module_path_index_uncached` | `entry_resolve.rs:125` | the walk | inserts O1 rows with **first-wins dedupe**: same key + `same_canonical_file` (`cli_run.rs:10186`, canonicalizes both) skips; same key, different file → **silently skipped** — this variant has no collision detection |
+| `build_module_path_index_from_witness_roots` | `entry_resolve.rs:173` | same | roots = `default_source_roots` (`cli_run.rs:4641`) = `witness_layer_roots()` (`cli_run/witness_gates.rs:257`), read from the `witness_layer_roots` data def in `dag/gunbc/ci/ci_layer_roots.dag` |
+| `try_build_module_index` | `cli_run.rs:4926` | **full contents** of every file | the `ModuleSourceIndex` (name→SourceFile) sibling; the tokenization P1.2 targets |
+| `try_build_module_index_primary_precedence` | `cli_run.rs:4977` | full contents | primary root first, then fill; cross-root same-name is fill-skipped by design |
+| `build_module_index` / `..._primary_precedence` | `entry_resolve.rs:182/189` | full contents | documented panicking wrappers for invariant-established inputs |
+| `heads_reading_for` | `pool_acquire.rs:219` | heads, once per file per process | the shared reading the producer projects; `HeadsReading` error/mirror rows are pool census artifacts, not index artifacts |
+
+Walk-level admission, shared by all uncached builders (`cli_run.rs:3728-3765`): `.dag` extension filter
+via `collect_dag_files_result` (`cli_run.rs:319`), cargo `target/` dirs skipped, **derived sources
+admitted through the same bytes** — a ledger-row directory contributes its roster via
+`derived_row_roster::acquire_dir_files` and every row file then passes `parse_module_binding` like any
+other file. Observation failures here are **panics**, not refusals: dir `read_dir` failure
+(`cli_run.rs:347`, wrapper of `collect_dag_files_result`, called at `3731`) and per-file
+`AcquiredDag::read` failure (`cli_run.rs:3740-3744`) bypass the typed path. Recorded, not defended — this is the §5 inconsistency
+R1 already fixed for the *parse* arm only.
+
+### 8.3 Consumers (every read, classified)
+
+**locate** (answer "where is m", content never consulted):
+- `module_declaration_facts` (`entry_resolve.rs:2543`) and keyed `module_declaration_fact_at`
+  (`entry_resolve.rs:2566`) — the population and keyed reads of the one path index.
+- `import_resolution_facts_with_observation` (`entry_resolve.rs:2464`) — the `declared` set is a
+  projection of the path index (`entry_resolve.rs:2473`); `import_resolution_facts` (`2540`) and the
+  interpreter reads (`v1_interpreter.rs:17092`, `24428`, `34606`).
+- `path_to_source_lookup` (`entry_resolve.rs:601`) and `try_index_for_run_or_owned_pool`
+  (`entry_resolve.rs:1289`, which adds root existence + readability observation before building).
+- Host-manifest / bind authority reads: `cli_run/emit_host.rs:163, 2005, 2161, 2899, 3200, 3249`.
+- Census and roster reads: `cli_run.rs:4818, 5371, 16997, 30092, 30421, 30585`;
+  `cli_run/rostered_row_join.rs:560`; `coproduct_reflection.rs:500, 783`;
+  `cli_run/demand_acquire.rs:119`; `bin/claim_batch.rs:198`.
+- `fixture_imported_corpus_sources` (`cli_run.rs:3807-3845`) — import fixpoint over the index **plus the
+  non-standard fixture root**: `fixture.closure.rustc_*` misses fall through to
+  `fixtures/fixture_closure_rustc/<name>.dag` by name convention (`cli_run.rs:3829-3831`). This is the
+  root P1.2's guardrail says must survive: any path-derived-name scheme must keep this fallback spelled
+  the same way or the fixture closure silently shrinks.
+
+**read-admission** (decide whether a file participates):
+- O2/O3/O4 above (unclassified → the file is absent from the index and from every census above).
+- The module-less entry-set exclusion: `moduleless_dag_entry_paths_under_root` (`cli_run.rs:383-412`)
+  walks the filesystem *around* the index (an index cannot enumerate its own absences) and
+  `report_moduleless_dag_entry_skips` (`cli_run.rs:366-379`) prints every skip — fail-closed
+  visibility, not a refusal.
+
+**whole-corpus validation** (a pass over the pool whose failure changes the verdict of the run):
+- **W1 — cross-root module-path collision** ("one module, one authority", DESIGN §3):
+  `try_index_source_root_into_module_index` (`cli_run.rs:5064-5072`), `Err` naming both decliners;
+  `pool_fill_only`/primary-precedence modes skip it by design. Full-source index only; the
+  name⇄path variant does not run it (silent first-wins, 8.2) — today the guard protects the
+  content index, not the path index.
+- **W2 — duplicate module within one root**: same function (`cli_run.rs:5074-5080`). Same caveat.
+- **W3 — header-bearing unparseable refuses the run**: R1 aggregated by
+  `refuse_unparseable_module_sources` (`cli_run.rs:3774-3787`), exit 1. Heads-only by construction.
+- **W4 — in-process co-residence collision** ("one module, one authority" at resolve time, DESIGN §3):
+  `check_module_source_identity_map` (`cli_run.rs:13235`), called on every module registration
+  (`cli_run.rs:12050`); a module name seen from two different decl files in one process refuses loud
+  rather than serving a divergent module. Pure name/path comparison — pays nothing per P1.2's removal.
+  This is one of the "index validates more than names" checks P1.2 anticipated; its owner is already
+  outside the tokenizing builder. (The module⇄path layout rule itself is enforced at W5, not here.)
+- **W5 — governed-layout synthesis**: `source_layout_lookup::source_root_is_governed_layout`
+  (`cli_run/source_layout_lookup.rs:24-53`) and `module_storage_relative` (`55-68`), used at
+  `cli_run/demand_acquire.rs:64, 112, 248` to synthesize the expected path from the module name;
+  a demand whose path is not the governed one is refused before any read.
+- **W6 — CI `.dag` parse sweep**: `DAG_PARSE_SWEEP_ROOTS` (`cli_run.rs:15072-15073`,
+  `src/v1`, `dag`, `src/v2`, `test/primitive_runtime_body`) — full parse of the corpus, CI-only; the
+  only artifact here that tokenizes bodies pool-wide today, outside the index path.
+- **W7 — declarer-status observation is fail-closed, scoped**: the published-mock candidate scan
+  (`cli_run.rs:15809-15816`) refuses with "declarer status is unobserved" when a candidate fails to
+  parse. Whole-*index* walk, candidate-scoped refusal; already §5-shaped.
+
+### 8.4 What P1.2 actually removes, per artifact
+
+Dropping whole-file tokenization from index construction removes, for the name⇄path family only: the
+full-content `source.read()` of every file in the binding walk (`cli_run.rs:3740`, whose bytes exist
+today only to feed the heads parse and the collision/duplicate detection), and makes R1/O2-O4
+head-derived-name questions rather than content questions. It does **not** by itself remove W1/W2 (they
+live in the content-index builder) or W6 (CI). If names come from paths, the `module` header stops being
+an observed fact and becomes a check that the header agrees with the path — which is exactly W5's
+existing governed-layout comparison, relocated.
+
+### 8.5 The one operator decision: which whole-pool validations survive
+
+Genuine candidates (each is pool-wide today and would need either a surviving fast-path owner or an
+explicit demotion): **W1 W2 W3 W4 W5** (plus the O2 conflation, which is not a validation but must be
+resolved before P1.2 lands, or admitted-parse-failures become path-legitimate modules).
+
+**Recommendation:** W1, W2, W3, W4 and W5 all survive, none in the index builder:
+- **W3 stays as-is** — heads-only, typed, located, ledger-first; it does not pay tokenization.
+- **W4 survives as-is** — a registration-time collision wall that costs no reading; it is the
+  resolve-side twin of W1/W2 and must not be dropped along with them.
+- **W5 is the survivors' template for path-derived names** — it already derives the expected path from
+  the module name with no content at all, and is the natural owner for the header-agrees-with-path
+  check once P1.2 stops observing the header as the name's source.
+- **W1/W2 survive but move to the name⇄path index**, closing today's silent first-wins gap (8.2): a
+  collision the content index refuses must not be answerable-with-one-winner through the path index of
+  the same roots. Cheap once keys are path-derived (two comparisons per insert, no contents).
+- **W6 stays CI-only** (it is the corpus gate; the compiler fast path must not re-pay it) and **W7
+  stays scoped** (candidate-level, already fail-closed).
+
+If the operator instead retires W1/W2 entirely, that must be a stated acceptance of last-root-wins
+shadowing between roots outside primary-precedence — the failure the 2026-07-01 extdeps.shell floor
+break was caused by (`cli_run.rs:5067-5070` names it); this lane does not recommend that option.
+
+Signed: lane K (merry-moth-703), 2026-10-19. Inventory only — no behavior touched, no measurement run;
+the single operator decision is raised separately with the recommendation above.
