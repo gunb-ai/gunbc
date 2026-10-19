@@ -2,7 +2,7 @@ module v2.std.decl_ref_resolution
 
 import std.optional { Absent, Optional, Present }
 import std.types { List }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
+import std.decl_ref { CitationIndexCoverage, OutsideDeclIndexTestWitnessModule, DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import v2.compiler.name_resolve { ResolutionContext }
 import v2.compiler.normalized_tree { NormalizedTree }
 import std.algebra { map_lookup }
@@ -27,7 +27,14 @@ import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, TypeAlias, OpaqueTyp
 //
 // RUNG, stated honestly: construction cannot reach a DeclarationRef literal today -- it is three
 // strings built `as NonEmptyStr` -- so resolution is the earliest decidable refusal on the real
-// acceptance path. The capability that would make it constructive is a resolved symbol literal.
+// acceptance path. dissolve-on: substrate construction refuses unresolvable DeclarationRef literals
+// at definition sites (the capability: a resolved symbol literal); this module remains the runtime
+// resolution authority until then.
+//
+// A TEST WITNESS MODULE IS DELIBERATELY OUTSIDE THE INDEX (std.decl_ref CitationIndexCoverage;
+// gunbc.ci.ci_layer_roots records the exclusion). A reference into `test.` / `v2.test.` whose module
+// the ingest did not read lands in DeclarationRefOutsideIndex: counted, never resolved by default and
+// never dropped.
 
 type DeclarationIdentity {
   qualified_name: String
@@ -39,6 +46,12 @@ type DeclarationRefResolution
   | DeclarationRefModuleAbsent { reference: DeclarationRef }
   | DeclarationRefDeclarationAbsent { reference: DeclarationRef }
   | DeclarationRefFieldAbsent { reference: DeclarationRef }
+  | DeclarationRefOutsideIndex { reference: DeclarationRef, coverage: CitationIndexCoverage }
+
+fn declaration_ref_module_outside_index(ref: DeclarationRef) -> Bool {
+  let path = ref.module_path as String
+  path.starts_with(prefix: "test.") || path.starts_with(prefix: "v2.test.")
+}
 
 fn declaration_ref_module_qualified_name(ref: DeclarationRef) -> QualifiedName {
   qualified_name_from_dotted_string(dotted: ref.module_path as String)
@@ -78,7 +91,12 @@ fn resolve_declaration_ref(
 ) -> DeclarationRefResolution {
   let module_qn = declaration_ref_module_qualified_name(ref: ref)
   match map_lookup(m: context.roots.by_name, key: module_qn) {
-    Absent => DeclarationRefModuleAbsent { reference: ref }
+    Absent =>
+      if declaration_ref_module_outside_index(ref: ref) {
+        DeclarationRefOutsideIndex { reference: ref, coverage: OutsideDeclIndexTestWitnessModule }
+      } else {
+        DeclarationRefModuleAbsent { reference: ref }
+      }
     Present { value: _ } =>
       match symbol_index_entry_at(
         index: context.symbol_index,
@@ -110,6 +128,7 @@ fn declaration_ref_resolution_is_resolved(resolution: DeclarationRefResolution) 
     DeclarationRefModuleAbsent { reference: _ } => false
     DeclarationRefDeclarationAbsent { reference: _ } => false
     DeclarationRefFieldAbsent { reference: _ } => false
+    DeclarationRefOutsideIndex { reference: _, coverage: _ } => false
   }
 }
 
@@ -121,6 +140,7 @@ fn declaration_ref_resolution_arm_key(resolution: DeclarationRefResolution) -> S
     DeclarationRefModuleAbsent { reference: _ } => "module-absent"
     DeclarationRefDeclarationAbsent { reference: _ } => "declaration-absent"
     DeclarationRefFieldAbsent { reference: _ } => "field-absent"
+    DeclarationRefOutsideIndex { reference: _, coverage: _ } => "outside-index"
   }
 }
 
@@ -137,13 +157,15 @@ type DeclarationRefResolutionCensus {
   module_absent_count: Int
   declaration_absent_count: Int
   field_absent_count: Int
+  outside_index_count: Int
 }
 
 data empty_declaration_ref_resolution_census: DeclarationRefResolutionCensus = DeclarationRefResolutionCensus {
   resolved_count: 0,
   module_absent_count: 0,
   declaration_absent_count: 0,
-  field_absent_count: 0
+  field_absent_count: 0,
+  outside_index_count: 0
 }
 
 fn declaration_ref_census_absorb(
@@ -156,28 +178,40 @@ fn declaration_ref_census_absorb(
         resolved_count: acc.resolved_count + 1,
         module_absent_count: acc.module_absent_count,
         declaration_absent_count: acc.declaration_absent_count,
-        field_absent_count: acc.field_absent_count
+        field_absent_count: acc.field_absent_count,
+        outside_index_count: acc.outside_index_count
       }
     DeclarationRefModuleAbsent { reference: _ } =>
       DeclarationRefResolutionCensus {
         resolved_count: acc.resolved_count,
         module_absent_count: acc.module_absent_count + 1,
         declaration_absent_count: acc.declaration_absent_count,
-        field_absent_count: acc.field_absent_count
+        field_absent_count: acc.field_absent_count,
+        outside_index_count: acc.outside_index_count
       }
     DeclarationRefDeclarationAbsent { reference: _ } =>
       DeclarationRefResolutionCensus {
         resolved_count: acc.resolved_count,
         module_absent_count: acc.module_absent_count,
         declaration_absent_count: acc.declaration_absent_count + 1,
-        field_absent_count: acc.field_absent_count
+        field_absent_count: acc.field_absent_count,
+        outside_index_count: acc.outside_index_count
       }
     DeclarationRefFieldAbsent { reference: _ } =>
       DeclarationRefResolutionCensus {
         resolved_count: acc.resolved_count,
         module_absent_count: acc.module_absent_count,
         declaration_absent_count: acc.declaration_absent_count,
-        field_absent_count: acc.field_absent_count + 1
+        field_absent_count: acc.field_absent_count + 1,
+        outside_index_count: acc.outside_index_count
+      }
+    DeclarationRefOutsideIndex { reference: _, coverage: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count,
+        module_absent_count: acc.module_absent_count,
+        declaration_absent_count: acc.declaration_absent_count,
+        field_absent_count: acc.field_absent_count,
+        outside_index_count: acc.outside_index_count + 1
       }
   }
 }
