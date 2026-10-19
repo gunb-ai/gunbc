@@ -1785,8 +1785,52 @@ fn known_red_expectation_name(e: ClaimExpectation) -> String {
 
 // THE VERDICT: green only when the run is honest. Held reds are the EXPECTED output of a true
 // derivation — the list itself — so they do not refuse; a refusal is the run failing to be evidence.
+// Derived from the classifier, never a second test on `refusals`: two predicates over the same list
+// can disagree, and the disagreement would be exactly the bug this review is about (a run reported
+// as one thing while it is another).
 fn known_red_is_green(d: KnownRedDerivation) -> Bool {
-  length(xs: d.refusals) == 0
+  known_red_exit_code_of_all(refusals: d.refusals) == 0
+}
+
+// The exit code is the run's OBSERVATION STATUS, not a pass/fail bit: DESIGN §"Building & checks"
+// and README both state "Exit 0 means the observation held, 1 that it did not, 2 that there was no
+// observation". Two refusals mean completely different things and must not share a code. A run that
+// never executed its subjects, or executed them and cannot trust what came back, observed NOTHING --
+// that is 2, the same code an unknown label refuses with. A run that did observe the claims and found
+// the list wrong observed something true: that is 1.
+//
+// This match names every arm of `KnownRedDerivationRefusal` and has NO wildcard, so adding a refusal
+// is a compile error until someone decides which class it belongs to. A default arm here would be the
+// fabricated `else: 1` this function exists to remove.
+fn known_red_exit_code_of(r: KnownRedDerivationRefusal) -> Int {
+  match r {
+    // ── no observation (2): nothing was executed, or what came back cannot be trusted as an observation ──
+    LocalRepoWetExecutorNotInvoked { scheduled: _ } => 2
+    WitnessBinRefusedToBuild { cause: _ } => 2
+    HeadCommitUnreadable => 2
+    ReconciliationIncomplete { report: _ } => 2
+    DispatchedPopulationNotComplete { missing: _ } => 2
+    ChildExitedNonzeroWithoutVerdicts { children: _ } => 2
+    VerdictIdentityAmbiguous { names: _ } => 2
+    SubjectDefectsCarried { defects: _ } => 2
+    // ── observed defect (1): the claims ran, the verdicts were read, and the list is wrong ──
+    StaleEnrolmentNowPassing { identities: _ } => 1
+    UnaccountedRedWithoutEnrolment { identities: _ } => 1
+  }
+}
+
+// One run, one exit code, and the WEAKEST observation decides it. If any part of the run failed to
+// be evidence, the run as a whole observed nothing: it must not report the milder "did not hold"
+// while part of it never ran. So a single no-observation refusal out-ranks any number of observed
+// defects, and any refusal at all out-ranks a held observation.
+fn known_red_exit_code_of_all(refusals: List<KnownRedDerivationRefusal>) -> Int {
+  if length(xs: filter(xs: refusals, predicate: fn(r) { known_red_exit_code_of(r: r) == 2 })) > 0 {
+    2
+  } else if length(xs: refusals) > 0 {
+    1
+  } else {
+    0
+  }
 }
 
 // ───────────────────────────── the CLI producer (`gunbc test known-red-derivation`) ─────────────────────────────
@@ -1800,7 +1844,7 @@ fn known_red_derivation_exit() -> CliWireResponse {
     Absent =>
       CliWirePrintable {
         bytes: "known-red derivation: git.Inspect.HeadCommit returned no 40-char head; refusing to print a receipt without a commit\n",
-        exit: ExitFailure { code: 1, reason: "known-red-derivation: head unreadable" }
+        exit: ExitFailure { code: 2, reason: "known-red-derivation: NO OBSERVATION — head unreadable, so no receipt names a commit" }
       }
     Present { value: head } => {
       let subjects = known_red_subjects()
@@ -1810,15 +1854,31 @@ fn known_red_derivation_exit() -> CliWireResponse {
       )
       let derived = known_red_fold(head: head, subjects: subjects, children: children)
       let bytes = known_red_report(d: derived)
-      if known_red_is_green(d: derived) {
+      let code = known_red_exit_code_of_all(refusals: derived.refusals)
+      if code == 0 {
         CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+      } else if code == 2 {
+        // The run is not evidence at all: it never executed its subjects, or what came back could not
+        // be read as verdicts. Report the refusals, and exit 2 so a reader cannot mistake "nothing
+        // observed" for "the list was checked and is wrong".
+        CliWirePrintable {
+          bytes: bytes,
+          exit: ExitFailure {
+            code: 2,
+            reason: concat(
+              "known-red-derivation: NO OBSERVATION — ",
+              join(map(derived.refusals, r => known_red_refusal_name(r: r)), ", ")
+            )
+          }
+        }
       } else {
+        // The claims ran and their verdicts were read; the derived list disagrees with the enrolment.
         CliWirePrintable {
           bytes: bytes,
           exit: ExitFailure {
             code: 1,
             reason: concat(
-              "known-red-derivation: refused — ",
+              "known-red-derivation: observation did not hold — ",
               join(map(derived.refusals, r => known_red_refusal_name(r: r)), ", ")
             )
           }

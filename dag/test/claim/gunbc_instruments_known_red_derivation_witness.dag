@@ -19,6 +19,7 @@ import gunbc.instruments.known_red_derivation {
   known_red_placed_identity_claim, known_red_entry_print, known_red_missing_dispatch,
   known_red_subject_defect_text,
   known_red_is_green, known_red_held_rows, known_red_max_claims_per_child,
+  known_red_exit_code_of, known_red_exit_code_of_all, KnownRedDerivationRefusal,
   known_red_refusal_name, known_red_stale_enrolments, known_red_unaccounted_reds,
   known_red_subjects, known_red_subject_qualified, known_red_report
 }
@@ -788,4 +789,105 @@ fn known_red_segment(segs: List<String>, at: Int) -> String {
     Empty => ""
     Cons { head: h, tail: t } => if at <= 0 { h } else { known_red_segment(segs: t, at: at - 1) }
   }
+}
+
+// ───────────────────────── the exit code is the observation status ─────────────────────────
+
+// THE EXIT CODE SAYS WHETHER THE RUN OBSERVED ANYTHING, not whether the list was nice. The authority
+// (`DESIGN.md` §"Building & checks", repeated in README) is three-valued: "Exit 0 means the observation
+// held, 1 that it did not, 2 that there was no observation". Collapsing those last two is the defect this
+// arm exists for, and the discriminating half is that `known_red_is_green` is FALSE for both of them: a run
+// that never executed its subjects and a run that executed them and found the enrolment wrong look identical
+// to any arm that only asks "was it green". They must differ here, where the code itself is the subject.
+//
+// Both fixtures are folded from the SAME helper the fold is normally given, so nothing about the two cases
+// differs except whether a child ever printed a verdict line.
+test fn nothing_observed_exits_2_where_an_observed_defect_exits_1() -> Bool {
+  let s = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_claim_that_was_never_observed")
+  // NO OBSERVATION: the spawn is gone, so no child printed anything. This is "the run failing to be
+  // evidence" in the module's own words, which the authority spells 2.
+  let blind = known_red_fold(
+    head: "0000000000000000000000000000000000000009",
+    subjects: [s],
+    children: []
+  )
+  // OBSERVED DEFECT: the claim ran, its verdict line was read, and what it said contradicts the roster of
+  // record -- a paid debt still enrolled. That is a real finding, and 1 is its honest code.
+  let e = enrolled_fixture()
+  let sighted = known_red_fold(
+    head: "0000000000000000000000000000000000000009",
+    subjects: [e],
+    children: [child(claims: [claim_of(subject: e)], stdout: pass_verdict(subject: e))]
+  )
+  // Both are refusals, so the green bit cannot tell them apart; the exit codes must.
+  !known_red_is_green(d: blind)
+    && !known_red_is_green(d: sighted)
+    && known_red_exit_code_of_all(refusals: blind.refusals) == 2
+    && known_red_exit_code_of_all(refusals: sighted.refusals) == 1
+    && known_red_exit_code_of_all(refusals: []) == 0
+}
+
+// THE WEAKER OBSERVATION DECIDES THE RUN. A run that found one genuine defect AND had part of itself never
+// execute cannot report itself as merely "did not hold" -- half of it saw nothing. Removing the silent child
+// turns the run into a pure observed defect (1); putting it back must move the code to 2 while the 1-finding
+// is still present. An implementation that reports the FIRST refusal, or the MOST NUMEROUS class, gets this
+// wrong: one no-observation refusal has to out-rank any number of observed ones.
+test fn one_part_of_a_run_failing_to_observe_out_ranks_every_observed_finding() -> Bool {
+  let e = enrolled_fixture()
+  let ghost = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_claim_whose_child_stayed_silent")
+  let both = known_red_fold(
+    head: "0000000000000000000000000000000000000010",
+    subjects: [e, ghost],
+    children: [
+      child(claims: [claim_of(subject: e)], stdout: pass_verdict(subject: e)),
+      silent_child(claims: [claim_run(function: "the_claim_whose_child_stayed_silent")])
+    ]
+  )
+  let only_the_finding = known_red_fold(
+    head: "0000000000000000000000000000000000000010",
+    subjects: [e],
+    children: [child(claims: [claim_of(subject: e)], stdout: pass_verdict(subject: e))]
+  )
+  // the stale enrolment is present in BOTH runs, so the only thing that changed is that part of the run
+  // stopped being evidence
+  known_red_stale_enrolments(rows: both.rows) == known_red_stale_enrolments(rows: only_the_finding.rows)
+    && (known_red_stale_enrolments(rows: both.rows) |> length) == 1
+    && known_red_exit_code_of_all(refusals: only_the_finding.refusals) == 1
+    && known_red_exit_code_of_all(refusals: both.refusals) == 2
+}
+
+// THE CLASSIFICATION IS EXHAUSTIVE AND IT IS NOT A DEFAULT. Every arm of `KnownRedDerivationRefusal` is
+// named here and given its class, so the classifier cannot be an `else: 1` -- and the arm set is the module's
+// own, imported rather than described. Two properties, neither of which a blanket mapping can satisfy:
+// no refusal may map to 0 (a refused run that reports its observation as HELD is the loudest possible lie),
+// and BOTH classes must be populated (collapse them again and one of these two lines goes red).
+test fn every_refusal_is_classified_and_neither_class_is_the_default() -> Bool {
+  let refusals = [
+    LocalRepoWetExecutorNotInvoked { scheduled: 7 },
+    WitnessBinRefusedToBuild { cause: "claim_batch refused to build" },
+    HeadCommitUnreadable,
+    DispatchedPopulationNotComplete { missing: ["test.claim.examples.known_red_fixture.a_claim"] },
+    ChildExitedNonzeroWithoutVerdicts { children: ["claim_batch"] },
+    VerdictIdentityAmbiguous { names: ["the_ambiguous_witness"] },
+    SubjectDefectsCarried { defects: ["entry file absent"] },
+    StaleEnrolmentNowPassing { identities: ["test.claim.examples.known_red_fixture.a_paid_debt"] },
+    UnaccountedRedWithoutEnrolment { identities: ["test.claim.examples.known_red_fixture.an_unaccounted_red"] }
+  ]
+  // `ReconciliationIncomplete` carries the ledger module's own report type, so it is not built by hand here;
+  // the arm above already drives it through the fold (the silent child leaves a planned row with no terminal)
+  // and asserts its class. It is named explicitly below so no arm of the sum is left unclassified.
+  let codes = map(refusals, r => known_red_exit_code_of(r: r))
+  let twos = filter(xs: codes, predicate: fn(c) { c == 2 })
+  let ones = filter(xs: codes, predicate: fn(c) { c == 1 })
+  // nothing is green, nothing is unclassified...
+  (length(xs: filter(xs: codes, predicate: fn(c) { c == 0 })) == 0)
+    && (length(xs: filter(xs: codes, predicate: fn(c) { c != 1 && c != 2 })) == 0)
+    // ...both classes really have members, and the split is exactly the arms above
+    && (length(xs: twos) == 7)
+    && (length(xs: ones) == 2)
+    && known_red_exit_code_of(r: LocalRepoWetExecutorNotInvoked { scheduled: 1 }) == 2
+    && known_red_exit_code_of(r: HeadCommitUnreadable) == 2
+    && known_red_exit_code_of(r: ChildExitedNonzeroWithoutVerdicts { children: ["claim_batch"] }) == 2
+    && known_red_exit_code_of(r: StaleEnrolmentNowPassing { identities: ["x"] }) == 1
+    && known_red_exit_code_of(r: UnaccountedRedWithoutEnrolment { identities: ["x"] }) == 1
 }
