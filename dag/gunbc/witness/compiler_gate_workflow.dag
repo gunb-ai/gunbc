@@ -783,17 +783,15 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
           match compiler_gate_generation_gate_first_failure() {
-            Absent => {
-            match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
-              EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
-              YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.witness.compiler_gate_workflow", path: p, reason: r) }
-            }
-            }
+            Absent =>
+              match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
+                EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
+                YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.witness.compiler_gate_workflow", path: p, reason: r) }
+              }
             Present { value: which } =>
               WitnessFloorGenerationRefused {
                 reason: compiler_gate_capability_refusal_reason + " FIRST FAILING CONJUNCT: " + which
               }
-          }
           }
       }
   }
