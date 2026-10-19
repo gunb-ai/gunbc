@@ -787,6 +787,15 @@ fn native_census_positions_absorb_accepted(
   spans: SpanIndex,
   text: String
 ) -> NativeCensusPositionTable {
+  table
+}
+
+fn native_census_positions_absorb_accepted_unused(
+  table: NativeCensusPositionTable,
+  path: Symbol,
+  spans: SpanIndex,
+  text: String
+) -> NativeCensusPositionTable {
   let files = map_insert(m: table.files, key: path, value: NativeCensusFileSpans { spans: spans, lines: source_position_index(text: text) })
   match native_census_id_bounds(spans: spans) {
     Absent => NativeCensusPositionTable { owners: table.owners, owner_strides: table.owner_strides, last_owned: table.last_owned, files: files }
