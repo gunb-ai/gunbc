@@ -992,4 +992,3 @@ test fn the_configured_installation_carries_both_ids_and_no_readback_can() -> Bo
   // (test.claim.github_deployment_protection_rule_witness's four-field row test). Restating it here
   // would be a second authority over one field list.
 }
-}
