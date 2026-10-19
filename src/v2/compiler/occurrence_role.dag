@@ -15,6 +15,11 @@ import std.occurrence_identity {
   OccurrenceRole,
   OccurrenceSynthetic,
   ReferenceRole,
+  ReferencePosition,
+  ValuePosition,
+  TypeAnnotationPosition,
+  LabelPosition,
+  PatternTagPosition,
   TypeOccurrence
 }
 import v2.compiler.parse { ParseArtifact }
@@ -39,7 +44,7 @@ import v2.std.integer { Int }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, GrammarRoot, node_atom_identity_optional, StampBinding, StampClass, StampLexeme, fold_grammar_expr, parse_production_emitted_identity_optional }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, EdgeLabel, Authored, CoreEdgeLabel, CoreMarker, Positional, ProductionEdge, StructuralLabel }
 import std.optional { Absent, Optional, Present }
 
 // WHICH AUTHORED NAMES DECLARE, AND WHICH NAME SOMETHING THE MODULE SCOPE DOES NOT HOLD (XL-2
@@ -378,6 +383,95 @@ type OccurrenceRoleOutcome
 
 fn occurrence_roles_empty() -> OccurrenceRoles {
   OccurrenceRoles { roles: Empty, not_yet_read: empty_map(), reader_refused: empty_map(), unminted: 0, derived: 0 }
+}
+
+// THE POSITION READER: what the edge a mention hangs off says about where it sits. ONE RULE OVER THE
+// CORE MARKER TABLE (v2.std.node CoreEdgeLabel), because the marker table is the only place the tree
+// records WHY a child hangs where it hangs; a consumer re-deriving this from shapes would be
+// re-deciding it at every call site (DESIGN section 3). MATCHED EXHAUSTIVELY OVER ALL 32 MARKERS, so
+// adding a marker forces this decision to be made rather than defaulting a mention to a value.
+//
+// PRESENT means this edge decides. ABSENT means this edge does NOT decide: the child takes the
+// position the nearest deciding ancestor established, and with no such ancestor an authored atom leaf
+// is a value mention. Absent is a considered answer, not a fallthrough.
+fn position_under_marker(marker: CoreEdgeLabel) -> Optional<ReferencePosition> {
+  match marker {
+    // TYPE POSITIONS: nothing here names a value a frame binds; these are annotations and type
+    // structure. The signature-order edge carries parameter types AND the return type, so a mention
+    // reported `unbound` here -- the specimen's signature mentions -- is the defect this stops.
+    TypeAnnotationEdge => Present { value: TypeAnnotationPosition }
+    BinderTypeEdge => Present { value: TypeAnnotationPosition }
+    TypeBodyEdge => Present { value: TypeAnnotationPosition }
+    TypeAliasEdge => Present { value: TypeAnnotationPosition }
+    TypeParamsEdge => Present { value: TypeAnnotationPosition }
+    CastTargetEdge => Present { value: TypeAnnotationPosition }
+    ArrowSignatureOrderEdge => Present { value: TypeAnnotationPosition }
+    // A PROJECTION'S FIELD LABEL and a CALL'S ARGUMENT LABEL name a member or a parameter slot.
+    FieldProjectionFieldEdge => Present { value: LabelPosition }
+    ParameterReferenceEdge => Present { value: LabelPosition }
+    // A PATTERN TAG may name a payload constructor instead of binding; never a value position. A
+    // pattern hangs under the arm-pattern marker, so both edges name one.
+    ConstructTagEdge => Present { value: PatternTagPosition }
+    ConstructTagElidedEdge => Present { value: PatternTagPosition }
+    MatchArmPatternEdge => Present { value: PatternTagPosition }
+    // VALUE POSITIONS, spelled out rather than left Absent so the reading is auditable.
+    ArrowBodyEdge => Present { value: ValuePosition }
+    MatchArmBodyEdge => Present { value: ValuePosition }
+    LoopDomainEdge => Present { value: ValuePosition }
+    LoopCarrierEdge => Present { value: ValuePosition }
+    FieldProjectionBaseEdge => Present { value: ValuePosition }
+    LexicalReferenceEdge => Present { value: ValuePosition }
+    BodyTermLoweredEdge { seal: _ } => Present { value: ValuePosition }
+    MapLiteralEntryEdge => Present { value: ValuePosition }
+    MapLiteralEntriesEdge => Present { value: ValuePosition }
+    // DOES NOT DECIDE: structure, a claim list whose atoms come from their own production, or a
+    // binder position the PRODUCTION reader already classifies (a binder is keyed by the row table,
+    // and an authored leaf is keyed as a declaration by position_walk below).
+    LoopBoundEdge => Absent
+    LoopRealizedDeclarationEdge => Absent
+    DeclarationReferenceEdge => Absent
+    ArrowEffectClaimsEdge => Absent
+    ArrowExecutionModeClaimEdge => Absent
+    ArrowResourceRequirementsEdge => Absent
+    AdmitCallersEdge => Absent
+    BinderStructureEdge => Absent
+    BinderDefaultEdge => Absent
+    MatchArmScopeExitEdge => Absent
+    ConstantMemberEdge => Absent
+  }
+}
+
+// THE POSITION OF A MENTION, read from the edge chain the collector already records for the site.
+// ONE FOLD, linear in the path length; the NEAREST deciding edge wins, and with no deciding edge
+// above it a mention is a value mention. Nothing here reads a node's SHAPE, and no consumer re-derives
+// any of it -- this is the only place a position is issued.
+//
+// ONLY THE CORE MARKERS DECIDE, because the marker table is where the tree records WHY a child hangs
+// where it hangs. An AUTHORED or production or positional edge does not decide, and deliberately so:
+// an authored edge names the SPOT (a declaration, a binder, a parameter slot, a field label), not what
+// hangs below it -- the `s` above the `x` of `chars(s: x)` names the parameter slot while `x` is a
+// value mention, and the `x` above a `let`'s own value names the binder while that value is still a
+// mention the binder must not bind. Inferring a position from an authored name would re-decide the
+// declaration/reference question by spelling, which is the defect class this closes.
+//
+// A mention a lowering MOVED (OccurrenceProjected { id, caused_by }) takes its position from where it
+// hangs now, which is where its consumer reads it: a signature mention projected beside its binder
+// hangs under the signature-order marker and is read as the type mention it is, never as a free name.
+// Its IDENTITY still belongs to its authored cause (measured: id equals caused_by on every projected
+// atom of the specimen), so nothing is duplicated -- position from the edge, identity from the cause.
+fn reference_position_of(position: List<EdgeLabel>) -> ReferencePosition {
+  fold(xs: position, init: ValuePosition, f: fn(inherited, label) {
+    match label {
+      StructuralLabel { label: CoreMarker { marker: m } } =>
+        match position_under_marker(marker: m) {
+          Present { value: p } => p
+          Absent => inherited
+        }
+      Authored { name: _ } => inherited
+      StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => inherited
+      Positional => inherited
+    }
+  })
 }
 
 fn count_symbol(m: Map<Symbol, Int>, key: Symbol) -> Map<Symbol, Int> {

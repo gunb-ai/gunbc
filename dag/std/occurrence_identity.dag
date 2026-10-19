@@ -135,6 +135,36 @@ type OccurrenceRole
   = DeclarationRole
   | ReferenceRole
 
+// WHERE AN AUTHORED NAME SITS, relative to the positions that can hold a value. ORTHOGONAL TO
+// OccurrenceCategory, which says WHAT a name denotes (a type, a callable, a field): the same name
+// occurrently denoting one kind can sit at a value position in one mention and at a binder-type
+// position in another, and a consumer that has to ask "could a value frame bind this mention?" must
+// ask the position, never the denotation. That is why this is its own coproduct and not a member of
+// OccurrenceCategory: adding a position there would force the two substrate laws below --
+// occurrence_category_module_scope_exposure_verdict and
+// occurrence_category_clause_e_dependency_inducing_verdict -- to rule on whether a BINDER TYPE is a
+// module-scope member, which is a category error legislated to make room for a feature.
+//
+// ValuePosition is the only variant a value frame can bind. Every other variant is a position where
+// no value frame is consulted, so a consumer must not report a failure to bind there as an unbound
+// name. ONE RULE FOR EVERY NON-VALUE POSITION (DESIGN 6b): they are all "not a value position", and
+// the split among them is informational, never a second classification.
+//
+// MINTED FROM THE EDGES THAT ACTUALLY OCCUR IN THE TREE: each variant below is issued by a named
+// core marker of v2.std.node's CoreEdgeLabel table (v2.compiler.occurrence_role
+// position_under_marker is the sole issuer). A variant no marker can issue would be a second name
+// for an unreachable distinction, so it is not minted -- and no fifth variant is. A DECLARING
+// occurrence (a declaration name, a binder name) is not a position either and is not represented
+// here at all: the collector emits sites for MENTIONS, and the binder row that started this defect
+// is reached as the mention its position path records (the ArrowSignatureOrder child of the
+// declaration), which TypeAnnotationPosition already answers. An "is this a declaration?" flag
+// would be a second authority over the same fact as OccurrenceCategory's Binder/Reference roles.
+type ReferencePosition
+  = ValuePosition
+  | TypeAnnotationPosition
+  | LabelPosition
+  | PatternTagPosition
+
 type OccurrenceProjection {
   occurrence: OccurrenceId
   authored_name: String

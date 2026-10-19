@@ -763,6 +763,14 @@ fn roster_head_is_free(head: SiteHeadBinding, imported_from_home: Bool) -> Bool 
     HeadBindingUndecided => imported_from_home
     HeadBoundAtRootValue => false
     HeadBoundInFrame => false
+    // THE DEFECT #14338 GUARDS AGAINST, GONE AT ITS ROOT. A head that sits at a type annotation, a
+    // label or a pattern tag -- or that IS the spelling of a declaration or binder -- is not a free
+    // name, so it never counts toward a needed import and never enters the label plan. It is read
+    // from the position authority (v2.compiler.occurrence_role reference_position_of) over the site's
+    // own recorded position, not from a second name scan here: roster_name_locally_bound below exists
+    // precisely because this classifier had no way to say "the question does not apply", and once that
+    // guard is verified redundant on this classifier it retires (its own follow-up PR).
+    HeadNotAValuePosition => false
   }
 }
 

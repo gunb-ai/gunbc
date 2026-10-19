@@ -12,6 +12,7 @@ import v2.compiler.reference_site_collector {
   HeadBoundAtRootValue,
   HeadBoundInFrame,
   HeadLexicallyUnbound,
+  HeadNotAValuePosition,
   ScopedReferenceSite,
   SiteHeadBinding,
   collect_module_reference_sites,
@@ -21,7 +22,7 @@ import v2.compiler.reference_site_collector {
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
-import std.algebra { list_head, list_map }
+import std.algebra { fold_list, list_head, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -64,6 +65,7 @@ fn scope_env(prepared: PreparedGrammar) -> AcquisitionEnv {
 
 fn head_text(head: SiteHeadBinding) -> String {
   match head {
+    HeadNotAValuePosition => "notvalue"
     HeadBoundInFrame => "frame"
     HeadBoundAtRootValue => "root"
     HeadBindingUndecided => "undecided"
@@ -94,10 +96,43 @@ test fn a_parameter_is_bound_in_the_body() -> Bool {
   head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  x.y\n}\n", spelling: "x.y") == "frame"
 }
 
-// The unbound edge of the pair: the same spelling in a sibling parameter's type, where the type scope holds
-// no value binder.
+// #14338's specimen, pinned where the classifier decides, site by SITE rather than first-site: the subject
+// spells `chars` twice (its own binder, then the call) and `x` twice, and `head_of_site` reads only the head
+// of the first match, which for `chars` is the signature row -- a non-value position. Both readings are
+// pinned here because the defect and its neighbour sit on either side of that distinction: the CALL head is a
+// value mention a parameter binds (frame), while the signature row is a binder spelling (notvalue, never the
+// free name #14338's sweep believed). Reverting the gate sends the signature rows to `unbound`, which is the
+// red the sweep acted on.
+fn specimen_sites(spelling: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_front_end(env: scope_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: "module v2.test.subject\n\nfn u(chars: fn(String) -> Int, x: String) -> Int {\n  chars(s: x)\n}\n") {
+        Rejected { diagnostics: _ } => "front-end-refused"
+        Accepted { value: front, diagnostics: _ } =>
+          fold_list(
+            xs: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })).sites
+              |> filter(fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) == spelling }),
+            empty: "",
+            cons: fn(acc, s) { acc + head_text(head: s.head) + "," }
+          )
+      }
+  }
+}
+
+test fn the_called_parameter_head_at_the_call_is_bound_in_the_frame() -> Bool {
+  (specimen_sites(spelling: "chars") == "notvalue,frame," || specimen_sites(spelling: "chars") == "frame,notvalue,")
+    && (specimen_sites(spelling: "x") == "notvalue,frame," || specimen_sites(spelling: "x") == "frame,notvalue,")
+}
+
+// The non-value edge of the pair: the same spelling in a sibling parameter's type. It was asserted `unbound`
+// -- "a free name" -- which is what made the roster sweep propose an import for a name the module already
+// declares (gunb-ai/gunbc#14338). The head sits at a BINDER TYPE, which no value binder can ever own, so the
+// position authority says the free-name question does not apply. Unbound stays reserved for a head that COULD
+// name a value and does not (a_head_nothing_binds_is_unbound); acquisition still requests this module (see
+// module_acquisition's a_binder_type_head_still_requests_its_module).
 test fn a_parameter_is_not_bound_in_a_sibling_parameter_type() -> Bool {
-  head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n", spelling: "x.T") == "unbound"
+  head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n", spelling: "x.T") == "notvalue"
 }
 
 // ---- Bind ----------------------------------------------------------------------------------------------
@@ -110,10 +145,12 @@ test fn a_let_binder_is_not_bound_in_its_own_value() -> Bool {
   head_of_site(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = x.y\n  x\n}\n", spelling: "x.y") == "unbound"
 }
 
-// A type annotation is resolved in the type scope, which holds no value binder, so a parameter does not bind
-// the head of an annotation that mentions the same name.
+// A type annotation is resolved in the type scope, which holds no value binder -- so the correct fact is not
+// "free name" (the old assertion, which #14338's roster sweep obeyed and then imported a nonexistent module)
+// but "not a value position". Same rule as the sibling-parameter pair above: one rule for every non-value
+// position. What the annotation asks the binder to be is still refused: type_binder d_x_annotation_not_a_value.
 test fn a_type_annotation_sees_no_value_binder() -> Bool {
-  head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let y: x.T = true\n  y\n}\n", spelling: "x.T") == "unbound"
+  head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let y: x.T = true\n  y\n}\n", spelling: "x.T") == "notvalue"
 }
 
 // Frames compose: an enclosing parameter stays visible through a nested `let`.
