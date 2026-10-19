@@ -1076,6 +1076,7 @@ fn reset_write_admitted_after_ledger(
         NeverMeasuredOnThisController { observed: _ } => true
         CatalogAmbiguousForThisController { observed: _, matched: _ } => true
         ReleaseKeyUnresolvableInCatalog { firmware: _, observed: _ } => true
+        RowFiledUnderTheWrongReading { row: _, observed: _ } => true
       } {
         ResetWriteRefused {
           cause: recovery_reset_warrant_refusal_text(
@@ -2531,7 +2532,11 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
     })
     // and the hand-off refuses such a carrier too, whether the parse produced it or a caller did
     && (match recovery_readback_proves_reset(
-      readback: ReadbackInconclusive { detail: "response body was truncated before the message" },
+      readback: ReadbackInconclusive {
+        detail: "response body was truncated before the message",
+        evidence: recovery_post_reset_readback_capture_ref,
+        observed_at: recovery_post_reset_instant(),
+      },
     ) {
       Absent => true
       Present { value: _ } => false
@@ -2564,18 +2569,23 @@ test fn the_write_policy_is_a_function_of_the_controller_and_refuses_every_unmea
     ControllerNeverMeasured { observed: _ } => false
     CatalogIndexesDisagree { firmware: _, observed: _ } => false
     CatalogAmbiguousForController { observed: _, matched: _ } => false
+    // A row that refused its own filing is a catalog DEFECT, so it is not the controller's fault and
+    // it is not a pass either: the sighting under test here is about the other four arms.
+    RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
   })
     && (match unmeasured_release {
       ControllerNeverMeasured { observed: o } => o.firmware_revision_major == 3 && o.firmware_revision_minor == 6
       RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
       CatalogIndexesDisagree { firmware: _, observed: _ } => false
       CatalogAmbiguousForController { observed: _, matched: _ } => false
+      RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
     })
     && (match other_vendor {
       ControllerNeverMeasured { observed: o } => o.manufacturer_id == 41832 && o.product_id == 8245
       RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
       CatalogIndexesDisagree { firmware: _, observed: _ } => false
       CatalogAmbiguousForController { observed: _, matched: _ } => false
+      RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
     })
 }
 
@@ -2595,6 +2605,7 @@ test fn a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset() 
   match standing.outcome {
     RecoveryControllerPolicyUnavailable { sighting: sighting } =>
       match sighting {
+        RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
         ControllerNeverMeasured { observed: o } =>
           o.firmware_revision_major == 3 && o.firmware_revision_minor == 6
             && match standing.outcome {
@@ -2670,6 +2681,9 @@ test fn the_sighting_carries_both_readings_so_a_refusal_is_locatable() -> Bool {
     ControllerNeverMeasured { observed: _ } => false
     CatalogAmbiguousForController { observed: _, matched: _ } => false
     CatalogIndexesDisagree { firmware: _, observed: _ } => false
+    // The disagreement arm is exercised by its own claim, not this one; here the sighting under test is
+    // the refusal, and any other arm makes the two readings unlocatable.
+    RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
   }
 }
 
@@ -2684,7 +2698,11 @@ test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
     route: route,
     in_band_write: recovery_in_band_write_record(),
     reset_write: recovery_reset_write_record(),
-    readback: ReadbackInconclusive { detail: "no body was saved" },
+    readback: ReadbackInconclusive {
+      detail: "no body was saved",
+      evidence: recovery_post_reset_readback_capture_ref,
+      observed_at: recovery_post_reset_instant(),
+    },
     in_band_admission: recovery_admitted_in_band_write(),
     reset_admission: recovery_admitted_reset_write(),
   )
@@ -2723,11 +2741,19 @@ test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
     // gunbc.recurring_failure_mode.optional_equality_answers_by_representation
     && (match recovery_route_unavailability(standing: without_readback) {
          Present { value: RecoveryReadbackDoesNotConfirmReset { readback: rb } } =>
-           // the answer that arrived is the one the fold refused on, and it says so by its own predicate
-           match rb.proven {
+           // the answer that arrived is the one the fold refused on: it proves nothing, by the same
+           // predicate the fold asked, and it is the no-body answer this run supplied
+           (match recovery_readback_proves_reset(readback: rb) {
              Absent => true
              Present { value: _ } => false
-           }
+           })
+             && (match rb {
+               ReadbackInconclusive { detail: d, evidence: e, observed_at: _ } =>
+                 string_contains(s: d as String, pattern: "no body was saved")
+                   && e == recovery_post_reset_readback_capture_ref
+               FactoryCredentialActiveAwaitingChange { message_id: _, evidence: _, observed_at: _ } => false
+               CredentialNotAccepted { evidence: _, observed_at: _ } => false
+             })
          Present { value: _ } => false
          none => false
        })

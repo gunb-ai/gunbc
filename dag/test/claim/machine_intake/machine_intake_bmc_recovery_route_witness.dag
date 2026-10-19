@@ -30,6 +30,17 @@ import gunbc.auth.authorization_pattern_selection {
   PatternSelected, OperatorApprovedCapability, ReversibleByReapply, IrreversibleEffect, MintsNoCredential, MintsResourceScopedCredential,
 }
 import std.decl_ref { declaration_ref_display_key }
+import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
+import std.roster_frontier {
+  DeclSubject, FrontierRow, PathSubject,
+}
+import gunbc.auth.privileged_effect_census {
+  PrivilegedEffectInterlock, privileged_effect_interlocks,
+}
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.machine_intake.bmc_recovery_route_frontier {
+  bmc_recovery_route_consumer_frontier_rows, bmc_recovery_route_pairing_frontier_rows,
+}
 import extdeps.ssh.known_hosts { openssh_standard_port }
 import v2.std.decl_index { DeclFact, decl_facts }
 import gunbc.machine_intake.bmc_recovery_route {
@@ -194,6 +205,10 @@ test fn a_duplicated_catalog_reports_ambiguity_and_never_blames_the_measurement(
     ControllerNeverMeasured { observed: _ } => false
     RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
     CatalogIndexesDisagree { firmware: _, observed: _ } => false
+    // A row that refused its own filing is neither of the answers this arm-set is about.
+    RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
+    // A row that refused its own filing is neither of the two answers this claim is about.
+    RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
   })
   // ZERO rows is still the other failure, and stays the other failure
   && (match asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
@@ -204,6 +219,8 @@ test fn a_duplicated_catalog_reports_ambiguity_and_never_blames_the_measurement(
     CatalogAmbiguousForController { observed: _, matched: _ } => false
     RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
     CatalogIndexesDisagree { firmware: _, observed: _ } => false
+    // A row that refused its own filing is neither of the answers this arm-set is about.
+    RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
   })
   // and the filed catalog, which holds ONE row, still lands on the measured refusal: the two arms above
   // did not become the only reachable answers
@@ -215,6 +232,8 @@ test fn a_duplicated_catalog_reports_ambiguity_and_never_blames_the_measurement(
     ControllerNeverMeasured { observed: _ } => false
     CatalogAmbiguousForController { observed: _, matched: _ } => false
     CatalogIndexesDisagree { firmware: _, observed: _ } => false
+    // A row that refused its own filing is neither of the answers this arm-set is about.
+    RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
   })
 }
 
@@ -631,4 +650,105 @@ test fn each_recovery_refusal_carries_its_own_next_action() -> Bool {
       && measure != readback
       && filing != readback
   )
+}
+
+
+// THE TWO ABSENCES ARE ROSTERED, AND THE ROSTER IS WHAT MAKES THEM VISIBLE (side-chat HOLD blocker 4,
+// review 82424). The route's missing production consumer and the missing hold-owning pairing used to be
+// stated only in `//` text, which DESIGN section 3c does not accept as a classification and section 4c
+// does not accept as evidence. They are rows now, and a row differs from a comment in one way that
+// matters: it is read by a fold, so it can turn red.
+
+// Is this row's trigger a declaration the live tree's own census does NOT declare? The population is
+// recovery_live_decl_facts -- what the compiler found under dag/gunbc/machine_intake -- so "pending" is
+// answered by the tree, not by this file's belief about it. An UnboundDissolution is never pending: it is
+// a description, nothing can discharge it, and that is the shape these rows were written to avoid.
+fn recovery_frontier_pending(row: FrontierRow) -> Bool {
+  match row.dissolution {
+    BoundDissolution { trigger: t } =>
+      !any(xs: recovery_live_decl_facts, predicate: fn(d) {
+        d.qualified_name
+          == concat(
+            dissolution_trigger_ref(trigger: t).module_path as String,
+            concat(".", dissolution_trigger_ref(trigger: t).decl_name as String),
+          )
+      })
+    UnboundDissolution { description: _ } => false
+  }
+}
+
+// Does the row's SUBJECT point at a declaration the tree really has? An obligation written against a
+// function nobody wrote is the same absence wearing a carrier.
+fn recovery_frontier_subject_declared(row: FrontierRow) -> Bool {
+  match row.subject {
+    DeclSubject { ref: r } =>
+      any(xs: recovery_live_decl_facts, predicate: fn(d) {
+        d.qualified_name == concat(r.module_path as String, concat(".", r.decl_name as String))
+      })
+    PathSubject { path: _ } => false
+  }
+}
+
+fn recovery_frontier_enrolled(row: FrontierRow) -> Bool {
+  any(xs: census_closure_frontier_rows(), predicate: fn(c) { c == row })
+}
+
+fn recovery_frontier_trigger_module(row: FrontierRow) -> String {
+  match row.dissolution {
+    BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t).module_path as String
+    UnboundDissolution { description: _ } => ""
+  }
+}
+
+// Each group yields EXACTLY ONE row (a silently-dropped row is the failure mode of a list); each is
+// enrolled in gunbc.census_closure_frontier.census_closure_frontier_rows, the roster the dissolution
+// census folds -- a row nobody concatenates is the same absence in a new file; each is pending against
+// the census's own declaration population; and each subject is a declaration the tree has.
+test fn the_two_recovery_absences_are_rostered_as_pending_frontiers() -> Bool {
+  let consumer = bmc_recovery_route_consumer_frontier_rows()
+  let pairing = bmc_recovery_route_pairing_frontier_rows()
+  list_length(items: consumer) == 1
+    && list_length(items: pairing) == 1
+    && any(xs: consumer, predicate: fn(row) {
+         recovery_frontier_enrolled(row: row)
+           && recovery_frontier_pending(row: row)
+           && recovery_frontier_subject_declared(row: row)
+           // the named consumer is a future arrival entry, in the module that owns arrivals
+           && recovery_frontier_trigger_module(row: row) == "gunbc.machine_intake.arrival_converge"
+       })
+    && any(xs: pairing, predicate: fn(row) {
+         recovery_frontier_enrolled(row: row)
+           && recovery_frontier_pending(row: row)
+           && recovery_frontier_subject_declared(row: row)
+       })
+}
+
+fn recovery_reset_interlock() -> PrivilegedEffectInterlock? {
+  filter(
+    privileged_effect_interlocks,
+    i => declaration_ref_display_key(ref: i.site)
+      == "gunbc.machine_intake.bmc_recovery_route::admit_recovery_manager_reset_to_defaults",
+  )
+    |> first()
+}
+
+// THE CENSUS NO LONGER CLAIMS A HOLD-OWNING ROOT THE FOLD DOES NOT ACQUIRE. The reset interlock used to
+// roster converge_in_band_recovery as acquiring the unit's durable hold at unit_hold_acquire. It does
+// not: the fold receives both write admissions as parameters and calls neither the store's acquire nor
+// either gate, so the roster attested to a pairing no code performs -- DESIGN section 4c again, a status
+// in a carrier the fold never reads. The honest state is an EMPTY roster plus the obligation row, which
+// is what this asserts: no root, the hold the premise is about still named, and the pairing frontier
+// present in the same roster. A change that fills the roster without deleting the row keeps this green
+// and takes its red from the frontier's own fold -- the arrangement working, not failing.
+test fn the_reset_interlock_rosters_no_root_the_fold_cannot_show() -> Bool {
+  match recovery_reset_interlock() {
+    Absent => false
+    Present { value: i } =>
+      list_length(items: i.hold_owning_roots) == 0
+        && (match i.hold {
+             Absent => false
+             Present { value: h } => (h.decl_name as String) == "UnitHoldProof"
+           })
+        && list_length(items: bmc_recovery_route_pairing_frontier_rows()) == 1
+  }
 }

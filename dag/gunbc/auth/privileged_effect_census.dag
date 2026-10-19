@@ -563,18 +563,8 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
     site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
     hold: privileged_effect_interlock_hold(interlock: recovery_reset_operator_ruling.interlock),
     refusal: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
-    premise: "the recovery run takes the unit's one durable exclusive hold before the reset is actuated and refuses with the store's own words naming whoever else holds it; the gate additionally refuses unless the proof names the SAME unit as the recovery subject, so a ResetAll cannot be actuated on a chassis another run is driving" as NonEmptyStr,
-    hold_owning_roots: [
-      InterlockRoot {
-        root: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "converge_in_band_recovery"),
-        acquires_at: site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
-        operations: ["Redfish Manager.ResetToDefaults ResetAll" as NonEmptyStr, "in-band Set User Password on the recovery account" as NonEmptyStr],
-        sealed_by: [
-          site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
-          site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_in_band_password_write"),
-        ],
-      },
-    ],
+    premise: "WHEN A ROOT EXISTS IT MUST ACQUIRE THE HOLD BEFORE EITHER WRITE. The two admission gates refuse unless the UnitHoldProof they are handed names the SAME unit as the recovery subject, so a ResetAll cannot be actuated on a chassis another run is driving. No production root is rostered, because none exists yet: converge_in_band_recovery receives both admissions as PARAMETERS and calls neither gunbc.host.managed_host_unit_hold's acquire nor either admission, so rostering it as a hold-owning root would be the census attesting to a pairing the code does not perform. The obligation is rostered as a frontier row -- gunbc.machine_intake.bmc_recovery_route_frontier's bmc_recovery_route_pairing_frontier_rows, whose bound trigger is the fold that pairs subject, hold proof and admission -- and the roster is filled in when that fold lands. This follows the runner_qualification_dispatch precedent, which rostered an empty root list for the same reason and named its owed root in the premise" as NonEmptyStr,
+    hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),

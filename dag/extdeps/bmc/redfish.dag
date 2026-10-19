@@ -215,7 +215,7 @@ fn redfish_extended_info_message_id(holder: JsonValue) -> RedfishExtendedInfoSca
             }
           }) {
             Present { value: found } => RedfishExtendedInfoNamesTheMessage { message_id: found }
-            Absent => RedfishExtendedInfoHoldsNothing { scanned: list_length(elements: elements) }
+            Absent => RedfishExtendedInfoHoldsNothing { scanned: list_length(items: elements) }
           }
         JsonNull => RedfishExtendedInfoHoldsNothing { scanned: 0 }
         JsonBool { value: _ } => RedfishExtendedInfoUnreadable { cause: "the annotation is a boolean, not the array the registry publishes" }
