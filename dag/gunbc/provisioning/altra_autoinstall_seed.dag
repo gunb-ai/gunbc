@@ -14,7 +14,10 @@ module gunbc.provisioning.altra_autoinstall_seed
 //     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness (98 test fns at the
 //     time of writing, run by gunbc --claim-run; if that number and this sentence ever disagree, the module has
 //     grown a rule nothing exercises). Nothing here is exercised only by its own module.
-//   * DECLARED FRONTIER, NAMED: AltraAutoinstallSeedBinding is consumed by cut 6 step 3 (the install-attempt
+//   * CONSUMED IN A NAMED SIBLING CUT: gunbc.provisioning.provisioning_arm (cut 6, S5, gunb-ai/gunbc#14378)
+//     imports AltraAutoinstallSeedBinding, so the binding record is not waiting on its own — it already has a
+//     production importer on that branch, which is the answer to "a module nothing imports".
+//   * DECLARED FRONTIER, NAMED: AltraAutoinstallSeedBinding is also consumed by cut 6 step 3 (the install-attempt
 //     record), which needs the digest of the seed a board booted and nothing else from this module. The
 //     projection into extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload is consumed by cut 6 step 4, where
 //     a seed becomes bytes an installer can fetch; until that step lands, project_autoinstall_identity and
