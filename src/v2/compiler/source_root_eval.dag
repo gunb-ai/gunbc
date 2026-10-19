@@ -629,6 +629,17 @@ fn native_infer_advisory_count_for(frontier: NativeInferAcceptedFrontier, reason
 // (`gunbc.compiler_frontend_program_status`) joins this route's refusals "to occurrence identity
 // where an id is minted", which is an occurrence-keyed join over a key that was not unique in the
 // scope it was joined across -- a silent wrong answer rather than a missing one (DESIGN section 5).
+// WHETHER ANYTHING DOWNSTREAM OF THIS FOLD WILL LOCATE A FATAL IN AN ACCEPTED FILE. The position
+// table (NativeCensusPositionTable) exists only to answer native_census_locate for a resolve or
+// infer fatal, and it holds a span index and a line index for EVERY accepted file until the verb
+// ends -- measured as the dominant share of the front-end census's peak resident memory at the
+// whole-tree grain (gunbc test //gunbc/instruments:native-process-memory-census). A verb that never
+// locates has no reuse obligation (DESIGN section 2), so it builds no table: the demand is a
+// declared property of the verb that opens the fold, read here by construction, not a runtime guard.
+type NativeLocateDemand
+  = NativeLocatesFatals
+  | NativeNeverLocates
+
 type NativeTestContextFoldState {
   roots: FreeMonoid<NormalizedTree>
   index: SourceRootIndex
@@ -636,6 +647,7 @@ type NativeTestContextFoldState {
   accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
   alloc: OccurrenceIdAllocator
   positions: NativeCensusPositionTable
+  locate: NativeLocateDemand
 }
 
 // The LAST diagnostic is the cause that actually refused the file; the head is the advisory
@@ -904,7 +916,8 @@ fn native_test_context_absorb(
         ),
         accepted_file_advisories: state.accepted_file_advisories,
         alloc: alloc,
-        positions: state.positions
+        positions: state.positions,
+        locate: state.locate
       }
     Accepted { value: root, diagnostics: advisories } =>
       match qualified_name_from_module_node(root: root.root) {
@@ -918,7 +931,8 @@ fn native_test_context_absorb(
             ),
             accepted_file_advisories: state.accepted_file_advisories,
             alloc: alloc,
-            positions: state.positions
+            positions: state.positions,
+            locate: state.locate
           }
         Accepted { value: qn, diagnostics: _ } =>
           NativeTestContextFoldState {
@@ -931,12 +945,17 @@ fn native_test_context_absorb(
               advisories: advisories
             ),
             alloc: alloc,
-            positions: native_census_positions_absorb_accepted(
-              table: state.positions,
-              path: read.compilation_unit,
-              spans: spans,
-              text: read.source.carried
-            )
+            positions: match state.locate {
+              NativeNeverLocates => state.positions
+              NativeLocatesFatals =>
+                native_census_positions_absorb_accepted(
+                  table: state.positions,
+                  path: read.compilation_unit,
+                  spans: spans,
+                  text: read.source.carried
+                )
+            },
+            locate: state.locate
           }
       }
   }
@@ -1008,13 +1027,18 @@ fn native_test_front_end_prepare() -> Outcome<NativeTestFrontEnd> {
 }
 
 fn native_test_context_state_empty() -> NativeTestContextFoldState {
+  native_test_context_state_empty_for(locate: NativeLocatesFatals)
+}
+
+fn native_test_context_state_empty_for(locate: NativeLocateDemand) -> NativeTestContextFoldState {
   NativeTestContextFoldState {
     roots: Empty,
     index: source_root_index_empty(),
     file_refusals: Empty,
     accepted_file_advisories: Empty,
     alloc: occurrence_id_allocator_initial(),
-    positions: native_census_position_table_empty()
+    positions: native_census_position_table_empty(),
+    locate: locate
   }
 }
 
@@ -1041,6 +1065,10 @@ fn native_test_context_finish(
 // does not own a clock keep calling this, and it is DEFINED BY the same parts the driver enters
 // separately rather than restating the fold beside them.
 fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest_for(ingest: ingest, locate: NativeLocatesFatals)
+}
+
+fn native_test_context_from_ingest_for(ingest: SourceRootIngest, locate: NativeLocateDemand) -> Outcome<NativeTestContext> {
   bind_outcome(
     o: native_test_front_end_prepare(),
     f: fn(front) {
@@ -1048,7 +1076,7 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
       outcome_accepted(value: native_test_context_finish(
         state: fold_list(
           xs: ingest,
-          empty: native_test_context_state_empty(),
+          empty: native_test_context_state_empty_for(locate: locate),
           cons: fn(state, read) {
             native_test_context_fold_step(
               state: state,

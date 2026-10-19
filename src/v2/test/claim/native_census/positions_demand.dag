@@ -1,0 +1,96 @@
+module v2.test.claim.native_census.positions_demand
+
+import v2.compiler.source_root_eval {
+  NativeLocatesFatals,
+  NativeNeverLocates,
+  NativeTestContext,
+  native_test_context_from_ingest_for
+}
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.test.claim.native_census.whole_tree_census_resolve {
+  census_clean_source,
+  census_poison_source,
+  census_probe_read
+}
+import v2.std.integer { Int }
+import std.algebra { Cons, Empty, fold_list, length }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE POSITION TABLE IS BUILT ONLY FOR A VERB THAT DECLARES IT WILL LOCATE. The front-end census
+// verb opens its fold with NativeNeverLocates and so holds no span or line index per accepted file
+// (the whole-tree resident-memory share the census-peak instrument measures); a verb that can
+// locate a resolve or infer fatal opens with NativeLocatesFatals and gets exactly the table it had.
+//
+// THE REAL ROUTE EXECUTES: both contexts are the production whole-ingest fold over the same
+// supplied bytes (one accepted file, one poisoned file), differing only in the declared demand.
+// The discriminating RED is the table size under the never-locates demand (the pre-change fold
+// built it unconditionally); the positive control is the same fold under the locating demand,
+// whose table must still hold the accepted file, and whose file refusals must match.
+fn positions_probe_ingest() -> SourceRootIngest {
+  Cons {
+    head: census_probe_read(
+      source: census_clean_source,
+      id: ^positions_probe_clean_artifact,
+      unit: ^positions_probe_clean_cu,
+      path: "dag/census_probe_clean.dag"
+    ),
+    tail: Cons {
+      head: census_probe_read(
+        source: census_poison_source,
+        id: ^positions_probe_poison_artifact,
+        unit: ^positions_probe_poison_cu,
+        path: "dag/census_probe_poison.dag"
+      ),
+      tail: Empty
+    }
+  }
+}
+
+type PositionsProbe
+  = PositionsProbeRefused
+  | PositionsProbeDecided { never: NativeTestContext, locates: NativeTestContext }
+
+data positions_probe: PositionsProbe = match native_test_context_from_ingest_for(ingest: positions_probe_ingest(), locate: NativeNeverLocates) {
+  Rejected { diagnostics: _ } => PositionsProbeRefused
+  Accepted { value: never, diagnostics: _ } =>
+    match native_test_context_from_ingest_for(ingest: positions_probe_ingest(), locate: NativeLocatesFatals) {
+      Rejected { diagnostics: _ } => PositionsProbeRefused
+      Accepted { value: locates, diagnostics: _ } => PositionsProbeDecided { never: never, locates: locates }
+    }
+}
+
+fn positions_probe_files(context: NativeTestContext) -> Int {
+  count(sorted_map_keys(context.positions.files))
+}
+
+test fn never_locates_builds_no_position_table_holds() -> Bool {
+  match positions_probe {
+    PositionsProbeRefused => false
+    PositionsProbeDecided { never: n, locates: _ } => positions_probe_files(context: n) == 0
+  }
+}
+
+test fn locating_demand_still_holds_the_accepted_file_holds() -> Bool {
+  match positions_probe {
+    PositionsProbeRefused => false
+    PositionsProbeDecided { never: _, locates: l } => positions_probe_files(context: l) == 1
+  }
+}
+
+test fn the_demand_does_not_change_the_census_answer_holds() -> Bool {
+  match positions_probe {
+    PositionsProbeRefused => false
+    PositionsProbeDecided { never: n, locates: l } =>
+      length(xs: n.file_refusals) == 1
+        && length(xs: l.file_refusals) == 1
+        && length(xs: n.accepted_file_advisories) == length(xs: l.accepted_file_advisories)
+        && fold_list(xs: n.file_refusals, empty: ^no_refusal, cons: fn(acc, r) { native_test_file_refusal_fatal_reason(fr: r) })
+          == fold_list(xs: l.file_refusals, empty: ^no_refusal, cons: fn(acc, r) { native_test_file_refusal_fatal_reason(fr: r) })
+  }
+}
