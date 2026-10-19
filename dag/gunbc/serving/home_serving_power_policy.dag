@@ -8,11 +8,11 @@ import extdeps.external_authority { CitedFigureStanding }
 // WHAT THIS MODULE DECIDES, AND WHY IT EXISTS.
 //
 // `main` carries TWO watt figures for one card and they mean different things.
-// `GpuModelCatalogRow.tdp_watts` (extdeps/gpu/types.dag:120) is the vendor's thermal design
+// `GpuModelCatalogRow.tdp_watts` (extdeps.gpu.types) is the vendor's thermal design
 // ceiling, cited to a datasheet. `ServingAcceleratorRealization.applied_power_limit`
-// (gunbc/spark/serving_performance_subject.dag:126) is the ceiling an operator SET, and it
-// carries no standing at all. Before this module nothing in `gunbc/spark` or `gunbc/serving`
-// mentioned tdp at all (git grep -i tdp over both: 0 hits), so a card could print "600 W" and a
+// (gunbc.spark.serving_performance_subject) is the ceiling an operator SET, and it
+// carries no standing at all. Before this module no rule connected the two (instrument for
+// re-checking: `git grep -i tdp` over `dag/gunbc/spark` and `dag/gunbc/serving`), so a card could print "600 W" and a
 // reader could not tell which of the two it was, and a 900 W applied limit was never refused
 // against a 600 W part. Both read 600 for the RTX PRO 6000 Workstation, which is exactly how a
 // conflation survives review.
@@ -88,7 +88,8 @@ type HomeServingPowerPolicy
 
 // The funded fact. Sealed, so it cannot be written outside this module at all. Field READING is
 // not what the seal controls — fields on a sealed record are readable from any module (the repo
-// reads `observed.receipt` directly from a foreign module at host_software_surface.dag:552) — so
+// reads `observed.receipt` directly from a foreign module inside `user_manager_sandbox_enforcement`
+// in `gunbc.host.host_software_surface`) — so
 // the accessors below are the named read path rather than an enforced gate: they exist so a
 // consumer takes the pair through one spelled-out route and the field names do not scatter across
 // call sites. What is genuinely blocked is ASSEMBLY: a consumer can read this pair, cannot build

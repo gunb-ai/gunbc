@@ -25,6 +25,8 @@ import gunbc.serving.home_serving_power_policy {
   PowerPolicyRefused,
   PowerPolicyAdmitted,
   home_serving_power_policy,
+  home_serving_power_admission_tdp,
+  home_serving_power_admission_applied,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -70,9 +72,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // WITNESS-STYLE BUDGET. The seal claims use the synthetic-module census idiom established by
 // `test.claim.admit_callers_roster_integrity_witness`: a `String` source is compiled in-process by
 // the `compile_dag_diagnostic_census` builtin — a builtin, so deliberately not imported — and its
-// rows are counted by diagnostic class. Per `src/v1/04_method.dag:198`, that builtin "compiles ONE
-// synthetic module and resolves its imports against build_module_path_index_from_witness_roots,
-// which walks the live checkout". That is why this file declares `ReadsLiveTree` even though no dag
+// rows are counted by diagnostic class. The builtin is a row of `builtin_function_registry`
+// keyed `"compile_dag_diagnostic_census"`, and per the multi-module fixture note above that
+// registry its imports resolve against `build_module_path_index_from_witness_roots`, which walks
+// the live checkout. That is why this file declares `ReadsLiveTree` even though no dag
 // code in it opens a file: the claims' truth depends on the checkout, so a green run means the
 // subject module as COMMITTED was seen, not that a string was echoed back. It is also why the
 // positive control below is load-bearing rather than decorative.
