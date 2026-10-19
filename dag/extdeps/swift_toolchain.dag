@@ -81,13 +81,6 @@ import extdeps.version { VersionIdentity }
 // gunbc.guarantee_stall.approve_ios_linux_swift_receipt_not_dispatchable_stall, which carries it), and a
 // row a claim only echoes is a second place to keep a list nobody reads.
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "swift.org/download/#releases"
-  }
-}
-
 // The distribution the archive was built for. `OtherLinux` is representable so an unlisted distribution
 // has to be named rather than mapped onto a neighbouring row.
 type SwiftToolchainDistribution
@@ -268,13 +261,6 @@ data swift_toolchain_verification_instructions_authority: ExternalAuthority = Ex
 // just a key name.
 data swift_toolchain_signing_key_fingerprint: NonEmptyStr = "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
 
-// THE VALUE THAT MUST BE REFUSED, KEPT ON PURPOSE. This is the digest an earlier revision of this module
-// pinned while claiming two fetches had produced it. It is kept so the refusal is a shown thing with a
-// name, rather than a hypothetical: any run whose archive hashes to this is refused, and the claim test
-// asserts the refusal fires on it. A reader who wants to confirm the history can compare this against the
-// fetch logs; nobody should have to take that comparison on trust.
-data swift_toolchain_refused_digest_from_fabricated_pin: NonEmptyStr = "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313"
-
 // THE ORDER OF VERIFICATION LIVES IN ONE PLACE: `verify_against`, which checks signature, then key, then
 // digest, then size, and returns the FIRST refusal it reaches. It used to be spelled a second time here as
 // a List<NonEmptyStr> of step names -- and the two copies already disagreed, that list put compare-size
@@ -380,12 +366,6 @@ fn swift_toolchain_standing_cites_signature(standing: CitedFigureStanding) -> Bo
     TranscribedUncited { read_obligation: _ } => false
     ObservedByReceipt { observed: _ } => false
   }
-}
-
-// Whether a value is one this module has already had cause to refuse. Kept so the fabricated digest is a
-// named fixture rather than a string that only appears inside a test.
-fn swift_toolchain_digest_is_a_known_refused_value(digest: Sha256Digest) -> Bool {
-  digest.hex == swift_toolchain_refused_digest_from_fabricated_pin
 }
 
 // The pin, readable only as a verified archive. A caller gets the typed row or nothing -- there is no

@@ -1,18 +1,16 @@
 module test.claim.swift_toolchain_pin_witness
 
 import std.types { Bool, String, NonEmptyStr }
-import std.algebra { is_empty }
+import std.algebra { is_empty, string_contains }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.version { VersionIdentity }
 import extdeps.swift_toolchain {
   SwiftToolchainArchive,
   SwiftToolchainArchiveSubject,
-  SwiftToolchainVerifiedArchive,
   SwiftToolchainUnverifiedArchive,
   SwiftToolchainCandidate,
   SwiftToolchainDistribution,
-  SwiftToolchainRefusal,
   SignatureUnverified,
   SignedByUnlistedKey,
   DigestDiffersFromPin,
@@ -34,8 +32,6 @@ import extdeps.swift_toolchain {
   swift_toolchain_signing_key_fingerprint,
   swift_toolchain_verify,
   swift_toolchain_standing_cites_signature,
-  swift_toolchain_digest_is_a_known_refused_value,
-  swift_toolchain_refused_digest_from_fabricated_pin,
 }
 
 // WHAT THIS WITNESS HOLDS.
@@ -84,6 +80,12 @@ test fn verification_refuses_a_mismatched_archive_and_accepts_only_the_signed_on
     observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
     observed_size: byte_size(count: 1122730813)
   }
+  // WHAT THIS CANDIDATE IS. This is the digest an earlier revision of extdeps.swift_toolchain PINNED while
+  // asserting that two independent fetches had produced it. It is fabricated: no fetch log ever printed it,
+  // and `git log --all -S` over the value returns only the commit that introduced it. It lives here, as an
+  // input the gate is handed, because that is the only place it has meaning -- the refusal is the gate's
+  // ordinary digest comparison, and a module-level "known refused value" row plus a predicate over it would
+  // be a second carrier for a digest fact and a witness asserting the row exists.
   let the_previously_pinned_value = SwiftToolchainCandidate {
     signature_verified: true
     signing_key_fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
@@ -142,8 +144,6 @@ test fn verification_refuses_a_mismatched_archive_and_accepts_only_the_signed_on
            byte_size_count(b: o) == 1122730812 && byte_size_count(b: p) == 1122730813
          _ => false
        }
-    && swift_toolchain_digest_is_a_known_refused_value(
-         digest: Sha256Digest { hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313" as Sha256DigestHex })
 }
 
 // THE ORDER OF VERIFICATION, MEASURED THROUGH THE GATE RATHER THAN DESCRIBED BESIDE IT. A candidate that
@@ -279,4 +279,40 @@ test fn an_unverified_row_cannot_be_read_as_a_pin() -> Bool {
        Unverified { declared: d } => !is_empty(xs: d.reason)
        Verified { archive: _ } => false
      }
+}
+
+// EVERY DISTRIBUTION ARM PROJECTS ITS OWN URL. Four arms, four distinct locators -- Ubuntu2204 and
+// OtherLinux are reachable ONLY through this projection, so an arm added, renamed, or aliased onto a
+// neighbour shows up here instead of at a runner's fetch failure. OtherLinux in particular has to be named
+// rather than mapped onto a nearby row, and that is what the last line asserts: an unlisted distribution
+// yields its own spelling, not debian13's. All four share one version and one path layout, so a bumped
+// version moves every arm together -- which is the point of deriving the URL instead of storing it.
+test fn every_distribution_arm_projects_its_own_url() -> Bool {
+  let debian = swift_toolchain_archive_url(subject: SwiftToolchainArchiveSubject {
+    distribution: Debian13
+    version: "6.4.1" as VersionIdentity
+  }).locator
+  let ubuntu2404 = swift_toolchain_archive_url(subject: SwiftToolchainArchiveSubject {
+    distribution: Ubuntu2404
+    version: "6.4.1" as VersionIdentity
+  }).locator
+  let ubuntu2204 = swift_toolchain_archive_url(subject: SwiftToolchainArchiveSubject {
+    distribution: Ubuntu2204
+    version: "6.4.1" as VersionIdentity
+  }).locator
+  let other = swift_toolchain_archive_url(subject: SwiftToolchainArchiveSubject {
+    distribution: OtherLinux { name: "fedora40" }
+    version: "6.4.1" as VersionIdentity
+  }).locator
+  // Four distinct locators: no arm collapses onto another.
+  debian != ubuntu2404 && debian != ubuntu2204 && debian != other
+    && ubuntu2404 != ubuntu2204 && ubuntu2404 != other && ubuntu2204 != other
+    // Each arm spells its own distribution, and OtherLinux spells what it was handed.
+    && string_contains(s: debian, pattern: "debian13")
+    && string_contains(s: ubuntu2404, pattern: "ubuntu24.04")
+    && string_contains(s: ubuntu2204, pattern: "ubuntu22.04")
+    && string_contains(s: other, pattern: "fedora40")
+    // One release, one layout: only the distribution varies.
+    && string_contains(s: debian, pattern: "swift-6.4.1-release/")
+    && string_contains(s: other, pattern: "swift-6.4.1-release/")
 }
