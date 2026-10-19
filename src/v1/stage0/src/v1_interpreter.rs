@@ -15875,9 +15875,11 @@ fn reference_derived_closure_admission_value(
             use crate::std_reference_binding_observation::{
                 ReferenceBindingProductionGap as G, StructuralBindingRefusal as R,
             };
-            // Only the production refusal reaches this encoder: the `.dag` producer feeds no
-            // index. Any other cause has no encoder here, so it stops visibly rather than
-            // being narrowed to a cause it is not (DESIGN 5).
+            // Only the production refusal has an encoder here. The five index-build causes
+            // reach this arm too (the `.dag` producer calls
+            // `structural_binding_resolution_from_candidates`), so they return a typed error
+            // rather than being narrowed to a cause they are not (DESIGN 5); the loss is the
+            // declared rung drop `gunbc.rung_drop seed_bridge_index_build_refusal_causes_unencoded`.
             let gap = match &**cause {
                 R::StructuralBindingProductionRefused { gap } => match gap {
                     G::ReferenceBindingParserTransportRefused => "ReferenceBindingParserTransportRefused",
@@ -30493,5 +30495,211 @@ mod canonical_render_order_tests {
         assert!(admit_emitted_ord_keys(mixed.iter(), "sort_by").is_err());
         let ints = [Value::Int(2), Value::Int(1)];
         assert!(admit_emitted_ord_keys(ints.iter(), "sort_by").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod binding_refusal_encoder_tests {
+    use super::{
+        namespace_structural_observation_admissions_value,
+        reference_derived_closure_admission_value,
+    };
+    use super::{ExecutionMode, InterpContext, InterpError, Value};
+    use crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::{
+        ReferenceDerivedClosureAdmission as A, ReferenceDerivedClosureCapability as C,
+    };
+    use crate::std_occurrence_binding_candidates::{
+        AuthoredOrderIndexRefusal, DeclarationExposureIndexRefusal,
+        OccurrenceModulePathIndexRefusal,
+    };
+    use crate::std_occurrence_identity::{OccurrenceId, OccurrenceTransportRefusal};
+    use crate::std_reference_binding_observation::{
+        ReferenceBindingProductionGap as G, StructuralBindingRefusal as R,
+        StructuralObservationSubjectModule as M,
+    };
+    use crate::std_types::SourceSpan;
+    use crate::v1_compiler_compile::SourceFile;
+    use std::rc::Rc;
+
+    fn with_ctx<T>(f: impl FnOnce(&InterpContext) -> T) -> T {
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
+                SourceFile {
+                    path: "workspace/src/common.dag".to_string(),
+                    content: "module fixture.common\nfn check() -> Bool { true }\n".to_string(),
+                },
+            )]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
+        f(&ctx)
+    }
+
+    fn refused(cause: R) -> A {
+        A::ReferenceDerivedClosureBindingRefused {
+            capability: C::SameFileEarlierNeighbourVisible,
+            cause: Rc::new(cause),
+        }
+    }
+
+    fn occ() -> OccurrenceId {
+        OccurrenceId { value: 7 }
+    }
+
+    fn unsupported() -> Vec<(&'static str, R)> {
+        vec![
+            (
+                "transport",
+                R::StructuralBindingIndexTransportRefused {
+                    refusal: Rc::new(
+                        OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+                            diagnostic_span: Rc::new(SourceSpan {
+                                file: "f.dag".to_string(),
+                                start: 0,
+                                end: 1,
+                            }),
+                        },
+                    ),
+                },
+            ),
+            (
+                "module_path",
+                R::StructuralBindingIndexModulePathRefused {
+                    refusal: Rc::new(
+                        OccurrenceModulePathIndexRefusal::MissingOccurrenceModulePathRow {
+                            occurrence: occ(),
+                        },
+                    ),
+                },
+            ),
+            (
+                "exposure",
+                R::StructuralBindingIndexExposureRefused {
+                    refusal: Rc::new(
+                        DeclarationExposureIndexRefusal::MissingDeclarationExposure {
+                            occurrence: occ(),
+                        },
+                    ),
+                },
+            ),
+            (
+                "authored_order",
+                R::StructuralBindingIndexAuthoredOrderRefused {
+                    refusal: Rc::new(AuthoredOrderIndexRefusal::MissingAuthoredOrderRow {
+                        occurrence: occ(),
+                    }),
+                },
+            ),
+            (
+                "declaration_bucket",
+                R::StructuralBindingIndexDeclarationBucketRefused { occurrence: occ() },
+            ),
+        ]
+    }
+
+    fn supported() -> A {
+        refused(R::StructuralBindingProductionRefused {
+            gap: G::ReferenceBindingNamedReferenceAbsent,
+        })
+    }
+
+    fn module() -> M {
+        M::SubjectModuleProduced {
+            module_path: "fixture.common".to_string(),
+        }
+    }
+
+    #[test]
+    fn each_unsupported_cause_yields_the_named_encoding_error() {
+        with_ctx(|ctx| {
+            for (family, cause) in unsupported() {
+                match reference_derived_closure_admission_value(&refused(cause), ctx) {
+                    Err(InterpError::TypeError { msg }) => assert!(
+                        msg.contains("no encoder for binding refusal cause")
+                            && msg.contains("StructuralBindingIndex"),
+                        "{family}: {msg}"
+                    ),
+                    Err(_) => panic!("{family}: wrong error kind"),
+                    Ok(_) => panic!("{family}: unsupported cause encoded to a value"),
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn a_supported_refusal_encodes_with_its_capability_and_gap() {
+        with_ctx(|ctx| {
+            let v = reference_derived_closure_admission_value(&supported(), ctx).expect("encodes");
+            let Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } = &v
+            else {
+                panic!("not a variant")
+            };
+            assert!(*variant_name == ctx.sym("ReferenceDerivedClosureBindingRefused"));
+            let cap = fields
+                .iter()
+                .find(|(k, _)| *k == ctx.sym("capability"))
+                .expect("capability");
+            let Value::Variant {
+                variant_name: cap_name,
+                ..
+            } = &cap.1
+            else {
+                panic!("capability")
+            };
+            assert!(*cap_name == ctx.sym("SameFileEarlierNeighbourVisible"));
+            let cause = fields
+                .iter()
+                .find(|(k, _)| *k == ctx.sym("cause"))
+                .expect("cause");
+            let Value::Variant {
+                variant_name: cause_name,
+                fields: cf,
+                ..
+            } = &cause.1
+            else {
+                panic!("cause")
+            };
+            assert!(*cause_name == ctx.sym("StructuralBindingProductionRefused"));
+            let Value::Variant {
+                variant_name: gap, ..
+            } = &cf[0].1
+            else {
+                panic!("gap")
+            };
+            assert!(*gap == ctx.sym("ReferenceBindingNamedReferenceAbsent"));
+        });
+    }
+
+    #[test]
+    fn a_mixed_list_cannot_drop_the_unsupported_member_and_succeed() {
+        with_ctx(|ctx| {
+            let all_supported: Vec<Rc<A>> = vec![Rc::new(supported()), Rc::new(supported())];
+            let encoded =
+                namespace_structural_observation_admissions_value(&module(), &all_supported, ctx)
+                    .expect("supported list encodes");
+            match &encoded {
+                Value::List(items) => assert_eq!(items.len(), 2),
+                _ => panic!("supported list must encode every member"),
+            }
+            for (family, cause) in unsupported() {
+                let mixed: Vec<Rc<A>> = vec![
+                    Rc::new(supported()),
+                    Rc::new(refused(cause)),
+                    Rc::new(supported()),
+                ];
+                match namespace_structural_observation_admissions_value(&module(), &mixed, ctx) {
+                    Err(InterpError::TypeError { .. }) => {}
+                    Err(_) => panic!("{family}: wrong error kind"),
+                    Ok(_) => panic!("{family}: mixed list succeeded with the unsupported member dropped or fabricated"),
+                }
+            }
+        });
     }
 }
