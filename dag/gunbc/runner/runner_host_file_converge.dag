@@ -911,17 +911,21 @@ fn runner_slot_unit_standing_wire(standing: RunnerSlotUnitStanding) -> String {
 // reload is still a fabric member running a runner, or a teardown-effective slot, and a later
 // classification of the lifecycle must not overwrite it. Derived once, from the raw show observation.
 //
-// OwedInert is Owed on a unit whose OWN show block says it cannot take a reload's effect: LoadState=masked,
-// ActiveState=inactive and no ControlGroup. A reload applies pending limits to a running cgroup, and this
-// unit has none. It is decided from that block alone -- never from whether the unit is a fabric member or a
-// retiree, which is a separate fact -- and it is still a status of the unit, not a verdict: whether it is
-// admitted is decided where the bracket's own unit set is known (runner_host_cap_pending_reloads).
-type SlotReloadStatus = SlotReloadNotPending | SlotReloadOwed | SlotReloadOwedInert | SlotReloadUnobserved
+// WHETHER A TEMPLATE RELOAD WOULD REACH A LIVE CGROUP IS A SECOND, INDEPENDENT FACT (`reach`): it holds
+// for every loaded unit whether or not it owes a reload. A unit is Inert when its OWN show block says
+// LoadState=masked, ActiveState=inactive and no ControlGroup -- a reload applies limits to a running
+// cgroup, and this unit has none. Derived once here, from that block alone (never from fabric or
+// retiree membership, and any missing key reads ReachesLiveCgroup); every cap-phase arm that asks
+// about exposure to the reload reads this field. Arms asking something else (retirement completion,
+// idleness, live-cap readability) do not.
+type SlotReloadStatus = SlotReloadNotPending | SlotReloadOwed | SlotReloadUnobserved
+type SlotReloadReach = ReachesLiveCgroup | ReloadInert
 
 type RunnerSlotUnitResult {
   unit: NonEmptyStr
   standing: RunnerSlotUnitStanding
   reload: SlotReloadStatus
+  reach: SlotReloadReach
 }
 
 fn slot_reload_status_for(unit: NonEmptyStr, show_stdout: String) -> SlotReloadStatus {
@@ -930,12 +934,14 @@ fn slot_reload_status_for(unit: NonEmptyStr, show_stdout: String) -> SlotReloadS
     Present { value: rd } =>
       if trim(s: rd.need_daemon_reload) == "no" {
         SlotReloadNotPending
-      } else if slot_unit_inert_in_show(unit: unit, show_stdout: show_stdout) {
-        SlotReloadOwedInert
       } else {
         SlotReloadOwed
       }
   }
+}
+
+fn slot_reload_reach_for(unit: NonEmptyStr, show_stdout: String) -> SlotReloadReach {
+  if slot_unit_inert_in_show(unit: unit, show_stdout: show_stdout) { ReloadInert } else { ReachesLiveCgroup }
 }
 
 // MASKED, INACTIVE, NO CGROUP -- all three read from the unit's own block; any key missing is not inert.
@@ -1062,6 +1068,7 @@ fn classify_runner_slot_population_with_fabric(units: List<NonEmptyStr>, fabric:
           Present { value: rd } => classify_fabric_member_unit(reading: rd)
         },
         reload: r.reload,
+        reach: r.reach,
       }
     } else { r })
 }
@@ -1084,6 +1091,7 @@ fn classify_runner_slot_population(units: List<NonEmptyStr>, retirements: List<R
       standing: fold(readings, init: SlotUnitUnread, f: (acc, r) =>
         if (r.unit as String) == (u as String) { classify_runner_slot_unit_against_retirement(reading: r, expect: expect, retirements: retirements) } else { acc }),
       reload: slot_reload_status_for(unit: u, show_stdout: show_stdout),
+      reach: slot_reload_reach_for(unit: u, show_stdout: show_stdout),
     })
 }
 
@@ -2082,12 +2090,13 @@ fn runner_host_cap_phase_text(phase: RunnerHostCapPhase) -> String {
 // THE AFFECTED POPULATION IS EVERY LOADED RUNNER INSTANCE, not only the declared sets: the template
 // reload reaches an instance nobody declared. Declared and retired units are ours to drain; a loaded
 // unit outside both is an EXTRA, which this route reads (caps, idleness) but never drains, activates or
-// retires.
-fn runner_host_cap_extras(subject: RunnerHostFileSubject, population: RunnerSlotPopulation) -> List<NonEmptyStr> {
+// retires. An extra is a hazard only when the template reload would reach a live cgroup for it (`reach`,
+// derived once from its own show block): a masked, inactive, cgroupless extra has nothing to apply to.
+fn runner_host_cap_extras(desired_units: List<NonEmptyStr>, retired_units: List<NonEmptyStr>, population: RunnerSlotPopulation) -> List<NonEmptyStr> {
   match population {
     SlotPopulationUnobservable { reason: _ } => []
     SlotPopulationObserved { units: us } =>
-      map(filter(us, r => !any(subject.desired_units, d => (d as String) == (r.unit as String)) && !any(subject.retired_units, d => (d as String) == (r.unit as String)) && (match r.standing { SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => true SlotTeardownEffective => true SlotReloadPending => true SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => true SlotAllocationNotEffective { detail: _ } => true SlotFabricMemberNotARunner { load_state: _ } => true SlotFabricMemberRunsARunner => true SlotUnitUnread => true })), r => r.unit)
+      map(filter(us, r => !any(desired_units, d => (d as String) == (r.unit as String)) && !any(retired_units, d => (d as String) == (r.unit as String)) && (match r.reach { ReachesLiveCgroup => true ReloadInert => false }) && (match r.standing { SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => true SlotTeardownEffective => true SlotReloadPending => true SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => true SlotAllocationNotEffective { detail: _ } => true SlotFabricMemberNotARunner { load_state: _ } => true SlotFabricMemberRunsARunner => true SlotUnitUnread => true })), r => r.unit)
   }
 }
 
@@ -2117,7 +2126,7 @@ fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation, bracket_uni
       // One partition: a unit either owes a kind of pending reload or contributes nothing, and the
       // nonempty carrier is built at that split, so an empty "pending" cannot be written.
       let located: FreeSemigroup<UnitPendingReload>? = fold(us, init: none, f: (acc, r) =>
-        match slot_reload_pending_kind(status: r.reload, in_bracket: any(bracket_units, b => (b as String) == (r.unit as String))) {
+        match slot_reload_pending_kind(status: r.reload, reach: r.reach, in_bracket: any(bracket_units, b => (b as String) == (r.unit as String))) {
           Absent => acc
           Present { value: k } => {
             let one = non_empty_singleton(item: UnitPendingReload { unit: r.unit, kind: k })
@@ -2139,11 +2148,13 @@ fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation, bracket_uni
 // and starts every unit in the bracket's set, so there a masked unit stops being inert mid-bracket and its
 // pending change would load onto a live cgroup. Fabric members are outside that set by construction
 // (desired_runner_slot_members), and the width phase only masks and stops them, never unmasks.
-fn slot_reload_pending_kind(status: SlotReloadStatus, in_bracket: Bool) -> PendingReloadKind? {
+fn slot_reload_pending_kind(status: SlotReloadStatus, reach: SlotReloadReach, in_bracket: Bool) -> PendingReloadKind? {
   match status {
     SlotReloadNotPending => none
-    SlotReloadOwed => Present { value: PendingReloadOwed }
-    SlotReloadOwedInert => if in_bracket { Present { value: PendingReloadOwed } } else { none }
+    SlotReloadOwed => match reach {
+      ReachesLiveCgroup => Present { value: PendingReloadOwed }
+      ReloadInert => if in_bracket { Present { value: PendingReloadOwed } } else { none }
+    }
     SlotReloadUnobserved => Present { value: PendingReloadUnobserved }
   }
 }
@@ -2184,7 +2195,7 @@ fn run_runner_host_cap_phase(
         SlotPopulationUnobservable { reason: r } => CapPhaseWithheld { cause: concat("the slot population was not observed: ", r) }
         SlotPopulationObserved { units: _ } => {
           let desired = gunbc_runner_slot_desired()
-          let extras = runner_host_cap_extras(subject: subject, population: population)
+          let extras = runner_host_cap_extras(desired_units: subject.desired_units, retired_units: subject.retired_units, population: population)
           let affected = concat(subject.desired_units, extras)
           let standings = read_host_cap_standings_over(target: subject.target, context: context, units: affected, desired: desired)
           let gate = read_host_idleness_over(target: subject.target, context: context, units: affected)
