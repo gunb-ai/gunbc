@@ -311,6 +311,7 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
       let outcome = flex_run_pass(
         input: FlexPassInput {
           policy: flex_trial_policy,
+          recipe: flex_serving_recipe,
           gates: FlexWetGates { key: FlexKeyLive { route: FlexKeyFromSecretManager { resolved_version: resolved_version } } },
           now: now,
           cooldown: none,
