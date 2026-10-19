@@ -28,7 +28,10 @@ fold_refuses_a_declared_parameter_type_bound_to_a_distinct_settled_instance
 fold_replaces_a_binding_that_still_carries_a_type_variable_leaf
 fold_keeps_a_settled_binding_against_an_actual_that_still_carries_a_type_variable
 fold_refuses_two_distinct_settled_bindings_of_the_same_shape
-fold_refuses_int_bound_then_bool'
+fold_refuses_int_bound_then_bool
+minted_variables_are_fresh_per_call_site
+fold_refuses_a_settled_rebind_of_a_declaration_form_binding
+fold_cannot_distinguish_shared_from_distinct_leaf_identity'
 
 stamp(){ echo "T=$(date -u +%H:%M:%S) $*"; }
 seed(){ sha256sum "$1" | cut -c1-16; }
