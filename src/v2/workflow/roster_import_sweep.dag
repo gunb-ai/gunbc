@@ -640,9 +640,16 @@ fn roster_is_continuation(octet: Int) -> Bool {
 
 // A replaced extent is a whole std.algebra import declaration (it opens with the keyword and the module and ends at
 // its closing brace (roster_apply_edit also refuses an extent carrying a `//` annotation, which the replacement would erase); an insertion point is the end of an import block. Offsets here are scalar offsets.
+// An insertion holds where the parse put it: after an import block's closing brace, or (a module with no import yet) at the
+// end of the module header's line.
+fn roster_ends_module_header_line(before: String, at: Int) -> Bool {
+  let line = fold_list(xs: split(s: substring(s: before, start: 0, end: at), delimiter: "\n"), empty: "", cons: fn(_last, l) { l })
+  substring(s: line, start: 0, end: 7) == "module " && substring(s: before, start: at, end: at + 1) == "\n"
+}
+
 fn roster_extent_holds(before: String, start: Int, end: Int) -> Bool {
   if start == end {
-    substring(s: before, start: start - 1, end: start) == "}"
+    substring(s: before, start: start - 1, end: start) == "}" || roster_ends_module_header_line(before: before, at: start)
   } else {
     substring(s: before, start: start, end: start + 7) == "import " && substring(s: before, start: end - 1, end: end) == "}"
   }
