@@ -28,7 +28,7 @@ import gunbc.runner.runner_jit_deregistration {
 }
 import gunbc.runner.runner_lost_boot_sweep_run {
   LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input, lost_boot_current_from_capture,
-  CurrentBootObservation, CurrentBootObserved, CurrentBootUnobserved, lost_boot_observe_current_boot,
+  CurrentBootObservation, CurrentBootObserved, CurrentBootUnobserved, mint_current_boot_evidence, lost_boot_observe_current_boot,
   sweep_host_standing, SweepHostBound, SweepHostNotManaged,
   sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, 
 }
@@ -79,6 +79,7 @@ fn listing(names: List<String>) -> RestResult<OrganizationRunnerListWire> {
 fn supplied_population(host: HostControlStanding, id: String) -> SuppliedPopulation admit_callers: [
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "run_sweep"),
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "plan_over"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "plan_after_admission"),
 ] {
   match service_boot_id_of(run: kernel_boot(id: id)) {
     Present { value: b } => SuppliedPopulationBuilt { standing: current_service_population_over(host: host, width: RunnerWidthDerived { slots: 2 }, registration_labels: supplied_labels, boot: b) }
@@ -123,9 +124,20 @@ fn run_sweep(m: ManagedHost, authority: GitHubCredentialAuthority, current: Stri
 
 data capture_boot_id: String = "aaaaaaaa-0000-4000-8000-000000000001"
 
-fn observed_on(host: String, id: String) -> CurrentBootObservation {
+// A FIXTURE THAT SUPPLIES A READING IS A BOUNDARY: observed_on names the host's boot by assertion, so it is
+// admit_callers-restricted to the terminal claims below and its one mint is admitted to it by name.
+fn observed_on(host: String, id: String) -> CurrentBootObservation admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_admitted_envelope_on_the_observed_boot_yields_exactly_that_boot"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_authentic_capture_of_an_earlier_boot_refuses"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "a_missing_or_foreign_current_boot_observation_refuses"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_envelope_that_does_not_establish_runner_host_up_refuses"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "a_missing_envelope_or_blank_input_refuses"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "a_capture_read_from_a_file_reaches_the_admission"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_earlier_boot_capture_admits_no_plan_over_a_live_registration"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_observed_boot_capture_plans_exactly_the_stale_registration"),
+] {
   match service_boot_id_of(run: kernel_boot(id: id)) {
-    Present { value: b } => CurrentBootObserved { host: host, boot: b }
+    Present { value: b } => CurrentBootObserved { evidence: mint_current_boot_evidence(host: host, boot: b) }
     Absent => CurrentBootUnobserved { cause: "unconstructible boot id" }
   }
 }
@@ -408,6 +420,7 @@ type SuppliedPlan
   = SuppliedPlanMade { plan: SweepPlan }
   | SuppliedPlanHostNotManaged
   | SuppliedPlanPopulationNotDerived
+  | SuppliedPlanNotAdmitted { cause: String }
 
 fn plan_over(m: ManagedHost, report: OrganizationRunnerRosterReport) -> SuppliedPlan admit_callers: [
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_observed_mtcollins1_roster_plans_exactly_its_stale_registrations"),
@@ -423,6 +436,31 @@ fn plan_over(m: ManagedHost, report: OrganizationRunnerRosterReport) -> Supplied
           match st {
             CurrentServicePopulationDerived { population: p } => SuppliedPlanMade { plan: sweep_plan(organization: org, population: p, report: report) }
             CurrentServicePopulationRefused { refusal: _ } => SuppliedPlanPopulationNotDerived
+          }
+      }
+  }
+}
+
+// THE ADMITTED BOOT TRAVELS FROM THE JOIN INTO THE POPULATION: the production order (lost_boot_sweep_wet)
+// is admission, then host standing, then the sealed population over the ADMITTED boot, then sweep_plan.
+// No fixture boot is substituted after the join; a refused admission produces no plan at all.
+fn plan_after_admission(m: ManagedHost, capture: String, observed: CurrentBootObservation, report: OrganizationRunnerRosterReport) -> SuppliedPlan admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_earlier_boot_capture_admits_no_plan_over_a_live_registration"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_observed_boot_capture_plans_exactly_the_stale_registration"),
+] {
+  match lost_boot_current_from_capture(host: m.host as String as NonEmptyStr, capture: capture, observed: observed) {
+    LostBootCurrentRefused { cause: c } => SuppliedPlanNotAdmitted { cause: c }
+    LostBootCurrentPresent { host: h, boot: b } =>
+      match sweep_host_standing(host: h) {
+        SweepHostNotManaged { host: _ } => SuppliedPlanHostNotManaged
+        SweepHostBound { host: _, standing: s } =>
+          match supplied_population(host: s, id: b.boot_id as String) {
+            SuppliedPopulationMalformedBoot => SuppliedPlanPopulationNotDerived
+            SuppliedPopulationBuilt { standing: st } =>
+              match st {
+                CurrentServicePopulationDerived { population: p } => SuppliedPlanMade { plan: sweep_plan(organization: org, population: p, report: report) }
+                CurrentServicePopulationRefused { refusal: _ } => SuppliedPlanPopulationNotDerived
+              }
           }
       }
   }
@@ -465,6 +503,36 @@ test fn an_over_ceiling_selection_plans_no_deletion() -> Bool {
     Present { value: m } =>
       match plan_over(m: m, report: roster_report(RosterObserved { observed_on: "d", registrations: map([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40], i => reg_named(id: i + 1, name: unit(m: m, id: old_boot_id, index: i))) })) {
         SuppliedPlanMade { plan: SweepPlanRefused { cause: c } } => string_contains(s: c, pattern: "nothing was deregistered")
+        _ => false
+      }
+  }
+}
+
+// THE REVIEWED COMPOSITION, through the production order. Capture A, the host now on B, A and B both
+// listed: admission refuses and no plan exists, so the live B registration cannot become a subject.
+test fn an_earlier_boot_capture_admits_no_plan_over_a_live_registration() -> Bool {
+  match mtcollins1_host() {
+    Absent => false
+    Present { value: m } =>
+      match plan_after_admission(m: m, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtcollins1", id: new_boot_id),
+        report: roster_report(RosterObserved { observed_on: "d", registrations: [reg_named(id: 1, name: unit(m: m, id: capture_boot_id, index: 0)), reg_named(id: 2, name: unit(m: m, id: new_boot_id, index: 0))] })) {
+        SuppliedPlanNotAdmitted { cause: c } => string_contains(s: c, pattern: "now on boot")
+        _ => false
+      }
+  }
+}
+
+// POSITIVE CONTROL: capture and observation agree on one boot, and that boot (not a fixture value) is the
+// population's. The stale registration is the selected subject; the exact live one is untouched.
+test fn an_observed_boot_capture_plans_exactly_the_stale_registration() -> Bool {
+  match mtcollins1_host() {
+    Absent => false
+    Present { value: m } =>
+      match plan_after_admission(m: m, capture: closed(install_exit: "0", machine: "aarch64"), observed: observed_on(host: "mtcollins1", id: capture_boot_id),
+        report: roster_report(RosterObserved { observed_on: "d", registrations: [reg_named(id: 1, name: unit(m: m, id: old_boot_id, index: 0)), reg_named(id: 2, name: unit(m: m, id: capture_boot_id, index: 0))] })) {
+        SuppliedPlanMade { plan: SweepPlanSelected { selection: sel } } =>
+          count(sel.subjects) == 1 && (map(sel.subjects, x => deregistration_name(subject: x).value as String)) == [unit(m: m, id: old_boot_id, index: 0)]
+            && sel.untouched == [unit(m: m, id: capture_boot_id, index: 0)]
         _ => false
       }
   }

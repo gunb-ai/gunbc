@@ -102,9 +102,25 @@ type LostBootCurrentInput
   | LostBootCurrentRefused { cause: String }
 
 // WHAT THE HOST'S OWN ROUTE SAYS ITS BOOT IS NOW, of one named host.
+// The successful reading is a sole_constructor record, so a UUID alone cannot become evidence: a literal
+// outside its one mint is refused, and the mint is admitted only to the observation authority
+// (lost_boot_observe_current_boot, which answers unobserved until the enrolment supplies the host
+// transport) and to the witness fixture, which is itself restricted to its named terminal claims.
+type CurrentBootEvidence sole_constructor {
+  host: String
+  boot: ServiceBootId
+}
+
 type CurrentBootObservation
-  = CurrentBootObserved { host: String, boot: ServiceBootId }
+  = CurrentBootObserved { evidence: CurrentBootEvidence }
   | CurrentBootUnobserved { cause: String }
+
+fn mint_current_boot_evidence(host: String, boot: ServiceBootId) -> CurrentBootEvidence admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "lost_boot_observe_current_boot"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "observed_on"),
+] {
+  CurrentBootEvidence { host: host, boot: boot }
+}
 
 fn lost_boot_observe_current_boot(host: String) -> CurrentBootObservation {
   CurrentBootUnobserved { cause: join(["no route observes ", host, "'s current kernel boot id from a fleet-converge run: that read needs a host transport, which arrives with the mtcollins1 enrolment"], "") }
@@ -113,11 +129,11 @@ fn lost_boot_observe_current_boot(host: String) -> CurrentBootObservation {
 fn lost_boot_current_joined(host: NonEmptyStr, recorded: ServiceBootId, observed: CurrentBootObservation) -> LostBootCurrentInput {
   match observed {
     CurrentBootUnobserved { cause: c } => LostBootCurrentRefused { cause: concat("lost-boot sweep: the capture records a boot but the current boot is unobserved: ", c) }
-    CurrentBootObserved { host: h, boot: b } =>
-      if h != (host as String) {
-        LostBootCurrentRefused { cause: join(["lost-boot sweep: the current-boot observation is of host ", h, ", not ", host as String], "") }
-      } else if (b.boot_id as String) != (recorded.boot_id as String) {
-        LostBootCurrentRefused { cause: join(["lost-boot sweep: the capture records boot ", recorded.boot_id as String, " but the host is now on boot ", b.boot_id as String], "") }
+    CurrentBootObserved { evidence: e } =>
+      if e.host != (host as String) {
+        LostBootCurrentRefused { cause: join(["lost-boot sweep: the current-boot observation is of host ", e.host, ", not ", host as String], "") }
+      } else if (e.boot.boot_id as String) != (recorded.boot_id as String) {
+        LostBootCurrentRefused { cause: join(["lost-boot sweep: the capture records boot ", recorded.boot_id as String, " but the host is now on boot ", e.boot.boot_id as String], "") }
       } else {
         LostBootCurrentPresent { host: host, boot: recorded }
       }

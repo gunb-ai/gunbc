@@ -102,6 +102,7 @@ fn mint_sweep_selection(subjects: List<JitDeregistrationSubject>, untouched: Lis
 fn sweep_plan(organization: GitHubOrganizationRef, population: CurrentServicePopulation, report: OrganizationRunnerRosterReport) -> SweepPlan admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_and_deregister"),
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "plan_over"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "plan_after_admission"),
 ] {
   match sweep_listing_of_roster(report: report) {
     SweepListingNotObserved { cause } => SweepPlanRefused { cause: cause as String }

@@ -34,3 +34,18 @@ test fn sweep_and_deregister_refuses_an_outside_caller() -> Bool {
   blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
            wanted: "ConstructorCallAdmissionRefused", subject: "sweep_and_deregister") >= 1
 }
+
+test fn a_current_boot_evidence_literal_refuses_outside_its_mint() -> Bool {
+  blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
+           wanted: "SoleConstructorViolation", subject: "CurrentBootEvidence") >= 1
+}
+
+test fn the_evidence_mint_refuses_an_outside_caller() -> Bool {
+  blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
+           wanted: "ConstructorCallAdmissionRefused", subject: "mint_current_boot_evidence") >= 1
+}
+
+test fn the_observation_fixture_refuses_an_outside_caller() -> Bool {
+  blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
+           wanted: "ConstructorCallAdmissionRefused", subject: "observed_on") >= 1
+}

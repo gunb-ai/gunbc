@@ -3081,7 +3081,8 @@ data fleet_converge_microvm_runner_group_ensure_step_if: String = fleet_converge
 // gunbc.design_ruling mtcollins1_ci_runner_enrolment_approved, mode placement per
 // fleet_converge_modes_are_outside_the_job_roster). The GitHub workflow is only the WIF transport:
 // the run signs from the gunbai-ci App key it stages itself and holds no fleet SSH key. The swept
-// host and the path of its capture envelope are dispatch inputs, never defaulted; the current boot id is read from that envelope.
+// host and the path of its capture envelope are dispatch inputs, never defaulted; the capture records a boot, which is not the current one: the
+// mode admits it only through an independent current-boot observation and refuses while no such route exists.
 fn fleet_converge_service_runner_lost_boot_sweep_step() -> Step {
   RunStep {
     name: Present { value: "service runner lost-boot sweep: deregister runner registrations of a boot that is not the current one, read each back absent" },
@@ -5394,7 +5395,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   },
   DispatchInput {
     name: "host_capture_path",
-    description: Present { value: "service_runner_lost_boot_sweep only: checkout-relative path of sweep_host's capture envelope; the CURRENT kernel boot id is read from its closed runner-host-up envelope, and registrations of any other boot of sweep_host are deregistered. Required, never defaulted, no boot id is typed" },
+    description: Present { value: "service_runner_lost_boot_sweep only: checkout-relative path of sweep_host's closed runner-host-up capture envelope, which records a boot but does not establish the current one: the mode joins it to an independent current-boot observation of sweep_host, refuses on a missing or mismatched one (and refuses every dispatch until the mtcollins1 enrolment supplies that observation route), and only then deregisters registrations of any other boot. Required, never defaulted, no boot id is typed" },
     required: false,
     default: none,
     type: InputString,
