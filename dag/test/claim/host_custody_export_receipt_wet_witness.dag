@@ -186,6 +186,7 @@ fn fx_pairing_row(path: NonEmptyStr, reader: NonEmptyStr, publisher: NonEmptyStr
     dir_ownership: PosixOwnerNames { user: publisher, group: reader },
     dir_mode: production.dir_mode,
     export_receipt: CustodyExportReceiptOwed,
+    medium: CustodyDiskBacked,
   }
 }
 
