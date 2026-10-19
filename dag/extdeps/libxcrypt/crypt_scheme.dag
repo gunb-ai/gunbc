@@ -8,11 +8,22 @@ module extdeps.libxcrypt.crypt_scheme
 // previously sat inside gunbc.provisioning.altra_autoinstall_seed, where they read as seed policy (review 81975).
 //
 // WHY THIS SHELF AND NOT extdeps/glibc. The "$6$" scheme was written by Ulrich Drepper for GNU libc — crypt(5)
-// says so — but the code that will check the string on an installed board is libxcrypt's: libcrypt1 1:4.4.38-1 is
-// what ships Ubuntu 24.04's crypt(3), and glibc's libcrypt now delegates to it. Releases, versions and the
-// document cited below all belong to better82/libxcrypt, so that is the subject and the citation here.
+// says so — but the code that will check the string on an installed board is libxcrypt's: Ubuntu 24.04's
+// crypt(3) is libcrypt1 4.4.36-4build1 (the arm64 pool at ports.ubuntu.com publishes exactly that version of
+// the libcrypt1 udeb and deb), and glibc's libcrypt now delegates to it. Releases, versions and the document
+// cited below all belong to better82/libxcrypt, so that is the subject and the citation here.
 // extdeps/glibc exists and holds ldconfig — a different product fact with a different upstream, and a row there
 // would be a wrong shelf rather than a tidy one.
+//
+// TWO RULES RUN, AND A SEED MUST ENFORCE BOTH. libxcrypt validates the whole setting string with a SHARED check
+// (lib/crypt.c, check_badsalt_chars at v4.4.38) BEFORE it dispatches to the sha512crypt parser, and the shared
+// check is stricter about characters than the scheme's own salt class is: it refuses any byte at or below
+// 0x20, at or above 0x7f, and the five characters ! * : ; \ — anywhere in the setting, digest field included.
+// Checking a candidate against the scheme row ALONE is unsound in the direction that hurts a headless board:
+// "$6$saltsalt$…!" passes the 86-character base64 alphabet test only if the '!' is not noticed, and the board
+// then carries a shadow entry its own crypt(3) refuses to verify — an install that reports success and a root
+// account nobody can open, found out at the only console the machine has. So both rules are modelled, and
+// accepted means BOTH accept (see shared_restriction and the composed sha512_crypt_format_accepted).
 //
 // WHAT IS *NOT* UPSTREAM, AND SO IS NOT CLAIMED HERE. The four-segment / five-segment grammar (splitting on '$'),
 // which refusal fires first, and the refusal type itself are the consumer's parsing convenience and stay in the
@@ -31,13 +42,51 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, ExternalModelScope, ExternalSubjectRef, cited_figure_read_obligation }
 import extdeps.uri { Https, Uri }
 
-// Read in full during this change AT THE VERSION THIS DISTRO SHIPS (libcrypt1 1:4.4.38-1), not at whatever HEAD
-// says: the consumer's digests are verified by that release and not by a later one. The artifact is the mdoc
-// source of crypt(5); the fact below is its sha512crypt `.hash` line.
+// Read in full during this change AT THE VERSION THIS DISTRO SHIPS, not at whatever HEAD says: the consumer's
+// digests are verified by that release and not by a later one. The artifact is the mdoc source of crypt(5); the
+// fact below is its sha512crypt `.hash` line.
+//
+// WHY v4.4.36 AND NOT v4.4.38 — and why the earlier answer here was wrong. An earlier revision of this row cited
+// v4.4.38 because 1:4.4.38-1 is what `dpkg -l` prints inside the CI image; but that is the image's Debian
+// libcrypt1, and an arm64 Noble install resolves libcrypt1 4.4.36-4build1 from the Ubuntu pool (verified in
+// ubuntu-ports pool/main/libx/libxcrypt/, which publishes exactly that .deb and .udeb). Citing the newest release
+// while shipping an older one is how a figure stays "cited" after the thing it describes has changed. crypt.5 at
+// v4.4.36 was then fetched and diffed against v4.4.38: the sha512crypt `.hash` row and the shared printable-ASCII
+// restriction quoted below are byte-identical, so the citation now names the release the board actually runs and
+// the equality is stated rather than assumed. A future requirement to track a newer release adds a row here, not a
+// silent version bump.
+//
+// ONE VERIFICATION TRAP WORTH NAMING, BECAUSE IT COST THIS MODULE A ROUND. When the package list was challenged,
+// the quick check was to fetch each package's page on the Ubuntu package site — and it answers HTTP 200 for names
+// that do not exist at all, including three invented ones this module had been shipping. A check that reports
+// "verified" for a fabricated input is worse than no check, because it converts an unverified claim into an
+// apparently verified one and the reader cannot tell the two apart. The authority that does answer is the release
+// index itself (ports.ubuntu.com noble main+universe Packages, 69,641 names for arm64), where the invented names
+// are simply absent. Ask an index that has to enumerate, never a search page that can say "no results" politely.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "raw.githubusercontent.com/besser82/libxcrypt/v4.4.38/doc/crypt.5"
+    locator: "raw.githubusercontent.com/besser82/libxcrypt/v4.4.36/doc/crypt.5"
+  }
+}
+
+// THE SHARED PRE-SCHEME CHECK IS ITS OWN AUTHORITY, separate from the document. crypt.5 states the restriction
+// this row models, but the ORDER that makes it load-bearing — the check runs over the WHOLE setting string before
+// any scheme parser is consulted — is only in libxcrypt's source. Citing the document for that would attribute a
+// claim to a page that does not make it. Same release as above, for the same reason.
+data extdeps_libxcrypt_crypt_c_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "raw.githubusercontent.com/besser82/libxcrypt/v4.4.36/lib/crypt.c"
+  }
+}
+
+// THE COST FIELD'S PARSER, ITS OWN AUTHORITY. Whether "rounds=" is recognised at its actual position and whether
+// the whole cost field is validated are questions about lib/crypt-sha512.c, not about the man page's grammar row.
+data extdeps_libxcrypt_sha512_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "raw.githubusercontent.com/besser82/libxcrypt/v4.4.36/lib/crypt-sha512.c"
   }
 }
 
@@ -169,6 +218,159 @@ fn cost_field_is_well_formed(digits: String) -> Bool {
           )
       }
   }
+}
+
+// THE SECOND RULE, WHICH THE SCHEME ROW CANNOT CARRY. Before any scheme parser sees the setting, libxcrypt scans
+// the WHOLE string — prefix, cost, salt and digest alike — and refuses it unless every byte is printable ASCII and
+// none of the five characters ! * : ; \ appears anywhere. Both halves of that are in the document, in the paragraph
+// above the table this row was read from: "passphrases should always be entirely printable ASCII characters, and
+// do not contain any whitespace or the characters : ; * ! or \", and the source implements it as
+// check_badsalt_chars (byte <= 0x20, byte >= 0x7f, then strcspn against those five), called BEFORE the hash
+// function is dispatched. It is modelled as an ALLOWED ALPHABET — the printable range minus the five reserved
+// characters, 89 of them — rather than as a forbidden set, because the rule's two halves are a range test and a
+// strcspn together: a forbidden-set spelling of just the five characters would silently admit space, tab, DEL and
+// every high byte, which the range test refuses.
+//
+// WHY THIS IS A SEPARATE RECORD AND NOT TWO MORE FIELDS ON CryptSchemeFormat. The scheme row is one upstream line
+// with one grammar; this rule belongs to no scheme at all — the same scan gates yescrypt, bcrypt and every other
+// row of that table. Folding it into the sha512crypt row would make a future yescrypt row re-state it, and the
+// moment the two copies disagree the composed check becomes ambiguous. Adding a scheme adds a row to the table,
+// not a copy of this record.
+//
+// WHY CONSUMERS MAY NOT SKIP IT. A candidate that satisfies the scheme row but not this one is exactly the
+// failure this cut exists to prevent: the seed admits a digest, shadow stores it, and the board's own crypt(3)
+// refuses to verify it. That surfaces as an install that reported success and a root account nobody can open, on
+// a machine whose only console is the BMC. So accepted means BOTH rules accept — see sha512_crypt_format_accepted.
+type CryptSharedRestriction = PrintableAsciiMinusReserved {
+  // The allowed alphabet, derived (not invented) below from the two halves of the upstream rule.
+  allowed_characters: List<NonEmptyStr>,
+  // The five characters the document names. Carried separately from allowed_characters so a reader can check the
+  // derivation instead of trusting it: allowed_characters is exactly the printable range minus this list.
+  reserved_characters: List<NonEmptyStr>,
+  // Standing for the character rule itself. The rule is documented (crypt.5, the paragraph above the table), so
+  // this is a citation and not a transcription — but it points at the document that states it, not the table row.
+  rule_standing: CitedFigureStanding,
+  // The ORDER claim, which the document does not make and the source does: the scan runs before the scheme
+  // dispatch. Carried as its own authority so the composition is traceable to code and not to prose.
+  ordering_authority: ExternalAuthority,
+}
+
+data crypt_shared_restriction: CryptSharedRestriction = PrintableAsciiMinusReserved {
+  // printable ASCII 0x21..0x7e (95), less the five reserved characters (94, 89): derived once here so a reviewer
+  // can reproduce it against crypt.5 and crypt.c, and it is swept for consistency by the witness.
+  allowed_characters: [
+    "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/",
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@",
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V",
+    "W", "X", "Y", "Z", "[", "]", "^", "_", "`",
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v",
+    "w", "x", "y", "z", "{", "|", "}", "~",
+  ],
+  reserved_characters: ["!", "*", ":", ";", "\\"],
+  rule_standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+  ordering_authority: extdeps_libxcrypt_crypt_c_anchor,
+}
+
+// THE SHARED SCAN, written the way the source is written: one pass over the whole candidate, every character must
+// be in the allowed alphabet. Deliberately NOT a fold over reserved_characters — a scan over the candidate is the
+// shape of the upstream check, and it is what makes a byte outside the printable range a refusal rather than a
+// no-op that a forbidden-set fold over five characters would silently skip.
+//
+// THIS IS A PRIMITIVE AND NOT A PARSER. It asks one character question about one field, which is upstream's
+// question and therefore belongs on this shelf. Deciding WHICH field a candidate's bytes are — where a cost ends
+// and a salt begins, whether a delimiter is legal at a given position — is the policy this repository applies to a
+// seed, and it lives in the consuming module beside the other admission rules. The order the two rules run in is
+// recorded there too, in the order upstream runs them, because a candidate that breaks both has to be reported
+// once and the first diagnosis decides whether an operator re-derives a hash or fixes a mirror.
+fn shared_restriction_rejects(candidate: String) -> Bool {
+  match crypt_shared_restriction {
+    PrintableAsciiMinusReserved {
+      allowed_characters: allowed, reserved_characters: _, rule_standing: _, ordering_authority: _,
+    } =>
+      fold(
+        allowed,
+        init: true,
+        f: (rejected, character) => rejected && !candidate.contains(needle: character as String),
+      )
+  }
+}
+
+// THE FIVE RESERVED CHARACTERS, exposed so the consuming module can name them in a refusal and so the witness can
+// sweep the derivation: allowed_characters must be exactly the printable range minus this list, and a row whose
+// two halves drift apart is a row that admits a byte upstream refuses.
+fn crypt_reserved_characters() -> List<NonEmptyStr> {
+  match crypt_shared_restriction {
+    PrintableAsciiMinusReserved {
+      allowed_characters: _, reserved_characters: reserved, rule_standing: _, ordering_authority: _,
+    } => reserved
+  }
+}
+
+// WHAT THE SEED MUST DO WITH BOTH RULES, stated once so a consumer cannot claim it "checks libxcrypt" while
+// checking only the scheme. Each arm names the rule and the authority that grounds it; the door in the consuming
+// module walks them in this order, and the witness asserts that the order is the source's order.
+type CryptAcceptanceRule = SharedReservedCharacterScan { authority: ExternalAuthority } | SchemeFormatRules { authority: ExternalAuthority }
+
+data crypt_acceptance_rules: List<CryptAcceptanceRule> = [
+  SharedReservedCharacterScan { authority: extdeps_libxcrypt_crypt_c_anchor },
+  SchemeFormatRules { authority: extdeps_external_authority_anchor },
+]
+
+
+// WHAT THE MEASUREMENTS ADD, AND WHAT THEY DO NOT LICENSE. Everything above is the document read through the two
+// source files. What was only ever established by running the shipping library is recorded here, as its own row
+// with its own standing, because it is the kind of claim a document cannot make: on the build this distro
+// actually ships, the LIBRARY ITSELF DOES NOT ENFORCE THE WIDTHS. A one-character salt, an empty salt, a
+// seventeen-character salt, an 85-character digest and an 87-character digest are all ACCEPTED — and the shorter
+// digest is silently REWRITTEN into the canonical 86-character hash of the passphrase rather than refused.
+//
+// WHY THAT IS A SEPARATE ROW AND NOT A FOOTNOTE: the widths in the row above are the SHADOW-ENTRY contract from
+// crypt.5's `.hash` line, which is the contract that matters for a seed (a digest the installer writes must be a
+// digest the installed system will verify on login). They are NOT the library's acceptance contract, and any
+// future reader who assumes they are will "simplify" this by deleting the width checks and call it upstream
+// behaviour. The distinction has to be in a type, because a comment attached to whichever function is being
+// edited at the time is not.
+//
+// WHY THIS STANDING IS TranscribedUncited RATHER THAN ObservedByReceipt. The receipt arm would be the honest one
+// — these are figures this repository observed — but observed_receipt admits only the folds named on it in
+// extdeps/external_authority.dag, and none of them is mine; that list is closed and this module must not fork it.
+// So the observation carries its read obligation as a name, and the obligation is discharged by re-running the
+// probe rather than by trusting this row. That is weaker than a receipt and says so, which is the point.
+type CryptLibraryAcceptance = LibraryAcceptanceObserved {
+  // Which build the observation is about, in the words a reader can re-check (package version and origin), not a
+  // hash of bytes nobody can re-derive.
+  observed_build: NonEmptyStr,
+  // The candidates the library refused, in the shape they were tried in.
+  refused_candidates: List<NonEmptyStr>,
+  // The candidates the library accepted, including the ones a reader would expect it to refuse.
+  accepted_candidates: List<NonEmptyStr>,
+  // What has NOT been established. "errno is 22 for both a reserved character and a malformed cost" is a fact;
+  // WHICH check fired is not, because the two refusals are indistinguishable at the ABI boundary and the source
+  // reading that separates them is the citation above, not this row.
+  owed: NonEmptyStr,
+  standing: CitedFigureStanding,
+}
+
+data crypt_library_acceptance: CryptLibraryAcceptance = LibraryAcceptanceObserved {
+  observed_build: "libcrypt1 4.4.36-4build1 (Ubuntu 24.04 arm64 pool, ports.ubuntu.com noble main; amd64 build from archive.ubuntu.com measured identically)",
+  refused_candidates: [
+    "$6$sa!tsalt$<86>", "$6$sa:ltsa$<86>", "$6$sa*tsalt$<86>",
+    "$6$saltsalt$<85>!", "$6$saltsalt$<85>:", "$6$saltsalt$<85>*",
+    "$6$sa ltx$<86>", "$6$sa<ltab>$<86>", "$6$sa<DEL>t$<86>", "$6$sa<0x80>t$<86>", "$6$sa<LF>tx$<86>",
+    "$6$rounds=999$saltsalt$<86>", "$6$rounds=1000000000$saltsalt$<86>",
+    "$6$rounds=$saltsalt$<86>", "$6$rounds=-1$saltsalt$<86>", "$6$rounds=1 000$saltsalt$<86>",
+    "$6$rounds=abc$<86>", "$6$rounds=1000rounds=garbage$saltsalt$<86>",
+  ],
+  accepted_candidates: [
+    "$6$saltsalt$<86>", "$6$rounds=1000$saltsalt$<86>", "$6$rounds=999999999$saltsalt$<86>",
+    "$6$~a.b_c-d+e$<86>", "$6$sa=ltx$<86>", "$6$ROUNDS=1000$saltsalt$<86>",
+    "$6$saltsalt$<85>_", "$6$saltsalt$<85>+",
+    "$6$s$<86>", "$6$<86>", "$6$sssssssssssssssss$<86>", "$6$saltsalt$<85>", "$6$saltsalt$<86>a",
+  ],
+  owed: "the exact accepted alphabet on the shipped build (probed at the points above, not exhaustively); which of the two checks — shared reserved-character scan or scheme parser — refused any given candidate, since both return EINVAL and only the source citations above separate them.",
+  standing: TranscribedUncited {
+    read_obligation: "re-run crypt_r over these candidates against the libcrypt1 shipped by the target distro (link the pool .so directly; LD_PRELOAD across architectures silently falls back to the host library and reports the wrong build), and re-read lib/crypt.c check_badsalt_chars and lib/crypt-sha512.c's cost parse at that tag.",
+  },
 }
 
 // THE COST FIELD'S TWO DIGIT CLASSES, from the same line, as data so the class is cited rather than inferred from

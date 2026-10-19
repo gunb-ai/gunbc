@@ -14,9 +14,13 @@ import std.optional { Optional, Absent, Present }
 import extdeps.storage.types { storage_device_serial }
 import extdeps.libxcrypt.crypt_scheme {
   Sha512CryptFormat,
+  crypt_acceptance_rules,
   sha512_crypt_figure_read_obligation,
   sha512_crypt_format,
+  SharedReservedCharacterScan,
+  SchemeFormatRules,
 }
+import extdeps.os.ubuntu_autoinstall { StoragePolicyDirectLayout }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import std.measure { CharacterCount, character_count }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -58,6 +62,19 @@ import gunbc.provisioning.altra_autoinstall_seed {
   AddressingIsInstallerManaged,
   AdminAccessAuthorisation,
   AdminCredentialPosture,
+  CandidateIsNotPersistent,
+  CredentialHandleUnset,
+  DiskSelectionProvenance,
+  IdentityHasNoCredential,
+  IdentityReceiptIsForeign,
+  IdentityReceiptMissing,
+  Projected,
+  ProjectedIdentity,
+  ProjectionUnresolved,
+  SettingHoldsReservedCharacter,
+  audit_seed_interactivity,
+  package_intent_diagnostic,
+  project_storage_policy,
   AltraAutoinstallSeed,
   AltraAutoinstallSeedBinding,
   AltraAutoinstallTarget,
@@ -340,6 +357,37 @@ data unseeded_tzdata_packages: List<PackageIntent> = [
   QuestionUnanswered { package: TzdataPackage },
 ]
 
+// A HALF-ANSWERED tzdata, which is the defect the two-key table exists to catch. tzdata's postinst does
+// db_get tzdata/Areas and then db_get "tzdata/Zones/$AREA", so text that names only the region leaves the
+// second question live and the installer stopped — with nobody at the panel to answer it. A single-key table
+// credited this as closed, and the seed proved non-interactive on a seed that was not. This fixture must stay
+// a refusal, and its digest must differ from the fully answered one.
+data half_answered_tzdata_packages: List<PackageIntent> = [
+  QuestionAnswered {
+    package: OpenSshServerPackage,
+    debconf_seed: "openssh-server/password-authentication boolean false" as NonEmptyStr,
+  },
+  QuestionAnswered {
+    package: TzdataPackage,
+    debconf_seed: "tzdata tzdata/Areas select America" as NonEmptyStr,
+  },
+]
+
+// THE SAME PACKAGE, BOTH KEYS PRESENT — the region AND a zone under it. This is what "answered" has to mean
+// when the package asks a pair, and it is the control that stops the half-answer refusal being a bug rather
+// than a rule: if the fully seeded text also refused, the audit would be wrong in the other direction and
+// would strand an operator whose seed was fine.
+data answered_tzdata_packages: List<PackageIntent> = [
+  QuestionAnswered {
+    package: OpenSshServerPackage,
+    debconf_seed: "openssh-server/password-authentication boolean false" as NonEmptyStr,
+  },
+  QuestionAnswered {
+    package: TzdataPackage,
+    debconf_seed: "tzdata tzdata/Areas select America\ntzdata tzdata/Zones/America select New_York" as NonEmptyStr,
+  },
+]
+
 // CLEAN_PACKAGES plus one more ANSWERED question: the only difference is a question that was closed.
 data two_answered_packages: List<PackageIntent> = [
   QuestionAnswered {
@@ -532,7 +580,7 @@ test fn zero_and_multiple_are_distinguishable_arms() -> Bool {
 // than admitted ones (which would make every rule refuse).
 test fn exactly_one_match_selects_that_device() -> Bool {
   match select_target_disk(selector: serial_selector, observed: bay_population) {
-    DiskSelected { device: _ } => true
+    DiskSelected { device: _, provenance: _ } => true
     SelectionRefused { cause: _ } => false
   }
 }
@@ -598,10 +646,10 @@ test fn the_probe_really_did_not_read_that_serial() -> Bool {
 // the wrong size must refuse, not select.
 test fn catalog_identity_requires_the_measured_capacity_to_agree() -> Bool {
   match select_target_disk(selector: catalog_selector, observed: [unique_disk]) {
-    DiskSelected { device: _ } =>
+    DiskSelected { device: _, provenance: _ } =>
       match select_target_disk(selector: wrong_capacity_selector, observed: [unique_disk]) {
         SelectionRefused { cause: _ } => true
-        DiskSelected { device: _ } => false
+        DiskSelected { device: _, provenance: _ } => false
       }
     SelectionRefused { cause: _ } => false
   }
@@ -991,7 +1039,7 @@ test fn a_plaintext_password_is_refused_by_the_receipt() -> Bool {
 }
 
 fn refuses(crypt_digest: String) -> Bool {
-  match admin_password_hash_receipt(crypt_digest: crypt_digest as NonEmptyStr) {
+  match admin_password_hash_receipt(credential: seeded_handle, crypt_digest: crypt_digest as NonEmptyStr) {
     ReceiptRefused { cause: _ } => true
     ReceiptAccepted { receipt: _ } => false
   }
@@ -1006,7 +1054,7 @@ fn chars(n: Int) -> CharacterCount {
 }
 
 fn accepts(crypt_digest: String) -> Bool {
-  match admin_password_hash_receipt(crypt_digest: crypt_digest as NonEmptyStr) {
+  match admin_password_hash_receipt(credential: seeded_handle, crypt_digest: crypt_digest as NonEmptyStr) {
     ReceiptRefused { cause: _ } => false
     ReceiptAccepted { receipt: _ } => true
   }
@@ -1131,7 +1179,7 @@ test fn each_refusal_arm_names_the_part_that_failed() -> Bool {
 }
 
 fn cause_of(crypt_digest: String) -> Optional<AdminPasswordRefusalCause> {
-  match admin_password_hash_receipt(crypt_digest: crypt_digest as NonEmptyStr) {
+  match admin_password_hash_receipt(credential: seeded_handle, crypt_digest: crypt_digest as NonEmptyStr) {
     ReceiptRefused { cause: cause } => Present { value: cause }
     ReceiptAccepted { receipt: _ } => Absent
   }
@@ -1170,7 +1218,8 @@ test fn a_digest_containing_dot_and_slash_is_accepted() -> Bool {
 }
 
 // CATCHES: the projection accepting an absent receipt, which would put a fabricated string into the
-// upstream record.
+// upstream record. Named rather than Absent: "nothing was read" is an operator event with a page in the
+// runbook, and a bare absence is what made it indistinguishable from the other two ways this fails.
 test fn the_projection_needs_a_receipt() -> Bool {
   match built_seed_and_binding() {
     Present { value: pair } =>
@@ -1179,8 +1228,8 @@ test fn the_projection_needs_a_receipt() -> Bool {
         binding_hostname: "unit-a-altra" as NonEmptyStr,
         receipt: Absent,
       ) {
-        Absent => true
-        Present { value: _ } => false
+        IdentityReceiptMissing => true
+        _ => false
       }
     Absent => false
   }
@@ -1195,23 +1244,23 @@ test fn the_projection_needs_a_receipt() -> Bool {
 // catches, is the projection substituting a baked hostname (a per-unit special case wearing a config
 // field, which is precisely what the module forbids) or dropping the label.
 test fn the_projection_carries_the_supplied_label_verbatim_and_never_invents_one() -> Bool {
-  match admin_password_hash_receipt( crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr, ) {
+  match admin_password_hash_receipt( credential: seeded_handle, crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr, ) {
     ReceiptRefused { cause: _ } => false
     ReceiptAccepted { receipt: receipt } =>
       match built_seed_and_binding() {
         Absent => false
         Present { value: pair } =>
           match project_autoinstall_identity( seed: pair.seed, binding_hostname: "unit-a-altra" as NonEmptyStr, receipt: Present { value: receipt }, ) {
-            Absent => false
-            Present { value: first } =>
+            ProjectedIdentity { identity: first } =>
               match project_autoinstall_identity( seed: pair.seed, binding_hostname: "an-entirely-different-label" as NonEmptyStr, receipt: Present { value: receipt }, ) {
-                Absent => false
-                Present { value: second } =>
+                ProjectedIdentity { identity: second } =>
                   first.hostname == ("unit-a-altra" as NonEmptyStr)
                     && second.hostname
                       == ("an-entirely-different-label" as NonEmptyStr)
                     && first.hostname != second.hostname
+                _ => false
               }
+            _ => false
           }
       }
   }
@@ -1340,7 +1389,7 @@ test fn a_binding_records_the_serial_it_wrote_to() -> Bool {
   match built_seed_and_binding() {
     Present { value: pair } =>
       match pair.binding.disk_selection {
-        BoundDisk { serial: recorded } => recorded == ("UNIQUE-SERIAL-0007" as NonEmptyStr)
+        BoundDisk { serial: recorded, matched: _, observed: _ } => recorded == ("UNIQUE-SERIAL-0007" as NonEmptyStr)
         _ => false
       }
     Absent => false
@@ -1598,7 +1647,13 @@ test fn the_refusal_names_the_package_in_its_archive_spelling() -> Bool {
       match audit_altra_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
         SeedRefused { cause: PackagePrompts { name: named, question: asked } } =>
           named == "tzdata" as NonEmptyStr
-            && asked.contains("tzdata/configure_timezone")
+            // BOTH keys, not one. The shipped package asks tzdata/Areas and then tzdata/Zones/<area>, and the
+            // reason the old single-key spelling was a defect is that satisfying one leaves the other live: a seed
+            // that names only the region still stops the installer, and a refusal text that named one question
+            // could not tell the operator that. The invented "tzdata/configure_timezone" appears nowhere in the
+            // shipped control scripts; this asserts the two keys that do.
+            && asked.contains("tzdata/Areas")
+            && asked.contains("tzdata/Zones/")
             && known_prompting_package_name(package: TzdataPackage) == named
         _ => false
       }
@@ -1758,8 +1813,14 @@ fn entrypoint_tokens_are_distinguishable(
 ) -> Bool {
   let console_render = render_altra_autoinstall_seed(seed: console_seed)
   let keys_render = render_altra_autoinstall_seed(seed: keys_seed)
-  console_render.contains("console=unlocked-bmc-sol,keys=0")
-    && keys_render.contains("console=locked,keys=1")
+  // The console token is pinned, and the key COUNT is pinned SEPARATELY from the key coverage. The count is no
+  // longer the whole claim (see authorised_key_coverage): the coverage hash beside it is what makes a swap of key
+  // material move the digest. Pinning "keys=1" alone was the weak assertion that let a count-only render pass,
+  // so the two halves are checked as two things, and the digest inequality is the load-bearing one.
+  console_render.contains("console=unlocked-bmc-sol,keys=")
+    && console_render.contains(",count=0")
+    && keys_render.contains("console=locked,keys=")
+    && keys_render.contains(",count=1")
     && !content_hash_eq_structural(
       left: altra_autoinstall_seed_digest(seed: console_seed),
       right: altra_autoinstall_seed_digest(seed: keys_seed),
@@ -1790,4 +1851,657 @@ test fn the_two_unlock_kinds_are_distinguishable_in_the_render() -> Bool {
 
 fn list_length_is(candidates: List<NonEmptyStr>, expected: Int) -> Bool {
   list_length(items: candidates) == expected
+}
+
+// ---------------------------------------------------------------------------
+// HOLD ROUND (merry-fox-82): disk join, projection keeps the disk, receipt joins
+// the credential, shared reserved-character scan, content in the digest.
+// ---------------------------------------------------------------------------
+
+// THE REFUSAL THAT COULD NEVER FIRE, NOW FIRES. Before the split, the selector's own predicate dropped
+// ephemeral devices, so a volatile disk could never be the one match and CandidateIsNotPersistent was dead
+// code behind a safety-net name. A population whose ONLY match is volatile is the single fixture that can
+// tell the two designs apart: under the old filter it answers "your rule matched nothing", which sends the
+// operator to the selector when the problem is the drive. The near-miss refusal here is NoDiskMatches, and
+// accepting that would be wrong twice — it is the wrong cause, and it is the wrong page of the runbook.
+test fn a_matched_but_volatile_disk_is_refused_as_not_persistent() -> Bool {
+  match select_target_disk(selector: serial_selector, observed: [ephemeral_disk]) {
+    SelectionRefused { cause: CandidateIsNotPersistent { serial: named, persistence: kind } } =>
+      named == ("UNIQUE-SERIAL-0007" as NonEmptyStr) && kind == Ephemeral
+    _ => false
+  }
+}
+
+// THE SAME ARM FOR THE CACHE MIRROR, WHICH IS A DIFFERENT DEVICE CLASS AND MUST NOT SLIP THROUGH THE
+// Ephemeral BRANCH. A CachedMirror survives a reset only as long as its cache partner does; erasing one to
+// hold a root filesystem is a data-loss event dressed as a provisioning step.
+test fn a_matched_cache_mirror_is_refused_as_not_persistent() -> Bool {
+  match select_target_disk(selector: serial_selector, observed: [cached_mirror_disk]) {
+    SelectionRefused { cause: CandidateIsNotPersistent { persistence: CachedMirror } } => true
+    _ => false
+  }
+}
+
+// A REFUSAL IS NOT A PASS THROUGH. The exact fixture above must never select. Written as the negation as
+// well so that a future change which makes the arm refuse AND select (two arms of the sum both reachable)
+// cannot quietly satisfy the witness above.
+test fn a_volatile_disk_is_never_selected_even_though_it_matches() -> Bool {
+  match select_target_disk(selector: serial_selector, observed: [ephemeral_disk]) {
+    DiskSelected { device: _, provenance: _ } => false
+    SelectionRefused { cause: _ } => true
+  }
+}
+
+// THE RULE STILL PICKED OUT TWO DISKS AND THE RECORD SAYS SO. Admissibility and matching are separate
+// counts, and the provenance carries both. Here the rule matches the installable drive AND the volatile one
+// (same serial, different persistence), so the selection is legal but its provenance must report matched=2 of
+// 3 — a rule that only works because seven of eight devices were ineligible is a rule nobody has tested, and
+// the counts are the only place that fact can be seen afterwards.
+test fn provenance_records_the_rule_s_discriminating_power() -> Bool {
+  match select_target_disk(
+    selector: serial_selector,
+    observed: [unique_disk, ephemeral_disk, twin_disk_one],
+  ) {
+    DiskSelected { device: chosen, provenance: provenance } =>
+      match storage_device_serial(d: chosen) {
+        Present { value: serial } =>
+          serial == ("UNIQUE-SERIAL-0007" as NonEmptyStr)
+            && provenance.matched == 2
+            && provenance.observed == 3
+            && provenance.selector == serial_selector
+        Absent => false
+      }
+    SelectionRefused { cause: _ } => false
+  }
+}
+
+// A DISK PICKED BY ANOTHER RULE IS NOT THIS SEED'S DISK. The defect: a valid disk selected under a different
+// selector could be bound, and the receipt recorded a rule that was never run. The selection below is
+// genuine — minted by select_target_disk, not forged — which is the whole point: a bare-record forgery
+// proves the seal, not the join, and the seal is already tested by the census. This is the join.
+test fn a_disk_selected_under_a_different_rule_cannot_be_bound() -> Bool {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Absent => false
+    Present { value: seed } =>
+      // twin_disk_one + twin_disk_two both match twin_selector, so the honest selection under that rule is a
+      // refusal; the legal one under it needs a single twin. Selecting the twin population and binding it to
+      // a seed whose disk field is serial_selector is the mismatch under test.
+      match bind_altra_autoinstall_seed(
+        seed: seed,
+        target: target_altra,
+        unit_key: unit_a_key,
+        attempt: attempt_one,
+        selection: select_target_disk(selector: twin_selector, observed: [twin_disk_one]),
+      ) {
+        Bound { binding: _ } => false
+        BindRefused { blocker: DiskSelectorDisagreesWithSeed { target: rule } } => rule == twin_selector
+        BindRefused { blocker: _ } => false
+      }
+  }
+}
+
+// THE CONTROL FOR THE TEST ABOVE, AND THE REASON IT IS NOT A FALSE REFUSAL. The same seed, bound with a
+// selection produced under the seed's OWN rule, must Bind and must record the disk. Without this the
+// mismatch witness would be satisfied by a bind that always refuses.
+test fn the_same_selection_under_the_seed_s_own_rule_binds() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match pair.binding.disk_selection {
+        BoundDisk { serial: named, matched: m, observed: o } =>
+          named == ("UNIQUE-SERIAL-0007" as NonEmptyStr) && m == 1 && o == 3
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// THE BINDING'S ADDRESS MOVES WHEN THE DISK MOVES. Two bindings of the SAME seed to the SAME unit and
+// attempt, differing only in the drive, used to share one binding digest — so a stored receipt could be
+// overwritten by a second attempt onto another bay and nobody could tell. This is the "the machine booted
+// seed X, onto drive Y" guarantee, and it is worth nothing if Y is not in the address.
+test fn two_different_disks_under_one_seed_are_two_binding_addresses() -> Bool {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Absent => false
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed(
+        seed: seed,
+        target: target_altra,
+        unit_key: unit_a_key,
+        attempt: attempt_one,
+        selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      ) {
+        BindRefused { blocker: _ } => false
+        Bound { binding: first } =>
+          match bind_altra_autoinstall_seed(
+            seed: seed,
+            target: target_altra,
+            unit_key: unit_a_key,
+            attempt: attempt_one,
+            selection: select_target_disk(selector: twin_selector, observed: [twin_disk_two]),
+          ) {
+            // The second selection must itself be legal, or the comparison below would be vacuous.
+            BindRefused { blocker: _ } => false
+            Bound { binding: second } =>
+              !content_hash_eq_structural(
+                left: binding_digest(binding: first),
+                right: binding_digest(binding: second),
+              )
+              && content_hash_eq_structural(
+                left: first.seed_digest,
+                right: second.seed_digest,
+              )
+          }
+      }
+  }
+}
+
+// THE PROJECTION KEEPS THE DISK IT WAS GIVEN. The upstream policy has no device field and this module may
+// not edit it, so a projection that returned only the policy would report success and drop the one fact the
+// decision turned on. The projection now carries the evidence and the provenance beside the policy; a
+// downstream consumer that ignores both is visible as doing so.
+test fn the_storage_projection_carries_the_selected_device() -> Bool {
+  match project_storage_policy(selection: select_target_disk(selector: serial_selector, observed: bay_population)) {
+    Projected { policy: policy, device: evidence, provenance: provenance } =>
+      match evidence {
+        BoundDisk { serial: named, matched: m, observed: o } =>
+          match policy {
+            StoragePolicyDirectLayout =>
+              named == ("UNIQUE-SERIAL-0007" as NonEmptyStr)
+                && m == 1
+                && o == 3
+                && provenance.selector == serial_selector
+          }
+        _ => false
+      }
+    ProjectionUnresolved { cause: _ } => false
+  }
+}
+
+// AND THE REFUSAL SIDE OF THE PROJECTION NAMES ITS CAUSE. Dropped causes are how a caller ends up retrying
+// forever: the zero-match refusal and the unread-identity refusal need different fixes, and a caller handed
+// a bare absence cannot tell them apart.
+test fn the_storage_projection_reports_the_refusal_cause() -> Bool {
+  match project_storage_policy(selection: select_target_disk(selector: absent_selector, observed: bay_population)) {
+    ProjectionUnresolved { cause: NoDiskMatches { selector: _ } } => true
+    _ => false
+  }
+}
+
+// THE RECEIPT CARRIES THE CREDENTIAL IT WAS READ FROM, FILLED FROM THE HANDLE AND NOT FROM A PARAMETER.
+// The defect: a digest alone could be paired with any handle, so a board could be handed a hash read from a
+// different secret than the one its seed names. The minter has no locator argument, so the fields below can
+// only ever be what the handle said.
+test fn the_receipt_records_which_secret_it_came_from() -> Bool {
+  match admin_password_hash_receipt(
+    credential: seeded_handle,
+    crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr,
+  ) {
+    ReceiptRefused { cause: _ } => false
+    ReceiptAccepted { receipt: issued } =>
+      issued.secret_locator == ("vault://gunbc/provisioning/altra/admin" as NonEmptyStr)
+        && issued.secret_version == ("v7" as NonEmptyStr)
+  }
+}
+
+// A RECEIPT FOR A DECLINED CREDENTIAL IS REFUSED, AND NOT AS A FORMAT FAILURE. The seed said no password;
+// there is no secret to have read. Naming the cause distinguishes it from NotACryptDigest, whose remedy is
+// different — one is a wiring bug, the other a broken string.
+test fn a_receipt_for_a_declined_credential_is_refused_by_name() -> Bool {
+  match admin_password_hash_receipt(
+    credential: PasswordUnset,
+    crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr,
+  ) {
+    ReceiptRefused { cause: CredentialHandleUnset } => true
+    ReceiptRefused { cause: _ } => false
+    ReceiptAccepted { receipt: _ } => false
+  }
+}
+
+// THE JOIN REJECTS A FOREIGN RECEIPT, AND SAYS WHICH SECRET WAS EXPECTED. The version fixture is a legal
+// digest read from v8 while the seed's handle is v7; before the join that projected successfully. The names
+// in the verdict are references, never the secret, so they can be logged.
+test fn a_receipt_from_another_secret_version_is_refused_by_name() -> Bool {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Absent => false
+    Present { value: seed } =>
+      match admin_password_hash_receipt(
+        credential: rotated_handle,
+        crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr,
+      ) {
+        ReceiptRefused { cause: _ } => false
+        ReceiptAccepted { receipt: from_v8 } =>
+          match project_autoinstall_identity(
+            seed: seed,
+            binding_hostname: "unit-a-altra" as NonEmptyStr,
+            receipt: Present { value: from_v8 },
+          ) {
+            IdentityReceiptIsForeign { expected: wanted, presented: offered } =>
+              wanted == ("vault://gunbc/provisioning/altra/admin@v7" as NonEmptyStr)
+                && offered == ("vault://gunbc/provisioning/altra/admin@v8" as NonEmptyStr)
+            _ => false
+          }
+      }
+  }
+}
+
+// THE SAME HANDLE JOINS, WHICH IS THE CONTROL THAT MAKES THE REFUSAL ABOVE A TEST AND NOT A WALL.
+test fn a_receipt_from_the_named_secret_joins() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: pair } =>
+      match admin_password_hash_receipt(
+        credential: seeded_handle,
+        crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr,
+      ) {
+        ReceiptRefused { cause: _ } => false
+        ReceiptAccepted { receipt: issued } =>
+          match project_autoinstall_identity(
+            seed: pair.seed,
+            binding_hostname: "unit-a-altra" as NonEmptyStr,
+            receipt: Present { value: issued },
+          ) {
+            ProjectedIdentity { identity: who } => who.hostname == ("unit-a-altra" as NonEmptyStr)
+            _ => false
+          }
+      }
+  }
+}
+
+// A SEED WITH NO CREDENTIAL SAYS SO, RATHER THAN FAILING. A key-only board is legitimate; reporting its
+// missing hash as an error would make the common case indistinguishable from the broken one.
+test fn a_key_only_seed_reports_no_credential_rather_than_an_error() -> Bool {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: unlocked_console,
+    credential: PasswordUnset,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Absent => false
+    Present { value: seed } =>
+      match project_autoinstall_identity(
+        seed: seed,
+        binding_hostname: "unit-a-altra" as NonEmptyStr,
+        receipt: Absent,
+      ) {
+        IdentityHasNoCredential { posture: posture } => posture == ("credential-unset" as NonEmptyStr)
+        _ => false
+      }
+  }
+}
+
+// THE SHARED SCAN REFUSES WHAT THE SCHEME ROW CANNOT SEE, IN EVERY FIELD. A '!' in the DIGEST is the case the
+// scheme alphabet would wave through if the alphabet were generous, and a ':' in the SALT is refused by the
+// shared scan alone. Pinning both fields, and pinning them to the shared arm rather than the alphabet arm, is
+// the difference between an operator re-deriving a hash and an operator fixing a shell quoting bug.
+test fn the_shared_scan_refuses_reserved_characters_wherever_they_sit() -> Bool {
+  match cause_of(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfn!") {
+    Present { value: SettingHoldsReservedCharacter { reserved: named } } => named == ("!" as NonEmptyStr)
+    _ => false
+  }
+    && match cause_of(crypt_digest: "$6$sa:lsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+      Present { value: SettingHoldsReservedCharacter { reserved: named } } => named == (":" as NonEmptyStr)
+      _ => false
+    }
+}
+
+// AND A PERMITTED PUNCTUATION MARK IS STILL ACCEPTED. Without this control the shared scan above could be
+// "tightened" into a refusal of all punctuation, which strands an operator whose only console is the BMC: a
+// generator that legitimately uses '.' or '~' in a salt would be refused by us and accepted by the board.
+test fn permitted_punctuation_in_the_salt_is_still_accepted() -> Bool {
+  accepts(crypt_digest: "$6$~a.b_c-d+e$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+}
+
+// THE ORDER IS PART OF THE CONTRACT, NOT AN IMPLEMENTATION DETAIL. Upstream scans the whole setting before
+// dispatching to the scheme, so a candidate that breaks BOTH rules must be reported as the shared failure —
+// the alphabet verdict would be true about the alphabet and wrong about what to do. The candidate below has a
+// '!' in a digest that is otherwise the right length, so only the shared scan can be the first diagnosis.
+test fn the_shared_scan_is_answered_before_the_scheme_grammar() -> Bool {
+  match cause_of(crypt_digest: "$6$rounds=abc$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfn!") {
+    Present { value: SettingHoldsReservedCharacter { reserved: _ } } => true
+    _ => false
+  }
+}
+
+// THE RULES AND THEIR ORDER ARE DATA ON THE SHELF, NOT A PROPERTY OF THE CODE THAT CALLS THEM. Two rows, in
+// upstream order, each naming the authority that grounds it. If someone reorders the door this witness does not
+// go red — which is exactly why the door's own ordering witness above exists. This one earns its keep the other
+// way: it makes the pair readable without reading the door, and it goes red if a rule is dropped from the shelf
+// while the door keeps calling the other one.
+test fn the_shelf_states_both_rules_in_upstream_order() -> Bool {
+  match crypt_acceptance_rules {
+    Cons {
+      head: SharedReservedCharacterScan { authority: _ },
+      tail: Cons { head: SchemeFormatRules { authority: _ }, tail: Empty },
+    } => true
+    _ => false
+  }
+}
+
+// THE COST IS READ AT ITS POSITION: A MALFORMED COST IS NEVER A SALT. This is the specific shape that the
+// old `count == 5` rule ACCEPTED (three segments, so no cost check ran, and "rounds=abc" is a legal salt by
+// the salt's own forbidden set) while the shipped library refuses it. Pinned to RoundsMalformed rather than
+// SaltTooLong: the near-miss cause is the difference between sending an operator to the drive and sending
+// them to the generator that emitted the string.
+test fn a_malformed_cost_at_its_position_is_never_read_as_a_salt() -> Bool {
+  match cause_of(crypt_digest: "$6$rounds=abc$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+    Present { value: RoundsMalformed } => true
+    _ => false
+  }
+}
+
+// THE WHOLE COST FIELD IS VALIDATED, INCLUDING WHAT HIDES BEHIND A VALID PREFIX. Splitting on the marker
+// anywhere gave "1000" as the digits and never looked at "rounds=garbage" after it; the digits are legal, so
+// a digits-only test passes. This is the counterexample that makes the whole-field rule non-vacuous.
+test fn a_repeated_cost_marker_is_refused_though_its_digits_are_legal() -> Bool {
+  match cause_of(crypt_digest: "$6$rounds=1000rounds=garbage$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
+    Present { value: RoundsMalformed } => true
+    _ => false
+  }
+}
+
+// AND THE ADMITTED COST STILL WORKS, BOTH ENDS OF THE RANGE. Without this the two refusals above could be a
+// blanket refusal of every cost, which on a headless board means an operator cannot install at all.
+test fn a_well_formed_cost_at_each_range_end_is_accepted() -> Bool {
+  accepts(crypt_digest: "$6$rounds=1000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+    && accepts(crypt_digest: "$6$rounds=999999999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+}
+
+// MATERIAL CONTENT MOVES THE DIGEST, AT EQUAL COUNTS. Three substitutions a count-only render could not see:
+// an authorized key replaced by a different key of the same length, the Netplan source rewritten, and a
+// debconf answer changed to another legal answer. Each keeps every count identical and each must move the
+// digest, because the digest is what "the machine booted seed X" is answered with later.
+test fn equal_count_substitutions_of_material_content_move_the_digest() -> Bool {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Absent => false
+    Present { value: baseline } =>
+      match build_seed_fixture(
+        network: network_posture_alt_netplan,
+        packages: clean_packages,
+        entry_keys: one_key,
+        console: locked_console,
+        credential: seeded_handle,
+        delivery: virtual_media_strategy,
+        target: target_altra,
+      ) {
+        Absent => false
+        Present { value: other_netplan } =>
+          match build_seed_fixture(
+            network: network_posture,
+            packages: answered_tzdata_packages,
+            entry_keys: one_key,
+            console: locked_console,
+            credential: seeded_handle,
+            delivery: virtual_media_strategy,
+            target: target_altra,
+          ) {
+            Absent => false
+            Present { value: other_answers } =>
+              !content_hash_eq_structural(
+                left: altra_autoinstall_seed_digest(seed: baseline),
+                right: altra_autoinstall_seed_digest(seed: other_netplan),
+              )
+                && !content_hash_eq_structural(
+                  left: altra_autoinstall_seed_digest(seed: baseline),
+                  right: altra_autoinstall_seed_digest(seed: other_answers),
+                )
+          }
+      }
+  }
+}
+
+// THE RENDERING SAYS WHAT IT IS, AND THE IDENTITY IS DERIVED FROM IT. The render is a diagnostic with a
+// documented standing; the digest is taken from the rendered text, so if the render and the digest ever stop
+// agreeing, "the machine booted seed X" is answered from something other than what was shipped.
+test fn the_digest_is_taken_from_the_rendering_it_ships() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: pair } =>
+      content_hash_eq_structural(
+        left: content_hash_atom(value: pair.binding.seed_rendering),
+        right: content_hash_atom(value: render_altra_autoinstall_seed(seed: pair.seed)),
+      )
+  }
+}
+
+// THE PRODUCED SEED'S OWN PROOF, NOT A SIDE CALL. The audit proof the seed carries must agree with a fresh
+// audit of the same posture: a record whose stored proof disagreed with what the audit computes would let a
+// mutated seed still read as non-interactive. Questions-closed and the console stanza are the two facts the
+// proof asserts, so both are compared.
+test fn the_produced_seed_carries_a_proof_that_agrees_with_a_fresh_audit() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: pair } =>
+      match audit_seed_interactivity(
+        network: pair.seed.network,
+        install_packages: pair.seed.install_packages,
+        late_packages: pair.seed.late_packages,
+        locale: pair.seed.locale,
+        strategy: pair.seed.delivery,
+      ) {
+        SeedIsNonInteractive { evidence: fresh } =>
+          // THE PROOF THE SEED CARRIES, NOT A SECOND CALL. The record's own proof must be what a fresh audit
+          // of the same inputs computes; a mutated or stale record would otherwise still read as non-interactive
+          // to anything that trusts the field.
+          fresh.questions_closed == pair.seed.proof.questions_closed
+            && fresh.console_stanza == pair.seed.proof.console_stanza
+        SeedRefused { cause: _ } => false
+      }
+  }
+}
+
+// THE LATE PACKAGE SET IS NOT EMPTY. An empty package list passes every structural rule above and installs a
+// board with no NVMe tooling, no IPMI tooling and no firmware — which is a board that boots and cannot be
+// managed, on a fleet where nobody can reach the panel. The set is a claim about this hardware, so the claim
+// is asserted rather than assumed.
+test fn the_produced_seed_installs_the_altra_late_package_set() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: pair } =>
+      list_length(items: pair.seed.late_packages) >= 4
+        && pair.seed.late_packages.any(intent => package_intent_diagnostic(intent: intent).contains("nvme-cli"))
+        && pair.seed.late_packages.any(intent => package_intent_diagnostic(intent: intent).contains("ipmitool"))
+        && pair.seed.late_packages.any(intent => package_intent_diagnostic(intent: intent).contains("dmidecode"))
+  }
+}
+
+// EVERY SEED THE BINDER PRODUCES IS BOUND, NEVER A REFUSAL WITH A PLACEHOLDER RECORD. A binding whose digest
+// was filled in on the refusal path would answer "the machine booted seed X" for a machine that booted
+// nothing. This walks the ordinary construction and requires the Bound arm, twice over, from both fixtures.
+test fn both_fixtures_yield_bound_records_rather_than_placeholders() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: first } =>
+      match built_second_unit_binding() {
+        Absent => false
+        Present { value: second } =>
+          first.binding.unit_key != second.binding.unit_key
+            && first.binding.seed_digest == second.binding.seed_digest
+      }
+  }
+}
+
+// THE NETPLAN SOURCE THE SEED CARRIES, IN A SECOND SPELLING. The old render emitted only the tag
+// "seeded-netplan", so one source could be swapped for another — a VLAN change, a static that never brings the
+// BMC-reachable interface up — and the digest stayed identical. Same family, same mirror, same everything else:
+// the source is the ONLY difference, so this pair proves the source is digested rather than decorative.
+data network_posture_alt_netplan: SeedNetworkPosture = SeedNetworkPosture {
+  addressing: SeededNetplan { source: "99-gunbc-alt.yaml" as NonEmptyStr },
+  family: Ipv4Only,
+  mirror: NamedMirror { host: "mirror.internal.invalid" as NonEmptyStr },
+}
+
+// THE SAME SEED ON THE OTHER UNIT, for the witness that requires both bindings to be Bound rather than
+// placeholder records. Two units, one seed: the seed digests agree and the binding identities do not, which is
+// the whole reason the two digests are computed under different tags.
+fn built_second_unit_binding() -> Optional<SeedAndBinding> {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Absent => Absent
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed(
+        seed: seed,
+        target: target_altra,
+        unit_key: unit_b_key,
+        attempt: attempt_two,
+        selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      ) {
+        Bound { binding: binding } => Present { value: SeedAndBinding { seed: seed, binding: binding } }
+        BindRefused { blocker: _ } => Absent
+      }
+  }
+}
+
+// A HALF-ANSWERED tzdata IS STILL AN OPEN QUESTION. The shipped postinst does db_get tzdata/Areas and then
+// db_get "tzdata/Zones/$AREA", so text naming only the region leaves the second question live and the installer
+// stopped with nobody at the panel. The old one-key table credited this as answered and the seed proved
+// non-interactive on a seed that was not — the exact hung install this cut was chartered to prevent. The
+// near-miss is a successful build: the package name is right, the arm is QuestionAnswered, and only the key
+// list knows that half a question is still a question.
+test fn a_half_answered_tzdata_is_refused_though_it_was_answered() -> Bool {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: half_answered_tzdata_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// AND THE FULLY ANSWERED PAIR BUILDS, WHICH IS THE CONTROL THAT MAKES THE REFUSAL ABOVE A RULE AND NOT A BUG.
+// Refusing every tzdata would keep the board safe and strand the operator; the audit has to accept the seed
+// that actually answered both questions.
+test fn a_fully_answered_tzdata_builds() -> Bool {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: answered_tzdata_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// A SALT THAT MERELY CONTAINS THE COST MARKER IS A SALT. Measured on the shipped library: this candidate
+// hashes, because libxcrypt memcmps the marker at position zero of its field and the match is case-sensitive.
+// So "does the candidate contain rounds=" cannot decide anything, and a rule that decided by substring would
+// refuse a legal digest here — a false refusal on a headless board is worse than a late one, because the
+// operator cannot read the error at a console.
+test fn a_salt_that_merely_contains_the_cost_marker_is_still_accepted() -> Bool {
+  accepts(crypt_digest: "$6$sarounds=1000$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.")
+}
+
+// THE PACKAGE TABLE IS THE ARCHIVE-VERIFIED SET, AND NOTHING ELSE. Each of these seven names was checked
+// against the Noble arm64 release index (ports.ubuntu.com, main+universe, 69,641 packages); the five that used
+// to be here — ast-ahc, dca-tools, ahci, r8169-firmware, realtek-firmware — are absent from that index, and a
+// seed naming a package the mirror does not carry is the hung unattended install this module exists to
+// prevent. Pinning the exact set rather than "at least one" is what makes an ungrounded row a witness failure
+// rather than a review finding: ifupdown was removed on the same evidence (Noble ships no debconf templates at
+// all), and re-adding it, or adding anything else nobody has verified, fails here.
+test fn the_prompting_package_table_is_the_verified_set_exactly() -> Bool {
+  let names = known_prompting_packages().map(row => known_prompting_package_name(package: row))
+  list_length(items: names) == 7
+    && names.any(row => row == ("console-setup" as NonEmptyStr))
+    && names.any(row => row == ("keyboard-configuration" as NonEmptyStr))
+    && names.any(row => row == ("tzdata" as NonEmptyStr))
+    && names.any(row => row == ("postfix" as NonEmptyStr))
+    && names.any(row => row == ("ntp" as NonEmptyStr))
+    && names.any(row => row == ("openssh-server" as NonEmptyStr))
+    && names.any(row => row == ("cloud-init" as NonEmptyStr))
+    && !names.any(row => row == ("ifupdown" as NonEmptyStr))
+    && !names.any(row => row == ("ast-ahc" as NonEmptyStr))
+    && !names.any(row => row == ("dca-tools" as NonEmptyStr))
+}
+
+// THE KEY MATERIAL ITSELF, AT IDENTICAL COUNT AND IDENTICAL LENGTH. One key, 91 characters, one byte changed:
+// the count is the same, the length is the same, the family is the same, and the ONLY difference in the whole
+// seed is which key is authorized. Under the old render — which emitted "keys=1" — these two seeds digested
+// identically, so a board could be handed a seed with somebody else's key and the receipt would not know. This
+// is the fixture that makes the key hash load-bearing rather than decorative: nothing else can move the digest
+// here, so if the digest does not move, the render is not covering the key.
+data one_other_key: List<SshPublicKey> = [
+  Ed25519Key { blob: "AAAAC3NzaC1lZDI1NTE5AAAAIOr9k0pQz0W7sPqTgk3l0M1sXqz2nS7bHm0KQxK4Y1pZ8oQ2m7VnJ0lP6yT3rW9uX1sD4fG7hJkL0mN3pQ5rS7tU9vW1xY3zA5bC7dE9fG1h" as NonEmptyStr },
+]
+
+test fn different_key_material_at_equal_count_moves_the_digest() -> Bool {
+  match build_seed_fixture(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Absent => false
+    Present { value: with_first } =>
+      match build_seed_fixture(
+        network: network_posture,
+        packages: clean_packages,
+        entry_keys: one_other_key,
+        console: locked_console,
+        credential: seeded_handle,
+        delivery: virtual_media_strategy,
+        target: target_altra,
+      ) {
+        Absent => false
+        Present { value: with_other } =>
+          list_length(items: with_first.entrypoint.authorised_keys)
+            == list_length(items: with_other.entrypoint.authorised_keys)
+            && !content_hash_eq_structural(
+              left: altra_autoinstall_seed_digest(seed: with_first),
+              right: altra_autoinstall_seed_digest(seed: with_other),
+            )
+      }
+  }
 }
