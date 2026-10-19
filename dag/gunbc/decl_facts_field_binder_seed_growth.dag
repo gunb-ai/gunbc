@@ -24,9 +24,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // compiler's own constructor, and adds no capability to the seed (gunbc.v1.v1_maintenance_standing
 // v1_seed_standing PURPOSE test).
 //
-// DEFAULTS FAIL CLOSED. A literal default is reflected as the BinderDefaultEdge target atom; a
-// non-literal default is reflected as its authored source text, so it is visibly present and never
-// read as no default; a default with no readable source refuses at the marshal.
+// DEFAULTS FAIL CLOSED. A literal default is reflected as the BinderDefaultEdge target
+// ComputationNode { Value } over the atom of its own spelling; a non-literal default is the bare
+// Atom of its authored source text, a distinct shape that v2.std.node_query field_default_reading
+// types as LiteralDefault versus SourceTextDefault; a default with no readable source, or an
+// operator expression, refuses at the marshal.
 //
 // HAND-ITEM DELTA: +2 citable declarations, both in v1_compiler.coproduct_reflection.
 data decl_facts_field_binder_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {

@@ -173,6 +173,28 @@ type DeclaredField {
   default: Optional<Node>
 }
 
+// A FIELD DEFAULT HAS TWO CONTRACTS and the node kind separates them. A literal default is an
+// elaborated value: a ComputationNode { Value } whose one child is the atom of the literal's own
+// spelling, so a string keeps its quotes and `"false"` is never `false`. A default the host does not
+// elaborate is the TypeNode Atom of its source text. Neither reads as the other.
+type FieldDefault
+  = LiteralDefault { lexeme: Symbol }
+  | SourceTextDefault { text: Symbol }
+
+fn field_default_reading(d: Node) -> FieldDefault {
+  match d.kind {
+    ComputationNode { behavior: Value } => literal_default_of_children(xs: d.children)
+    _ => SourceTextDefault { text: edge_field_type_name(target: d) }
+  }
+}
+
+fn literal_default_of_children(xs: FreeMonoid<Edge>) -> FieldDefault {
+  match xs {
+    Cons { head: h, tail: _ } => LiteralDefault { lexeme: edge_field_type_name(target: h.target) }
+    Empty => SourceTextDefault { text: ^coproduct_unresolved_payload }
+  }
+}
+
 fn positional_payload_field_name() -> Symbol {
   symbol_intern_lexeme(lexeme: "0")
 }

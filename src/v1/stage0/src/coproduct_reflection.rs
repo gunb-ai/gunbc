@@ -321,10 +321,11 @@ fn core_edge_value(ctx: &InterpContext, marker: &str, target: Value) -> Value {
 // A DECLARED FIELD IS A BINDER NODE, the one shape v2.std.node_query binder_node builds and
 // declared_field_list reads: a Conj of a BinderTypeEdge to the field's type and, when the field
 // declares a default, a BinderDefaultEdge. An optional field (`f: T?`) targets an Occupancy over its
-// type, as declared_field_cardinality_of_target decodes. A default the host cannot marshal -- any
-// expression other than a literal -- is reflected as an atom of its source text, and only a default
-// with no readable source REFUSES; none comes out as no default, which would be a silent loss of a
-// declared fact.
+// type, as declared_field_cardinality_of_target decodes. A literal default is a
+// ComputationNode { Value } over the atom of its own spelling; any other expression is the bare Atom
+// of its source text, so the two are distinct node shapes (node_query field_default_reading). A
+// default with no readable source, or an operator expression whose span is only its operator,
+// REFUSES; none comes out as no default, which would be a silent loss of a declared fact.
 fn marshal_field_binder(
     ctx: &InterpContext,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -350,31 +351,44 @@ fn marshal_field_binder(
         .clone()
         .or_else(|| field_node_default_value(field.clone()))
     {
-        let lexeme = match default.expr_data.as_ref() {
-            ExprData::ExprLiteral { value, .. } => match value.as_ref() {
-                crate::std_syntax::LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
-                crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(n.to_string()),
-                crate::std_syntax::LiteralValue::LitBool { value: b, .. } => Some(b.to_string()),
-                crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
-                _ => None,
-            },
-            _ => None,
+        // A literal is an elaborated value: ComputationNode { Value } over the atom of its own
+        // spelling (a string keeps its quotes, so "false" is not false). Anything else is the
+        // uninterpreted Atom of its source text. v2.std.node_query field_default_reading reads both.
+        let spelling = literal_source_lexeme(&default, si);
+        let target = match default.expr_data.as_ref() {
+            ExprData::ExprLiteral { value, .. } => {
+                let lexeme = spelling.or_else(|| match value.as_ref() {
+                    crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
+                        Some(format!("\"{s}\""))
+                    }
+                    crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(n.to_string()),
+                    crate::std_syntax::LiteralValue::LitBool { value: b, .. } => {
+                        Some(b.to_string())
+                    }
+                    crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
+                    _ => None,
+                });
+                lexeme.map(|l| {
+                    node_record(
+                        ctx,
+                        node_kind_computation_node(ctx, nullary_behavior_variant(ctx, "Value")),
+                        vec![edge_positional(ctx, atom_identity_node(ctx, &l))],
+                    )
+                })
+            }
+            // An operator expression's span covers only its operator token, so its source text is
+            // unreadable here; refuse below rather than reflect "+" as the default.
+            ExprData::ExprBinOp { .. } | ExprData::ExprUnaryOp { .. } => None,
+            _ => spelling.map(|l| atom_identity_node(ctx, &l)),
         };
-        // A default that is not a literal is reflected as the atom of its SOURCE TEXT: present and
-        // visible to a consumer, never dropped. Only a default with no readable source refuses.
-        let lexeme = lexeme.or_else(|| literal_source_lexeme(&default, si));
-        let Some(lexeme) = lexeme else {
+        let Some(target) = target else {
             return Err(InterpError::TypeError {
                 msg: format!(
                     "marshal_field_binder: field `{field_name}` declares a default with no readable source; refusing rather than reflecting it as no default"
                 ),
             });
         };
-        edges.push(core_edge_value(
-            ctx,
-            "BinderDefaultEdge",
-            atom_identity_node(ctx, &lexeme),
-        ));
+        edges.push(core_edge_value(ctx, "BinderDefaultEdge", target));
     }
     Ok(node_record(
         ctx,
