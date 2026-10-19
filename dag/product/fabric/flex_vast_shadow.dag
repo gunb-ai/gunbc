@@ -9,6 +9,7 @@ import std.integer { int_to_decimal_string }
 import std.measure {
   MoneyPerHour, MoneyAmountMicro, MoneyPerSecond, MoneyRate, ByteSize,
   money_amount_micro, money_per_hour_micros, measure_le,
+  Bandwidth, bandwidth, bandwidth_count, mebibyte_count, mebibyte_ceiling,
   second, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
   byte_size_count, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
   money_amount_micro_count, exact_decimal_to_money_amount_micro_ceil, DecimalMoneyConverted,
@@ -430,10 +431,25 @@ data flex_serving_recipe: ServingRecipe = serving_recipe_flash_next_lab_vllm
 // A recipe with no row here has no Vast realization; a row with no filters admits no offer (flex_offer_screen_by_recipe).
 type FlexVastHostFilters {
   cuda_max_good_min: Nat
-  cpu_ram_min_mb: Int
-  gpu_ram_min_mb: Int
-  inet_down_min_mbps: Int
-  verification: NonEmptyStr
+  cpu_ram_min: ByteSize
+  gpu_ram_min: ByteSize
+  inet_down_min: Bandwidth
+  verified: Bool
+}
+
+// Vast's search and offer vocabulary counts RAM in MB (taken as mebibytes, as vast_gpu_ram_bytes already does)
+// and inet_down in Mb/s (decimal megabits). The typed policy converts to those integers only at the
+// Vast boundary: the query body and the offer comparison below.
+fn flex_megabits_per_second_factor() -> Nat {
+  1000000
+}
+
+fn flex_vast_mb(b: ByteSize) -> Int {
+  mebibyte_count(m: mebibyte_ceiling(b: b))
+}
+
+fn flex_vast_mbps(b: Bandwidth) -> Int {
+  bandwidth_count(b: b) / flex_megabits_per_second_factor()
 }
 
 type FlexHostImageRow {
@@ -449,10 +465,10 @@ type FlexHostImageRow {
 // (cuda_13_0_driver_requirement), so the filter and the floor cannot disagree.
 data flex_flash_next_vast_filters: FlexVastHostFilters = FlexVastHostFilters {
   cuda_max_good_min: cuda_13_0_driver_requirement.toolkit_major,
-  cpu_ram_min_mb: 128000,
-  gpu_ram_min_mb: 90000,
-  inet_down_min_mbps: 1000,
-  verification: "verified" as NonEmptyStr,
+  cpu_ram_min: mebibyte_to_byte_size(m: mebibyte(count: 128000)),
+  gpu_ram_min: mebibyte_to_byte_size(m: mebibyte(count: 90000)),
+  inet_down_min: bandwidth(count: 1000 * flex_megabits_per_second_factor()),
+  verified: true,
 }
 
 data flex_host_images: List<FlexHostImageRow> = [
@@ -560,11 +576,11 @@ fn flex_vast_offer_query(recipe: ServingRecipe) -> VastAiOfferQuery? {
             value: VastAiOfferQuery {
               search_type: vast_ai_search_type_bid,
               limit: vast_ai_search_limit_default,
-              gpu_ram_min_mb: f.gpu_ram_min_mb,
+              gpu_ram_min_mb: flex_vast_mb(b: f.gpu_ram_min),
               cuda_max_good_min: f.cuda_max_good_min,
-              cpu_ram_min_mb: f.cpu_ram_min_mb,
-              inet_down_min: f.inet_down_min_mbps,
-              verified: f.verification == "verified",
+              cpu_ram_min_mb: flex_vast_mb(b: f.cpu_ram_min),
+              inet_down_min: flex_vast_mbps(b: f.inet_down_min),
+              verified: f.verified,
             },
           }
       }
@@ -632,10 +648,10 @@ fn flex_optional_decimal_at_least(d: ExactDecimal?, min: Int) -> Bool {
 fn flex_offer_meets_filters(offer: VastAiOffer, host: VastAiOfferHostResources, filters: FlexVastHostFilters) -> Bool {
   host.id == offer.id
     && flex_optional_decimal_at_least(d: offer.cuda_max_good, min: filters.cuda_max_good_min)
-    && flex_optional_decimal_at_least(d: offer.inet_down, min: filters.inet_down_min_mbps)
-    && offer.gpu_ram >= filters.gpu_ram_min_mb
-    && host.cpu_ram >= filters.cpu_ram_min_mb
-    && offer.verification == (filters.verification as String)
+    && flex_optional_decimal_at_least(d: offer.inet_down, min: flex_vast_mbps(b: filters.inet_down_min))
+    && offer.gpu_ram >= flex_vast_mb(b: filters.gpu_ram_min)
+    && host.cpu_ram >= flex_vast_mb(b: filters.cpu_ram_min)
+    && (!filters.verified || offer.verification == "verified")
 }
 
 // Consumer: flex_offer_in_shadow_field (the roster walk), and through it product.fabric.flex_vast_loop flex_entry_wall.
