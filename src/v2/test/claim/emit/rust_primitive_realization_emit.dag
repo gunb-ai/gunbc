@@ -5,10 +5,13 @@ import v2.extdeps.languages.rust {
   rust_production_lex,
   rust_primitive_realization_rows,
   rust_operator_realizations_catalog_node,
-  rust_value_expression_projection
+  rust_value_expression_projection,
+  rust_primitive_by_shared_reference_row,
+  rust_primitive_method_row,
+  rust_primitive_unlabeled_argument
 }
 import v2.extdeps.languages.rust_fixtures { rust_target_model_with_operators_and_lex }
-import v2.std.compilers.target_model { TargetRealizationCatalog, PrimitiveRealizationsUnwired, PrimitiveRealizationsWired, TargetPrimitiveRealizations,
+import v2.std.compilers.target_model { PrimitivePassByValue, PrimitivePassBySharedReference, TargetPrimitiveRealization, TargetRealizationCatalog, PrimitiveRealizationsUnwired, PrimitiveRealizationsWired, TargetPrimitiveRealizations,
   TargetModel,
   TargetValueExpression,
   canonical_operation_op_add,
@@ -237,4 +240,62 @@ test fn rust_primitive_duplicated_marker_edge_refuses_as_ambiguous() -> Bool {
     ),
     reason: ^target_value_expr_callee_kind_marker_ambiguous
   )
+}
+
+// Two-argument rows (review 82844). The row's argument list excludes a method receiver, so the shipped `join` row
+// (receiver + one argument) never folds past one argument; these rows do. A fold that drops earlier tokens emits
+// `pair_probe(, &b)` and passes the arity check.
+fn rust_primitive_two_argument_rows() -> TargetPrimitiveRealizations {
+  PrimitiveRealizationsWired {
+    rows: [
+      TargetPrimitiveRealization {
+        primitive: rust_primitive_by_shared_reference_row(head: ^pair_probe).primitive,
+        form: rust_primitive_by_shared_reference_row(head: ^pair_probe).form,
+        arguments: [
+          rust_primitive_unlabeled_argument(passing: PrimitivePassByValue),
+          rust_primitive_unlabeled_argument(passing: PrimitivePassBySharedReference { prefix_token: ^rust_token_amp })
+        ],
+        result: rust_primitive_by_shared_reference_row(head: ^pair_probe).result
+      },
+      rust_primitive_method_row(
+        head: ^method_probe,
+        arguments: [
+          rust_primitive_unlabeled_argument(passing: PrimitivePassByValue),
+          rust_primitive_unlabeled_argument(passing: PrimitivePassBySharedReference { prefix_token: ^rust_token_amp })
+        ]
+      )
+    ]
+  }
+}
+
+fn rust_two_argument_text(callee: Symbol, args: List<TargetValueExpression>) -> String {
+  match rust_primitive_emit(
+    expr: target_value_expression_resolved_primitive_call(callee: callee, args: args),
+    catalog: rust_operator_realizations_catalog_node(),
+    primitives: rust_primitive_two_argument_rows()
+  ) {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => "REFUSED"
+  }
+}
+
+test fn rust_primitive_free_call_emits_both_arguments_in_order() -> Bool {
+  rust_two_argument_text(
+    callee: ^pair_probe,
+    args: [
+      target_value_expression_binding_ref(binding: ^rust_binding_param_x),
+      target_value_expression_binding_ref(binding: ^rust_binding_param_y)
+    ]
+  ) == "pair_probe(x, &y)"
+}
+
+test fn rust_primitive_method_call_emits_both_arguments_in_order() -> Bool {
+  rust_two_argument_text(
+    callee: ^method_probe,
+    args: [
+      target_value_expression_binding_ref(binding: ^rust_binding_param_x),
+      target_value_expression_binding_ref(binding: ^rust_binding_param_y),
+      target_value_expression_binding_ref(binding: ^rust_binding_param_x)
+    ]
+  ) == "(x).method_probe(y, &x)"
 }
