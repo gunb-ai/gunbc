@@ -130,7 +130,7 @@ fn rostered_drop_identities() -> List<String> {
 }
 
 // THE JOIN, both directions: the live roster joins and a dangling record does not.
-test fn every_removal_names_a_rostered_drop() -> Bool {
+test fn removals_join_to_rostered_drops() -> Bool {
   every_removal_names_a_rostered_drop(removals: rung_drop_removal_roster, drop_identities: rostered_drop_identities())
     && !every_removal_names_a_rostered_drop(removals: [control_dangling_removal], drop_identities: rostered_drop_identities())
 }
