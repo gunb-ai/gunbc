@@ -1,7 +1,7 @@
 module gunbc.rung_drop.native_lane_second_textual_production_reading
 
 import std.types { List, NonEmptyStr, String }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 
 // DECLARED 2026-09-12 (review 64571), NARROWED BY THE SOURCE LAYOUT CUTOVER. The v2-native route used to
@@ -45,7 +45,7 @@ data native_lane_second_textual_production_reading: RungDrop = RungDrop {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "the census route names each source by the name its population read bound it to, so no header text is read" },
-    population: native_lane_second_textual_production_reading_population,
+    population: Enumerated { members: native_lane_second_textual_production_reading_population },
     restoration_trigger: "The census and refused-file routes carry the module name the population read BOUND each source to (a file's name is its path's, source layout R5) instead of reading the `module` line again, so native_lane_declared_module_name is DELETED. That must be sufficient for BOTH consumers -- native_refused_file_module and native_census_modules -- including for a file whose front end refused: a header scan retained for refused files alone would leave the second reading alive for exactly the files whose refusals a census exists to report."
   }
 }

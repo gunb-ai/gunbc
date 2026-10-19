@@ -1,7 +1,7 @@
 module gunbc.rung_drop.variant_fields_unlowered_on_the_native_route
 
 import std.types { List, NonEmptyStr, String }
-import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-21 (gunbc#11998, side-chat ruling via neat-boar-16). ONE frontier for record
@@ -68,7 +68,7 @@ data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
     reason: ReplacementStaged {
       replacement: "a v2 stage lowers variant fields into declared field identities (named and positional \"0\")"
     },
-    population: variant_fields_unlowered_on_the_native_route_population,
+    population: Enumerated { members: variant_fields_unlowered_on_the_native_route_population },
     restoration_trigger: "the emitted compiler builds, and on that native route the specimen is observed: the binder `node` in v2.std.symbol_index symbol_index_candidates_at binds its arm and a positional `A(x)` construction and match round-trip field \"0\". A declaration-kind classifier alone (gunbc#12082) does NOT satisfy this: it changes how the interpreted stages decide, not whether the native route is observed."
   }
 }

@@ -1,6 +1,8 @@
 module gunbc.rung_drop
 
 import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.bazel.label { Label, render_label }
+import gunbc.instrument_targets { instrument_targets }
 import gunbc.guarantee_rung {
   GuaranteeRung, OutsideTheLadder, Mitigatable, MechanicallyPreventable,
   StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_label,
@@ -256,11 +258,9 @@ type LegacyProseIdentity
   | FloorCostClaimQualificationUnavailable
   | SparkRoleScopedRetirementProductionRoot
   | FloorCutHeal
-  | FloorCutEffectGates
   | FloorCutFmtGate
   | FloorCutMergeAdmissionStamping
   | FloorCutFalsifierCadence
-  | BuiltinSignatureArityPairingFabricates
   | ConcatBinarySignatureExemptFromArgBinding
   | NamespaceAdmissionConsumedRowDeletion
   | SparkServingLocalArtifactNotReproducible
@@ -269,9 +269,7 @@ type LegacyProseIdentity
   | FloorCutReceiptDiscriminatingArms
   | FloorCutBehaviouralRegressionDifferential
   | RustUnitTestsOffTheMergePath
-  | EmitCopyQualificationWithoutAConsumer
   | FloorCostHighCpuWithheld
-  | DeterminismTransitiveReachability
 
 fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
   match l {
@@ -285,20 +283,16 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
     TextBoundaryIdentityWall => "text_boundary_identity_wall"
     FabricEvidenceGating => "fabric_evidence_gating"
     RustUnitTestsOffTheMergePath => "rust_unit_tests_off_the_merge_path"
-    EmitCopyQualificationWithoutAConsumer => "emit_copy_qualification_without_a_consumer"
     FloorCostHighCpuWithheld => "floor_cost_high_cpu_withheld"
-    DeterminismTransitiveReachability => "determinism_transitive_reachability"
     EmittedBytesWitnessRequiredLane => "emitted_bytes_witness_required_lane"
     DirectCallArgSeamV2Exemption => "direct_call_arg_seam_v2_exemption"
     DirectCallUnboundCarriedGenericCompat => "direct_call_unbound_carried_generic_compat"
     FloorCostClaimQualificationUnavailable => "floor_cost_claim_qualification_unavailable"
     SparkRoleScopedRetirementProductionRoot => "spark_role_scoped_retirement_production_root"
     FloorCutHeal => "floor_cut_heal"
-    FloorCutEffectGates => "floor_cut_effect_gates"
     FloorCutFmtGate => "floor_cut_fmt_gate"
     FloorCutMergeAdmissionStamping => "floor_cut_merge_admission_stamping"
     FloorCutFalsifierCadence => "floor_cut_falsifier_cadence"
-    BuiltinSignatureArityPairingFabricates => "builtin_signature_arity_pairing_fabricates"
     ConcatBinarySignatureExemptFromArgBinding => "concat_binary_signature_exempt_from_arg_binding"
     NamespaceAdmissionConsumedRowDeletion => "namespace_admission_consumed_row_deletion"
     SparkServingLocalArtifactNotReproducible => "spark_serving_local_artifact_not_reproducible"
@@ -312,12 +306,23 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
 // THE DECLARATION ITSELF: SECTION 4b(3)'s FIVE FIELDS, OR THE PARAGRAPH THAT PREDATES THEM.
 // `TypedDeclaration` is the shape 4b(3) specifies -- previous rung, temporary rung, reason, bounded
 // population, restoration trigger -- and it is the arm every new drop is declared through.
+// THE BOUNDED POPULATION OF A TYPED DROP: THE SUBJECTS THE LOST RUNG COVERED, NOT A NAME FOR THE
+// LOSS. Two readable forms and no third. `Enumerated` lists the members; a population that a
+// `gunbc test` label re-derives is `DerivedBy` that label, so the count is the producer's to state
+// and no row transcribes it (DESIGN section 6). A label that is not a row of
+// `gunbc.instrument_targets instrument_targets` names a producer that cannot run, and
+// `rung_drop_population_is_readable` refuses it. A prose sentence in a `String` is the
+// unreadable form this type removes.
+type RungDropPopulation
+  = Enumerated { members: List<String> }
+  | DerivedBy { label: Label }
+
 type RungDropDeclaration
   = TypedDeclaration {
       previous: GuaranteeRung
       temporary: GuaranteeRung
       reason: RungDropReason
-      population: List<String>
+      population: RungDropPopulation
       restoration_trigger: String
     }
   | AuthoredProse { legacy: LegacyProseIdentity, authored: String }
@@ -344,12 +349,31 @@ fn rung_drop_declaration_message(d: RungDrop) -> String {
       concat(
         concat(" -> ", concat(guarantee_rung_label(r: t), concat(" (", rung_drop_reason_label(r: rs)))),
         concat(
-          concat("). Population: ", join(pop, ", ")),
+          concat("). Population: ", rung_drop_population_label(p: pop)),
           concat(". Restored when: ", sentence_terminated(s: rt))
         )
       )
     )
     AuthoredProse { legacy: _, authored: a } => a
+  }
+}
+
+fn rung_drop_population_label(p: RungDropPopulation) -> String {
+  match p {
+    Enumerated { members: ms } => join(ms, ", ")
+    DerivedBy { label: l } => concat("derived by `gunbc test ", concat(render_label(l: l), "`"))
+  }
+}
+
+// A POPULATION IS READABLE WHEN SOMETHING CAN BE COUNTED FROM IT. An enumeration with no member
+// reads as "nothing was lost", which is the Dissolved claim and is admitted only there
+// (`dissolved_is_admissible`); a derivation is readable only when its label is a row the instrument
+// roster holds, so a retired or misspelled label refuses instead of citing a producer that
+// does not exist.
+fn rung_drop_population_is_readable(p: RungDropPopulation) -> Bool {
+  match p {
+    Enumerated { members: ms } => length(xs: ms) > 0
+    DerivedBy { label: l } => length(xs: filter(instrument_targets(), t => render_label(l: t) == render_label(l: l))) == 1
   }
 }
 
@@ -437,7 +461,6 @@ data legacy_prose_identity_roster: List<LegacyProseIdentity> = [
   TextBoundaryIdentityWall,
   FabricEvidenceGating,
   RustUnitTestsOffTheMergePath,
-  EmitCopyQualificationWithoutAConsumer,
   FloorCostHighCpuWithheld,
   EmittedBytesWitnessRequiredLane,
   DirectCallArgSeamV2Exemption,
@@ -445,11 +468,9 @@ data legacy_prose_identity_roster: List<LegacyProseIdentity> = [
   FloorCostClaimQualificationUnavailable,
   SparkRoleScopedRetirementProductionRoot,
   FloorCutHeal,
-  FloorCutEffectGates,
   FloorCutFmtGate,
   FloorCutMergeAdmissionStamping,
   FloorCutFalsifierCadence,
-  BuiltinSignatureArityPairingFabricates,
   ConcatBinarySignatureExemptFromArgBinding,
   NamespaceAdmissionConsumedRowDeletion,
   SparkServingLocalArtifactNotReproducible,
@@ -524,8 +545,45 @@ fn dissolved_is_admissible(drop: RungDrop) -> Bool {
     Retired { trigger_fired: _ } => true
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
     Dissolved { ruling: _, decision_record: _, population_gone: _ } => match drop.declaration {
-      TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => length(xs: p) == 0
+      TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => match p {
+        Enumerated { members: ms } => length(xs: ms) == 0
+        DerivedBy { label: _ } => false
+      }
       AuthoredProse { legacy: _, authored: _ } => false
     }
   }
+}
+
+// THE READABILITY JUDGMENT A STANDING TYPED DROP OWES. Only a Standing row is judged: a Retired,
+// Superseded or Dissolved row records a loss that already ended or moved, and holding it to a
+// population now would launder that loss with an empty or invented one. A Standing AuthoredProse
+// row is not judged here either -- it is the debt `authored_prose_rung_drops` counts.
+fn rung_drop_is_readable(d: RungDrop) -> Bool {
+  match d.standing {
+    Standing => match d.declaration {
+      TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } =>
+        rung_drop_population_is_readable(p: p)
+      AuthoredProse { legacy: _, authored: _ } => true
+    }
+    Retired { trigger_fired: _ } => true
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => true
+  }
+}
+
+// THE STANDING TYPED DROPS WHOSE POPULATION IS NOT READABLE, NAMED AT IDENTITY GRAIN, AND NOT
+// GROWABLE: `every_unreadable_standing_drop_is_declared_debt` refuses a new unreadable row and also
+// refuses a listed row that has become readable, so the list only shrinks. The one member declares an
+// empty population on purpose (its own comment says the empty list is the correct value); a live drop
+// with nothing to count is the Dissolved claim, which needs the removal-record carrier an operator
+// has not yet ruled on, so it is held here rather than given an invented member or a Dissolved
+// standing it has not earned.
+data unreadable_standing_typed_drop_debt: List<String> = [
+  "provider_path_jurisdiction_unread_admits",
+]
+
+fn every_unreadable_standing_drop_is_declared_debt(ds: List<RungDrop>) -> Bool {
+  let unreadable = map(filter(ds, d => !rung_drop_is_readable(d: d)), d => d.identity as String)
+  length(xs: filter(unreadable, i => length(xs: filter(unreadable_standing_typed_drop_debt, w => w == i)) == 0)) == 0
+    && length(xs: filter(unreadable_standing_typed_drop_debt, w => length(xs: filter(unreadable, i => i == w)) == 0)) == 0
 }
