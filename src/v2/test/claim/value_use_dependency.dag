@@ -1,6 +1,6 @@
 module v2.test.claim.value_use_dependency
 
-import std.algebra { Cons, Empty, fold_list, length, list_append, map_support_keys }
+import std.algebra { Cons, Empty, contains, fold_list, length, list_append, list_at_optional, map_contains_key, map_support_keys }
 import extdeps.communication.medium { Lossless, Medium }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.occurrence_identity { OccurrenceId }
@@ -27,6 +27,8 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.value_use_dependency {
   NotDerivedStanding,
   RecordAbsent,
+  ValuedSourceNotLocated,
+  ValuedSourceUnkeyed,
   ValuedUseNotLocated,
   ValueUseDependencies,
   ValueUseInput,
@@ -37,12 +39,13 @@ import v2.compiler.value_use_dependency {
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.dependency { DataDependsOn, DependencyView }
+import v2.std.dependency { DataDependsOn, DependencyView, dependency_view_relation }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Node, node_subtree_nodes, symbol_lexeme }
+import v2.std.node { Bind, ComputationNode, Node, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
 import v2.std.provenance { node_occurrence_id_optional }
 import v2.std.qualified_name { lexical_reference_label_optional }
 import v2.std.text { String }
+import v2.workflow.scheduler { scheduler_node_eq, scheduler_relation_unblocked }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -123,6 +126,12 @@ data vudd_value_use_source: String = "module vudd\n\nfn f(a: Int) -> Int {\n  le
 // uses of the parameter `a` are inputs, not relations.
 data vudd_unused_source: String = "module vudd\n\nfn f(a: Int) -> Int {\n  let x = a + 1\n  a\n}\n"
 
+// FIXTURE F — A VALUE RESOLVE REWRITES. The value of x is the parameter use `a`: resolve records the
+// binding with the atom `a` as it stood before its subtree was resolved, and writes the resolved parameter
+// reference into the tree under the same occurrence. The two differ structurally, so a row sourced at the
+// recorded node names a node the resolved graph does not contain.
+data vudd_resolved_source_source: String = "module vudd\n\nfn f(a: Int) -> Int {\n  let x = a\n  x\n}\n"
+
 // (a) TWO INDEPENDENT LETS: exactly two rows; each row's source is the value resolve recorded for THAT
 // row's own dependent (read through v2.compiler.resolve resolved_tree_lexical_binding, never a second
 // scope reading); the two dependents are distinct nodes; the row for x and the row for y have DIFFERENT
@@ -195,6 +204,75 @@ test fn vudd_c_parameter_uses_are_input_dispositions_holds() -> Bool {
   }
 }
 
+// (f) THE SOURCE IS THE RESOLVED VALUE. One row; its source carries the occurrence resolve recorded for
+// x's value and IS the Bind's value child in ResolvedTree.root under structural equality; the recorded
+// node is NOT that child (so the fixture discriminates: sourcing at the record fails here); and a
+// scheduler that has completed exactly the resolved value finds the row's dependent unblocked
+// (v2.workflow.scheduler scheduler_relation_unblocked under scheduler_node_eq, over the row's own
+// v2.std.dependency dependency_view_relation) -- the interface A4 will consume.
+test fn vudd_f_source_is_the_resolved_value_holds() -> Bool {
+  match vudd_assemble(src: vudd_resolved_source_source) {
+    Absent => false
+    Present { value: tree } =>
+      match vudd_sole_bind_value(root: tree.root) {
+        Absent => false
+        Present { value: resolved_value } =>
+          match value_use_dispositions(tree: tree) {
+            d =>
+              match d.relations {
+                Cons { head: r, tail: Empty } =>
+                  r.view.source == resolved_value
+                    && vudd_row_agrees_with_resolve(r: r, tree: tree)
+                    && vudd_recorded_value_differs(r: r, tree: tree, resolved_value: resolved_value)
+                    && scheduler_relation_unblocked(
+                      relation: dependency_view_relation(view: r.view),
+                      scheduled: [resolved_value],
+                      candidate: r.view.dependent,
+                      eq: scheduler_node_eq
+                    )
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// THE VALUE CHILD OF THE ONE Bind IN THE TREE, read off the resolved graph itself; a fixture with no Bind
+// or two is not this claim's fixture.
+fn vudd_sole_bind_value(root: Node) -> Optional<Node> {
+  match vudd_binds(root: root) {
+    Cons { head: bind, tail: Empty } => list_at_optional(xs: positional_child_target_nodes(node: bind), index: 1)
+    _ => optional_absent()
+  }
+}
+
+fn vudd_binds(root: Node) -> List<Node> {
+  fold_list(
+    xs: node_subtree_nodes(root: root),
+    empty: [],
+    cons: fn(acc, n) {
+      match n.kind {
+        ComputationNode { behavior: Bind } => list_append(left: acc, right: [n])
+        ComputationNode { behavior: _ } => acc
+        TypeNode { connective: _ } => acc
+      }
+    }
+  )
+}
+
+fn vudd_recorded_value_differs(r: ValueUseRelation, tree: ResolvedTree, resolved_value: Node) -> Bool {
+  match resolved_tree_lexical_binding(tree: tree, reference: r.view.dependent) {
+    Present { value: b } =>
+      match b.standing {
+        LexicalValued { node: recorded } => !(recorded == resolved_value)
+        LexicalDeclared { node: _ } => false
+        LexicalOwedFormal { field_type: _ } => false
+        LexicalUntyped => false
+      }
+    Absent => false
+  }
+}
+
 // (e) DISPOSITION TOTALITY, per fixture: the three populations sum to the tree's own record count, no
 // occurrence is in two populations, none appears twice, and no not-derived row is a RecordAbsent — the arm
 // that would report a key the map's own support does not hold, which must never fire. The record count is
@@ -210,8 +288,23 @@ fn vudd_total_holds(src: String) -> Bool {
             && vudd_populations_disjoint(d: d)
             && vudd_no_duplicate_occurrences(d: d)
             && vudd_no_record_absent(d: d)
+            && vudd_outputs_within_support(d: d, tree: tree)
       }
   }
+}
+
+// EVERY DISPOSED OCCURRENCE IS A KEY OF THE INPUT MAP. With the count, disjointness and no-duplicates
+// above this makes the output occurrences EXACTLY the map's support: a foreign occurrence replacing a
+// dropped one would keep all three.
+fn vudd_outputs_within_support(d: ValueUseDependencies, tree: ResolvedTree) -> Bool {
+  fold_list(
+    xs: list_append(
+      left: list_append(left: vudd_relation_occurrences(d: d), right: vudd_not_derived_occurrences(d: d)),
+      right: vudd_input_occurrences(d: d)
+    ),
+    empty: true,
+    cons: fn(acc, id) { acc && map_contains_key(m: tree.occurrence_bindings, key: id) }
+  )
 }
 
 test fn vudd_e_independent_fixture_total_holds() -> Bool {
@@ -304,7 +397,8 @@ fn vudd_row_agrees_with_resolve(r: ValueUseRelation, tree: ResolvedTree) -> Bool
   match resolved_tree_lexical_binding(tree: tree, reference: r.view.dependent) {
     Present { value: b } =>
       match b.standing {
-        LexicalValued { node: value } => vudd_same_node(a: value, b: r.view.source)
+        LexicalValued { node: value } =>
+          vudd_same_node(a: value, b: r.view.source) && vudd_node_in_resolved_tree(node: r.view.source, tree: tree)
         LexicalDeclared { node: _ } => false
         LexicalOwedFormal { field_type: _ } => false
         LexicalUntyped => false
@@ -312,6 +406,12 @@ fn vudd_row_agrees_with_resolve(r: ValueUseRelation, tree: ResolvedTree) -> Bool
     Absent => false
   }
     && vudd_same_node(a: r.view.dependent, b: r.view.usage_site)
+}
+
+// A ROW'S ENDPOINT IS A NODE OF THE RESOLVED GRAPH under the consumer's own equality (structural, as
+// v2.workflow.scheduler scheduler_node_eq), not merely a node sharing an occurrence with one.
+fn vudd_node_in_resolved_tree(node: Node, tree: ResolvedTree) -> Bool {
+  contains(xs: node_subtree_nodes(root: tree.root), item: node, eq: scheduler_node_eq)
 }
 
 // THE SPELLING A ROW'S USE AUTHORED, read off the row's own dependent: resolve stamps the label on the
@@ -569,7 +669,9 @@ fn vudd_no_record_absent(d: ValueUseDependencies) -> Bool {
     cons: fn(acc, row) {
       match row.reason {
         RecordAbsent => false
-        ValuedUseNotLocated { value: _ } => acc
+        ValuedUseNotLocated { value: _, why: _ } => acc
+        ValuedSourceUnkeyed { value: _ } => acc
+        ValuedSourceNotLocated { value: _, why: _ } => acc
         NotDerivedStanding { standing: _ } => acc
       }
     }

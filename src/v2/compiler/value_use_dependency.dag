@@ -13,6 +13,15 @@ module v2.compiler.value_use_dependency
 // change A4 (v2.program's run reads these rows and the hand-written program_run_dependencies row is
 // deleted) — a declared frontier, not a gap in this module.
 //
+// BOTH ENDPOINTS ARE NODES OF THE RESOLVED TREE. resolve's LexicalValued record carries the value as it
+// was BEFORE its own subtree was resolved (v2.compiler.resolve bind_frame_binders captures the input
+// Bind's value; v2.compiler.infer infer_let_body_frame refuses that node as an entry key for the same
+// reason), so `let x = a` records the atom `a` while ResolvedTree.root holds the parameter reference
+// resolve replaced it with. The record is the authority for WHICH value a use reads -- its occurrence --
+// and the row's source is the node bearing that occurrence in ResolvedTree.root, the graph a consumer
+// schedules under structural equality (v2.workflow.scheduler scheduler_node_eq). An occurrence the tree
+// does not carry, or carries on two different nodes, is a typed not-derived row, never an arbitrary pick.
+//
 // THE SURFACE IS THREE THINGS: the types below, value_use_dispositions, and value_use_views
 // (DESIGN section 3c: a production module is consumed for what a consumer reads). Everything else
 // here is a step of the derivation, reached only from value_use_dispositions. Judgements a claim
@@ -25,20 +34,19 @@ module v2.compiler.value_use_dependency
 // value_use_dispose returns a population, so no key is dropped. The three lengths therefore sum to
 // the domain's length, which is the totaliser a claim states over each fixture.
 //
-// COST IS FIXED IN SHAPE (DESIGN section 6). The tree is walked ONCE (value_use_reference_index) into
-// a Map<OccurrenceId, Node>, and each record is disposed with two map lookups: O(N + K log N) for N
-// nodes and K records, where the naive form — a subtree walk per key — is O(K x N) and quadratic once
-// resolve records an entry per reference, which it does. A4's consumer is a whole-program run, so
+// COST IS FIXED IN SHAPE (DESIGN section 6). The tree is walked ONCE (value_use_occurrence_index) into
+// a Map<OccurrenceId, OccurrenceInTree>, and each record is disposed with at most three map lookups:
+// O((N + K) log N) for N nodes and K records, where the naive form — a subtree walk per key — is
+// O(K x N) and quadratic once resolve records an entry per reference, which it does. A4's consumer is a whole-program run, so
 // whole-corpus scale is the intended input, not a hypothetical.
 
 import std.algebra { empty_map, fold_list, int_total_order, list_snoc_item, list_sort_by_key, map_insert, map_lookup, map_support_keys }
 import std.occurrence_identity { OccurrenceId }
-import std.optional { Absent, Optional, Present, optional_absent }
-import std.types { Bool, List, Map }
+import std.optional { Absent, Optional, Present }
+import std.types { List, Map }
 import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.node { Node, node_subtree_nodes }
 import v2.std.provenance { node_occurrence_id_optional }
-import v2.std.qualified_name { declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
 import v2.compiler.resolve {
   BoundAmbient,
   BoundByExpectedType,
@@ -72,8 +80,21 @@ type ValueUseRelation {
 // the tree — is a declared variant, not a string that only this file knows about.
 type NotDerivedReason
   = NotDerivedStanding { standing: LexicalBinderStanding }
-  | ValuedUseNotLocated { value: Node }
+  | ValuedUseNotLocated { value: Node, why: OccurrenceUnlocated }
+  | ValuedSourceUnkeyed { value: Node }
+  | ValuedSourceNotLocated { value: Node, why: OccurrenceUnlocated }
   | RecordAbsent
+
+// WHERE AN OCCURRENCE SITS IN THE RESOLVED TREE: on exactly one node (a node repeated identically is
+// still one endpoint under structural equality), or not locatable -- absent from the tree, or carried by
+// two different nodes, where choosing either would be an arbitrary winner.
+type OccurrenceInTree
+  = OccurrenceAt { node: Node }
+  | OccurrenceUnlocatable { why: OccurrenceUnlocated }
+
+type OccurrenceUnlocated
+  = OccurrenceNotInTree
+  | OccurrenceConflicting
 
 // NOT DERIVED YET, NAMED. A lexical binder that is not a let's value carries no value node in its
 // record — LexicalDeclared is a member-edge type, LexicalOwedFormal an unpaid match-payload formal,
@@ -103,46 +124,42 @@ type ValueUseDependencies {
   inputs: List<ValueUseInput>
 }
 
-// THE ONE TREE WALK: every reference node, indexed by the occurrence resolve keyed its record under.
-// resolve mints each reference record keyed by that reference's OWN occurrence (v2.compiler.resolve
-// resolved_reference_node / lexical_reference_node) and the reference node carries that id as its
-// node.occurrence_id, so one pass over the subtree pairs the two — no second index enters the compiler
-// and no key is disposed by searching the tree again.
-fn value_use_reference_index(tree: ResolvedTree) -> Map<OccurrenceId, Node> {
+// THE ONE TREE WALK: every node of the resolved tree that carries an occurrence, indexed by it. resolve
+// keys each record by the reference's OWN occurrence and stamps it on the reference node alone (its label
+// child is synthetic: v2.std.qualified_name lexical_reference_node, resolved_reference_node_of_kind), and
+// a resolved value keeps the occurrence of the node it replaced, so one index locates both endpoints --
+// the use by the record's key and the source by the recorded value's occurrence -- with no second judgement
+// of what a reference is and no per-key search of the tree.
+fn value_use_occurrence_index(tree: ResolvedTree) -> Map<OccurrenceId, OccurrenceInTree> {
   fold_list(
     xs: node_subtree_nodes(root: tree.root),
     empty: empty_map(),
     cons: fn(acc, n) {
-      match value_use_reference_occurrence(node: n) {
-        Present { value: id } => map_insert(m: acc, key: id, value: n)
+      match node_occurrence_id_optional(node: n) {
+        Present { value: id } => map_insert(m: acc, key: id, value: value_use_index_slot(prior: map_lookup(m: acc, key: id), node: n))
         Absent => acc
       }
     }
   )
 }
 
-// THE OCCURRENCE THIS NODE IS RECORDED UNDER, if it is a use of a name at all. The three carriers a
-// reference is recognised by (v2.std.qualified_name); a node that is none of them is not a use, so it
-// enters the index not at all — which is why the binder atom of a `let` is not mistaken for a use.
-fn value_use_reference_occurrence(node: Node) -> Optional<OccurrenceId> {
-  if value_use_is_reference(node: node) {
-    node_occurrence_id_optional(node: node)
-  } else {
-    optional_absent()
+fn value_use_index_slot(prior: Optional<OccurrenceInTree>, node: Node) -> OccurrenceInTree {
+  match prior {
+    Absent => OccurrenceAt { node: node }
+    Present { value: OccurrenceAt { node: seen } } =>
+      if seen == node {
+        OccurrenceAt { node: seen }
+      } else {
+        OccurrenceUnlocatable { why: OccurrenceConflicting }
+      }
+    Present { value: OccurrenceUnlocatable { why: why } } => OccurrenceUnlocatable { why: why }
   }
 }
 
-fn value_use_is_reference(node: Node) -> Bool {
-  match lexical_reference_label_optional(node: node) {
-    Present { value: _ } => true
-    Absent =>
-      match parameter_reference_path_optional(node: node) {
-        Present { value: _ } => true
-        Absent => match declaration_reference_path_optional(node: node) {
-          Present { value: _ } => true
-          Absent => false
-        }
-      }
+fn value_use_locate(index: Map<OccurrenceId, OccurrenceInTree>, id: OccurrenceId) -> OccurrenceInTree {
+  match map_lookup(m: index, key: id) {
+    Present { value: slot } => slot
+    Absent => OccurrenceUnlocatable { why: OccurrenceNotInTree }
   }
 }
 
@@ -150,7 +167,7 @@ fn value_use_is_reference(node: Node) -> Bool {
 // reproducible. The domain is the map's own support, so a record cannot be missed; each arm of
 // value_use_dispose_record returns a population, so none can be counted twice.
 fn value_use_dispositions(tree: ResolvedTree) -> ValueUseDependencies {
-  let index = value_use_reference_index(tree: tree)
+  let index = value_use_occurrence_index(tree: tree)
   fold_list(
     xs: value_use_ordered_keys(tree: tree),
     empty: ValueUseDependencies { relations: [], not_derived: [], inputs: [] },
@@ -172,27 +189,19 @@ fn value_use_ordered_keys(tree: ResolvedTree) -> List<OccurrenceId> {
 fn value_use_dispose(
   acc: ValueUseDependencies,
   tree: ResolvedTree,
-  index: Map<OccurrenceId, Node>,
+  index: Map<OccurrenceId, OccurrenceInTree>,
   key: OccurrenceId
 ) -> ValueUseDependencies {
   match map_lookup(m: tree.occurrence_bindings, key: key) {
     Present { value: record } => value_use_dispose_record(acc: acc, index: index, key: key, record: record)
-    Absent =>
-      ValueUseDependencies {
-        relations: acc.relations,
-        not_derived: snoc_not_derived(
-          acc.not_derived,
-          ValueUseNotDerived { occurrence: key, reason: RecordAbsent }
-        ),
-        inputs: acc.inputs
-      }
+    Absent => value_use_not_derived(acc: acc, key: key, reason: RecordAbsent)
   }
 }
 
 // ONE RECORD, ONE POPULATION.
 fn value_use_dispose_record(
   acc: ValueUseDependencies,
-  index: Map<OccurrenceId, Node>,
+  index: Map<OccurrenceId, OccurrenceInTree>,
   key: OccurrenceId,
   record: OccurrenceBindingRecord
 ) -> ValueUseDependencies {
@@ -200,35 +209,19 @@ fn value_use_dispose_record(
     BoundByLexicalBinder { binding: lexical } =>
       match lexical.standing {
         LexicalValued { node: value } =>
-          match map_lookup(m: index, key: key) {
-            Present { value: use } =>
-              ValueUseDependencies {
-                relations: snoc_relation(
-                  acc.relations,
-                  ValueUseRelation { occurrence: key, view: value_use_relation(value: value, use: use) }
-                ),
-                not_derived: acc.not_derived,
-                inputs: acc.inputs
-              }
-            // The binding is valued but its use names no reference node in this tree, so there is no
-            // dependent and no usage_site to name: an edge with a fabricated endpoint would be a
-            // stronger claim than the record supports.
-            Absent =>
-              ValueUseDependencies {
-                relations: acc.relations,
-                not_derived: snoc_not_derived(
-                  acc.not_derived,
-                  ValueUseNotDerived { occurrence: key, reason: ValuedUseNotLocated { value: value } }
-                ),
-                inputs: acc.inputs
-              }
+          match value_use_locate(index: index, id: key) {
+            OccurrenceAt { node: use } => value_use_valued_at(acc: acc, index: index, key: key, value: value, use: use)
+            // The binding is valued but its use is not one node of this tree, so there is no dependent
+            // and no usage_site to name.
+            OccurrenceUnlocatable { why: why } =>
+              value_use_not_derived(acc: acc, key: key, reason: ValuedUseNotLocated { value: value, why: why })
           }
         LexicalDeclared { node: _ } =>
-          value_use_not_derived_standing(acc: acc, key: key, standing: lexical.standing)
+          value_use_not_derived(acc: acc, key: key, reason: NotDerivedStanding { standing: lexical.standing })
         LexicalOwedFormal { field_type: _ } =>
-          value_use_not_derived_standing(acc: acc, key: key, standing: lexical.standing)
+          value_use_not_derived(acc: acc, key: key, reason: NotDerivedStanding { standing: lexical.standing })
         LexicalUntyped =>
-          value_use_not_derived_standing(acc: acc, key: key, standing: lexical.standing)
+          value_use_not_derived(acc: acc, key: key, reason: NotDerivedStanding { standing: lexical.standing })
       }
     BoundToParameter { path: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
     BoundToTypeParameter { canonical: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
@@ -236,6 +229,34 @@ fn value_use_dispose_record(
     BoundAmbient { table: _, identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
     BoundByExpectedType { identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
     BoundByGeneratedReference { identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
+  }
+}
+
+// A VALUED USE WHOSE USE IS LOCATED: the source is the node bearing the recorded value's occurrence in the
+// resolved tree, never the recorded node itself (the header says why).
+fn value_use_valued_at(
+  acc: ValueUseDependencies,
+  index: Map<OccurrenceId, OccurrenceInTree>,
+  key: OccurrenceId,
+  value: Node,
+  use: Node
+) -> ValueUseDependencies {
+  match node_occurrence_id_optional(node: value) {
+    Present { value: value_id } =>
+      match value_use_locate(index: index, id: value_id) {
+        OccurrenceAt { node: source } =>
+          ValueUseDependencies {
+            relations: list_snoc_item(
+              xs: acc.relations,
+              item: ValueUseRelation { occurrence: key, view: value_use_relation(value: source, use: use) }
+            ),
+            not_derived: acc.not_derived,
+            inputs: acc.inputs
+          }
+        OccurrenceUnlocatable { why: why } =>
+          value_use_not_derived(acc: acc, key: key, reason: ValuedSourceNotLocated { value: value, why: why })
+      }
+    Absent => value_use_not_derived(acc: acc, key: key, reason: ValuedSourceUnkeyed { value: value })
   }
 }
 
@@ -261,28 +282,16 @@ fn value_use_views(d: ValueUseDependencies) -> List<DependencyView> {
   )
 }
 
-// THE APPENDERS, each named for the population it grows, so no arm can append to the wrong list.
-fn snoc_relation(xs: List<ValueUseRelation>, item: ValueUseRelation) -> List<ValueUseRelation> {
-  list_snoc_item(xs: xs, item: item)
-}
-
-fn snoc_not_derived(xs: List<ValueUseNotDerived>, item: ValueUseNotDerived) -> List<ValueUseNotDerived> {
-  list_snoc_item(xs: xs, item: item)
-}
-
-// A BINDING WITH NO VALUE TO WAIT ON: the standing itself is the reason, carried as resolve's own
-// variant so no text stands in for it and a consumer matches on the case.
-fn value_use_not_derived_standing(
+// NO RELATION FOR THIS OCCURRENCE, and the typed reason why: a standing with no value to wait on (carried
+// as resolve's own variant), an endpoint the resolved tree does not locate, or a key with no record.
+fn value_use_not_derived(
   acc: ValueUseDependencies,
   key: OccurrenceId,
-  standing: LexicalBinderStanding
+  reason: NotDerivedReason
 ) -> ValueUseDependencies {
   ValueUseDependencies {
     relations: acc.relations,
-    not_derived: snoc_not_derived(
-      acc.not_derived,
-      ValueUseNotDerived { occurrence: key, reason: NotDerivedStanding { standing: standing } }
-    ),
+    not_derived: list_snoc_item(xs: acc.not_derived, item: ValueUseNotDerived { occurrence: key, reason: reason }),
     inputs: acc.inputs
   }
 }
