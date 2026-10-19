@@ -1,6 +1,7 @@
 module v2.compiler.normalize
 
-import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list, is_empty }
+import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length }
+import std.integer
 import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget, CapturedImports }
 import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.grammar { ParseTree, parse_production_emitted_identity_optional }
@@ -794,6 +795,13 @@ fn normalize_census(parse_tree: ParseTree) -> Outcome<CensusTree> {
 }
 
 fn zz_normalize_probe(stage: Int, parse_tree: ParseTree, spans: SpanIndex) -> String {
+  if stage == 11 {
+    match normalize_node(n: parse_tree) {
+      Rejected { diagnostics: _ } => "fold-refused"
+      Accepted { value: t, diagnostics: d } =>
+        "retained=" + std.integer.int_to_decimal_string(value: length(xs: t.retained)) + " diags=" + zz_diag_count(d: d)
+    }
+  } else {
   match bind_retention_free(o: normalize_node(n: parse_tree)) {
     Rejected { diagnostics: _ } => "fold-refused"
     Accepted { value: normalized, diagnostics: d } =>
@@ -841,5 +849,13 @@ fn zz_normalize_probe(stage: Int, parse_tree: ParseTree, spans: SpanIndex) -> St
           }
       }
       }
+  }
+}
+}
+
+fn zz_diag_count(d: Diagnostics) -> String {
+  match d {
+    None => "0"
+    v2.std.diagnostic.Some { diagnostics: nd } => std.integer.int_to_decimal_string(value: 1 + length(xs: nd.tail))
   }
 }
