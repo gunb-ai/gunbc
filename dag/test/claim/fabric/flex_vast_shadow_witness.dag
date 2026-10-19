@@ -76,7 +76,7 @@ import product.fabric.serving_recipe {
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
-  vast_ai_search_type_bid, vast_ai_search_type_ondemand, vast_ai_quote_currency, vast_ai_keyset_page_limit,
+  vast_ai_search_type_bid, vast_ai_search_type_ondemand, vast_ai_wire_mb, vast_ai_wire_mbps, vast_ai_quote_currency, vast_ai_keyset_page_limit,
   vast_ai_ingest_search_offer_driver, vast_ai_driver_version_from_search_offers_text,
   VastAiDriverVersionStanding, VastAiDriverVersionUnread, VastAiDriverVersionRead, VastAiDriverVersionMalformed,
 }
@@ -1037,10 +1037,10 @@ test fn the_search_query_and_the_screen_read_one_filter_fact() -> Bool {
   match flex_vast_offer_query(recipe: flex_serving_recipe) {
     Absent => false
     Present { value: q } =>
-      q.gpu_ram_min_mb == 90000
+      vast_ai_wire_mb(b: q.gpu_ram_min) == 90000
         && q.cuda_max_good_min == 13
-        && q.cpu_ram_min_mb == 128000
-        && q.inet_down_min == 1000
+        && vast_ai_wire_mb(b: q.cpu_ram_min) == 128000
+        && vast_ai_wire_mbps(b: q.inet_down_min) == 1000
         && q.verified
   }
     && (match flex_vast_offer_query(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {

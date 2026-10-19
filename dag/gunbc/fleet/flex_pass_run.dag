@@ -12,7 +12,7 @@ import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestSta
 import extdeps.cloud.vast_ai
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiOfferHostResources, VastAiOfferQuery, VastAiInstances, VastAiCharges, VastAiChargesDayRange,
-  vast_ai_keyset_page_limit, vast_ai_charges_day_filter, vast_ai_instances_unfiltered,
+  vast_ai_keyset_page_limit, vast_ai_charges_day_filter, vast_ai_instances_unfiltered, vast_ai_wire_mb, vast_ai_wire_mbps,
 }
 import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
 import gunbc.auth.access_token_source { resolve_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused, access_token_upsert_required_reason }
@@ -159,8 +159,8 @@ type FlexOfferSearch
 fn flex_search(key: Secret, q: VastAiOfferQuery) -> FlexOfferSearch uses net: Network {
   match vast_ai.SearchOffers.Search(
     api_key: key, search_type: q.search_type, limit: q.limit,
-    gpu_ram_min_mb: q.gpu_ram_min_mb, cuda_max_good_min: q.cuda_max_good_min, cpu_ram_min_mb: q.cpu_ram_min_mb,
-    inet_down_min: q.inet_down_min, verified: q.verified,
+    gpu_ram_min_mb: vast_ai_wire_mb(b: q.gpu_ram_min), cuda_max_good_min: q.cuda_max_good_min as Int, cpu_ram_min_mb: vast_ai_wire_mb(b: q.cpu_ram_min),
+    inet_down_min_mbps: vast_ai_wire_mbps(b: q.inet_down_min), verified: q.verified,
   ) {
     RestAnswered { answer: a } => FlexOffersAnswered { offers: a.offers, hosts: a.hosts }
     RestRefused { refusal: r } => FlexOffersRefused { cause: flex_rest_refusal_text(r: r) }
