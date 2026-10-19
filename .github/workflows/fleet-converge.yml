@@ -1558,7 +1558,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'flex_pass'
-        timeout-minutes: 5
+        timeout-minutes: 15
       - name: Upload flex pass receipt (ids, prices, standings, walls; no secret)
         id: flex_pass_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
