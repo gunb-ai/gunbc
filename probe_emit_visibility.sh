@@ -53,7 +53,7 @@ probe(){
   cp /tmp/freshness_probe.dag src/probe_freshness_emit.dag 2>/dev/null || cp /tmp/freshness_probe.dag probe_freshness_emit.dag
   # Emit only. `--emit-rust` writes the generated Rust; that file is the artifact the merge path can read.
   timeout 900 cargo run -q --release --bin gunbc -- compile probe_freshness_emit.dag \
-      --source-dir . --emit-rust --out "$d/emit" > "$d/emit.log" 2>&1
+      --source-dir . --output-dir "$d/emit" --target rust > "$d/emit.log" 2>&1
   local rc=$?
   echo "EMIT rc=$rc  files=$(find "$d/emit" -name '*.rs' 2>/dev/null | wc -l)"
   if [ ! -d "$d/emit" ]; then
