@@ -17376,7 +17376,19 @@ pub fn sole_constructor_construction_diags(
                         ),
                     ),
                 ) {
-                    Some(_) => Rc::new(vec![]),
+                    Some(declared) => {
+                        if (declared.span.clone() == binding.resolved.span.clone()) {
+                            Rc::new(vec![])
+                        } else {
+                            Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::SoleConstructorViolation {
+                                    type_name: type_name.clone(),
+                                    span: span.clone(),
+                                }),
+                                scope.module_name.clone(),
+                            )])
+                        }
+                    }
                     std::option::Option::None => {
                         Rc::new(vec![crate::v1_std_core::make_error_node(
                             Rc::new(CompilerDiagnostic::SoleConstructorViolation {

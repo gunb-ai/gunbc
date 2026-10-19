@@ -10920,7 +10920,8 @@ fn sole_constructor_construction_diags(
     Present { value: binding } =>
       if binding.resolved.properties |> any(p => p.name == "sole_constructor") {
         match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: concat(scope.module_name, ".", authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved))) {
-          Present { value: _ } => []
+          Present { value: declared } =>
+            if declared.span == binding.resolved.span { [] } else { [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name, span: span }, module_name: scope.module_name)] }
           Absent => [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name, span: span }, module_name: scope.module_name)]
         }
       } else { [] }

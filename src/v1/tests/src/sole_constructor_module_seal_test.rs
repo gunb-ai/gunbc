@@ -71,3 +71,15 @@ fn record_construction_in_the_defining_module_is_clean() {
     );
     assert_eq!(violating_modules(&[d]), Vec::<String>::new());
 }
+
+#[test]
+fn arm_literal_in_a_module_declaring_a_same_named_type_is_refused() {
+    let e = (
+        "e.dag",
+        "module e\nimport d { ArmA }\ntype Choice = Other { k: Int }\nfn forged() -> Int { ArmA { n: 9 }\n 0 }\n",
+    );
+    assert_eq!(
+        violating_modules(&[SEALED_CHOICE, e]),
+        vec!["e".to_string()]
+    );
+}
