@@ -100,8 +100,27 @@ def rows_from(path):
         else:
             mod = mod.rsplit(":", 2)[0] if re.search(r":\d+-\d+$", mod) else mod
         parsed.append({"module": mod, "span": span, "bind": m.group("bind"),
-                       "expected": exp, "got": got})
+                       "expected": exp, "got": got,
+                       "shape": outer_shape(exp), "got_shape": outer_shape(got)})
     return parsed
+
+
+OUTER = re.compile(
+    r"^(Product|Coproduct|Container|Optional|Map|Node|Primitive|Named|Callable|UnresolvedDecl)\b")
+
+
+def outer_shape(text):
+    """Which branch of node_type_shape produced this rendering.
+
+    Needed because node_type_shape has two lossy branches -- a Disj/Conj prints its NAME and hides its
+    children (04_types.dag:914-919), and a keyed collection prints the literal "Map(...)" (:936) -- and
+    whether a class of rows is explained by them depends on which branch the row came out of. Reading
+    the code proves the branches are lossy; counting the rows is what proves whether they are ever the
+    reason. Without this field I told the manager the identical-rendering rows were evidence for the
+    Disj branch, and they are not: none of them renders as a Coproduct or a Map at all.
+    """
+    m = OUTER.match(text.strip())
+    return m.group(1) if m else "other"
 
 
 def classify(row):
@@ -133,6 +152,17 @@ def main():
                   f"(main side of the same closure: {len(main_rows)})")
             for k in ("uninformative-stored-binding", "identical-rendering", "genuine-disagreement"):
                 print(f"    {k:32s} {by_class.get(k, 0)}")
+            shapes = collections.Counter(r["shape"] for r in rows)
+            print("    outer node_type_shape branch: " + ", ".join(f"{k}:{v}" for k, v in shapes.most_common()))
+            ident = collections.Counter(r["shape"] for r in rows
+                                         if r["class"] == "identical-rendering")
+            print("    shapes among identical-rendering: "
+                  + (", ".join(f"{k}:{v}" for k, v in ident.most_common()) or "(none)"))
+            # Does any row come out of a branch that hides information? That is the only case in
+            # which the renderer, rather than the comparator, could be the reason for a verdict.
+            hidden = [r for r in rows if r["shape"] in ("Coproduct", "Product")
+                      or r["expected"].startswith("Map(")]
+            print(f"    rows rendered through a child-hiding branch: {len(hidden)}")
             print("    per module:")
             for mod, n in by_mod.most_common():
                 cls = collections.Counter(r["class"] for r in rows if r["module"] == mod)
