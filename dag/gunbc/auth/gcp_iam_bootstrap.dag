@@ -181,9 +181,12 @@ type CustodyContainerStep
 // gunbc#14360): IamBootstrapApply owns iam-observe's read cell on the approval-submission MAC key, never
 // the key's creation. A trust-root secret's container is its value ceremony's, the ceremony that binds
 // its other root cells (gunbc.auth.gcp_iam_trust_roots ceremony_trust_root_cells), which creates it with
-// its pinned first version. RED STUB: today no container is another ceremony's.
+// its pinned first version.
 fn custody_container_ceremony(secret: NonEmptyStr) -> TrustRootCeremony? {
-  none
+  match filter(ceremony_trust_root_cells(), t => (t.secret as String) == (secret as String) && match t.ceremony { IamBootstrapApply => false  _ => true }).first() {
+    Present { value: t } => Present { value: t.ceremony }
+    Absent => none
+  }
 }
 
 type CustodyAfterCreate = CustodyReadBack | CustodyCreateRefusedDefinitely { reason: String } | CustodyCreateStops { reason: String }
@@ -254,6 +257,17 @@ fn custody_journal_of(secret: NonEmptyStr, records: List<CustodyOperationRecords
 }
 
 fn custody_container_step(secret: NonEmptyStr, o: CustodyContainerObservation, journal: CustodyCreateJournal) -> CustodyContainerStep {
+  match custody_container_ceremony(secret: secret) {
+    Present { value: c } => match o {
+      CustodyObservedPresent => CustodyContainerLeave
+      CustodyObservedAbsent => CustodyContainerRunCeremonyFirst { ceremony: c }
+      CustodyObservationRefused { cause } => CustodyContainerRefuse { reason: join([secret as String, ": the container could not be observed: ", cause], "") }
+    }
+    Absent => bootstrap_custody_container_step(secret: secret, o: o, journal: journal)
+  }
+}
+
+fn bootstrap_custody_container_step(secret: NonEmptyStr, o: CustodyContainerObservation, journal: CustodyCreateJournal) -> CustodyContainerStep {
   match journal {
     CustodyJournalUnreadable { cause } => CustodyContainerRefuse { reason: join([secret as String, ": the create journal is unreadable, so an earlier ambiguous create cannot be excluded: ", cause], "") }
     CustodyJournalRead { unresolved } => match o {
@@ -694,9 +708,8 @@ fn iam_bootstrap_is_forbidden(refusal: RestRefusal) -> Bool {
 // design), so it must not block the trust that lets the delta run at all.
 type RootReadback = RootReadbackAdmitted | RootReadbackRefused { reason: NonEmptyStr }
 
-// RED STUB: today the readback covers the whole derivation, targets included.
 fn iam_bootstrap_root_readback_roster() -> List<IamBootstrapBinding> {
-  iam_bootstrap_capability_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+  iam_bootstrap_stage_bindings(stage: BootstrapCapabilities)
 }
 
 fn iam_bootstrap_root_readback_verdict(delta: BootstrapDelta) -> RootReadback {
