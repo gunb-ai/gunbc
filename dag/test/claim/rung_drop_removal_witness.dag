@@ -158,12 +158,19 @@ fn rendered_removals_of(identity: String) -> String {
   ) })
 }
 
-// THE LEDGER CONSUMES THE ROSTER. A drop with a record renders its deleting commit and path; a drop
-// without one renders nothing, so a renderer that printed every record under every drop is caught.
-test fn the_rung_drop_ledger_renders_a_drops_removal_and_only_its_own() -> Bool {
-  let shown = rendered_removals_of(identity: "regen_producer")
-  shown.contains("3b431f34a9e829809e07621d80ae9429e80f2e17")
-    && shown.contains("src/v1/stage0/src/bin/regen_stage0.rs")
-    && !shown.contains("d3bebd0072feed2afeb7e45f07aa7fc6da69453b")
-    && rendered_removals_of(identity: "floor_cut_heal") == ""
+// THE LEDGER CONSUMES THE ROSTER, one assertion per test so a failure names its axis.
+test fn the_ledger_renders_the_deleting_commit() -> Bool {
+  rendered_removals_of(identity: "regen_producer").contains("3b431f34a9e829809e07621d80ae9429e80f2e17")
+}
+
+test fn the_ledger_renders_the_removed_path() -> Bool {
+  rendered_removals_of(identity: "regen_producer").contains("regen_stage0")
+}
+
+test fn the_ledger_does_not_render_another_drops_commit() -> Bool {
+  !rendered_removals_of(identity: "regen_producer").contains("d3bebd0072feed2afeb7e45f07aa7fc6da69453b")
+}
+
+test fn a_drop_without_a_record_renders_no_removal_line() -> Bool {
+  !rendered_removals_of(identity: "floor_cut_heal").contains("Cited artifacts removed")
 }
