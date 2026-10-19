@@ -110,8 +110,16 @@ fn parse_verdict_compiler_expr() -> String {
   })
 }
 
-fn parse_verdict_identity_blob_file() -> String { runner_temp_file(basename: parse_verdict_restore_identity_basename) }
-fn parse_verdict_receipts_file() -> String { runner_temp_file(basename: parse_verdict_restore_receipts_basename) }
+// THE CACHED FILES LIVE AT WORKSPACE-RELATIVE PATHS. A cache entry's version is a hash of the path
+// string the step was given (plus compression and a fixed salt), so it is part of the entry's
+// identity: saved under the runner's absolute `_temp` directory, an entry could be restored only by a
+// runner whose directory spelled the same, and a pull request on any other runner missed every entry
+// main had published. A path relative to the step's working directory spells the same on every
+// runner. The publisher and the restore step read these two definitions and nothing else.
+data parse_verdict_cache_working_directory: String = "."
+
+fn parse_verdict_identity_blob_file() -> String { parse_verdict_restore_identity_basename }
+fn parse_verdict_receipts_file() -> String { parse_verdict_restore_receipts_basename }
 
 fn github_sha_expr() -> String {
   serialize_template(template: ExpressionTemplate {

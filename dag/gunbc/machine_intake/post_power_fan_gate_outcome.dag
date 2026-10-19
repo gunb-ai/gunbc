@@ -125,7 +125,7 @@ fn fitted_set_standing_text(fitted: FittedFanSet) -> String {
   }
 }
 
-// THE EVIDENCE BEFORE THE STOP: written before any PowerDown, so a failing stop cannot lose what decided it.
+// THE EVIDENCE BEFORE THE STOP: written (attempted, result discriminated) before any PowerDown; a failed write is kept as FanGateWriteFailed and the safe stop still proceeds.
 fn post_power_fan_gate_pre_stop_text(fitted: FittedFanSet, cause: PostPowerFanRefusal, observation: FanObservationRound, manager: FanManagerReadStanding) -> String {
   join(["post-power-on chassis-fan gate: REFUSED\ncause: ", post_power_fan_refusal_text(cause: cause), "\n", fitted_set_standing_text(fitted: fitted), "\n", fan_manager_standing_text(manager: manager), "\nobservation that stopped the boot:\n", render_round_block(round: observation), "\n"], "")
 }

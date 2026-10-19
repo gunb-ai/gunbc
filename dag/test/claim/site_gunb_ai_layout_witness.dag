@@ -12,7 +12,7 @@ import gunbc.site.gunb_ai_layout {
   BallotRequest, BallotHtml, BallotRefused, tracks_fixed, tracks_single,
   ballot_render, layout_rules, layout_css, ballot_css, layout_scale_tokens,
   FixedColumns,
-  grid_flow, grid_fixed_3, grid_autofill, column_count_max,
+  grid_flow, grid_fixed_3, grid_autofill, grid_over_policy_columns, column_count_max,
   breakpoints_adopt_live, breakpoints_stack_only, ResponsePoint, breakpoint_points,
   response_rule, stack_point, compact_point,
   scheme_dark_only, scheme_light_alt, day_bindings_complete, day_bindings_rows, day_scope_class,
@@ -54,7 +54,7 @@ test fn witness_inadmissible_grid_refuses_by_slug() -> Bool {
     axis: "control",
     label: "control",
     note: "control",
-    grid: FixedColumns { count: column_count_max + 1 },
+    grid: grid_over_policy_columns,
     breakpoints: breakpoints_adopt_live,
     scheme: scheme_dark_only,
   }) {
@@ -342,7 +342,7 @@ fn refusal_scenario(dir: String) -> Bool {
     BallotRequest { slug: "w-ok-first", axis: "grid (A)", label: "ok", note: "ok",
       grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only },
     BallotRequest { slug: "w-bad-last", axis: "grid (Z)", label: "bad", note: "bad",
-      grid: FixedColumns { count: column_count_max + 1 },
+      grid: grid_over_policy_columns,
       breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only },
   ])
   let listed = Filesystem.List(path: dir)
