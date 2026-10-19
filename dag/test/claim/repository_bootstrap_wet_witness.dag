@@ -7,6 +7,7 @@ import gunbc.live_deploy.repository_convergence { repository_converge_wet }
 import extdeps.shell
 import extdeps.git
 import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
+import extdeps.git.inspect
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { trim }
