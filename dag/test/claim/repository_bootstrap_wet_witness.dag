@@ -450,15 +450,17 @@ test fn an_empty_root_is_bootstrapped_to_the_candidate_and_reads_back_as_that_re
       // THE GATE IS STILL DEMANDED: an accept is an accept, not an absence of an observed fault —
       // the arm a pure no-op transition cannot survive (its red is the acceptance-must-be-demanded
       // mutation, see the file header's RED list in the PR body).
+      let gate_refusal = match outcome {
+        ExitSuccess => ""
+        ExitFailure { code: code, reason: reason } => join(["transition did not report acceptance (exit ", to_string(code), "): ", reason], "")
+      }
+      let cleanup_refusal = if cleaned { "" } else { "scratch root could not be removed" }
       refusal_or_success(refusals: [
-        match outcome {
-          ExitSuccess => ""
-          ExitFailure { code: code, reason: reason } => join(["transition did not report acceptance (exit ", to_string(code), "): ", reason], "")
-        },
+        gate_refusal,
         head_readback_diagnostic(verdict: head_observed, expected: s.candidate),
         worktree_readback_diagnostic(verdict: worktree_observed),
         bytes_readback_diagnostic(verdict: tracked_observed, path: tracked_path),
-        if cleaned { "" } else { "scratch root could not be removed" },
+        cleanup_refusal,
       ])
     }
   }
@@ -478,14 +480,16 @@ test fn a_root_holding_content_without_a_repository_still_refuses_and_is_not_ini
       let stray_observed = probe_file_bytes(path: stray_path, expected: "stray")
       let git_head_observed = probe_not_initialized(git_head_path: concat(s.repo, "/.git/HEAD"))
       let cleaned = remove_scratch(s: s)
+      let acceptance_refusal = match outcome {
+        ExitSuccess => "the transition ACCEPTED a root that held content without a repository"
+        ExitFailure { reason: _ } => ""
+      }
+      let cleanup_refusal = if cleaned { "" } else { "scratch root could not be removed" }
       refusal_or_success(refusals: [
-        match outcome {
-          ExitSuccess => "the transition ACCEPTED a root that held content without a repository"
-          ExitFailure { reason: _ } => ""
-        },
+        acceptance_refusal,
         bytes_readback_diagnostic(verdict: stray_observed, path: stray_path),
         git_head_file_readback_diagnostic(verdict: git_head_observed),
-        if cleaned { "" } else { "scratch root could not be removed" },
+        cleanup_refusal,
       ])
     }
   }
