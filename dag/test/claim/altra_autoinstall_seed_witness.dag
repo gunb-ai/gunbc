@@ -15,6 +15,7 @@ import extdeps.storage.types { storage_device_serial }
 import extdeps.libxcrypt.crypt_scheme {
   Sha512CryptFormat,
   shared_restriction_character_is_printable,
+  crypt_reserved_characters,
   crypt_acceptance_rules,
   sha512_crypt_figure_read_obligation,
   sha512_crypt_format,
