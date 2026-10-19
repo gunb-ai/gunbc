@@ -61,3 +61,32 @@ All 8 rows PASS.
 Under-shooting (fewer than 37) means the repair is clearing rows I attributed to producer 2
 or to the outcome-C family, which would contradict the probe split -- investigate before
 believing it. Overshooting (any new identity) is a regression, full stop.
+
+---
+
+## AMENDMENT (same session, before any measured result was read)
+
+Two corrections made after the first dispatch aborted on a compile error, and before any
+stage result existed. Recorded rather than silently edited, because pre-registration is only
+worth anything if the edits are visible.
+
+1. **The fixture changed shape.** The first version used two *separate top-level functions*.
+   That cannot test a cross-binding: each call is compared only against its own formal, so the
+   two call types never meet. Both calls are now in **one body**, the first constrained to
+   `Map(Int, Int)` before the second is introduced against `Map(String, Int)`. The name-keyed
+   mutation now has a place to fail.
+2. **A ninth row was added**, `fold_accepts_a_binding_whose_arguments_are_all_fresh_call_variables`:
+   bound = `Map(fresh K@site, fresh V@site)`, actual = `Map(String, Int)`. Predicted **PASS** at
+   every stage: it is the exact node the repair emits, and `binding_has_type_variable_leaf`
+   recurses into children, so an all-variable head is unsettled by the arm that already ships.
+   Its value is that it locks the *accept* duty to the repaired shape, per the parent's
+   msg_ad1a90c2 (do not keep a lock that asserts obsolete behaviour).
+3. **What is measured.** `src/v1/stage0/build.rs` does not regenerate from `.dag`, and the tests
+   import `unify_generics` from the **checked-in mirror**. An earlier script patched only
+   `04_infer.dag` and would have measured the same unpatched binary at every stage. Stage B1
+   now regenerates the mirror from the patched `.dag` (regeneration is the only sanctioned way
+   a mirror changes), prints the emitted text of the seeded region, and FAILS LOUDLY with
+   `REGEN_NOOP FATAL` if the regenerated mirror is byte-identical to the pre-repair one.
+4. S1 predictions are unchanged for the 8 original rows. Row `collision_two_zero_arg_generic_calls_both_type`
+   is predicted **FAIL at RED** and **PASS at repair**; if it passes at RED the fixture is not
+   discriminating and I say so instead of calling the repair verified.
