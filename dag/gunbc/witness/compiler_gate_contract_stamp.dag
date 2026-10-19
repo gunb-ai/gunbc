@@ -1083,6 +1083,10 @@ fn compiler_gate_contract_stamp_evidence_subject_is_fixture(s: CompilerGateContr
     SubjectCommitted => false
     SubjectRewritten => false
     SubjectDemoted => false
+    // A forged tree is not the recorded silent-green head either. That the typechecker refuses when a
+    // new subject arrives without this arm is the point of a closed union: the earlier match would
+    // have kept compiling and quietly decided every forged case was, or was not, the fixture.
+    SubjectForged { form: _ } => false
   }
 }
 
