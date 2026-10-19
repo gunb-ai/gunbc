@@ -6,10 +6,9 @@ import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
-import std.measure { mebibyte_count, mebibyte_ceiling, bandwidth_count }
 import product.fabric.flex_vast_loop { flex_vast_disk_gigabytes }
 import extdeps.cloud.vast_ai
-import extdeps.cloud.vast_ai { VastAiTemplateRow, VastAiTemplateList, VastAiTemplateCreateResult }
+import extdeps.cloud.vast_ai { vast_ai_wire_mb, vast_ai_wire_mbps, VastAiTemplateRow, VastAiTemplateList, VastAiTemplateCreateResult }
 import gunbc.fleet.flex_pass_run { flex_vast_key, FlexVastKeyReady, FlexVastKeyRefused }
 import product.fabric.flex_vast_template {
   FlexTemplateSpec, flex_vast_template_spec, flex_template_env, flex_template_retired_hash,
@@ -65,9 +64,9 @@ fn flex_template_create(api_key: Secret, spec: FlexTemplateSpec) -> String uses 
     jup_direct: spec.jup_direct,
     use_jupyter_lab: spec.use_jupyter_lab,
     min_cuda_max_good: spec.min_cuda_max_good as Int,
-    min_cpu_ram_mb: mebibyte_count(m: mebibyte_ceiling(b: spec.min_cpu_ram)) as Int,
-    min_gpu_ram_mb: mebibyte_count(m: mebibyte_ceiling(b: spec.min_gpu_ram)) as Int,
-    min_inet_down_mbps: (bandwidth_count(b: spec.min_inet_down) / 1000000) as Int,
+    min_cpu_ram_mb: vast_ai_wire_mb(b: spec.min_cpu_ram),
+    min_gpu_ram_mb: vast_ai_wire_mb(b: spec.min_gpu_ram),
+    min_inet_down_mbps: vast_ai_wire_mbps(b: spec.min_inet_down),
     verified_only: spec.verified_only,
   ) {
     RestAnswered { answer: _ } => "created"
