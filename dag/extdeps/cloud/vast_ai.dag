@@ -6,6 +6,7 @@ import std.nat { Nat }
 import std.algebra { trim, list_head }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { ExactDecimal }
+import extdeps.languages.json.emit { json_int, json_kv, json_object, serialize_json }
 import std.measure {
   MoneyAmountMicro,
   money_amount_micro,
@@ -32,9 +33,11 @@ import extdeps.uri { Uri, Https }
 // closed enum here would assert a set the upstream does not state; the supplier layer therefore matches
 // only the one word it can ground ("nvidia" yields Cuda) and refuses every other or absent value by name.
 //
-// is_bid marks an interruptible (bid-priced) offer: search-offers `type` is ondemand | bid | reserved and
-// bid "may be interrupted if outbid", so an interruptible offer is a different availability fact from an
-// on-demand one. Absence is an unread fact.
+// is_bid IS NOT READ AS INTERRUPTIBILITY. search-offers `type` is ondemand | bid | reserved and bid "may be
+// interrupted if outbid", so interruptibility is a fact of the SEARCH an offer was returned for. A live
+// read-only search on 2026-10-18 (type bid, from srv1) answered 63 offers all with is_bid false, and a running
+// interruptible instance also read is_bid false, so the field's meaning is unread here. Absence is an
+// unread fact too.
 //
 // MONEY WIRE FIELDS ARE ExactDecimal, NEVER Float: search-offers min_bid, dph_total, storage_cost,
 // inet_up_cost and inet_down_cost arrive as JSON numbers. min_bid and dph_total convert with
@@ -263,6 +266,7 @@ service vast_ai.SearchOffers {
     }
     output {
       offers: List<VastAiOffer> from "offers"
+      hosts: List<VastAiOfferHostResources> from "offers"
     }
     readonly
     transport rest {
@@ -362,7 +366,8 @@ service vast_ai.Instances {
   }
 }
 
-// ONE CONTRACT CHARGE from GET /api/v0/charges. amount is ExactDecimal (the document's float).
+// ONE CONTRACT CHARGE from GET /api/v0/charges/ (the trailing slash is the served path: a live GET of
+// /api/v0/charges on 2026-10-18 answered 301 to /api/v0/charges/). amount is ExactDecimal (the document's float).
 // select_filters is the documented JSON string; day.gte and day.lte are required by the vendor.
 type VastAiChargeItem {
   start: Int
@@ -372,6 +377,16 @@ type VastAiChargeItem {
   description: String
 }
 
+// metadata is documented on the same page (template_id, label, endpoint_id, workergroup_id); only the two
+// an instance contract carries are read. Observed 2026-10-18 by a live read-only GET from srv1: an
+// instance row answered metadata {"template_id": <Int>, "label": "<the instance label>"}. label is the
+// label the instance carried, so a charge is attributable to an owner label without the instance still
+// existing. Absent metadata or label is an unread fact, never an owner.
+type VastAiChargeMetadata {
+  template_id: Int?
+  label: String?
+}
+
 type VastAiCharge {
   start: Int
   end: Int
@@ -379,6 +394,7 @@ type VastAiCharge {
   source: String
   description: String
   amount: ExactDecimal
+  metadata: VastAiChargeMetadata?
   items: List<VastAiChargeItem>
 }
 
@@ -436,6 +452,20 @@ type VastAiChargesDayRange {
   lte: Int
 }
 
+// The day range as the select_filters JSON the endpoint takes (observed accepted live 2026-10-18 from srv1).
+fn vast_ai_charges_day_filter(range: VastAiChargesDayRange) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "day", value: json_object(members: [
+      json_kv(key: "gte", value: json_int(n: range.gte)),
+      json_kv(key: "lte", value: json_int(n: range.lte)),
+    ])),
+  ]))
+}
+
+// An empty select_filters object: GET /instances answers every instance on the account (observed live
+// 2026-10-18 from srv1: total_instances counted instances under every label).
+data vast_ai_instances_unfiltered: String = serialize_json(v: json_object(members: []))
+
 type VastAiChargesRefusal
   = VastAiChargesMissingDateRange
   | VastAiChargesRefusedStatus { status: Int }
@@ -477,7 +507,7 @@ service vast_ai.Charges {
     readonly
     transport rest {
       method: GET,
-      path: "/charges",
+      path: "/charges/",
       query: { select_filters: select_filters, limit: limit, after_token: after_token }
     }
     response {
