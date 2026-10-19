@@ -2503,6 +2503,27 @@ test fn the_probe_and_its_control_still_exercise_every_argument_builder() -> Boo
     && string_contains(lawful_call_source, "observed_bios_version:")
     && string_contains(lawful_call_source, "admissible_readiness_for(")
     && !string_contains(lawful_call_source, "prepare(")
+    // THE CALL SITES, NOT MERELY THE NAMES. Pinning a builder NAME is not enough, because control and
+    // probe are built from ONE shared line list: `let existence = network_option_existence(...)` is a
+    // line of BOTH sources, so a probe whose forged call stopped consuming that binding would still
+    // contain the string. MEASURED (R2G3): replacing `existence: existence` in the probe's prepare call
+    // with a call to an unbound builder left this test GREEN on the name-only claims -- the census is
+    // blind to unbound names, so nothing else saw it either. What a fixture must therefore be held to
+    // is its ARGUMENT SPINE: each call must pass the shared bindings BY NAME, so no mutation can quietly
+    // substitute a different expression for one of the five while keeping every builder in view.
+    && string_contains(
+      direct_mint_source,
+      "prepare(blocker: NoInterfaceCarriesPxe, join: join, available: available, existence: existence, observed_bios_version: Present { value: \"1.08\" })"
+    )
+    && string_contains(
+      lawful_call_source,
+      "admissible_readiness_for(blocker: NoInterfaceCarriesPxe, redirect_to: redirect, existence: existence, observed_bios_version: Present { value: \"1.08\" })"
+    )
+    // And the two spines must agree where they are supposed to agree: same blocker, same existence
+    // binding, same BIOS version literal. A control whose arguments had drifted would make the
+    // comparator's 'every key outside the target is identical' claim vacuous, so it is pinned too.
+    && string_contains(direct_mint_source, "redirect_target(join: join, available: available)")
+    && string_contains(lawful_call_source, "redirect_target(join: join, available: available)")
 }
 
 // THE JOIN, TESTED DIRECTLY, ALL FIVE ARMS. This is the seam's most load-bearing function after
