@@ -419,7 +419,7 @@ pub fn rust_exact_realization_decision(
                 std::option::Option::None => Rc::new(TypeRealizationDecision::RealizationRefused {
                     cause: Rc::new(
                         RealizationRefusalCause::BoundRepresentationHasNoRealizationRow {
-                            decl_name: b.source.clone().decl_name.clone(),
+                            decl_name: b.source.decl_name.clone(),
                         },
                     ),
                 }),

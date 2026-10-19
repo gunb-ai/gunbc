@@ -1228,6 +1228,166 @@ pub fn is_emoji_ident(cp: i64) -> bool {
         .unwrap_or(false)
 }
 
+// std.machine_word machine_word_native_operate: bitwise arithmetic on a fixed-width word at the host's
+// own operators. ONE ROW PER OPERATOR LABEL (std.machine_word machine_word_operator_label): a new
+// operation is a new row here and a variant there, never a branch in the lowering. Operands are
+// residues in [0, 2^bits); the second operand of a shift or rotation is an amount in [0, bits); and
+// bits is in 1..=62 because the carrier is an i64 (std.machine_word word_realizable_width). Anything
+// else REFUSES -- no wrapping, masking or clamping substitutes for the operand the caller meant.
+pub enum MachineWordSecond {
+    Operand,
+    Amount,
+    Unused,
+}
+
+pub struct MachineWordOperatorRow {
+    pub label: &'static str,
+    pub second: MachineWordSecond,
+    pub apply: fn(u128, u128, u32) -> u128,
+}
+
+pub const MACHINE_WORD_OPERATOR_ROWS: [MachineWordOperatorRow; 8] = [
+    MachineWordOperatorRow {
+        label: "and",
+        second: MachineWordSecond::Operand,
+        apply: |a, b, _| a & b,
+    },
+    MachineWordOperatorRow {
+        label: "or",
+        second: MachineWordSecond::Operand,
+        apply: |a, b, _| a | b,
+    },
+    MachineWordOperatorRow {
+        label: "xor",
+        second: MachineWordSecond::Operand,
+        apply: |a, b, _| a ^ b,
+    },
+    MachineWordOperatorRow {
+        label: "not",
+        second: MachineWordSecond::Unused,
+        apply: |a, _, bits| ((1u128 << bits) - 1) ^ a,
+    },
+    MachineWordOperatorRow {
+        label: "shift_right",
+        second: MachineWordSecond::Amount,
+        apply: |a, n, _| a >> n,
+    },
+    MachineWordOperatorRow {
+        label: "shift_left",
+        second: MachineWordSecond::Amount,
+        apply: |a, n, bits| (a << n) & ((1u128 << bits) - 1),
+    },
+    MachineWordOperatorRow {
+        label: "rotate_right",
+        second: MachineWordSecond::Amount,
+        apply: |a, n, bits| ((a >> n) | (a << (bits - n as u32))) & ((1u128 << bits) - 1),
+    },
+    MachineWordOperatorRow {
+        label: "add_wrapping",
+        second: MachineWordSecond::Operand,
+        apply: |a, b, bits| (a + b) & ((1u128 << bits) - 1),
+    },
+];
+
+const fn machine_word_same_spelling(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+// Resolved at COMPILE time of the emitted program from the operator LABEL the emitter folded out of
+// std.machine_word machine_word_operator_label at a literal call site, so a label with no row is a
+// build error.
+pub const fn machine_word_row_index(label: &str) -> usize {
+    let mut i = 0;
+    while i < MACHINE_WORD_OPERATOR_ROWS.len() {
+        if machine_word_same_spelling(MACHINE_WORD_OPERATOR_ROWS[i].label, label) {
+            return i;
+        }
+        i += 1;
+    }
+    panic!("std.machine_word: no operator row for this label")
+}
+
+#[inline(always)]
+pub fn machine_word_operate_row(
+    row: &MachineWordOperatorRow,
+    bits: i64,
+    a: i64,
+    b: i64,
+) -> Result<i64, String> {
+    if !(1..=62).contains(&bits) {
+        return Err(format!("std.machine_word machine_word_native_operate: width {} bits is not realizable on an i64 carrier (1..=62)", bits));
+    }
+    let modulus = 1i64 << bits;
+    if a < 0 || a >= modulus {
+        return Err(format!(
+            "std.machine_word machine_word_native_operate: operand {} is outside [0, 2^{})",
+            a, bits
+        ));
+    }
+    match row.second {
+        MachineWordSecond::Operand => {
+            if b < 0 || b >= modulus {
+                return Err(format!(
+                    "std.machine_word machine_word_native_operate: operand {} is outside [0, 2^{})",
+                    b, bits
+                ));
+            }
+        }
+        MachineWordSecond::Amount => {
+            if b < 0 || b >= bits {
+                return Err(format!(
+                    "std.machine_word machine_word_native_operate: amount {} is outside [0, {})",
+                    b, bits
+                ));
+            }
+        }
+        MachineWordSecond::Unused => {}
+    }
+    Ok((row.apply)(a as u128, b as u128, bits as u32) as i64)
+}
+
+pub fn machine_word_native_operate_checked(
+    op: &str,
+    bits: i64,
+    a: i64,
+    b: i64,
+) -> Result<i64, String> {
+    let row = MACHINE_WORD_OPERATOR_ROWS
+        .iter()
+        .find(|row| row.label == op)
+        .ok_or_else(|| {
+            format!(
+                "std.machine_word machine_word_native_operate: no operator row for label {}",
+                op
+            )
+        })?;
+    machine_word_operate_row(row, bits, a, b)
+}
+
+// The literal-call-site realization: the SAME row and the SAME refusals, with the row and the
+// width fixed at compile time so the host operator is inlined. Refusal panics in release too.
+#[inline(always)]
+pub fn machine_word_operate_at<const ROW: usize, const BITS: i64>(a: i64, b: i64) -> i64 {
+    machine_word_operate_row(&MACHINE_WORD_OPERATOR_ROWS[ROW], BITS, a, b)
+        .unwrap_or_else(|refusal| panic!("{}", refusal))
+}
+
+pub fn machine_word_native_operate(op: &str, bits: i64, a: i64, b: i64) -> i64 {
+    machine_word_native_operate_checked(op, bits, a, b)
+        .unwrap_or_else(|refusal| panic!("{}", refusal))
+}
+
 // FreeMonoid host bridge (String = FreeMonoid<Char>) — relocated from v2_std_algebra
 // so the Char authority (i64 / std.types.Char) is not pinned to v2_std_nat::Nat.
 pub fn freemonoid_empty<T: Clone>() -> Rc<Vec<T>> {

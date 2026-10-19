@@ -8663,8 +8663,14 @@ fn infer_append_binder_types(xs: List<InferBinderType>, ys: List<InferBinderType
 // facts are in. So the arm's frame carries one InferBinderType row per payload binder, and a binder whose
 // field is a free formal the scrutinee's arguments do not instantiate REFUSES the arm (located), never
 // types as the bare formal and never stays untyped to be accepted on the advisory frontier (section 5).
+// A Match's scrutinee: its first positional child, the slot v2.std.compilers.body_lowering lower_match
+// writes ahead of the arms.
+fn infer_match_scrutinee(match_node: Node) -> Optional<Node> {
+  list_at_optional(xs: positional_child_target_nodes(node: match_node), index: 0)
+}
+
 fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, edge: Edge, resolved: ResolvedTree) -> InferFrame {
-  match list_at_optional(xs: positional_child_target_nodes(node: parent), index: 0) {
+  match infer_match_scrutinee(match_node: parent) {
     Absent => infer_frame_inherited(frame: frame)
     Present { value: scrutinee } =>
       if scrutinee == edge.target {
@@ -9048,7 +9054,50 @@ fn infer_gather_fold_bind_row_on_entries(
 }
 
 fn infer_gather_schedules_first(parent: Node, edge: Edge) -> Bool {
-  infer_loop_schedules_first(parent: parent, edge: edge) || infer_application_schedules_before_callbacks(parent: parent, edge: edge)
+  infer_loop_schedules_first(parent: parent, edge: edge)
+    || infer_application_schedules_before_callbacks(parent: parent, edge: edge)
+    || infer_bind_schedules_key_and_value_first(parent: parent, edge: edge)
+    || infer_match_schedules_scrutinee_first(parent: parent, edge: edge)
+}
+
+// A BIND SCHEDULES ITS KEY AND ITS VALUE BEFORE ITS BODY. The two are what the body's frame reads from the
+// parent's accumulator -- infer_let_body_frame takes the unannotated binder's type from the VALUE's settled
+// facts (infer_settled_type_at over acc.entries) and an annotated one from the annotation edge, never from a
+// sibling -- so their position in the schedule is a dependency, and textual/child position establishes none
+// (gunbc.plans.demand_engine_program 2.4, specimen "Inference's own sibling dependencies"). Which child is
+// the key and which the value is not re-derived here: the key is the binder v2.compiler.lexical_scope
+// bind_binder reads (the reader resolve sites the binder with, and infer_is_let_bind gates on), the value
+// is infer_bind_value, and the body stays in the rest group, where infer_let_body_edge enters it. The
+// first group is taken by SLOT INDEX, so on every conforming Bind it is the stored prefix
+// (v2.std.compilers.body_lowering lower_bind writes key, value, body in that order) and the schedule is
+// stored order, not a permutation of it.
+fn infer_bind_schedules_key_and_value_first(parent: Node, edge: Edge) -> Bool {
+  match bind_binder(n: parent) {
+    Present { value: binder } =>
+      edge.target == binder.atom
+        || match infer_bind_value(bind: parent) {
+          Present { value: value } => edge.target == value
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+// A MATCH SCHEDULES ITS SCRUTINEE BEFORE ITS ARMS. Each arm's frame -- infer_match_arm_child_frame -- reads
+// the scrutinee's settled facts from the parent's accumulator, for the arm's coverage obligation and for
+// the type a pattern binder is typed with, and both this predicate and that frame take the scrutinee from
+// infer_match_scrutinee. Arms stay in the rest group, in stored order. As above the group is taken by slot
+// index, so the schedule is the stored order.
+fn infer_match_schedules_scrutinee_first(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Match } =>
+      match infer_match_scrutinee(match_node: parent) {
+        Present { value: scrutinee } => edge.target == scrutinee
+        Absent => false
+      }
+    ComputationNode { behavior: _ } => false
+    TypeNode { connective: _ } => false
+  }
 }
 
 // An application with no callback actual keeps its authored order: every edge is in the first group.
