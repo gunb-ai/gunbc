@@ -38,9 +38,33 @@ impl PhaseScale {
     }
 }
 
+/// One phase's receipt row.
+///
+/// `nested` is the time this row's span CONTAINED from other phase rows, measured mechanically by
+/// `timed` rather than declared by the author. `raw` marks time a producer measured and `record`ed
+/// itself (e.g. `pool_acquire`'s tokenize rows): its span boundaries are not visible here, so it
+/// cannot be netted and is reported as `attribution=recorded` rather than guessed at. §4 P0.1
+/// requires the receipt to say inclusive or exclusive before a reader sums rows; a row claiming an
+/// exclusivity it cannot show makes the sum a fiction, which is why only `timed` spans get an
+/// `excl_ms` at all.
+struct PhaseRow {
+    name: &'static str,
+    scale: PhaseScale,
+    elapsed: Duration,
+    nested: u128,
+    raw: bool,
+    /// When this row FIRST got time, so the transaction receipt can tell rows that began inside
+    /// the compile transaction from rows a predecessor recorded before it started (only the
+    /// former may be netted against the transaction total — netting a predecessor's row against
+    /// a total it never contributed to would fabricate a floor below zero).
+    first_recorded_at: std::time::Instant,
+}
+
 thread_local! {
-    static PHASES: RefCell<Vec<(&'static str, PhaseScale, Duration)>> =
-        const { RefCell::new(Vec::new()) };
+    static PHASES: RefCell<Vec<PhaseRow>> = const { RefCell::new(Vec::new()) };
+    /// Nanos recorded by any row so far on this thread; `timed` takes the delta across `f` to get
+    /// this span's contained time.
+    static RECORDED_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
 }
 
 /// Add `elapsed` to the named phase (first record fixes its position in the receipt).
@@ -50,39 +74,296 @@ thread_local! {
 pub fn record(name: &'static str, scale: PhaseScale, elapsed: Duration) {
     PHASES.with(|p| {
         let mut p = p.borrow_mut();
-        if let Some(row) = p.iter_mut().find(|(n, _, _)| *n == name) {
-            row.2 += elapsed;
+        if let Some(row) = p.iter_mut().find(|r| r.name == name) {
+            row.elapsed += elapsed;
+            row.raw = true;
             if scale == PhaseScale::Closure {
-                row.1 = PhaseScale::Closure;
+                row.scale = PhaseScale::Closure;
             }
         } else {
-            p.push((name, scale, elapsed));
+            p.push(PhaseRow {
+                name,
+                scale,
+                elapsed,
+                nested: 0,
+                raw: true,
+                first_recorded_at: std::time::Instant::now(),
+            });
         }
     });
+    RECORDED_NANOS.with(|t| t.set(t.get() + elapsed.as_nanos()));
 }
 
-/// Time `f` into the named phase.
+/// Time `f` into the named phase. The row's `ms` is INCLUSIVE of any phase row recorded inside
+/// `f`; the contained time is subtracted to print `excl_ms`, so rows can be summed without
+/// double-counting (§4 P0.1: "Check whether each row is inclusive or exclusive before summing").
 pub fn timed<T>(name: &'static str, scale: PhaseScale, f: impl FnOnce() -> T) -> T {
     let started = std::time::Instant::now();
+    let recorded_before = RECORDED_NANOS.with(|t| t.get());
     let out = f();
-    record(name, scale, started.elapsed());
+    let elapsed = started.elapsed();
+    let nested = RECORDED_NANOS.with(|t| t.get().saturating_sub(recorded_before));
+    PHASES.with(|p| {
+        let mut p = p.borrow_mut();
+        if let Some(row) = p.iter_mut().find(|r| r.name == name) {
+            row.elapsed += elapsed;
+            row.nested += nested;
+            if scale == PhaseScale::Closure {
+                row.scale = PhaseScale::Closure;
+            }
+        } else {
+            p.push(PhaseRow {
+                name,
+                scale,
+                elapsed,
+                nested,
+                raw: false,
+                first_recorded_at: std::time::Instant::now(),
+            });
+        }
+    });
+    RECORDED_NANOS.with(|t| t.set(t.get() + elapsed.as_nanos()));
     out
 }
 
 /// Drain the receipt: one line per phase in first-recorded order.
+///
+/// The wire format of these lines is a contract: `bin/claim_batch.rs` forwards them and
+/// `cli_run/native_product_cache.rs` treats the last line NOT starting with `[pre-entry]` as a
+/// refusal reason. Any new row anywhere must keep that prefix.
 pub fn take_lines() -> Vec<String> {
-    PHASES.with(|p| {
-        std::mem::take(&mut *p.borrow_mut())
-            .into_iter()
-            .map(|(name, scale, d)| {
-                format!(
-                    "[pre-entry] phase={name} ms={} scale={}",
-                    d.as_millis(),
-                    scale.wire()
+    drain_rows()
+        .into_iter()
+        .map(|row| {
+            format!(
+                "[pre-entry] phase={} ms={} scale={}",
+                row.name,
+                row.elapsed.as_millis(),
+                row.scale.wire()
+            )
+        })
+        .collect()
+}
+
+/// Drain the receipt with the inclusive/exclusive attribution §4 P0.1 asks for:
+/// `attribution=exclusive` (this row's span contained no other row; `ms` may be summed with the
+/// other rows' `excl_ms`), `attribution=inclusive` (it contained other rows; their recorded time
+/// is subtracted into `excl_ms`), `attribution=recorded` (the producer measured and `record`ed
+/// this row itself, so its span boundaries are not visible and it is reported unnetted).
+pub fn take_rows_with_attribution() -> Vec<String> {
+    drain_rows()
+        .into_iter()
+        .map(|row| {
+            let (attribution, excl) = if row.raw {
+                ("recorded", row.elapsed.as_nanos())
+            } else if row.nested > 0 {
+                (
+                    "inclusive",
+                    row.elapsed.as_nanos().saturating_sub(row.nested),
                 )
-            })
-            .collect()
-    })
+            } else {
+                ("exclusive", row.elapsed.as_nanos())
+            };
+            format!(
+                "[pre-entry] phase={} ms={} excl_ms={} scale={} attribution={}",
+                row.name,
+                row.elapsed.as_millis(),
+                Duration::from_nanos(u64::try_from(excl).unwrap_or(u64::MAX),).as_millis(),
+                row.scale.wire(),
+                attribution
+            )
+        })
+        .collect()
+}
+
+fn drain_rows() -> Vec<PhaseRow> {
+    PHASES.with(|p| std::mem::take(&mut *p.borrow_mut()))
+}
+
+// ── THE OUTER BOUNDARY (§5a amendment A) ────────────────────────────────────────────────────
+//
+// `CompileRun.wall_ms` is sampled before the transaction's locals finish dropping, and output
+// materialization and diagnostic rendering happen in the caller. So the receipt printed by
+// `compile_emission_over` is missing everything outside the transaction, and a reader summing rows
+// against `wall_ms` silently absorbs that gap as zero. This section times the whole CLI invocation
+// from the kernel's own accounting of when the process started, and prints what no row explains as
+// its own row. `cli_run.rs` calls `print_compile_transaction_receipt` exactly once per
+// compilation; the invocation-total rows arrive at process exit.
+
+/// Process-lifetime receipts staged for exit time. Process-global, not thread-local: the exit
+/// hook runs on the exiting thread, which is not the thread that compiled when `cargo test`
+/// drives these functions from test threads.
+static COMPILE_TRANSACTIONS: std::sync::Mutex<Vec<(String, u128)>> =
+    std::sync::Mutex::new(Vec::new());
+static ATEXIT_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// THE WHOLE CLI INVOCATION, as the kernel saw it: `/proc/self/stat` field 22 is the process's
+/// start time in clock ticks since boot and `/proc/uptime` field 2 is the boot-relative uptime
+/// read moments later, so their difference is the process's age at that read and `now - age` is
+/// its start. `None` when either read fails -- the rows are then OMITTED (§4d: an unreadable
+/// figure is absent, never a fabricated zero).
+fn process_invocation_age() -> Option<Duration> {
+    // THE PROCESS, not the reading thread: `/proc/self/stat` describes the calling THREAD, and
+    // its field 22 is when that thread was created — which for a test harness (each test on its
+    // own libtest worker thread) is ~now, and for any threaded caller is a lie about the
+    // invocation. The thread-group leader (`/proc/self/task/<pid>/stat`) carries the process's
+    // own start time, which is the figure the receipt is about.
+    let pid = unsafe { libc::getpid() };
+    let stat = std::fs::read_to_string(format!("/proc/self/task/{pid}/stat")).ok()?;
+    // Field 2 (the comm) is parenthesized and may itself hold spaces; field 22 is counted from
+    // the closing paren, so split there rather than at index 21.
+    let after_comm = stat.rfind(')')?;
+    let field22 = stat[after_comm + 1..]
+        .split_whitespace()
+        // Fields 3.. follow the comm; field 22 is the 20th of them.
+        .nth(20 - 1)?
+        .parse::<u64>()
+        .ok()?;
+    let ticks_per_second = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    if ticks_per_second <= 0 {
+        return None;
+    }
+    let uptime = std::fs::read_to_string("/proc/uptime").ok()?;
+    let uptime_now: f64 = uptime.split_whitespace().next()?.parse().ok()?;
+    let age_seconds = uptime_now - (field22 as f64) / (ticks_per_second as f64);
+    if !age_seconds.is_finite() || age_seconds < 0.0 {
+        return None;
+    }
+    Some(Duration::from_secs_f64(age_seconds))
+}
+
+/// Print the compile transaction's receipt: the drained phase rows with attribution, the
+/// transaction total, and the transaction's own unattributed time. Then arm the process-exit
+/// rows. One call site: `cli_run::compile_emission_over` (the wrapper), which passes the instant
+/// the transaction began so rows a PREDECESSOR recorded before it are excluded from the netting.
+pub fn print_compile_transaction_receipt(subject: &str, transaction_started: std::time::Instant) {
+    let total = transaction_started.elapsed();
+    // The transaction's time that NO row explains, as a FLOOR: total minus the disjoint cover of
+    // the transaction's OWN timed rows (for a containment tree, a parent's `excl_ms` plus its
+    // children's `excl_ms` equals the parent's span, so summing those `excl_ms` is the covered
+    // time). Three honesty rules, each pushing the reported hidden time UP rather than down —
+    // a floor may over-report, never conceal (§4d):
+    // - rows first recorded before `transaction_started` are excluded: they are a predecessor's
+    //   cost and were never part of this total (netting them would understate the floor);
+    // - rows a producer `record`ed itself are excluded (their span boundaries are invisible
+    //   here, so they cannot be shown disjoint) and printed as `raw_ms=` for a reader to judge;
+    // - a raw record inside a timed span was already netted out of that span's `excl_ms` by
+    //   `timed`, so excluding raw rows loses nothing.
+    let (attributed, raw_nanos): (u128, u128) = PHASES.with(|p| {
+        let mut attributed = 0u128;
+        let mut raw = 0u128;
+        for r in p.borrow().iter() {
+            if r.raw {
+                raw += r.elapsed.as_nanos();
+            } else if r.first_recorded_at >= transaction_started {
+                attributed += r.elapsed.as_nanos().saturating_sub(r.nested);
+            }
+        }
+        (attributed, raw)
+    });
+    for line in take_rows_with_attribution() {
+        eprintln!("{line}");
+    }
+    for line in compile_transaction_lines(subject, total, attributed, raw_nanos, index_scale()) {
+        eprintln!("{line}");
+    }
+    if let Ok(mut t) = COMPILE_TRANSACTIONS.lock() {
+        t.push((subject.to_string(), total.as_millis()));
+    }
+    arm_invocation_receipt_at_exit();
+}
+
+/// The two transaction rows (total + the floor of what NO row explains), as pure data so the
+/// honesty properties are testable without spawning a compile.
+fn compile_transaction_lines(
+    subject: &str,
+    total: Duration,
+    attributed: u128,
+    raw_nanos: u128,
+    scale: PhaseScale,
+) -> Vec<String> {
+    let scale = scale.wire();
+    vec![
+        format!(
+            "[pre-entry] phase=compile_transaction ms={} scale={scale} attribution=inclusive subject={subject}",
+            total.as_millis()
+        ),
+        // The transaction's time that NO row explains (the floor computed by the caller). This
+        // is where a hidden phase shows up: it cannot be concealed, because it is computed over
+        // the same accumulator the rows above drain.
+        format!(
+            "[pre-entry] phase=compile_transaction_unattributed ms={} scale={scale} attribution=exclusive raw_ms={}",
+            Duration::from_nanos(
+                total
+                    .as_nanos()
+                    .saturating_sub(attributed)
+                    .try_into()
+                    .unwrap_or(u64::MAX)
+            )
+            .as_millis(),
+            Duration::from_nanos(u64::try_from(raw_nanos).unwrap_or(u64::MAX)).as_millis()
+        ),
+    ]
+}
+
+/// Arm the process-exit rows once per process. `libc::atexit` runs them for every exit that goes
+/// through the C runtime (`std::process::exit` does; `Verdict::apply`'s `libc::_exit` does not --
+/// an invocation ending that way loses only the two process rows, and keeps everything the
+/// transaction printed).
+fn arm_invocation_receipt_at_exit() {
+    if !ATEXIT_ARMED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        // The callback is `extern "C"` and touches only `static` and reentrancy-free state.
+        extern "C" fn print() {
+            print_invocation_receipt_rows();
+        }
+        unsafe { libc::atexit(print) };
+    }
+}
+
+fn print_invocation_receipt_rows() {
+    // The age must be read while the process still has time to report, and the same read IS the
+    // measurement of the invocation: the age at exit time is the invocation total.
+    let transactions: Vec<(String, u128)> = COMPILE_TRANSACTIONS
+        .lock()
+        .map(|t| t.clone())
+        .unwrap_or_default();
+    // §4d: an unreadable invocation figure means the rows are OMITTED, never reported as zero.
+    for line in invocation_receipt_lines(process_invocation_age(), &transactions, index_scale()) {
+        eprintln!("{line}");
+    }
+}
+
+/// The two process rows (invocation total + the unattributed-outside-the-transactions figure),
+/// as pure data. `transactions` are `(subject, total_ms)` pairs in call order. An empty
+/// `age` — `/proc` unreadable — yields NO rows: an absent figure is honest, a zero is a lie
+/// (§4d: "Check the instrument reads real data before it is called a receipt").
+fn invocation_receipt_lines(
+    age: Option<Duration>,
+    transactions: &[(String, u128)],
+    scale: PhaseScale,
+) -> Vec<String> {
+    let Some(age) = age else {
+        return Vec::new();
+    };
+    let scale = scale.wire();
+    let transactions_total_ms: u128 = transactions.iter().map(|(_, ms)| ms).sum();
+    vec![
+        format!(
+            "[pre-entry] phase=process_invocation_total ms={} scale={scale} attribution=inclusive transactions={}",
+            age.as_millis(),
+            transactions.len()
+        ),
+        // Unattributed OUTSIDE every transaction: argv decode, output materialization, diagnostic
+        // rendering, teardown. This is the §5a-A figure; it is visible precisely so that a hidden
+        // cost cannot be read as `wall_ms`'s rounding error.
+        format!(
+            "[pre-entry] phase=process_unattributed ms={} scale={scale} attribution=exclusive",
+            age.as_millis()
+                .saturating_sub(transactions_total_ms)
+                .try_into()
+                .unwrap_or(u64::MAX)
+        ),
+    ]
 }
 
 thread_local! {
@@ -163,5 +444,144 @@ mod tests {
         assert_eq!(pool_module_count(&["dag".to_string()]), None);
         DEMAND_PATH.with(|c| c.set(false));
         DEMAND_ACQUIRED_MODULES.with(|c| c.set(None));
+    }
+
+    /// §4d, as a RED: an unreadable invocation figure OMITS the process rows. A `0` here would
+    /// read as "the CLI spent no time outside the transaction" -- the fabricated-zero class the
+    /// plan names.
+    #[test]
+    fn unreadable_invocation_omits_the_process_rows_instead_of_reporting_zero() {
+        let lines =
+            invocation_receipt_lines(None, &[("subject".to_string(), 7u128)], PhaseScale::Tree);
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// The §5a-A row: the invocation total MINUS the transaction totals is what no row explains.
+    /// A hidden phase outside the transaction (output materialization, diagnostic rendering,
+    /// teardown) can only surface through this subtraction, so the arithmetic is the instrument.
+    #[test]
+    fn process_rows_subtract_transaction_totals_from_the_invocation() {
+        let lines = invocation_receipt_lines(
+            Some(Duration::from_millis(100)),
+            &[("a".to_string(), 30u128), ("b".to_string(), 40u128)],
+            PhaseScale::Tree,
+        );
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(
+            lines[0].contains("phase=process_invocation_total ms=100")
+                && lines[0].contains("transactions=2"),
+            "{}",
+            lines[0]
+        );
+        assert!(
+            lines[1].contains("phase=process_unattributed ms=30"),
+            "{}",
+            lines[1]
+        );
+        // Every row keeps the `[pre-entry]` prefix: native_product_cache treats the last line
+        // WITHOUT it as a refusal reason, and claim_batch forwards only these.
+        assert!(
+            lines.iter().all(|l| l.starts_with("[pre-entry] ")),
+            "{lines:?}"
+        );
+    }
+
+    /// A transaction's unattributed floor may OVER-report (raw rows, predecessor rows) but never
+    /// under-report: total minus the netted timed cover.
+    #[test]
+    fn transaction_rows_price_the_unexplained_time() {
+        // `attributed` is the netted COVER and `raw_nanos` the non-nettable total, both in
+        // nanos (what `print_compile_transaction_receipt` computes).
+        let lines = compile_transaction_lines(
+            "src/main.dag",
+            Duration::from_millis(90),
+            40_000_000,
+            10_000_000,
+            PhaseScale::Tree,
+        );
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(
+            lines[0].contains("phase=compile_transaction ms=90")
+                && lines[0].contains("subject=src/main.dag"),
+            "{}",
+            lines[0]
+        );
+        assert!(
+            lines[1].contains("phase=compile_transaction_unattributed ms=50")
+                && lines[1].contains("raw_ms=10"),
+            "{}",
+            lines[1]
+        );
+    }
+
+    /// `timed` measures the inclusive/exclusive attribution MECHANICALLY (§4 P0.1): a parent's
+    /// `ms` is its span, `excl_ms` is that span minus what the nested rows recorded inside it,
+    /// and a producer-`record`ed row is reported `recorded` rather than netted.
+    #[test]
+    fn timed_rows_are_netted_against_nested_rows_by_construction() {
+        let _ = take_lines();
+        timed("probe_parent", PhaseScale::Tree, || {
+            timed("probe_child", PhaseScale::Tree, || {
+                std::thread::sleep(Duration::from_millis(30));
+            });
+            // 20ms of the parent's span belongs to no row: that is its exclusive part.
+            std::thread::sleep(Duration::from_millis(20));
+        });
+        record("probe_raw", PhaseScale::Tree, Duration::from_millis(5));
+        let lines = take_rows_with_attribution();
+        let parent = lines
+            .iter()
+            .find(|l| l.contains("phase=probe_parent"))
+            .expect("parent row");
+        let child = lines
+            .iter()
+            .find(|l| l.contains("phase=probe_child"))
+            .expect("child row");
+        let raw = lines
+            .iter()
+            .find(|l| l.contains("phase=probe_raw"))
+            .expect("raw row");
+        assert!(
+            parent.contains("attribution=inclusive"),
+            "parent contains a timed child: {parent}"
+        );
+        let excl: u128 = parent
+            .split("excl_ms=")
+            .nth(1)
+            .and_then(|s| s.split_whitespace().next())
+            .and_then(|s| s.parse().ok())
+            .expect("excl_ms on parent row");
+        // The parent spanned ~50ms; its exclusive part must exclude the child's ~30ms but the
+        // floor is generous to scheduler noise: netting must be visible, not borderline.
+        assert!(exl_usable(excl), "parent excl_ms={excl}: {parent}");
+        assert!(
+            child.contains("attribution=exclusive"),
+            "child timed nothing: {child}"
+        );
+        assert!(
+            raw.contains("attribution=recorded"),
+            "producer-recorded rows are not netted: {raw}"
+        );
+    }
+
+    fn exl_usable(excl: u128) -> bool {
+        (15..=45).contains(&excl)
+    }
+
+    /// "Check the instrument reads real data before it is called a receipt": the age is the
+    /// kernel's own process-start accounting (field 22 of `/proc/self/stat` against
+    /// `/proc/uptime`), so it must ADVANCE with wall time between reads — a parse accident, a
+    /// constant, or a sign flip does not grow by the sleep. The ABSOLUTE value is not asserted:
+    /// a fresh test binary can genuinely be 0ms old at the tick granularity of field 22 (10ms),
+    /// and a real zero is honest where a fabricated one would be the §4d failure class.
+    #[test]
+    fn the_invocation_age_advances_with_wall_time() {
+        let first = process_invocation_age().expect("/proc is readable on the runner");
+        std::thread::sleep(Duration::from_millis(80));
+        let second = process_invocation_age().expect("/proc is readable on the runner");
+        assert!(
+            second > first && second - first < Duration::from_secs(5),
+            "age must advance ~1:1 with wall time: first={first:?} second={second:?}"
+        );
     }
 }
