@@ -34,6 +34,7 @@ import extdeps.swift_toolchain {
   swift_toolchain_signing_key_fingerprint,
   swift_toolchain_signing_keyring_authority,
   swift_toolchain_pinned_subject,
+  extdeps_external_authority_anchor,
   swift_toolchain_verify,
   swift_toolchain_standing_cites_signature,
 }
@@ -342,4 +343,69 @@ test fn a_standing_that_does_not_cite_the_signature_is_not_accepted() -> Bool {
     && swift_toolchain_standing_cites_signature(standing: CitedToAuthority {
          authority: ExternalAuthority { uri: Uri { scheme: Https, locator: sig_locator } }
        })
+}
+
+// KNOWING THE RELEASE IS PUBLISHED IS NOT THE SAME AS UPSTREAM SIGNING THESE BYTES. The module carries the
+// conventional per-module anchor (the upstream release index) beside the .sig it verifies against, and those
+// two must not be interchangeable. Citing the index -- a real swift.org authority, and the one you would
+// consult to find the release at all -- is refused as a standing, while citing the pinned subject's .sig is
+// accepted. So an archive can never become "verified" by being listed: listing is how you find it, the
+// signature is how you trust it, and the two locators are different strings, which is what makes the check
+// discriminating rather than decorative.
+test fn the_release_index_is_not_the_authority_that_verifies_the_archive() -> Bool {
+  let pin_subject = swift_toolchain_pinned_subject
+  // The anchor and the verifying authority are different files, so "we cited the anchor" cannot satisfy
+  // a check that demands the signature.
+  extdeps_external_authority_anchor.uri.locator
+    != swift_toolchain_signature_url(subject: pin_subject).locator
+    && !swift_toolchain_standing_cites_signature(standing: CitedToAuthority {
+         authority: extdeps_external_authority_anchor
+       })
+    && swift_toolchain_standing_cites_signature(standing: CitedToAuthority {
+         authority: ExternalAuthority {
+           uri: Uri { scheme: Https, locator: swift_toolchain_signature_url(subject: pin_subject).locator }
+         }
+       })
+}
+
+// AN UNCITED `Verified` ROW IS NOT A PIN -- AND THE RULE, NOT A CLAIM, IS WHAT STOPS IT. `Verified { ... }`
+// is a constructor, not evidence: a row built with standing TranscribedUncited ("two fetches agreed") would
+// otherwise be handed out as the thing candidate bytes are compared against, which is the exact artifact
+// this lane shipped once. So the refusal lives in the rule: swift_toolchain_archive_as_pin yields nothing
+// for such a row, and the gate refuses it as its own named case before any candidate measurement happens.
+// Discriminating in both directions: if archive_as_pin goes back to handing out whatever it is given, the
+// first line goes red; if the rule refuses everything, the last line goes red.
+test fn an_uncited_verified_row_is_refused_as_a_pin_by_the_rule() -> Bool {
+  let verified_but_uncited: SwiftToolchainArchive = Verified {
+    archive: SwiftToolchainVerifiedArchive {
+      subject: SwiftToolchainArchiveSubject {
+        distribution: Debian13
+        version: "6.4.1" as VersionIdentity
+      }
+      observed_size: byte_size(count: 1122730813)
+      expected_identity: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+      standing: TranscribedUncited { read_obligation: "two independent fetches agreed on this digest" }
+    }
+  }
+  // (a) the rule will not hand it out...
+  match swift_toolchain_archive_as_pin(archive: verified_but_uncited) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // (b) ...and the gate says WHY, as its own named refusal rather than a digest mismatch. The candidate is
+  // the otherwise-acceptable one, so the only reason a refusal can come back is the pin's standing.
+  && match swift_toolchain_verify(candidate: SwiftToolchainCandidate {
+       signature_verified: true
+       signing_key_fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+       observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+       observed_size: byte_size(count: 1122730813)
+     }) {
+       Absent => true
+       Present { value: _ } => false
+     }
+  // (c) the real pin, cited, is still handed out -- the rule is not refusing everything.
+  && match swift_toolchain_archive_as_pin(archive: pinned_swift_toolchain) {
+       Present { value: a } => swift_toolchain_standing_cites_signature(standing: a.standing)
+       Absent => false
+     }
 }

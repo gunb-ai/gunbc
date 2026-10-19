@@ -81,6 +81,21 @@ import extdeps.version { VersionIdentity }
 // gunbc.guarantee_stall.approve_ios_linux_swift_receipt_not_dispatchable_stall, which carries it), and a
 // row a claim only echoes is a second place to keep a list nobody reads.
 
+// THE MODULE'S ANCHOR, per the per-module convention every extdeps module carries (1,059 of them on main).
+// It is the upstream release index this artifact was located through, and it is what gunbc-side readers
+// expect to find under this name -- gunbc.extdeps_scope_frontier, gunbc.design.catalog, gunbc.citation.*,
+// and the read-grained fork census, whose ground is that per-module conventions like this one are not
+// ambiguous reads. Deleting it would make this module the exception those readers trip over, so it is
+// declared here even though the authority that VERIFIES an archive is the .sig below, never this index:
+// a claim asserts that distinction, so "we knew the release was published" is never mistaken for "upstream
+// signed these bytes".
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "swift.org/download/#releases"
+  }
+}
+
 // The distribution the archive was built for. `OtherLinux` is representable so an unlisted distribution
 // has to be named rather than mapped onto a neighbouring row.
 type SwiftToolchainDistribution
@@ -302,6 +317,11 @@ type SwiftToolchainRefusal
   | DigestDiffersFromPin { observed: Sha256Digest, pinned: Sha256Digest }
   | SizeDiffersFromPin { observed: ByteSize, pinned: ByteSize }
   | PinCarriesNoVerifiedArchive
+  // A `Verified` row whose standing does not cite the .sig is not a pin. Named separately from
+  // PinCarriesNoVerifiedArchive because the fixes differ: that row is missing its measurements, this one
+  // has them and cannot say who says they are upstream's -- which is how this lane shipped a pin over a
+  // digest no fetch ever produced.
+  | PinStandingDoesNotCiteSignature { expected: ExternalAuthority, detail: NonEmptyStr }
 
 // THE GATE. Returns Absent (usable) only when the signature verified against the published key's
 // fingerprint AND the digest and size both equal the pin's. Anything else is a named refusal.
@@ -314,7 +334,10 @@ fn swift_toolchain_verify(candidate: SwiftToolchainCandidate) -> SwiftToolchainR
     // The pin itself unreadable is its own refusal, not a zero-sized archive to compare against. It can
     // only happen if the data literal below were edited to Unverified, and naming it keeps that from
     // becoming a code path that returns a plausible-looking archive.
-    Absent => Present { value: PinCarriesNoVerifiedArchive }
+    // Pin-level refusals come BEFORE any candidate is measured: a row that cannot be the pin cannot be the
+    // thing candidate bytes are compared against, and comparing them anyway yields a confident green or a
+    // confident refusal with no upstream behind it either way.
+    Absent => Present { value: swift_toolchain_pin_absence_refusal(archive: pinned_swift_toolchain) }
     Present { value: pinned } => verify_against(candidate: candidate, pinned: pinned)
   }
 }
@@ -374,6 +397,39 @@ fn swift_toolchain_pinned_archive() -> SwiftToolchainVerifiedArchive? {
   swift_toolchain_archive_as_pin(archive: pinned_swift_toolchain)
 }
 
+// WHY A ROW THAT BUILDS IS NOT YET A PIN. `Verified { ... }` is a constructor, not evidence: the field that
+// says WHO says these are upstream's measurements is `standing`, and it is a coproduct. A row built with
+// `standing: TranscribedUncited { read_obligation: "two independent fetches agreed" }` compiles, looks
+// verified, and would be handed out as the thing candidate bytes are compared against -- which is precisely
+// the artifact this lane shipped once, over a digest no fetch ever produced. A claim reading the standing
+// could not prevent that: it would only report on the pin that already exists. So the RULE says no, in the
+// one place that decides whether a row is a pin (swift_toolchain_archive_as_pin), and the refusal below
+// only has to explain a "no" the classifier already reached -- it cannot disagree about whether, only
+// spell out why.
+fn swift_toolchain_pin_absence_refusal(archive: SwiftToolchainArchive) -> SwiftToolchainRefusal {
+  let expected = swift_toolchain_signature_authority
+  match archive {
+    Unverified { declared: _ } => PinCarriesNoVerifiedArchive
+    Verified { archive: a } => match a.standing {
+      // Reachable only when the classifier already refused the row, so a CitedToAuthority landing here
+      // cites some authority that is not this subject's .sig -- an index, a keyring, a page that says the
+      // release exists without saying these bytes are its.
+      CitedToAuthority { authority: _ } => PinStandingDoesNotCiteSignature {
+        expected: expected
+        detail: "cites an authority other than the .sig of this very subject"
+      }
+      TranscribedUncited { read_obligation: _ } => PinStandingDoesNotCiteSignature {
+        expected: expected
+        detail: "standing is a transcription: a figure cited to fetches, agreed or not, is not a citation to upstream"
+      }
+      ObservedByReceipt { observed: _ } => PinStandingDoesNotCiteSignature {
+        expected: expected
+        detail: "standing is an observation receipt from inside this repository, which cannot make bytes upstream's"
+      }
+    }
+  }
+}
+
 // THE RULE, TAKING DATA. The row above is one archive, so an arm on it alone is a rule no caller can
 // exercise: nothing can hand `swift_toolchain_pinned_archive` an unverified row to see what it does, and
 // the claim that the boundary holds would be the module asserting it about itself. This is the same rule
@@ -381,7 +437,14 @@ fn swift_toolchain_pinned_archive() -> SwiftToolchainVerifiedArchive? {
 // unverified row built in the claim yields nothing, the pin yields its typed archive.
 fn swift_toolchain_archive_as_pin(archive: SwiftToolchainArchive) -> SwiftToolchainVerifiedArchive? {
   match archive {
-    Verified { archive: a } => Present { value: a }
+    // Not enough to be `Verified`: a row reads as a pin only when its standing points at the signature
+    // file of the very subject it describes. An uncited row yields nothing, so it cannot travel as a pin.
+    Verified { archive: a } =>
+      if swift_toolchain_standing_cites_signature(standing: a.standing) {
+        Present { value: a }
+      } else {
+        Absent
+      }
     Unverified { declared: _ } => Absent
   }
 }
