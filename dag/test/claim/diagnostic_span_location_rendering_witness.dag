@@ -71,6 +71,7 @@ import extdeps.git.inspect
 import extdeps.gunbc
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
+import v1.std.core { unlocated_position_phrase }
 
 data claim_subject: String = "a refusal's location is rendered by one authority in the units the author reads (line:col), and the EOF span ends at the last lexeme rather than at the consumed position"
 
@@ -115,14 +116,13 @@ data valid_v1_module_source: String = "module scratch.clean.v1.module\n\nfn ok()
 data valid_v2_module_source: String = "module scratch.clean.v2.module\n\nfn ok() -> Int { 1 }\n"
 data valid_body_module_source: String = "module scratch.clean.body.module\n\nfn ok() -> Int { 1 }\n"
 
-// THE AUTHORITY'S WORD for "this refusal has no position", asserted as a literal so the no-lexemes
-// row is a POSITIVE assertion and not the absence of a shape. It is the string the authority's
-// unlocated arm prints -- `data unlocated_position_phrase` in src/v1/00_core.dag, giving e.g.
-// `no_lexemes.dag: (no position: file has no lexemes)`. Repeated here rather than imported because
-// the claim runs under claim_batch, which resolves the v1 seed but does not import it; a rename in
-// the authority renames here too, and row 4 then fails -- that is the check that the two agree.
-// It carries no digit-after-colon run, so it is not a location by the predicate below either.
-data unlocated_marker: String = "(no position:"
+// THE AUTHORITY'S WORD for "this refusal has no position", IMPORTED from the authority itself
+// (`data unlocated_position_phrase` in src/v1/00_core.dag) rather than copied, so the no-lexemes row
+// asserts the string the authority actually prints and there is no second literal to drift. The row
+// is still a POSITIVE assertion, not the absence of a shape: e.g.
+// `no_lexemes.dag: (no position: file has no lexemes)`. The phrase carries no digit-after-colon run,
+// so it is not a location by the predicate below either.
+data unlocated_marker: String = unlocated_position_phrase
 
 // The digits and separators an AUTHORITY-FORMAT position must contain, so "a position" is decided
 // structurally rather than by the specific numbers in the header: `m.dag:9:5` qualifies,

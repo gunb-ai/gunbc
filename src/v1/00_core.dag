@@ -2745,20 +2745,42 @@ fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
 // author reads is a POSITION -- file, line, column -- the triple they can type into an editor.
 // A refusal whose location cannot be reproduced in an editor is not a location, however many
 // digits it carries, so the honest alternatives are exactly two: say where it is, or say in
-// words that it cannot be said. This block is the only thing in the seed that does either.
+// words that it cannot be said. This block is the only thing in the seed that renders a POSITION or
+// an honest unlocated phrase; every site that still prints raw offsets is named below as a surviving
+// leaf, not quietly left out of the claim.
 //
 // WHY IT IS ONE PLACE AND NOT ONE PER CALL SITE (DESIGN 6b). Before this block there was no
 // authority at all: each producer formatted a location itself. The compile lane printed
-// `{file}:{start}-{end}`; the emitted CLI printed `{file}:{line}:{col}` from its own walk; and
-// two HOST Rust sites formatted `{file}:{line}:{col}` again in Rust
-// (src/v1/stage0/src/module_path_index/index.rs `ModuleBindingRefusal::rendered` and
-// src/v1/stage0/src/cli_run.rs `run_dag_parse_sweep`, beside
-// src/v1/stage0/src/declaration_index.rs `render_finding`). One diagnostic therefore reached the
-// same author twice in different units -- measured at the head, `(m.dag:133-134)` from the lane
-// and `error[m.dag:9:5]` from the CLI for the SAME call-shape refusal: the same place, two
-// units, which reads as a compiler that does not know where it is. Every consumer -- the lane,
-// the emitted CLI's diagnostic block, and the host Rust, which CALLS the function emitted from
-// here rather than reimplementing it -- goes through `locate_span` and `render_span_location`.
+// `{file}:{start}-{end}`; the emitted CLI printed `{file}:{line}:{col}` from its own walk; and host
+// Rust formatted `{file}:{line}:{col}` again in Rust. One diagnostic therefore reached the same
+// author twice in different units -- measured at the pre-PR head, `(m.dag:133-134)` from the lane and
+// `error[m.dag:9:5]` from the CLI for the SAME call-shape refusal: the same place, two units, which
+// reads as a compiler that does not know where it is.
+//
+// WHAT THIS BLOCK GOVERNS AT THIS HEAD, site by site rather than as a slogan. In the SEED, every
+// reader-facing position now comes from `locate_span` and `render_span_location`: the emitted CLI's
+// diagnostic block and its caret (`05_emit_rust.dag` `render_one_diagnostic`), the emitted
+// `compile_error!` texts (`render_rust_optional_carrier_inner`'s Absent arm,
+// `emit_width_type_arg_identity_refusal`, `rust_type_arg_identity_spelling`'s
+// UnitVariantPhantomEvidenceUnavailable arm, `emit_shell_call`'s argv-element refusal,
+// `fm_located_refusal`), the parse lane (`02_parse.dag` `field_init_position`), and the compile lane's
+// self-compile refusal (`compile.dag` `stage0_self_compile_refusal_message`, via
+// `interpreter_blocking_diagnostic_messages_with_source_indices`).
+//
+// SURVIVING LEAVES, with trigger and follow-up -- DESIGN 6b's "it should be, but not now". Four HOST
+// Rust sites still format `{file}:{line}:{col}` themselves (`module_path_index/index.rs`
+// `ModuleBindingRefusal::rendered`, `cli_run.rs` `run_dag_parse_sweep`, `declaration_index.rs`
+// `render_finding`), and five printing call sites (`cli_run/emit_host.rs` x3,
+// `target_invocation_host.rs` x2) still call the lane's 1-arg `interpreter_blocking_diagnostic_messages`,
+// which prints `{file}:{start}-{end}` exactly as it did before this PR. TRIGGER: a host call to
+// `crate::v1_std_core::render_span_location` only compiles once the stage0 MIRROR emitted from this
+// seed carries that function, and mirrors are written by the regenerator, never by hand -- so a host
+// cutover committed before the mirror commit does not build. FOLLOW-UP: the cutover commit lands
+// immediately after the heal job publishes this PR's mirror, moving all nine sites to the emitted
+// function and deleting the 1-arg lane name with it (its last caller is a count-only site). Until
+// then this block is the authority for the SEED's positions and the host sites are exactly as main
+// left them: no site in this PR prints a worse location than it did before.
+//
 // The deletion test is
 // dag/test/claim/diagnostic_span_location_rendering_witness.dag: one row reads the lane line and
 // the CLI line for a single diagnostic, so a second formatter growing back makes them disagree.
