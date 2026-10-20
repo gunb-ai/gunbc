@@ -58,6 +58,15 @@ import v2.workflow.outside_discovery_roots_census_live {
   head_stamp_line
 }
 import v2.cli.repository_layout { repository_module_file_of_path }
+import std.types { Int }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.parse { PreparedGrammar, parse_module_prepared, prepare_grammar }
+import v2.compiler.tokenize { prepare_lex_rules, tokenize_prepared }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.compiler.test_marker_capture { TestMarkedContent, test_marker_content }
+import v2.std.node { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.algebra { length, list_map }
 
 // ---------------------------------------------------------------------------
 // A listing with a governed path in it, so a census that reported governed files as findings would go red
@@ -418,5 +427,102 @@ test fn no_text_at_all_from_the_marker_read_is_a_refusal() -> Bool {
   match bearers_from_captured_text(text: " \n ") {
     BearersRefused { cause: cause } => string_contains(s: cause, pattern: "marker")
     BearersRead { paths: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE PARSE-BACKED ROUTE, PROBED RATHER THAN ARGUED (manager ask).
+//
+// The question was whether the seed parser can answer "declares a test fn" for a src/v1 file, which would
+// let the census use the authority instead of a pattern. It CAN, and the probe is here rather than in a
+// comment: `v2.compiler.test_marker_capture test_marker_content` walks a PARSE TREE and yields one
+// TestMarkedContent {name, content} per `dag_surface_test_fn_decl` -- the same production
+// v2.compiler.body_lowering_fold body_lower_test_fn_decl_to_member lowers -- over text read through the
+// read-only Filesystem.Read service operation, the way
+// src/v2/test/claim/text_string_importer_census.dag reads its own subjects. Note what this route does NOT
+// need: acquisition_test_markers takes a ModuleFileRef, which v2.cli.repository_layout refuses to bind for a
+// src/v1 path (its root matcher answers only [V2Tree, DagTree]), so the ACQUISITION route is closed for these
+// files while the PARSE route, which takes text, is open. That distinction is the whole answer.
+// ---------------------------------------------------------------------------
+
+// THE SAME DISCRIMINATOR THE PATTERN READ FAILED, at the authority's grain. The three files the pattern read
+// once reported as findings contain the phrase `test fn` in PROSE (in modules implementing other things). The
+// parser gives them no shells: a comment is not a declaration node. This claim is the census's reason for
+// trusting the declaration shape over the phrase -- the parser and the anchored pattern agree, and the
+// parser is why the anchor is the right shape rather than a guess that happened to work.
+test fn the_parse_route_declines_the_prose_files_the_pattern_read_once_matched() -> Bool {
+  let read = Filesystem.Read(path: "src/v1/compile.dag")
+  match parse_marker_names(text: read.content, path: "src/v1/compile.dag") {
+    ParseMarkersRefused { cause: _ } => false
+    ParseMarkersRead { names: names } => (length(xs: names) == 0) && read.success
+  }
+}
+
+// AND THE SAME ROUTE FINDS THE DECLARATIONS WHERE THE SUBJECT HAS THEM, so the claim above cannot be green
+// simply because parsing always answers empty. The file declares three test fns; the parse route names them,
+// and its answer is compared to those names at identity -- not to a count, which a stub could match.
+test fn the_parse_route_names_the_declared_test_fns_of_a_src_v1_file() -> Bool {
+  let read = Filesystem.Read(path: probe_subject_path)
+  match parse_marker_names(text: read.content, path: probe_subject_path) {
+    ParseMarkersRefused { cause: _ } => false
+    ParseMarkersRead { names: names } =>
+      read.success
+        && all(xs: probe_subject_expected_names, predicate: fn(name) {
+             any(xs: names, predicate: fn(found) { found == name })
+           })
+  }
+}
+
+// THE PARSE ROUTE IS NOT THE CENSUS'S MARKER, AND THE CENSUS SAYS SO ON EVERY LINE. This claim pins the
+// receipt token rather than trusting a comment: if the token were dropped, a pattern match over text would
+// read as the marker authority's verdict, which is the transcribed standing DESIGN §6 forbids.
+test fn the_census_receipt_never_borrows_the_marker_authoritys_name() -> Bool {
+  let lines = outside_roots_receipt_lines(
+    findings: [head_path(paths: note_declared_paths)],
+    vouched_by_note: true
+  )
+  all(xs: lines, predicate: fn(line) {
+    string_contains(s: line, pattern: "pattern-grain")
+      && string_contains(s: line, pattern: "not acquisition_test_markers")
+  })
+}
+
+// ---------------------------------------------------------------------------
+// The parse probe's plumbing. A refusal is a distinct standing, not an empty answer: a claim that read
+// "no names" from a refused parse would look exactly like the prose files, which is the fail-open shape.
+// ---------------------------------------------------------------------------
+
+data probe_subject_path: String = "src/v1/tests/claim/escape_json_string_differential.dag"
+
+// THE NAMES THAT FILE DECLARES, read from its text by a person and pinned here as the thing the parse route
+// is held to. Names, not a count: "three" is satisfiable by any three tokens, these are not.
+data probe_subject_expected_names: List<String> = [
+  "escape_json_string_matches_the_rust_authority_for_the_control_set",
+  "escape_json_string_matches_the_rust_authority_for_the_hard_cases",
+  "escape_json_string_is_the_identity_for_the_empty_subject"
+]
+
+type ParseMarkers
+  = ParseMarkersRead { names: List<String> }
+  | ParseMarkersRefused { cause: String }
+
+fn parse_marker_names(text: String, path: String) -> ParseMarkers {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => ParseMarkersRefused { cause: concat("grammar unprepared for ", path) }
+    Accepted { value: prepared, diagnostics: _ } => match tokenize_prepared(
+      text: text,
+      file: symbol_intern_lexeme(lexeme: path),
+      prepared: prepare_lex_rules(rules: dag_language_model().lex)
+    ) {
+      Rejected { diagnostics: _ } => ParseMarkersRefused { cause: concat("tokenize refused for ", path) }
+      Accepted { value: tokens, diagnostics: _ } => match parse_module_prepared(tokens: tokens, prepared: prepared) {
+        Rejected { diagnostics: _ } => ParseMarkersRefused { cause: concat("parse refused for ", path) }
+        Accepted { value: artifact, diagnostics: _ } => match test_marker_content(tree: artifact.tree) {
+          Rejected { diagnostics: _ } => ParseMarkersRefused { cause: concat("marker read refused for ", path) }
+          Accepted { value: rows, diagnostics: _ } =>
+            ParseMarkersRead { names: list_map(xs: rows, f: fn(row: TestMarkedContent) { symbol_lexeme(sym: row.name) }) }
+        }
+      }
+    }
   }
 }
