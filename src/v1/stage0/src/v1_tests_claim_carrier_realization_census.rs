@@ -858,6 +858,44 @@ pub fn a_declared_startup_bound_replaces_the_contracts_default_in_the_readiness_
     }
 }
 
+pub fn crc_realize_generation_body(startup: bool) -> String {
+    {
+        let file = crate::v1_compiler_emit_rust::emit_native_serve_driver_main_rs(
+            "c".to_string(),
+            "m".to_string(),
+            Rc::new(vec![]),
+            startup.clone(),
+            false,
+        );
+        match Rc::new(
+            file.content
+                .clone()
+                .split(&"fn realize_generation(".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .last()
+        .cloned()
+        {
+            Some(tail) => tail.clone(),
+            std::option::Option::None => "".to_string(),
+        }
+    }
+}
+
+pub fn a_startup_refusal_is_classified_from_its_own_channel_and_reads_no_shared_state_after_the_wait(
+) -> bool {
+    {
+        let body = crc_realize_generation_body(true);
+        (((v1_rt::string_contains(
+            &body,
+            "started_rx.recv_timeout(ready_within).is_err()".to_string(),
+        ) && !v1_rt::string_contains(&body, "AtomicBool".to_string()))
+            && !v1_rt::string_contains(&body, "started.load".to_string()))
+            && !v1_rt::string_contains(&body, "started_flag".to_string()))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Agrees;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
