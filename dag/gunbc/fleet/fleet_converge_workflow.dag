@@ -40,6 +40,7 @@ import gunbc.auth.mtjade1_arrival_pair {
 }
 import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
 import gunbc.ci.ci_spec { gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
 
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
 import std.measure { Second, minute_count, second_count }
@@ -2260,6 +2261,24 @@ fn fleet_converge_site_pxe_edge_receipt_upload_step() -> Step {
 }
 
 
+fn fleet_converge_runner_host_cap_release_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload runner host cap release receipt" },
+    id: Present { value: "runner_host_cap_release_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "runner-host-cap-release-receipt")),
+      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_cap_release_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_file_converge_step_if, ")"], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload runner host file converge receipt" },
@@ -2267,7 +2286,7 @@ fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "runner-host-file-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/runner-host-file-converge-receipt.txt")),
+      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_file_converge_receipt_path)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
@@ -4655,6 +4674,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_host_memory_observe_step(),
         fleet_converge_runner_host_file_converge_step(),
         fleet_converge_runner_host_cap_release_step(),
+        fleet_converge_runner_host_cap_release_receipt_upload_step(),
         fleet_converge_runner_password_session_tool_converge_step(),
         fleet_converge_runner_password_session_tool_receipt_upload_step(),
         fleet_converge_runner_browser_toolchain_converge_step(),
@@ -4673,18 +4693,18 @@ fn fleet_converge_job() -> Job {
 // The shared job envelope owns selection and credentials independently of its step producers.
 // THE JOB TIMEOUT COVERS THE BRACKET AND ITS RELEASE, OR THE RELEASE IS NOT AFTER A STEP TIMEOUT. A job-level
 // timeout is a cancellation, so the always() release then runs inside the cancellation envelope, which it does
-// not fit (gunbc.runner.runner_host_cap_bracket release_envelope_standing). The floor is the prelude, the
-// converge step's declared timeout and the release step's declared timeout, folded from the steps themselves;
-// the job timeout is the larger of that and the tier backstop, never a second literal.
+// not fit (gunbc.runner.runner_host_cap_bracket release_envelope_standing). The tier backstop counts the
+// other steps of the worst-case dispatch and has no term for the bracket, so the job timeout is the backstop
+// plus the converge step's, the release step's and the release receipt upload's declared timeouts, folded
+// from the steps themselves, and the platform ceiling is checked against this one answer.
 fn fleet_converge_host_cap_job_floor_minutes() -> Int {
-  gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_fleet_job_backstop_timeout_minutes()
     + step_declared_timeout_minutes(st: fleet_converge_runner_host_file_converge_step())
     + step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_step())
+    + step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_receipt_upload_step())
 }
 
-fn fleet_converge_job_timeout_minutes() -> Int {
-  if gunbc_ci_fleet_job_backstop_timeout_minutes() >= fleet_converge_host_cap_job_floor_minutes() { gunbc_ci_fleet_job_backstop_timeout_minutes() } else { fleet_converge_host_cap_job_floor_minutes() }
-}
+fn fleet_converge_job_timeout_minutes() -> Int { fleet_converge_host_cap_job_floor_minutes() }
 
 fn fleet_converge_job_with_steps(steps: List<Step>) -> Job {
   Job {

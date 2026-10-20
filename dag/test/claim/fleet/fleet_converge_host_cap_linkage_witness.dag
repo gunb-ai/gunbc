@@ -11,6 +11,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_runner_host_file_converge_step,
   fleet_converge_runner_host_cap_release_step,
 }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_step_budget_env_name, host_cap_bracket_budget, runner_host_cap_drain_policy }
 
 // THE LINKAGE CONTROLS OF THE CAP BRACKET'S WORKFLOW: the emitted job carries the release step and the budget
@@ -38,4 +39,12 @@ test fn the_converge_step_is_delivered_the_declared_budget() -> Bool {
       any(kvs, e => e.key == runner_host_cap_step_budget_env_name)
     _ => false
   }
+}
+
+test fn the_release_does_not_write_the_converge_receipt() -> Bool {
+  gunbc_ci_runner_host_cap_release_receipt_path != gunbc_ci_runner_host_file_converge_receipt_path
+}
+
+test fn the_job_carries_the_release_receipt_upload() -> Bool {
+  any(job_step_ids(j: fleet_converge_job()), i => i == "runner_host_cap_release_receipt_upload")
 }

@@ -3012,7 +3012,7 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
     entry: gunbc_ci_runner_host_file_observe_target.entry,
     function: gunbc_ci_runner_host_file_observe_target.function,
     claim_run: false,
-    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+    receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
   )
 }
 
@@ -3036,13 +3036,18 @@ fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
   )
 }
 
+// EACH FINALIZER WRITES ITS OWN RECEIPT: the always() release runs right after the converge step, so a shared
+// path would replace the converge receipt, the record of a failed or withheld bracket.
+data gunbc_ci_runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
+data gunbc_ci_runner_host_cap_release_receipt_path: String = "target/runner-host-cap-release-receipt.txt"
+
 fn gunbc_ci_runner_host_file_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: gunbc_ci_runner_host_file_converge_target.entry,
     function: gunbc_ci_runner_host_file_converge_target.function,
     claim_run: false,
-    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+    receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
   )
 }
 
@@ -3052,7 +3057,7 @@ fn gunbc_ci_runner_host_cap_release_invoke() -> String {
     entry: gunbc_ci_runner_host_cap_release_target.entry,
     function: gunbc_ci_runner_host_cap_release_target.function,
     claim_run: false,
-    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+    receipt_rel: gunbc_ci_runner_host_cap_release_receipt_path
   )
 }
 
