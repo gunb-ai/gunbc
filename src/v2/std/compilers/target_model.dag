@@ -11109,6 +11109,26 @@ fn declaration_callee_scope_symbol(scope: DeclarationCalleeScope) -> Symbol {
   }
 }
 
+// The inverse of declaration_callee_scope_symbol over a CLOSED two-row wire: each scope is recognized
+// by name and every other value refuses typed at the reference row. Defaulting the unrecognized
+// value to CalleeScopeRealized would let a corrupted bundle print qualified calls the target said
+// it cannot resolve.
+fn declaration_callee_scope_from_symbol(scope: Symbol, row: Node) -> Outcome<DeclarationCalleeScope> {
+  if scope == ^target_callee_scope_realized {
+    outcome_accepted(CalleeScopeRealized)
+  } else if scope == ^target_callee_scope_unrealized {
+    outcome_accepted(CalleeScopeUnrealized)
+  } else {
+    outcome_rejected(
+      Diagnostic {
+        reason: ^target_callee_scope_unrecognized,
+        at: node_locus(node: row),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    )
+  }
+}
+
 fn projection_bundle_has_child(bundle: Node, name: Symbol) -> Bool {
   fold(bundle.children, init: false, f: fn(acc, e) {
     acc || (match e.label {
@@ -11139,12 +11159,17 @@ fn decode_declaration_reference_form_bundle(bundle: Node) -> Outcome<Declaration
                     bind_outcome(
                       o: projection_bundle_symbol_field(bundle: row, field: ^target_type_expr_field_reference_callee_scope),
                       f: fn(scope) {
-                        outcome_accepted(
-                          ModuleScopedPath {
-                            root_text: symbol_lexeme(sym: root),
-                            scope_separator_text: symbol_lexeme(sym: sep),
-                            module_segment_joiner: symbol_lexeme(sym: joiner),
-                            callee_scope: if scope == ^target_callee_scope_unrealized { CalleeScopeUnrealized } else { CalleeScopeRealized }
+                        bind_outcome(
+                          o: declaration_callee_scope_from_symbol(scope: scope, row: row),
+                          f: fn(callee_scope) {
+                            outcome_accepted(
+                              ModuleScopedPath {
+                                root_text: symbol_lexeme(sym: root),
+                                scope_separator_text: symbol_lexeme(sym: sep),
+                                module_segment_joiner: symbol_lexeme(sym: joiner),
+                                callee_scope: callee_scope
+                              }
+                            )
                           }
                         )
                       }
