@@ -17,7 +17,7 @@ import extdeps.apple.app_attest { AttestationExpectation, AssertionExpectation, 
 }
 import gunbc.auth.approval_device_wire { WireDecoded, WireRefused }
 import gunbc.auth.approval_device_crypto_realization {
-  DeviceCryptoAdmission, NativeDeviceCryptoBound, NativeDeviceCryptoUnavailable, DeviceCryptoHandlerReceipt, device_crypto_admission, device_crypto_obligations, device_crypto_proof_of,
+  DeviceCryptoAdmission, DeviceCryptoGate, DeviceCryptoGateOpen, DeviceCryptoGateRefused, DeviceCryptoRequirement, DeviceCryptoAdmitted, DeviceCryptoRefused, device_crypto_receipt_admission, approval_device_crypto_realization, NativeDeviceCryptoBound, NativeDeviceCryptoUnavailable, DeviceCryptoHandlerReceipt, device_crypto_gate, device_crypto_obligations, device_crypto_proof_of,
   DeviceCryptoExpectation, DeviceCryptoEchoJoin, DeviceCryptoEchoJoined, DeviceCryptoEchoRefused, device_crypto_echo_join, device_crypto_handler_identity,
 }
 import std.decl_ref { decl_ref }
@@ -36,7 +36,7 @@ import gunbc.native_serve { NativeServeStartupPassed, NativeServeStartupRefused 
 import gunbc.auth.approval_device_routes { DeviceRouteResponse, sidecar_failure_response }
 
 fn admitted() -> DeviceCryptoAdmission {
-  device_crypto_admission(r: NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture", exact_revision: "0000000", covered: device_crypto_obligations } })
+  device_crypto_receipt_admission(receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture", exact_revision: "0000000", covered: device_crypto_obligations }, required: device_crypto_obligations)
 }
 
 fn receipt() -> DeviceCryptoHandlerReceipt {
@@ -44,11 +44,11 @@ fn receipt() -> DeviceCryptoHandlerReceipt {
 }
 
 fn expectation() -> DeviceCryptoExpectation {
-  DeviceCryptoExpectation { handler_identity: device_crypto_handler_identity, deployed_digest: "deadbeef" }
+  DeviceCryptoExpectation { requirement: DeviceCryptoRequirement { handler_identity: device_crypto_handler_identity, required: device_crypto_obligations }, deployed_digest: "deadbeef" }
 }
 
 fn unavailable() -> DeviceCryptoAdmission {
-  device_crypto_admission(r: NativeDeviceCryptoUnavailable { cause: "fixture" })
+  device_crypto_receipt_admission(receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture", exact_revision: "0000000", covered: [] }, required: device_crypto_obligations)
 }
 
 fn key() -> VerifyingKey {
@@ -236,7 +236,32 @@ test fn witness_an_echo_covering_fewer_than_all_obligations_is_refused() -> Bool
 }
 
 test fn witness_the_echo_join_admits_the_matching_receipt() -> Bool {
-  match device_crypto_echo_join(expectation: expectation(), echo: receipt()) { DeviceCryptoEchoJoined => true  DeviceCryptoEchoRefused { cause: _ } => false }
+  match device_crypto_echo_join(expectation: expectation(), echo: receipt()) { DeviceCryptoEchoJoined { admission: _ } => true  DeviceCryptoEchoRefused { cause: _ } => false }
+}
+
+// THE BOUND ROW MINTS NO PROOF ALONE. The production row opens the gate with only a requirement -- no revision exists on it to
+// name -- so a proof needs an echo that joined the provisioned digest. RED: an unjoined echo (another digest) is refused
+// and yields no admission and so no proof; a refused gate carries no requirement; the joined echo's admission names the
+// echoed revision, which the join proved equals the deployed digest.
+test fn witness_a_bound_row_without_a_joined_echo_yields_no_proof() -> Bool {
+  let row_opens_without_a_revision = match device_crypto_gate(r: approval_device_crypto_realization) {
+    DeviceCryptoGateOpen { requirement: q } => (q.handler_identity as String) == (device_crypto_handler_identity as String) && count(q.required) == count(device_crypto_obligations)
+    DeviceCryptoGateRefused { status: _, reason: _ } => false
+  }
+  let unavailable_gate_refuses = match device_crypto_gate(r: NativeDeviceCryptoUnavailable { cause: "fixture" }) {
+    DeviceCryptoGateRefused { status: st, reason: _ } => st == 503
+    DeviceCryptoGateOpen { requirement: _ } => false
+  }
+  let wrong_digest = DeviceCryptoExpectation { requirement: expectation().requirement, deployed_digest: "feedface" }
+  let unjoined_yields_no_admission = match device_crypto_echo_join(expectation: wrong_digest, echo: receipt()) {
+    DeviceCryptoEchoRefused { cause: _ } => true
+    DeviceCryptoEchoJoined { admission: _ } => false
+  }
+  let joined_names_the_echoed_revision = match device_crypto_echo_join(expectation: expectation(), echo: receipt()) {
+    DeviceCryptoEchoJoined { admission: DeviceCryptoAdmitted { handler_identity: _, exact_revision: r } } => (r as String) == "deadbeef"
+    _ => false
+  }
+  row_opens_without_a_revision && unavailable_gate_refuses && unjoined_yields_no_admission && joined_names_the_echoed_revision
 }
 
 // THE ROUTE'S MAPPING: a sidecar failure is a 503 carrying its cause, never a 200.
