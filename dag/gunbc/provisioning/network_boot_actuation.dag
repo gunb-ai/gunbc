@@ -1,5 +1,10 @@
 module gunbc.provisioning.network_boot_actuation
 
+import std.decl_ref { DeclarationRef }
+import extdeps.bmc.types { RedfishBootSourceOverrideTarget }
+import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeChainloaderBuildReceipt }
+import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin }
+import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
 import gunbc.provisioning.provisioning_arm {
   ProvisioningArm,
   AttemptBinding,
@@ -10,52 +15,72 @@ import gunbc.provisioning.provisioning_arm {
   ArmRefused,
   FirmwarePreparation,
 }
-import extdeps.bmc.webui.nbd_proxy { NbdProxyServeInterface }
-import gunbc.os_install_mechanism { PxeHttpInstall, VirtualMediaInstall }
-import gunbc.nbd_proxy_virtual_media_install {
-  OsInstallActuatorPlan,
-  os_install_actuator_plan,
-}
+import gunbc.os_install_mechanism { OsInstallMechanism, PxeHttpInstall, VirtualMediaInstall, install_boot_target_for }
 
 // THE EXECUTING CONSUMER OF AN ArmShape (the frontier gunbc.provisioning.provisioning_arm
-// `provisioning_arm_consumer_frontier` binds to this module and to `network_boot_arm_actuator_steps`).
-// It projects the arm into the EXISTING actuator vocabulary: the mechanism picks the steps through
-// os_install_actuator_plan, and no step type is declared here. It runs nothing: a plan is an ordered
-// statement of the effects, and each effect still goes through its own admission and approval.
+// `provisioning_arm_consumer_frontier` binds to `network_boot_arm_actuator_steps`). It runs nothing:
+// the value it returns is the statement of what one attempt will do, and each effect still goes through
+// its own admission and approval.
 //
-// One arm yields one mechanism and one plan. The firmware preparation is the route the S0 standing
-// cataloged, carried unchanged from the arm, so exactly one delivery route is named per attempt and no
-// route is spelled here. Nothing in this module reads the attempt's unit: it is copied through as data.
+// WHAT THE ACTUATION CARRIES IS WHAT THE ARM BOUND. The chainloader receipt, the network origin, the
+// seed binding and the firmware preparation travel into the result, so two armed attempts that differ in
+// any of them produce different actuations. An actuation built from the mechanism constant alone would
+// be identical for all of them, and the arm's whole job -- checking and binding those fields -- would be
+// discharged by name only.
+//
+// NO EXPORT PARAMETER, AND NO PLAN. The step builder gunbc.nbd_proxy_virtual_media_install
+// `os_install_actuator_plan` reads its `export` only for NbdProxyVirtualMediaInstall; the two mechanisms
+// an arm can name (PxeHttpInstall, VirtualMediaInstall) ignore it, so calling it from here would force
+// this module to invent a serve interface it never uses. The actuation therefore names the mechanism
+// and its boot target, both from the existing install-mechanism vocabulary; assembling steps from a
+// mechanism stays with that builder at the point an export actually exists.
+//
+// One arm yields one mechanism. A Withheld arm keeps its shape intact: there is no other arm to fall back
+// to, so a blocked arm cannot become the other strategy here. Nothing reads the attempt's unit; it is
+// copied through as data.
 type NetworkBootActuation
   = ArmActuationPxe {
       attempt: AttemptBinding
+      mechanism: OsInstallMechanism
+      boot_target: RedfishBootSourceOverrideTarget
+      chainloader: SitePxeEdgeChainloaderBuildReceipt
       firmware: FirmwarePreparation
-      plan: OsInstallActuatorPlan
+      origin: UbuntuNetworkOrigin
+      seed: AltraAutoinstallSeedBinding
     }
   | ArmActuationVirtualMedia {
       attempt: AttemptBinding
-      plan: OsInstallActuatorPlan
+      mechanism: OsInstallMechanism
+      boot_target: RedfishBootSourceOverrideTarget
+      media_observation: DeclarationRef
+      origin: UbuntuNetworkOrigin
+      seed: AltraAutoinstallSeedBinding
     }
   | ArmActuationWithheld {
       attempt: AttemptBinding
       shape: ArmShape
     }
 
-// An Unobserved or Refused arm is WITHHELD with its shape intact: there is no arm to fall back to, so a
-// blocked arm cannot become the other strategy here. The export is the virtual-media serve parameter the
-// existing step builder takes; neither strategy's mechanism consumes it.
-fn network_boot_arm_actuator_steps(arm: ProvisioningArm, export: NbdProxyServeInterface) -> NetworkBootActuation {
+fn network_boot_arm_actuator_steps(arm: ProvisioningArm) -> NetworkBootActuation {
   match arm.shape {
-    ArmedPxeOrUefiHttp { chainloader: _, firmware: f, origin: _, seed: _ } =>
+    ArmedPxeOrUefiHttp { chainloader: c, firmware: f, origin: o, seed: s } =>
       ArmActuationPxe {
         attempt: arm.attempt,
+        mechanism: PxeHttpInstall,
+        boot_target: install_boot_target_for(mechanism: PxeHttpInstall),
+        chainloader: c,
         firmware: f,
-        plan: os_install_actuator_plan(mechanism: PxeHttpInstall, export: export),
+        origin: o,
+        seed: s,
       }
-    ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } =>
+    ArmedVirtualMedia { media_observation: m, origin: o, seed: s } =>
       ArmActuationVirtualMedia {
         attempt: arm.attempt,
-        plan: os_install_actuator_plan(mechanism: VirtualMediaInstall, export: export),
+        mechanism: VirtualMediaInstall,
+        boot_target: install_boot_target_for(mechanism: VirtualMediaInstall),
+        media_observation: m,
+        origin: o,
+        seed: s,
       }
     ArmUnobserved { missing: _ } => ArmActuationWithheld { attempt: arm.attempt, shape: arm.shape }
     ArmRefused { cause: _ } => ArmActuationWithheld { attempt: arm.attempt, shape: arm.shape }
