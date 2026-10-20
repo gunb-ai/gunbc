@@ -1118,7 +1118,7 @@ fn refuses(crypt_digest: String) -> Bool {
 // against the spec's own numbers; writing `seen == 85` against a CharacterCount would be comparing a host integer
 // to a measure, which is the mix the carrier exists to prevent. Written once here, so no count in this file is a
 // bare Int by accident.
-fn chars(n: Int) -> CharacterCount {
+fn char_count(n: Int) -> CharacterCount {
   character_count(count: n)
 }
 
@@ -1154,9 +1154,9 @@ test fn the_crypt_figures_are_cited_and_the_door_reads_them() -> Bool {
         } =>
           match (token as String) == "6"
             && (marker as String) == "rounds="
-            && salt_min == chars(1) && salt_max == chars(16)
-            && width == chars(86)
-            && cost_min == chars(4) && cost_max == chars(9)
+            && salt_min == char_count(1) && salt_max == char_count(16)
+            && width == char_count(86)
+            && cost_min == char_count(4) && cost_max == char_count(9)
             && list_length(items: alphabet) == 64
             && list_length(items: forbidden) == 4
           {
@@ -1173,12 +1173,12 @@ test fn the_crypt_figures_are_cited_and_the_door_reads_them() -> Bool {
                       // either number, these two comparisons are where the split shows.
                       match cause_of(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj") {
                         Present { value: DigestWrongLength { length: reported, expected: quoted_width } } =>
-                          match quoted_width == width && reported == chars(85) {
+                          match quoted_width == width && reported == char_count(85) {
                             False => false
                             True =>
                               match cause_of(crypt_digest: "$6$12345678901234567$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
                                 Present { value: SaltTooLong { length: seen_salt, ceiling: quoted_ceiling } } =>
-                                  seen_salt == chars(17) && quoted_ceiling == salt_max && salt_min == chars(1)
+                                  seen_salt == char_count(17) && quoted_ceiling == salt_max && salt_min == char_count(1)
                                 _ => false
                               }
                           }
@@ -1207,7 +1207,7 @@ test fn each_refusal_arm_names_the_part_that_failed() -> Bool {
     Present { value: NotACryptDigest } =>
       match cause_of(crypt_digest: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj") {
         Present { value: DigestWrongLength { length: seen, expected: wanted } } =>
-          seen == chars(85) && wanted == chars(86)
+          seen == char_count(85) && wanted == char_count(86)
           && match cause_of(crypt_digest: "$5$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
             Present { value: SchemeUnsupported } =>
               // ':' IN THE SALT IS REFUSED, AND BY THE SHARED SCAN — the arm that runs first, exactly as
@@ -1225,13 +1225,13 @@ test fn each_refusal_arm_names_the_part_that_failed() -> Bool {
                     Present { value: RoundsMalformed } =>
                       match cause_of(crypt_digest: "$6$12345678901234567$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
                         Present { value: SaltTooLong { length: seen_salt, ceiling: allowed } } =>
-                          seen_salt == chars(17) && allowed == chars(16)
+                          seen_salt == char_count(17) && allowed == char_count(16)
                           // AND A SALT LONG ENOUGH TO BE REFUSED OUTRIGHT must be refused, not merely reported:
                           // a witness that only ever read the payload would stay green with the ceiling raised to
                           // 64, because 17 > 16 would no longer be true and no check would fire.
                           && match cause_of(crypt_digest: "$6$123456789012345678$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj.") {
                             Present { value: SaltTooLong { length: longer, ceiling: same_ceiling } } =>
-                              longer == chars(18) && same_ceiling == chars(16)
+                              longer == char_count(18) && same_ceiling == char_count(16)
                               // AND THE FLOOR MUST BLAME THE ABSENT SALT, not the digest: four segments, a legal
                               // token, a legal 86-character digest, and a salt holding no character at all. Only
                               // the width floor can reject that, so it is blamed on SaltAbsent by name -- a
