@@ -1146,14 +1146,13 @@ data standing_instant_stale: Timestamp = "2026-10-19T13:00:00Z"
 // promise a restoration that depends on GitHub admitting a conditional mutation it does not have.
 test fn the_observation_window_residual_declares_what_it_cannot_close() -> Bool {
   let limit = reviewer_removal_observation_window
-  // NOTHING IN THE ROW IS EMPTY. Five fields, five non-empty checks -- a residual with a blank field is
-  // the prose case wearing a record's clothes.
-  limit.attempted != ""
-    && limit.upstream_absence != ""
-    && limit.enforced_instead != ""
-    && limit.consequence != ""
-    && limit.retirement_trigger != ""
-    // WHAT IT CLAIMS TO HAVE TRIED is the compare-and-set it actually lacks.
+  // EVERY FIELD HAS TO SAY SOMETHING, and the way that is checked is by demanding each field carry the
+  // content only that field can carry -- a residual with a blank or generic field is the prose case
+  // wearing a record's clothes. There is deliberately no `field != ""` clause: the fields are
+  // NonEmptyStr, so such a check could never go red (§5). Each of the five fields is instead pinned to
+  // a substring below, which is the check that actually bites.
+  //
+  // WHAT IT CLAIMS TO HAVE TRIED is the compare-and-set it actually lacks.
     && (limit.attempted as String).contains("compare-and-set")
     // THE UPSTREAM ABSENCE IS EVIDENCED, not asserted: it names the mechanism it looked for and failed
     // to find on the pinned description.
