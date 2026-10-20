@@ -2415,9 +2415,7 @@ pub fn target_call_has_arithmetic_descent(
                                             (v1_rt::map_get(
                                                 &callee_measure_params,
                                                 param_name.clone(),
-                                            )
-                                            .as_deref()
-                                                != std::option::Option::None.as_deref())
+                                            ) != std::option::Option::None)
                                         }
                                         std::option::Option::None => false,
                                     })
@@ -6399,8 +6397,8 @@ pub fn collect_scc_child_edges(
                                     si.clone(),
                                 ) {
                                     Some(aname) => {
-                                        (v1_rt::map_get(&callee_params, aname.clone()).as_deref()
-                                            != std::option::Option::None.as_deref())
+                                        (v1_rt::map_get(&callee_params, aname.clone())
+                                            != std::option::Option::None)
                                     }
                                     std::option::Option::None => false,
                                 };

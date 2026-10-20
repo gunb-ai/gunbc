@@ -464,9 +464,7 @@ pub fn lookup_resolved_sig_with_telemetry(
                         Some(sig.clone())
                     },
                     match_count: v1_rt::int_add(acc.match_count.clone(), 1),
-                    first_parent: if (acc.first_parent.clone().as_deref()
-                        != std::option::Option::None.as_deref())
-                    {
+                    first_parent: if (acc.first_parent.clone() != std::option::Option::None) {
                         acc.first_parent.clone()
                     } else {
                         Some(p.name.clone())

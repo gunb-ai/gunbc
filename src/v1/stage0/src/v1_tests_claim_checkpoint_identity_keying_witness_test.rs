@@ -63,9 +63,7 @@ pub fn same_spelling_different_declaration_does_not_realize_natively() -> bool {
                 decl_file: "src/v2/std/nat.dag".to_string(),
             }),
         ),
-    )
-    .as_deref()
-        == std::option::Option::None.as_deref())
+    ) == std::option::Option::None)
 }
 
 pub fn unknown_declaration_identity_refuses_rather_than_guessing() -> bool {
@@ -75,9 +73,7 @@ pub fn unknown_declaration_identity_refuses_rather_than_guessing() -> bool {
             "Nat".to_string(),
             Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
         ),
-    )
-    .as_deref()
-        == std::option::Option::None.as_deref())
+    ) == std::option::Option::None)
 }
 
 pub fn residue_table_present_int_bypasses_identity() -> bool {
@@ -103,9 +99,7 @@ pub fn table_present_hash_refuses_under_structural_declaration() -> bool {
                 decl_file: "src/v2/std/node.dag".to_string(),
             }),
         ),
-    )
-    .as_deref()
-        == std::option::Option::None.as_deref())
+    ) == std::option::Option::None)
 }
 
 pub fn table_present_string_refuses_under_structural_declaration_text() -> bool {
@@ -117,9 +111,7 @@ pub fn table_present_string_refuses_under_structural_declaration_text() -> bool 
                 decl_file: "src/v2/std/text.dag".to_string(),
             }),
         ),
-    )
-    .as_deref()
-        == std::option::Option::None.as_deref())
+    ) == std::option::Option::None)
 }
 
 pub fn table_present_bool_renders_natively_for_the_corpus_prelude() -> bool {
@@ -157,9 +149,7 @@ pub fn literal_suffix_refuses_under_structural_declaration_text() -> bool {
                 decl_file: "src/v2/std/text.dag".to_string(),
             }),
         ),
-    )
-    .as_deref()
-        == std::option::Option::None.as_deref())
+    ) == std::option::Option::None)
 }
 
 pub fn literal_suffix_production_call_site_never_threads_declaration_identity() -> bool {

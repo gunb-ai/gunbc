@@ -954,7 +954,7 @@ pub fn gunbc_cli_qualified_option_names() -> Rc<Vec<String>> {
                 acc,
                 sub.options.clone().iter().cloned().fold(
                     Rc::new(vec![]),
-                    |inner: Rc<Vec<String>>, opt: Rc<CliOptionRow>| {
+                    |inner: _, opt: Rc<CliOptionRow>| {
                         v1_rt::concat(
                             inner,
                             Rc::new(vec![v1_rt::concat(

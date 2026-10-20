@@ -1380,8 +1380,7 @@ pub fn variant_outside_declared_scope_refusal(
 pub fn name_binds_a_lexical_value(name: String, scope: Rc<InferScope>) -> bool {
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(_) => {
-            (lookup_variant_parent_enum(scope.clone(), name.clone()).as_deref()
-                == std::option::Option::None.as_deref())
+            (lookup_variant_parent_enum(scope.clone(), name.clone()) == std::option::Option::None)
         }
         std::option::Option::None => false,
     }
@@ -6135,7 +6134,7 @@ pub fn refinement_chain_link_identities(
                     .iter()
                     .cloned()
                     {
-                        if (site.clone().as_deref() != std::option::Option::None.as_deref()) {
+                        if (site.clone() != std::option::Option::None) {
                             __result.push(site);
                         }
                     }
@@ -9547,8 +9546,8 @@ pub fn direct_call_shape_diags(
         let positional_args = Rc::new({
             let mut __result = Vec::new();
             for ta in typed_args.iter().cloned() {
-                if (crate::v1_std_core::arg_name_at(ta.clone(), source_indices.clone()).as_deref()
-                    == std::option::Option::None.as_deref())
+                if (crate::v1_std_core::arg_name_at(ta.clone(), source_indices.clone())
+                    == std::option::Option::None)
                 {
                     __result.push(ta);
                 }
@@ -11134,7 +11133,7 @@ pub fn present_arms_over_unresolved_scrutinee(
                     } => {
                         if ((crate::v1_std_core::qualified_last_segment(n.clone())
                             == "Present".to_string())
-                            && (pe.clone().as_deref() == std::option::Option::None.as_deref()))
+                            && (pe.clone() == std::option::Option::None))
                         {
                             Rc::new(vec![crate::v1_std_core::make_error_node(
                                 Rc::new(CompilerDiagnostic::PresentArmScrutineeTypeUnresolved {
@@ -11623,7 +11622,7 @@ pub fn fold_accumulator_is_unapplied_generic(n: Rc<Node>) -> bool {
 }
 
 pub fn method_name_is(opt: Option<String>, expected: String) -> bool {
-    if (opt.clone().as_deref() == std::option::Option::None.as_deref()) {
+    if (opt.clone() == std::option::Option::None) {
         false
     } else {
         (opt.clone().unwrap() == expected.clone())
@@ -11637,7 +11636,7 @@ pub fn arg_has_name(
 ) -> bool {
     {
         let n = crate::v1_std_core::arg_name_at(arg.clone(), source_indices.clone());
-        if (n.clone().as_deref() == std::option::Option::None.as_deref()) {
+        if (n.clone() == std::option::Option::None) {
             false
         } else {
             (n.clone().unwrap() == name.clone())
@@ -11786,7 +11785,7 @@ pub fn infer_method_args_with_fold(
                 __result.push({
             let a = idx_pair.1.clone();
 let idx = idx_pair.0.clone();
-let is_init_arg = (arg_has_name(a.clone(), "init".to_string(), scope.type_env.source_indices.clone()) || ((crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()).as_deref() == std::option::Option::None.as_deref()) && (idx.clone() == 0)));
+let is_init_arg = (arg_has_name(a.clone(), "init".to_string(), scope.type_env.source_indices.clone()) || ((crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()) == std::option::Option::None) && (idx.clone() == 0)));
 if ((is_fold.clone() && (fold_info.clone() != std::option::Option::None)) && is_init_arg.clone()) {
                 match fold_info.clone() {
     Some(fi) => fi.clone(),
@@ -13243,36 +13242,80 @@ pub fn infer_expr_body(
                 _ => crate::v1_compiler_infer_types::infer_literal_node(lit.clone()),
             };
             match literal_type.clone() {
-    std::option::Option::None => Rc::new(InferResult {
-    typed: crate::v1_std_core::make_expr_node(texpr.occurrence_identity.clone(), Rc::new(ExprData::ExprLiteral {
-    value: lit.clone(),
-}), Rc::new(vec![]), Some(Rc::new(InferredNode::CompilerError {
-    message: "`none` has no expected Optional<T> to lower to".to_string(),
-    span: span.clone(),
-})), span.clone()),
-    diagnostics: Rc::new(vec![inference_error("`none` has no expected Optional<T> to lower to: its position supplies no optional type, and it never defaults".to_string(), span.clone(), scope.module_name.clone())]),
-}),
-    Some(literal_type) => {
-            let plain = crate::v1_std_core::make_expr_node(texpr.occurrence_identity.clone(), Rc::new(ExprData::ExprLiteral {
-    value: lit.clone(),
-}), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
-    node: literal_type.clone(),
-})), span.clone());
-match (*literal_boundary_elaboration(lit.clone(), expected.clone(), scope.clone())).clone() {
-    LiteralBoundary::LiteralBoundaryPlain => ok_infer(plain.clone()),
-    LiteralBoundary::LiteralBoundaryElaborated { elaboration: e, destination_type: dt, .. } => ok_infer(crate::v1_std_core::make_expr_node(texpr.occurrence_identity.clone(), Rc::new(ExprData::ExprElaboratedLiteral {
-    value: lit.clone(),
-    elaboration: e.clone(),
-}), Rc::new(vec![unfold_literal_image(lit.clone(), e.clone(), dt.clone(), span.clone())]), Some(Rc::new(InferredNode::Resolved {
-    node: dt.clone(),
-})), span.clone())),
-    LiteralBoundary::LiteralBoundaryRefused { message: m, .. } => Rc::new(InferResult {
-    typed: plain.clone(),
-    diagnostics: Rc::new(vec![inference_error(m.clone(), span.clone(), scope.module_name.clone())]),
-}),
-}
-},
-}
+                std::option::Option::None => {
+                    let none_refusal = match expected.clone() {
+    Some(exp) => v1_rt::concat(v1_rt::concat("`none` at expected type ".to_string(), crate::v1_compiler_infer_types::node_type_shape(exp.clone(), scope.type_env.source_indices.clone())), ": that type is not an Optional<T>, so it has no Absent arm to lower to".to_string()),
+    std::option::Option::None => "`none` has no expected Optional<T> to lower to: its position supplies no optional type, and it never defaults".to_string(),
+};
+                    Rc::new(InferResult {
+                        typed: crate::v1_std_core::make_expr_node(
+                            texpr.occurrence_identity.clone(),
+                            Rc::new(ExprData::ExprLiteral { value: lit.clone() }),
+                            Rc::new(vec![]),
+                            Some(Rc::new(InferredNode::CompilerError {
+                                message: "`none` has no expected Optional<T> to lower to"
+                                    .to_string(),
+                                span: span.clone(),
+                            })),
+                            span.clone(),
+                        ),
+                        diagnostics: Rc::new(vec![inference_error(
+                            none_refusal.clone(),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        )]),
+                    })
+                }
+                Some(literal_type) => {
+                    let plain = crate::v1_std_core::make_expr_node(
+                        texpr.occurrence_identity.clone(),
+                        Rc::new(ExprData::ExprLiteral { value: lit.clone() }),
+                        Rc::new(vec![]),
+                        Some(Rc::new(InferredNode::Resolved {
+                            node: literal_type.clone(),
+                        })),
+                        span.clone(),
+                    );
+                    match (*literal_boundary_elaboration(
+                        lit.clone(),
+                        expected.clone(),
+                        scope.clone(),
+                    ))
+                    .clone()
+                    {
+                        LiteralBoundary::LiteralBoundaryPlain => ok_infer(plain.clone()),
+                        LiteralBoundary::LiteralBoundaryElaborated {
+                            elaboration: e,
+                            destination_type: dt,
+                            ..
+                        } => ok_infer(crate::v1_std_core::make_expr_node(
+                            texpr.occurrence_identity.clone(),
+                            Rc::new(ExprData::ExprElaboratedLiteral {
+                                value: lit.clone(),
+                                elaboration: e.clone(),
+                            }),
+                            Rc::new(vec![unfold_literal_image(
+                                lit.clone(),
+                                e.clone(),
+                                dt.clone(),
+                                span.clone(),
+                            )]),
+                            Some(Rc::new(InferredNode::Resolved { node: dt.clone() })),
+                            span.clone(),
+                        )),
+                        LiteralBoundary::LiteralBoundaryRefused { message: m, .. } => {
+                            Rc::new(InferResult {
+                                typed: plain.clone(),
+                                diagnostics: Rc::new(vec![inference_error(
+                                    m.clone(),
+                                    span.clone(),
+                                    scope.module_name.clone(),
+                                )]),
+                            })
+                        }
+                    }
+                }
+            }
         }
         ExprData::ExprElaboratedLiteral { .. } => ok_infer(texpr.clone()),
         ExprData::ExprError { kind, message, .. } => {
@@ -18437,43 +18480,6 @@ pub fn infer_record_lit_structural(
             }
             std::option::Option::None => std::option::Option::None,
         };
-        let struct_fields = match type_name.clone() {
-            Some(_) => match instantiated_struct_fields.clone() {
-                Some(fields) => fields.clone(),
-                std::option::Option::None => match expected_struct_fields.clone() {
-                    Some(fields) => fields.clone(),
-                    std::option::Option::None => match expected_variant_node.clone() {
-                        Some(variant_node) => variant_node.children.clone(),
-                        std::option::Option::None => match expected.clone() {
-                            Some(_) => record_lit_expected_fields(type_name.clone(), scope.clone()),
-                            std::option::Option::None => match alias_struct_expansion.clone() {
-                                Some(expansion) => {
-                                    if ((expansion.resolved.connective.clone() == Connective::Conj)
-                                        && ((expansion.resolved.children.clone().len() as i64) > 0))
-                                    {
-                                        expansion.resolved.children.clone()
-                                    } else {
-                                        record_lit_expected_fields(type_name.clone(), scope.clone())
-                                    }
-                                }
-                                std::option::Option::None => {
-                                    record_lit_expected_fields(type_name.clone(), scope.clone())
-                                }
-                            },
-                        },
-                    },
-                },
-            },
-            std::option::Option::None => match instantiated_struct_fields.clone() {
-                Some(fields) => fields.clone(),
-                std::option::Option::None => match expected_struct_fields.clone() {
-                    Some(fields) => fields.clone(),
-                    std::option::Option::None => {
-                        record_lit_expected_fields(type_name.clone(), scope.clone())
-                    }
-                },
-            },
-        };
         let alias_struct_diags = match alias_struct_expansion.clone() {
             Some(expansion) => expansion.diagnostics.clone(),
             std::option::Option::None => Rc::new(vec![]),
@@ -18485,7 +18491,13 @@ pub fn infer_record_lit_structural(
         let si_presence = scope.type_env.source_indices.clone();
         let presence_variant_owner = variant_owner_node(scope.clone(), tn_str.clone());
         let presence_fields = if (tn_str.clone() == "".to_string()) {
-            Rc::new(vec![])
+            match instantiated_struct_fields.clone() {
+                Some(inst_fields) => inst_fields.clone(),
+                std::option::Option::None => match expected_struct_fields.clone() {
+                    Some(expected_fields) => expected_fields.clone(),
+                    std::option::Option::None => Rc::new(vec![]),
+                },
+            }
         } else {
             match presence_variant_owner.clone() {
                 Some(variant_owner) => match Rc::new({
@@ -18505,36 +18517,70 @@ pub fn infer_record_lit_structural(
                     Some(variant_node) => variant_node.children.clone(),
                     std::option::Option::None => Rc::new(vec![]),
                 },
-                std::option::Option::None => match record_lit_variant_from_expected(
-                    type_name.clone(),
-                    expected.clone(),
-                    scope.clone(),
-                ) {
-                    Some(variant_node) => variant_node.children.clone(),
-                    std::option::Option::None => match instantiated_struct_fields.clone() {
-                        Some(inst_fields) => inst_fields.clone(),
-                        std::option::Option::None => {
-                            match crate::v1_compiler_infer_env::lookup_type_by_name(
-                                scope.type_env.clone(),
-                                tn_str.clone(),
-                            ) {
-                                Some(decl) => {
-                                    if (((decl.connective.clone() == Connective::Conj)
-                                        && ((decl.params.clone().len() as i64) == 0))
-                                        && ((decl.children.clone().len() as i64) > 0))
-                                    {
-                                        decl.children.clone()
-                                    } else {
-                                        Rc::new(vec![])
+                std::option::Option::None => {
+                    match record_lit_variant_from_expected(
+                        type_name.clone(),
+                        expected.clone(),
+                        scope.clone(),
+                    ) {
+                        Some(variant_node) => variant_node.children.clone(),
+                        std::option::Option::None => match instantiated_struct_fields.clone() {
+                            Some(inst_fields) => inst_fields.clone(),
+                            std::option::Option::None => match expected_struct_fields.clone() {
+                                Some(expected_fields) => expected_fields.clone(),
+                                std::option::Option::None => {
+                                    match alias_struct_expansion.clone() {
+                                        Some(expansion) => {
+                                            if ((expansion.resolved.connective.clone()
+                                                == Connective::Conj)
+                                                && ((expansion.resolved.children.clone().len()
+                                                    as i64)
+                                                    > 0))
+                                            {
+                                                expansion.resolved.children.clone()
+                                            } else {
+                                                match crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), tn_str.clone()) {
+    Some(decl) => if (((decl.connective.clone() == Connective::Conj) && ((decl.params.clone().len() as i64) == 0)) && ((decl.children.clone().len() as i64) > 0)) {
+                    decl.children.clone()
+                } else {
+                    Rc::new(vec![])
+                },
+    std::option::Option::None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+}
+                                            }
+                                        }
+                                        std::option::Option::None => {
+                                            match crate::v1_compiler_infer_env::lookup_type_by_name(
+                                                scope.type_env.clone(),
+                                                tn_str.clone(),
+                                            ) {
+                                                Some(decl) => {
+                                                    if (((decl.connective.clone()
+                                                        == Connective::Conj)
+                                                        && ((decl.params.clone().len() as i64)
+                                                            == 0))
+                                                        && ((decl.children.clone().len() as i64)
+                                                            > 0))
+                                                    {
+                                                        decl.children.clone()
+                                                    } else {
+                                                        Rc::new(vec![])
+                                                    }
+                                                }
+                                                std::option::Option::None => {
+                                                    record_lit_expected_fields(
+                                                        type_name.clone(),
+                                                        scope.clone(),
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
-                                std::option::Option::None => {
-                                    record_lit_expected_fields(type_name.clone(), scope.clone())
-                                }
-                            }
-                        }
-                    },
-                },
+                            },
+                        },
+                    }
+                }
             }
         };
         let presence_name_is_ambiguous =
@@ -18737,7 +18783,7 @@ let unknown_field_diags = match construction_field_names.clone() {
             },
     std::option::Option::None => Rc::new(vec![]),
 };
-let field_declared_type = match Rc::new({ let mut __result = Vec::new(); for sf in struct_fields.iter().cloned() { if (crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), sf.clone()) == fi_name.clone()) { __result.push(sf); } } __result }).first().cloned() {
+let field_declared_type = match Rc::new({ let mut __result = Vec::new(); for sf in presence_fields.iter().cloned() { if (crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), sf.clone()) == fi_name.clone()) { __result.push(sf); } } __result }).first().cloned() {
     Some(sf) => {
                 let ft = match sf.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => crate::v1_std_core::preserve_outer_optional(sf.clone(), rt.clone()),
@@ -18770,7 +18816,7 @@ let field_expected = match present_value_expected_from_optional(tn_str.clone(), 
                 } else {
                     declared_ft.clone()
                 };
-if ((((ft.ident_span.clone() != std::option::Option::None) || crate::v1_compiler_infer_types::type_node_is_callable(ft.clone())) || crate::v1_std_core::type_is_optional(ft.clone())) || field_type_is_optional_coproduct(ft.clone(), scope.type_env.clone())) {
+if (((((ft.ident_span.clone() != std::option::Option::None) || crate::v1_compiler_infer_types::type_node_is_callable(ft.clone())) || crate::v1_std_core::type_is_optional(ft.clone())) || node_is_std_optional(ft.clone(), scope.clone())) || field_type_is_optional_coproduct(ft.clone(), scope.type_env.clone())) {
                     Some(ft.clone())
                 } else {
                     std::option::Option::None
@@ -18785,7 +18831,7 @@ let ar_diags = ar.diagnostics.clone();
 let field_type_diags = match field_declared_type.clone() {
     Some(expected_node) => {
                 let got_node = crate::v1_compiler_infer_types::resolved_type(ar_typed.clone());
-let field_cardinality_diags = if direct_call_formal_has_unbound_type_variable(field_conformance_type.clone()) {
+let field_cardinality_diags = if (direct_call_formal_has_unbound_type_variable(field_conformance_type.clone()) || ((instantiated_struct_fields.clone() == std::option::Option::None) && type_node_mentions_any_name(expected_node.clone(), uninstantiated_owner_param_names.clone(), scope.type_env.source_indices.clone(), 16))) {
                     Rc::new(vec![])
                 } else {
                     optional_at_required_obligation_diags(Rc::new(DeclaredTypeObligation {
@@ -18796,7 +18842,7 @@ let field_cardinality_diags = if direct_call_formal_has_unbound_type_variable(fi
     span: ar_typed.span.clone(),
 }), scope.clone())
                 };
-if direct_call_formal_has_unbound_type_variable(field_conformance_type.clone()) {
+if (direct_call_formal_has_unbound_type_variable(field_conformance_type.clone()) || ((instantiated_struct_fields.clone() == std::option::Option::None) && type_node_mentions_any_name(expected_node.clone(), uninstantiated_owner_param_names.clone(), scope.type_env.source_indices.clone(), 16))) {
                     Rc::new(vec![])
                 } else {
                     if ((field_cardinality_diags.clone().len() as i64) > 0) {
@@ -18916,7 +18962,7 @@ Rc::new(FieldInferResult {
                 scope.module_name.clone(),
             ),
         );
-        if (type_name.clone().as_deref() == std::option::Option::None.as_deref()) {
+        if (type_name.clone() == std::option::Option::None) {
             {
                 let child_nodes = Rc::new({
                     let mut __result = Vec::new();
@@ -20405,9 +20451,7 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
                                         if ((v1_rt::map_get(
                                             &ctx.param_names.clone(),
                                             lname.clone(),
-                                        )
-                                        .as_deref()
-                                            != std::option::Option::None.as_deref())
+                                        ) != std::option::Option::None)
                                             || (v1_rt::map_get(
                                                 &ctx.sub_value_vars.clone(),
                                                 lname.clone(),
@@ -20443,9 +20487,7 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
                                             if ((v1_rt::map_get(
                                                 &ctx.param_names.clone(),
                                                 lname.clone(),
-                                            )
-                                            .as_deref()
-                                                != std::option::Option::None.as_deref())
+                                            ) != std::option::Option::None)
                                                 || (v1_rt::map_get(
                                                     &ctx.sub_value_vars.clone(),
                                                     lname.clone(),
@@ -20471,9 +20513,7 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
                                                     if ((v1_rt::map_get(
                                                         &ctx.param_names.clone(),
                                                         lname.clone(),
-                                                    )
-                                                    .as_deref()
-                                                        != std::option::Option::None.as_deref())
+                                                    ) != std::option::Option::None)
                                                         || (v1_rt::map_get(
                                                             &ctx.sub_value_vars.clone(),
                                                             lname.clone(),
@@ -20562,7 +20602,7 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
                                                                 ..
                                                             } => {
                                                                 let rname = crate::v1_std_core::expr_var_name_at(receiver.clone(), ctx.type_env.source_indices.clone());
-                                                                if ((v1_rt::map_get(&ctx.param_names.clone(), rname.clone()).as_deref() != std::option::Option::None.as_deref()) || (v1_rt::map_get(&ctx.sub_value_vars.clone(), rname.clone()) != std::option::Option::None)) {
+                                                                if ((v1_rt::map_get(&ctx.param_names.clone(), rname.clone()) != std::option::Option::None) || (v1_rt::map_get(&ctx.sub_value_vars.clone(), rname.clone()) != std::option::Option::None)) {
                                         match crate::std_termination::positive_descent_amount_from_positive_int(skip_amount.clone()) {
     Some(steps) => {
                                             let synth_field = Rc::new(InductiveField {
@@ -20676,8 +20716,7 @@ pub fn classify_call_arg_provenance(
                 arg_expr.clone(),
                 ctx.type_env.source_indices.clone(),
             );
-            if (v1_rt::map_get(&ctx.param_names.clone(), name.clone()).as_deref()
-                != std::option::Option::None.as_deref())
+            if (v1_rt::map_get(&ctx.param_names.clone(), name.clone()) != std::option::Option::None)
             {
                 Some(Rc::new(SubValueRelation::PreservedValue))
             } else {
@@ -21210,9 +21249,7 @@ pub fn build_call_evidence(
                     if (crate::v1_std_core::arg_name_at(
                         arg_node.clone(),
                         ctx.type_env.source_indices.clone(),
-                    )
-                    .as_deref()
-                        == std::option::Option::None.as_deref())
+                    ) == std::option::Option::None)
                     {
                         __result.push(arg_node);
                     }
@@ -24888,9 +24925,7 @@ pub fn call_target_for_direct_call(
     if (crate::v1_compiler_infer_env::declared_module_owner(
         scope.type_env.symbol_index.clone(),
         func_name.clone(),
-    )
-    .as_deref()
-        != std::option::Option::None.as_deref())
+    ) != std::option::Option::None)
     {
         match (*crate::v1_compiler_infer_lookup::func_env_declared_func_sig(
             scope.func_env.clone(),

@@ -2325,9 +2325,7 @@ pub fn render_rust_applied_type_arg(
             source_indices.clone(),
             env.clone(),
             width_position.clone(),
-        )
-        .as_deref()
-            != std::option::Option::None.as_deref())
+        ) != std::option::Option::None)
         {
             rust_type_arg_identity_spelling(
                 n.clone(),
@@ -2774,9 +2772,7 @@ pub fn render_rust_decl_type(
                                 crate::v1_compiler_emit_core_support::to_pascal(name.clone()),
                             )
                         } else {
-                            if (bare_native_alias.clone().as_deref()
-                                != std::option::Option::None.as_deref())
-                            {
+                            if (bare_native_alias.clone() != std::option::Option::None) {
                                 rust_carrier_optional_wrap(
                                     n.clone(),
                                     bare_native_alias.clone().unwrap(),
@@ -2864,7 +2860,7 @@ pub fn render_rust_decl_type(
 if peel.clone() {
                                                     render_rust_phantom_opaque_applied_decl_arg(typed_arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone()))
                                                 } else {
-                                                    if (rust_type_arg_identity_spelling(typed_arg.clone(), generic_param_names.clone(), source_indices.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone())).as_deref() != std::option::Option::None.as_deref()) {
+                                                    if (rust_type_arg_identity_spelling(typed_arg.clone(), generic_param_names.clone(), source_indices.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone())) != std::option::Option::None) {
                                                         rust_type_arg_identity_spelling(typed_arg.clone(), generic_param_names.clone(), source_indices.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone())).clone().unwrap()
                                                     } else {
                                                         match rust_render_checkpoint_scalar_bare(typed_arg.clone(), source_indices.clone(), shared_types.clone(), env.clone()) {
@@ -3552,9 +3548,7 @@ pub fn render_rust_alias_rhs_type(
                             )
                         }
                     };
-                    if (numeric_host_alias.clone().as_deref()
-                        != std::option::Option::None.as_deref())
-                    {
+                    if (numeric_host_alias.clone() != std::option::Option::None) {
                         return match numeric_host_alias.clone() {
                             Some(host) => host.clone(),
                             std::option::Option::None => "".to_string(),
@@ -5300,7 +5294,7 @@ pub fn data_path_wire_variant_tag(
     authored: String,
     policy: Rc<RustEnumWireSerde>,
 ) -> Option<String> {
-    if (policy.error_message.clone().as_deref() != std::option::Option::None.as_deref()) {
+    if (policy.error_message.clone() != std::option::Option::None) {
         std::option::Option::None
     } else {
         match policy.rename_style.clone() {
@@ -11394,9 +11388,7 @@ pub fn emit_module_full(
                                 scope.type_env.clone(),
                                 item.clone(),
                             ),
-                        )
-                        .as_deref()
-                            == std::option::Option::None.as_deref()))
+                        ) == std::option::Option::None))
                     {
                         __result.push(item);
                     }
@@ -14319,8 +14311,8 @@ pub fn import_name_is_kernel_grounded_constructor(
         module_index.clone(),
     ) {
         Some(parent) => {
-            (rust_kernel_grounded_type_decl(import_module.clone(), parent.clone()).as_deref()
-                != std::option::Option::None.as_deref())
+            (rust_kernel_grounded_type_decl(import_module.clone(), parent.clone())
+                != std::option::Option::None)
         }
         std::option::Option::None => false,
     }
@@ -14991,9 +14983,7 @@ Rc::new(vec![Rc::new(RustUseLine {
                                     && (rust_kernel_grounded_type_decl(
                                         import_module.clone(),
                                         en.clone(),
-                                    )
-                                    .as_deref()
-                                        == std::option::Option::None.as_deref()))
+                                    ) == std::option::Option::None))
                             } {
                                 __result.push(en);
                             }
@@ -17636,7 +17626,7 @@ pub fn rust_field_carrier_final_type(
                 ">".to_string(),
             )
         } else {
-            if (native_scalar.clone().as_deref() != std::option::Option::None.as_deref()) {
+            if (native_scalar.clone() != std::option::Option::None) {
                 ty.clone()
             } else {
                 if (rust_carrier_is_at_shared_layer(
@@ -18383,7 +18373,7 @@ pub fn wire_variant_tag_for_policy(
     authored: String,
     policy: Rc<RustEnumWireSerde>,
 ) -> Option<String> {
-    if (policy.error_message.clone().as_deref() != std::option::Option::None.as_deref()) {
+    if (policy.error_message.clone() != std::option::Option::None) {
         std::option::Option::None
     } else {
         match policy.rename_style.clone() {
@@ -18427,10 +18417,8 @@ pub fn wire_variant_tag_for_policy(
                     ))
                 } else {
                     if (((policy.enum_attr.clone() == "".to_string())
-                        && (policy.rename_prefix.clone().as_deref()
-                            == std::option::Option::None.as_deref()))
-                        && (policy.rename_suffix.clone().as_deref()
-                            == std::option::Option::None.as_deref()))
+                        && (policy.rename_prefix.clone() == std::option::Option::None))
+                        && (policy.rename_suffix.clone() == std::option::Option::None))
                     {
                         Some(authored.clone())
                     } else {
@@ -18472,9 +18460,9 @@ pub fn policy_is_untagged(policy: Rc<RustEnumWireSerde>) -> bool {
 
 pub fn policy_is_string_variant(policy: Rc<RustEnumWireSerde>) -> bool {
     (((!v1_rt::contains(policy.enum_attr.clone(), "tag =".to_string())
-        && (policy.rename_prefix.clone().as_deref() == std::option::Option::None.as_deref()))
-        && (policy.rename_suffix.clone().as_deref() == std::option::Option::None.as_deref()))
-        && (policy.rename_style.clone().as_deref() == std::option::Option::None.as_deref()))
+        && (policy.rename_prefix.clone() == std::option::Option::None))
+        && (policy.rename_suffix.clone() == std::option::Option::None))
+        && (policy.rename_style.clone() == std::option::Option::None))
 }
 
 pub fn wire_variant_rename_attr_for_policy(
@@ -20219,7 +20207,7 @@ pub fn emit_fn_def(
     {
         let si = scope.type_env.source_indices.clone();
         let host_text_op = rust_host_string_op_fn_emit(name.clone(), scope.module_name.clone());
-        if (host_text_op.clone().as_deref() != std::option::Option::None.as_deref()) {
+        if (host_text_op.clone() != std::option::Option::None) {
             return match host_text_op.clone() {
                 Some(op_fn) => op_fn.clone(),
                 std::option::Option::None => "".to_string(),
@@ -22288,7 +22276,7 @@ pub fn pattern_parent_enum(
     scrut_type: String,
     type_summaries: Rc<TypeSummaryIndex>,
 ) -> Option<String> {
-    if (parent_enum.clone().as_deref() != std::option::Option::None.as_deref()) {
+    if (parent_enum.clone() != std::option::Option::None) {
         parent_enum.clone()
     } else {
         if (scrut_type.clone() == "".to_string()) {
@@ -22501,7 +22489,7 @@ pub fn variant_pattern_parent_unresolved(
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        ((resolved_parent.clone().as_deref() == std::option::Option::None.as_deref())
+        ((resolved_parent.clone() == std::option::Option::None)
             && !is_optional_variant_name(bare_name.clone()))
     }
 }
@@ -23720,7 +23708,7 @@ pub fn resolved_variant_pattern_shape_for(
         );
         let optional_variant = (is_optional_variant_name(bare_name.clone())
             && (is_optional_parent(resolved_parent.clone())
-                || (resolved_parent.clone().as_deref() == std::option::Option::None.as_deref())));
+                || (resolved_parent.clone() == std::option::Option::None)));
         let rust_name = if optional_variant.clone() {
             rust_optional_variant_spelling(bare_name.clone())
         } else {
@@ -24657,7 +24645,7 @@ pub fn emit_var_ref(
         );
         if (((leaf_name.clone() == "none".to_string())
             || (leaf_name.clone() == "None".to_string()))
-            && (variant_parent.clone().as_deref() == std::option::Option::None.as_deref()))
+            && (variant_parent.clone() == std::option::Option::None))
         {
             emit_none_keyword_for_resolved_type(resolved_type.clone())
         } else {
@@ -24669,9 +24657,7 @@ pub fn emit_var_ref(
                 if (rust_native_variant_spelling_of_binding(
                     binding_kind.clone(),
                     leaf_name.clone(),
-                )
-                .as_deref()
-                    != std::option::Option::None.as_deref())
+                ) != std::option::Option::None)
                 {
                     match rust_native_variant_spelling_of_binding(
                         binding_kind.clone(),
@@ -24822,7 +24808,7 @@ pub fn emit_typed_expr_base(
                 );
                 if (((leaf_name.clone() == "none".to_string())
                     || (leaf_name.clone() == "None".to_string()))
-                    && (variant_parent.clone().as_deref() == std::option::Option::None.as_deref()))
+                    && (variant_parent.clone() == std::option::Option::None))
                 {
                     emit_none_keyword_for_resolved_type(texpr.inferred.clone())
                 } else {
@@ -24966,9 +24952,7 @@ pub fn field_access_field_is_boxed(
                             field_ty_name.clone(),
                             RenderTarget::Rust,
                         ),
-                    )
-                    .as_deref()
-                        != std::option::Option::None.as_deref());
+                    ) != std::option::Option::None);
                 if grounds_to_host_scalar.clone() {
                     false
                 } else {
@@ -26098,8 +26082,7 @@ pub fn call_target_runtime_primitive_name(target: Rc<CallTargetIdentity>) -> Opt
 }
 
 pub fn call_target_is_runtime_primitive(target: Rc<CallTargetIdentity>) -> bool {
-    (call_target_runtime_primitive_name(target.clone()).as_deref()
-        != std::option::Option::None.as_deref())
+    (call_target_runtime_primitive_name(target.clone()) != std::option::Option::None)
 }
 
 pub fn call_target_unrealized_primitive_name(target: Rc<CallTargetIdentity>) -> String {
@@ -26360,8 +26343,7 @@ pub fn emit_rust_expr_record_lit(
                         TypeSummaryQuestion::QuestionNotDeclared => true,
                         TypeSummaryQuestion::QuestionNameAmbiguous { leaf: _, .. } => false,
                     });
-            let peeled_type_name = if ((((parent_enum.clone().as_deref()
-                == std::option::Option::None.as_deref())
+            let peeled_type_name = if ((((parent_enum.clone() == std::option::Option::None)
                 && (expanded_rt.connective.clone() == Connective::Conj))
                 && (expanded_rt.ident_span.clone() != std::option::Option::None))
                 && !concrete_peel_would_erase_optional_ctor.clone())
@@ -27758,9 +27740,7 @@ pub fn constructor_literal_leaf(
         ExprData::ExprVar {
             binding_kind: bk, ..
         } => {
-            if (variant_parent_from_binding_kind(bk.clone()).as_deref()
-                != std::option::Option::None.as_deref())
-            {
+            if (variant_parent_from_binding_kind(bk.clone()) != std::option::Option::None) {
                 value_ref_qualified_leaf(crate::v1_std_core::expr_var_name_at(
                     n.clone(),
                     source_indices.clone(),
@@ -28794,8 +28774,8 @@ pub fn fill_op_default_args(
         let unnamed_args = Rc::new({
             let mut __result = Vec::new();
             for a in ordered.iter().cloned() {
-                if (crate::v1_std_core::arg_name_at(a.clone(), si.clone()).as_deref()
-                    == std::option::Option::None.as_deref())
+                if (crate::v1_std_core::arg_name_at(a.clone(), si.clone())
+                    == std::option::Option::None)
                 {
                     __result.push(a);
                 }
@@ -31381,7 +31361,7 @@ pub fn emit_typed_method_call(
                     shared_types.clone(),
                     emit_info.clone(),
                 );
-                if (algebra_field_call.clone().as_deref() != std::option::Option::None.as_deref()) {
+                if (algebra_field_call.clone() != std::option::Option::None) {
                     match algebra_field_call.clone() {
                         Some(field_call) => field_call.clone(),
                         std::option::Option::None => "".to_string(),
@@ -31588,9 +31568,7 @@ if rust_method_template_result_wraps_in_rc(method_name.clone()) {
                     depth.clone(),
                     shared_types.clone(),
                     emit_info.clone(),
-                )
-                .as_deref()
-                    != std::option::Option::None.as_deref())
+                ) != std::option::Option::None)
                 {
                     match rust_callable_field_method_call(
                         method.clone(),
@@ -33514,8 +33492,8 @@ pub fn emit_typed_match_arm_body_str(
                 ..
             } => {
                 let body_name = crate::v1_std_core::expr_var_name_at(arm_b.clone(), si.clone());
-                if (variant_parent_from_binding_kind(body_binding_kind.clone()).as_deref()
-                    != std::option::Option::None.as_deref())
+                if (variant_parent_from_binding_kind(body_binding_kind.clone())
+                    != std::option::Option::None)
                 {
                     emit_var_ref(
                         body_name.clone(),
