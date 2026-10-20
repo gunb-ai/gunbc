@@ -1278,7 +1278,7 @@ fn selector_matches_rule(selector: TargetDiskSelector, device: StorageDevice) ->
 // still not admissible, so the split above cannot widen what may be installed onto -- it only changes which
 // refusal you get, and the witness pins exactly that.
 fn selector_admits_observed(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
-  selector_matches_rule(selector: selector, device: device) && device_is_persistent(device: device)
+  selector_matches_rule(selector: selector, device: device) && disk_may_be_erased_onto(device: device)
 }
 
 // WHY THE EMPTY AND MULTIPLE ARMS CANNOT BE SKIPPED BY A CALLER. This is the only function that turns a
@@ -1292,7 +1292,7 @@ fn select_target_disk(
     Present { value: cause } => SelectionRefused { cause: cause }
     // TWO COUNTS, TWO QUESTIONS, IN THIS ORDER. "How many disks does the rule pick out" and "how many of
     // those may be erased" are different questions, and collapsing them used to make one of the refusal arms
-    // dead (see device_is_persistent). The walk answers identity first, admissibility second, and reports the
+    // dead (see disk_erase_authorisation). The walk answers identity first, admissibility second, and reports the
     // first question that has no answer.
     Absent =>
       match candidate_count(selector: selector, observed: observed) {
@@ -1348,11 +1348,49 @@ fn select_target_disk(
 // the only answer available at seed time. It has to run on the MATCHED candidate rather than as a filter, so
 // that the refusal says "the disk your rule picked is not a legal target" instead of the far more misleading
 // "your rule matched nothing" — the first sends the operator to the drive, the second sends them to the selector.
-fn device_is_persistent(device: StorageDevice) -> Bool {
+// THE DISPOSITION, ENUMERATED PER ARM — review 83320. An earlier cut answered this with a hand-written Bool
+// written directly over extdeps.storage.types' three-arm `PersistenceKind`. The defect the review named is the
+// *shape of the answer*: the Bool listed the arms by hand at four call sites, so a fourth `PersistenceKind`
+// would arrive compile-clean and inherit an admissibility verdict nobody chose — on the code path that decides
+// whether an installer may erase a disk on an eight-bay board. This function now matches the upstream coproduct
+// exhaustively, with no default, so a new kind breaks the build here instead of quietly joining whichever group
+// its spelling happened to land in.
+//
+// THE TERMINAL JUSTIFICATION FOR THE TWO DENIALS COLLAPSING, stated rather than left implied: this function
+// answers ONE question — "may the installer erase onto this device" — and for that question the answer genuinely
+// is the same for both denied kinds, because only `Persistent` survives a reset and surviving a reset is the
+// whole requirement. It is NOT this function's job to carry *why*, and it does not have to, because the why is
+// already modelled where it is used: every refusal this feeds is
+// `DiskSelectionRefusalCause::CandidateIsNotPersistent { serial, persistence: PersistenceKind }`, built from
+// `storage_device_persistence` directly, so an operator is told `Ephemeral` or `CachedMirror` by name and can act
+// on the difference (an ephemeral namespace is volatile backing and is excluded outright; a cache mirror is
+// excluded because its partner may not survive, which is a question about the *other* device). A Bool that threw
+// the distinction away would have been a defect only if nothing else kept it; here the distinction has one home,
+// and it is the record a human reads. `disk_erase_authorisation` is where the decision is enumerated;
+// `disk_may_be_erased_onto` below is derived presence, existing only because `List.filter` wants a Bool.
+//
+// WITNESS RATHER THAN PLAIN BOOL, so the decision has a name and the admissible arm travels onward carrying the
+// kind it was admitted as — the same construction as `debconf_selection_answer` on this PR's debconf shelf, which
+// returns the answer kind rather than a Bool so a `seen` flag can never be credited as an answer. The witness here
+// is simply the `PersistenceKind` itself: presence means "the probe observed this device as one the installer may
+// erase onto", and the value says which kind earned that. No new record type, because the kind already is the
+// evidence, and minting a wrapper around it would be a second name for one fact.
+fn disk_erase_authorisation(device: StorageDevice) -> Optional<PersistenceKind> {
   match storage_device_persistence(d: device) {
-    Persistent => true
-    Ephemeral => false
-    CachedMirror => false
+    // THE ONE ADMISSIBLE ARM.
+    Persistent => Present { value: Persistent }
+    // BOTH DENIED ARMS ARE WRITTEN OUT, not grouped under a default, which is the point of the whole exercise:
+    // a future `PersistenceKind` must be decided here, by whoever adds it, before this module compiles.
+    Ephemeral => Absent
+    CachedMirror => Absent
+  }
+}
+// DERIVED PRESENCE, NOT AN ENUMERATION, and the only Bool in this path. The arms are decided above, so a new
+// `PersistenceKind` fails to compile at `disk_erase_authorisation` and can never reach here unconsidered.
+fn disk_may_be_erased_onto(device: StorageDevice) -> Bool {
+  match disk_erase_authorisation(device: device) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -1379,7 +1417,7 @@ fn matched_candidate(
 fn admissible_count(selector: TargetDiskSelector, observed: List<StorageDevice>) -> Int {
   observed
     .filter(device => selector_matches_rule(selector: selector, device: device))
-    .filter(device => device_is_persistent(device: device))
+    .filter(device => disk_may_be_erased_onto(device: device))
     .length()
 }
 
@@ -1389,7 +1427,7 @@ fn admissible_candidate(
 ) -> Optional<StorageDevice> {
   observed
     .filter(device => selector_matches_rule(selector: selector, device: device))
-    .filter(device => device_is_persistent(device: device))
+    .filter(device => disk_may_be_erased_onto(device: device))
     .first()
 }
 
@@ -1399,7 +1437,7 @@ fn admissible_candidate_labels(
 ) -> List<NonEmptyStr> {
   observed
     .filter(device => selector_matches_rule(selector: selector, device: device))
-    .filter(device => device_is_persistent(device: device))
+    .filter(device => disk_may_be_erased_onto(device: device))
     .map(device => candidate_identity_label(device: device))
 }
 
