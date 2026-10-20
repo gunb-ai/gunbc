@@ -40,6 +40,7 @@ import gunbc.plans.p4_home_serving_power_semantics {
   p4_fleet_observation,
   p4_fleet_sentence,
   p4_home_serving_power_semantics_plan,
+  p4_pr_state_instrument,
   p4_presence_standing,
   p4_ruling_record,
   p4_ruling_sentence,
@@ -679,20 +680,20 @@ fn p4_status_record_values() -> List<String> {
   [
     p4_ruling_record.ask_id,
     p4_ruling_record.asked_at,
-    p4_ruling_record.window,
+    to_string(p4_ruling_record.window_seconds / 60) + " minutes",
     p4_ruling_record.decided_by,
     p4_ruling_record.recorded_by,
     p4_ruling_record.recorded_at,
     p4_ruling_record.standing_words,
     p4_ruling_record.license,
     p4_ruling_record.overturn,
-    p4_branch_record.pr,
+    to_string(p4_branch_record.pr),
     p4_branch_record.branch,
     p4_branch_record.model_files,
-    p4_branch_record.state_instrument,
+    p4_pr_state_instrument(),
     p4_branch_record.tree_invariant,
     p4_branch_record.heal_artifact,
-    p4_fleet_observation.answered_at,
+    p4_fleet_observation.answered_at as String,
     p4_fleet_observation.answered_via,
     p4_fleet_observation.gpu_hosts,
     p4_fleet_observation.cards,
@@ -736,7 +737,11 @@ test fn the_carrier_names_the_status_instrument_and_transcribes_no_output() -> B
     // NEGATIVE: no transcribed merge state. Each measured absent from the shipped body; a future
     // edit that quotes one reddens this claim rather than rotting silently.
     && !any(
-      ["MERGEABLE", "BLOCKED", "BEHIND", "DIRTY", "mergeStateStatus", "unmerged", "head `"],
+      ["MERGEABLE", "BLOCKED", "BEHIND", "DIRTY", "mergeStateStatus", "UNMERGED", "unmerged", "head `",
+       // the retirement condition used to say "which is OPEN AND UNMERGED" — a status snapshot
+       // in prose that goes false the moment the PR lands, and one my lowercase check above let
+       // through. Both cases are forbidden now, so the hole cannot be re-opened by case.
+       "OPEN AND", "pending as PR"],
       w => string_contains(s: t, pattern: w)
     )
     // and the standing the fleet observation derives is actually stated in the body
