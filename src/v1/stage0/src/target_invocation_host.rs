@@ -1859,10 +1859,26 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
             subjects.push(module.to_string());
         }
     }
+    // THE TREE THE POPULATION IS READ FROM (GUNBC_CENSUS_TREE): the base receipt reads the merge-base worktree with THIS
+    // checkout's compiler, run from this checkout, so the binary-freshness gate keeps judging the binary against the tree
+    // it was built from. Unset: this checkout's own roots.
+    let population_roots: Vec<String> = match std::env::var("GUNBC_CENSUS_TREE") {
+        Ok(tree) if !tree.is_empty() => source_roots
+            .iter()
+            .map(|root| {
+                std::path::Path::new(&tree)
+                    .join(root)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect(),
+        _ => source_roots.to_vec(),
+    };
     let (controls, union) = match cli_run::run_census_controls_and_subjects(
         source_roots,
         &[vec![fixture_root], vec![unindexed_root]],
         &subjects,
+        &population_roots,
     ) {
         Ok(runs) => runs,
         Err(cause) => return unreached(cause),
@@ -2230,14 +2246,15 @@ fn run_base_ambient_name_census(
         .map_err(|e| e.to_string())?
         .join("base_target");
     // The base receipt (`population` set) is read at the MERGE BASE with this executable run inside the base tree: the
-    // receipt's census must not depend on the head, and base's own older seed does not know the population.
+    // receipt's census must not depend on the head, and base's own older seed does not know the population. The spawn runs from THIS checkout
+    // (the freshness gate refuses a binary run from a tree it was not built from) and reads the base tree by GUNBC_CENSUS_TREE.
     let run = match population {
         Some(source_roots) => select_base_population(source_roots, &tree).and_then(|modules| {
             let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
             std::process::Command::new(exe)
                 .args(["test", "//gunbc/instruments:ambient-name-census"])
-                .current_dir(&tree)
                 .env("GITHUB_SHA", &merge_base)
+                .env("GUNBC_CENSUS_TREE", &tree)
                 .env("GUNBC_CENSUS_SUBJECTS", modules.join(","))
                 .output()
                 .map_err(|e| e.to_string())

@@ -5100,10 +5100,14 @@ fn run_census_scoped_with(
 /// once (v2.compiler.source_root_eval native_lane_census_scoped_ingest); its `binding_subject` lines
 /// say which subjects reach each member. One run per subject re-resolved every shared member once per
 /// subject (DESIGN §2), which on a wave of thirty rewritten modules outran the runner.
+///
+/// The compiler is built from `source_roots` (this checkout's); the subjects are read from `population_roots`, which
+/// are `source_roots` themselves unless a caller reads another tree with this checkout's compiler (the base receipt).
 pub fn run_census_controls_and_subjects(
     source_roots: &[String],
     control_root_sets: &[Vec<String>],
     subjects: &[String],
+    population_roots: &[String],
 ) -> Result<(Vec<CensusInferRun>, CensusInferRun), String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let controls = control_root_sets
@@ -5114,7 +5118,7 @@ pub fn run_census_controls_and_subjects(
         .iter()
         .map(|subject| format!("//{}:all", subject.replace('.', "/")))
         .collect();
-    let union = run_census_scoped_with(&preparation.binary_path, &labels, source_roots)?;
+    let union = run_census_scoped_with(&preparation.binary_path, &labels, population_roots)?;
     Ok((controls, union))
 }
 
