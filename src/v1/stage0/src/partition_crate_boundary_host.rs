@@ -114,7 +114,18 @@ fn absolute(path: &str) -> PathBuf {
 /// `write` installs the rendered bytes BEFORE any verdict is returned, so no refusal can name a
 /// file this run declined to produce.
 pub fn run_partition_crate_boundary(write: bool) -> PartitionCrateBoundaryOutcome {
-    let rendered = match &*stage0_crate_boundary_emit_outcome() {
+    run_partition_crate_boundary_over(&stage0_crate_boundary_emit_outcome(), write)
+}
+
+/// The same adjudication over an outcome the CALLER rendered. On a round that moves the partition
+/// the compiled-in rows are the predecessor's, so the regen round renders from the candidate
+/// tree's rows (`partition_crate_boundary_emit_outcome_over`) and hands the outcome here; this stays
+/// the one place a rendered population meets the tree.
+pub fn run_partition_crate_boundary_over(
+    outcome: &Stage0CrateBoundaryEmitOutcome,
+    write: bool,
+) -> PartitionCrateBoundaryOutcome {
+    let rendered = match outcome {
         Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause } => {
             return PartitionCrateBoundaryOutcome::CarrierRefused {
                 cause: format!("{cause:?}"),

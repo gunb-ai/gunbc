@@ -709,13 +709,9 @@ pub fn merge_remaining_declared(
             resolved.clone(),
             |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
                 if (dsig.inferred.clone() != std::option::Option::None) {
-                    v1_rt::rc_map_insert(
-                        acc.clone(),
-                        dsig.name.clone(),
-                        declared_to_resolved(dsig.clone()),
-                    )
+                    v1_rt::rc_map_insert(acc, dsig.name.clone(), declared_to_resolved(dsig.clone()))
                 } else {
-                    acc.clone()
+                    acc
                 }
             },
         )
@@ -762,12 +758,12 @@ pub fn topo_resolve_loop(
                          dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(
-                                    acc.clone(),
+                                    acc,
                                     dsig.name.clone(),
                                     declared_to_resolved(dsig.clone()),
                                 )
                             } else {
-                                acc.clone()
+                                acc
                             }
                         },
                     );
@@ -884,12 +880,12 @@ pub fn topo_resolve_loop(
                          dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(
-                                    acc.clone(),
+                                    acc,
                                     dsig.name.clone(),
                                     declared_to_resolved(dsig.clone()),
                                 )
                             } else {
-                                acc.clone()
+                                acc
                             }
                         },
                     );
