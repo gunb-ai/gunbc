@@ -28,7 +28,7 @@ import v1.std.core {
   NewlineIndex, authored_name_at,
   LeafOwner, SingleOwner, LeafAmbiguous,
   resource_use_name_at, resource_use_resource,
-  authored_ident
+  authored_ident, node_ident
 }
 import std.occurrence_identity { OccurrenceTransport, OccurrenceSynthetic }
 
@@ -277,7 +277,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
             if rt.ident_span == none {
               map(rt.children, child =>
                 let child_type = child_type_node(ch: child)
-                make_field_node(occurrence_identity: OccurrenceSynthetic, name: authored_name_at(source_indices: source_indices, node: child), type_expr: child_type, cardinality: Required, default_value: none, from_key_properties: [], span: span, ident: authored_ident(span: node_name_span(n: child), text: authored_name_at(source_indices: source_indices, node: child)))
+                make_field_node(occurrence_identity: OccurrenceSynthetic, name: authored_name_at(source_indices: source_indices, node: child), type_expr: child_type, cardinality: Required, default_value: none, from_key_properties: [], span: span, ident: node_ident(n: child))
               )
             } else {
               [make_field_node(occurrence_identity: OccurrenceSynthetic, name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key_properties: [], span: span, ident: authored_ident(span: no_span(), text: "value"))]

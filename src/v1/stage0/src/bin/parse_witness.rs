@@ -566,13 +566,38 @@ fn carried_text_keeps_the_spelling_of_quoted_keys_with_escapes() {
     );
 }
 
+// A rebuild COPIES the identity of the node it rebuilds (C4): node_ident returns the carried ident
+// itself. A rebuild that recomputed through the legacy reader would re-read the source (or fall back
+// to the structural name) and so would not reproduce a carried text that differs from that reading;
+// the tampered node is that discriminating input, and the copy must survive it.
+fn rebuild_copies_the_carried_ident_instead_of_recomputing() {
+    let source = "module test\ntype Widget = String\n";
+    let (indices, nodes, _) = parse_all_nodes(source);
+    let victim = nodes
+        .iter()
+        .find(|n| n.name == "Widget" && n.ident_span.is_some())
+        .expect("Widget node")
+        .clone();
+    let tampered = with_carried_text(&victim, "Carried");
+    let copied = v1_compiler::v1_std_core::node_ident(tampered.clone());
+    assert_eq!(
+        copied.text, "Carried",
+        "node_ident did not copy the carried text"
+    );
+    assert_eq!(copied.span, tampered.ident_span.as_ref().unwrap().span);
+    // RED: the recompute path reads something else here, so a recomputing rebuild would be caught
+    assert_ne!(
+        v1_compiler::v1_std_core::authored_name_at(indices, tampered),
+        "Carried",
+        "the recompute path cannot be told apart from a copy"
+    );
+}
+
 // A span whose file has no tokenized source has no obtainable text: construction refuses with a
 // typed failure, naming the span, never the structural name and never the empty string. The same
 // holds at the parse boundary, where every parsed identifier takes its text from that source.
 fn source_backed_construction_refuses_without_the_source_authority() {
-    use v1_compiler::v1_std_core::{
-        authored_ident_at, authored_text_at, AuthoredIdentOutcome, AuthoredTextOutcome,
-    };
+    use v1_compiler::v1_std_core::{source_index_at, SourceIndexOutcome};
     let span = Rc::new(SourceSpan {
         file: "test.dag".to_string(),
         start: 0,
@@ -582,24 +607,20 @@ fn source_backed_construction_refuses_without_the_source_authority() {
         Rc::new(im::HashMap::new());
     assert!(
         matches!(
-            &*authored_ident_at(empty.clone(), span.clone()),
-            AuthoredIdentOutcome::AuthoredIdentRefused { .. }
+            &*source_index_at(empty.clone(), span.clone()),
+            SourceIndexOutcome::SourceIndexRefused { .. }
         ),
-        "authored_ident_at substituted a spelling for a missing source"
+        "source_index_at substituted an index for a missing source"
     );
+    // positive control: with the source indexed, the same span finds its authority
+    let source = "module test\n";
     assert!(
         matches!(
-            &*authored_text_at(empty.clone(), span.clone()),
-            AuthoredTextOutcome::AuthoredTextRefused { .. }
+            &*source_index_at(indices_of(source), span.clone()),
+            SourceIndexOutcome::SourceIndexFound { .. }
         ),
-        "authored_text_at substituted a spelling for a missing source"
+        "source_index_at refused with the source indexed"
     );
-    // positive control: with the source indexed, the same span yields its slice
-    let source = "module test\n";
-    match &*authored_ident_at(indices_of(source), span.clone()) {
-        AuthoredIdentOutcome::AuthoredIdentBuilt { ident } => assert_eq!(ident.text, "module"),
-        _ => panic!("authored_ident_at refused with the source indexed"),
-    }
     let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
         source.to_string(),
         "test.dag".to_string(),
@@ -1304,6 +1325,10 @@ fn floor_suite() -> Vec<WitnessCase> {
         (
             "carried_text_keeps_the_spelling_of_quoted_keys_with_escapes",
             carried_text_keeps_the_spelling_of_quoted_keys_with_escapes,
+        ),
+        (
+            "rebuild_copies_the_carried_ident_instead_of_recomputing",
+            rebuild_copies_the_carried_ident_instead_of_recomputing,
         ),
         (
             "source_backed_construction_refuses_without_the_source_authority",

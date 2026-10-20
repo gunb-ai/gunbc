@@ -1235,7 +1235,7 @@ type AuthoredIdent {
 }
 
 // The explicit constructor: the caller supplies the spelling. For kernel and synthetic nodes only; a
-// node whose span lies in tokenized source takes authored_ident_in or authored_ident_at.
+// node whose span lies in tokenized source takes authored_ident_in.
 fn authored_ident(span: SourceSpan, text: String) -> AuthoredIdent {
   AuthoredIdent { span: span, text: text }
 }
@@ -1262,14 +1262,6 @@ fn authored_ident_in(index: NewlineIndex, span: SourceSpan) -> AuthoredIdent {
 type AuthoredIdentRefusal
   = AuthoredSourceNotIndexed { span: SourceSpan }
 
-type AuthoredTextOutcome
-  = AuthoredText { text: String }
-  | AuthoredTextRefused { refusal: AuthoredIdentRefusal }
-
-type AuthoredIdentOutcome
-  = AuthoredIdentBuilt { ident: AuthoredIdent }
-  | AuthoredIdentRefused { refusal: AuthoredIdentRefusal }
-
 type SourceIndexOutcome
   = SourceIndexFound { index: NewlineIndex }
   | SourceIndexRefused { refusal: AuthoredIdentRefusal }
@@ -1279,20 +1271,6 @@ fn source_index_at(source_indices: Map<String, NewlineIndex>, span: SourceSpan) 
   match map_get(source_indices, span.file) {
     Present { value: index } => SourceIndexFound { index: index }
     Absent => SourceIndexRefused { refusal: AuthoredSourceNotIndexed { span: span } }
-  }
-}
-
-fn authored_text_at(source_indices: Map<String, NewlineIndex>, span: SourceSpan) -> AuthoredTextOutcome {
-  match source_index_at(source_indices: source_indices, span: span) {
-    SourceIndexFound { index: index } => AuthoredText { text: authored_text_in(index: index, span: span) }
-    SourceIndexRefused { refusal: r } => AuthoredTextRefused { refusal: r }
-  }
-}
-
-fn authored_ident_at(source_indices: Map<String, NewlineIndex>, span: SourceSpan) -> AuthoredIdentOutcome {
-  match authored_text_at(source_indices: source_indices, span: span) {
-    AuthoredText { text: t } => AuthoredIdentBuilt { ident: AuthoredIdent { span: span, text: t } }
-    AuthoredTextRefused { refusal: r } => AuthoredIdentRefused { refusal: r }
   }
 }
 
