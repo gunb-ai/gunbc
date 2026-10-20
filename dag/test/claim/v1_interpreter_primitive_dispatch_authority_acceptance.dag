@@ -42,8 +42,8 @@ fn roster_rows_are_authored_in_roster_not_transcribed_from_rust() -> Bool {
 }
 
 fn self_reading_bridge_arm_is_deleted() -> Bool {
-  !v1_interpreter_free_call_arms()
-    |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows")
+  !(v1_interpreter_free_call_arms()
+    |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows"))
 }
 
 fn declared_residual_rows_retain_independent_dispositions() -> Bool {
