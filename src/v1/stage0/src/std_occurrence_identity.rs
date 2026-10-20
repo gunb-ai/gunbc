@@ -185,6 +185,7 @@ pub enum OccurrenceRole {
 pub enum ReferencePosition {
     ValuePosition,
     TypeAnnotationPosition,
+    ReturnPosition,
     LabelPosition,
     PatternTagPosition,
 }
@@ -1001,6 +1002,8 @@ pub struct ReferenceRole;
 pub struct ValuePosition;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TypeAnnotationPosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReturnPosition;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LabelPosition;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
