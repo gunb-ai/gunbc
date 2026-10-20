@@ -20,7 +20,7 @@ permissions:
   contents: read
 concurrency:
   queue: max
-  group: instrument-dispatch-queued
+  group: ${{ (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == 'base' && 'instrument-dispatch-wave-base') || (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '0/4' && 'instrument-dispatch-wave-0-of-4') || (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '1/4' && 'instrument-dispatch-wave-1-of-4') || (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '2/4' && 'instrument-dispatch-wave-2-of-4') || (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '3/4' && 'instrument-dispatch-wave-3-of-4') || (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == 'merge/4' && 'instrument-dispatch-wave-merge-of-4') || 'instrument-dispatch-queued' }}
   cancel-in-progress: false
 jobs:
   instrument:

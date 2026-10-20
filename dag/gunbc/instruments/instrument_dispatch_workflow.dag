@@ -1,7 +1,7 @@
 module gunbc.instruments.instrument_dispatch_workflow
 
 import std.types { Bool, Int, List, String }
-import std.algebra { list_append, list_map, length }
+import std.algebra { list_append, list_map, length, string_contains }
 import std.optional { Present }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
@@ -100,8 +100,89 @@ data instrument_dispatch_workflow_name: String = "instrument-dispatch"
 // dispatches, which follows from the default branch carrying this form.
 data instrument_dispatch_concurrency_group: String = "instrument-dispatch-queued"
 
+// OPERATOR RULING 2026-10-20, SUPERSEDING THE ONE-AT-A-TIME CONDITION ABOVE. What it replaces, quoted
+// from the paragraph it supersedes: "One group for every label, not one per label: per-label groups
+// would let two instruments run on the pool at once, which is the stacking the condition forbids."
+// The ruling admits CONCURRENCY under a declared cap: instrument dispatches may run at once up to a
+// FIXED, BOUNDED set of concurrency-group keys, and max concurrency IS the number of keys. GitHub has
+// no N-slot form, so the cap is spelled as a closed set of key LITERALS chosen by a comparison over
+// the closed wave_shard choice -- never by interpolating a run id, a run number, or any free-text
+// input into the key (a key that varies per run is no cap at all; a key interpolated from an input is
+// bounded only by what a dispatcher can type). Every non-wave label keeps the one existing group
+// 'instrument-dispatch-queued' and stays serialized among itself and every other non-wave run; the
+// wave gate's wave_shard choice maps to one key per CHOICE -- base, 0/4..K-1/K, merge/K -- derived
+// from the same data row as K, so the wave contributes K + 2 keys and the total cap is K + 3.
+// THE CAP, DECLARED: 7 (K = 4 from instrument_dispatch_wave_shard_count, plus the one serialized
+// queue). The roster: srv3 and srv4 each have 19 runners with ~11 busy, ~16 idle arm64 overall, so 7
+// concurrent instrument runs leave v2-bootstrap's lanes unstarved (operator's reason, 2026-10-20).
+// queue: max stays -- no dispatch is ever dropped; that half of the old condition is NOT superseded.
+// EXTERNAL FACT (GitHub product policy, DESIGN 3): the EVALUATED concurrency group value is capped at
+// 100 characters; every key this row can emit is far under it. The comparison values come only from
+// the closed choice; a workflow_dispatch input description over 160 characters invalidates the whole
+// file (recorded beside the row that emits one).
+data instrument_dispatch_concurrency_wave_group_prefix: String = "instrument-dispatch-wave-"
+
+// Group NAMES carry only alphanumerics, '-' and '_' (GitHub product policy, DESIGN 3 external fact):
+// a shard choice 'i/K' therefore keys as '<prefix>i-of-K', 'base' as '<prefix>base', 'merge/K' as
+// '<prefix>merge-of-K'. The key is derived from the CHOICE, never from the run.
+
+// THE CLOSED KEY SET, GENERATED FROM THE SAME ROW AS K: one key per wave_shard choice except 'none'
+// (a wave run dispatched with 'none' refuses at the reader with 2 before its group matters; it falls
+// into the serialized queue). Every key is a literal built here; nothing about a run flows into it.
+fn instrument_dispatch_wave_concurrency_group_keys() -> List<String> {
+  [join([instrument_dispatch_concurrency_wave_group_prefix, "base"], "")]
+    + list_map(xs: indices_below(n: instrument_dispatch_wave_shard_count), f: fn(i) {
+        join([instrument_dispatch_concurrency_wave_group_prefix, to_string(i), "-of-", to_string(instrument_dispatch_wave_shard_count)], "")
+      })
+    + [join([instrument_dispatch_concurrency_wave_group_prefix, "merge-of-", to_string(instrument_dispatch_wave_shard_count)], "")]
+}
+
+data instrument_dispatch_concurrency_cap: Int = length(instrument_dispatch_wave_concurrency_group_keys()) + 1
+
+// THE BOUNDEDNESS PREDICATE, ASSERTED BY THE WITNESS OVER THE EMITTED KEYS: a closed key is a literal
+// -- no expression braces, no context access, no input interpolation, not empty, and inside the group
+// charset. A key that fails this is unbounded by construction (per-run-unique, free-text, or
+// unrepresentable) and must not reach the yml. The witness REDs feed it the shapes the ruling forbids.
+fn instrument_dispatch_concurrency_key_is_closed(key: String) -> Bool {
+  length(key) > 0
+    && !string_contains(s: key, pattern: "${{")
+    && !string_contains(s: key, pattern: "inputs.")
+    && !string_contains(s: key, pattern: "github.")
+    && !string_contains(s: key, pattern: "/")
+    && !string_contains(s: key, pattern: " ")
+}
+
+// THE GROUP EXPRESSION: a chain of ternaries choosing among the closed literals, defaulting to the
+// serialized queue. The only dynamic values read are the CLOSED label and wave_shard choices, each
+// compared against a generated literal -- never interpolated into a key. The label guard keeps a
+// non-wave run dispatched with a wave_shard value out of the wave keys. '&&' binds tighter than the
+// ternary in the GitHub expression grammar, so 'A && B ? k : rest' groups as '(A && B) ? k : rest'.
+// THE GROUP EXPRESSION: a chain of '(guard && choice-match && KEY_LITERAL)' terms joined by '||',
+// ending in the serialized-queue literal. GitHub's expression language has NO ternary (a '?' ':'
+// makes the whole file invalid: observed at this repo, the push run dies jobless; DESIGN 3 external
+// fact). '||' returns the first truthy operand and every key literal is a non-empty string, so the
+// chain selects the first matching key and otherwise falls through to the queue -- and an empty key
+// could never be selected, which is why the closedness predicate above also refuses the empty key.
+// The only dynamic values read are the CLOSED label and wave_shard choices, each compared against a
+// generated literal; nothing about a run, and no free text, ever enters a key.
+fn instrument_dispatch_wave_concurrency_group_expression() -> String {
+  let term = fn(choice, key) {
+    join(["(inputs.", instrument_dispatch_label_input, " == '", render_label(l: instrument_dispatch_wave_label()), "' && inputs.", instrument_dispatch_wave_shard_input, " == '", choice, "' && '", key, "')"], "")
+  }
+  let shard_terms = list_map(xs: indices_below(n: instrument_dispatch_wave_shard_count), f: fn(i) {
+    term(join([to_string(i), "/", to_string(instrument_dispatch_wave_shard_count)], ""), join([instrument_dispatch_concurrency_wave_group_prefix, to_string(i), "-of-", to_string(instrument_dispatch_wave_shard_count)], ""))
+  })
+  let all_terms = [term("base", join([instrument_dispatch_concurrency_wave_group_prefix, "base"], ""))]
+    + shard_terms
+    + [term(join(["merge/", to_string(instrument_dispatch_wave_shard_count)], ""), join([instrument_dispatch_concurrency_wave_group_prefix, "merge-of-", to_string(instrument_dispatch_wave_shard_count)], "")),
+       join(["'", instrument_dispatch_concurrency_group, "'"], "")]
+  join(["${{ ", fold(all_terms, init: "", f: fn(acc, t) {
+    if length(acc) == 0 { t } else { join([acc, " || ", t], "") }
+  }), " }}"], "")
+}
+
 data instrument_dispatch_concurrency: ConcurrencySpec = ConcurrencyMappingQueueMax {
-  group: instrument_dispatch_concurrency_group,
+  group: instrument_dispatch_wave_concurrency_group_expression(),
   cancel_in_progress: Present { value: QueueMaxCancelInProgressFalse }
 }
 
