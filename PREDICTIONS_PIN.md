@@ -699,3 +699,16 @@ Sentinels (added): child-count reads return -1 (fact missing), -2 (ambiguous), >
   imports resolve. The earlier PARSE_RC=1 tested an EARLIER head (before the missing-comma fix at
   5b5e421 and before the escaped-quote fix); if two rows STILL fail, that is a real parse defect in
   my receipts on main -> get raw diagnostics per file and fix.
+
+## 2026-10-20T23:3x dispatch N: locate WHY two ledger rows are unindexed, and rerun the lens probe with src roots
+N1: per-file `gunbc run --entry <row> --source-root dag --source-root src` for the five rows.
+    A file that PARSES reaches member/entry execution -> error is NoSuchFunction/main (or ExitSuccess);
+    a file that FAILS to parse -> "parse-failed at <line>:<col>" or "no readable reference set".
+    PREDICTED: silent_first_wins... and a_value_of_any... FAIL (they are the two the import census said
+    "not found"; unparseable files are excluded from the module index -> import says not found);
+    the other three parse. If a "not found" row instead PARSES here, the cause is indexing, not syntax.
+N2: localize the regression per file: run the SAME entry on main's copy (git show origin/main:<path>)
+    and on the branch copy. silent_first_wins... landed via PR-1 #14485; if main's copy ALSO fails,
+    the defect is on main (report to parent); if only the branch copy fails, my append broke it -> fix now.
+N3: lens probe with BOTH roots registered: all 10 members print PASS/FAIL (v2.std.decl_index resolves
+    under src). L1-L4 then read as pre-registered.
