@@ -222,6 +222,18 @@ pub fn http_retry_after_wire(r: Rc<HttpRetryAfter>) -> String {
     }
 }
 
+pub fn http_unauthorized() -> i64 {
+    401
+}
+
+pub fn http_forbidden() -> i64 {
+    403
+}
+
+pub fn http_not_found() -> i64 {
+    404
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GET;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
