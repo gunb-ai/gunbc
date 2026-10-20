@@ -12225,18 +12225,43 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
       // node whose own-span fallback names the REFERENCING file, not std.nat, so the env-less read
       // never saw the native row and the field access refused (16 sites in std.measure, run 3).
       let grounds_to_host_scalar = realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: field_ty, dag_name: field_ty_name, env: scope.type_env, source_indices: scope.type_env.source_indices)) != none
-      // The DECLARED type expression is asked too: expand_type_for_field_access hands back the base's alias-expanded
-      // copy, whose field child can resolve past the alias (QualifiedName -> FreeMonoid<Symbol>, a recursive type),
-      // so the access boxed a field its struct declaration (rust_field_carrier_final_type) never boxed (run 176).
-      let declared_ty = field_node_type_expr(n: field_child)
-      let declared_spells_layer = type_position_spells_its_own_layer(n: declared_ty, leaf: qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: declared_ty)), type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices, generic_param_names: emit_info.fn_generic_param_names)
-      if grounds_to_host_scalar || declared_spells_layer { NeedsNoBox }
-      else {
-        needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names)
+      // THE DECLARATION'S OWN FIELD IS ASKED when the base names a non-generic declaration: expand_type_for_field_access
+      // hands back the base's alias-expanded copy, whose field child resolves PAST the alias (QualifiedName -> its right-hand
+      // side FreeMonoid<Symbol>, a recursive type, children=1, declaration=FreeMonoid; run 181 probe), so the access boxed a
+      // field the struct declaration (rust_field_carrier_final_type, which reads the declaration's child: children=0,
+      // declaration=QualifiedName) never boxed. One position, one node, one verdict.
+      let declared_field_ty = declared_field_type(base_ty: resolved_type(n: base), field: field, scope: scope, emit_info: emit_info)
+      match declared_field_ty {
+        Present { value: declared_ty } =>
+          if grounds_to_host_scalar { NeedsNoBox } else {
+          needs_box_wrapping(n: declared_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names)
+          }
+        Absent =>
+          if grounds_to_host_scalar { NeedsNoBox }
+          else {
+            needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names)
+          }
       }
     Absent => NeedsNoBox
   }
 }
+
+// The field type exactly as its NON-GENERIC declaring item spells it (none when the base names no declaration or a generic one,
+// whose field types only exist after substitution in the expanded copy).
+fn declared_field_type(base_ty: Node, field: String, scope: InferScope, emit_info: EmitGraphInfo) -> Node? {
+  match resolve_type_decl_routed(index: emit_info.type_decl_items, type_expr: base_ty, source_indices: scope.type_env.source_indices).resolution {
+    TypeDeclResolved { identity: _, decl: d } =>
+      if d.params |> count > 0 { none }
+      else {
+        match find_child_named(n: d, name: field, source_indices: scope.type_env.source_indices) {
+          Present { value: ch } => Present { value: resolved_type(n: ch) }
+          Absent => none
+        }
+      }
+    _ => none
+  }
+}
+
 
 // THE SEAL IS TRANSITIVE ON THE DESERIALIZE AXIS, and this is the population the rustc
 // census surfaced rather than one anticipated by reading. `extdeps.uri` declares two
