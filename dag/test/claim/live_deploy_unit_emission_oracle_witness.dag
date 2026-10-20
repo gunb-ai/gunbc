@@ -1,5 +1,6 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port }
 import std.measure { ByteSize, byte_size_count, second_count }
 import std.layout { render }
@@ -585,7 +586,7 @@ test fn belt_service_carries_spawn_workdir() -> Bool {
 test fn belt_service_execstart_is_belt_tick_cli() -> Bool {
   let svc = live_spec().service
   service_has(file: belt_service_file(), target: ExecStart { command: join([
-    svc.serve_binary as String,
+    fixed_serve_binary_path(binary: svc.serve_binary),
     " run --source-root dag --source-root src/v2",
     " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_launch_enqueue_cli",
   ], "") as NonEmptyStr })
@@ -756,7 +757,7 @@ test fn serve_unit_execstart_carries_admitted_entrypoint() -> Bool {
     RevisionNotInstalled => ""
   }
   service_has(file: serve_file(), target: ExecStart { command: join([
-    svc.serve_binary as String,
+    fixed_serve_binary_path(binary: svc.serve_binary),
     " serve --source-root dag --source-root src/v2",
     " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
     " --host ", host, " --port ", port,
