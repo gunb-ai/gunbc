@@ -229,8 +229,8 @@ use crate::v1_compiler_infer_patterns::ConstructorRoster::{ConstructorsClosed, C
 use crate::v1_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v1_compiler_infer_patterns::{
     check_match_exhaustiveness, constructor_fields, constructor_roster_for,
-    expand_scrut_type_for_variant_lookup, lookup_field_in_variant, lookup_result_subject,
-    lookup_variant_in_type, node_is_never_declaration, pattern_binding_type,
+    expand_scrut_type_for_variant_lookup, instantiate_scrutinee_expansion, lookup_field_in_variant,
+    lookup_result_subject, lookup_variant_in_type, node_is_never_declaration, pattern_binding_type,
     pattern_matches_constructor, pattern_subject_from_inferred, pattern_subject_from_node,
     ConstructorRoster, NodeLookupResult, PatternSubject,
 };
@@ -10534,6 +10534,13 @@ pub struct UnresolvedMethodFrontierRow {
 
 pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> {
     Rc::new(vec![Rc::new(UnresolvedMethodFrontierRow {
+    module_name: "v1.compiler.trace".to_string(),
+    method: "map".to_string(),
+    occurrences: 1,
+    receiver_shape: "Product(SpanMapping)".to_string(),
+    cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup".to_string()),
+}), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "test.claim.sccache_local_content_verified_on_read".to_string(),
     method: "contains".to_string(),
     occurrences: 1,
@@ -10894,9 +10901,13 @@ pub fn resolve_pattern_subject(
         } => crate::v1_compiler_infer_patterns::pattern_subject_from_node(
             crate::v1_std_core::preserve_outer_optional_cardinality(
                 scrutinee_type.clone(),
-                crate::v1_compiler_infer_lookup::resolve_scrutinee_type_node(
-                    scope.type_env.clone(),
+                crate::v1_compiler_infer_patterns::instantiate_scrutinee_expansion(
                     scrutinee_type.clone(),
+                    crate::v1_compiler_infer_lookup::resolve_scrutinee_type_node(
+                        scope.type_env.clone(),
+                        scrutinee_type.clone(),
+                    ),
+                    scope.type_env.clone(),
                 ),
             ),
         ),
