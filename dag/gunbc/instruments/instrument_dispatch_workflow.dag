@@ -72,16 +72,29 @@ import v2.extdeps.languages.bash_build {
 
 data instrument_dispatch_workflow_name: String = "instrument-dispatch"
 
-// ONE RUN AT A TIME ON THE SHARED POOL, AND NO DISPATCH DROPPED. The group used to be the bare
-// scalar form. Under it GitHub keeps ONE pending run per group and cancels the one already waiting
-// when another arrives, with no signal to the lane that dispatched it: on 2026-10-03 a queued
-// behavioral-equivalence run (37114501769) was cancelled before it started because another lane
-// dispatched a different instrument ninety minutes later, and its owner learned of it only by
-// reading the run list. A dispatched run is a receipt someone is waiting on, so losing one silently
-// is a fail-open. The queue-max form keeps every pending run and still serializes them, which is
-// the operator's condition held without the loss. One group for every label, not one per label:
-// per-label groups would let two instruments run on the pool at once, which is the stacking the
-// condition forbids.
+// ONE RUN AT A TIME PER MEASUREMENT, AND NO DISPATCH DROPPED. Two superseded conditions live in this
+// paragraph and neither is deleted, because both are load-bearing history for the shape chosen here.
+// (1) The group used to be the BARE SCALAR form. Under it GitHub keeps ONE pending run per group and
+// cancels the one already waiting when another arrives, with no signal to the lane that dispatched it:
+// on 2026-10-03 a queued behavioral-equivalence run (37114501769) was cancelled before it started
+// because another lane dispatched a different instrument ninety minutes later, and its owner learned of
+// it only by reading the run list. A dispatched run is a receipt someone is waiting on, so losing one
+// silently is a fail-open. queue: max with cancel-in-progress: false keeps every pending run and still
+// serializes -- that part of the operator's condition is held unchanged.
+// (2) The group then became ONE NAME FOR EVERY LABEL ('instrument-dispatch-queued'), on the reading
+// that any instrument running on the pool at the same time as another is the stacking the condition
+// forbids. The operator superseded that reading on 2026-10-20 for the Charter 4 measurement queues:
+// instruments are independent measurements, and putting every one of them behind one global slot made
+// a lane wait behind an unrelated instrument's 4-hour timeout. The group is now keyed PER DISPATCH --
+// ref plus label -- so one label on one ref still cannot run twice while unrelated measurements
+// proceed. The bound that replaces the global one is per-(ref,label), which is what the witness holds.
+// THE MIGRATION OVERLAP, DECLARED RATHER THAN HIDDEN. Concurrency is read from the workflow AT THE
+// DISPATCHING REF (the finding recorded below, from the 2026-10-03 triple cancellation), so an old ref
+// still dispatching the pre-fix global group can neither be cancelled by nor cancel a per-dispatch
+// group, and during the transition one run of each form can overlap. The bound is the same one the
+// cancellation fix carried: main carries the new form, and refs cut before this commit keep the old
+// group until they are rebased. That overlap is bounded in TIME (stale refs age out) and is strictly
+// narrower than what it replaces, which was permanent global serialization.
 //
 // THE GROUP IS NOT THE WORKFLOW'S NAME, AND THAT IS THE SECOND HALF OF THE REPAIR. Concurrency is read
 // from the workflow at the DISPATCHING ref, and one scalar-form dispatch cancels every pending run in
@@ -92,11 +105,38 @@ data instrument_dispatch_workflow_name: String = "instrument-dispatch"
 // every branch cut before this change still names the old group. Naming a group no pre-fix ref names
 // puts those dispatches out of reach of this queue.
 //
-// WHAT THAT COSTS, BOUNDED: a pre-fix ref's dispatch runs in the OLD group, so while such refs still
-// dispatch, one old-form run may execute alongside one run from this queue -- a relaxation of the
-// queue-do-not-stack condition by at most one extra concurrent run. It dissolves when no pre-fix ref
-// dispatches, which follows from the default branch carrying this form.
-data instrument_dispatch_concurrency_group: String = "instrument-dispatch-queued"
+// WHAT THAT COSTS, BOUNDED. A pre-fix ref's dispatch runs in the OLD global group, so it cannot be
+// cancelled by this queue and cannot cancel it. Under the single global group that overlap was at most
+// ONE extra concurrent run; keying per dispatch widens the bound to one old-form run per (ref, label)
+// still dispatching from a pre-fix ref, because the old group no longer contains those runs together.
+// It dissolves when no pre-fix ref dispatches, which follows from the default branch carrying this form
+// and from stale refs ageing out. The relaxation is therefore bounded in TIME and in the number of
+// stale refs, not permanent, and the ship gate below measures the thing that actually matters: the
+// required lane's wait during the window.
+
+// THE DISPATCH KEY. The label input name is defined here, ABOVE the group expression that reads it,
+// so this file keeps its existing property of containing no forward reference.
+data instrument_dispatch_label_input: String = "label"
+
+// The group's fixed head. Kept separate from the key parts so the witness can assert the head, the
+// ref part and the label part independently, and so no consumer has to re-derive the prefix.
+data instrument_dispatch_group_prefix: String = "instrument-dispatch"
+
+// ONE GROUP PER (REF, LABEL). The two parts are GitHub expressions, both in the contexts GitHub allows
+// at workflow level (github, inputs, vars -- extdeps.github.actions documents the restriction), and the
+// form is already in production at workflow level in heal.yml, whose group reads inputs.pull_number.
+// The separator is a literal hyphen rather than an expression so the rendered shape is fixed text the
+// witness can assert exactly.
+data instrument_dispatch_concurrency_group: String =
+  join(
+    [
+      instrument_dispatch_group_prefix,
+      "-${{ github.ref }}-${{ inputs.",
+      instrument_dispatch_label_input,
+      " }}",
+    ],
+    "",
+  )
 
 data instrument_dispatch_concurrency: ConcurrencySpec = ConcurrencyMappingQueueMax {
   group: instrument_dispatch_concurrency_group,
@@ -105,7 +145,6 @@ data instrument_dispatch_concurrency: ConcurrencySpec = ConcurrencyMappingQueueM
 
 data instrument_dispatch_job_id: String = "instrument"
 
-data instrument_dispatch_label_input: String = "label"
 
 data instrument_dispatch_directory: String = "instrument-dispatch"
 
