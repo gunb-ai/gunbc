@@ -1084,3 +1084,10 @@ All the whole-pool validations survive. W1/W2 (one module, one authority) move i
 Option B would make the path index's silent first-claim-wins permanent. That is a silent wrong answer, forbidden outright by DESIGN §5; the 2026-07-01 `extdeps.shell` floor break was exactly this. It is not a tradeoff this plan may make, so it needed no operator card.
 
 Lane P (P1.2) may start once lane A lands and O2 has been split into parse failures and genuine fragments. Its first change makes duplicate claims refuse in the path index.
+- **Regenerating mirrors on the remote runner (lane B).**
+  - `ctrl-build --remote` does not sync file writes back to your checkout. To capture a regenerated mirror, run on the runner:
+    1. `cargo build --release -p v1-compiler --bin claim_executor`
+    2. `claim_executor --regen-round-cost --source-root dag --source-root src/v2 --same-runner`
+    3. `git diff`, printed to the log.
+  - Then extract the printed patch and apply it locally.
+  - The heal job's later zero-diff pass proves the result is a fixed point. Never hand-edit a mirror.
