@@ -223,12 +223,18 @@ test fn the_alias_predicate_is_satisfiable_on_the_real_file() -> Bool {
 // PASSED; it is the executed proof that the split is load-bearing and the guard is not a decoration.
 // THE DISSOLUTION IS CONSUMED BY BEHAVIOR, NOT BY AN ECHO (§3c; review 83623 finding 2). The first
 // version read substrings out of a description literal written a few lines above it -- a change
-// detector that went red only when someone edited that literal, and that read nothing outside its
-// own file. This consumer reads nothing outside its own file either, but it tests the MECHANISM's
-// partition over typed evidence, in the corpus idiom (firmware_network_boot_standing_witness's
-// frontier arms): handing the trigger the declaration it names keeps it Pending, withholding it
-// FIRES it, and a lookalike declaration in the same module keeps it Pending. That third arm is the
-// one the string version could not have: a trigger bound to the wrong decl_name goes red there.
+// detector that went red only when someone edited that literal. This consumer tests the MECHANISM's
+// partition over typed evidence instead. It follows the frontier idiom's SHAPE but its EXPECTATIONS
+// are inverted, and that inversion is the point: dissolution_trigger_fired discharges a
+// DeclarationRetires trigger on ABSENCE (=> !present), the opposite polarity from the
+// DeclarationAppears frontier this file's siblings use. So:
+//   * [] (nothing present) -> the named predicate is absent -> FIRED.
+//   * [the exact named predicate] -> present -> PENDING (the debt is still live).
+//   * [a same-module lookalike] -> the EXACT ref is still absent -> FIRED. Presence is keyed on the
+//     full (module_path, decl_name) pair (declaration_ref_in_list is structural equality), so a
+//     lookalike does NOT make the named declaration present. This is the arm that separates a real
+//     keying from an "any decl in this module" collapse, and the string version could not have it:
+//     rebind the trigger's decl_name to the lookalike and the SECOND arm goes red.
 test fn the_dissolution_fires_only_when_the_named_predicate_retires() -> Bool {
   dissolution_status(condition: single_authority_alias_dissolve_on, present_decls: [])
     == DissolutionFired
@@ -251,7 +257,7 @@ test fn the_dissolution_fires_only_when_the_named_predicate_retires() -> Bool {
         ),
       ],
     )
-    == DissolutionPending
+    == DissolutionFired
 }
 
 test fn a_text_pairing_the_name_and_carrier_across_two_lines_is_refused() -> Bool {
