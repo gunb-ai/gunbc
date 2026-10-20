@@ -4084,12 +4084,12 @@ fn resolve_arm_scope_exit_bind(arm_ctx: ResolveContext, outer_ctx: ResolveContex
   }
 }
 
-// children[0] is the scrutinee (outer scope); every later child is an arm. The ordinal advances on
-// every child, refused or not, so a refused scrutinee never promotes the first arm into its place.
 // A MATCH'S CHILDREN BY THEIR SLOT (v2.std.node match_positional_slot): positional 0 is the scrutinee,
 // resolved in the enclosing scope; every later positional child is an arm, resolved under its own pattern's
 // binders; a labeled child is resolved in the enclosing scope. The ordinal is POSITIONAL, the same one
-// lexical scope and inference read, so a labeled child never shifts which child is the scrutinee.
+// lexical scope and inference read, so a labeled child never shifts which child is the scrutinee. Slots
+// are read off the tree, not off resolution's outcome, so a refused scrutinee never promotes the first arm
+// into its place.
 fn resolve_match_node_walk(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   child_walk_node(n: n, w: fold(node_child_slots(n: n), init: child_walk_init(), f: fn(acc, s) {
     resolve_match_child_step(ctx: ctx, acc: acc, slot: s)
