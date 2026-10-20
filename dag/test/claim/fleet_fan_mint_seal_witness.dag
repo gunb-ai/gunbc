@@ -2,7 +2,7 @@ module test.claim.fleet_fan_mint_seal_witness
 
 import std.types { String, Bool, Int }
 import std.optional { Present, Absent }
-import gunbc.compile_diagnostic_census { CensusNotRunnable, CensusObserved, CompileDiagnosticCensus }
+import gunbc.compile_diagnostic_census { CensusNotRunnable, CensusObserved, CompileDiagnosticCensus, census_blocking_histograms_equal }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_rows, census_total_count }
 
 // THE FLEET FAN OBSERVATION MINT IS TERMINAL-SEALED. Each probe is source handed to the compiler as
@@ -43,25 +43,20 @@ fn blocked_with(source: String, class: String) -> Bool {
   }
 }
 
-fn blocking_total(source: String) -> Int? {
-  match fan_census_of(source: source) {
-    CensusObserved { rows: rows } => Present { value: census_total_count(rows: census_blocking_rows(rows: rows)) }
-    CensusNotRunnable { cause: _ } => Absent
-  }
-}
 
 // THE CENSUS COUNTS THE WHOLE COMPILE, closure included (gunbc.compile_diagnostic_census), so an
 // absolute zero is permanently false for a fixture that imports anything. The exact form is a
 // DIFFERENTIAL over two sources that differ on one axis: the legal module adds one function to the
-// same imports, and its TOTAL blocking count (any class - an undefined name or a type error included)
-// must equal the baseline's, both censuses observed.
+// same imports, and its blocking HISTOGRAM (any class - an undefined name or a type error included)
+// must equal the baseline's key by key in both directions, both censuses observed. A total would let
+// one diagnostic disappearing offset another arriving.
 fn clean(source: String) -> Bool {
-  match blocking_total(source: legal_baseline_source) {
-    Present { value: base } => match blocking_total(source: source) {
-      Present { value: with_fn } => with_fn == base
-      Absent => false
+  match fan_census_of(source: legal_baseline_source) {
+    CensusObserved { rows: base } => match fan_census_of(source: source) {
+      CensusObserved { rows: with_fn } => census_blocking_histograms_equal(a: base, b: with_fn)
+      CensusNotRunnable { cause: _ } => false
     }
-    Absent => false
+    CensusNotRunnable { cause: _ } => false
   }
 }
 

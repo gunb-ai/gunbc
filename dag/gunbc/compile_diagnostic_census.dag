@@ -159,6 +159,18 @@ fn census_count_at_key(
   )
 }
 
+// EXACT EQUALITY OF TWO BLOCKING HISTOGRAMS, key by key in BOTH directions. A total can hide an
+// offsetting pair (one diagnostic gone, another arrived); ranging over both row lists makes the union
+// of keys the domain, summing counts per (class, subject, blocking). It is the delta comparator
+// below at an expected delta of zero everywhere.
+fn census_blocking_histograms_equal(
+  a: List<CompileDiagnosticCensusRow>,
+  b: List<CompileDiagnosticCensusRow>
+) -> Bool {
+  census_blocking_rows(rows: a) |> all(r => census_key_delta(r: r, red: a, green: b) == 0)
+    && census_blocking_rows(rows: b) |> all(r => census_key_delta(r: r, red: a, green: b) == 0)
+}
+
 fn census_key_delta(
   r: CompileDiagnosticCensusRow,
   red: List<CompileDiagnosticCensusRow>,

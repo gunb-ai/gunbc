@@ -2,7 +2,8 @@ module test.claim.fleet_fan_converge_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.decl_ref { decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, DissolutionFired, DissolutionPending, DissolutionUnbound, dissolution_status }
 import std.measure { percent }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
@@ -28,7 +29,11 @@ import gunbc.fleet.fleet_fan_converge {
   fleet_fan_decide,
   fleet_fan_family_refusal,
   fleet_fan_observed,
+  fleet_fan_boot_gate_consumer_frontier,
+  fleet_fan_boot_gate_ref,
   fleet_fan_standing,
+  fleet_fan_wire_read_adapter_frontier,
+  fleet_fan_wire_read_ref,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host { ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
@@ -263,4 +268,31 @@ test fn witness_subject_identity_is_checked() -> Bool {
       }
     }
   }
+}
+
+fn is_pending(c: DissolutionCondition) -> Bool {
+  match dissolution_status(condition: c, present_decls: []) {
+    DissolutionPending => true
+    DissolutionFired => false
+    DissolutionUnbound => false
+  }
+}
+
+fn is_fired_with(c: DissolutionCondition, ref: DeclarationRef) -> Bool {
+  match dissolution_status(condition: c, present_decls: [ref]) {
+    DissolutionFired => true
+    DissolutionPending => false
+    DissolutionUnbound => false
+  }
+}
+
+// EACH FRONTIER ROW IS PENDING WITHOUT ITS DECLARATION AND FIRED WITH IT, and is not fired by the other
+// row's declaration: the two triggers are independent.
+test fn witness_first_consumer_frontiers_are_bound_and_independent() -> Bool {
+  is_pending(c: fleet_fan_boot_gate_consumer_frontier)
+    && is_pending(c: fleet_fan_wire_read_adapter_frontier)
+    && is_fired_with(c: fleet_fan_boot_gate_consumer_frontier, ref: fleet_fan_boot_gate_ref)
+    && is_fired_with(c: fleet_fan_wire_read_adapter_frontier, ref: fleet_fan_wire_read_ref)
+    && !is_fired_with(c: fleet_fan_boot_gate_consumer_frontier, ref: fleet_fan_wire_read_ref)
+    && !is_fired_with(c: fleet_fan_wire_read_adapter_frontier, ref: fleet_fan_boot_gate_ref)
 }
