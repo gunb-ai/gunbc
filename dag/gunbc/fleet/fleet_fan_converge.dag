@@ -64,14 +64,13 @@ type FleetFanObserved sole_constructor {
   reading: FleetFanReading
 }
 
-// THE ONLY MINT OF AN OBSERVATION. It is sealed to NAMED callers and the production list is EMPTY:
-// no wire-read adapter exists yet, so a successful FleetFanObserved is uninhabited outside the named
-// terminal fixtures, and every standing below is a standing over SUPPLIED evidence, not over a
-// parsed fan read. When the adapter lands it is added here, and it must derive the reading from the
-// same raw response it hashes into the receipt (carrying both fields is not that pairing).
+// THE ONLY MINT OF AN OBSERVATION. It is sealed to NAMED callers: the MegaRAC wire-read adapter
+// (gunbc.fleet.fleet_fan_wire_read), which derives the reading from the same bodies it hashes into
+// the receipt, and the named terminal fixtures. A family without an adapter has no production mint.
 fn fleet_fan_observed(subject: FanObserveHost, receipt: FleetFanReadReceipt, reading: FleetFanReading) -> FleetFanObserved
   admit_callers: [
     decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "read"),
+    decl_ref(module_path: "gunbc.fleet.fleet_fan_wire_read", decl_name: "fleet_fan_observed_from_wire"),
   ]
 {
   FleetFanObserved { subject: subject, receipt: receipt, reading: reading }

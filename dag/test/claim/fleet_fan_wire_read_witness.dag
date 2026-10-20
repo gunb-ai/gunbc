@@ -1,0 +1,99 @@
+module test.claim.fleet_fan_wire_read_witness
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { percent, percent_count }
+import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, HeldAtDutyFloor, fleet_fan_policy }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.managed_host { managed_host_binding_for }
+import gunbc.machine_intake.fan_observe { FanObserveAdmitted, FanObserveHost, fan_observe_admission }
+import gunbc.fleet.fleet_fan_converge {
+  FleetFanControlObserved,
+  FleetFanControlUnobservable,
+  FleetFanReading,
+  FleetFanObserved,
+}
+import gunbc.fleet.fleet_fan_wire_read { fleet_fan_observed_from_wire, fleet_fan_reading_of_megarac_wire }
+
+// SUPPLIED: the two GET bodies, shaped as the cited MegaRAC rows (id, fan_number, fan_speed, fan_pwm).
+// EXECUTED: the real adapter fold, and the real managed row for the mint control.
+
+data auto_body: String = "{\"manager_disabled\":0}"
+data manual_body: String = "{\"manager_disabled\":1}"
+data uniform_25: String = "[{\"id\":1,\"fan_number\":1,\"fan_speed\":1500,\"fan_pwm\":25},{\"id\":2,\"fan_number\":2,\"fan_speed\":1500,\"fan_pwm\":25}]"
+data mixed: String = "[{\"id\":1,\"fan_number\":1,\"fan_speed\":0,\"fan_pwm\":0},{\"id\":2,\"fan_number\":2,\"fan_speed\":1500,\"fan_pwm\":25}]"
+
+fn read(m: String, f: String) -> FleetFanReading {
+  fleet_fan_reading_of_megarac_wire(manager_body: m, fan_info_body: f)
+}
+
+fn is_unobservable(r: FleetFanReading) -> Bool {
+  match r {
+    FleetFanControlUnobservable { cause: _ } => true
+    FleetFanControlObserved { control: _ } => false
+  }
+}
+
+fn is_automatic(r: FleetFanReading) -> Bool {
+  match r {
+    FleetFanControlObserved { control: c } =>
+      match c {
+        FirmwareAutomatic => true
+        HeldAtDutyFloor { floor: _ } => false
+      }
+    FleetFanControlUnobservable { cause: _ } => false
+  }
+}
+
+fn held_at(r: FleetFanReading, p: Int) -> Bool {
+  match r {
+    FleetFanControlObserved { control: c } =>
+      match c {
+        FirmwareAutomatic => false
+        HeldAtDutyFloor { floor: f } => percent_count(p: f) == percent_count(p: percent(p))
+      }
+    FleetFanControlUnobservable { cause: _ } => false
+  }
+}
+
+test fn witness_manager_automatic_reads_firmware_automatic() -> Bool {
+  is_automatic(r: read(m: auto_body, f: uniform_25))
+}
+
+test fn witness_manual_uniform_pwm_reads_held_at_that_duty() -> Bool {
+  held_at(r: read(m: manual_body, f: uniform_25), p: 25)
+}
+
+test fn witness_manual_with_disagreeing_rows_is_unobservable() -> Bool {
+  is_unobservable(r: read(m: manual_body, f: mixed))
+}
+
+test fn witness_manual_with_empty_or_unreadable_rows_is_unobservable() -> Bool {
+  is_unobservable(r: read(m: manual_body, f: "[]")) && is_unobservable(r: read(m: manual_body, f: "not json"))
+}
+
+test fn witness_out_of_range_or_missing_manager_wire_is_unobservable() -> Bool {
+  is_unobservable(r: read(m: "{\"manager_disabled\":2}", f: uniform_25))
+    && is_unobservable(r: read(m: "{}", f: uniform_25))
+}
+
+fn mint_reads(s: FanObserveHost) -> Bool {
+  let o = fleet_fan_observed_from_wire(subject: s, attempt: 1, manager_body: manual_body, fan_info_body: uniform_25)
+  match o.reading {
+    FleetFanControlObserved { control: c } =>
+      match c {
+        HeldAtDutyFloor { floor: f } => percent_count(p: f) == percent_count(p: percent(25))
+        FirmwareAutomatic => false
+      }
+    FleetFanControlUnobservable { cause: _ } => false
+  }
+}
+
+// INHABITANCE: the adapter's mint, run over mtcollins1's real binding, carries the reading derived
+// from the bodies it hashes. Absent subject fails the claim.
+test fn witness_wire_mint_over_the_real_subject_carries_the_derived_reading() -> Bool {
+  match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
+    FanObserveAdmitted { host: h } => mint_reads(s: h)
+    _ => false
+  }
+}

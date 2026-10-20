@@ -1,0 +1,117 @@
+module gunbc.fleet.fleet_fan_wire_read
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.content_hash { content_hash_of_value }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { percent }
+import extdeps.bmc.megarac_fan_policy {
+  CoolingManagerAutomatic,
+  CoolingManagerDisabledManual,
+  MegaRacManagerDisabledAdmitted,
+  MegaRacManagerDisabledRefused,
+  megarac_manager_disabled_of_wire,
+}
+import extdeps.languages.json.parse {
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonValue,
+  parse_json_document,
+}
+import gunbc.machine_intake.megarac_media_attach { images_array_elements, json_number_member }
+import gunbc.machine_intake.fan_observe { FanObserveHost }
+import product.fleet_fan_policy { FirmwareAutomatic, HeldAtDutyFloor }
+import gunbc.fleet.fleet_fan_converge {
+  FleetFanControlObserved,
+  FleetFanControlUnobservable,
+  FleetFanObserved,
+  FleetFanReadReceipt,
+  FleetFanReading,
+  fleet_fan_observed,
+}
+
+// THE MEGARAC WIRE-READ ADAPTER OF THE FLEET FAN FOLD: the two GET bodies (get_manager_status and
+// get_fan_info, extdeps.bmc.megarac megarac_op_fan_get_manager_status / megarac_op_fan_get_fan_info)
+// to a FleetFanReading, and the ONE production mint of a FleetFanObserved for this family.
+//
+// THE READING IS DERIVED FROM THE SAME BODIES THE RECEIPT HASHES, so a receipt cannot name a
+// response the reading was not read from.
+//
+// manager_disabled 0 is FirmwareAutomatic. manager_disabled 1 is HeldAtDutyFloor at the duty EVERY
+// fan_info row reports; rows that disagree, an empty list, a row with no integer fan_pwm, a wire
+// other than 0 or 1, or an unparseable document is FleetFanControlUnobservable with its cause. The
+// disagreement arm is deliberate: megarac_fan_policy documents that a fan_info row is not a rotor
+// (an absent header still lists at pwm 0), so a mixed list cannot be read as one duty without the
+// SDR join, and an unreadable standing restores automatic rather than being believed.
+
+fn megarac_fan_pwm_rows(fan_info_body: String) -> List<Int>? {
+  match parse_json_document(s: fan_info_body) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: v } =>
+      match images_array_elements(doc: v) {
+        Absent => none
+        Present { value: rows } =>
+          if (rows |> count) == 0 {
+            none
+          } else {
+            let pwms = rows |> flat_map(r => match json_number_member(doc: r, key: "fan_pwm") {
+              Present { value: w } => match parse_int(s: w) { Present { value: n } => [n]  Absent => [] }
+              Absent => []
+            })
+            if (pwms |> count) < (rows |> count) { none } else { Present { value: pwms } }
+          }
+      }
+  }
+}
+
+fn megarac_manager_wire(manager_body: String) -> Int? {
+  match parse_json_document(s: manager_body) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: v } =>
+      match json_number_member(doc: v, key: "manager_disabled") {
+        Absent => none
+        Present { value: w } => parse_int(s: w)
+      }
+  }
+}
+
+fn fleet_fan_reading_of_megarac_wire(manager_body: String, fan_info_body: String) -> FleetFanReading {
+  match megarac_manager_wire(manager_body: manager_body) {
+    Absent => FleetFanControlUnobservable { cause: "get_manager_status has no integer manager_disabled" as NonEmptyStr }
+    Present { value: wire } =>
+      match megarac_manager_disabled_of_wire(manager_disabled: wire) {
+        MegaRacManagerDisabledRefused { wire: _ } =>
+          FleetFanControlUnobservable { cause: "manager_disabled is neither 0 nor 1" as NonEmptyStr }
+        MegaRacManagerDisabledAdmitted { standing: CoolingManagerAutomatic } =>
+          FleetFanControlObserved { control: FirmwareAutomatic }
+        MegaRacManagerDisabledAdmitted { standing: CoolingManagerDisabledManual } =>
+          match megarac_fan_pwm_rows(fan_info_body: fan_info_body) {
+            Absent => FleetFanControlUnobservable { cause: "get_fan_info is not a nonempty list of rows with integer fan_pwm" as NonEmptyStr }
+            Present { value: pwms } =>
+              match pwms.first() {
+                Absent => FleetFanControlUnobservable { cause: "get_fan_info is empty" as NonEmptyStr }
+                Present { value: lead } =>
+                  if (pwms |> filter(p => p != lead) |> count) > 0 {
+                    FleetFanControlUnobservable { cause: "manual mode but fan_info rows report different fan_pwm" as NonEmptyStr }
+                  } else {
+                    match checked_int_to_nat(n: lead) {
+                      Absent => FleetFanControlUnobservable { cause: "fan_pwm is negative" as NonEmptyStr }
+                      Present { value: n } => FleetFanControlObserved { control: HeldAtDutyFloor { floor: percent(n) } }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn fleet_fan_observed_from_wire(subject: FanObserveHost, attempt: Int, manager_body: String, fan_info_body: String) -> FleetFanObserved {
+  fleet_fan_observed(
+    subject: subject,
+    receipt: FleetFanReadReceipt {
+      attempt: attempt,
+      raw_response: content_hash_of_value(value: concat(concat(manager_body, "\n"), fan_info_body) as NonEmptyStr),
+    },
+    reading: fleet_fan_reading_of_megarac_wire(manager_body: manager_body, fan_info_body: fan_info_body),
+  )
+}
