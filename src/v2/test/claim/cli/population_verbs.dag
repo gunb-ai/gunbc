@@ -21,6 +21,10 @@ import gunbc.parse_verdict_schema {
   MissDeclaredRefused,
 }
 import v2.cli.population_verbs {
+  SpelledRefused,
+  SpelledSelected,
+  spelled_in,
+  select_spelled_report,
   ParseVerdictReuse,
   parse_verdict_reuse_off,
   parse_verdict_reuse_requested,
@@ -431,6 +435,35 @@ test fn parse_verdict_reuse_off_has_no_standing_holds() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
+}
+
+// THE SPELLING SELECTION IS A SUPERSET, AND THE CONTROLS SAY WHICH WAY: a comment that only mentions the name is
+// SELECTED (no binding is claimed), a module that writes it as code is selected, and a module that writes neither
+// is not. A selection that dropped the comment-only module would be claiming a binding-level fact it cannot see.
+test fn a_comment_only_mention_of_a_ruled_spelling_is_selected_holds() -> Bool {
+  spelled_in(content: "module m\n// chars is mentioned here only\n", names: ["chars"])
+}
+
+test fn a_module_writing_a_ruled_spelling_as_code_is_selected_holds() -> Bool {
+  spelled_in(content: "module m\nfn f(s: String) -> Int { length(xs: chars(s: s)) }\n", names: ["chars"])
+}
+
+test fn a_module_spelling_no_ruled_name_is_not_selected_holds() -> Bool {
+  !spelled_in(content: "module m\nfn f(s: String) -> Int { 1 }\n", names: ["chars"])
+}
+
+test fn a_selection_over_no_ruled_names_selects_nothing_holds() -> Bool {
+  !spelled_in(content: "module m\n// chars\n", names: [])
+}
+
+test fn a_selection_reports_the_selected_names_and_holds() -> Bool {
+  let report = select_spelled_report(selection: SpelledSelected { names: ["a.m1", "a.m2"] })
+  report.held && report.text == "a.m1\na.m2"
+}
+
+test fn an_unreadable_module_refuses_the_whole_selection_holds() -> Bool {
+  let report = select_spelled_report(selection: SpelledRefused { module: "a.m3", cause: "unreadable" })
+  !report.held && report.text == "a.m3: unreadable"
 }
 
 // THE DECLARED COUNTS SHAPE IS BOUND TO THE PRINTED LINE, BYTE FOR BYTE. The fleet's reuse walk reads

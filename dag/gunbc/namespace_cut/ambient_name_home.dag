@@ -34,7 +34,10 @@ type AmbientNameHome {
   origin: AmbientNameHomeOrigin
 }
 
-// Empty until wave 1 adds its row: wave 0 lands the census and the diff, and moves no name.
+// One row per wave. Wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars, answered by the std.primitives authority
+// row where it binds at all, has its one declared home in std.host_text.
 fn ambient_name_homes() -> List<AmbientNameHome> {
-  []
+  [
+    AmbientNameHome { name: "chars", home: "std.host_text.chars", table: PrimitiveAuthorityTable, origin: ExistingDeclaration }
+  ]
 }
