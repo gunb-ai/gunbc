@@ -415,10 +415,31 @@ pub fn render_rust_leaf_declaration_type(
             }
             __result
         });
-        let declared_params = if ((explicit_params.clone().len() as i64) == 0) {
-            crate::v1_compiler_emit::named_type_vars_in_node(n.clone())
+        let leaf_is_reference = (n.connective.clone() == Connective::NoConnective);
+        let applied_args = if leaf_is_reference.clone() {
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in n.children.clone().iter().cloned() {
+                    __result.push(render_rust_type(
+                        crate::v1_compiler_infer_types::child_type_node(c.clone()),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ));
+                }
+                __result
+            })
         } else {
+            Rc::new(vec![])
+        };
+        let declared_params = if ((explicit_params.clone().len() as i64) > 0) {
             explicit_params.clone()
+        } else {
+            if ((applied_args.clone().len() as i64) > 0) {
+                applied_args.clone()
+            } else {
+                crate::v1_compiler_emit::named_type_vars_in_node(n.clone())
+            }
         };
         let declared_spelled = if ((declared_params.clone().len() as i64) > 0) {
             v1_rt::concat(
@@ -602,7 +623,7 @@ pub fn render_rust_leaf_declaration_type(
                         } else {
                             render_rust_leaf_layered(
                                 n.clone(),
-                                named_base.clone(),
+                                declared_spelled.clone(),
                                 shared_types.clone(),
                                 source_indices.clone(),
                                 emit_info.clone(),
