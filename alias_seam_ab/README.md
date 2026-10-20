@@ -3,8 +3,14 @@
 Answers: "does substituting in `transparent_alias_rhs` move the diagnostic produced at
 `variant_reference_inferred_node`?" (stern-bat-401 msg_11dcdef2(b)).
 
-RUN IT
-    cd <repo root> && bash gate_alias_seam_ab_14152.sh <ref-name> <tag>
+RUN IT (probe/alias-seam was DELETED on 2026-10-20 per stern-bat-401, so reconstitute first)
+    git checkout -b probe/alias-seam-restored <main-sha>
+    git apply alias_seam_ab/env_gate.patch                 # gates the guard in the compiled mirror
+    cp alias_seam_ab/alias_seam_ab_test.rs src/v1/tests/src/
+    # declare `mod alias_seam_ab_test;` in src/v1/tests/src/lib.rs (one line)
+    cd <repo root> && bash gate_alias_seam_ab_14152.sh probe/alias-seam-restored <tag>
+The gate refuses VOID unless the built tree contains GUNBC_ALIAS_GUARD_OFF, so a forgotten
+`git apply` fails loudly instead of reporting a control that was never a control.
 `<ref-name>` is a git ref name the runner can clone, NOT a SHA (a SHA gave a false VOID once).
 It builds once and runs twice, toggling `GUNBC_ALIAS_GUARD_OFF`; it exits VOID if the env gate
 is absent from the built tree, so a silent no-op can never be read as a control.
