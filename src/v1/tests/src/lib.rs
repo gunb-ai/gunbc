@@ -10,6 +10,8 @@ pub mod helpers;
 mod grounded_shared_carrier_wrap_test;
 
 #[cfg(test)]
+mod map_family_disposition_test;
+#[cfg(test)]
 mod map_insert_record_shaped_refusal_test;
 
 #[cfg(test)]
