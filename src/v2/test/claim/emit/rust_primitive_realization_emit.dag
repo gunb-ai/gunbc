@@ -344,7 +344,7 @@ test fn rust_named_field_row_does_not_realize_a_whole_declaration_callee() -> Bo
 //        cannot realize the receiver-polymorphic map contract; it has no row and refuses (the control below).
 fn rust_primitive_real_rows_text(callee: Symbol, args: List<TargetValueExpression>) -> String {
   match rust_primitive_emit(
-    expr: target_value_expression_resolved_primitive_call(callee: callee, args: args),
+    expr: target_value_expression_callable_apply(callee: callee, kind: PrimitiveRowCallee, args: args),
     catalog: rust_operator_realizations_catalog_node(),
     primitives: rust_primitive_rows_wired()
   ) {
@@ -355,7 +355,7 @@ fn rust_primitive_real_rows_text(callee: Symbol, args: List<TargetValueExpressio
 
 test fn rust_to_string_row_emits_a_method_call_on_the_receiver() -> Bool {
   rust_primitive_real_rows_text(
-    callee: ^to_string,
+    callee: ^to_string_contract,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
   ) == "(x).to_string()"
 }
@@ -364,7 +364,7 @@ test fn rust_to_string_row_emits_a_method_call_on_the_receiver() -> Bool {
 // typed as missing rather than emitting Rust that rustc rejects.
 test fn rust_map_has_no_row_because_its_receiver_is_polymorphic() -> Bool {
   rust_primitive_real_rows_text(
-    callee: ^map,
+    callee: ^map_contract,
     args: [
       target_value_expression_binding_ref(binding: ^rust_binding_param_x),
       target_value_expression_binding_ref(binding: ^rust_binding_param_y)
