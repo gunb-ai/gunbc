@@ -1129,13 +1129,15 @@ fn attempt_or_default(a: AttemptIdentity?) -> AttemptIdentity {
   }
 }
 
-// THE INSTANTS, AS ANNOTATED Timestamp ROWS PASSED BY NAME. Every spelling that routed a String
-// through a cast or a helper -- `x as Timestamp` on a reference, a String row, a helper with a
-// declared return type -- was refused against these two mints' parameters, while a `data` row whose
-// OWN annotation is `Timestamp` is accepted by the identical call elsewhere in the corpus. So the
-// banding happens where the instant is DECLARED, which is also where it belongs: an unannotated
-// string is not an instant, and the mint should never see one.
+// THE INSTANTS, DECLARED AS INSTANTS. These rows feed the comparison functions and the act, whose
+// parameters keep the Timestamp type; the two observation MINTS take text instead and refuse what the
+// calendar refuses, so a non-instant reaches a sealed record only by passing through their check.
+// What is declared here is what is compared: nothing re-casts its way past a bound.
 data standing_instant: Timestamp = "2026-10-19T12:00:00Z"
+
+// AN INSTANT at most standing_max_age past standing_instant, and one well past it. The staleness red
+// needs both, and needs them as REAL instants rather than as a Bool somebody set.
+data standing_instant_fresh: Timestamp = "2026-10-19T12:01:00Z"
 
 data standing_instant_stale: Timestamp = "2026-10-19T13:00:00Z"
 
