@@ -177,6 +177,18 @@ data environment_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THE ENVIRONMENTS HOW-TO: the page that states the OBLIGATION a gated job owes to every protection
+// rule on its environment. It gets its own authority because the sentence "a job that references an
+// environment must follow any protection rules for the environment before running or accessing the
+// environment's secrets" is not on the REST pages, and citing rest_authority for it would be a
+// citation that does not cite (§3b).
+data environments_how_to_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment"
+  }
+}
+
 // The machine-readable source the field-level claims below were checked against.
 data openapi_authority: ExternalAuthority = spec_authority
 
