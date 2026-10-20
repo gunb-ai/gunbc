@@ -34,7 +34,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // THE PREFIX IS NOT A CONVENIENCE. The wall these five discriminate is `v1.compiler.infer` --
 // `infer_record_lit_structural` judging a literal's key set against its declaration through
-// `declared_field_is_required`, `variant_tag_reference_argument_results` holding the one
+// `declared_field_is_required`, `payload_arm_tag_reference_waiver_results` holding the one
 // sanctioned `discriminant` seam, and the two bare-name routes beside them -- so the inference
 // family is where their subject already lives.
 //
@@ -114,15 +114,22 @@ test fn floor_record_completeness_bare_name_refuses_every_field() -> Bool {
     && blocking_count(source: record_completeness_bare_name_product_source, wanted: "MissingField") == 2
 }
 
-// THE RULING'S SEAM STAYS OPEN, AND NOTHING ELSE DOES. `discriminant(v: Fielded {})` is the
-// sanctioned tag-reference idiom (operator Ruling 1a, 2026-07-15) and compiles clean; the same
-// literal one expression away from that seam is a construction and refuses. Both arms are measured
-// so the exemption can neither vanish silently nor widen back into the hole it used to be.
+// THE WAIVER IS THE ENUMERATED LIST, AND NOTHING ELSE. `discriminant(v: Fielded {})` compiles clean
+// only in a module and arm listed in v1.compiler.infer payload_arm_tag_reference_waiver_sites
+// (gunbc.rung_drop payload_arm_tag_reference_hollow_value); the identical source in an unlisted
+// module, and the same literal one expression away from the argument position, are hollow
+// constructions and refuse. All three are measured so the waiver can neither widen back into the
+// corpus-wide hole it used to be nor vanish for the sites it still covers.
 data tag_reference_at_discriminant_seam_source: String = "module probe_floor_tag_ref_seam\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { discriminant(v: Fielded {}) }\n"
+data tag_reference_unlisted_module_source: String = "module probe_floor_tag_ref_unlisted\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { discriminant(v: Fielded {}) }\n"
 data tag_reference_off_the_seam_source: String = "module probe_floor_tag_ref_off\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { let v = Fielded {}\n  discriminant(v: v) }\n"
 
 test fn floor_record_completeness_discriminant_tag_reference_stays_clean() -> Bool {
   total_row_count_is_zero(census: census_of(source: tag_reference_at_discriminant_seam_source))
+}
+
+test fn floor_record_completeness_discriminant_tag_reference_outside_the_waiver_refuses() -> Bool {
+  blocking_count(source: tag_reference_unlisted_module_source, wanted: "MissingField") == 1
 }
 
 test fn floor_record_completeness_zero_field_literal_off_the_seam_refuses() -> Bool {
