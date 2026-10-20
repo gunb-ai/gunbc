@@ -171,6 +171,10 @@ pub use emit_host::{
     compile_dag_multi_module_fixture, compile_dag_operation_requires,
     compile_dag_primitive_call_edges, compile_dag_reference_occurrence_binding_census,
 };
+// PROBE ONLY (probe/family-map-fixture): re-export the census builtin so an
+// executed fixture can decide the Map family. Never ships: it is a visibility
+// widening made purely to observe, and the corpus reaches this builtin by name.
+pub use emit_host::{compile_dag_diagnostic_census, CompileDiagnosticCensus};
 pub use emit_host::{
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
 };
