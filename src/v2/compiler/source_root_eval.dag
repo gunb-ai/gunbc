@@ -3312,7 +3312,7 @@ fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensu
               NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
             Accepted { value: resolution, diagnostics: _ } =>
               let counted = native_decl_ref_census_over(ingest: ingest, front: front, context: resolution)
-              let census = DeclRefCensus { refused_files: context.refused_files, cited: counted.cited, resolutions: counted.resolutions, prose: counted.prose, sites: counted.sites }
+              let census = DeclRefCensus { refused_files: context.refused_files, cited: counted.cited, resolutions: counted.resolutions, prose: counted.prose, sites: counted.sites, unreadable: counted.unreadable }
               NativeDeclRefCensusOutput {
                 lines: list_append(
                   left: list_append(
