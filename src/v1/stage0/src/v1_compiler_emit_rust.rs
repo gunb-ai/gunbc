@@ -26302,7 +26302,20 @@ pub fn field_access_field_is_boxed(
                             scope.type_env.source_indices.clone(),
                         ),
                     ) != std::option::Option::None);
-                if grounds_to_host_scalar.clone() {
+                let declared_ty = crate::v1_std_core::field_node_type_expr(field_child.clone());
+                let declared_spells_layer = type_position_spells_its_own_layer(
+                    declared_ty.clone(),
+                    crate::v1_std_core::qualified_last_segment(
+                        crate::v1_std_core::authored_name_at(
+                            scope.type_env.source_indices.clone(),
+                            declared_ty.clone(),
+                        ),
+                    ),
+                    emit_info.type_decl_items.clone(),
+                    scope.type_env.source_indices.clone(),
+                    emit_info.fn_generic_param_names.clone(),
+                );
+                if (grounds_to_host_scalar.clone() || declared_spells_layer.clone()) {
                     Rc::new(NeedsBoxAnswer::NeedsNoBox)
                 } else {
                     needs_box_wrapping(
