@@ -816,7 +816,7 @@ fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expe
       children: [],
       inferred: Present { value: Resolved { node: expected_decided_variant_type(name: name, decided: decided, decided_name: decided_name, expected: expected, scope: scope) } },
       span: texpr.span,
-      ident: Present { value: synthetic_ident(span: texpr.span, text: name) }),
+      ident: node_ident(n: texpr)),
     diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: texpr.span, owner: Present { value: decided })
   }
 }
@@ -8669,7 +8669,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   children: [],
                   inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: binding.resolved) } },
                   span: span,
-                  ident: Present { value: synthetic_ident(span: span, text: name) }),
+                  ident: node_ident(n: texpr)),
                 diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
               }
             Absent =>
@@ -8681,7 +8681,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     children: [],
                     inferred: Present { value: Resolved { node: error_type } },
                     span: span,
-                    ident: Present { value: synthetic_ident(span: span, text: name) }),
+                    ident: node_ident(n: texpr)),
                   diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)]
                 }
               } else {
@@ -8692,7 +8692,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 children: [],
                 inferred: Present { value: Resolved { node: binding.resolved } },
                 span: span,
-                ident: Present { value: synthetic_ident(span: span, text: name) }))
+                ident: node_ident(n: texpr)))
               }
           }
         Absent =>
@@ -8706,7 +8706,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         children: [],
                         inferred: Present { value: Resolved { node: fsig.inferred } },
                         span: span,
-                        ident: Present { value: synthetic_ident(span: span, text: name) }))
+                        ident: node_ident(n: texpr)))
                     false =>
                       ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: name,
@@ -8714,7 +8714,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         children: [],
                         inferred: Present { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
                         span: span,
-                        ident: Present { value: synthetic_ident(span: span, text: name) }))
+                        ident: node_ident(n: texpr)))
                   }
             FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
               ambiguous_reference_refusal(name: name, candidates: callable_candidate_labels(candidates: ambiguous_fn_candidates), span: span, scope: scope)
@@ -8732,7 +8732,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                           children: [],
                           inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: gbinding.resolved) } },
                           span: span,
-                          ident: Present { value: synthetic_ident(span: span, text: name) }),
+                          ident: node_ident(n: texpr)),
                         diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
                       }
                     Absent =>
@@ -8746,7 +8746,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               children: [],
                               inferred: Present { value: Resolved { node: exp_enum } },
                               span: span,
-                              ident: Present { value: synthetic_ident(span: span, text: name) }),
+                              ident: node_ident(n: texpr)),
                             diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
                           }
                         Absent =>
@@ -8758,7 +8758,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                                 children: [],
                                 inferred: Present { value: Resolved { node: error_type } },
                                 span: span,
-                                ident: Present { value: synthetic_ident(span: span, text: name) }),
+                                ident: node_ident(n: texpr)),
                               diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)]
                             }
                           } else if binding_names_a_coproduct_arm(binding: gbinding, name: name, scope: scope) {
@@ -8772,7 +8772,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               children: [],
                               inferred: Present { value: Resolved { node: gbinding.resolved } },
                               span: span,
-                              ident: Present { value: synthetic_ident(span: span, text: name) }),
+                              ident: node_ident(n: texpr)),
                             diagnostics: bare_product_reference_missing_field_diagnostics(scope: scope, name: name, span: span)
                           }
                           }
@@ -8790,7 +8790,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                           children: [],
                           inferred: Present { value: Resolved { node: exp_enum } },
                           span: span,
-                          ident: Present { value: synthetic_ident(span: span, text: name) }),
+                          ident: node_ident(n: texpr)),
                         diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
                       }
                     Absent =>
@@ -8804,7 +8804,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         children: [],
                         inferred: Present { value: Resolved { node: error_type } },
                         span: span,
-                        ident: Present { value: synthetic_ident(span: span, text: name) })
+                        ident: node_ident(n: texpr))
                       InferResult {
                         typed: err_texpr,
                         diagnostics: [inference_error(
