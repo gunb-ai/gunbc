@@ -13900,7 +13900,7 @@ pub fn parse_param_list_acc(
             });
         }
         acc = v1_rt::rc_list_push(acc.clone(), r.param.clone());
-        ctx = parse_context_after_node(r.ctx.clone(), r.param.clone());
+        ctx = r.ctx.clone();
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 tokens = skip_newlines(__ec.clone());
@@ -14398,7 +14398,7 @@ pub fn parse_block(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
             });
         }
         let stmts = r.stmts.clone();
-        let ctx = parse_context_after_node_list(r.ctx.clone(), stmts.clone());
+        let ctx = r.ctx.clone();
         let tokens = skip_newlines(r.tokens.clone());
         let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
         if has_err(r.err.clone()) {
@@ -14477,7 +14477,7 @@ pub fn parse_stmts_acc(
             }
             {
                 let __tco_0 = r.tokens.clone();
-                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
+                let __tco_1 = r.ctx.clone();
                 let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
                 __tco_loop_tokens = __tco_0;
                 __tco_loop_ctx = __tco_1;
@@ -14856,7 +14856,6 @@ pub fn parse_expr_loop(
         let mut lhs_from = __tco_loop_lhs_from;
         #[allow(unused_mut)]
         let mut min_bp = __tco_loop_min_bp;
-        ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         if tok_is_eof(token_stream_first(tokens.clone())) {
             break Rc::new(ExprResult {
                 expr: lhs.clone(),
@@ -15812,7 +15811,7 @@ pub fn parse_lambda_stmts(
             }
             {
                 let __tco_0 = r.tokens.clone();
-                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
+                let __tco_1 = r.ctx.clone();
                 let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
                 __tco_loop_tokens = __tco_0;
                 __tco_loop_ctx = __tco_1;
@@ -16592,7 +16591,7 @@ pub fn parse_arg_list_acc(
             });
         }
         acc = v1_rt::rc_list_push(acc.clone(), r.arg.clone());
-        ctx = parse_context_after_node(r.ctx.clone(), r.arg.clone());
+        ctx = r.ctx.clone();
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 tokens = skip_newlines(__ec.clone());
@@ -16941,7 +16940,6 @@ pub fn parse_expr_loop_no_brace(
         let mut lhs_from = __tco_loop_lhs_from;
         #[allow(unused_mut)]
         let mut min_bp = __tco_loop_min_bp;
-        ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         let tok = token_stream_first(tokens.clone());
         if (tok_is_eof(tok.clone()) || tok_is_lbrace(tok.clone())) {
             break Rc::new(ExprResult {
@@ -17460,7 +17458,7 @@ pub fn parse_match_arm_stmts(
                 }
                 {
                     let __tco_0 = r.tokens.clone();
-                    let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
+                    let __tco_1 = r.ctx.clone();
                     let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
                     __tco_loop_tokens = __tco_0;
                     __tco_loop_ctx = __tco_1;
