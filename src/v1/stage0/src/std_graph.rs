@@ -267,9 +267,9 @@ pub fn graph_multi_node_scc_members(
             Rc::new(vec![]),
             |acc: Rc<Vec<String>>, component: Rc<Vec<String>>| {
                 if ((component.clone().len() as i64) > 1) {
-                    v1_rt::concat(acc.clone(), component.clone())
+                    v1_rt::concat(acc, component.clone())
                 } else {
-                    acc.clone()
+                    acc
                 }
             },
         )

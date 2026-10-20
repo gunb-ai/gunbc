@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <!-- Stoic Giant seal — white (warm-white) squircle body, black face
+       features. Solid fills, no evenodd cutouts, so the mark reads at
+       16px on any tab background. Outside the squircle is transparent. -->
+  <g transform="translate(-12 -12) scale(1.2)">
+    <path fill="#f4efe6" d="M40,20 H80 A30,30 0 0,1 110,50 V70 A30,30 0 0,1 80,100 H40 A30,30 0 0,1 10,70 V50 A30,30 0 0,1 40,20 Z"/>
+    <g fill="#0c0d0c">
+      <circle cx="35" cy="48" r="8"/>
+      <circle cx="85" cy="48" r="8"/>
+      <rect x="52" y="54" width="16" height="6" rx="2"/>
+    </g>
+  </g>
+</svg>
