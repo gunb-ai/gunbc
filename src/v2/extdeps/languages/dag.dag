@@ -2031,11 +2031,22 @@ fn dag_grammar_string_template_expr() -> GrammarExpr {
   )
 }
 
+// `none` IS SYNTAX FOR ABSENCE (ruling gunbc.design_ruling dag_absence_is_one_meaning), its own production
+// rather than a name: the name alternative is guarded by a not-predicate over the word, the same
+// construction `requires` uses to keep a resource from being named `none`, so the word has exactly one
+// reading and no binding can shadow it. A literal terminal stamps the token class, not the word, so
+// only the production's emitted identity (^dag_surface_none_literal) says `none` was written. Lowering
+// is v2.compiler.body_lowering_fold body_lower_none_literal.
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
+    left: dag_grammar_nonterminal(production: ^dag_production_none_literal),
+    right: dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_primary_name_expr(),
-      right: dag_grammar_primary_ident_suffix_expr()
+      left: grammar_expr_not_predicate(element: dag_grammar_keyword_expr(lexeme: "none")),
+      right: dag_grammar_sequence(
+        left: dag_grammar_primary_name_expr(),
+        right: dag_grammar_primary_ident_suffix_expr()
+      )
     ),
     right: dag_grammar_choice(
       left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
@@ -2088,6 +2099,7 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
         )
       )
     )
+  )
   )
   )
 }
@@ -3969,6 +3981,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_if_expr_expr(),
     emitted: ^dag_surface_if_expr
   )
+  let none_literal = dag_grammar_production(
+    name: ^dag_production_none_literal,
+    expression: dag_grammar_keyword_expr(lexeme: "none"),
+    emitted: ^dag_surface_none_literal
+  )
   let string_template = dag_grammar_production(
     name: ^dag_production_string_template,
     expression: dag_grammar_string_template_expr(),
@@ -4059,6 +4076,7 @@ fn dag_grammar_root() -> GrammarRoot {
       let_expr,
       expr,
       string_template,
+      none_literal,
       loop_expr,
       binary_expr,
       unary_expr,

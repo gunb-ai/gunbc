@@ -170,7 +170,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, optional_declaration_identity, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, absent_declaration_identity, optional_declaration_identity, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -1844,7 +1844,12 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
 fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
-      if emitted == ^dag_string_template {
+      if emitted == ^dag_surface_none_literal {
+        match body_lower_none_literal(shell: node) {
+          Accepted { value: lowered, diagnostics: _ } => OperandRefLowered { lowered: lowered }
+          Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
+        }
+      } else if emitted == ^dag_string_template {
         match body_lower_string_template(shell: node) {
           Accepted { value: lowered, diagnostics: _ } => OperandRefLowered { lowered: lowered }
           Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
@@ -3487,6 +3492,8 @@ fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_postfix_expr(shell: folded), shape: LoweredPostfix), folded: folded)
   } else if emitted == ^dag_surface_primary_expr {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_primary_expr(shell: folded), shape: LoweredPrimary), folded: folded)
+  } else if emitted == ^dag_surface_none_literal {
+    body_term_sealed_outcome(o: body_lower_none_literal(shell: folded), shape: LoweredOperatorExpression)
   } else if emitted == ^dag_string_template {
     match body_term_sealed_outcome(o: body_lower_string_template(shell: folded), shape: LoweredOperatorExpression) {
       Accepted { value: lowered, diagnostics: d } => Accepted { value: lowered, diagnostics: d }
@@ -3677,6 +3684,16 @@ fn body_lower_callback_encoding(operands: CallbackCallOperands) -> Outcome<Node>
   body_lower_callback_encoding_from(operands: operands, collection: body_lower_value_read(value: operands.collection))
 }
 
+// `none` IS THE MARKED REFERENCE TO std.optional's ABSENT VARIANT, generated at the source occurrence
+// exactly as `T?` writes the marked reference to the Optional declaration (v2.std.qualified_name
+// declaration_reference_node): resolve answers it by declaration identity, with no import, and refuses
+// it as resolve_reason_generated_reference_declaration_absent when the closure lacks std.optional. No
+// payload type is chosen here: with no expected Optional<T> the reference is the constructor of an
+// unsolved variable and infer refuses it, as a bare Absent is refused.
+fn body_lower_none_literal(shell: Node) -> Outcome<Node> {
+  outcome_accepted(value: declaration_reference_node(qn: absent_declaration_identity(), occurrence_id: shell.occurrence_id))
+}
+
 fn body_lower_algebra_constructor_reference(name: Symbol, source: Node) -> Node {
   body_lower_qualified_name_spine_node(
     segments: [
@@ -3836,6 +3853,8 @@ fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
           body_term_sealed_outcome(o: body_lower_let_expr(shell: node), shape: LoweredLet)
         } else if emitted == ^dag_surface_stmt_seq {
           body_term_sealed_outcome(o: body_lower_stmt_seq(shell: node), shape: LoweredStatementSequence)
+        } else if emitted == ^dag_surface_none_literal {
+          body_term_sealed_outcome(o: body_lower_none_literal(shell: node), shape: LoweredOperatorExpression)
         } else if emitted == ^dag_string_template {
           body_term_sealed_outcome(o: body_lower_string_template(shell: node), shape: LoweredOperatorExpression)
         } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
@@ -12390,6 +12409,8 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_thro
     body_lowering_lowered(o: outcome_accepted(value: shell))
   } else if body_producer_forward_is_registered_surface_identity(surface_identity: emitted) {
     body_lower_forward_row_apply(shell: shell, emitted: emitted)
+  } else if emitted == ^dag_surface_none_literal {
+    body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_none_literal(shell: shell)), shape: LoweredOperatorExpression)
   } else if emitted == ^dag_string_template {
     body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_string_template(shell: shell)), shape: LoweredOperatorExpression)
   } else if emitted == ^dag_surface_postfix_expr {
