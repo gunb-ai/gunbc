@@ -16,7 +16,7 @@ module v2.test.claim.outside_discovery_roots_census_witness
 // NO COUNT LITERALS (§5/§6). Equality of populations here is stated as containment both ways over derived
 // sets, never as a number copied from an instrument run.
 
-import std.types { String, Bool, List, Int }
+import std.types { String, Bool, List }
 import std.optional { Optional, Absent, Present }
 import std.algebra { Cons, Empty, is_empty }
 

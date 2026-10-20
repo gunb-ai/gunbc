@@ -21,8 +21,7 @@ module v2.workflow.outside_discovery_roots_census_live
 // describes is stamped beside the output by whoever runs it (head_stamp_line below), exactly as the S1
 // census has it -- which is also the move that would let a native runner supply the listing as an input.
 
-import std.types { String, Bool, List, Int }
-import std.optional { Optional, Absent, Present }
+import std.types { String, Bool, List }
 import std.algebra { trim }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.exec.command { LocalExec }
