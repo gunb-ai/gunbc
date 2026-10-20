@@ -2,8 +2,6 @@ module v2.test.claim.body_lowering.single_arm_match
 
 import std.live_tree { LiveTreeDisposition }
 import v2.compiler.reference_conservation_admission {
-  ExplainedDrop,
-  no_explained_drops,
   conservation_subject_of_text,
   conserved_normalize
 }
@@ -49,7 +47,7 @@ test fn two_arm_match_still_accepts_holds() -> Bool {
 }
 
 test fn three_arm_match_keeps_every_arm_holds() -> Bool {
-  match conserved_normalize(subject: three_arm_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: three_arm_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -64,7 +62,7 @@ test fn one_arm_shorthand_field_pattern_normalizes_holds() -> Bool {
 }
 
 test fn zero_arm_match_lowers_holds() -> Bool {
-  match conserved_normalize(subject: zero_arm_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: zero_arm_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }

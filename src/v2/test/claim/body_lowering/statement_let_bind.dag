@@ -2,8 +2,7 @@ module v2.test.claim.body_lowering.statement_let_bind
 
 import v2.compiler.reference_conservation_admission {
   conservation_subject_of_text,
-  conserved_normalize,
-  no_explained_drops
+  conserved_normalize 
 }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.std.type_binder { type_annotation_optional }
@@ -52,21 +51,21 @@ data let_in_form_source: String = "module m.t\nfn f() -> Int {\n  let x = 1 in x
 data typed_statement_let_source: String = "module m.t\nfn f() -> Int {\n  let x: Int = 1\n  x\n}\n"
 
 test fn statement_let_then_reference_lowers_holds() -> Bool {
-  match conserved_normalize(subject: let_then_reference_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: let_then_reference_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn statement_let_chain_lowers_holds() -> Bool {
-  match conserved_normalize(subject: let_chain_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: let_chain_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn unbound_statement_prefix_refuses_holds() -> Bool {
-  match conserved_normalize(subject: unbound_prefix_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: unbound_prefix_subject()) {
     Rejected { diagnostics: ds } =>
       symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
     Accepted { value: _, diagnostics: _ } => false
@@ -74,7 +73,7 @@ test fn unbound_statement_prefix_refuses_holds() -> Bool {
 }
 
 test fn single_statement_body_unchanged_holds() -> Bool {
-  match conserved_normalize(subject: single_statement_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: single_statement_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -169,7 +168,7 @@ test fn statement_let_binds_the_literal_value_holds() -> Bool {
 // asserted the let refused at its annotation. A lowering that dropped the edge again fails both
 // halves: conservation refuses the dropped `Int`, and no Bind carries an annotation.
 test fn typed_statement_let_lowers_with_its_annotation_carried_holds() -> Bool {
-  match conserved_normalize(subject: typed_let_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: typed_let_subject()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
       fold(node_subtree_nodes(root: t.root), init: 0, f: fn(acc, n) {

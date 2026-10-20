@@ -4,8 +4,7 @@ import std.live_tree { LiveTreeDisposition }
 import v2.compiler.reference_conservation_admission {
   conservation_subject_of_text,
   conserved_normalize,
-  conserved_normalize_of_text,
-  no_explained_drops
+  conserved_normalize_of_text 
 }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -42,7 +41,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // whereupon all three return body_lowering_reason_wrapper_retained_emitted.
 
 fn normalize_outcome(src: String) -> String {
-  match conserved_normalize_of_text(path: "declaration_structure_preserved_subject", text: src, explained: no_explained_drops()) {
+  match conserved_normalize_of_text(path: "declaration_structure_preserved_subject", text: src) {
     Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
     Accepted { value: _, diagnostics: _ } => "ACCEPTED"
   }
@@ -77,7 +76,7 @@ test fn record_literal_field_init_is_not_retained_holds() -> Bool {
 }
 
 test fn where_refinement_clause_interior_is_not_retained_holds() -> Bool {
-  match conserved_normalize(subject: where_refinement_alias_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: where_refinement_alias_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
