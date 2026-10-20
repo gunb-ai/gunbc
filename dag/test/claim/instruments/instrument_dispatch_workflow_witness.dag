@@ -12,6 +12,9 @@ import gunbc.instruments.instrument_dispatch_workflow {
   instrument_dispatch_memory_demands_fit_selected_target, instrument_dispatch_memory_demands_are_dispatchable,
   instrument_dispatch_whole_tree_memory_demand, instrument_dispatch_stage0_regen_memory_demand,
   instrument_dispatch_compute_run_unit_cold_memory_demand,
+  instrument_dispatch_wave_concurrency_group_keys, instrument_dispatch_wave_concurrency_group_expression,
+  instrument_dispatch_concurrency_key_is_closed, instrument_dispatch_concurrency_cap,
+  instrument_dispatch_concurrency_group,
 }
 import gunbc.instrument_targets { dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_dependency_wrong_capture_label }
 import gunbc.instruments.compute_run_unit_cold {
@@ -54,13 +57,40 @@ test fn the_workflow_is_dispatch_only_bounded_serialized_and_read_only_holds() -
     && !contains(t, "push:")
     && contains(t, "type: choice")
     && contains(t, "timeout-minutes: 240")
-    && contains(t, "concurrency:\n  queue: max\n  group: instrument-dispatch-queued\n  cancel-in-progress: false\n")
+    && contains(t, "concurrency:\n  queue: max\n  group: ")
+    && contains(t, "cancel-in-progress: false\n")
     && !contains(t, "concurrency: instrument-dispatch")
     && !contains(t, "group: instrument-dispatch\n")
     && contains(t, "contents: read")
     && !contains(t, ": write")
     && contains(t, "instrument-dispatch-receipt")
     && contains(t, "if: always()")
+    && contains(t, instrument_dispatch_wave_concurrency_group_expression())
+    && all(instrument_dispatch_wave_concurrency_group_keys(), k => contains(t, k))
+    && all(instrument_dispatch_wave_concurrency_group_keys(), k => instrument_dispatch_concurrency_key_is_closed(key: k))
+    && (length(xs: instrument_dispatch_wave_concurrency_group_keys()) + 1 == instrument_dispatch_concurrency_cap)
+    && (instrument_dispatch_concurrency_cap == 7)
+    // THE FRESH-NAME REPAIR (2026-10-20): the serialized queue must carry the fresh name, and the
+    // name GitHub holds wedged ('instrument-dispatch-queued', evidence recorded beside
+    // instrument_dispatch_concurrency_group) must appear NOWHERE in the emitted yml -- not as the
+    // default of the group expression, not as any literal. A yml still naming it queues non-wave
+    // labels into a group whose members never promote.
+    && contains(t, instrument_dispatch_concurrency_group)
+    && !contains(t, "instrument-dispatch-queued")
+}
+
+// THE BOUNDED SET IS THE CAP (operator ruling 2026-10-20). Max concurrency IS the number of keys, so
+// the key set is checked closed against the shapes the ruling forbids: a key built from the run id or
+// run number (per-run-unique: every dispatch gets its own group, which is no bound at all), a key
+// interpolated from a free-text input (bounded only by what a dispatcher can type), and an empty key.
+// Each is a RED: the predicate must refuse it. The positive half -- the emitted keys all pass -- lives
+// in the claim above, over the generated text, not over a hand-listed roster.
+test fn an_unbounded_or_per_run_concurrency_key_refuses() -> Bool {
+  !instrument_dispatch_concurrency_key_is_closed(key: "instrument-dispatch-run-${{ github.run_id }}")
+    && !instrument_dispatch_concurrency_key_is_closed(key: "instrument-dispatch-run-${{ github.run_number }}")
+    && !instrument_dispatch_concurrency_key_is_closed(key: "instrument-dispatch-${{ inputs.wave_shard }}")
+    && !instrument_dispatch_concurrency_key_is_closed(key: "")
+    && !instrument_dispatch_concurrency_key_is_closed(key: "instrument-dispatch-wave-0/4")
 }
 
 fn step_name(step: Step) -> String {
