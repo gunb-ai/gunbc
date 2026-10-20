@@ -84,7 +84,7 @@ test fn witness_out_of_range_or_missing_manager_wire_is_unobservable() -> Bool {
 
 fn decodes_unobservable(m: String?, f: String?) -> Bool {
   match megarac_fan_decode(family: AmiMegaRac, manager_response: m, fan_info_response: f) {
-    MegaRacFanDecoded { manager_receipt: _, fan_info_receipt: _, reading: r } => is_unobservable(r: r)
+    MegaRacFanDecoded { manager_body_hash: _, fan_info_body_hash: _, reading: r } => is_unobservable(r: r)
     MegaRacFanWrongFamily { family: _ } => false
   }
 }
@@ -94,20 +94,20 @@ fn decodes_unobservable(m: String?, f: String?) -> Bool {
 // under a foreign family are a typed refusal before any reading.
 fn real_subject_family_decodes(s: FanObserveHost) -> Bool {
   match megarac_fan_decode(family: fleet_fan_family_of(subject: s), manager_response: Present { value: manual_body }, fan_info_response: Present { value: uniform_25 }) {
-    MegaRacFanDecoded { manager_receipt: mr, fan_info_receipt: fr, reading: r } =>
-      held_at(r: r, p: 25) && has_receipt(h: mr) && has_receipt(h: fr)
+    MegaRacFanDecoded { manager_body_hash: mr, fan_info_body_hash: fr, reading: r } =>
+      held_at(r: r, p: 25) && has_hash(h: mr) && has_hash(h: fr)
     MegaRacFanWrongFamily { family: _ } => false
   }
 }
 
-fn has_receipt(h: ContentHash?) -> Bool {
+fn has_hash(h: ContentHash?) -> Bool {
   match h {
     Absent => false
     Present { value: _ } => true
   }
 }
 
-test fn witness_decode_over_the_real_subject_family_carries_the_derived_reading_and_two_receipts() -> Bool {
+test fn witness_decode_over_the_real_subject_family_carries_the_derived_reading_and_two_body_hashes() -> Bool {
   match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
     FanObserveAdmitted { host: h } => real_subject_family_decodes(s: h)
     _ => false
@@ -117,13 +117,13 @@ test fn witness_decode_over_the_real_subject_family_carries_the_derived_reading_
 test fn witness_foreign_family_is_a_typed_refusal_before_any_reading() -> Bool {
   match megarac_fan_decode(family: OpenBmc, manager_response: Present { value: auto_body }, fan_info_response: Present { value: uniform_25 }) {
     MegaRacFanWrongFamily { family: _ } => true
-    MegaRacFanDecoded { manager_receipt: _, fan_info_receipt: _, reading: _ } => false
+    MegaRacFanDecoded { manager_body_hash: _, fan_info_body_hash: _, reading: _ } => false
   }
 }
 
 fn unobservable_cause(m: String?, f: String?) -> NonEmptyStr? {
   match megarac_fan_decode(family: AmiMegaRac, manager_response: m, fan_info_response: f) {
-    MegaRacFanDecoded { manager_receipt: _, fan_info_receipt: _, reading: r } =>
+    MegaRacFanDecoded { manager_body_hash: _, fan_info_body_hash: _, reading: r } =>
       match r {
         FleetFanControlUnobservable { cause: c } => Present { value: c }
         FleetFanControlObserved { control: _ } => none
@@ -144,7 +144,7 @@ fn causes_differ(a: NonEmptyStr?, b: NonEmptyStr?) -> Bool {
 }
 
 // An absent response and an empty body are both unobservable with their own cause; the fan_info
-// response is consulted only in manual mode, and carries no receipt when absent or empty.
+// response is consulted only in manual mode, and carries no hash when absent or empty.
 test fn witness_no_response_and_empty_body_are_distinct_unobservable_causes() -> Bool {
   decodes_unobservable(m: none, f: Present { value: uniform_25 })
     && decodes_unobservable(m: Present { value: "" }, f: Present { value: uniform_25 })
@@ -178,18 +178,18 @@ test fn witness_real_capture_frontier_is_pending_not_discharged() -> Bool {
   }
 }
 
-// A receipt names bytes the reading rests on: in automatic mode (and on a refused wire) get_fan_info is
-// never consulted, so it carries no receipt even when supplied; in manual mode it does.
-test fn witness_fan_info_is_receipted_only_where_the_reading_reads_it() -> Bool {
-  receipts_of(m: auto_body, f: uniform_25, manager: true, fan_info: false)
-    && receipts_of(m: "{\"manager_disabled\":2}", f: uniform_25, manager: true, fan_info: false)
-    && receipts_of(m: manual_body, f: uniform_25, manager: true, fan_info: true)
+// A body hash names supplied text the reading rests on: in automatic mode (and on a refused wire) get_fan_info is
+// never consulted, so it carries no hash even when supplied; in manual mode it does.
+test fn witness_fan_info_is_hashed_only_where_the_reading_reads_it() -> Bool {
+  hashes_of(m: auto_body, f: uniform_25, manager: true, fan_info: false)
+    && hashes_of(m: "{\"manager_disabled\":2}", f: uniform_25, manager: true, fan_info: false)
+    && hashes_of(m: manual_body, f: uniform_25, manager: true, fan_info: true)
 }
 
-fn receipts_of(m: String, f: String, manager: Bool, fan_info: Bool) -> Bool {
+fn hashes_of(m: String, f: String, manager: Bool, fan_info: Bool) -> Bool {
   match megarac_fan_decode(family: AmiMegaRac, manager_response: Present { value: m }, fan_info_response: Present { value: f }) {
-    MegaRacFanDecoded { manager_receipt: mr, fan_info_receipt: fr, reading: _ } =>
-      has_receipt(h: mr) == manager && has_receipt(h: fr) == fan_info
+    MegaRacFanDecoded { manager_body_hash: mr, fan_info_body_hash: fr, reading: _ } =>
+      has_hash(h: mr) == manager && has_hash(h: fr) == fan_info
     MegaRacFanWrongFamily { family: _ } => false
   }
 }

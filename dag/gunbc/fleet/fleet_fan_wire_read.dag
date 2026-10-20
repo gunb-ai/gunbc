@@ -34,7 +34,7 @@ import gunbc.fleet.fleet_fan_converge { FleetFanControlObserved, FleetFanControl
 // this decoder over the bytes it received.
 //
 // EACH READ IS FRAMED SEPARATELY: a per-operation hash of exactly the bytes the reading was derived
-// from on the path that read them (get_fan_info carries a receipt only in manual mode), and a missing response (no response at all) is distinct from an empty body.
+// from on the path that read them (get_fan_info is hashed only in manual mode), and a missing response (no response at all) is distinct from an empty body.
 //
 // manager_disabled 0 is FirmwareAutomatic. manager_disabled 1 is HeldAtDutyFloor at the duty EVERY
 // fan_info row reports; rows that disagree, an empty list, a row with no integer fan_pwm, a wire
@@ -135,11 +135,13 @@ fn fleet_fan_reading_of_megarac_wire(manager_body: String, fan_info_body: String
   megarac_reading_of_manager_read(read: megarac_manager_read(manager_body: manager_body), fan_info_body: fan_info_body)
 }
 
+// The *_body_hash fields hash SUPPLIED NONEMPTY body text only. They are not transport or operation
+// receipts: nothing here says the text came from a BMC read.
 type MegaRacFanDecode
-  = MegaRacFanDecoded { manager_receipt: ContentHash?, fan_info_receipt: ContentHash?, reading: FleetFanReading }
+  = MegaRacFanDecoded { manager_body_hash: ContentHash?, fan_info_body_hash: ContentHash?, reading: FleetFanReading }
   | MegaRacFanWrongFamily { family: BmcFirmwareFamily }
 
-fn body_receipt(response: String?) -> ContentHash? {
+fn supplied_body_hash(response: String?) -> ContentHash? {
   match response {
     Absent => none
     Present { value: b } => if b == "" { none } else { Present { value: content_hash_of_value(value: b as NonEmptyStr) } }
@@ -161,13 +163,13 @@ fn response_gap(response: String?, operation: String) -> NonEmptyStr? {
   }
 }
 
-// The manager wire is decoded once. get_fan_info is consulted, and receipted, only on the manual
-// path that reads it; every other path carries no fan_info receipt.
+// The manager wire is decoded once. get_fan_info is consulted, and hashed, only on the manual
+// path that reads it; every other path carries no fan_info hash.
 fn megarac_decode_responses(manager_response: String?, fan_info_response: String?) -> MegaRacFanDecode {
-  let manager_receipt = body_receipt(response: manager_response)
+  let manager_body_hash = supplied_body_hash(response: manager_response)
   match response_gap(response: manager_response, operation: "get_manager_status") {
     Present { value: cause } =>
-      MegaRacFanDecoded { manager_receipt: manager_receipt, fan_info_receipt: none, reading: FleetFanControlUnobservable { cause: cause } }
+      MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: none, reading: FleetFanControlUnobservable { cause: cause } }
     Absent => {
       let read = megarac_manager_read(manager_body: response_text(response: manager_response))
       let fan_info_text = response_text(response: fan_info_response)
@@ -175,16 +177,16 @@ fn megarac_decode_responses(manager_response: String?, fan_info_response: String
         ManagerManual =>
           match response_gap(response: fan_info_response, operation: "get_fan_info") {
             Present { value: cause } =>
-              MegaRacFanDecoded { manager_receipt: manager_receipt, fan_info_receipt: none, reading: FleetFanControlUnobservable { cause: cause } }
+              MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: none, reading: FleetFanControlUnobservable { cause: cause } }
             Absent =>
-              MegaRacFanDecoded { manager_receipt: manager_receipt, fan_info_receipt: body_receipt(response: fan_info_response), reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
+              MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: supplied_body_hash(response: fan_info_response), reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
           }
         ManagerWireUnreadable =>
-          MegaRacFanDecoded { manager_receipt: manager_receipt, fan_info_receipt: none, reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
+          MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: none, reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
         ManagerWireRefused =>
-          MegaRacFanDecoded { manager_receipt: manager_receipt, fan_info_receipt: none, reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
+          MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: none, reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
         ManagerAutomatic =>
-          MegaRacFanDecoded { manager_receipt: manager_receipt, fan_info_receipt: none, reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
+          MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: none, reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
       }
     }
   }
