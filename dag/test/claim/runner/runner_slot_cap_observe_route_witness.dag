@@ -490,7 +490,11 @@ test fn observe_mode_yields_unreadable_when_the_cgroup_files_are_missing() -> Bo
       ])
       match standing_of(r: run, unit: unit) {
         Present { value: s } => match s {
-          SlotCapsUnread { cause: c } => string_contains(s: c, pattern: "cgroup grep exit=2") || string_contains(s: c, pattern: "No such file or directory")
+          // OWN scripted cause, and NOT the gap arm: this control is green only because the grep
+          // leg was attempted and the FILE text said missing -- never via the 255 fall-through.
+          SlotCapsUnread { cause: c } =>
+            (string_contains(s: c, pattern: "cgroup grep exit=2") || string_contains(s: c, pattern: "No such file or directory"))
+              && !string_contains(s: c, pattern: "cap-route scenario has no answer")
           _ => false
         }
         Absent => false
@@ -530,9 +534,46 @@ test fn observe_mode_answers_an_unplanned_command_with_the_refusal() -> Bool {
     Absent => false
     Present { value: unit } => {
       let run = observe(legs: [])
+      // (a) THE EXACT UNMATCHED WORDS, not just "refused": the dispatcher's own ledger must show it
+      // carried the production argv for the featured slot, so the refusal is about THIS command --
+      // an unplanned argv drifting in production would change the ledger words and this fails.
+      has_leg_containing(legs: legs_of(r: run), needle: show_command(unit: unit))
+        && match standing_of(r: run, unit: unit) {
+             Present { value: s } => match s {
+               SlotCapsUnread { cause: c } => string_contains(s: c, pattern: "cap-route scenario has no answer")
+               _ => false
+             }
+             Absent => false
+           }
+    }
+  }
+}
+
+// THE GAP ARM CANNOT FORGE A NEGATIVE. Mutation control for the manager's condition: take the
+// MISSING-FILE world and BREAK the grep leg's expected argv (one word off), so production's real
+// argv no longer matches any scripted key and falls to the gap arm. If the strengthened negative
+// controls were forgeable through the 255 arm, the missing-file shape would stay green here. It
+// must instead answer with the GAP phrase, not "No such file or directory": green iff the drifted
+// argv reds the own-cause assertion.
+test fn a_drifted_expected_argv_reds_the_missing_file_control() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let drifted_grep_key = concat(grep_command(control_group: cg), " --drifted")
+      let run = observe(legs: [
+        show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cg),
+        ScriptedCommand { remote_command: drifted_grep_key, answer: shell_failed(exit_code: 2, stderr: "grep: /sys/fs/cgroup: No such file or directory\n") },
+      ])
       match standing_of(r: run, unit: unit) {
         Present { value: s } => match s {
-          SlotCapsUnread { cause: c } => string_contains(s: c, pattern: "cap-route scenario has no answer")
+          SlotCapsUnread { cause: c } =>
+            // the gap arm took it (the scripted missing-file answer was NEVER delivered: its key
+            // drifted), so the strengthened missing-file control -- which demands its own cause and
+            // rejects the gap phrase -- is RED here. "No such file or directory" rides only in the
+            // un-delivered scripted answer; the gap arm's stderr carries only the gap phrase.
+            string_contains(s: c, pattern: "cap-route scenario has no answer")
+              && !string_contains(s: c, pattern: "No such file or directory")
           _ => false
         }
         Absent => false
