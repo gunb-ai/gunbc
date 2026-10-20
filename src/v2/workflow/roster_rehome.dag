@@ -6,6 +6,7 @@ import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.lexical_scope { ModuleRootBinding, module_root_bindings }
 import v2.compiler.reference_site_collector { HeadBindingUndecided, HeadBoundAtRootValue, HeadBoundInFrame, HeadLexicallyUnbound, ScopedReferenceSite, SiteHeadBinding, collect_scoped_module_reference_sites }
+import v2.compiler.resolution_provenance { reference_site_scope_path }
 import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
 import v2.std.compilers.lexing { Token }
 import v2.extdeps.languages.dag { parse_production_captured_child_optional, parse_qualified_name_segments_from_capture, qualified_name_from_module_node }
@@ -14,7 +15,8 @@ import v2.cli.repository_layout { repository_path_of_module_file, repository_sto
 import v2.std.decl_index { DeclFact, ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem, decl_facts_at }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Conj, TypeNode, Node, content_hash, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
-import v2.std.grammar { parse_production_emitted_identity_optional }
+import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
+import v2.std.node_query { find_named_child }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.provenance { SpanIndex }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -295,16 +297,25 @@ fn rehome_contract_in(home: String, name: String, root: Node, imported: List<Ali
   let matches = rehome_root_bindings_named(bindings: bindings, name: name)
   match matches {
     Cons { head: decl, tail: Empty } => {
-      let collected = collect_scoped_module_reference_sites(root: decl.declaration, imported: list_map(xs: imported, f: fn(b) { b.binding }))
+      let collected = collect_scoped_module_reference_sites(root: root, imported: list_map(xs: imported, f: fn(b) { b.binding }))
       if !is_empty(xs: collected.unreadable_roots) {
-        RehomeContractUnestablished { cause: "unreadable-reference-root " + home + "." + name }
+        RehomeContractUnestablished { cause: "unreadable-reference-root " + home }
       } else {
-        RehomeContractRead { node: decl.declaration, identities: list_map(xs: collected.sites, f: fn(st) { rehome_site_identity(site: st, home: home, imported: imported, bindings: bindings) }) }
+        RehomeContractRead { node: decl.declaration, identities: list_map(xs: rehome_sites_under(sites: collected.sites, name: name), f: fn(st) { rehome_site_identity(site: st, home: home, imported: imported, bindings: bindings) }) }
       }
     }
     Empty => RehomeContractUnestablished { cause: "no-root-declaration " + home + "." + name }
     _ => RehomeContractUnestablished { cause: "several-root-declarations " + home + "." + name }
   }
+}
+
+// The sites recorded under the declaration: a site whose scope path passes through the declaration's own name. A site in
+// another declaration that merely mentions the name in its path joins the list on BOTH sides alike only when the two
+// modules agree, so an over-inclusion can make a pair differ (refuse), never make different declarations equal.
+fn rehome_sites_under(sites: List<ScopedReferenceSite>, name: String) -> List<ScopedReferenceSite> {
+  fold_list(xs: sites, empty: [], cons: fn(acc, st) {
+    if fold_list(xs: reference_site_scope_path(site: st.site), empty: false, cons: fn(f, seg) { f || symbol_lexeme(sym: seg) == name }) { list_snoc_item(xs: acc, item: st) } else { acc }
+  })
 }
 
 fn rehome_root_bindings_named(bindings: List<ModuleRootBinding>, name: String) -> List<ModuleRootBinding> {
@@ -562,7 +573,7 @@ fn rehome_representation_sites(tokens: List<Token>, parse_root: Node, spans: Spa
       let imports = roster_import_decl_facts(parse_root: parse_root, spans: spans)
       let bare_sites = if bound { rehome_outside_imports(sites: rehome_token_sites(tokens: tokens, lexeme: bare, what: "constructor"), imports: imports) } else { [] }
       let spelled = list_map(xs: rehome_qualified_uses(parse_root: parse_root, spans: spans, qualified_name: rep.constructor), f: fn(u) { RehomeSite { start: u.start, end: u.end, what: "constructor" } })
-      let through_alias = rehome_outside_imports(sites: rehome_record_sites(tokens: tokens, lexeme: row.name), imports: imports)
+      let through_alias = rehome_headed_sites(parse_root: parse_root, spans: spans, name: row.name)
       fold_list(xs: rep.fields, empty: list_append_sites(a: list_append_sites(a: bare_sites, b: spelled), b: through_alias), cons: fn(acc, field) { list_append_sites(a: acc, b: rehome_field_read_sites(tokens: tokens, field: field)) })
     }
   }
@@ -594,24 +605,40 @@ fn rehome_token_sites(tokens: List<Token>, lexeme: String, what: String) -> List
 }
 
 // RECORD CONSTRUCTION OR DESTRUCTURING THROUGH THE REHOMED NAME ITSELF (side chat on #14553): `Int { pos: p, neg: n }` with
-// Int = GroupCompletion<Nat> is an admitted form that builds the old representation without naming its constructor. The site
-// is the name token directly followed by `{`.
-fn rehome_record_sites(tokens: List<Token>, lexeme: String) -> List<RehomeSite> {
-  fold_list(xs: tokens, empty: RehomeRecordScan { prev_text: "", prev_start: 0, prev_end: 0, sites: [] }, cons: fn(acc, t) {
-    RehomeRecordScan {
-      prev_text: rehome_lexeme_text(t: t),
-      prev_start: t.start,
-      prev_end: t.end,
-      sites: if rehome_lexeme_text(t: t) == "{" && acc.prev_text == lexeme { list_snoc_item(xs: acc.sites, item: RehomeSite { start: acc.prev_start, end: acc.prev_end, what: "record-through-alias" }) } else { acc.sites }
+// Int = GroupCompletion<Nat> is an admitted form that builds the old representation without naming its constructor. Read off
+// the parse, not the tokens (a return type followed by a body brace is not a construction): every primary-expression or
+// pattern production whose head atom is the rehomed name. A type name in value or pattern position is only ever its
+// record constructor, so each such head is a representation site.
+fn rehome_headed_sites(parse_root: Node, spans: SpanIndex, name: String) -> List<RehomeSite> {
+  fold_list(xs: node_subtree_nodes(root: parse_root), empty: [], cons: fn(acc, n) {
+    match parse_production_emitted_identity_optional(node: n) {
+      Present { value: id } =>
+        if (id == ^dag_surface_primary_expr || id == ^dag_surface_pattern) && rehome_head_is(node: n, name: name) {
+          match roster_node_byte_range(node: n, spans: spans) {
+            Present { value: r } => list_snoc_item(xs: acc, item: RehomeSite { start: r.start, end: r.end, what: "record-through-alias" })
+            Absent => acc
+          }
+        } else {
+          acc
+        }
+      Absent => acc
     }
-  }).sites
+  })
 }
 
-type RehomeRecordScan {
-  prev_text: String
-  prev_start: Int
-  prev_end: Int
-  sites: List<RehomeSite>
+fn rehome_head_is(node: Node, name: String) -> Bool {
+  match parse_production_captured_child_optional(node: node) {
+    Present { value: cap } =>
+      match find_named_child(root: cap, name: ^grammar_sequence_left_node_projection) {
+        Accepted { value: left, diagnostics: _ } =>
+          match node_atom_identity_optional(node: left) {
+            Present { value: sym } => symbol_lexeme(sym: sym) == name
+            Absent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
 }
 
 // `.field` reads: an identifier spelled `field` directly after a `.` token.
