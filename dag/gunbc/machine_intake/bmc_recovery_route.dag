@@ -733,7 +733,8 @@ fn in_band_command_from_argv(argv_words: List<String>) -> IpmiCommandInvocation 
       },
       detail: "the words end with this option still holding for its argument, so neither the transport it was naming nor any credential it was naming was ever given; plain getopt would have errored on the missing required argument (OPTION_STRING, lib/ipmi_main.c:82)" as NonEmptyStr,
     }
-  } else match st.transport {
+  } else {
+    match st.transport {
     // THE THREE QUESTIONS THIS ANSWERS -- was there an -I at all, is its name one any plugin claims, and
     // is that arm a host transport -- used to be asked of a Bool plus a sum plus a loose name, in that
     // order, because the state could not otherwise distinguish "no -I" from "-I with a name no plugin
@@ -767,6 +768,7 @@ fn in_band_command_from_argv(argv_words: List<String>) -> IpmiCommandInvocation 
             IpmiCommandInBand { transport: in_band, credential: st.credential }
           }
       }
+  }
   }
 }
 
