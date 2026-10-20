@@ -66,7 +66,7 @@ pub use crate::v1_compiler_resolve::{get_exported_names};
 pub use crate::v1_compiler_runtime_rust::{rust_runtime_source, rust_runtime_cargo_features};
 pub use crate::v1_compiler_trait_bound_witness::{v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names, v1_call_forwarding_bound_wrapper_param_names, v1_equality_bound_param_name};
 pub use crate::v1_compiler_trait_derive_emit::{v1_emit_enum_derives, v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls, v1_fn_signature_set_element_param_names, v1_set_element_bound_spellings, v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds, v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement, v1_map_key_head_names_in_type_expr, v1_wf_child_type_node, v1_type_expr_wf_needs_clone_param, v1_map_key_nested_names_in_type_expr, v1_map_key_bounded_type_params, v1_item_map_key_bounded_param_names, v1_emit_type_params_with_map_key_bounds, v1_clone_impl_required_type_params, v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal, trait_derive_emit_fn_clone_bound_keyed_carrier_module, rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible};
-pub use crate::v1_std_core::{expr_literal_int_optional, call_semantics_target, ParsedModuleItemKind, resolved_node_is_kernel_identity_for_name, match_pattern_is_irrefutable, declaration_provenance_of, type_reference_provenance, Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name, qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at, ExprData, make_expr_node, FieldSummary, VarBindingKind, CallTargetIdentity, DeclaredCallableIdentity, CallSemantics, ResolvedCallFormal, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, is_error_diagnostic, resource_use_resource, UnaryOpKind, unaryop_operand, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, record_lit_named_field_value_optional, find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, field_from_key_property_name, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, no_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, transport_base_path, empty_intern_table, LeafOwner, DeclarationMarker, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
+pub use crate::v1_std_core::{expr_literal_int_optional, call_semantics_target, ParsedModuleItemKind, resolved_node_is_kernel_identity_for_name, match_pattern_is_irrefutable, declaration_provenance_of, type_reference_provenance, Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name, render_span_location, qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at, ExprData, make_expr_node, FieldSummary, VarBindingKind, CallTargetIdentity, DeclaredCallableIdentity, CallSemantics, ResolvedCallFormal, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, is_error_diagnostic, resource_use_resource, UnaryOpKind, unaryop_operand, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, record_lit_named_field_value_optional, find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, field_from_key_property_name, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, no_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, transport_base_path, empty_intern_table, LeafOwner, DeclarationMarker, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
 use crate::gunbc_cli_dispatch_surface::CliArmRealization::{CliDelegatesToHostFn, CliInvokesBootstrapDagOperation, CliInvokesBoundTargetProducer, CliKnownOperationNoRealization, CliRefusesUnwired, CliRetainedHostKernel};
 use crate::gunbc_cli_dispatch_surface::CliBootstrapExecutionClass::{BootstrapSuccessorOperation};
 use crate::gunbc_cli_dispatch_surface::CliOptionArity::{CliAtMostOne, CliRepeated, CliRequired};
@@ -961,18 +961,12 @@ pub fn render_rust_optional_carrier_inner(
         std::option::Option::None => emit_rust_compile_error_expr(v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "optional carrier payload type node absent for ".to_string(),
-                            n.name.clone(),
-                        ),
-                        " at ".to_string(),
-                    ),
-                    n.span.file.clone(),
+                    "optional carrier payload type node absent for ".to_string(),
+                    n.name.clone(),
                 ),
-                ":".to_string(),
+                " at ".to_string(),
             ),
-            crate::v1_compiler_emit_core_support::to_string(n.span.start.clone()),
+            crate::v1_std_core::render_span_location(n.span.clone(), source_indices.clone()),
         )),
     }
 }
@@ -2093,19 +2087,20 @@ pub fn is_machine_width_phantom_token(name: String) -> bool {
         || (name.clone() == "Word128".to_string()))
 }
 
-pub fn emit_width_type_arg_identity_refusal(n: Rc<Node>, name: String) -> String {
+pub fn emit_width_type_arg_identity_refusal(
+    n: Rc<Node>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     emit_rust_compile_error_expr(v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "width type argument has no Rust type identity at ".to_string(),
-                            n.span.file.clone(),
-                        ),
-                        ":".to_string(),
+                    "width type argument has no Rust type identity at ".to_string(),
+                    crate::v1_std_core::render_span_location(
+                        n.span.clone(),
+                        source_indices.clone(),
                     ),
-                    crate::v1_compiler_emit_core_support::to_string(n.span.start.clone()),
                 ),
                 " (".to_string(),
             ),
@@ -2152,21 +2147,23 @@ pub fn rust_type_arg_identity_spelling(
                         Some(emit_width_type_arg_identity_refusal(
                             n.clone(),
                             name.clone(),
+                            source_indices.clone(),
                         ))
                     } else {
                         if crate::v1_compiler_infer_resolve::is_width_nat_type_literal(n.clone()) {
                             match crate::v1_std_core::expr_literal_int_optional(n.clone()) {
     Some(v) => match crate::v1_compiler_infer_env::static_width_index_declaring_module(env.clone()) {
     Some(declaring) => Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("crate::".to_string(), crate::gunbc_rust_emitted_edge::module_to_filename(declaring.clone())), "::".to_string()), crate::v1_compiler_infer_env::static_width_index_arm_name()), "<".to_string()), crate::v1_compiler_emit_core_support::to_string(v.clone())), ">".to_string())),
-    std::option::Option::None => Some(emit_width_type_arg_identity_refusal(n.clone(), name.clone())),
+    std::option::Option::None => Some(emit_width_type_arg_identity_refusal(n.clone(), name.clone(), source_indices.clone())),
 },
-    std::option::Option::None => Some(emit_width_type_arg_identity_refusal(n.clone(), name.clone())),
+    std::option::Option::None => Some(emit_width_type_arg_identity_refusal(n.clone(), name.clone(), source_indices.clone())),
 }
                         } else {
                             if is_machine_width_phantom_token(name.clone()) {
                                 Some(emit_width_type_arg_identity_refusal(
                                     n.clone(),
                                     name.clone(),
+                                    source_indices.clone(),
                                 ))
                             } else {
                                 std::option::Option::None
@@ -2178,19 +2175,16 @@ pub fn rust_type_arg_identity_spelling(
                     Some(emit_rust_compile_error_expr(v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        "unit-variant marker identity evidence unavailable for "
-                                            .to_string(),
-                                        name.clone(),
-                                    ),
-                                    " at ".to_string(),
-                                ),
-                                n.span.file.clone(),
+                                "unit-variant marker identity evidence unavailable for "
+                                    .to_string(),
+                                name.clone(),
                             ),
-                            ":".to_string(),
+                            " at ".to_string(),
                         ),
-                        crate::v1_compiler_emit_core_support::to_string(n.span.start.clone()),
+                        crate::v1_std_core::render_span_location(
+                            n.span.clone(),
+                            source_indices.clone(),
+                        ),
                     )))
                 }
             }
@@ -31936,23 +31930,21 @@ pub fn fm_lowering_refusal_message(cause: Rc<FmLoweringRefusal>) -> String {
 }
 }
 
-pub fn fm_located_refusal(cause: Rc<FmLoweringRefusal>, arm: Rc<Node>) -> String {
+pub fn fm_located_refusal(
+    cause: Rc<FmLoweringRefusal>,
+    arm: Rc<Node>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "v1.compiler.emit_rust will not lower ".to_string(),
-                            fm_lowering_refusal_message(cause.clone()),
-                        ),
-                        " at ".to_string(),
-                    ),
-                    arm.span.file.clone(),
+                    "v1.compiler.emit_rust will not lower ".to_string(),
+                    fm_lowering_refusal_message(cause.clone()),
                 ),
-                ":".to_string(),
+                " at ".to_string(),
             ),
-            crate::v1_compiler_emit_core_support::to_string(arm.span.start.clone()),
+            crate::v1_std_core::render_span_location(arm.span.clone(), si.clone()),
         ),
         " -- the FreeMonoid match lowering refuses this shape rather than dropping the arm"
             .to_string(),
@@ -32283,10 +32275,13 @@ pub fn fm_plans_refusal(plans: Rc<Vec<Rc<FmArmPlan>>>) -> Option<Rc<FmArmPlan>> 
     }
 }
 
-pub fn fm_plan_refusal_text(plan: Rc<FmArmPlan>) -> String {
+pub fn fm_plan_refusal_text(
+    plan: Rc<FmArmPlan>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match (*plan.analysis.clone()).clone() {
         FmArmAnalysis::FmUnsupportedArm { cause: c, .. } => {
-            fm_located_refusal(c.clone(), plan.arm.clone())
+            fm_located_refusal(c.clone(), plan.arm.clone(), si.clone())
         }
         FmArmAnalysis::FmSpine { .. } => {
             "v1.compiler.emit_rust internal: refusal requested for a supported FreeMonoid arm"
@@ -32423,7 +32418,12 @@ pub fn fm_spine_condition(len: i64, exact: bool, cursor: String) -> String {
     }
 }
 
-pub fn fm_chain_piece(plan: Rc<FmArmPlan>, body: String, cursor: String) -> Rc<FmChainPiece> {
+pub fn fm_chain_piece(
+    plan: Rc<FmArmPlan>,
+    body: String,
+    cursor: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<FmChainPiece> {
     match (*plan.analysis.clone()).clone() {
         FmArmAnalysis::FmSpine {
             exact: e,
@@ -32445,7 +32445,11 @@ pub fn fm_chain_piece(plan: Rc<FmArmPlan>, body: String, cursor: String) -> Rc<F
         FmArmAnalysis::FmUnsupportedArm { cause: c, .. } => Rc::new(FmChainPiece {
             cond: "true".to_string(),
             binds: "".to_string(),
-            body: emit_rust_compile_error_expr(fm_located_refusal(c.clone(), plan.arm.clone())),
+            body: emit_rust_compile_error_expr(fm_located_refusal(
+                c.clone(),
+                plan.arm.clone(),
+                si.clone(),
+            )),
         }),
     }
 }
@@ -32515,7 +32519,9 @@ pub fn emit_native_freemonoid_match(
             __result
         });
         match fm_plans_refusal(plans.clone()) {
-            Some(bad) => emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone())),
+            Some(bad) => {
+                emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone(), si.clone()))
+            }
             std::option::Option::None => {
                 let pieces = Rc::new({
                     let mut __result = Vec::new();
@@ -32532,6 +32538,7 @@ pub fn emit_native_freemonoid_match(
                                 1024,
                             ),
                             "".to_string(),
+                            si.clone(),
                         ));
                     }
                     __result
@@ -38657,7 +38664,9 @@ pub fn emit_native_freemonoid_tco_match(
             __result
         });
         match fm_plans_refusal(plans.clone()) {
-            Some(bad) => emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone())),
+            Some(bad) => {
+                emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone(), si.clone()))
+            }
             std::option::Option::None => {
                 let pieces = Rc::new({
                     let mut __result = Vec::new();
@@ -38675,6 +38684,7 @@ pub fn emit_native_freemonoid_tco_match(
                                 emit_info.clone(),
                             ),
                             cursor.clone(),
+                            si.clone(),
                         ));
                     }
                     __result
@@ -41914,15 +41924,68 @@ pub fn emit_shell_call(
             Rc::new({
                 let mut __result = Vec::new();
                 for arg in Rc::new(v1_rt::list_skip(&argv.clone(), 1)).iter().cloned() {
-                    __result.push(if shell_argv_element_is_word_list(arg.clone(), argv_scope.clone(), emit_info.clone(), source_indices.clone()) {
-                v1_rt::concat(v1_rt::concat("    .args(".to_string(), emit_shell_argv_word_list_element(arg.clone(), registry.clone(), argv_scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone())), ".iter())".to_string())
-            } else {
-                if shell_argv_element_is_string_word(arg.clone(), argv_scope.clone(), emit_info.clone(), source_indices.clone()) {
-                    v1_rt::concat(v1_rt::concat("    .arg(".to_string(), emit_shell_argv_element(arg.clone(), optional_params.clone(), registry.clone(), argv_scope.clone(), depth.clone(), shared_types.clone(), source_indices.clone(), emit_info.clone())), ")".to_string())
-                } else {
-                    v1_rt::concat(v1_rt::concat("    .arg(".to_string(), emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat(v1_rt::concat("argv element is not String or List<String> at ".to_string(), arg.span.file.clone()), ":".to_string()), crate::v1_compiler_emit_core_support::to_string(arg.span.start.clone())))), ")".to_string())
-                }
-            });
+                    __result.push(
+                        if shell_argv_element_is_word_list(
+                            arg.clone(),
+                            argv_scope.clone(),
+                            emit_info.clone(),
+                            source_indices.clone(),
+                        ) {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "    .args(".to_string(),
+                                    emit_shell_argv_word_list_element(
+                                        arg.clone(),
+                                        registry.clone(),
+                                        argv_scope.clone(),
+                                        depth.clone(),
+                                        shared_types.clone(),
+                                        emit_info.clone(),
+                                    ),
+                                ),
+                                ".iter())".to_string(),
+                            )
+                        } else {
+                            if shell_argv_element_is_string_word(
+                                arg.clone(),
+                                argv_scope.clone(),
+                                emit_info.clone(),
+                                source_indices.clone(),
+                            ) {
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "    .arg(".to_string(),
+                                        emit_shell_argv_element(
+                                            arg.clone(),
+                                            optional_params.clone(),
+                                            registry.clone(),
+                                            argv_scope.clone(),
+                                            depth.clone(),
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                            emit_info.clone(),
+                                        ),
+                                    ),
+                                    ")".to_string(),
+                                )
+                            } else {
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "    .arg(".to_string(),
+                                        emit_rust_compile_error_expr(v1_rt::concat(
+                                            "argv element is not String or List<String> at "
+                                                .to_string(),
+                                            crate::v1_std_core::render_span_location(
+                                                arg.span.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                        )),
+                                    ),
+                                    ")".to_string(),
+                                )
+                            }
+                        },
+                    );
                 }
                 __result
             })
@@ -45210,7 +45273,7 @@ pub fn emit_retained_host_main_mod_uses(crate_name: String, pipeline_module: Str
             crate::gunbc_rust_emitted_edge::module_to_filename(pipeline_module.clone());
         let core_mod =
             crate::gunbc_rust_emitted_edge::module_to_filename("v1.std.core".to_string());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nuse im::HashMap;\n".to_string(), "use std::rc::Rc;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::".to_string()), "{".to_string()), "\n    diagnostic_to_message, diagnostic_to_span,\n".to_string()), "    byte_to_line_col, source_line_at, NewlineIndex,\n".to_string()), "    CompilerDiagnostic,\n".to_string()), "}".to_string()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::cli_run;\n".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nuse im::HashMap;\n".to_string(), "use std::rc::Rc;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::".to_string()), "{".to_string()), "\n    diagnostic_to_message, diagnostic_to_span,\n".to_string()), "    byte_to_line_col, source_line_at, NewlineIndex, render_span_location, located_span_of,\n".to_string()), "    CompilerDiagnostic,\n".to_string()), "}".to_string()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::cli_run;\n".to_string())
     }
 }
 
@@ -45881,7 +45944,7 @@ pub fn emit_main_diagnostic_fns(crate_name: String) -> String {
     {
         let core_mod =
             crate::gunbc_rust_emitted_edge::module_to_filename("v1.std.core".to_string());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nfn render_diagnostics(result: &PipelineResult) {\n".to_string(), "    if result.diagnostics.is_empty() {\n".to_string()), "        return;\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    let index_map: HashMap<String, Rc<NewlineIndex>> = result\n".to_string()), "        .newline_indices\n".to_string()), "        .iter()\n".to_string()), "        .map(|idx| (idx.file.clone(), idx.clone()))\n".to_string()), "        .collect();\n".to_string()), "\n".to_string()), "    for d in result.diagnostics.iter() {\n".to_string()), "        render_one_diagnostic(d, &index_map, \"\");\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    eprintln!(\"\\n{} error(s)\", result.diagnostics.len());\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn render_one_diagnostic(\n".to_string()), "    d: &".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::ErrorNode,\n".to_string()), "    index_map: &HashMap<String, Rc<NewlineIndex>>,\n".to_string()), "    indent: &str,\n".to_string()), ") {\n".to_string()), "    let severity = \"error\";\n".to_string()), "    let message = diagnostic_to_message(d.diagnostic.clone());\n".to_string()), "    let span = diagnostic_to_span(d.diagnostic.clone());\n".to_string()), "\n".to_string()), "    let location = if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            let lc = byte_to_line_col(idx.clone(), span.start);\n".to_string()), "            format!(\"{}:{}:{}\", span.file, lc.line, lc.col)\n".to_string()), "        } else {\n".to_string()), "            span.file.clone()\n".to_string()), "        }\n".to_string()), "    } else if !d.module_name.is_empty() {\n".to_string()), "        d.module_name.clone()\n".to_string()), "    } else {\n".to_string()), "        String::new()\n".to_string()), "    };\n".to_string()), "\n".to_string()), "    if location.is_empty() {\n".to_string()), "        eprintln!(\"{}{}: {}\", indent, severity, message);\n".to_string()), "    } else {\n".to_string()), "        eprintln!(\"{}{}[{}]: {}\", indent, severity, location, message);\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            let lc = byte_to_line_col(idx.clone(), span.start);\n".to_string()), "            let line_text = source_line_at(idx.clone(), lc.line);\n".to_string()), "            let line_num = format!(\"{}\", lc.line);\n".to_string()), "            let gutter_width = line_num.len();\n".to_string()), "            eprintln!(\"{} {} |\", indent, \" \".repeat(gutter_width));\n".to_string()), "            eprintln!(\"{} {} | {}\", indent, line_num, line_text);\n".to_string()), "\n".to_string()), "            let span_len = std::cmp::max(1, (span.end - span.start) as usize);\n".to_string()), "            let col_offset = (lc.col - 1) as usize;\n".to_string()), "            eprintln!(\n".to_string()), "                \"{} {} | {}{}\",\n".to_string()), "                indent,\n".to_string()), "                \" \".repeat(gutter_width),\n".to_string()), "                \" \".repeat(col_offset),\n".to_string()), "                \"^\".repeat(std::cmp::min(span_len, line_text.len().saturating_sub(col_offset)))\n".to_string()), "            );\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nfn render_diagnostics(result: &PipelineResult) {\n".to_string(), "    if result.diagnostics.is_empty() {\n".to_string()), "        return;\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    let index_map: HashMap<String, Rc<NewlineIndex>> = result\n".to_string()), "        .newline_indices\n".to_string()), "        .iter()\n".to_string()), "        .map(|idx| (idx.file.clone(), idx.clone()))\n".to_string()), "        .collect();\n".to_string()), "\n".to_string()), "    for d in result.diagnostics.iter() {\n".to_string()), "        render_one_diagnostic(d, &index_map, \"\");\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    eprintln!(\"\\n{} error(s)\", result.diagnostics.len());\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn render_one_diagnostic(\n".to_string()), "    d: &".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::ErrorNode,\n".to_string()), "    index_map: &HashMap<String, Rc<NewlineIndex>>,\n".to_string()), "    indent: &str,\n".to_string()), ") {\n".to_string()), "    let severity = \"error\";\n".to_string()), "    let message = diagnostic_to_message(d.diagnostic.clone());\n".to_string()), "    let span = diagnostic_to_span(d.diagnostic.clone());\n".to_string()), "\n".to_string()), "    // THE LOCATION IS THE AUTHORITY'S, not this function's. One renderer in the seed owns\n".to_string()), "    // `file:line:col` AND the words for \"there is no position\", which is what keeps this CLI\n".to_string()), "    // line and the compile lane's line for the SAME diagnostic in the same units -- they were\n".to_string()), "    // measured disagreeing (`(m.dag:133-134)` here, `error[m.dag:9:5]` there) while both were\n".to_string()), "    // arithmetically right. A diagnostic with no file at all falls back to its module name,\n".to_string()), "    // which is attribution rather than a location.\n".to_string()), "    let location = if span.file.is_empty() {\n".to_string()), "        if d.module_name.is_empty() {\n".to_string()), "            String::new()\n".to_string()), "        } else {\n".to_string()), "            d.module_name.clone()\n".to_string()), "        }\n".to_string()), "    } else {\n".to_string()), "        ".to_string()), core_mod.clone()), "::render_span_location(span.clone(), Rc::new(index_map.clone()))\n".to_string()), "    };\n".to_string()), "\n".to_string()), "    if location.is_empty() {\n".to_string()), "        eprintln!(\"{}{}: {}\", indent, severity, message);\n".to_string()), "    } else {\n".to_string()), "        eprintln!(\"{}{}[{}]: {}\", indent, severity, location, message);\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            // The excerpt below is THIS printer's layout, but its LINE AND COLUMN come from\n".to_string()), "            // the authority, so the caret cannot drift away from the location printed above\n".to_string()), "            // it. No located span, no excerpt: a caret at a column we do not know is the\n".to_string()), "            // fabricated position this whole block exists to stop.\n".to_string()), "            let located = ".to_string()), core_mod.clone()), "::located_span_of(span.clone(), Rc::new(index_map.clone()));\n".to_string()), "            if let Some(at) = located.as_ref() {\n".to_string()), "            let line_text = source_line_at(idx.clone(), at.start_line);\n".to_string()), "            let line_num = format!(\"{}\", at.start_line);\n".to_string()), "            let gutter_width = line_num.len();\n".to_string()), "            eprintln!(\"{} {} |\", indent, \" \".repeat(gutter_width));\n".to_string()), "            eprintln!(\"{} {} | {}\", indent, line_num, line_text);\n".to_string()), "\n".to_string()), "            let span_len = std::cmp::max(1, (span.end - span.start) as usize);\n".to_string()), "            let col_offset = (at.start_col - 1) as usize;\n".to_string()), "            eprintln!(\n".to_string()), "                \"{} {} | {}{}\",\n".to_string()), "                indent,\n".to_string()), "                \" \".repeat(gutter_width),\n".to_string()), "                \" \".repeat(col_offset),\n".to_string()), "                \"^\".repeat(std::cmp::min(span_len, line_text.len().saturating_sub(col_offset)))\n".to_string()), "            );\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n".to_string())
     }
 }
 

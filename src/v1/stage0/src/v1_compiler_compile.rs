@@ -107,8 +107,8 @@ pub use crate::v1_std_core::{
     is_error_diagnostic, is_interpreter_blocking_diagnostic, lambda_param_names_at,
     make_error_node, module_imports, module_items, no_span, param_node_default_value,
     param_node_name_at, param_node_span, param_node_type_expr, pre_intern_tokens,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, CallSemantics,
-    CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
+    record_lit_type_name_at, render_span_location, resource_use_name_at, resource_use_resource,
+    CallSemantics, CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
     DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary,
     FieldValueShape, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
     ResolvedCallFormal, StringPart, TextFile, Token, UnaryOpKind, VarBindingKind,
@@ -3564,6 +3564,45 @@ pub fn compile_sources_with_options(
     )
 }
 
+pub fn interpreter_blocking_diagnostic_messages_with_source_indices(
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for d in Rc::new({
+            let mut __result = Vec::new();
+            for d in diagnostics.iter().cloned() {
+                if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+                    __result.push(d);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push({
+                let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
+                            " (".to_string(),
+                        ),
+                        crate::v1_std_core::render_span_location(
+                            span.clone(),
+                            source_indices.clone(),
+                        ),
+                    ),
+                    ")".to_string(),
+                )
+            });
+        }
+        __result
+    })
+}
+
 pub fn interpreter_blocking_diagnostic_messages(
     diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<Vec<String>> {
@@ -3618,7 +3657,15 @@ pub fn stage0_self_compile_refusal_message(
     result: Rc<PipelineResult>,
 ) -> Option<String> {
     {
-        let hard_messages = interpreter_blocking_diagnostic_messages(result.diagnostics.clone());
+        let hard_messages = interpreter_blocking_diagnostic_messages_with_source_indices(
+            result.diagnostics.clone(),
+            result.newline_indices.clone().iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {
+                    v1_rt::rc_map_insert(acc, si.file.clone(), si.clone())
+                },
+            ),
+        );
         if ((hard_messages.clone().len() as i64) > 0) {
             Some(v1_rt::concat(
                 v1_rt::concat(

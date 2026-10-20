@@ -24,7 +24,7 @@ use crate::v1_std_core::TokenShape::{
     ShPipeArrow, ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin,
     ShStrEnd, ShStrMid, ShUnknown,
 };
-pub use crate::v1_std_core::{make_file_span, Token, TokenShape};
+pub use crate::v1_std_core::{make_file_span, unlocatable_span_offset, Token, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -243,6 +243,31 @@ pub fn source_scan_to_eol(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_s
     }
 }
 
+pub fn is_trivia_shape(shape: TokenShape) -> bool {
+    match shape.clone() {
+        TokenShape::ShNewline => true,
+        TokenShape::ShEof => true,
+        _ => false,
+    }
+}
+
+pub fn last_code_token_end(tokens: Rc<Vec<Rc<Token>>>) -> Option<i64> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for t in tokens.iter().cloned() {
+            if !is_trivia_shape(t.shape.clone()) {
+                __result.push(t);
+            }
+        }
+        __result
+    })
+    .iter()
+    .cloned()
+    .fold(std::option::Option::None, |acc: _, t: Rc<Token>| {
+        Some(t.span.end.clone())
+    })
+}
+
 pub fn tokenize_artifact(
     source: String,
     file: String,
@@ -267,11 +292,17 @@ pub fn tokenize_artifact(
             v1_rt::int_add(source_len(src.clone()), 1),
             env.clone(),
         );
-        let eof_span = crate::v1_std_core::make_file_span(
-            src.file.clone(),
-            final_state.pos.clone(),
-            final_state.pos.clone(),
-        );
+        let eof_end = last_code_token_end(final_state.tokens.clone());
+        let eof_span = match eof_end.clone() {
+            Some(end) => {
+                crate::v1_std_core::make_file_span(src.file.clone(), end.clone(), end.clone())
+            }
+            std::option::Option::None => crate::v1_std_core::make_file_span(
+                src.file.clone(),
+                unlocatable_span_offset(),
+                unlocatable_span_offset(),
+            ),
+        };
         Rc::new(V1LexArtifact {
             tokens: v1_rt::rc_list_push(
                 final_state.tokens.clone(),
