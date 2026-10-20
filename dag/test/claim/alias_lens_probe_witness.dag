@@ -9,7 +9,6 @@ module test.claim.alias_lens_probe_witness
 // harness is broken and nothing here is concluded.
 
 import std.types { Bool, Int, List, String }
-import std.optional { Absent, Present }
 import v2.std.decl_index { DeclFact, decl_facts, decl_facts_at }
 import v2.std.decl_facts_skeleton {
   DeclFactResolvedUnique,
@@ -22,11 +21,9 @@ data alias_probe_pool_roots: List<String> = [ "dag/test/fixture/alias_lens_probe
 
 data alias_probe_facts: List<DeclFact> = decl_facts(pool_roots: alias_probe_pool_roots)
 
-data std_types_list_facts: List<DeclFact> =
-  decl_facts_at(pool_roots: [ "dag" ], qualified_name: "std.types.List")
+data std_types_list_facts: List<DeclFact> = decl_facts_at(pool_roots: [ "dag" ], qualified_name: "std.types.List")
 
-data std_types_record_facts: List<DeclFact> =
-  decl_facts_at(pool_roots: [ "dag" ], qualified_name: "std.types.FilePathParts")
+data std_types_record_facts: List<DeclFact> = decl_facts_at(pool_roots: [ "dag" ], qualified_name: "std.types.FilePathParts")
 
 fn fact_child_count(facts: List<DeclFact>, qn: String) -> Int {
   match resolve_decl_fact_by_qualified_name(facts: facts, qn: qn) {

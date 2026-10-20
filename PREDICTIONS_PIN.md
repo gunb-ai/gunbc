@@ -690,3 +690,12 @@ Fixture: dag/test/fixture/alias_lens_probe/specimens.dag; witness:
 dag/test/claim/alias_lens_probe_witness.dag (both on instruments-scratch).
 Sentinels (added): child-count reads return -1 (fact missing), -2 (ambiguous), >=0 (measured).
 "fact resolves" members and "children empty" members are SEPARATE, so missing != blind != carries.
+
+## 2026-10-20T23:2x dispatch M: rerun of L (witness parse bug fixed) + ledger parse check at CURRENT 14083 head
+- M1: alias_lens_probe_witness resolves (line-continuation after `=` is illegal; both data decls are
+  now single-line). If it still fails to parse, fix syntax again; no conclusions.
+- M2: all 10 members report PASS/FAIL (claim-run reaches members); L1-L4 then read as pre-registered.
+- M3: ledger parse check at the CURRENT session/quiet-hawk-507-evidence tip: PARSE_RC=0, all five
+  imports resolve. The earlier PARSE_RC=1 tested an EARLIER head (before the missing-comma fix at
+  5b5e421 and before the escaped-quote fix); if two rows STILL fail, that is a real parse defect in
+  my receipts on main -> get raw diagnostics per file and fix.
