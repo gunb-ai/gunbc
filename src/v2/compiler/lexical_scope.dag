@@ -2,7 +2,7 @@ module v2.compiler.lexical_scope
 
 import std.types { List }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.algebra { list_snoc_item, list_map, collection_concat_shape }
+import std.algebra { list_at_optional, list_snoc_item, list_map, collection_concat_shape }
 import v2.std.integer { Int }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {
@@ -29,6 +29,7 @@ import v2.std.node {
   arrow_named_edge_is_metadata,
   edge_is_core,
   positional_child_count,
+  positional_child_target_nodes,
   positional_edges
 }
 import v2.std.node_query { construct_field_edges, construct_tag_optional, find_core_child, is_wildcard_pattern }
@@ -196,6 +197,13 @@ fn bind_binder(n: Node) -> Optional<BindBinder> {
     TypeNode { connective: _ } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
+}
+
+// A `let`'s VALUE: its second positional child, the node resolve records as the binding's LexicalValued
+// value (v2.compiler.resolve bind_frame_binders) and the one a reader of the resolved tree takes as the
+// value a use of the binder waits on (v2.compiler.value_use_dependency).
+fn bind_value(n: Node) -> Optional<Node> {
+  list_at_optional(xs: positional_child_target_nodes(node: n), index: 1)
 }
 
 // THE SLOT A BIND'S POSITIONAL CHILD OCCUPIES, by its ordinal among the POSITIONAL children only: the

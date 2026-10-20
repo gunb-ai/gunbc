@@ -456,6 +456,22 @@ fn web_font_stylesheet_response() -> ServeHttpResponse {
   }
 }
 
+// The favicon route answers the emitter's result the way the page route does: bytes, or a typed 500 naming
+// the reason. An empty SVG or a dropped route would be the silent widen this fold's comment above refuses
+// to copy.
+fn serve_favicon_response() -> ServeHttpResponse {
+  match site_favicon_source() {
+    EmitOk { html: h } =>
+      serve_text_response(status: 200, content_type: site_favicon_type, body: h)
+    EmitRejected { reason: r } =>
+      serve_text_response(
+        status: 500,
+        content_type: text_plain_utf8,
+        body: page_render_refusal_body(reason: r),
+      )
+  }
+}
+
 fn serve_page_response(page: Fragment) -> ServeHttpResponse {
   match try_serialize_html_source(node: page) {
     EmitOk { html: h } =>
@@ -1447,7 +1463,7 @@ fn roadmap_serve_invoke_over(
           )
       }
     AllocationPageHandler => allocation_page_response(request: request)
-    SiteFaviconHandler => serve_text_response(status: 200, content_type: site_favicon_type, body: site_favicon_source())
+    SiteFaviconHandler => serve_favicon_response()
     SiteClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: site_client_source())
     WebFontStylesheetHandler => web_font_stylesheet_response()
     AllocationCreateHandler => workspace_route_create(request: request)
