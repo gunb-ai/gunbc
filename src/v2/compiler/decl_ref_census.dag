@@ -77,170 +77,121 @@ fn token_string_body(t: Token) -> Optional<String> {
   }
 }
 
-// `ident : "string"`, with commas between fields skipped by the caller. Returns the string body and
-// the tokens after it.
-type StringField {
-  value: String
-  rest: List<Token>
+// A DeclarationRef literal is a `DeclarationRef` identifier opening a brace block. Its fields are read
+// BY NAME from the block's interior, so field order and commas carry no meaning. A block with no
+// string-literal module_path or decl_name is a computed construction, a pattern or the type's own
+// declaration, which cites nothing by spelling. A block with a string-literal module_path or
+// decl_name that cannot be read whole is a typed refusal (unreadable), never an absence.
+type LiteralScan {
+  cited: List<CitedRef>
+  unreadable: List<String>
 }
 
-fn drop_comma(toks: List<Token>) -> List<Token> {
+// The tokens of a brace block after its opening brace, up to the matching close.
+fn block_interior(toks: List<Token>, depth: Int, acc: List<Token>) -> List<Token> {
   match toks {
-    Cons { head: h, tail: rest } => if h.class == ^dag_token_comma { rest } else { toks }
-    Empty => toks
+    Empty => acc
+    Cons { head: h, tail: rest } =>
+      if h.class == ^dag_token_lbrace {
+        block_interior(toks: rest, depth: depth + 1, acc: list_snoc_item(xs: acc, item: h))
+      } else if h.class == ^dag_token_rbrace {
+        if depth == 0 { acc } else { block_interior(toks: rest, depth: depth - 1, acc: list_snoc_item(xs: acc, item: h)) }
+      } else {
+        block_interior(toks: rest, depth: depth, acc: list_snoc_item(xs: acc, item: h))
+      }
   }
 }
 
-fn expect_string_field(toks: List<Token>, name: String) -> Optional<StringField> {
+// The token after `name :` inside a block.
+fn field_value_token(toks: List<Token>, name: String) -> Optional<Token> {
   match toks {
-    Cons { head: a, tail: r1 } =>
-      if token_is_ident(t: a, lexeme: name) {
+    Empty => optional_absent()
+    Cons { head: h, tail: r1 } =>
+      if token_is_ident(t: h, lexeme: name) {
         match r1 {
-          Cons { head: c, tail: r2 } =>
-            if c.class == ^dag_token_colon {
-              match r2 {
-                Cons { head: s, tail: r3 } =>
-                  match token_string_body(t: s) {
-                    Present { value: body } => optional_present(value: StringField { value: body, rest: drop_comma(toks: r3) })
-                    Absent => optional_absent()
-                  }
-                Empty => optional_absent()
-              }
+          Cons { head: colon, tail: r2 } =>
+            if colon.class == ^dag_token_colon {
+              list_head(xs: r2)
             } else {
-              optional_absent()
+              field_value_token(toks: r1, name: name)
             }
           Empty => optional_absent()
         }
       } else {
-        optional_absent()
+        field_value_token(toks: r1, name: name)
       }
-    Empty => optional_absent()
   }
 }
 
-fn citation_from(file: Symbol, toks: List<Token>) -> Optional<CitedRef> {
-  match expect_string_field(toks: toks, name: "module_path") {
+fn field_string(toks: List<Token>, name: String) -> Optional<String> {
+  match field_value_token(toks: toks, name: name) {
+    Present { value: t } => token_string_body(t: t)
     Absent => optional_absent()
+  }
+}
+
+fn declared_field(toks: List<Token>) -> Optional<DeclField> {
+  match field_value_token(toks: toks, name: "field") {
+    Absent => optional_absent()
+    Present { value: arm } =>
+      if token_is_ident(t: arm, lexeme: "WholeDeclaration") {
+        optional_present(value: WholeDeclaration)
+      } else if token_is_ident(t: arm, lexeme: "NamedField") {
+        match field_string(toks: toks, name: "field_name") {
+          Present { value: n } => optional_present(value: NamedField { field_name: n as NonEmptyStr })
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn literal_scan_add(scan: LiteralScan, file: Symbol, interior: List<Token>) -> LiteralScan {
+  match field_string(toks: interior, name: "module_path") {
+    Absent =>
+      match field_string(toks: interior, name: "decl_name") {
+        Absent => scan
+        Present { value: _ } => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: symbol_lexeme(sym: file)) }
+      }
     Present { value: m } =>
-      match expect_string_field(toks: m.rest, name: "decl_name") {
-        Absent => optional_absent()
+      match field_string(toks: interior, name: "decl_name") {
+        Absent => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: symbol_lexeme(sym: file)) }
         Present { value: d } =>
-          match d.rest {
-            Cons { head: f, tail: r1 } =>
-              if token_is_ident(t: f, lexeme: "field") {
-                match r1 {
-                  Cons { head: colon, tail: r2 } =>
-                    if colon.class == ^dag_token_colon {
-                      match r2 {
-                        Cons { head: arm, tail: r3 } =>
-                          if token_is_ident(t: arm, lexeme: "WholeDeclaration") {
-                            optional_present(value: CitedRef {
-                              file: file,
-                              ref: DeclarationRef {
-                                module_path: m.value as NonEmptyStr,
-                                decl_name: d.value as NonEmptyStr,
-                                field: WholeDeclaration
-                              }
-                            })
-                          } else if token_is_ident(t: arm, lexeme: "NamedField") {
-                            match r3 {
-                              Cons { head: lb, tail: r4 } =>
-                                if lb.class == ^dag_token_lbrace {
-                                  match expect_string_field(toks: r4, name: "field_name") {
-                                    Present { value: n } =>
-                                      optional_present(value: CitedRef {
-                                        file: file,
-                                        ref: DeclarationRef {
-                                          module_path: m.value as NonEmptyStr,
-                                          decl_name: d.value as NonEmptyStr,
-                                          field: NamedField { field_name: n.value as NonEmptyStr }
-                                        }
-                                      })
-                                    Absent => optional_absent()
-                                  }
-                                } else {
-                                  optional_absent()
-                                }
-                              Empty => optional_absent()
-                            }
-                          } else {
-                            optional_absent()
-                          }
-                        Empty => optional_absent()
-                      }
-                    } else {
-                      optional_absent()
-                    }
-                  Empty => optional_absent()
-                }
-              } else {
-                optional_absent()
+          match declared_field(toks: interior) {
+            Absent => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: symbol_lexeme(sym: file)) }
+            Present { value: fld } =>
+              LiteralScan {
+                cited: list_snoc_item(xs: scan.cited, item: CitedRef { file: file, ref: DeclarationRef { module_path: m as NonEmptyStr, decl_name: d as NonEmptyStr, field: fld } }),
+                unreadable: scan.unreadable
               }
-            Empty => optional_absent()
           }
       }
   }
 }
 
-fn citations_of(file: Symbol, toks: List<Token>, acc: List<CitedRef>) -> List<CitedRef> {
+fn literal_scan(file: Symbol, toks: List<Token>, scan: LiteralScan) -> LiteralScan {
   match toks {
-    Empty => acc
-    Cons { head: h, tail: rest } =>
-      if token_is_ident(t: h, lexeme: "module_path") {
-        match citation_from(file: file, toks: toks) {
-          Present { value: c } => citations_of(file: file, toks: rest, acc: list_snoc_item(xs: acc, item: c))
-          Absent => citations_of(file: file, toks: rest, acc: acc)
-        }
-      } else {
-        citations_of(file: file, toks: rest, acc: acc)
-      }
-  }
-}
-
-// A `module_path` identifier followed by a colon and a string literal is a DeclarationRef literal
-// in the token stream (a type declaration's `module_path: NonEmptyStr` carries no string literal). One
-// that citation_from cannot read is a typed refusal, never an absence: a literal the census could not
-// read was not judged.
-fn literal_opens_at(toks: List<Token>) -> Bool {
-  match toks {
+    Empty => scan
     Cons { head: h, tail: r1 } =>
-      if token_is_ident(t: h, lexeme: "module_path") {
+      if token_is_ident(t: h, lexeme: "DeclarationRef") {
         match r1 {
-          Cons { head: colon, tail: r2 } =>
-            if colon.class == ^dag_token_colon {
-              match r2 {
-                Cons { head: v, tail: _ } => v.class == ^dag_token_string_literal
-                Empty => false
-              }
+          Cons { head: lb, tail: r2 } =>
+            if lb.class == ^dag_token_lbrace {
+              literal_scan(file: file, toks: r2, scan: literal_scan_add(scan: scan, file: file, interior: block_interior(toks: r2, depth: 0, acc: [])))
             } else {
-              false
+              literal_scan(file: file, toks: r1, scan: scan)
             }
-          Empty => false
+          Empty => scan
         }
       } else {
-        false
-      }
-    Empty => false
-  }
-}
-
-fn unreadable_citations_of(file: Symbol, toks: List<Token>, acc: List<String>) -> List<String> {
-  match toks {
-    Empty => acc
-    Cons { head: _, tail: rest } =>
-      if literal_opens_at(toks: toks) {
-        match citation_from(file: file, toks: toks) {
-          Present { value: _ } => unreadable_citations_of(file: file, toks: rest, acc: acc)
-          Absent => unreadable_citations_of(file: file, toks: rest, acc: list_snoc_item(xs: acc, item: symbol_lexeme(sym: file)))
-        }
-      } else {
-        unreadable_citations_of(file: file, toks: rest, acc: acc)
+        literal_scan(file: file, toks: r1, scan: scan)
       }
   }
 }
 
-fn declaration_ref_citations(file: Symbol, tokens: List<Token>) -> List<CitedRef> {
-  citations_of(file: file, toks: tokens, acc: [])
+fn declaration_ref_literals(file: Symbol, tokens: List<Token>) -> LiteralScan {
+  literal_scan(file: file, toks: tokens, scan: LiteralScan { cited: [], unreadable: [] })
 }
 
 // ---- prose --------------------------------------------------------------------------------
@@ -721,7 +672,8 @@ fn decl_ref_census_of_file(
   namespaces: List<String>,
   context: ResolutionContext
 ) -> DeclRefCensus {
-  let cited = declaration_ref_citations(file: file, tokens: tokens)
+  let literals = declaration_ref_literals(file: file, tokens: tokens)
+  let cited = literals.cited
   DeclRefCensus {
     refused_files: [],
     cited: cited,
@@ -736,7 +688,7 @@ fn decl_ref_census_of_file(
       []
     },
     sites: fold_list(xs: cited, empty: [], cons: fn(acc, c) { list_append(left: acc, right: unresolved_site(c: c, context: context)) }),
-    unreadable: unreadable_citations_of(file: file, toks: tokens, acc: [])
+    unreadable: literals.unreadable
   }
 }
 
