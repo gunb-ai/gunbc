@@ -3,8 +3,11 @@ module test.fixture.decl_facts_field_binder.specimen
 import std.types { Int, Bool, String }
 
 type DefaultSpecimen {
-  computed: Int = default_computed
   quoted_none: String = "none"
   quoted_false: String = "false"
   bool_false: Bool = false
+}
+
+type OptionalSpecimen {
+  maybe_count: Int?
 }
