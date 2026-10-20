@@ -139,7 +139,10 @@ fn wave_control_receipt() -> String {
     "binding_unbound_module\tc.bare\t3",
     "binding_unreached\tc.bare\tresolve refused",
     "binding_partial\tc.part\tx\t0\tparameter\tparameter\t4:3",
-    "binding_partial_module\tc.part\t1\t0\t0"
+    "binding_partial_module\tc.part\t1\t0\t0",
+    "binding\tc.mixed\tToken\t0\timport\tc.old.Token\t5:9",
+    "binding_module\tc.mixed\t1\t0\t0\t0",
+    "binding_unbound\tc.mixed\tnone\t0\t-\t-\t7:3"
   ]))
 }
 
@@ -153,6 +156,7 @@ fn wave_admission_controls_report() -> String {
     WaveAdmissionRows { rows: rows } =>
       wave_case(name: "clean", rows: rows, module: "c.clean", want: "ADMIT c.clean\n")
         + wave_case(name: "unbound-at-base", rows: rows, module: "c.bare", want: "REFUSE c.bare wave-candidate-unresolved-at-base Absent,semver_compare\nREPAIR c.bare Absent,semver_compare\n")
+        + wave_case(name: "unbound-beside-a-clean-summary", rows: rows, module: "c.mixed", want: "REFUSE c.mixed wave-candidate-unresolved-at-base none\nREPAIR c.mixed none\n")
         + wave_case(name: "partial", rows: rows, module: "c.part", want: "REFUSE c.part wave-candidate-partially-resolved\n")
         + wave_case(name: "unobserved", rows: rows, module: "c.absent", want: "REFUSE c.absent wave-candidate-unobserved-at-base\n")
         + wave_exit_case(rows: rows)
