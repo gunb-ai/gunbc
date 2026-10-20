@@ -136,7 +136,7 @@ test fn ut_user_type_named_uint8_at_itself_still_compiles() -> Bool {
 // user Opt<Int> reaching a String formal through it is NOT judged. The assertion RUNS and returns false
 // (the source is accepted); it greens when match-binding instantiation of generic results lands.
 fn ut_list_head_opt_binding_source() -> String {
-  "module ut.probe\n\ntype Opt<T>\n  = Some { value: T }\n  | Nada\n\nfn takes(x: String) -> String {\n  x\n}\n\nfn probe(xs: List<Opt<Int>>) -> String {\n  match list_head(xs: xs) {\n    Absent => \"\"\n    Present { value: c } => takes(x: c)\n  }\n}\n"
+  "module ut.probe\n\nimport std.algebra { list_head }\n\ntype Opt<T>\n  = Some { value: T }\n  | Nada\n\nfn takes(x: String) -> String {\n  x\n}\n\nfn probe(xs: List<Opt<Int>>) -> String {\n  match list_head(xs: xs) {\n    Absent => \"\"\n    Present { value: c } => takes(x: c)\n  }\n}\n"
 }
 
 test fn ut_list_head_opt_binding_at_string_formal_must_refuse() -> Bool {
