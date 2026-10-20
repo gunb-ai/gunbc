@@ -535,7 +535,9 @@ fn swift_semantic_decl_serialize_profile_bundle_node() -> Node {
           close: "\"",
           escapes: [
             TargetSemanticDeclEmitEscape { from: "\\", to: "\\\\" },
-            TargetSemanticDeclEmitEscape { from: "\"", to: "\\\"" }
+            TargetSemanticDeclEmitEscape { from: "\"", to: "\\\"" },
+            TargetSemanticDeclEmitEscape { from: "\n", to: "\\n" },
+            TargetSemanticDeclEmitEscape { from: "\r", to: "\\r" }
           ]
         }
       }
