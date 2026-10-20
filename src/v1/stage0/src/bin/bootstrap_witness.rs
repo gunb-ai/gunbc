@@ -206,6 +206,39 @@ fn parse_diagnostic_count(stderr: &str) -> Result<usize, DiagnosticCountAbsent> 
         })
 }
 
+/// `cargo check` failed but printed no `error[..]` line, so there is no error count to compare with
+/// the ratchet. Carries cargo's own stderr: that text is the cause.
+struct CargoCheckUncategorized {
+    stderr: String,
+}
+
+impl std::fmt::Display for CargoCheckUncategorized {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "cargo check failed with uncategorized errors, so there is no error count to \
+             measure. Cargo's own stderr:\n{}",
+            self.stderr
+        )
+    }
+}
+
+fn cargo_check_error_count(
+    check_succeeded: bool,
+    stderr: &str,
+) -> Result<usize, CargoCheckUncategorized> {
+    let count = stderr
+        .lines()
+        .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
+        .count();
+    if !check_succeeded && count == 0 {
+        return Err(CargoCheckUncategorized {
+            stderr: stderr.to_string(),
+        });
+    }
+    Ok(count)
+}
+
 fn copy_dir_recursive_bootstrap(source: &std::path::Path, dest: &std::path::Path) {
     std::fs::create_dir_all(dest)
         .unwrap_or_else(|e| panic!("failed to create {}: {}", dest.display(), e));
@@ -524,19 +557,8 @@ fn bootstrap_stage0_to_stage1() {
         .output()
         .expect("failed to cargo check stage1");
     let check_stderr = String::from_utf8_lossy(&check.stderr);
-    let error_count = check_stderr
-        .lines()
-        .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
-        .count();
-    let error_count = if !check.status.success() && error_count == 0 {
-        eprintln!(
-            "cargo check failed with uncategorized errors:\n{}",
-            check_stderr
-        );
-        usize::MAX
-    } else {
-        error_count
-    };
+    let error_count = cargo_check_error_count(check.status.success(), &check_stderr)
+        .unwrap_or_else(|uncategorized| panic!("{uncategorized}"));
     let mut categories: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for line in check_stderr.lines() {
         if line.starts_with("error[") {
@@ -1209,7 +1231,25 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod diagnostic_count_tests {
-    use super::parse_diagnostic_count;
+    use super::{cargo_check_error_count, parse_diagnostic_count};
+
+    #[test]
+    fn a_real_error_line_is_counted() {
+        let stderr = "error[E0599]: no method\nerror[E0308]: mismatched\n";
+        assert_eq!(cargo_check_error_count(false, stderr).ok(), Some(2));
+        assert_eq!(cargo_check_error_count(true, "").ok(), Some(0));
+    }
+
+    #[test]
+    fn a_failed_check_with_no_error_line_refuses_with_cargos_own_text() {
+        let stderr = "error: could not compile `x` due to a linker failure";
+        let uncategorized = cargo_check_error_count(false, stderr)
+            .err()
+            .expect("a failed check with no counted error must refuse");
+        let shown = uncategorized.to_string();
+        assert!(shown.contains("linker failure"), "{shown}");
+        assert!(shown.contains("no error count"), "{shown}");
+    }
 
     #[test]
     fn a_real_summary_line_is_read_as_its_count() {
