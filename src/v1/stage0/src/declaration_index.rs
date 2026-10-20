@@ -3213,36 +3213,10 @@ pub fn render_finding(
     let located = match finding.offset {
         Some(offset) => match std::fs::read_to_string(workspace.join(&finding.rel_path)) {
             Ok(content) => {
-                // THE ONE AUTHORITY, NOT A SECOND RENDERER. Composing byte_to_line_col into a
-                // `path:line:col` string HERE would be a fork of the format the seed owns -- the
-                // arithmetic would agree and the printed shape could still drift. The index is
-                // keyed by the SAME path the span carries, which is what the authority looks up.
                 let index =
                     crate::v1_std_core::build_newline_index(finding.rel_path.clone(), content);
-                // THE AUTHORITY TAKES THE SEED'S OWN MAP TYPE: the generated
-                // `render_span_location` signature is `Rc<HashMap<..>>` where `HashMap` is
-                // `im::HashMap` (v1_std_core.rs `use im::{... HashMap ...}`), not
-                // `std::collections::HashMap` -- the host precedent for handing an index map to a
-                // seed function is `im::HashMap::new()` (cli_run/pool_acquire.rs).
-                let mut source_indices: im::HashMap<
-                    String,
-                    std::rc::Rc<crate::v1_std_core::NewlineIndex>,
-                > = im::HashMap::new();
-                // `build_newline_index` already RETURNS `Rc<NewlineIndex>` -- the map's value type
-                // is `Rc<NewlineIndex>`, so the index goes in as built. Wrapping it again is a
-                // second pointer to the same fact, and the compiler says so.
-                source_indices.insert(finding.rel_path.clone(), index);
-                // The authority's own signature takes the span as `Rc<SourceSpan>` -- every
-                // seed-emitted record parameter is `Rc`-wrapped, so the literal is handed over
-                // inside the same pointer the rest of the seed sees.
-                crate::v1_std_core::render_span_location(
-                    std::rc::Rc::new(crate::v1_std_core::SourceSpan {
-                        file: finding.rel_path.clone(),
-                        start: offset,
-                        end: offset,
-                    }),
-                    std::rc::Rc::new(source_indices),
-                )
+                let lc = crate::v1_std_core::byte_to_line_col(index, offset);
+                format!("{}:{}:{}", finding.rel_path, lc.line, lc.col)
             }
             Err(_) => finding.rel_path.clone(),
         },

@@ -1147,12 +1147,8 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
     > {
         match resolved {
             Ok((graph, _)) => {
-                // The location in each line comes from the ONE authority in 00_core.dag; the
-                // index is the graph's own, so the lane line and the CLI line for one diagnostic
-                // cannot be computed against two different files' text.
-                let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
                     graph.diagnostics.clone(),
-                    crate::v1_compiler_compile::dag_graph_source_indices(graph.clone()),
                 );
                 if !blocking.is_empty() {
                     let detail = blocking.iter().cloned().collect::<Vec<_>>().join("; ");
@@ -1491,9 +1487,8 @@ fn compile_dag_primitive_call_edges_on_this_thread(
     v1_rt::trace_mark("primitive-call-edges.resolve.done".to_string());
     v1_rt::trace_mark("primitive-call-edges.walk.begin".to_string());
     let Some(graph) = resolved.graph.clone() else {
-        let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+        let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
             resolved.diagnostics.clone(),
-            resolved.source_indices.clone(),
         );
         return PrimitiveCallEdgeCensus::Refused {
             cause: format!(
@@ -1506,9 +1501,8 @@ fn compile_dag_primitive_call_edges_on_this_thread(
     let mut blocked_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for d in resolved.diagnostics.iter() {
         if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-            let message = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+            let message = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
                 Rc::new(vec![d.clone()].into()),
-                resolved.source_indices.clone(),
             )
             .iter()
             .next()
