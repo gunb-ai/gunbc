@@ -256,10 +256,12 @@ jobs:
               raise SystemExit('wave-transport: the merge base object is unreachable after 8 deepen rounds -- refusing before the instrument runs')
           def merge_base():
               return api('/repos/' + REPO + '/compare/main...' + HEAD)['merge_base_commit']['sha']
-          def candidate_runs():
+          def candidate_runs(head_ok):
               out = []
               for w in api('/repos/' + REPO + '/actions/workflows/' + WORKFLOW_FILE + '/runs?per_page=100')['workflow_runs']:
-                  if w.get('head_sha') != HEAD or w.get('status') != 'completed' or w.get('id') == RUN:
+                  if w.get('status') != 'completed' or w.get('id') == RUN:
+                      continue
+                  if head_ok and w.get('head_sha') != HEAD:
                       continue
                   inputs = w.get('inputs') or {}
                   out.append((str(w.get('created_at') or ''), w['id'], str(inputs.get('label') or ''), str(inputs.get('wave_shard') or '')))
@@ -294,19 +296,24 @@ jobs:
               if MODE.startswith('merge/'):
                   k = MODE.split('/')[1]
                   seen = {}
-                  for created, wid, label, shard in candidate_runs():
+                  for created, wid, label, shard in candidate_runs(True):
                       if shard.endswith('/' + k) and not shard.startswith('merge/') and shard != 'base' and shard != 'none':
                           seen.setdefault(shard, wid)
                   for shard, wid in seen.items():
                       fetch(wid, STAGING)
               want = 'base-' + MB + '-*' + '.txt'
-              for created, wid, label, shard in candidate_runs():
+              PROBE = os.path.join(os.path.dirname(STAGING), 'base-probe')
+              for created, wid, label, shard in candidate_runs(False):
                   if shard != 'base' or label != WAVE_LABEL:
                       continue
-                  fetch(wid, STAGING)
-                  if glob.glob(os.path.join(STAGING, '**', want), recursive=True):
+                  os.makedirs(PROBE, exist_ok=True)
+                  clear(PROBE)
+                  fetch(wid, PROBE)
+                  if glob.glob(os.path.join(PROBE, '**', want), recursive=True):
+                      for hit in glob.glob(os.path.join(PROBE, '**', want), recursive=True):
+                          shutil.copy2(hit, os.path.join(STAGING, os.path.basename(hit)))
                       break
-                  clear(STAGING)
+              clear(PROBE)
           PYEOF
         shell: bash
         env:
