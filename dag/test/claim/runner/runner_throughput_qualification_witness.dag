@@ -820,8 +820,8 @@ test fn the_collect_stage_owes_a_sealed_concurrent_cohort() -> Bool {
   !leg_is_wired(leg: qualification_run_producer_frontier)
     && (route() |> any(s =>
       match s {
-        CollectInstruments { instruments: is, collection: _ } =>
-          is |> any(i =>
+        CollectInstruments { instruments: ins, collection: _ } =>
+          ins |> any(i =>
             match i {
               ConcurrentCohortSeatWindows => {
                 let p = qualification_instrument_producer(i: i)
@@ -838,8 +838,8 @@ test fn the_collect_stage_owes_a_sealed_concurrent_cohort() -> Bool {
 test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
   route() |> any(s =>
     match s {
-      CollectInstruments { instruments: is, collection: _ } =>
-        (is |> any(i =>
+      CollectInstruments { instruments: ins, collection: _ } =>
+        (ins |> any(i =>
           match i {
             CalibrationSpecimenWitnessLine => {
               let p = qualification_instrument_producer(i: i)
@@ -848,7 +848,7 @@ test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
             _ => false
           }
         ))
-          && (is |> any(i =>
+          && (ins |> any(i =>
             match i {
               FloorCgroupRows => {
                 let p = qualification_instrument_producer(i: i)
@@ -857,7 +857,7 @@ test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
               _ => false
             }
           ))
-          && (is |> all(i => {
+          && (ins |> all(i => {
             let p = qualification_instrument_producer(i: i)
             string_contains(s: qualification_instrument_wire(i: i) as String, pattern: p.decl_name as String)
           }))
