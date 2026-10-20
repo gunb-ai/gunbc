@@ -21,6 +21,7 @@ use std::rc::Rc;
 
 use im::HashMap;
 
+use crate::coproduct_reflection::decl_qualified_name;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_infer_env::{lookup_binding_by_name_local, lookup_type};
 use crate::v1_compiler_infer_items::{item_kind, ItemKind, TypedModule};
@@ -218,14 +219,6 @@ fn declared_field_type_on_coproduct_variant_parse_tree(
 ) -> Option<String> {
     let (coproduct, _) = coproduct_type_item_parse_tree(ctx, coproduct_bare, si)?;
     declared_field_type_bare_on_coproduct_variant(&coproduct, variant_name, field_name, si)
-}
-
-fn decl_qualified_name(module_name: &str, name: &str) -> String {
-    if module_name.is_empty() {
-        name.to_string()
-    } else {
-        format!("{module_name}.{name}")
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
