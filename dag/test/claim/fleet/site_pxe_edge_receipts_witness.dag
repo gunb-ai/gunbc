@@ -468,3 +468,19 @@ test fn an_outside_caller_cannot_reach_the_attempt_check_directly() -> Bool {
 test fn an_outside_caller_cannot_mint_agreement_from_the_digest_compare_alone() -> Bool {
   blocking_count_for_class_and_subject(c: census_of(source: probe_digests_source), wanted: "ConstructorCallAdmissionRefused", subject: "bind_matched_digests") >= 1
 }
+
+// One offer, to the right client and exchange, from a server the client did NOT accept from: the
+// binder refuses it with its specific disagreement, and it is still an untaken offer.
+fn lone_offer_to_other_server() -> List<SuppliedEdgeOffer> {
+  offer_from(server_last: 2, digest: none, at: 20)
+}
+
+fn client_accepting_from_nine() -> List<SuppliedClientExchange> {
+  good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 9), digest: none, accepted: 30)
+}
+
+test fn lone_offer_the_client_did_not_accept_is_refused_and_stays_untaken() -> Bool {
+  attempt_refusal_is(clients: client_accepting_from_nine(), edges: lone_offer_to_other_server(), want: KindFrom)
+    && length(untaken_offers(edges: lone_offer_to_other_server(), clients: client_accepting_from_nine())) == 1
+    && length(selected_offers(edges: lone_offer_to_other_server(), clients: client_accepting_from_nine())) == 0
+}
