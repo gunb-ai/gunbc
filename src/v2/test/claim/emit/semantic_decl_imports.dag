@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE SUBJECT IS emit_semantic_type_decl WITH IMPORTS over each target's import-projection row. Goldens are the
 // exact text, so an import printed after the declaration, dropped, or printed under an unwired target reds here.
 
-data swift_import_golden: String = "import Foundation\nstruct Point: Equatable, Sendable { let x: Int32 }"
+data swift_import_golden: String = "import Foundation\nstruct Point: Equatable, Sendable {\n    let x: Int32\n}"
 
 data rust_import_golden: String = concat("use serde;\n", concat(rust_struct_derives, "\nstruct Point { x: i32 }"))
 
@@ -60,7 +60,7 @@ test fn rust_use_prints_before_the_declaration() -> Bool {
 test fn two_imports_print_in_order() -> Bool {
   sdi_equals(
     o: sdi_text(imports: [^Foundation, ^CryptoKit], type_name: ^dag_binding_type_int, target: swift_target_model()),
-    golden: "import Foundation\nimport CryptoKit\nstruct Point: Equatable, Sendable { let x: Int32 }"
+    golden: "import Foundation\nimport CryptoKit\nstruct Point: Equatable, Sendable {\n    let x: Int32\n}"
   )
 }
 
@@ -88,7 +88,7 @@ fn sdi_headed(header: List<String>, imports: List<Symbol>, target: TargetModel) 
 test fn swift_header_leads_the_imports() -> Bool {
   sdi_equals(
     o: sdi_headed(header: ["Generated from gunbc.auth.approval_device_wire.", "Do not edit."], imports: [^Foundation], target: swift_target_model()),
-    golden: "// Generated from gunbc.auth.approval_device_wire.\n// Do not edit.\nimport Foundation\nstruct Point: Equatable, Sendable { let x: Int32 }"
+    golden: "// Generated from gunbc.auth.approval_device_wire.\n// Do not edit.\nimport Foundation\nstruct Point: Equatable, Sendable {\n    let x: Int32\n}"
   )
 }
 

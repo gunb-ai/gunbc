@@ -60,14 +60,14 @@ fn sdc_equals(o: Outcome<String>, golden: String) -> Bool {
 test fn swift_docs_lead_the_declaration() -> Bool {
   sdc_equals(
     o: sdc_text(docs: ["A point.", "Two lines."], conformances: ConformancesTargetDefault, type_name: ^dag_binding_type_int, target: swift_target_model()),
-    golden: "/// A point.\n/// Two lines.\nstruct Point: Equatable, Sendable { let x: Int32 }"
+    golden: "/// A point.\n/// Two lines.\nstruct Point: Equatable, Sendable {\n    let x: Int32\n}"
   )
 }
 
 test fn swift_named_conformances_replace_the_default() -> Bool {
   sdc_equals(
     o: sdc_text(docs: [], conformances: ConformancesNamed { names: [^Equatable, ^Codable] }, type_name: ^dag_binding_type_int, target: swift_target_model()),
-    golden: "struct Point: Equatable, Codable { let x: Int32 }"
+    golden: "struct Point: Equatable, Codable {\n    let x: Int32\n}"
   )
 }
 
@@ -95,7 +95,7 @@ test fn c_with_conformances_refuses_unwired() -> Bool {
 test fn swift_field_docs_lead_their_field() -> Bool {
   sdc_equals(
     o: sdc_field_docs_text(fields: [ sdc_field_doc(decl: "Point", field: "x", lines: ["The x."]) ], type_name: ^dag_binding_type_int, target: swift_target_model()),
-    golden: "struct Point: Equatable, Sendable { /// The x.\nlet x: Int32 }"
+    golden: "struct Point: Equatable, Sendable {\n    /// The x.\n    let x: Int32\n}"
   )
 }
 

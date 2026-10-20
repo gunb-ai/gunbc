@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // nodes are supplied at that boundary; each golden is the exact text, so a row that placed a member in the
 // wrong position (or dropped it) reds here.
 
-data swift_member_golden: String = "struct Point: Equatable, Sendable { let x: Int32; static let version = \"V1\" }"
+data swift_member_golden: String = "struct Point: Equatable, Sendable {\n    let x: Int32\n    static let version = \"V1\"\n}"
 
 fn sdm_atom_type(name: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
@@ -55,9 +55,9 @@ test fn swift_member_prints_inside_the_type_body() -> Bool {
 // A MEMBER LITERAL CARRYING A LINE BREAK: Swift's single-line string literal admits no raw newline, so the
 // print must spell the break as the escape the language defines. Golden = the escaped spelling; the RED is the
 // same input without the escape row (the text would hold a raw break inside the quotes).
-data swift_newline_member_golden: String = "struct Point: Equatable, Sendable { let x: Int32; static let note = \"a\\nb\" }"
+data swift_newline_member_golden: String = "struct Point: Equatable, Sendable {\n    let x: Int32\n    static let note = \"a\\nb\"\n}"
 
-data swift_carriage_return_member_golden: String = "struct Point: Equatable, Sendable { let x: Int32; static let note = \"a\\rb\" }"
+data swift_carriage_return_member_golden: String = "struct Point: Equatable, Sendable {\n    let x: Int32\n    static let note = \"a\\rb\"\n}"
 
 test fn swift_member_literal_newline_prints_as_the_escape() -> Bool {
   match sdm_swift_text(members: [ TargetSemanticDeclMember { name: ^note, literal: symbol_intern_lexeme(lexeme: "a\nb") } ]) {
@@ -75,7 +75,7 @@ test fn swift_member_literal_carriage_return_prints_as_the_escape() -> Bool {
 
 test fn swift_member_literal_with_backslash_and_quote_still_escapes_once() -> Bool {
   match sdm_swift_text(members: [ TargetSemanticDeclMember { name: ^note, literal: symbol_intern_lexeme(lexeme: "a\\\"b") } ]) {
-    Accepted { value: text, diagnostics: _ } => text == "struct Point: Equatable, Sendable { let x: Int32; static let note = \"a\\\\\\\"b\" }"
+    Accepted { value: text, diagnostics: _ } => text == "struct Point: Equatable, Sendable {\n    let x: Int32\n    static let note = \"a\\\\\\\"b\"\n}"
     Rejected { diagnostics: _ } => false
   }
 }
