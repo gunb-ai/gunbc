@@ -287,6 +287,7 @@ import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductDecorationRule,
   TargetSemanticDeclCoproductEnumSurface,
   DeclEmitStringQuote,
+  HeaderLeadingLines,
   ImportsLeading,
   MembersInAssociatedBlock,
   TargetSemanticDeclEmitEscape,
@@ -2742,6 +2743,7 @@ fn rust_enum_general_decl_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^rust_decl_enum,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_enum),
@@ -2752,6 +2754,7 @@ fn rust_enum_general_decl_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^rust_decl_enum,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_enum),
@@ -2772,7 +2775,7 @@ fn rust_enum_general_decl_formal_productions() -> List<FormalProduction> {
         left: rust_decl_shared_generic_productions(),
         right: list_append(
           left: rust_decl_shared_variant_productions(),
-          right: list_append(left: rust_decl_import_productions(), right: rust_enum_general_decl_top_productions())
+          right: list_append(left: list_append(left: rust_decl_header_productions(), right: rust_decl_import_productions()), right: rust_enum_general_decl_top_productions())
         )
       )
     )
@@ -2839,6 +2842,9 @@ fn rust_semantic_decl_lex_rows() -> List<Node> {
       token_class: ^rust_token_derive_enum_copy,
       text: rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
     ),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_comment_prefix, text: "// "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_header_end, text: "\n"),
+    semantic_decl_lex_ident_row(token_class: ^rust_token_header_text),
     semantic_decl_lex_literal_row(token_class: ^rust_token_kw_use, text: "use "),
     semantic_decl_lex_literal_row(token_class: ^rust_token_use_end, text: ";\n"),
     semantic_decl_lex_literal_row(token_class: ^rust_token_kw_struct, text: "struct "),
@@ -2915,6 +2921,7 @@ fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjectio
     coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
     member_projection: MembersInAssociatedBlock,
     import_projection: ImportsLeading,
+    header_projection: HeaderLeadingLines,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_default,
@@ -2975,6 +2982,27 @@ fn rust_enum_general_decl_structural_target_model() -> TargetModel {
 
 // A DECLARATION'S LEADING IMPORTS: `use path;` lines ahead of the derive attribute, in the same emission. The list is
 // nullable (the nil terminator of an empty import list derives nothing), so a declaration without imports is unchanged.
+fn rust_decl_header_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^rust_decl_header_line,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_comment_prefix),
+        grammar_formal_terminal_free(identity: ^rust_token_header_text),
+        grammar_formal_terminal(identity: ^rust_token_header_end)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_header_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_line),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list)
+      ]
+    ),
+    grammar_formal_production(lhs: ^rust_decl_header_list, rhs: [])
+  ]
+}
+
 fn rust_decl_import_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
@@ -3001,6 +3029,7 @@ fn rust_struct_general_decl_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^rust_decl_struct,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_struct),
@@ -3013,6 +3042,7 @@ fn rust_struct_general_decl_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^rust_decl_struct,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_struct),
@@ -3055,6 +3085,7 @@ fn rust_struct_general_decl_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^rust_decl_struct,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_struct),
@@ -3073,7 +3104,7 @@ fn rust_struct_general_decl_formal_productions() -> List<FormalProduction> {
       left: rust_decl_shared_field_productions(),
       right: list_append(
         left: rust_decl_shared_generic_productions(),
-        right: list_append(left: rust_decl_import_productions(), right: rust_struct_general_decl_top_productions())
+        right: list_append(left: list_append(left: rust_decl_header_productions(), right: rust_decl_import_productions()), right: rust_struct_general_decl_top_productions())
       )
     )
   )

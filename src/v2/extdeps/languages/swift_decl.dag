@@ -14,6 +14,7 @@ import v2.std.grammar {
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductEnumSurface,
   DeclEmitStringQuote,
+  HeaderLeadingLines,
   ImportsLeading,
   MembersInsideTypeBody,
   TargetSemanticDeclEmitEscape,
@@ -193,6 +194,27 @@ fn swift_decl_struct_field_productions() -> List<FormalProduction> {
 
 // A DECLARATION'S LEADING IMPORTS: `import Module` lines ahead of the declaration, in the same emission. The list is
 // nullable (the nil terminator of an empty import list derives nothing), so a declaration without imports is unchanged.
+fn swift_decl_header_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^swift_decl_header_line,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_comment_prefix),
+        grammar_formal_terminal_free(identity: ^swift_token_header_text),
+        grammar_formal_terminal(identity: ^swift_token_header_end)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_header_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_header_line),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_header_list)
+      ]
+    ),
+    grammar_formal_production(lhs: ^swift_decl_header_list, rhs: [])
+  ]
+}
+
 fn swift_decl_import_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
@@ -219,6 +241,7 @@ fn swift_decl_struct_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^swift_decl_struct,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_import_list),
         grammar_formal_terminal(identity: ^swift_token_kw_struct),
         grammar_formal_terminal_free(identity: ^swift_token_ident),
@@ -229,6 +252,7 @@ fn swift_decl_struct_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^swift_decl_struct,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_import_list),
         grammar_formal_terminal(identity: ^swift_token_kw_struct),
         grammar_formal_terminal_free(identity: ^swift_token_ident),
@@ -319,6 +343,7 @@ fn swift_decl_enum_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^swift_decl_enum,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_import_list),
         grammar_formal_terminal(identity: ^swift_token_kw_enum),
         grammar_formal_terminal_free(identity: ^swift_token_ident),
@@ -329,6 +354,7 @@ fn swift_decl_enum_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^swift_decl_enum,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_import_list),
         grammar_formal_terminal(identity: ^swift_token_kw_enum),
         grammar_formal_terminal_free(identity: ^swift_token_ident),
@@ -347,7 +373,7 @@ fn swift_decl_struct_formal_productions() -> List<FormalProduction> {
       left: swift_decl_generic_productions(),
       right: list_append(
         left: swift_decl_struct_field_productions(),
-        right: list_append(left: swift_decl_import_productions(), right: swift_decl_struct_top_productions())
+        right: list_append(left: list_append(left: swift_decl_header_productions(), right: swift_decl_import_productions()), right: swift_decl_struct_top_productions())
       )
     )
   )
@@ -360,7 +386,7 @@ fn swift_decl_enum_formal_productions() -> List<FormalProduction> {
       left: swift_decl_generic_productions(),
       right: list_append(
         left: swift_decl_variant_productions(),
-        right: list_append(left: swift_decl_import_productions(), right: swift_decl_enum_top_productions())
+        right: list_append(left: list_append(left: swift_decl_header_productions(), right: swift_decl_import_productions()), right: swift_decl_enum_top_productions())
       )
     )
   )
@@ -390,6 +416,9 @@ fn swift_enum_general_decl_productions_only_translation_rules() -> Node {
 fn swift_semantic_decl_lex_rows() -> List<Node> {
   [
     semantic_decl_lex_whitespace_trivia_row(),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_comment_prefix, text: "// "),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_header_end, text: "\n"),
+    semantic_decl_lex_ident_row(token_class: ^swift_token_header_text),
     semantic_decl_lex_literal_row(token_class: ^swift_token_kw_import, text: "import "),
     semantic_decl_lex_literal_row(token_class: ^swift_token_import_end, text: "\n"),
     semantic_decl_lex_literal_row(token_class: ^swift_token_kw_struct, text: "struct "),
@@ -445,6 +474,7 @@ fn swift_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjecti
     coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
     member_projection: MembersInsideTypeBody,
     import_projection: ImportsLeading,
+    header_projection: HeaderLeadingLines,
     coproduct_decoration_rules: []
   }
 }

@@ -39,7 +39,7 @@ fn sdm_version() -> List<TargetSemanticDeclMember> {
 }
 
 fn sdm_swift_text(members: List<TargetSemanticDeclMember>) -> Outcome<String> {
-  match emit_semantic_type_decl(imports: [], members: members, name: ^Point, params: [], node: sdm_point_record(), target: swift_target_model(), realization_host: swift_target_model()) {
+  match emit_semantic_type_decl(header: [], imports: [], members: members, name: ^Point, params: [], node: sdm_point_record(), target: swift_target_model(), realization_host: swift_target_model()) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -53,7 +53,7 @@ test fn swift_member_prints_inside_the_type_body() -> Bool {
 }
 
 fn sdm_text(members: List<TargetSemanticDeclMember>, target: TargetModel) -> Outcome<String> {
-  match emit_semantic_type_decl(imports: [], members: members, name: ^Point, params: [], node: sdm_point_record(), target: target, realization_host: target) {
+  match emit_semantic_type_decl(header: [], imports: [], members: members, name: ^Point, params: [], node: sdm_point_record(), target: target, realization_host: target) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -86,7 +86,7 @@ fn sdm_c_record() -> Node {
 }
 
 fn sdm_c_text(members: List<TargetSemanticDeclMember>) -> Outcome<String> {
-  match emit_semantic_type_decl(imports: [], members: members, name: ^Point, params: [], node: sdm_c_record(), target: c_target_model(), realization_host: c_target_model()) {
+  match emit_semantic_type_decl(header: [], imports: [], members: members, name: ^Point, params: [], node: sdm_c_record(), target: c_target_model(), realization_host: c_target_model()) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -109,7 +109,7 @@ test fn c_with_members_refuses_unwired() -> Bool {
 }
 
 test fn members_on_a_coproduct_refuse_located() -> Bool {
-  match emit_semantic_type_decl(imports: [], members: sdm_version(), name: ^Flag, params: [], node: sdm_flag_coproduct(), target: swift_target_model(), realization_host: swift_target_model()) {
+  match emit_semantic_type_decl(header: [], imports: [], members: sdm_version(), name: ^Flag, params: [], node: sdm_flag_coproduct(), target: swift_target_model(), realization_host: swift_target_model()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^emit_semantic_decl_members_on_coproduct_unwired
   }
