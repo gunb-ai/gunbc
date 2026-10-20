@@ -26,7 +26,8 @@ stamp(){ echo "[$(date -u +%H:%M:%S)] $*"; }
 # The rows come from the instrument ref ONCE, into a path both heads read, so "same bytes at both heads"
 # is a property of the run rather than of my care.
 rm -rf /tmp/foldfix
-git clone -q --depth 1 -b "$FIX_REF" "$REPO" /tmp/foldfix || { echo "VOID_FIXREF_CLONE"; exit 3; }
+FIX_BR=${FIX_REF#refs/heads/}
+git clone -q --depth 1 -b "$FIX_BR" "$REPO" /tmp/foldfix 2>/tmp/foldfix_clone_err || { echo "VOID_FIXREF_CLONE ref=$FIX_REF branch=$FIX_BR"; sed 's/^/  clone: /' /tmp/foldfix_clone_err; exit 3; }
 [ -s "/tmp/foldfix/$ROWS" ] || { echo "VOID_ROWS_MISSING /tmp/foldfix/$ROWS"; exit 3; }
 echo "ROWS_SHA256=$(sha256sum "/tmp/foldfix/$ROWS" | cut -c1-16) rows=/tmp/foldfix/$ROWS"
 
