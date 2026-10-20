@@ -27,11 +27,11 @@ use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
-    authored_name_at, call_semantics_target, callable_identity, expr_call_func_at,
-    expr_var_name_at, field_access_base, field_access_field_at, is_rest_transport, method_receiver,
-    no_span, param_node_type_expr, unit_type, CallSemantics, CallTargetIdentity, Cardinality,
-    Connective, DeclarationMarker, DeclaredCallableIdentity, ExprData, InferredNode, NewlineIndex,
-    Node,
+    call_semantics_target, callable_identity, expr_call_func_at, expr_var_name_at,
+    field_access_base, field_access_field_at, is_rest_transport, method_receiver, no_span,
+    node_authored_text, param_node_type_expr, unit_type, CallSemantics, CallTargetIdentity,
+    Cardinality, Connective, DeclarationMarker, DeclaredCallableIdentity, ExprData, InferredNode,
+    NewlineIndex, Node,
 };
 pub use crate::v1_std_core::{ParsedModuleItemKind, VarBindingKind};
 use crate::NonEmptyBTreeSet;
@@ -60,46 +60,33 @@ pub struct ServiceMethodResult {
     pub rest: bool,
 }
 
-pub fn service_receiver_resolved_name(
-    receiver: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+pub fn service_receiver_resolved_name(receiver: Rc<Node>) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprVar {
             binding_kind: Some(bk),
             ..
         } => match (*bk.clone()).clone() {
-            VarBindingKind::ServiceValueBinding => Some(crate::v1_std_core::expr_var_name_at(
-                receiver.clone(),
-                source_indices.clone(),
-            )),
+            VarBindingKind::ServiceValueBinding => {
+                Some(crate::v1_std_core::expr_var_name_at(receiver.clone()))
+            }
             _ => std::option::Option::None,
         },
         _ => std::option::Option::None,
     }
 }
 
-pub fn is_typed_service_call_receiver(
-    receiver: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match service_receiver_resolved_name(receiver.clone(), source_indices.clone()) {
+pub fn is_typed_service_call_receiver(receiver: Rc<Node>) -> bool {
+    match service_receiver_resolved_name(receiver.clone()) {
         Some(_) => true,
         std::option::Option::None => false,
     }
 }
 
-pub fn extract_typed_service_name(
-    receiver: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    service_receiver_resolved_name(receiver.clone(), source_indices.clone())
+pub fn extract_typed_service_name(receiver: Rc<Node>) -> Option<String> {
+    service_receiver_resolved_name(receiver.clone())
 }
 
-pub fn collect_typed_service_calls(
-    texpr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+pub fn collect_typed_service_calls(texpr: Rc<Node>) -> Rc<Vec<String>> {
     {
         let result = collect_typed_service_calls_into(
             texpr.clone(),
@@ -107,17 +94,12 @@ pub fn collect_typed_service_calls(
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
-            source_indices.clone(),
         );
         result.result.clone()
     }
 }
 
-pub fn collect_typed_service_calls_into(
-    texpr: Rc<Node>,
-    acc: Rc<UniqueAccum>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<UniqueAccum> {
+pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_acc = match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprMethodCall {
@@ -125,8 +107,8 @@ pub fn collect_typed_service_calls_into(
                 ..
             } => {
                 let r = crate::v1_std_core::method_receiver(texpr.clone());
-                if is_typed_service_call_receiver(r.clone(), source_indices.clone()) {
-                    match extract_typed_service_name(r.clone(), source_indices.clone()) {
+                if is_typed_service_call_receiver(r.clone()) {
+                    match extract_typed_service_name(r.clone()) {
                         Some(service_name) => {
                             if crate::v1_compiler_infer_types::emit_map_has(
                                 acc.seen.clone(),
@@ -158,7 +140,7 @@ pub fn collect_typed_service_calls_into(
         let result = texpr.children.clone().iter().cloned().fold(
             this_acc.clone(),
             |a: Rc<UniqueAccum>, child: Rc<Node>| {
-                collect_typed_service_calls_into(child.clone(), a, source_indices.clone())
+                collect_typed_service_calls_into(child.clone(), a)
             },
         );
         result
@@ -291,11 +273,7 @@ pub fn callee_edge_dedup_key(edge: Rc<CalleeEdge>) -> Rc<CalleeEdgeDedup> {
     }
 }
 
-pub fn collect_callee_edges_into(
-    texpr: Rc<Node>,
-    acc: Rc<CalleeAccum>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<CalleeAccum> {
+pub fn collect_callee_edges_into(texpr: Rc<Node>, acc: Rc<CalleeAccum>) -> Rc<CalleeAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_acc = match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall {
@@ -303,7 +281,7 @@ pub fn collect_callee_edges_into(
             } => {
                 let edge = callee_edge_of_semantics(
                     cs.clone(),
-                    crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone()),
+                    crate::v1_std_core::expr_call_func_at(texpr.clone()),
                     texpr.span.clone(),
                 );
                 match (*callee_edge_dedup_key(edge.clone())).clone() {
@@ -325,20 +303,19 @@ pub fn collect_callee_edges_into(
             }
             _ => acc.clone(),
         };
-        let result = texpr.children.clone().iter().cloned().fold(
-            this_acc.clone(),
-            |a: Rc<CalleeAccum>, child: Rc<Node>| {
-                collect_callee_edges_into(child.clone(), a, source_indices.clone())
-            },
-        );
+        let result = texpr
+            .children
+            .clone()
+            .iter()
+            .cloned()
+            .fold(this_acc.clone(), |a: Rc<CalleeAccum>, child: Rc<Node>| {
+                collect_callee_edges_into(child.clone(), a)
+            });
         result
     })
 }
 
-pub fn collect_callee_edges(
-    texpr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<CalleeEdge>>> {
+pub fn collect_callee_edges(texpr: Rc<Node>) -> Rc<Vec<Rc<CalleeEdge>>> {
     {
         let result = collect_callee_edges_into(
             texpr.clone(),
@@ -346,7 +323,6 @@ pub fn collect_callee_edges(
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
-            source_indices.clone(),
         );
         result.result.clone()
     }
@@ -372,10 +348,7 @@ pub fn item_callees_for(
     {
         let item_identity = Rc::new(DeclaredCallableIdentity {
             owner_module_path: module_name.clone(),
-            decl_name: crate::v1_std_core::authored_name_at(
-                m.type_env.source_indices.clone(),
-                item.clone(),
-            ),
+            decl_name: crate::v1_std_core::node_authored_text(item.clone()),
         });
         let has_no_body = (item.body.clone() == std::option::Option::None);
         if has_no_body.clone() {
@@ -388,10 +361,7 @@ pub fn item_callees_for(
             Rc::new(ItemCallees {
                 item_identity: item_identity.clone(),
                 has_body: true,
-                called: collect_callee_edges(
-                    item.body.clone().clone().unwrap(),
-                    m.type_env.source_indices.clone(),
-                ),
+                called: collect_callee_edges(item.body.clone().clone().unwrap()),
             })
         }
     }
@@ -402,10 +372,7 @@ pub fn build_module_callees(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Vec<Rc<Modu
         let mut __result = Vec::new();
         for m in modules.iter().cloned() {
             __result.push({
-                let module_name = crate::v1_std_core::authored_name_at(
-                    m.type_env.source_indices.clone(),
-                    m.module.clone(),
-                );
+                let module_name = crate::v1_std_core::node_authored_text(m.module.clone());
                 Rc::new(ModuleCallees {
                     items: Rc::new({
                         let mut __result = Vec::new();
@@ -804,7 +771,6 @@ pub fn check_service_field_access_node(
     base_type: Rc<Node>,
     field: String,
     service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     if ((base_type.connective.clone() == Connective::NoConnective)
         && ((base_type.children.clone().len() as i64) == 0))
@@ -812,7 +778,7 @@ pub fn check_service_field_access_node(
         {
             let path = v1_rt::concat(
                 v1_rt::concat(
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), base_type.clone()),
+                    crate::v1_std_core::node_authored_text(base_type.clone()),
                     ".".to_string(),
                 ),
                 field.clone(),
@@ -833,14 +799,13 @@ pub fn check_service_method_call_node(
     receiver_type: Rc<Node>,
     method: String,
     service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<ServiceMethodResult>> {
     if ((receiver_type.connective.clone() == Connective::NoConnective)
         && ((receiver_type.children.clone().len() as i64) == 0))
     {
         match v1_rt::map_get(
             &service_registry,
-            crate::v1_std_core::authored_name_at(source_indices.clone(), receiver_type.clone()),
+            crate::v1_std_core::node_authored_text(receiver_type.clone()),
         ) {
             Some(ops) => {
                 let matching = Rc::new({
@@ -939,33 +904,24 @@ pub fn check_service_method_call_node(
     }
 }
 
-pub fn service_operation_is_rest(
-    op: Rc<Node>,
-    service: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
+pub fn service_operation_is_rest(op: Rc<Node>, service: Rc<Node>) -> bool {
     match op.transport.clone() {
-        Some(t) => crate::v1_std_core::is_rest_transport(t.clone(), source_indices.clone()),
+        Some(t) => crate::v1_std_core::is_rest_transport(t.clone()),
         std::option::Option::None => match service.transport.clone() {
-            Some(t) => crate::v1_std_core::is_rest_transport(t.clone(), source_indices.clone()),
+            Some(t) => crate::v1_std_core::is_rest_transport(t.clone()),
             std::option::Option::None => false,
         },
     }
 }
 
-pub fn service_op_entry(
-    child: Rc<Node>,
-    service: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<OpEntry> {
+pub fn service_op_entry(child: Rc<Node>, service: Rc<Node>) -> Rc<OpEntry> {
     Rc::new(OpEntry {
-        name: crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone()),
+        name: crate::v1_std_core::node_authored_text(child.clone()),
         outputs: crate::v1_compiler_infer_items::inferred_to_outputs(
             child.inferred.clone(),
             child.span.clone(),
-            source_indices.clone(),
         ),
         params: child.params.clone(),
-        rest: service_operation_is_rest(child.clone(), service.clone(), source_indices.clone()),
+        rest: service_operation_is_rest(child.clone(), service.clone()),
     })
 }

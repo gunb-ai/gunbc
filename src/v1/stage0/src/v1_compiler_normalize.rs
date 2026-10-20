@@ -12,7 +12,7 @@ use crate::v1_std_core::ContainerSpellingVerdict::{
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved};
 pub use crate::v1_std_core::{
-    authored_container_spelling_verdict, authored_name_at, make_error_node, module_items,
+    authored_container_spelling_verdict, make_error_node, module_items, node_authored_text,
     CompilerDiagnostic, Connective, ContainerSpellingVerdict, ErrorNode, ExprData, InferredNode,
     NewlineIndex, Node,
 };
@@ -42,7 +42,7 @@ pub fn check_bare_containers(
             ExprData::NoExprData => false,
             _ => true,
         };
-        let nname = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        let nname = crate::v1_std_core::node_authored_text(n.clone());
         let self_diags = if is_expr.clone() {
             Rc::new(vec![])
         } else {
@@ -208,10 +208,7 @@ pub fn normalize_module_diagnostics(
                 __result.extend(
                     (*check_bare_containers(
                         item.clone(),
-                        crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            m.module.clone(),
-                        ),
+                        crate::v1_std_core::node_authored_text(m.module.clone()),
                         source_indices.clone(),
                     ))
                     .iter()

@@ -26,8 +26,8 @@ use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
 pub use crate::v1_std_core::{
-    authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
-    make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
+    expr_has_non_tail_self_call, expr_has_self_call, make_field_node, make_param_node, no_span,
+    node_authored_text, node_name_span, param_node_name_at, param_node_type_expr,
     resource_use_name_at, resource_use_resource, Cardinality, Connective, ErrorNode, InferredNode,
     LeafOwner, NewlineIndex, Node,
 };
@@ -63,18 +63,12 @@ pub struct ResourceRequirement {
     pub resource: Rc<Node>,
 }
 
-pub fn resource_requirements_of_uses(
-    uses: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ResourceRequirement>>> {
+pub fn resource_requirements_of_uses(uses: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<ResourceRequirement>>> {
     Rc::new({
         let mut __result = Vec::new();
         for u in uses.iter().cloned() {
             __result.push(Rc::new(ResourceRequirement {
-                binding_name: crate::v1_std_core::resource_use_name_at(
-                    u.clone(),
-                    source_indices.clone(),
-                ),
+                binding_name: crate::v1_std_core::resource_use_name_at(u.clone()),
                 resource: crate::v1_std_core::resource_use_resource(u.clone()),
             }));
         }
@@ -182,7 +176,6 @@ pub struct ResolvedGraph {
 pub fn inferred_to_outputs(
     inferred: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     if (inferred.clone() == std::option::Option::None) {
         Rc::new(vec![])
@@ -210,8 +203,7 @@ pub fn inferred_to_outputs(
                                                 Rc::new(
                                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                                 ),
-                                                crate::v1_std_core::authored_name_at(
-                                                    source_indices.clone(),
+                                                crate::v1_std_core::node_authored_text(
                                                     child.clone(),
                                                 ),
                                                 child_type.clone(),

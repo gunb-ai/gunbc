@@ -83,7 +83,7 @@ use crate::v1_std_core::TokenShape::{
 };
 use crate::v1_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v1_std_core::{
-    arg_name_at, arg_value, authored_ident, authored_ident_at, authored_name_at, byte_to_line_col,
+    arg_name_at, arg_value, authored_ident, authored_ident_at, byte_to_line_col,
     empty_intern_table, error_type, expr_call_func_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_access_spine, field_binding_pattern, field_from_key_property_name,
     field_init_node_value, field_node_cardinality, field_node_default_value, field_node_from_key,
@@ -93,12 +93,12 @@ pub use crate::v1_std_core::{
     make_expr_node, make_field_binding_node, make_field_init_node, make_field_node,
     make_interp_part_node, make_named_expr_node, make_param_node,
     make_pattern_binder_declaration_node, make_resource_use_node, make_text_part_node,
-    make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
-    param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
-    shell_transport_node, transport_auth_basic_key, transport_body_key, transport_headers_key,
-    transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
-    transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
-    type_param_kind_property_name, variant_node_fields, variant_node_name_at,
+    make_variant_node, module_node, no_span, node_authored_text, node_name_span,
+    param_node_default_value, param_node_type_expr, pre_intern_tokens, rest_transport_node,
+    service_config_properties, shell_transport_node, transport_auth_basic_key, transport_body_key,
+    transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
+    transport_query_key, transport_response_format_key, transport_stdin_key, transport_tls_key,
+    transport_url_key, type_param_kind_property_name, variant_node_fields, variant_node_name_at,
     with_required_cardinality, AuthoredIdent, Cardinality, CompilerDiagnostic, Connective,
     DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode,
     InternResult, InternTable, MatchPattern, NewlineIndex, Node, OperationModifier,
@@ -3099,19 +3099,13 @@ pub fn eat(tokens: Rc<TokenStream>, expected: Rc<ExpectedToken>) -> Rc<EatResult
     }
 }
 
-pub fn parser_result_base_var(
-    expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+pub fn parser_result_base_var(expr: Rc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => match expr.children.clone().first().cloned() {
             Some(base) => match (*base.expr_data.clone()).clone() {
                 ExprData::ExprVar {
                     binding_kind: _, ..
-                } => Some(crate::v1_std_core::expr_var_name_at(
-                    base.clone(),
-                    source_indices.clone(),
-                )),
+                } => Some(crate::v1_std_core::expr_var_name_at(base.clone())),
                 _ => std::option::Option::None,
             },
             std::option::Option::None => std::option::Option::None,
@@ -3120,10 +3114,7 @@ pub fn parser_result_base_var(
     }
 }
 
-pub fn parser_helper_state_arg_expr(
-    call_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+pub fn parser_helper_state_arg_expr(call_node: Rc<Node>) -> Option<Rc<Node>> {
     Rc::new(
         call_node
             .children
@@ -3145,10 +3136,7 @@ pub fn parser_helper_state_arg_expr(
                 {
                     let idx = pair.0.clone();
                     let arg_node = pair.1.clone();
-                    let matches_state = match crate::v1_std_core::arg_name_at(
-                        arg_node.clone(),
-                        source_indices.clone(),
-                    ) {
+                    let matches_state = match crate::v1_std_core::arg_name_at(arg_node.clone()) {
                         Some(name) => {
                             ((name.clone() == "state".to_string())
                                 || (name.clone() == "tokens".to_string()))
@@ -3166,18 +3154,14 @@ pub fn parser_helper_state_arg_expr(
     )
 }
 
-pub fn parser_progress_flag_var(
-    expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+pub fn parser_progress_flag_var(expr: Rc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => {
-            let field =
-                crate::v1_std_core::field_access_field_at(expr.clone(), source_indices.clone());
+            let field = crate::v1_std_core::field_access_field_at(expr.clone());
             if ((field.clone() == "consumed".to_string())
                 || (field.clone() == "changed".to_string()))
             {
-                parser_result_base_var(expr.clone(), source_indices.clone())
+                parser_result_base_var(expr.clone())
             } else {
                 std::option::Option::None
             }
@@ -3202,56 +3186,48 @@ pub fn parser_helper_identity(callee: String) -> Option<ParserHelperIdentity> {
     }
 }
 
-pub fn parser_passthrough_state_expr(
-    expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+pub fn parser_passthrough_state_expr(expr: Rc<Node>) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => match parser_helper_identity(
-            crate::v1_std_core::expr_call_func_at(expr.clone(), source_indices.clone()),
-        ) {
-            Some(ParserHelperIdentity::ParserHelperSkipNewlines) => {
-                parser_helper_state_arg_expr(expr.clone(), source_indices.clone())
-            }
-            Some(ParserHelperIdentity::ParserHelperSkipContinuationNewlines) => {
-                parser_helper_state_arg_expr(expr.clone(), source_indices.clone())
-            }
-            Some(ParserHelperIdentity::ParserHelperWith) => {
-                match expr.children.clone().first().cloned() {
-                    Some(base_arg) => Some(crate::v1_std_core::arg_value(base_arg.clone())),
-                    std::option::Option::None => std::option::Option::None,
+        ExprData::ExprCall { .. } => {
+            match parser_helper_identity(crate::v1_std_core::expr_call_func_at(expr.clone())) {
+                Some(ParserHelperIdentity::ParserHelperSkipNewlines) => {
+                    parser_helper_state_arg_expr(expr.clone())
                 }
+                Some(ParserHelperIdentity::ParserHelperSkipContinuationNewlines) => {
+                    parser_helper_state_arg_expr(expr.clone())
+                }
+                Some(ParserHelperIdentity::ParserHelperWith) => {
+                    match expr.children.clone().first().cloned() {
+                        Some(base_arg) => Some(crate::v1_std_core::arg_value(base_arg.clone())),
+                        std::option::Option::None => std::option::Option::None,
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
             }
-            std::option::Option::None => std::option::Option::None,
-        },
+        }
         _ => std::option::Option::None,
     }
 }
 
-pub fn parser_result_witness(
-    expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ParserResultWitness> {
+pub fn parser_result_witness(expr: Rc<Node>) -> Rc<ParserResultWitness> {
     match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => {
-            match crate::v1_std_core::expr_call_func_at(expr.clone(), source_indices.clone()) {
-                ref __s if __s == "advance" => Rc::new(ParserResultWitness::ParserWitnessAdvance),
-                ref __s if __s == "expect" => Rc::new(ParserResultWitness::ParserWitnessExpect),
-                ref __s if __s == "eat" => Rc::new(ParserResultWitness::ParserWitnessEat),
-                callee => match parser_helper_identity(callee.clone()) {
-                    Some(helper) => Rc::new(ParserResultWitness::ParserWitnessCall {
-                        callee: Rc::new(ParserCallIdentity::ParserCallHelper {
-                            helper: helper.clone(),
-                        }),
+        ExprData::ExprCall { .. } => match crate::v1_std_core::expr_call_func_at(expr.clone()) {
+            ref __s if __s == "advance" => Rc::new(ParserResultWitness::ParserWitnessAdvance),
+            ref __s if __s == "expect" => Rc::new(ParserResultWitness::ParserWitnessExpect),
+            ref __s if __s == "eat" => Rc::new(ParserResultWitness::ParserWitnessEat),
+            callee => match parser_helper_identity(callee.clone()) {
+                Some(helper) => Rc::new(ParserResultWitness::ParserWitnessCall {
+                    callee: Rc::new(ParserCallIdentity::ParserCallHelper {
+                        helper: helper.clone(),
                     }),
-                    std::option::Option::None => Rc::new(ParserResultWitness::ParserWitnessCall {
-                        callee: Rc::new(ParserCallIdentity::ParserCallFunction {
-                            name: callee.clone(),
-                        }),
+                }),
+                std::option::Option::None => Rc::new(ParserResultWitness::ParserWitnessCall {
+                    callee: Rc::new(ParserCallIdentity::ParserCallFunction {
+                        name: callee.clone(),
                     }),
-                },
-            }
-        }
+                }),
+            },
+        },
         _ => Rc::new(ParserResultWitness::ParserWitnessOpaque),
     }
 }
@@ -3383,10 +3359,7 @@ pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn node_inferred_to_outputs(
-    rt: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Node>>> {
+pub fn node_inferred_to_outputs(rt: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     if is_conj_with_children(rt.clone()) {
         {
             let all_children_typed = {
@@ -3408,10 +3381,7 @@ pub fn node_inferred_to_outputs(
                     for ch in rt.children.clone().iter().cloned() {
                         __result.push(crate::v1_std_core::make_field_node(
                             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                ch.clone(),
-                            ),
+                            crate::v1_std_core::node_authored_text(ch.clone()),
                             child_inferred_or_empty(ch.clone()),
                             Cardinality::Required,
                             ch.body.clone(),
@@ -5342,15 +5312,12 @@ pub fn parse_item_by_form(
     }
 }
 
-pub fn field_to_child_node(
-    field: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+pub fn field_to_child_node(field: Rc<Node>) -> Rc<Node> {
     {
         let ret_type = crate::v1_std_core::field_node_type_expr(field.clone());
         Rc::new(Node {
             occurrence_identity: field.occurrence_identity.clone(),
-            name: crate::v1_std_core::field_node_name_at(field.clone(), source_indices.clone()),
+            name: crate::v1_std_core::field_node_name_at(field.clone()),
             span: field.span.clone(),
             ident_span: field.ident_span.clone(),
             children: Rc::new(vec![]),
@@ -5377,22 +5344,19 @@ pub fn field_to_child_node(
     }
 }
 
-pub fn variant_to_child_node(
-    variant: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+pub fn variant_to_child_node(variant: Rc<Node>) -> Rc<Node> {
     {
         let fields = crate::v1_std_core::variant_node_fields(variant.clone());
         let children = Rc::new({
             let mut __result = Vec::new();
             for f in fields.iter().cloned() {
-                __result.push(field_to_child_node(f.clone(), source_indices.clone()));
+                __result.push(field_to_child_node(f.clone()));
             }
             __result
         });
         Rc::new(Node {
             occurrence_identity: variant.occurrence_identity.clone(),
-            name: crate::v1_std_core::variant_node_name_at(variant.clone(), source_indices.clone()),
+            name: crate::v1_std_core::variant_node_name_at(variant.clone()),
             span: variant.span.clone(),
             ident_span: variant.ident_span.clone(),
             children: children.clone(),
@@ -5424,7 +5388,6 @@ pub fn variant_to_child_node(
 pub fn outputs_to_inferred(
     outputs: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<InferredNode>> {
     if ((outputs.clone().len() as i64) > 0) {
         Some(Rc::new(InferredNode::Resolved {
@@ -5436,7 +5399,7 @@ pub fn outputs_to_inferred(
                 children: Rc::new({
                     let mut __result = Vec::new();
                     for f in outputs.iter().cloned() {
-                        __result.push(field_to_child_node(f.clone(), source_indices.clone()));
+                        __result.push(field_to_child_node(f.clone()));
                     }
                     __result
                 }),
@@ -5476,7 +5439,6 @@ pub fn make_operation_node(
     modifier_props: Rc<Vec<Rc<Node>>>,
     transport: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let all_props = v1_rt::concat(
@@ -5497,7 +5459,7 @@ pub fn make_operation_node(
                 for f in inputs.iter().cloned() {
                     __result.push(crate::v1_std_core::make_param_node(
                         f.occurrence_identity.clone(),
-                        crate::v1_std_core::field_node_name_at(f.clone(), source_indices.clone()),
+                        crate::v1_std_core::field_node_name_at(f.clone()),
                         crate::v1_std_core::field_node_type_expr(f.clone()),
                         crate::v1_std_core::field_node_default_value(f.clone()),
                         f.span.clone(),
@@ -5506,7 +5468,7 @@ pub fn make_operation_node(
                 }
                 __result
             }),
-            inferred: outputs_to_inferred(outputs.clone(), span.clone(), source_indices.clone()),
+            inferred: outputs_to_inferred(outputs.clone(), span.clone()),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: std::option::Option::None,
@@ -5533,7 +5495,6 @@ pub fn make_capability_node(
     inputs: Rc<Vec<Rc<Node>>>,
     outputs: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: occurrence_identity.clone(),
@@ -5546,7 +5507,7 @@ pub fn make_capability_node(
             for f in inputs.iter().cloned() {
                 __result.push(crate::v1_std_core::make_param_node(
                     f.occurrence_identity.clone(),
-                    crate::v1_std_core::field_node_name_at(f.clone(), source_indices.clone()),
+                    crate::v1_std_core::field_node_name_at(f.clone()),
                     crate::v1_std_core::field_node_type_expr(f.clone()),
                     crate::v1_std_core::field_node_default_value(f.clone()),
                     f.span.clone(),
@@ -5555,7 +5516,7 @@ pub fn make_capability_node(
             }
             __result
         }),
-        inferred: outputs_to_inferred(outputs.clone(), span.clone(), source_indices.clone()),
+        inferred: outputs_to_inferred(outputs.clone(), span.clone()),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: std::option::Option::None,
@@ -5725,7 +5686,7 @@ pub fn parse_type_after_kw(
                 let type_children = Rc::new({
                     let mut __result = Vec::new();
                     for f in r.fields.clone().iter().cloned() {
-                        __result.push(field_to_child_node(f.clone(), ctx.source_indices.clone()));
+                        __result.push(field_to_child_node(f.clone()));
                     }
                     __result
                 });
@@ -5921,7 +5882,7 @@ pub fn parse_type_body_from_prefix(
                 let type_children = Rc::new({
                     let mut __result = Vec::new();
                     for f in r.fields.clone().iter().cloned() {
-                        __result.push(field_to_child_node(f.clone(), ctx.source_indices.clone()));
+                        __result.push(field_to_child_node(f.clone()));
                     }
                     __result
                 });
@@ -6205,7 +6166,7 @@ pub fn parse_type_body_after_eq(
                 let type_children = Rc::new({
                     let mut __result = Vec::new();
                     for v in rest.variants.clone().iter().cloned() {
-                        __result.push(variant_to_child_node(v.clone(), ctx.source_indices.clone()));
+                        __result.push(variant_to_child_node(v.clone()));
                     }
                     __result
                 });
@@ -6302,10 +6263,7 @@ pub fn parse_type_body_after_eq(
                                 let type_children = Rc::new({
                                     let mut __result = Vec::new();
                                     for v in variants.iter().cloned() {
-                                        __result.push(variant_to_child_node(
-                                            v.clone(),
-                                            ctx.source_indices.clone(),
-                                        ));
+                                        __result.push(variant_to_child_node(v.clone()));
                                     }
                                     __result
                                 });
@@ -7499,8 +7457,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     children: Rc::new({
                         let mut __result = Vec::new();
                         for f in r.fields.clone().iter().cloned() {
-                            __result
-                                .push(field_to_child_node(f.clone(), ctx.source_indices.clone()));
+                            __result.push(field_to_child_node(f.clone()));
                         }
                         __result
                     }),
@@ -10694,7 +10651,6 @@ pub fn parse_operation_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc
             Rc::new(vec![]),
             std::option::Option::None,
             start_span.clone(),
-            ctx.source_indices.clone(),
         );
         let r = expect(
             tokens.clone(),
@@ -10762,7 +10718,6 @@ pub fn parse_operation_v2_inline(
             Rc::new(vec![]),
             std::option::Option::None,
             start_span.clone(),
-            ctx.source_indices.clone(),
         );
         let mods_r = parse_operation_modifiers(tokens.clone(), ctx.clone());
         let mod_props = mods_r.properties.clone();
@@ -10813,9 +10768,7 @@ pub fn parse_operation_v2_inline(
         let tokens = ret.tokens.clone();
         let ctx = ret.ctx.clone();
         let outputs = match ret.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => {
-                node_inferred_to_outputs(rt.clone(), ctx.source_indices.clone())
-            }
+            Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(rt.clone()),
             _ => Rc::new(vec![]),
         };
         let tokens = skip_newlines(tokens.clone());
@@ -10863,7 +10816,6 @@ pub fn parse_operation_v2_inline(
             mod_props.clone(),
             std::option::Option::None,
             start_span.clone(),
-            ctx.source_indices.clone(),
         );
         Rc::new(OpResult {
             operation: op.clone(),
@@ -10894,7 +10846,6 @@ pub fn parse_operation_v1_body(
             Rc::new(vec![]),
             std::option::Option::None,
             start_span.clone(),
-            ctx.source_indices.clone(),
         );
         let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
         if has_err(r.err.clone()) {
@@ -10959,7 +10910,6 @@ pub fn parse_operation_v1_body(
             r2.modifier_props.clone(),
             r2.transport.clone(),
             start_span.clone(),
-            ctx.source_indices.clone(),
         );
         Rc::new(OpResult {
             operation: op.clone(),
@@ -11668,10 +11618,7 @@ pub fn parse_op_body_entries(
     }
 }
 
-pub fn status_expr_to_str(
-    expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn status_expr_to_str(expr: Rc<Node>) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitInt { value: n, .. } => int_to_string(n.clone()),
@@ -11680,7 +11627,7 @@ pub fn status_expr_to_str(
         },
         ExprData::ExprVar {
             binding_kind: _, ..
-        } => crate::v1_std_core::expr_var_name_at(expr.clone(), source_indices.clone()),
+        } => crate::v1_std_core::expr_var_name_at(expr.clone()),
         _ => "_".to_string(),
     }
 }
@@ -11773,10 +11720,7 @@ pub fn last_child_or_self(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn node_to_name_str(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn node_to_name_str(n: Rc<Node>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         let effective_n = if is_optional.clone() {
@@ -11789,8 +11733,7 @@ pub fn node_to_name_str(
         } else {
             "".to_string()
         };
-        let effective_name =
-            crate::v1_std_core::authored_name_at(source_indices.clone(), effective_n.clone());
+        let effective_name = crate::v1_std_core::node_authored_text(effective_n.clone());
         let is_keyed_container = (crate::std_types::is_container_type(effective_name.clone())
             && ((effective_n.children.clone().len() as i64) == 2));
         if is_keyed_container.clone() {
@@ -11800,7 +11743,7 @@ pub fn node_to_name_str(
                         v1_rt::concat(opt_prefix.clone(), effective_name.clone()),
                         "_".to_string(),
                     ),
-                    node_to_name_str(ch.clone(), source_indices.clone()),
+                    node_to_name_str(ch.clone()),
                 ),
                 std::option::Option::None => {
                     v1_rt::concat(opt_prefix.clone(), effective_name.clone())
@@ -11809,10 +11752,7 @@ pub fn node_to_name_str(
         } else {
             if (effective_n.type_annotation.clone() != std::option::Option::None) {
                 match effective_n.children.clone().first().cloned() {
-                    Some(ch) => v1_rt::concat(
-                        opt_prefix.clone(),
-                        node_to_name_str(ch.clone(), source_indices.clone()),
-                    ),
+                    Some(ch) => v1_rt::concat(opt_prefix.clone(), node_to_name_str(ch.clone())),
                     std::option::Option::None => {
                         v1_rt::concat(opt_prefix.clone(), effective_name.clone())
                     }
@@ -11822,7 +11762,7 @@ pub fn node_to_name_str(
                     match effective_n.children.clone().first().cloned() {
                         Some(ch) => v1_rt::concat(
                             v1_rt::concat(opt_prefix.clone(), "List_".to_string()),
-                            node_to_name_str(ch.clone(), source_indices.clone()),
+                            node_to_name_str(ch.clone()),
                         ),
                         std::option::Option::None => {
                             v1_rt::concat(opt_prefix.clone(), effective_name.clone())
@@ -11916,7 +11856,7 @@ pub fn parse_exit_entries_acc(
                 Some(TokenShape::ShLitStr) => token_stream_advance(r3.tokens.clone(), 1),
                 _ => r3.tokens.clone(),
             };
-            let code_str = status_expr_to_str(code.clone(), ctx.source_indices.clone());
+            let code_str = status_expr_to_str(code.clone());
             let prop_name = v1_rt::concat("exit_".to_string(), code_str.clone());
             let minted = mint_parsed_node_identity(
                 r3.ctx.clone(),
@@ -12110,20 +12050,15 @@ impl OperationRequiresDeclaration {
     }
 }
 
-pub fn operation_requires_declaration(
-    op: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<OperationRequiresDeclaration> {
+pub fn operation_requires_declaration(op: Rc<Node>) -> Rc<OperationRequiresDeclaration> {
     {
         let members = Rc::new({
             let mut __result = Vec::new();
             for p in Rc::new({
                 let mut __result = Vec::new();
                 for p in op.properties.clone().iter().cloned() {
-                    if (crate::v1_std_core::field_init_node_name_at(
-                        p.clone(),
-                        source_indices.clone(),
-                    ) == "requires".to_string())
+                    if (crate::v1_std_core::field_init_node_name_at(p.clone())
+                        == "requires".to_string())
                     {
                         __result.push(p);
                     }
@@ -12540,8 +12475,8 @@ pub fn parse_response_entries_acc(
                     err: r3.err.clone(),
                 });
             }
-            let status_str = status_expr_to_str(status.clone(), ctx.source_indices.clone());
-            let type_name = node_to_name_str(r3.type_expr.clone(), ctx.source_indices.clone());
+            let status_str = status_expr_to_str(status.clone());
+            let type_name = node_to_name_str(r3.type_expr.clone());
             let prop_name = v1_rt::concat("response_".to_string(), status_str.clone());
             let minted = mint_parsed_node_identity(
                 r3.ctx.clone(),
@@ -12718,7 +12653,7 @@ pub fn parse_mock_response_entries_acc(
                 Some(TokenShape::ShLitStr) => token_stream_advance(r3.tokens.clone(), 1),
                 _ => r3.tokens.clone(),
             };
-            let status_str = status_expr_to_str(status.clone(), ctx.source_indices.clone());
+            let status_str = status_expr_to_str(status.clone());
             let prop_name = v1_rt::concat("mock_".to_string(), status_str.clone());
             let minted = mint_parsed_node_identity(
                 r3.ctx.clone(),
@@ -13224,7 +13159,6 @@ pub fn parse_capability(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ca
             Rc::new(vec![]),
             Rc::new(vec![]),
             start_span.clone(),
-            ctx.source_indices.clone(),
         );
         let r = expect(
             tokens.clone(),
@@ -13301,7 +13235,6 @@ pub fn parse_capability(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ca
                     io.inputs.clone(),
                     io.outputs.clone(),
                     start_span.clone(),
-                    ctx.source_indices.clone(),
                 );
                 Rc::new(CapResult {
                     capability: cap.clone(),
@@ -13355,7 +13288,7 @@ pub fn parse_capability(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ca
                     }
                     let outputs = match ret.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => {
-                            node_inferred_to_outputs(rt.clone(), ret.ctx.source_indices.clone())
+                            node_inferred_to_outputs(rt.clone())
                         }
                         _ => Rc::new(vec![]),
                     };
@@ -13376,7 +13309,6 @@ pub fn parse_capability(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ca
                         inputs.clone(),
                         outputs.clone(),
                         start_span.clone(),
-                        ctx.source_indices.clone(),
                     );
                     Rc::new(CapResult {
                         capability: cap.clone(),
@@ -13404,7 +13336,6 @@ pub fn parse_capability(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ca
                         Rc::new(vec![]),
                         Rc::new(vec![]),
                         start_span.clone(),
-                        ctx.source_indices.clone(),
                     );
                     Rc::new(CapResult {
                         capability: cap.clone(),
@@ -15429,10 +15360,7 @@ pub fn parse_pipe_rhs(
                                     for na in r2.args.clone().iter().cloned() {
                                         __result.push(crate::v1_std_core::make_arg_node(
                                             na.occurrence_identity.clone(),
-                                            crate::v1_std_core::arg_name_at(
-                                                na.clone(),
-                                                ctx.source_indices.clone(),
-                                            ),
+                                            crate::v1_std_core::arg_name_at(na.clone()),
                                             crate::v1_std_core::arg_value(na.clone()),
                                             na.span.clone(),
                                             crate::v1_std_core::node_name_span(na.clone()),
@@ -15620,7 +15548,6 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                     callee.clone(),
                     Rc::new(vec![r.expr.clone()]),
                     call_span.clone(),
-                    ctx.source_indices.clone(),
                 );
                 Rc::new(ExprResult {
                     expr: call.clone(),
@@ -16064,7 +15991,6 @@ pub fn try_postfix(
                             lhs.clone(),
                             r.args.clone(),
                             span.clone(),
-                            ctx.source_indices.clone(),
                         );
                         Rc::new(PostfixResult {
                             expr: call_expr.clone(),
@@ -16188,10 +16114,7 @@ pub fn try_postfix(
                 ExprData::ExprVar {
                     binding_kind: _, ..
                 } => {
-                    let n = crate::v1_std_core::expr_var_name_at(
-                        lhs.clone(),
-                        ctx.source_indices.clone(),
-                    );
+                    let n = crate::v1_std_core::expr_var_name_at(lhs.clone());
                     if (is_uppercase_start(n.clone()) && (14 <= min_bp.clone())) {
                         Rc::new(PostfixResult {
                             expr: lhs.clone(),
@@ -16243,10 +16166,7 @@ pub fn try_postfix(
                     }
                 }
                 ExprData::ExprFieldAccess { summary: _, .. } => {
-                    let last_seg = crate::v1_std_core::field_access_field_at(
-                        lhs.clone(),
-                        ctx.source_indices.clone(),
-                    );
+                    let last_seg = crate::v1_std_core::field_access_field_at(lhs.clone());
                     if (is_uppercase_start(last_seg.clone()) && (14 <= min_bp.clone())) {
                         Rc::new(PostfixResult {
                             expr: lhs.clone(),
@@ -16257,10 +16177,7 @@ pub fn try_postfix(
                         })
                     } else {
                         if is_uppercase_start(last_seg.clone()) {
-                            match crate::v1_std_core::field_access_spine(
-                                lhs.clone(),
-                                ctx.source_indices.clone(),
-                            ) {
+                            match crate::v1_std_core::field_access_spine(lhs.clone()) {
                                 Some(spine) => {
                                     let r = parse_record_literal_named(
                                         tokens.clone(),
@@ -16483,14 +16400,13 @@ pub fn make_call_expr(
     lhs: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     match (*lhs.expr_data.clone()).clone() {
         ExprData::ExprVar {
             binding_kind: _, ..
         } => crate::v1_std_core::make_named_expr_node(
             occurrence_identity.clone(),
-            crate::v1_std_core::expr_var_name_at(lhs.clone(), source_indices.clone()),
+            crate::v1_std_core::expr_var_name_at(lhs.clone()),
             Rc::new(ExprData::ExprCall {
                 call_semantics: std::option::Option::None,
                 descent_evidence: std::option::Option::None,
@@ -16502,7 +16418,7 @@ pub fn make_call_expr(
         ),
         ExprData::ExprFieldAccess { summary: _, .. } => crate::v1_std_core::make_named_expr_node(
             occurrence_identity.clone(),
-            crate::v1_std_core::field_access_field_at(lhs.clone(), source_indices.clone()),
+            crate::v1_std_core::field_access_field_at(lhs.clone()),
             Rc::new(ExprData::ExprMethodCall {
                 method_semantics: std::option::Option::None,
             }),
@@ -17100,7 +17016,6 @@ pub fn parse_expr_loop_no_brace(
                     lhs.clone(),
                     r.args.clone(),
                     span.clone(),
-                    ctx.source_indices.clone(),
                 );
                 {
                     let __tco_0 = r.tokens.clone();

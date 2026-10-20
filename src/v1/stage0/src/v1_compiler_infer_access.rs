@@ -13,7 +13,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::InternalError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved};
 pub use crate::v1_std_core::{
-    authored_name_at, diagnostic_to_message, int_type, make_error_node, string_type, unit_type,
+    diagnostic_to_message, int_type, make_error_node, node_authored_text, string_type, unit_type,
     with_optional_cardinality, CompilerDiagnostic, ErrorNode, InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
@@ -73,11 +73,8 @@ pub fn access_result(
     }
 }
 
-pub fn keyed_collection_parts(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<KeyedCollectionParts>> {
-    if (crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone())
+pub fn keyed_collection_parts(n: Rc<Node>) -> Option<Rc<KeyedCollectionParts>> {
+    if (crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone())
         && ((n.children.clone().len() as i64) >= 2))
     {
         match n.children.clone().first().cloned() {
@@ -100,7 +97,6 @@ pub fn check_index_access_node(
     index_type: Rc<Node>,
     span: Rc<SourceSpan>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     text: Rc<TextJudgment>,
 ) -> Rc<AccessCheckResultNode> {
     {
@@ -110,13 +106,11 @@ pub fn check_index_access_node(
         let base_is_string = crate::v1_compiler_infer_types::node_type_equals(
             normed.clone(),
             string_type(),
-            source_indices.clone(),
             text.clone(),
         );
         let index_is_int = crate::v1_compiler_infer_types::node_type_equals(
             normed_index.clone(),
             int_type(),
-            source_indices.clone(),
             text.clone(),
         );
         if base_is_string.clone() {
@@ -138,12 +132,11 @@ pub fn check_index_access_node(
                 )
             }
         } else {
-            match keyed_collection_parts(normed.clone(), source_indices.clone()) {
+            match keyed_collection_parts(normed.clone()) {
                 Some(parts) => {
                     let key_diags = if crate::v1_compiler_infer_types::node_type_equals(
                         parts.key_type.clone(),
                         normed_index.clone(),
-                        source_indices.clone(),
                         text.clone(),
                     ) {
                         Rc::new(vec![])
@@ -158,10 +151,7 @@ pub fn check_index_access_node(
                     )
                 }
                 std::option::Option::None => {
-                    if crate::v1_compiler_infer_types::node_is_keyed_collection(
-                        normed.clone(),
-                        source_indices.clone(),
-                    ) {
+                    if crate::v1_compiler_infer_types::node_is_keyed_collection(normed.clone()) {
                         {
                             let malformed_diags = Rc::new(vec![access_error(
                                 "malformed keyed collection type in index access".to_string(),
@@ -177,20 +167,15 @@ pub fn check_index_access_node(
                         }
                     } else {
                         if ((crate::std_types::is_ordered_element_collection(
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                normed.clone(),
-                            ),
+                            crate::v1_std_core::node_authored_text(normed.clone()),
                         ) && crate::v1_compiler_infer_types::node_is_element_collection(
                             normed.clone(),
-                            source_indices.clone(),
                         )) && index_is_int.clone())
                         {
                             {
                                 let elem =
                                     crate::v1_compiler_infer_types::for_each_element_type_node(
                                         normed.clone(),
-                                        source_indices.clone(),
                                     );
                                 access_result(
                                     crate::v1_std_core::with_optional_cardinality(elem.clone()),
@@ -223,7 +208,6 @@ pub fn check_slice_access_node(
     end_type: Rc<Node>,
     span: Rc<SourceSpan>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     text: Rc<TextJudgment>,
 ) -> Rc<AccessCheckResultNode> {
     {
@@ -232,15 +216,12 @@ pub fn check_slice_access_node(
         let base_is_string = crate::v1_compiler_infer_types::node_type_equals(
             normed_base.clone(),
             string_type(),
-            source_indices.clone(),
             text.clone(),
         );
-        let base_is_list = (crate::std_types::is_ordered_element_collection(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), normed_base.clone()),
-        ) && crate::v1_compiler_infer_types::node_is_element_collection(
-            normed_base.clone(),
-            source_indices.clone(),
-        ));
+        let base_is_list =
+            (crate::std_types::is_ordered_element_collection(
+                crate::v1_std_core::node_authored_text(normed_base.clone()),
+            ) && crate::v1_compiler_infer_types::node_is_element_collection(normed_base.clone()));
         let base_diags = if (base_is_string.clone() || base_is_list.clone()) {
             Rc::new(vec![])
         } else {
@@ -255,7 +236,6 @@ pub fn check_slice_access_node(
         let start_diags = if crate::v1_compiler_infer_types::node_type_equals(
             normed_start.clone(),
             int_type(),
-            source_indices.clone(),
             text.clone(),
         ) {
             Rc::new(vec![])
@@ -271,7 +251,6 @@ pub fn check_slice_access_node(
         let end_diags = if crate::v1_compiler_infer_types::node_type_equals(
             normed_end.clone(),
             int_type(),
-            source_indices.clone(),
             text.clone(),
         ) {
             Rc::new(vec![])

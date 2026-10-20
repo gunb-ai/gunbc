@@ -20,7 +20,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::MissingAnnotation;
 use crate::v1_std_core::ExprData::ExprCall;
 pub use crate::v1_std_core::{
-    authored_name_at, expr_call_func_at, make_error_node, no_span, CompilerDiagnostic,
+    expr_call_func_at, make_error_node, no_span, node_authored_text, CompilerDiagnostic,
     DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
     ResolvedFormal,
 };
@@ -555,7 +555,6 @@ pub fn none_resolved_sig_with_owner() -> Option<Rc<ResolvedSigWithOwner>> {
 pub fn collect_func_call_edges(
     items: Rc<Vec<Rc<Node>>>,
     local_func_set: Rc<HashMap<String, bool>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<CallEdge>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -565,10 +564,9 @@ pub fn collect_func_call_edges(
                     && (item.body.clone() != std::option::Option::None))
                 {
                     collect_calls_in_expr(
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                        crate::v1_std_core::node_authored_text(item.clone()),
                         item.body.clone().clone().unwrap(),
                         local_func_set.clone(),
-                        source_indices.clone(),
                     )
                 } else {
                     Rc::new(vec![])
@@ -585,13 +583,11 @@ pub fn collect_calls_in_expr(
     caller: String,
     texpr: Rc<Node>,
     local_func_set: Rc<HashMap<String, bool>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<CallEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_edges = match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                let f =
-                    crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone());
+                let f = crate::v1_std_core::expr_call_func_at(texpr.clone());
                 if crate::v1_compiler_infer_types::emit_map_has(local_func_set.clone(), f.clone()) {
                     Rc::new(vec![Rc::new(CallEdge {
                         caller: caller.clone(),
@@ -607,14 +603,9 @@ pub fn collect_calls_in_expr(
             let mut __result = Vec::new();
             for child in texpr.children.clone().iter().cloned() {
                 __result.extend(
-                    (*collect_calls_in_expr(
-                        caller.clone(),
-                        child.clone(),
-                        local_func_set.clone(),
-                        source_indices.clone(),
-                    ))
-                    .iter()
-                    .cloned(),
+                    (*collect_calls_in_expr(caller.clone(), child.clone(), local_func_set.clone()))
+                        .iter()
+                        .cloned(),
                 );
             }
             __result
@@ -989,7 +980,6 @@ pub fn resolve_func_sigs(
     parent_envs: Rc<Vec<Rc<ResolvedFuncEnv>>>,
     items: Rc<Vec<Rc<Node>>>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ResolveFuncSigsResult> {
     {
         let local_func_names = Rc::new({
@@ -1008,19 +998,12 @@ pub fn resolve_func_sigs(
             .iter()
             .cloned()
             {
-                __result.push(crate::v1_std_core::authored_name_at(
-                    source_indices.clone(),
-                    item.clone(),
-                ));
+                __result.push(crate::v1_std_core::node_authored_text(item.clone()));
             }
             __result
         });
         let local_func_set = build_name_set(local_func_names.clone());
-        let call_edges = collect_func_call_edges(
-            items.clone(),
-            local_func_set.clone(),
-            source_indices.clone(),
-        );
+        let call_edges = collect_func_call_edges(items.clone(), local_func_set.clone());
         topo_resolve_loop(
             local_func_names.clone(),
             v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),

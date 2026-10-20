@@ -33,9 +33,9 @@ use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcar
 pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
-    arm_pattern, authored_name_at, error_type, field_binding_name_at, field_binding_pattern,
-    find_child_named, generic_param_name_at, is_compiler_error, kernel_ident, kernel_span,
-    make_error_node, match_pattern_is_irrefutable, no_span, none_type, qualified_last_segment,
+    arm_pattern, error_type, field_binding_name_at, field_binding_pattern, find_child_named,
+    generic_param_name_at, is_compiler_error, kernel_ident, kernel_span, make_error_node,
+    match_pattern_is_irrefutable, no_span, node_authored_text, none_type, qualified_last_segment,
     with_optional_cardinality, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
     ErrorNode, ExprData, InferredNode, MatchPattern, NewlineIndex, Node,
 };
@@ -67,10 +67,7 @@ pub fn generic_use_slot_bindings(
         .fold(
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
             |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
-                let slot = crate::v1_std_core::generic_param_name_at(
-                    pair.1.clone(),
-                    env.source_indices.clone(),
-                );
+                let slot = crate::v1_std_core::generic_param_name_at(pair.1.clone());
                 match scrut_node
                     .children
                     .clone()
@@ -105,11 +102,7 @@ pub fn expand_scrut_from_decl(
                     crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(
                         decl.clone(),
                         subst.clone(),
-                        crate::v1_std_core::authored_name_at(
-                            env.source_indices.clone(),
-                            decl.clone(),
-                        ),
-                        env.source_indices.clone(),
+                        crate::v1_std_core::node_authored_text(decl.clone()),
                         true,
                     )
                 }
@@ -126,7 +119,6 @@ pub fn expand_scrut_from_decl(
                                 target.clone(),
                                 subst.clone(),
                                 name.clone(),
-                                env.source_indices.clone(),
                                 true,
                             );
                         expand_scrut_type_for_variant_lookup(substituted.clone(), env.clone())
@@ -143,11 +135,7 @@ pub fn expand_scrut_from_decl(
                         crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(
                             decl.clone(),
                             subst.clone(),
-                            crate::v1_std_core::authored_name_at(
-                                env.source_indices.clone(),
-                                decl.clone(),
-                            ),
-                            env.source_indices.clone(),
+                            crate::v1_std_core::node_authored_text(decl.clone()),
                             true,
                         )
                     }
@@ -161,8 +149,7 @@ pub fn expand_scrut_from_decl(
 
 pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     {
-        let name =
-            crate::v1_std_core::authored_name_at(env.source_indices.clone(), scrut_node.clone());
+        let name = crate::v1_std_core::node_authored_text(scrut_node.clone());
         let is_generic_use = (((scrut_node.connective.clone() == Connective::NoConnective)
             && ((scrut_node.children.clone().len() as i64) > 0))
             && crate::v1_compiler_infer_resolve::is_user_generic_use_site(
@@ -204,7 +191,7 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                                                         scrut_node.clone(),
                                                         env.clone(),
                                                     );
-                                                    let substituted = crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(target.clone(), subst.clone(), name.clone(), env.source_indices.clone(), true);
+                                                    let substituted = crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(target.clone(), subst.clone(), name.clone(), true);
                                                     expand_scrut_type_for_variant_lookup(
                                                         substituted.clone(),
                                                         env.clone(),
@@ -238,8 +225,7 @@ pub fn expand_scrut_type_for_variant_lookup(
         let mut scrut_node = __tco_loop_scrut_node;
         #[allow(unused_mut)]
         let mut env = __tco_loop_env;
-        let name =
-            crate::v1_std_core::authored_name_at(env.source_indices.clone(), scrut_node.clone());
+        let name = crate::v1_std_core::node_authored_text(scrut_node.clone());
         let is_disj = (scrut_node.connective.clone() == Connective::Disj);
         let is_witness = is_witness_type_name(name.clone());
         let is_optional = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
@@ -573,12 +559,11 @@ pub fn variant_not_found_result(
     variant_name: String,
     site: Rc<SourceSpan>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
     node_lookup_failed(Rc::new(vec![crate::v1_std_core::make_error_node(
         Rc::new(CompilerDiagnostic::VariantNotFound {
             variant: variant_name.clone(),
-            type_name: crate::v1_std_core::authored_name_at(source_indices.clone(), scrut.clone()),
+            type_name: crate::v1_std_core::node_authored_text(scrut.clone()),
             span: site.clone(),
         }),
         module_name.clone(),
@@ -616,18 +601,13 @@ pub fn lookup_variant_in_type(
                 ) {
                     Some(resolved) => {
                         if (resolved.connective.clone() == Connective::Disj) {
-                            match find_variant_child_keyed(
-                                resolved.clone(),
-                                variant_name.clone(),
-                                source_indices.clone(),
-                            ) {
+                            match find_variant_child_keyed(resolved.clone(), variant_name.clone()) {
                                 Some(variant_child) => match find_variant_child_keyed(
                                     expand_scrut_type_for_variant_lookup(
                                         scrut_node.clone(),
                                         env.clone(),
                                     ),
                                     variant_name.clone(),
-                                    source_indices.clone(),
                                 ) {
                                     Some(scrut_child) => node_lookup_resolved(scrut_child.clone()),
                                     std::option::Option::None => {
@@ -639,7 +619,6 @@ pub fn lookup_variant_in_type(
                                     variant_name.clone(),
                                     site.clone(),
                                     module_name.clone(),
-                                    source_indices.clone(),
                                 ),
                             }
                         } else {
@@ -651,7 +630,6 @@ pub fn lookup_variant_in_type(
                         variant_name.clone(),
                         site.clone(),
                         module_name.clone(),
-                        source_indices.clone(),
                     ),
                 }
             } else {
@@ -668,13 +646,10 @@ pub fn lookup_variant_in_type(
                     } else {
                         {
                             let optional_cardinality_subject = (scrut_opt.clone()
-                                && (crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    scrut_node.clone(),
-                                ) != "Optional".to_string()));
+                                && (crate::v1_std_core::node_authored_text(scrut_node.clone())
+                                    != "Optional".to_string()));
                             let witness_subject =
-                                (is_witness_type_name(crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
+                                (is_witness_type_name(crate::v1_std_core::node_authored_text(
                                     scrut_node.clone(),
                                 )) && ((scrut_node.children.clone().len() as i64) == 1));
                             if (optional_cardinality_subject.clone()
@@ -707,8 +682,7 @@ pub fn lookup_variant_in_type(
                                         } else {
                                             {
                                                 let scrut_name =
-                                                    crate::v1_std_core::authored_name_at(
-                                                        source_indices.clone(),
+                                                    crate::v1_std_core::node_authored_text(
                                                         scrut_node.clone(),
                                                     );
                                                 let optional_coproduct_subject = ((scrut_name
@@ -721,7 +695,6 @@ pub fn lookup_variant_in_type(
                                                 let direct_match = find_variant_child_keyed(
                                                     scrut_node.clone(),
                                                     variant_name.clone(),
-                                                    source_indices.clone(),
                                                 );
                                                 let record_destructure = (((field_binding_count
                                                     .clone()
@@ -756,7 +729,6 @@ pub fn lookup_variant_in_type(
                                                                 variant_name.clone(),
                                                                 site.clone(),
                                                                 module_name.clone(),
-                                                                source_indices.clone(),
                                                             )
                                                         }
                                                     }
@@ -782,7 +754,6 @@ pub fn lookup_field_in_variant(
     variant: Rc<PatternSubject>,
     field_name: String,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
     match (*variant.clone()).clone() {
         PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
@@ -798,11 +769,7 @@ pub fn lookup_field_in_variant(
         )])),
         PatternSubject::PatternResolved {
             node: variant_node, ..
-        } => match crate::v1_std_core::find_child_named(
-            variant_node.clone(),
-            field_name.clone(),
-            source_indices.clone(),
-        ) {
+        } => match crate::v1_std_core::find_child_named(variant_node.clone(), field_name.clone()) {
             Some(field_child) => {
                 let resolved = crate::v1_compiler_infer_types::child_type_node(field_child.clone());
                 node_lookup_resolved(resolved.clone())
@@ -811,10 +778,7 @@ pub fn lookup_field_in_variant(
                 node_lookup_failed(Rc::new(vec![crate::v1_std_core::make_error_node(
                     Rc::new(CompilerDiagnostic::FieldNotFound {
                         field: field_name.clone(),
-                        type_name: crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            variant_node.clone(),
-                        ),
+                        type_name: crate::v1_std_core::node_authored_text(variant_node.clone()),
                         span: variant_node.span.clone(),
                     }),
                     module_name.clone(),
@@ -842,20 +806,14 @@ pub fn variant_pattern_coverage_key(name: String) -> String {
     }
 }
 
-pub fn find_variant_child_keyed(
-    n: Rc<Node>,
-    variant_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+pub fn find_variant_child_keyed(n: Rc<Node>, variant_name: String) -> Option<Rc<Node>> {
     {
         let key = variant_pattern_coverage_key(variant_name.clone());
         let matches = Rc::new({
             let mut __result = Vec::new();
             for c in n.children.clone().iter().cloned() {
-                if (variant_pattern_coverage_key(crate::v1_std_core::authored_name_at(
-                    source_indices.clone(),
-                    c.clone(),
-                )) == key.clone())
+                if (variant_pattern_coverage_key(crate::v1_std_core::node_authored_text(c.clone()))
+                    == key.clone())
                 {
                     __result.push(c);
                 }
@@ -925,10 +883,9 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
         let is_coproduct = (resolved.connective.clone() == Connective::Disj);
         let resolved_is_optional =
             (resolved.return_cardinality.clone() == Cardinality::CardOptional);
-        let resolved_is_witness = (is_witness_type_name(crate::v1_std_core::authored_name_at(
-            env.source_indices.clone(),
-            resolved.clone(),
-        )) && ((resolved.children.clone().len() as i64) == 1));
+        let resolved_is_witness =
+            (is_witness_type_name(crate::v1_std_core::node_authored_text(resolved.clone()))
+                && ((resolved.children.clone().len() as i64) == 1));
         if resolved_is_optional.clone() {
             Rc::new(ConstructorRoster::ConstructorsClosed {
                 names: Rc::new(vec!["Present".to_string(), "Absent".to_string()]),
@@ -944,10 +901,7 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
                         names: Rc::new({
                             let mut __result = Vec::new();
                             for c in resolved.children.clone().iter().cloned() {
-                                __result.push(crate::v1_std_core::authored_name_at(
-                                    env.source_indices.clone(),
-                                    c.clone(),
-                                ));
+                                __result.push(crate::v1_std_core::node_authored_text(c.clone()));
                             }
                             __result
                         }),
@@ -991,16 +945,11 @@ pub fn candidate_joins_never_identity(n: Rc<Node>, identity: Rc<Node>) -> bool {
 }
 
 pub fn node_names_never_declaration(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    match crate::v1_compiler_infer_env::declaration_ref_of_type_node(
-        n.clone(),
-        env.source_indices.clone(),
-        env.clone(),
-    ) {
+    match crate::v1_compiler_infer_env::declaration_ref_of_type_node(n.clone(), env.clone()) {
         Some(d) => crate::std_decl_ref::declaration_ref_eq(d.clone(), never_type_declaration()),
         std::option::Option::None => {
             match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
                 n.clone(),
-                env.source_indices.clone(),
                 env.clone(),
             ) {
                 Some(d) => {
@@ -1067,10 +1016,7 @@ pub fn constructor_fields(
                 let mut __result = Vec::new();
                 for ch in variant_node.children.clone().iter().cloned() {
                     __result.push(Rc::new(ConstructorField {
-                        name: crate::v1_std_core::authored_name_at(
-                            env.source_indices.clone(),
-                            ch.clone(),
-                        ),
+                        name: crate::v1_std_core::node_authored_text(ch.clone()),
                         type_node: crate::v1_compiler_infer_types::child_type_node(ch.clone()),
                     }));
                 }
@@ -1115,14 +1061,11 @@ pub fn pattern_matches_constructor(p: Rc<MatchPattern>, ctor: String) -> bool {
 pub fn field_binding_pattern_for(
     bindings: Rc<Vec<Rc<Node>>>,
     field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<MatchPattern> {
     match Rc::new({
         let mut __result = Vec::new();
         for b in bindings.iter().cloned() {
-            if (crate::v1_std_core::field_binding_name_at(b.clone(), source_indices.clone())
-                == field_name.clone())
-            {
+            if (crate::v1_std_core::field_binding_name_at(b.clone()) == field_name.clone()) {
                 __result.push(b);
             }
         }
@@ -1140,7 +1083,6 @@ pub fn specialize_pattern_row(
     row: Rc<Vec<Rc<MatchPattern>>>,
     ctor: String,
     fields: Rc<Vec<Rc<ConstructorField>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Vec<Rc<MatchPattern>>>>> {
     {
         let head = pattern_row_head(row.clone());
@@ -1166,11 +1108,8 @@ pub fn specialize_pattern_row(
                         Rc::new({
                             let mut __result = Vec::new();
                             for f in fields.iter().cloned() {
-                                __result.push(field_binding_pattern_for(
-                                    fbs.clone(),
-                                    f.name.clone(),
-                                    source_indices.clone(),
-                                ));
+                                __result
+                                    .push(field_binding_pattern_for(fbs.clone(), f.name.clone()));
                             }
                             __result
                         }),
@@ -1403,7 +1342,6 @@ pub fn exhaustiveness_witnesses(
                                                         r.clone(),
                                                         c.clone(),
                                                         fields.clone(),
-                                                        env.source_indices.clone(),
                                                     ))
                                                     .iter()
                                                     .cloned(),

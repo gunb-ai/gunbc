@@ -21,8 +21,8 @@ use crate::v1_std_core::ExprData::{
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::TokenShape::{ShStrBegin, ShStrEnd, ShStrMid};
 pub use crate::v1_std_core::{
-    authored_name_at, byte_to_line_col, param_node_name_at, source_text_at, ExprData, InferredNode,
-    NewlineIndex, Node, Token, TokenShape,
+    byte_to_line_col, node_authored_text, param_node_name_at, source_text_at, ExprData,
+    InferredNode, NewlineIndex, Node, Token, TokenShape,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -295,7 +295,7 @@ pub fn ihc_expr_data_label(e: Rc<Node>) -> String {
 pub fn ihc_reading(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HoleTypeReading> {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            let label = crate::v1_compiler_infer::type_node_label(rt.clone(), si.clone());
+            let label = crate::v1_compiler_infer::type_node_label(rt.clone());
             if (label.clone() == "String".to_string()) {
                 Rc::new(HoleTypeReading::HoleTypedString)
             } else {
@@ -326,11 +326,11 @@ pub fn ihc_hole_text(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> 
                 match e.children.clone().first().cloned() {
                     Some(receiver) => v1_rt::concat(
                         v1_rt::concat(ihc_hole_text(receiver.clone(), si.clone()), ".".to_string()),
-                        crate::v1_std_core::authored_name_at(si.clone(), e.clone()),
+                        crate::v1_std_core::node_authored_text(e.clone()),
                     ),
                     std::option::Option::None => v1_rt::concat(
                         ".".to_string(),
-                        crate::v1_std_core::authored_name_at(si.clone(), e.clone()),
+                        crate::v1_std_core::node_authored_text(e.clone()),
                     ),
                 }
             }
@@ -365,7 +365,7 @@ pub fn ihc_hole_text(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> 
 
 pub fn ihc_named_or_span(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     {
-        let named = crate::v1_std_core::authored_name_at(si.clone(), e.clone());
+        let named = crate::v1_std_core::node_authored_text(e.clone());
         if (named.clone() != "".to_string()) {
             named.clone()
         } else {
@@ -571,10 +571,7 @@ pub fn ihc_walk(ctx: Rc<HoleWalkContext>, n: Rc<Node>) -> Rc<Vec<Rc<ObservedTemp
                         inputs: Rc::new({
                             let mut __result = Vec::new();
                             for p in n.params.clone().iter().cloned() {
-                                __result.push(crate::v1_std_core::param_node_name_at(
-                                    p.clone(),
-                                    ctx.si.clone(),
-                                ));
+                                __result.push(crate::v1_std_core::param_node_name_at(p.clone()));
                             }
                             __result
                         }),
@@ -601,7 +598,7 @@ pub fn ihc_module_templates(
             __result.extend(
                 (*ihc_walk(
                     Rc::new(HoleWalkContext {
-                        file_decl: crate::v1_std_core::authored_name_at(si.clone(), item.clone()),
+                        file_decl: crate::v1_std_core::node_authored_text(item.clone()),
                         si: si.clone(),
                         site: Rc::new(HoleSite::HoleInBody),
                     }),
