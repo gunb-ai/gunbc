@@ -160,10 +160,10 @@ fn rehome_pool_roots() -> List<String> {
 
 fn rehome_pair_verdict(row: RehomeRow) -> RehomePairVerdict {
   match rehome_sole_fact(qualified_name: row.from_home + "." + row.name) {
-    RehomePairRefused { reason: r } => RehomePairRefused { reason: r }
+    RehomeFactRefused { reason: r } => RehomePairRefused { reason: r }
     RehomeFactFound { fact: from } =>
       match rehome_sole_fact(qualified_name: row.to_home + "." + row.name) {
-        RehomePairRefused { reason: r } => RehomePairRefused { reason: r }
+        RehomeFactRefused { reason: r } => RehomePairRefused { reason: r }
         RehomeFactFound { fact: to } => rehome_facts_verdict(from: from, to: to)
       }
   }
@@ -171,13 +171,13 @@ fn rehome_pair_verdict(row: RehomeRow) -> RehomePairVerdict {
 
 type RehomeFactLookup
   = RehomeFactFound { fact: DeclFact }
-  | RehomePairRefused { reason: RehomeRefusal }
+  | RehomeFactRefused { reason: RehomeRefusal }
 
 fn rehome_sole_fact(qualified_name: String) -> RehomeFactLookup {
   match decl_facts_at(pool_roots: rehome_pool_roots(), qualified_name: qualified_name) {
-    Empty => RehomePairRefused { reason: RehomeTargetUnresolved { qualified_name: qualified_name } }
+    Empty => RehomeFactRefused { reason: RehomeTargetUnresolved { qualified_name: qualified_name } }
     Cons { head: f, tail: Empty } => RehomeFactFound { fact: f }
-    _ => RehomePairRefused { reason: RehomeTargetAmbiguous { qualified_name: qualified_name } }
+    _ => RehomeFactRefused { reason: RehomeTargetAmbiguous { qualified_name: qualified_name } }
   }
 }
 
@@ -286,8 +286,8 @@ fn rehome_import_splices(text: String, parse_root: Node, spans: SpanIndex, impor
     RehomeClean
   } else {
     let decls = roster_import_decl_facts(parse_root: parse_root, spans: spans)
-    let olds = fold_list(xs: decls, empty: [], cons: fn(acc, d) { if d.module_name == row.from_home && rehome_lists(names: d.names, name: row.name) { list_snoc_item(xs: acc, item: d) } else { acc } })
-    let news = fold_list(xs: decls, empty: [], cons: fn(acc, d) { if d.module_name == row.to_home { list_snoc_item(xs: acc, item: d) } else { acc } })
+    let olds = rehome_decls_listing(decls: decls, module_name: row.from_home, name: row.name)
+    let news = rehome_decls_of(decls: decls, module_name: row.to_home)
     let already = fold_list(xs: news, empty: false, cons: fn(f, d) { f || rehome_lists(names: d.names, name: row.name) })
     let removals = list_map(xs: olds, f: fn(d) { rehome_removal(text: text, d: d, row: row) })
     if already {
@@ -308,6 +308,14 @@ fn rehome_import_splices(text: String, parse_root: Node, spans: SpanIndex, impor
       }
     }
   }
+}
+
+fn rehome_decls_of(decls: List<ImportDeclFact>, module_name: String) -> List<ImportDeclFact> {
+  fold_list(xs: decls, empty: [], cons: fn(acc, d) { if d.module_name == module_name { list_snoc_item(xs: acc, item: d) } else { acc } })
+}
+
+fn rehome_decls_listing(decls: List<ImportDeclFact>, module_name: String, name: String) -> List<ImportDeclFact> {
+  fold_list(xs: rehome_decls_of(decls: decls, module_name: module_name), empty: [], cons: fn(acc, d) { if rehome_lists(names: d.names, name: name) { list_snoc_item(xs: acc, item: d) } else { acc } })
 }
 
 fn rehome_lists(names: List<String>, name: String) -> Bool {
