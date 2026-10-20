@@ -2,10 +2,10 @@ module product.electrical.bench_session
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_min, nat_max }
 import std.measure { Millivolt, Volt, millivolt_count, volt_count }
 import product.placement_supply { PhysicalAssetIdentity }
-import product.electrical.connectivity { ElectricalTerminalRef }
+import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref_equal }
 import product.electrical.continuity {
   BenchConditions,
   EvidenceRef,
@@ -298,6 +298,75 @@ fn resistance_text(o: ResistanceObservation) -> String {
     terminal_text(t: o.first), " to ", terminal_text(t: o.second), " read ", resistance_display_text(d: o.display), range_text(r: o.range), polarity_text(o: o), stability_text(s: o.stability),
     certainty_text(c: o.certainty), order_text(o: o.order),
   ], "")
+}
+
+// ONE PAIR READ ON MORE THAN ONE RANGE. Each range drives its own test current, so a plain conductor
+// shows the same value on every range within the display's counts, and a path holding a junction does
+// not: its apparent resistance moves with the current. The agreement factor is the display's: a
+// 1999-count reading above ten counts cannot double from rounding alone, so a pair whose valued
+// readings on recorded ranges differ by more than a factor of two reads as moving with the range. A
+// pair valued on one recorded range only, or never valued on a recorded range, is not read either way.
+data range_agreement_factor: Nat = 2
+
+type PairRangeStanding
+  = ReadingMovesWithRange { readings: List<ResistanceObservation>, lowest_ohms: Nat, highest_ohms: Nat }
+  | ReadingHoldsAcrossRanges { readings: List<ResistanceObservation>, lowest_ohms: Nat, highest_ohms: Nat }
+  | PairValuedOnOneRange { readings: List<ResistanceObservation> }
+  | PairRangeUnread
+
+fn observation_reads_pair(o: ResistanceObservation, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
+  (terminal_ref_equal(a: o.first, b: a) && terminal_ref_equal(a: o.second, b: b)) || (terminal_ref_equal(a: o.first, b: b) && terminal_ref_equal(a: o.second, b: a))
+}
+
+fn valued_ohms(o: ResistanceObservation) -> Nat? {
+  match o.display {
+    DisplayValue { ohms, approximate: _ } => match o.range {
+      RangeFullScale { ohms: _ } => Present { value: ohms }
+      RangeUnrecorded => Absent
+    }
+    DisplayAtProbeBaseline { shown: _, baseline: _ } => Absent
+    DisplayZeroWithoutBaseline { reported: _ } => Absent
+    DisplayAboveBaseline => Absent
+    DisplayOverRange => Absent
+  }
+}
+
+fn recorded_full_scale(o: ResistanceObservation) -> Nat {
+  match o.range {
+    RangeFullScale { ohms } => ohms
+    RangeUnrecorded => 0
+  }
+}
+
+fn distinct_full_scales(os: List<ResistanceObservation>) -> List<Nat> {
+  match os.first() {
+    Absent => []
+    Present { value: f } => fold(os, init: [recorded_full_scale(o: f)], f: (acc, o) => if any(acc, n => n == recorded_full_scale(o: o)) { acc } else { concat(acc, [recorded_full_scale(o: o)]) })
+  }
+}
+
+fn pair_range_standing(os: List<ResistanceObservation>, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> PairRangeStanding {
+  let valued = filter(os, o => observation_reads_pair(o: o, a: a, b: b) && match valued_ohms(o: o) { Present { value: _ } => true, Absent => false })
+  let ohms = flat_map(valued, o => match valued_ohms(o: o) { Present { value: n } => [n], Absent => [] })
+  match ohms.first() {
+    Absent => PairRangeUnread
+    Present { value: f } => {
+      let lo = fold(ohms, init: f, f: (acc, n) => nat_min(a: acc, b: n))
+      let hi = fold(ohms, init: f, f: (acc, n) => nat_max(a: acc, b: n))
+      if count(distinct_full_scales(os: valued)) < 2 { PairValuedOnOneRange { readings: valued } }
+      else if hi > lo * range_agreement_factor { ReadingMovesWithRange { readings: valued, lowest_ohms: lo, highest_ohms: hi } }
+      else { ReadingHoldsAcrossRanges { readings: valued, lowest_ohms: lo, highest_ohms: hi } }
+    }
+  }
+}
+
+fn pair_range_text(s: PairRangeStanding) -> String {
+  match s {
+    ReadingMovesWithRange { readings, lowest_ohms, highest_ohms } => join(["reads MOVING WITH THE RANGE, ", to_string(lowest_ohms), " to ", to_string(highest_ohms), " ohm across ", to_string(count(distinct_full_scales(os: readings))), " recorded ranges in ", to_string(count(readings)), " readings: a path holding a junction, not a conductor, and no join"], "")
+    ReadingHoldsAcrossRanges { readings, lowest_ohms, highest_ohms } => join(["reads the same across ", to_string(count(distinct_full_scales(os: readings))), " recorded ranges, ", to_string(lowest_ohms), " to ", to_string(highest_ohms), " ohm in ", to_string(count(readings)), " readings"], "")
+    PairValuedOnOneRange { readings } => join(["is valued on one recorded range only (", to_string(count(readings)), " readings), so whether it moves with the range is unread"], "")
+    PairRangeUnread => "has no valued reading on a recorded range"
+  }
 }
 
 fn inspection_text(d: DamageInspection) -> String {

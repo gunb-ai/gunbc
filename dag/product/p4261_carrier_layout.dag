@@ -115,6 +115,13 @@ import product.electrical.bench_session {
   HeldSteady,
   is_at_baseline,
   is_reported_zero,
+  PairRangeStanding,
+  ReadingMovesWithRange,
+  ReadingHoldsAcrossRanges,
+  PairValuedOnOneRange,
+  PairRangeUnread,
+  pair_range_standing,
+  pair_range_text,
   ReadAbout,
   ReadBelow,
   StatedPlainly,
@@ -1651,7 +1658,7 @@ data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHyp
     "energized, the via on Q301's lead b node (by the visible trace and a reported 0.0 ohm, not a baselined reading) reads about 3.8 V with the source at 38 V and about 4.9 V at 54 V, against J20's black lead: it rises with the input, not in proportion. If lead b is Q301's gate, as the candidate BSS138 pinout has it, a few volts there -- above that part's 1.5 V maximum gate threshold (DS30144) -- would switch Q301 on and hold P6 at the return, consistent with pin 7's 0 V if P6 is pin 7's node; and the voltage comes from the input itself, so with J20 energized the stage is held off unless Q300 pulls that node down",
     "energized at 54 V (2026-10-20), against J20's black lead: Q300's lead b 0 V, P6 0 V, and the far end of the resistor beside Q301 54 V -- the input. With the via's 4.9 V at 54 V, Q301's lead b sits near a tenth of the input, fed from it through that resistor, and Q300's lead b at 0 V says nothing drives Q300 on. These are readings at P6 and at the parts' pads, not at pin 7, which read 0 V at 48 V on its own lead",
     "unpowered (2026-10-20): across the resistor beside Q301, 26 kohm -- in circuit a resistor reads at or below its value, so it is at least about 26 kohm and '180' as 18 ohm is excluded; enlarged, its marking reads '18D', 150 kohm by the EIA-96 code, unresolved until the third character is confirmed (e1_q301_resistor). Q300's lead b reads 8 kohm to J20's black lead and 24 kohm to VDD's point; the via reads 0.0 to Q301's lead b. The zeros re-read (ZB2 to ZB6) name no dial position, and the shorted probes read '.005' and '.03 or something at 2k', so none of them joins",
-    "Q300's lead b's trace, followed by eye on the back (bench-session upload 54ded557, drawn by hand), runs the length of the board to beside U51, a two-row package next to U49; no reading joins the trace's end to Q300's lead b. Both read 'LV165A / 2BKG4 / AEC0' (2026-10-20), TI's marking for the SN74LV165A parallel-load shift register: a part that reads eight inputs and shifts them out serially, with two serial outputs. Whether U51 reads Q300's node or could drive it is the role of the exact pin the trace meets (register_pin_direction_text), which is unread: a parallel input reads it, a serial output could drive it, a control or clock pin would be shared with whatever clocks the part",
+    "Q300's lead b's trace, followed by eye on the back (bench-session upload 54ded557, drawn by hand), runs the length of the board to beside U51, a two-row package next to U49; no reading joins the trace's end to Q300's lead b. Both read 'LV165A / 2BKG4 / AEC0' (2026-10-20), TI's marking for the SN74LV165A parallel-load shift register: a part that reads eight inputs and shifts them out serially, with two serial outputs. Unpowered on the 20k range (2026-10-20), Q300's lead b reads 2.5 to 6 kohm to each of U51's pins 1 to 8, pin 8 (GND under SCLS402R) the same 2.5 kohm as J20's black lead, and the pin 8 pair moves with the range (about 600 ohm on 2k, 20 kohm on 200k; the first report of '20 ohm' was that 200k reading): a path holding a junction, not a join, so no U51 pin is read as the gate node's (q300_gate_path_reading). On the front, beside U92, the operator reports a point near U55 (eight leads, marked 'ZVK' over '22J': TI's 'ZVK' is a 16-pin leadless part, so unresolved) reading lower to Q300's lead b than the return does; its readings join the record once their points are named. Whether U51 reads Q300's node or could drive it is the role of the exact pin the trace meets (register_pin_direction_text), which is unread: a parallel input reads it, a serial output could drive it, a control or clock pin would be shared with whatever clocks the part",
     "TI SNVS950C: the load can be remotely switched off by taking UVLO/EN below its threshold with an open-collector or open-drain device; released, the LM5066I switches on (extdeps.electronic_component.ti_lm5066i vendor statement) -- a mechanism the part admits, not one read on this board",
     "a pasted report, not read against its source: OCP MGX gates a tray's power-on on a management presence and standby handshake (PRSNT, STBY_EN, STBY_RDY). The P4261 is not established as an MGX tray, and no such signal is traced to pin 7",
     "unpowered, the K1's pin 7, read with the probe held on the lead, is reported at 0 ohm to one end of a '200' resistor and not to the ringed via below-right of U1_P5 (hedged: 'seem electrically different'). The K1 is an earlier revision (-100, PCB A01; the E1 -201, PCB B00), so it is a lead about the design, not the E1's network, and it does not separate whether the 2026-10-19 bridge changed the E1's pin 7 network; the bridge was a MOSFET's source to its drain, not on pin 7's network",
@@ -1675,7 +1682,7 @@ data p4261_local_control_hypothesis: InvestigationHypothesis = InvestigationHypo
     "the staircase, one pole set at a time (e1_phases, e1_transitions): S2.1 off / S2.2 on, 0.013 A, nothing lit; S2.1 on / S2.2 off, 0.038 A, nothing lit, 'toggling either S1 switch does nothing' there; S1 pole 2 on, about 0.08 A then 0.094 A as 'the lights settle (from all lit to a few lit/one blinking near U1_TFP)'; S1 pole 1 off afterwards 'doesn't matter'; S2 returned 'returns back to the initial state'. The attribution to S1's pole 2 is the operator's; a later sentence says 'switch 1', so which S1 pole started the sequence is recorded with that doubt. Whether S1 is sampled only at a start or a restart is unread",
     "J30 bridged ('A and B'): 'a softer reset through the same sort of phase', 'slowly returns to .94A' (typed; 0.094 A or 0.94 A, unresolved), DS3 and DS4 lit 'as long as I hold J30 short'; energized in the settled state, 'J30 reads 3.1v, on pin 1 it's 0v'. A pulled-up input bridged to its return reads this way; so does a 3.3 V rail bridged to a point that happens to read 0 V",
     "J68 bridged (R1 to R2): 'an audible click, and the circuit repeats/resets a phase (or it holds it down, and then when i release again it automatically tries to boot again)'; 'stalls at .7A, until I let go', confirmed as 0.07 A ('yes, its .07A'); 'holding j68 turns all lights off, releasing starts boot sequence over'. Energized in the settled state its ten points read 'R1, L2-5 are all 1.8v, the rest are 0v': a 0 V point is a point that read 0 V, joined to the return only by an unpowered reading at a baseline, which none has. A shorted logic regulator in hiccup extinguishes a domain and restarts on release exactly as an active-low input would; the click's origin (carrier or source) is unrecorded, and the source's CV / CC / OCP state during the hold is unrecorded",
-    "U49 and U51 both read 'LV165A / 2BKG4 / AEC0' (operator photographs, 2026-10-20): SN74LV165APW by TI's package marking (extdeps.electronic_component.ti_sn74lv165a). A 2 x 5 header is a common debug footprint whose geometry fixes no pinout; which U49 / U51 pin each switch pole, header point and Q300's node meets is unread",
+    "U49 and U51 both read 'LV165A / 2BKG4 / AEC0' (operator photographs, 2026-10-20): SN74LV165APW by TI's package marking (extdeps.electronic_component.ti_sn74lv165a). A 2 x 5 header is a common debug footprint whose geometry fixes no pinout; which U49 / U51 pin each switch pole, header point and Q300's node meets is unread; Q300's lead b reads a junction path, not a join, to every U51 pin on the 20k range (2026-10-20)",
     "the bench ceiling did not shape the staircase: the operator ran these states under a 0.6 A limit as often as under 0.10 A, with the supply at 48 V, and the draw was the same ('i had the amperage at .6A regularly so .1A was definitely not capping it, its not taking more'); which limit any one recorded step ran under is unrecorded, so the phases carry both as candidates and the voltage from their agreement. The switch-event photographs alone show 54.00 V",
     "the Q21_P5 / Q22_P5 source-side terminals, P6, Q301's lead b node, Q300's lead b and the resistor's far end are unread in every recorded phase; the readings before the switch event were taken with the vector unrecorded",
   ],
@@ -2589,6 +2596,64 @@ data e1_zb_resistances: List<ResistanceObservation> = [
   e1_zb_read(a: e1_q300_lead_b, b: e1_beige_top, display: DisplayValue { ohms: 24000, approximate: false }, said: "R4: 8k ohm, 24kohm"),
 ]
 
+// Q300'S LEAD B AGAINST U51 (2026-10-20, unpowered, after the switches were found). The first report,
+// '20 ohm' to pins 8 and 6, was read on the 200k range and is 20 kohm, withdrawn by the operator as a
+// range misread. Re-read on the 20k range with the red probe on Q300's lead b, U51's pins 1 to 8 read
+// 2.5 to 6 kohm; pin 8, GND under SCLS402R, reads the same 2.5 kohm as J20's black lead on that range
+// (R4b); and the pin 8 pair reads about 600 ohm on the 2k range, 1.7 and 2.5 kohm on 20k, 20 kohm on
+// 200k, and 1.8 kohm with the probes swapped. A pair whose value moves with the range holds a junction
+// (product.electrical.bench_session pair_range_standing), so none of these joins and no U51 pin is read
+// as Q300's lead b's node: the readings to U51's pins are the gate node's own path to the return, plus
+// each pin's protection. The pin on which the trace followed by eye arrives stays unread.
+data e1_u51_first_said: NonEmptyStr = "Q300 -> U51 - it has 20ohm resistance to several legs on U51 - we'd have to number the legs - in this picture, its the bottom left leg of u51, and two above that one - it also has ~5k ohm resistance to other legs / In that picture it's 8 and 6"
+data e1_u51_range_said: NonEmptyStr = "8 is reading like, 600 ohms or something - my complaint is that, it dfepends on what settings i use- 2k ohms it reads ~600, and 20k ohms it reads 1700 / i think 20 ohms, i was on 200k and didn't realize"
+data e1_u51_pins_said: NonEmptyStr = "reading all of these on 20k ohms: 8: 2.5 / 7: 6 / 6: 2.5 / 5: 6 / 4: 6 / 3: 5 / 2: 5 / 1: 5 - This is with red on Q300, and black on the pins"
+data e1_u51_swapped_said: NonEmptyStr = "ZB15: at 20k, red on pin 8, black on Q300: 1800 ohms / R4b: 2.5k ohms"
+data e1_u51_pins_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session upload, U51 with its pins numbered 1 to 8 along the row nearer Q300's trace in the crop u51_pins (not on Drive)")
+
+fn e1_u51_pin(n: NonEmptyStr) -> ElectricalTerminalRef {
+  e1_terminal(c: e1_u51, name: n)
+}
+
+fn e1_ranged_read(b: ElectricalTerminalRef, ohms: Nat, full_scale: Nat, polarity: ProbePolarity, said: NonEmptyStr) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_q300_lead_b, second: b,
+    record: both_points_recorded,
+    conditions: e1_bench, polarity: polarity, range: RangeFullScale { ohms: full_scale }, display: DisplayValue { ohms: ohms, approximate: true }, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: said }, e1_u51_pins_photo, e1_lv165a_photo],
+  }
+}
+
+data e1_u51_resistances: List<ResistanceObservation> = [
+  e1_ranged_read(b: e1_u51_pin(n: "pin 8"), ohms: 20000, full_scale: 200000, polarity: PolarityUnrecorded, said: e1_u51_range_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 6"), ohms: 20000, full_scale: 200000, polarity: PolarityUnrecorded, said: e1_u51_first_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 8"), ohms: 600, full_scale: 2000, polarity: PolarityUnrecorded, said: e1_u51_range_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 8"), ohms: 1700, full_scale: 20000, polarity: PolarityUnrecorded, said: e1_u51_range_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 8"), ohms: 2500, full_scale: 20000, polarity: RedOnFirst, said: e1_u51_pins_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 7"), ohms: 6000, full_scale: 20000, polarity: RedOnFirst, said: e1_u51_pins_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 6"), ohms: 2500, full_scale: 20000, polarity: RedOnFirst, said: e1_u51_pins_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 5"), ohms: 6000, full_scale: 20000, polarity: RedOnFirst, said: e1_u51_pins_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 4"), ohms: 6000, full_scale: 20000, polarity: RedOnFirst, said: e1_u51_pins_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 3"), ohms: 5000, full_scale: 20000, polarity: RedOnFirst, said: e1_u51_pins_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 2"), ohms: 5000, full_scale: 20000, polarity: RedOnFirst, said: e1_u51_pins_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 1"), ohms: 5000, full_scale: 20000, polarity: RedOnFirst, said: e1_u51_pins_said),
+  e1_ranged_read(b: e1_u51_pin(n: "pin 8"), ohms: 1800, full_scale: 20000, polarity: RedOnSecond, said: e1_u51_swapped_said),
+  e1_ranged_read(b: e1_ground_ref, ohms: 2500, full_scale: 20000, polarity: RedOnFirst, said: e1_u51_swapped_said),
+]
+
+// U55 (2026-10-20): on the front beside U92, an eight-lead package, four a side, with a printed triangle
+// at its pin 1; below it a bare two-pad footprint. Its marking is two lines, 'ZVK' over '22J', read by
+// eye and then legible in a photograph. TI's 'ZVK' is the SN74AVC4T774 in a 16-pin leadless UQFN
+// (SCES693I, package option addendum), excluded by this part's eight leads, so the marking stays
+// unresolved: another maker's table, or a TI reuse of the code in a leaded package, would resolve it. The operator reports a
+// point here reading lower to Q300's lead b than the return does; those readings join the record once
+// their points are named.
+data e1_u55: ComponentInstanceIdentity = e1_component(local: "U55")
+data e1_u55_footprint: ComponentInstanceIdentity = e1_component(local: "bare two-pad footprint below U55 (designator unread)")
+data e1_u55_pins: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 4", "pin 5", "pin 6", "pin 7", "pin 8"]
+data e1_u55_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads de4b3131, a5fed232, 19a48d02 and 6320a44a: U55 beside U92 and U93 with the FCC mark and MODEL:P4261 below, the triangle at its left, two bare pads under it; the marking 'ZVK' over '22J' legible in the last (not on Drive)")
+
 // THE ENABLE CHAIN, ENERGIZED (2026-10-20, the source at 54 V, against J20's black lead). Q300's lead b
 // reads 0 V, P6 0 V, and the far end of the resistor beside Q301 54 V: the input itself. With the via's
 // 4.9 V at 54 V, Q301's lead b sits near a tenth of the input, fed from it through that resistor.
@@ -2867,7 +2932,7 @@ data e1_bench_record: BenchRecord = BenchRecord {
   incidents: [e1_bridge_incident],
   attachments: [e1_pin7_attachment, e1_w2_attachment, e1_w4_attachment],
   voltages: concat(concat(concat(concat(concat(concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)), [e1_pad_volts(source_volts: 48, millivolts: 1800, said: "1.8v"), e1_pad_volts(source_volts: 36, millivolts: 1350, said: "1.35 at 36v")]), map([48, 36, 54], v => e1_wire_volts(source_volts: v))), [e1_vdd_volts]), concat([e1_lead_volts(pin: "pin 8", millivolts: 1800), e1_lead_volts(pin: "pin 7", millivolts: 0)], [e1_via_volts(source_volts: 38, millivolts: 3800, certainty: StatedHedged { verbatim: "~3.8v" }), e1_via_volts(source_volts: 54, millivolts: 4900, certainty: StatedPlainly)])), e1_zv_volts),
-  resistances: concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances), e1_rp1_resistances), e1_w2_resistances), e1_pin7_lead_resistances), e1_w4_resistances), e1_cluster_resistances), e1_q301_resistances), e1_zb_resistances),
+  resistances: concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances), e1_rp1_resistances), e1_w2_resistances), e1_pin7_lead_resistances), e1_w4_resistances), e1_cluster_resistances), e1_q301_resistances), e1_zb_resistances), e1_u51_resistances),
 }
 
 data e1_measured: MeasuredBoard = MeasuredBoard {
@@ -2985,6 +3050,8 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { component: e1_j30, terminals: names(ns: e1_j30_points), identification: MarkingUnresolved { marking: Absent, discriminator: "a three-position header silkscreened J30 beside U41 and D7_P2 (bench-session upload 2304eac4; J31, beside Q530, is another header): which of A, B, C the operator's 'pin 1' and 3.1 V point were, and each position to J20's black lead unpowered on a recorded range against the baseline" } },
     InstalledComponent { component: e1_u49, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { text: "LV165A / 2BKG4 / AEC0", evidence: e1_lv165a_photo } } },
     InstalledComponent { component: e1_u51, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { text: "LV165A / 2BKG4 / AEC0", evidence: e1_lv165a_photo } } },
+    InstalledComponent { component: e1_u55, terminals: names(ns: e1_u55_pins), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "ZVK / 22J", evidence: e1_u55_photo } }, discriminator: "TI's part marking 'ZVK' is the SN74AVC4T774 in a 16-pin leadless UQFN (SCES693I package option addendum), excluded by this part's eight leads; match 'ZVK' in another maker's table, or in TI's lookup for a leaded eight-pin package" } },
+    InstalledComponent { component: e1_u55_footprint, terminals: names(ns: ["left pad", "right pad"]), identification: MarkingUnresolved { marking: Absent, discriminator: "an unpopulated two-pad footprint; its designator is not printed beside it in the photographs" } },
   ],
   measured: Present { value: e1_measured },
   input: Present { value: e1_input },
@@ -3283,6 +3350,22 @@ fn input_stage_text(layout: CarrierLayoutObservation) -> String {
   ], "")
 }
 
+// Q300'S LEAD B TOWARD U51: what the pair reads across ranges, derived from the record, never from the
+// trace followed by eye. Rendered only where U51 is a component of the observation.
+fn q300_gate_path_reading(layout: CarrierLayoutObservation) -> String {
+  match installed(layout: layout, c: e1_u51) {
+    Absent => join([component_text(c: e1_u51), " is not a component of this carrier's observation"], "")
+    Present { value: _ } => match layout.measured {
+      Absent => "no reading from Q300 lead b toward U51"
+      Present { value: b } => join([
+        "Q300 lead b to U51 pin 8 ", pair_range_text(s: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_u51_pin(n: "pin 8"))),
+        "; Q300 lead b to J20's black lead ", pair_range_text(s: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_ground_ref)),
+        "; no U51 pin is read as Q300 lead b's node",
+      ], "")
+    }
+  }
+}
+
 fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
   join([
     "J20 (", j20_text(layout: layout), "; ", polarity_text(p: input_polarity(layout: layout)), "): ", bound_text(b: input_bound(layout: layout)),
@@ -3290,6 +3373,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
     ". ", input_stage_text(layout: layout),
     ". ", netlist_reading(layout: layout),
     ". ", phases_reading(layout: layout),
+    ". ", q300_gate_path_reading(layout: layout),
     ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_local_control_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis), ". ", hypothesis_text(h: p4261_vdd_bypass_hypothesis),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")

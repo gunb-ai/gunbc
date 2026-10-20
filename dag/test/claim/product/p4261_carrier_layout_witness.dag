@@ -51,6 +51,14 @@ import product.electrical.bench_session {
   ShortedProbeBaseline,
   is_at_baseline,
   is_reported_zero,
+  PairRangeStanding,
+  ReadingMovesWithRange,
+  ReadingHoldsAcrossRanges,
+  PairValuedOnOneRange,
+  PairRangeUnread,
+  pair_range_standing,
+  RangeUnrecorded,
+  MeterRange,
   RangeFullScale,
   StabilityUnrecorded,
   VoltageValue,
@@ -286,6 +294,11 @@ import product.p4261_carrier_layout {
   e1_j30,
   e1_u49,
   e1_u51,
+  e1_u55,
+  e1_u51_pin,
+  e1_u51_resistances,
+  e1_ranged_read,
+  lv165a_pins,
   e1_phase_setting,
   downstream_terminals,
   phase_standing_in,
@@ -2079,4 +2092,64 @@ test fn u49_and_u51_are_shift_registers_with_pin_roles() -> Bool {
     && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 17).contains("U51 has no pin 17")
     && register_pin_direction_text(layout: p4261_e1_layout, c: e1_q300, number: 1).contains("is not identified as a shift register")
     && carrier_input_reading(layout: p4261_e1_layout).contains("U49 and U51, beside the end of Q300's lead b trace, are SN74LV165A parallel-load shift registers")
+}
+
+fn range_arm(s: PairRangeStanding) -> Nat {
+  match s {
+    ReadingMovesWithRange { readings: _, lowest_ohms: _, highest_ohms: _ } => 0
+    ReadingHoldsAcrossRanges { readings: _, lowest_ohms: _, highest_ohms: _ } => 1
+    PairValuedOnOneRange { readings: _ } => 2
+    PairRangeUnread => 3
+  }
+}
+
+fn range_bounds(s: PairRangeStanding) -> List<Nat> {
+  match s {
+    ReadingMovesWithRange { readings: _, lowest_ohms, highest_ohms } => [lowest_ohms, highest_ohms]
+    ReadingHoldsAcrossRanges { readings: _, lowest_ohms, highest_ohms } => [lowest_ohms, highest_ohms]
+    PairValuedOnOneRange { readings: _ } => []
+    PairRangeUnread => []
+  }
+}
+
+fn supplied_ranged(ohms: Nat, range: MeterRange) -> ResistanceObservation {
+  let r = e1_ranged_read(b: e1_u51_pin(n: "pin 8"), ohms: ohms, full_scale: 1, polarity: PolarityUnrecorded, said: "supplied")
+  ResistanceObservation { asset: r.asset, first: r.first, second: r.second, record: r.record, conditions: r.conditions, polarity: r.polarity, range: range, display: r.display, stability: r.stability, certainty: r.certainty, order: r.order, evidence: r.evidence }
+}
+
+fn supplied_pin8_standing(rs: List<ResistanceObservation>) -> PairRangeStanding {
+  pair_range_standing(os: rs, a: e1_q300_lead_b, b: e1_u51_pin(n: "pin 8"))
+}
+
+// Q300'S LEAD B REACHES U51 THROUGH A JUNCTION, NOT A JOIN. Live, fourteen readings: the pin 8 pair is
+// valued on three recorded ranges, 600 to 20000 ohm, so it reads MOVING WITH THE RANGE; the pair to J20's
+// black lead is valued on one recorded range only (R4's range was not recorded); no U51 pin is one node
+// with Q300's lead b in the live netlist; the report carries both standings. U55 is installed with eight
+// terminals and its marking unresolved, the bare footprint below it with two. Supplied on the pin 8
+// pair: 1000 and 1100 ohm on two ranges hold; 1000 and 2001 move, 1000 and 2000 do not (the factor is
+// two, exclusive); a value with its range unrecorded is not counted, so one valued range reads as one;
+// no readings read nothing.
+test fn q300_lead_b_reaches_u51_through_a_junction_not_a_join() -> Bool {
+  let live = board_netlist(b: e1_measured)
+  let rs = e1_measured.bench.resistances
+  let pin8 = pair_range_standing(os: rs, a: e1_q300_lead_b, b: e1_u51_pin(n: "pin 8"))
+  let to_return = pair_range_standing(os: rs, a: e1_q300_lead_b, b: e1_ground_ref)
+  let two_k = RangeFullScale { ohms: 2000 }
+  let twenty_k = RangeFullScale { ohms: 20000 }
+  count(e1_u51_resistances) == 14
+    && count(filter(e1_u51_resistances, o => any(lv165a_pins, n => reads_pair(o: o, a: e1_q300_lead_b, b: e1_u51_pin(n: n))))) == 13
+    && range_arm(s: pin8) == 0 && range_bounds(s: pin8) == [600, 20000]
+    && range_arm(s: to_return) == 2
+    && !any(lv165a_pins, n => one_node(net: live, a: e1_q300_lead_b, b: e1_u51_pin(n: n)))
+    && carrier_input_reading(layout: p4261_e1_layout).contains("Q300 lead b to U51 pin 8 reads MOVING WITH THE RANGE, 600 to 20000 ohm across 3 recorded ranges in 5 readings: a path holding a junction, not a conductor, and no join")
+    && carrier_input_reading(layout: p4261_e1_layout).contains("Q300 lead b to J20's black lead is valued on one recorded range only (1 readings)")
+    && carrier_input_reading(layout: p4261_k1_layout).contains("U55 is not a component of this carrier's observation") == false
+    && carrier_input_reading(layout: p4261_k1_layout).contains("U51 is not a component of this carrier's observation")
+    && all(component_of(layout: p4261_e1_layout, c: e1_u55), c => count(c.terminals) == 8)
+    && count(component_of(layout: p4261_e1_layout, c: e1_u55)) == 1
+    && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 1100, range: twenty_k)])) == 1
+    && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 2001, range: twenty_k)])) == 0
+    && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 2000, range: twenty_k)])) == 1
+    && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 9000, range: RangeUnrecorded)])) == 2
+    && range_arm(s: supplied_pin8_standing(rs: [])) == 3
 }
