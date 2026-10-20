@@ -18,6 +18,7 @@ import v2.std.decl_ref_resolution {
 import v2.std.integer { Int }
 import v2.std.node { symbol_lexeme }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.compiler.decl_ref_disposition_roster { DeclRefDisposition, decl_ref_disposition_roster }
 import v2.std.text { String, string_all_chars_in, string_any_char_in }
 
 // THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (a pure reader; the verb is
@@ -396,7 +397,7 @@ fn span_in_refused_file(span: String, refused: List<String>) -> Bool {
 
 fn span_is_refusal(s: ProseSpan, refused: List<String>) -> Bool {
   match s.standing {
-    SpanStale => !span_in_refused_file(span: s.span, refused: refused)
+    SpanStale => !span_in_refused_file(span: s.span, refused: refused) && !roster_has(subject: s.span)
     SpanResolves => false
     SpanOutsideIndex => false
     SpanNotASymbol => false
@@ -448,7 +449,21 @@ fn join_segments_with(segs: List<String>, sep: String) -> String {
   }
 }
 
-fn resolution_is_refusal(r: DeclarationRefResolution, refused: List<String>) -> Bool {
+fn roster_has(subject: String) -> Bool {
+  any(xs: decl_ref_disposition_roster, predicate: fn(d) { d.subject == subject })
+}
+
+fn resolution_subject(r: DeclarationRefResolution) -> String {
+  match r {
+    DeclarationRefResolved { declaration_identity: i } => i.qualified_name
+    DeclarationRefModuleAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
+    DeclarationRefDeclarationAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
+    DeclarationRefFieldAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
+    DeclarationRefOutsideIndex { reference: x, coverage: _ } => concat(x.module_path as String, " ", x.decl_name as String)
+  }
+}
+
+fn resolution_is_unresolved(r: DeclarationRefResolution, refused: List<String>) -> Bool {
   match r {
     DeclarationRefResolved { declaration_identity: _ } => false
     DeclarationRefOutsideIndex { reference: _, coverage: _ } => false
@@ -456,6 +471,19 @@ fn resolution_is_refusal(r: DeclarationRefResolution, refused: List<String>) -> 
     DeclarationRefDeclarationAbsent { reference: _ } => true
     DeclarationRefFieldAbsent { reference: _ } => true
   }
+}
+
+fn resolution_is_refusal(r: DeclarationRefResolution, refused: List<String>) -> Bool {
+  resolution_is_unresolved(r: r, refused: refused) && !roster_has(subject: resolution_subject(r: r))
+}
+
+fn roster_row_matched(d: DeclRefDisposition, c: DeclRefCensus) -> Bool {
+  any(xs: c.resolutions, predicate: fn(r) { resolution_is_unresolved(r: r, refused: c.refused_files) && resolution_subject(r: r) == d.subject })
+    || any(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanStale) && s.span == d.subject })
+}
+
+fn unmatched_roster_rows(c: DeclRefCensus) -> List<DeclRefDisposition> {
+  fold_list(xs: decl_ref_disposition_roster, empty: [], cons: fn(acc, d) { if roster_row_matched(d: d, c: c) { acc } else { list_snoc_item(xs: acc, item: d) } })
 }
 
 fn count_refused_resolutions(xs: List<DeclarationRefResolution>, refused: List<String>) -> Int {
@@ -471,7 +499,7 @@ fn count_spans_with(xs: List<ProseSpan>, wanted: SpanStanding) -> Int {
 }
 
 fn decl_ref_census_exit(c: DeclRefCensus) -> Int {
-  if count_refused_resolutions(xs: c.resolutions, refused: c.refused_files) + count_refused_spans(xs: c.prose, refused: c.refused_files) == 0 {
+  if count_refused_resolutions(xs: c.resolutions, refused: c.refused_files) + count_refused_spans(xs: c.prose, refused: c.refused_files) + length(xs: unmatched_roster_rows(c: c)) == 0 {
     0
   } else {
     1
@@ -530,6 +558,7 @@ fn decl_ref_refusal_lines(c: DeclRefCensus) -> List<String> {
 fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
   list_append(
     left: [
+      concat("[decl-ref-census] disposition_roster=", to_string(n: length(xs: decl_ref_disposition_roster)), " unmatched=", to_string(n: length(xs: unmatched_roster_rows(c: c)))),
       concat("[decl-ref-census] refs=", to_string(n: length(xs: c.cited)), " refused=", to_string(n: count_refused_resolutions(xs: c.resolutions, refused: c.refused_files)),
         " module_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "module-absent", refused: c.refused_files)),
         " declaration_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "declaration-absent", refused: c.refused_files)),
@@ -545,7 +574,10 @@ fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
         " not_a_symbol=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanNotASymbol)),
         " unclassified=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanUnclassified)))
     ],
-    right: decl_ref_refusal_lines(c: c)
+    right: list_append(
+      left: decl_ref_refusal_lines(c: c),
+      right: fold_list(xs: unmatched_roster_rows(c: c), empty: [], cons: fn(acc, d) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] roster row matches no unresolved citation: ", d.subject)) })
+    )
   )
 }
 
