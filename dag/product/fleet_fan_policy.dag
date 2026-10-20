@@ -33,7 +33,8 @@ type ThermalGuardRole
 // A TRIP IS EITHER AN ABSOLUTE FIGURE OR A MARGIN BELOW A COMPONENT'S OWN CEILING. A component
 // ceiling (a CPU's continuous junction maximum) is a fact of the machine's part, not of the fleet, so
 // the fleet policy carries only the margin and the machine row supplies the ceiling the margin is
-// taken from. An absolute figure carries its own standing (DESIGN 4d): an uncited one is a typed bet
+// taken from. The 15C margin is itself an uncited policy figure (TranscribedUncited) on a separately
+// cited per-model ceiling. An absolute figure carries its own standing (DESIGN 4d): an uncited one is a typed bet
 // that may trip toward automatic and may never justify LOWER cooling.
 type GuardTrip
   = AbsoluteTrip { trip: Celsius, standing: CitedFigureStanding }
