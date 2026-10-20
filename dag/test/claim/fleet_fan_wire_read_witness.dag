@@ -2,6 +2,7 @@ module test.claim.fleet_fan_wire_read_witness
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.optional { Absent, Present }
+import std.dissolution { DissolutionPending, DissolutionFired, DissolutionUnbound, dissolution_status }
 import std.measure { percent, percent_count }
 import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, HeldAtDutyFloor, fleet_fan_policy }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
@@ -13,7 +14,7 @@ import gunbc.fleet.fleet_fan_converge {
   FleetFanReading,
   FleetFanObserved,
 }
-import gunbc.fleet.fleet_fan_wire_read { fleet_fan_observed_from_wire, fleet_fan_reading_of_megarac_wire }
+import gunbc.fleet.fleet_fan_wire_read { fleet_fan_observed_from_wire, fleet_fan_reading_of_megarac_wire, fleet_fan_wire_capture_frontier, fleet_fan_wire_capture_ref }
 
 // SUPPLIED: the two GET bodies, shaped as the cited MegaRAC rows (id, fan_number, fan_speed, fan_pwm).
 // EXECUTED: the real adapter fold, and the real managed row for the mint control.
@@ -95,5 +96,28 @@ test fn witness_wire_mint_over_the_real_subject_carries_the_derived_reading() ->
   match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
     FanObserveAdmitted { host: h } => mint_reads(s: h)
     _ => false
+  }
+}
+
+data recorded_2026_10_14_rows: String = "[{\"id\":1,\"fan_number\":1,\"fan_speed\":0,\"fan_pwm\":0},{\"id\":2,\"fan_number\":2,\"fan_speed\":0,\"fan_pwm\":0},{\"id\":3,\"fan_number\":3,\"fan_speed\":0,\"fan_pwm\":0},{\"id\":4,\"fan_number\":4,\"fan_speed\":0,\"fan_pwm\":0},{\"id\":5,\"fan_number\":5,\"fan_speed\":5700,\"fan_pwm\":20},{\"id\":6,\"fan_number\":6,\"fan_speed\":5700,\"fan_pwm\":20}]"
+
+// The recorded 2026-10-14 values (megarac_fan_mode_observation): automatic with fans 1-4 at pwm 0 and
+// 5-6 at 20 reads automatic (the rows are not consulted); the same rows under manager_disabled 1 are
+// mixed and read unobservable, never a duty.
+test fn witness_recorded_field_values_read_as_recorded() -> Bool {
+  is_automatic(r: read(m: auto_body, f: recorded_2026_10_14_rows))
+    && is_unobservable(r: read(m: manual_body, f: recorded_2026_10_14_rows))
+}
+
+// The real-bytes capture frontier is PENDING until the cited receipt declaration exists; it is not discharged.
+test fn witness_real_capture_frontier_is_pending_not_discharged() -> Bool {
+  match dissolution_status(condition: fleet_fan_wire_capture_frontier, present_decls: []) {
+    DissolutionPending => match dissolution_status(condition: fleet_fan_wire_capture_frontier, present_decls: [fleet_fan_wire_capture_ref]) {
+      DissolutionFired => true
+      DissolutionPending => false
+      DissolutionUnbound => false
+    }
+    DissolutionFired => false
+    DissolutionUnbound => false
   }
 }

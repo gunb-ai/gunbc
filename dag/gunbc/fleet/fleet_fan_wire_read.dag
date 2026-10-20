@@ -2,6 +2,8 @@ module gunbc.fleet.fleet_fan_wire_read
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, bound_dissolution }
 import std.content_hash { content_hash_of_value }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { percent }
@@ -115,3 +117,15 @@ fn fleet_fan_observed_from_wire(subject: FanObserveHost, attempt: Int, manager_b
     reading: fleet_fan_reading_of_megarac_wire(manager_body: manager_body, fan_info_body: fan_info_body),
   )
 }
+
+// PAIRING OBLIGATION, PENDING: this adapter is the first production mint of FleetFanObserved, and
+// every body its claims parse is hand-written. The inhabitance claim needs the real bytes of a
+// read-only capture of mtcollins1's get_manager_status and get_fan_info (dated, with the BMC firmware
+// version), stored as a cited receipt in gunbc.fleet.fleet_fan_wire_capture and parsed through
+// fleet_fan_observed_from_wire. Until that declaration exists the frontier is PENDING, not discharged;
+// the hand fixtures reproduce the field values recorded in
+// gunbc.machine_intake.megarac_fan_mode_observation (2026-10-14: manager_disabled 0 then 1; fan_pwm
+// 0 on fans 1-4 and 20 on fans 5-6).
+data fleet_fan_wire_capture_ref: DeclarationRef = decl_ref(module_path: "gunbc.fleet.fleet_fan_wire_capture", decl_name: "mtcollins1_fan_wire_capture")
+
+data fleet_fan_wire_capture_frontier: DissolutionCondition = bound_dissolution(ref: fleet_fan_wire_capture_ref)
