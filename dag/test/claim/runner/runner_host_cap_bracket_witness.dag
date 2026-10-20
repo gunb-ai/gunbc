@@ -269,3 +269,42 @@ test fn an_unrecognized_line_or_an_empty_unit_name_is_untrusted_not_a_shrunken_r
   (match release_decision_of(reading: obligation_reading_of_text(text: concat(held_text(), "uint 02\n"), expected_key: okey())) { ReleaseObligationUntrusted { cause: _ } => true _ => false })
     && (match release_decision_of(reading: obligation_reading_of_text(text: concat(held_text(), "unit \n"), expected_key: okey())) { ReleaseObligationUntrusted { cause: _ } => true _ => false })
 }
+
+// THE COMPOSITION: acquisition records the owned units, the job is interrupted after the first mask, the
+// release step reads the SAME obligation text back, owes exactly those units, issues an argv for each masked
+// one from its show text, and the settled outcomes read back as admitting. Each link is the real function;
+// only the file transport and the ssh runs are supplied.
+fn owned_text(owned: List<NonEmptyStr>) -> String { bracket_obligation_text(o: BracketObligation { key: okey(), units: owned }, discharged: false) }
+fn show_masked_unit(n: String) -> String { concat("Id=", u(n: n) as String, "\nLoadState=masked\nUnitFileState=masked\nActiveState=inactive\n") }
+
+test fn an_interrupted_bracket_releases_exactly_its_owned_units_with_an_argv_each_and_reads_back_admitting() -> Bool {
+  match owned_set_of(readings: [unmasked(n: "01"), unmasked(n: "02")]) {
+    OwnedSetUnproven { units: _ } => false
+    OwnedSet { units: owned } =>
+      match release_decision_of(reading: obligation_reading_of_text(text: owned_text(owned: owned), expected_key: okey())) {
+        ReleaseOwes { units: us } =>
+          length(us) == 2
+            && length(filter(us, x => match slot_read_outcome_of(unit: x, show_stdout: show_masked_unit(n: if (x as String) == (u(n: "01") as String) { "01" } else { "02" })) {
+                 SlotRead { reading: r } => release_unit_needs_activation(read: SlotRead { reading: r }) && (match slot_activation_plan(r: r) { ActivationSteps { steps: s } => length(s) == 3 _ => false })
+                 SlotReadRefused { reason: _ } => false
+               })) == 2
+            && admitting(l: host_left_of_readmit(units: us, outcomes: map(us, x => SlotActivated { unit: x })))
+        _ => false
+      }
+  }
+}
+
+// RED: a release whose activation is refused leaves the host DRAINED and names that unit, not the others
+test fn a_failed_release_leaves_the_host_drained_and_names_the_unit() -> Bool {
+  match host_left_of_readmit(units: units(), outcomes: [SlotActivated { unit: u(n: "01") }, SlotActuationRefused { unit: u(n: "02"), step: "start", reason: "start refused" }]) {
+    HostLeftDrained { units: us } => length(us) == 1 && (us[0] as String) == (u(n: "02") as String)
+    HostAdmitting => false
+  }
+}
+
+// COUNTEREXAMPLE: a preflight that refuses (a slot unread, so ownership unproven) mints no owned set, so no
+// obligation text exists to write; the release then reads Absent, owes nothing and is issued no argv.
+test fn a_refused_preflight_leaves_no_obligation_and_the_release_issues_no_argv() -> Bool {
+  (match owned_set_of(readings: [unmasked(n: "01"), SlotDrainReading { unit: u(n: "02"), masked: false, listener_running: true, stopping: false, activity: SlotActivityUnobserved { cause: "ps exit=1" as NonEmptyStr } }]) { OwnedSetUnproven { units: _ } => true OwnedSet { units: _ } => false })
+    && (match release_decision_of(reading: ObligationAbsent) { ReleaseNothingOwed => true _ => false })
+}
