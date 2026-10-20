@@ -69,6 +69,7 @@ pub use crate::v1_compiler_infer_types::{
     instantiate_algebra_type, is_declared_container_alias_spelling, kernel_profile_lookup,
     method_receiver_element_node, node_is_keyed_collection, node_is_set_collection,
     nominal_type_ref, normalize_access_type_node, reground_alias_carrier_identity,
+    type_variable_node,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -1043,23 +1044,10 @@ pub fn lookup_field_type_node(
                                     ) && (field_name.clone() == "lookup".to_string()))
                                     {
                                         {
-                                            let value_child = match n
-                                                .children
-                                                .clone()
-                                                .get((1) as usize)
-                                                .cloned()
-                                            {
-                                                Some(child) => {
-                                                    crate::v1_compiler_infer_types::child_type_node(
-                                                        child.clone(),
-                                                    )
-                                                }
-                                                std::option::Option::None => {
-                                                    crate::v1_compiler_infer_types::nominal_type_ref(
-                                                        "V".to_string(),
-                                                    )
-                                                }
-                                            };
+                                            let value_child = match n.children.clone().get((1) as usize).cloned() {
+    Some(child) => crate::v1_compiler_infer_types::child_type_node(child.clone()),
+    std::option::Option::None => crate::v1_compiler_infer_types::type_variable_node("V".to_string()),
+};
                                             Some(crate::v1_std_core::with_optional_cardinality(
                                                 value_child.clone(),
                                             ))

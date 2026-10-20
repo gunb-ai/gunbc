@@ -142,7 +142,7 @@ pub fn connective_name(value: Connective) -> String {
 }
 
 pub fn dag_node_bag_hash(digests: Rc<Vec<String>>) -> String {
-    Rc::new({
+    (Rc::new({
         let mut __sorted: Vec<_> = digests.iter().cloned().collect();
         __sorted.sort_by(|a: &String, b: &String| {
             let __ka = (|d: String| d.clone())(a.clone());
@@ -156,14 +156,16 @@ pub fn dag_node_bag_hash(digests: Rc<Vec<String>>) -> String {
     .fold(
         v1_rt::atom_identity_hash("^dag_collect_bag_empty".to_string()),
         |acc: _, d: String| v1_rt::hash_combine(acc, d.clone()),
-    )
+    ))
+    .to_string()
 }
 
 pub fn dag_node_seq_hash(digests: Rc<Vec<String>>) -> String {
-    digests.iter().cloned().fold(
+    (digests.iter().cloned().fold(
         v1_rt::atom_identity_hash("^dag_collect_seq_empty".to_string()),
         |acc: _, d: String| v1_rt::hash_combine(acc, d.clone()),
-    )
+    ))
+    .to_string()
 }
 
 pub fn child_subtree_hash(connective: Connective, digests: Rc<Vec<String>>) -> String {
@@ -176,7 +178,7 @@ pub fn child_subtree_hash(connective: Connective, digests: Rc<Vec<String>>) -> S
 }
 
 pub fn dag_node_surface_leaf_mix(node: Rc<Node>) -> String {
-    v1_rt::atom_identity_hash(v1_rt::concat(
+    (v1_rt::atom_identity_hash(v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -191,7 +193,8 @@ pub fn dag_node_surface_leaf_mix(node: Rc<Node>) -> String {
             "|".to_string(),
         ),
         expr_data_variant(node.expr_data.clone()),
-    ))
+    )))
+    .to_string()
 }
 
 pub fn literal_value_fingerprint(value: Rc<LiteralValue>) -> String {
@@ -216,17 +219,19 @@ pub fn literal_value_fingerprint(value: Rc<LiteralValue>) -> String {
 pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> String {
     match pattern.clone().as_deref().cloned() {
         std::option::Option::None => {
-            v1_rt::atom_identity_hash("^dag_collect_match_pattern_absent".to_string())
+            (v1_rt::atom_identity_hash("^dag_collect_match_pattern_absent".to_string())).to_string()
         }
-        Some(MatchPattern::Bind { declaration: d, .. }) => v1_rt::hash_combine(
+        Some(MatchPattern::Bind { declaration: d, .. }) => (v1_rt::hash_combine(
             v1_rt::atom_identity_hash("Bind".to_string()),
             dag_node_surface_fingerprint_rec(d.clone()),
-        ),
+        ))
+        .to_string(),
         Some(MatchPattern::LitPattern { value: v, .. }) => {
-            v1_rt::atom_identity_hash(v1_rt::concat(
+            (v1_rt::atom_identity_hash(v1_rt::concat(
                 "LitPattern:".to_string(),
                 literal_value_fingerprint(v.clone()),
-            ))
+            )))
+            .to_string()
         }
         Some(MatchPattern::VariantPattern {
             name: n,
@@ -251,9 +256,11 @@ pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> Strin
                 }
                 __result
             });
-            v1_rt::hash_combine(base.clone(), dag_node_seq_hash(field_hashes.clone()))
+            (v1_rt::hash_combine(base.clone(), dag_node_seq_hash(field_hashes.clone()))).to_string()
         }
-        Some(MatchPattern::Wildcard) => v1_rt::atom_identity_hash("Wildcard".to_string()),
+        Some(MatchPattern::Wildcard) => {
+            (v1_rt::atom_identity_hash("Wildcard".to_string())).to_string()
+        }
     }
 }
 
@@ -281,10 +288,11 @@ pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
             with_children.clone(),
             dag_node_seq_hash(param_hashes.clone()),
         );
-        v1_rt::hash_combine(
+        (v1_rt::hash_combine(
             with_params.clone(),
             match_pattern_fingerprint_rec(node.match_pattern.clone()),
-        )
+        ))
+        .to_string()
     })
 }
 
