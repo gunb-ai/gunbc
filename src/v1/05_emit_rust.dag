@@ -2034,7 +2034,7 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
 fn render_rust_declaration_position(n: Node, spelled: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> String {
   let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   let names_declaration = match resolve_type_decl_routed(index: type_decl_items, type_expr: n, source_indices: source_indices).resolution {
-    TypeDeclResolved { identity: _, decl: _ } => true
+    TypeDeclResolved { identity: _, decl: d } => !is_type_alias_item(item: d, source_indices: source_indices)
     _ => false
   }
   let bare_declared_leaf = names_declaration && n.return_cardinality != CardOptional && !is_declared_container_alias_spelling(name: leaf) && !(generic_param_names |> any(g => g == leaf))
