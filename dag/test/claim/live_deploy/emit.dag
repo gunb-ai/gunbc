@@ -2249,8 +2249,7 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
 }
 
 // ONE CONTROL PER ARM. The broker's config holds PerReleaseBinary and resolves to its release locus's binary under a
-// bound revision; a fixed arm resolves to its own path; and the fixed-only admission refuses the per-release arm
-// (the RED below).
+// bound revision; a fixed arm resolves to its own path.
 test fn the_broker_serve_binary_is_the_per_release_arm_over_the_bound_revision() -> Bool {
   let spec = deployment_spec_srv1()
   let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
@@ -2267,8 +2266,8 @@ test fn a_fixed_serve_binary_resolves_to_its_own_path_whatever_the_revision() ->
 }
 
 // A per-release serve binary cannot be handed to a fixed-only renderer: DeploymentSpec.service is typed over
-// AdmittedFixedServeBinary, which only admit_fixed_serve_path mints, so the state is unwritable (a compile refusal, no
-// runtime fixture). What executes here is the other half: every fixed-only renderer, reached by a non-apply route
+// AdmittedFixedServeBinary, which only admit_fixed_serve_path mints. No fixture here executes that refusal for this type (the generic
+// sole_constructor probes execute the wall; a type-specific RED is a declared frontier). What executes here is the other half: every fixed-only renderer, reached by a non-apply route
 // (the belt, publication and fabric-storage unit files, not desired_apply_host_checked), emits a production spec with no marker, while the
 // broker's per-release unit resolves its own locus path.
 test fn the_fixed_only_renderers_emit_no_unbound_marker_off_the_apply_route() -> Bool {
