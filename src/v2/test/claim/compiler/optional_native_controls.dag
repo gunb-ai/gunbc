@@ -129,7 +129,7 @@ test fn onc_none_as_optional_call_argument_accepts() -> Bool {
   onc_none_infer_accepted(body: "fn take(x: Int?) -> Int? { x }\n\nfn mk() -> Int? { take(x: none) }\n")
 }
 
-test fn onc_none_without_an_expected_optional_refuses() -> Bool {
+test fn onc_none_unsolved_let_agrees_with_bare_absent() -> Bool {
   onc_none_assembles(body: "fn mk() -> Int { let x = none\n 1 }\n") && onc_none_infer_accepted(body: "fn mk() -> Int { let x = none\n 1 }\n") == onc_infer_accepted(body: "fn mk() -> Int { let x = Absent\n 1 }\n")
 }
 
