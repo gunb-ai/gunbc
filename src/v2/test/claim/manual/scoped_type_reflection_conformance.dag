@@ -217,12 +217,29 @@ test fn cited_unique_but_non_coproduct_spelling_refuses_rather_than_diverging() 
 // THE QUALIFIED KEY IS THE MODULE'S OWN NAME, so the live pair v2.std.integer / std.integer, which both
 // declare Int, answers to two keys and each key reads exactly one declaration (Int is an alias, so the coproduct
 // resolver refuses it for its own reason; the key count is the subject here). The
-// ambiguity red this slot held (a cited name reaching two rows) flipped when decl_index stopped
-// stripping `v2.`; it stays enrolled as the positive, with the one-row-each read beside it, so a
-// return to the stripped key reds both.
+// cross-tree ambiguity red this slot held (a cited name reaching two rows) flipped when decl_index
+// stopped stripping `v2.`; this one-row-each read is the positive that reds on a return to the
+// stripped key. The multiplicity ARM keeps its own RED below, through overlapping pool roots.
 test fn cited_pair_across_the_two_trees_reads_one_declaration_each() -> Bool {
   length(xs: decl_facts_at(pool_roots: scoped_reflection_pool_roots, qualified_name: "v2.std.integer.Int")) == 1
     && length(xs: decl_facts_at(pool_roots: scoped_reflection_pool_roots, qualified_name: "std.integer.Int")) == 1
+}
+
+// THE MULTIPLICITY ARM STAYS ENROLLED. With the `v2.` strip gone the cross-tree pair no longer reaches
+// two rows, but the arm in resolve_type_node_at that refuses a cited name reaching more than one row
+// still exists, and one module read through two overlapping pool roots reaches it. The refusal is the
+// subject here: delete the `length(xs: scoped) > 1` arm and this reds.
+test fn cited_name_reached_through_overlapping_roots_refuses_rather_than_taking_the_head() -> Bool {
+  outcome_is_rejected(
+    o: resolve_type_node_at(
+      pool_roots: ["dag", "src/v2", "src/v2"],
+      ref: DeclarationRef {
+        module_path: "v2.std.integer",
+        decl_name: "Int",
+        field: WholeDeclaration
+      }
+    )
+  )
 }
 
 // THE SPECIMEN A PRODUCTION CLAIM NOW DEPENDS ON, which is what makes this pair a regression control
