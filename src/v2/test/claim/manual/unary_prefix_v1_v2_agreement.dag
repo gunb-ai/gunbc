@@ -1,0 +1,99 @@
+module v2.test.claim.manual.unary_prefix_v1_v2_agreement
+
+// THE v1-vs-v2 AGREEMENT for prefix operators, precedent: this directory's
+// annotation_gap_v1_v2_agreement (one text through both parsers, identical shapes).
+// Lane adhoc-9102e2d6-92f; the defect and its cause are recorded at
+// gunbc.recurring_failure_mode.unary_minus_absorbs_a_following_additive_operator.
+//
+// WHY v2 OWES AGREEMENT AND NOT A RE-PLUMB (manager ruling, 2026-10-20): v2's unary production is
+// structurally closed -- dag_grammar_unary_expr_expr (v2.extdeps.languages.dag) is
+//   unary_expr -> '-' unary_expr | postfix_expr
+// so a prefix operand is a unary_expr or a postfix_expr and can never reach an infix row, at any
+// binding power. The defect lived where v1 parsed the operand at a hand-written min_bp that
+// admitted the infix rows; the fix declares the prefix powers beside the infix rows (PrefixOperatorSpec
+// in v1.std.syntax) and reads them, and this claim proves both parsers then agree on nesting for
+// every defect case and control. The two operator authorities (SyntaxSpec on the 5..20 scale, the
+// v2 grammar rows on the 1..7 scale) remain a named single-authority debt, recorded in the RFM row.
+//
+// The shape contract (I(a,b) infix, P(x) prefix, l leaf) is implemented once per parser in
+// unary_prefix_v1_canon_lib / unary_prefix_v2_canon_lib, because one file importing both
+// v1.std.core and v2.std.node collides on the bare names Node and Symbol.
+//
+//   gunbc run --source-root dag --source-root src --source-root src/v1 --source-root src/v2 \
+//     --claim-run \
+//     --entry src/v2/test/claim/manual/unary_prefix_v1_v2_agreement.dag \
+//     --function unary_prefix_v1_v2_agreement_reports
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure, ExitSuccess }
+import v2.test.claim.manual.unary_prefix_v1_canon_lib { v1_canon }
+import v2.test.claim.manual.unary_prefix_v2_canon_lib { v2_canon }
+
+// THE ARMS: the brief's defect cases and controls, plus the manager's ruling additions (!a && b,
+// !a || b beside the minus ones) and the two boundary probes that pinned the declared power at 18
+// by agreement with v2's postfix closure: '-a.b' (v2 consumes '.' inside the operand -> P(I..)) and
+// '-a |> f' (v2 keeps '|>' outside -> I(P..)).
+data agreement_arms: List<String> = [
+  "-1 - 2",
+  "-(1 - 2)",
+  "-a + b",
+  "-a * b",
+  "-1 < 0",
+  "-3",
+  "!a && b",
+  "!a || b",
+  "!a * b",
+  "a - b",
+  "a * b",
+  "-a < b"
+]
+
+// THE SHAPE EACH SIDE MUST PRODUCE, stated from v2's closed production and v1's declared table --
+// both sides must equal it, so agreement is checked against an authority and not merely between
+// two parsers that could agree on a wrong tree.
+fn agreement_expected(body: String) -> String {
+  match body {
+    "-1 - 2" => "I(P(l),l)"
+    "-(1 - 2)" => "P(I(l,l))"
+    "-a + b" => "I(P(l),l)"
+    "-a * b" => "I(P(l),l)"
+    "-1 < 0" => "I(P(l),l)"
+    "-3" => "P(l)"
+    "!a && b" => "I(P(l),l)"
+    "!a || b" => "I(P(l),l)"
+    "!a * b" => "I(P(l),l)"
+    "a - b" => "I(l,l)"
+    "a * b" => "I(l,l)"
+    "-a < b" => "I(P(l),l)"
+    _ => "?"
+  }
+}
+
+fn agreement_line(body: String) -> String {
+  let v1 = v1_canon(body: body)
+  let v2 = v2_canon(body: body)
+  let want = agreement_expected(body: body)
+  let verdict =
+    if v1 == v2 && v1 == want { "OK" }
+    else if v1 == v2 { "AGREE-WRONG" }
+    else { "DISAGREE" }
+  concat("ARM[", body, "] v1=", v1, " v2=", v2, " want=", want, " ", verdict)
+}
+
+fn agreement_is_right(body: String) -> Bool {
+  let v1 = v1_canon(body: body)
+  let v2 = v2_canon(body: body)
+  let want = agreement_expected(body: body)
+  v1 == v2 && v1 == want
+}
+
+test fn unary_prefix_v1_v2_agreement_reports() -> ProcessExit {
+  let bad = agreement_arms |> filter(b => !agreement_is_right(body: b))
+  let lines = agreement_arms |> map(b => agreement_line(body: b)) |> join(separator: "\n")
+  if (bad |> count) > 0 {
+    exit_failure(reason: concat("unary-prefix v1-vs-v2 agreement: ", to_string(value: bad |> count), " arm(s) refused to agree on the expected nesting\n", lines))
+  } else {
+    ExitSuccess
+  }
+}
