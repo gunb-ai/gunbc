@@ -532,3 +532,17 @@ SCOPE MEASURED BEFORE BUILDING (blast radius, so the fix does not arrive as a su
  - Row target: dag/gunbc/recurring_failure_mode. Candidate existing row to extend rather than a new one:
    search first for a renderer/shape row (the Box<Int> / Box<Int><Bool> printing class quiet-eagle-395
    recorded) before declaring a new one.
+
+## Item 2 (stern msg_216dbb24): single-authority prerequisite, BEFORE PR-2, its own small PR with a RED.
+GAP LOCATED BY READING THE EXISTING CLAIM, not assumed. dag/test/claim/algebra_carrier_roster_witness.dag
+already has every_derived_alias_row_key_resolves_through_a_carrier_with_a_profile, which checks each key of
+carrier_container_alias_rows() against algebra_carriers()' own spellings. It NEVER compares against
+std/types' DECLARED aliases: dag/std/types.dag:119 declares `type List<element> = FreeMonoid<element>` and
+nothing checks the roster against it. So the two authorities agree today by coincidence of authoring, which
+is exactly the §3 second-authority defect -- a check that agrees with the thing it duplicates proves nothing
+when either drifts.
+RED TO WRITE (before any fix): a claim that reads std/types' declared alias set and asserts, both ways,
+that it equals carrier_container_alias_rows() -- one direction per alias. It must go RED when either side is
+perturbed in isolation (rename the declared alias, or drop the carrier's pascal_alias_spelling), which is
+what proves it is a real cross-authority check rather than a restatement. Then the fix is to make ONE side
+cite the other, and the claim turns green and keeps being the guard.
