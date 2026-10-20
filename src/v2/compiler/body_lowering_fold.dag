@@ -3689,8 +3689,8 @@ fn body_lower_callback_encoding(operands: CallbackCallOperands) -> Outcome<Node>
 // declaration_reference_node): resolve answers it by declaration identity, with no import, and refuses
 // it as resolve_reason_generated_reference_declaration_absent when the closure lacks std.optional. No
 // payload type is chosen here: with no expected Optional<T> the reference is the constructor of an
-// unsolved variable, exactly as a bare Absent is (a refusal at a non-Optional position; an unused
-// `let x = none` is accepted by infer, as `let x = Absent` is).
+// unsolved variable, exactly as a bare Absent is (a refusal at a non-Optional position; `let x = none` gets
+// whatever verdict `let x = Absent` gets, whichever way infer settles an unsolved constructor binding).
 fn body_lower_none_literal(shell: Node) -> Outcome<Node> {
   outcome_accepted(value: declaration_reference_node(qn: absent_declaration_identity(), occurrence_id: shell.occurrence_id))
 }
