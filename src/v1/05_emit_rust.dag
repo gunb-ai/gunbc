@@ -257,7 +257,7 @@ import std.induction { SubValueUnknown, InductiveField }
 
 import v1.compiler.emit {
   BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, named_type_vars_in_node,
   emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding,
   emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr,
   emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
@@ -451,7 +451,9 @@ fn render_rust_leaf_declaration_type(n: Node, shared_types: Set<String>, source_
   let tn = authored_name_at(source_indices: source_indices, node: n)
   let named_base = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: Rust), dag_name: tn)
   let spec = language_spec(target: Rust)
-  let declared_spelled = if n.params |> count > 0 { concat(named_base, spec.type_arg_open, n.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)) |> join(separator: ", "), spec.type_arg_close) } else { named_base }
+  let explicit_params = n.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+  let declared_params = if explicit_params |> count == 0 { named_type_vars_in_node(n: n) } else { explicit_params }
+  let declared_spelled = if declared_params |> count > 0 { concat(named_base, spec.type_arg_open, declared_params |> join(separator: ", "), spec.type_arg_close) } else { named_base }
   let leaf_is_disj = n.connective == Disj
   let leaf_is_conj = n.connective == Conj
   if leaf_is_disj {
