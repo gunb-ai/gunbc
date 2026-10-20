@@ -26,6 +26,7 @@ import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_tick_cadence, 
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
+import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -725,7 +726,7 @@ fn live_deploy_serve_unit_file_over_listener(
       WorkingDirectory { path: svc.repo_root },
     ], concat(user_manager_environment_directives(uid: svc.service_uid), concat(oidc_env, [
       ExecStart { command: join([
-        svc.serve_binary as String,
+        fixed_serve_binary_path(binary: svc.serve_binary),
         " serve",
         deployment_serve_source_root_flags_text(),
         " --entry ", svc.serve_entry as String, " --function ", function as String,
@@ -806,7 +807,7 @@ fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseR
       WorkingDirectory { path: svc.repo_root },
     ], concat(user_manager_environment_directives(uid: svc.service_uid), [
       ExecStart { command: join([
-        svc.serve_binary as String,
+        fixed_serve_binary_path(binary: svc.serve_binary),
         " serve",
         deployment_serve_source_root_flags_text(),
         " --entry dag/gunbc/fabric/fabric_storage_serve.dag --function fabric_storage_serve_handle",
@@ -931,7 +932,7 @@ fn live_deploy_approval_broker_unit_file_on(
       release_locus_workspace_root_environment(release_dir: release_dir),
       approval_broker_base_url_environment(spec: spec),
       ExecStart { command: join([
-        release_locus_binary_path(root: svc.repo_root as String, revision: revision),
+        serve_binary_path(binary: svc.serve_binary, release_root: svc.repo_root as String, revision: revision),
         " serve",
         deployment_serve_source_root_flags_text(),
         " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
@@ -979,7 +980,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       ], "") as NonEmptyStr },
     ], concat(user_manager_environment_directives(uid: svc.service_uid), [
       ExecStart { command: join([
-        svc.serve_binary as String,
+        fixed_serve_binary_path(binary: svc.serve_binary),
         " run --source-root dag --source-root src/v2",
         " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_launch_enqueue_cli",
       ], "") as NonEmptyStr },
@@ -1016,7 +1017,7 @@ fn live_deploy_publication_service_unit_file(spec: DeploymentSpec) -> SystemdUni
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
       ExecStart { command: join([
-        svc.serve_binary as String,
+        fixed_serve_binary_path(binary: svc.serve_binary),
         " run --source-root dag --source-root src/v2",
         " --entry dag/gunbc/roadmap/roadmap_publication_helper.dag",
         " --function publication_helper_run_once_cli",
@@ -1392,7 +1393,7 @@ fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: S
       ], "") as NonEmptyStr },
     ], concat(user_manager_environment_directives(uid: svc.service_uid), [
       ExecStart { command: join([
-        svc.serve_binary as String,
+        fixed_serve_binary_path(binary: svc.serve_binary),
         " run --source-root dag --source-root src/v2",
         " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function ", function,
       ], "") as NonEmptyStr },
@@ -1498,7 +1499,7 @@ fn tree_remote_convergence_oneshot(spec: DeploymentSpec) -> ConvergenceOneshot {
     working_directory: svc.repo_root,
     environment_files: [] as List<NonEmptyStr>,
     exec_start: join([
-      svc.serve_binary as String,
+      fixed_serve_binary_path(binary: svc.serve_binary),
       " run --source-root dag --source-root src/v2",
       " --entry dag/gunbc/deployed_tree_remote.dag --function ensure_deployed_tree_remote_wet",
       " --arg repository_path=", svc.repo_root as String,
@@ -1555,7 +1556,7 @@ fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
-      ExecStart { command: join([svc.serve_binary as String, " converge --host self"], "") as NonEmptyStr },
+      ExecStart { command: join([fixed_serve_binary_path(binary: svc.serve_binary), " converge --host self"], "") as NonEmptyStr },
     ],
     install: NotInstallable,
   }))
@@ -1926,7 +1927,7 @@ fn repository_convergence_readback_command(
   spec: DeploymentSpec,
 ) -> String {
   shell_command_text_of_argv(argv: [
-    spec.service.serve_binary as String,
+    fixed_serve_binary_path(binary: spec.service.serve_binary),
     "run",
     "--source-root",
     "dag",
@@ -3571,7 +3572,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       deploy_raw(command: digest_shell_verify_line(digest: plan.target.executable, file_path: release_executable_install_source as NonEmptyStr)),
       deploy_raw(command: install_directory_command(
         mode: install_d_shared_mode,
-        path: path_parent_dir(path: spec.service.serve_binary as String),
+        path: path_parent_dir(path: fixed_serve_binary_path(binary: spec.service.serve_binary)),
         privileged: true,
       )),
       deploy_raw(command: install_file_owned_command(
@@ -3579,9 +3580,9 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
         owner: spec.service.service_user,
         group: spec.service.service_user,
         source: release_executable_install_source,
-        dest: spec.service.serve_binary as String,
+        dest: fixed_serve_binary_path(binary: spec.service.serve_binary),
       )),
-      deploy_raw(command: digest_shell_verify_line(digest: plan.target.executable, file_path: spec.service.serve_binary)),
+      deploy_raw(command: digest_shell_verify_line(digest: plan.target.executable, file_path: fixed_serve_binary_path(binary: spec.service.serve_binary) as NonEmptyStr)),
       deploy_raw(command: install_d_owned_command(
         spec: spec,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
