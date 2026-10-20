@@ -98,7 +98,21 @@ data instrument_dispatch_workflow_name: String = "instrument-dispatch"
 // dispatch, one old-form run may execute alongside one run from this queue -- a relaxation of the
 // queue-do-not-stack condition by at most one extra concurrent run. It dissolves when no pre-fix ref
 // dispatches, which follows from the default branch carrying this form.
-data instrument_dispatch_concurrency_group: String = "instrument-dispatch-queued"
+//
+// THE SAME REMEDY, APPLIED AGAIN ON 2026-10-20 (M1 ruling): the group name 'instrument-dispatch-queued'
+// is itself wedged in GitHub's state, repo-wide. Its head (39358338305, type-declaration-use-census)
+// was CANCELLED by the fleet owner and the group did NOT unwedge -- runs created into it afterwards
+// stayed pending with 0 jobs (39379535788 at main head 5f1bdd77a77 pending 6 min with 0 jobs;
+// 39380660663 pending from 06:29Z, never promoted, cancelled; both measured 2026-10-20). Meanwhile
+// FRESH key names promote correctly on the very same workflow: two back-to-back dispatches on the
+// wave key instrument-dispatch-wave-base ran head-then-queued (39380951246 in_progress with a job at
+// 06:32, 39380958633 pending 0 jobs), and the queued sibling PROMOTED to in_progress within a minute
+// when the head completed at 07:00:08. A group name that GitHub holds wedged cannot be revived by
+// cancelling its members -- so the serialized queue moves to a name NO earlier ref uses:
+// 'instrument-dispatch-pool-serial' (checked: no commit of .github/workflows/instrument-dispatch.yml
+// in this repository's history ever emitted that string). The old name appears nowhere in the emitted
+// yml; the witness asserts the new one and the absence of the old.
+data instrument_dispatch_concurrency_group: String = "instrument-dispatch-pool-serial"
 
 // OPERATOR RULING 2026-10-20, SUPERSEDING THE ONE-AT-A-TIME CONDITION ABOVE. What it replaces, quoted
 // from the paragraph it supersedes: "One group for every label, not one per label: per-label groups
@@ -108,8 +122,9 @@ data instrument_dispatch_concurrency_group: String = "instrument-dispatch-queued
 // no N-slot form, so the cap is spelled as a closed set of key LITERALS chosen by a comparison over
 // the closed wave_shard choice -- never by interpolating a run id, a run number, or any free-text
 // input into the key (a key that varies per run is no cap at all; a key interpolated from an input is
-// bounded only by what a dispatcher can type). Every non-wave label keeps the one existing group
-// 'instrument-dispatch-queued' and stays serialized among itself and every other non-wave run; the
+// bounded only by what a dispatcher can type). Every non-wave label keeps the one serialized group
+// (instrument_dispatch_concurrency_group, fresh-named 2026-10-20) and stays serialized among itself
+// and every other non-wave run; the
 // wave gate's wave_shard choice maps to one key per CHOICE -- base, 0/4..K-1/K, merge/K -- derived
 // from the same data row as K, so the wave contributes K + 2 keys and the total cap is K + 3.
 // THE CAP, DECLARED: 7 (K = 4 from instrument_dispatch_wave_shard_count, plus the one serialized
