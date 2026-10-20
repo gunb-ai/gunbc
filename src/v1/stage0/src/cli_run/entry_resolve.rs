@@ -3721,7 +3721,7 @@ mod strict_refusal_counts_blocking_diagnostics {
 
 #[cfg(test)]
 mod entry_resolve_refusal_tests {
-    use super::{resolve_entry_with_index_typed, EntryResolveRefusal};
+    use super::{resolve_entry_with_index_typed, EntryResolveRefusal, ResolveFailure};
     use crate::cli_run::build_multi_entry_index;
     use std::fs;
 
@@ -3734,11 +3734,9 @@ mod entry_resolve_refusal_tests {
         dir
     }
 
-    /// An entry that is not a file never reached its subject (`EntryMissing`); an entry that
-    /// exists is never classified missing, whatever its closure then says. The closure's own
-    /// name/type refusal is exercised end to end through `claim_batch` (exit 1, FAIL line), not
-    /// here: a resolve in a bare unit test is refused by the host memory budget, which would make
-    /// a `ClosureDiagnostics` assertion pass for the wrong reason.
+    /// A refusal that is not a corpus diagnostic (a host budget, assembly attribution, an unreadable
+    /// source) reaches the resolver as a plain `String` and must classify as infrastructure: no
+    /// observation. Only `ResolveFailure::Diagnostics` is a finding.
     #[test]
     fn an_unclassified_or_budget_refusal_is_infrastructure_and_only_diagnostics_are_findings() {
         let budget =
@@ -3755,6 +3753,11 @@ mod entry_resolve_refusal_tests {
         ));
     }
 
+    /// An entry that is not a file never reached its subject (`EntryMissing`); an entry that
+    /// exists is never classified missing, whatever its closure then says. The closure's own
+    /// name/type refusal is exercised end to end through `claim_batch` (exit 1, FAIL line), not
+    /// here: a resolve in a bare unit test is refused by the host memory budget, which would make
+    /// a `ClosureDiagnostics` assertion pass for the wrong reason.
     #[test]
     fn a_non_file_entry_is_missing_and_an_existing_entry_is_not() {
         let dir = scratch("split");
