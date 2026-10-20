@@ -318,9 +318,10 @@ fn forge_through_the_act_proxy() -> Int {
 
 // (h) THE STANDING'S OWN DOOR, FROM OUTSIDE (blocker 3's mint). A standing is what turns historical
 // evidence into a licence, so it must be as hard to obtain as the receipts. Inputs are parameters: this
-// function contains a call to a confined mint and no sealed literal. The instant argument is a PARAMETER
-// too, not a value written here -- this probe must not contain an ObservedInstant literal, since the whole
-// claim of the seal is that no caller can hand one over.
+// FUNCTION contains a call to a confined mint and writes no sealed value. The instant argument is a
+// PARAMETER, not something written here: this function must not hand over an instant, because its job is
+// to show the DOOR is closed, not to invent a way through it. The file as a whole does contain one
+// ObservedInstant -- data forged_instant, (j) below -- and that one exists precisely to be refused.
 fn forge_the_standing(
   joined: ProtectionOwnershipJoin,
   boundary: DeploymentGateBoundary,
