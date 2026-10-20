@@ -818,6 +818,13 @@ fn instrument_dispatch_workflow(seed: String, guard: String, script: String) -> 
         inputs: [
           DispatchInput {
             name: instrument_dispatch_wave_shard_input,
+            // EXTERNAL FACT (GitHub product policy, DESIGN 3): a workflow_dispatch input description
+            // longer than 160 characters makes GitHub reject the ENTIRE workflow file as invalid -- the
+            // push run dies jobless with the invalid-workflow signature and dispatches refuse 'Workflow
+            // does not have workflow_dispatch trigger' (422). Observed on this repo at head fa5fe4d399
+            // (2026-10-20): a 255-char description here killed the file; at 106 chars it loads. Keep
+            // every dispatch-input description in this file under 160 characters: the next long one
+            // refuses at push time, on the fleet, with no diagnostic beyond a jobless run.
             description: Present { value: "Wave gate only: base | i/K | merge/K. none = not a wave run; a wave label with none refuses malformed (2)." },
             required: false,
             default: Present { value: "none" },
