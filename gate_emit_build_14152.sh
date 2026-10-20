@@ -24,6 +24,7 @@ nm=$(grep -c "type_variable_node(id: g)" "$dg" || true)
 sp=$(grep -c 'type_variable_node(id: concat(g, "@", span.file' "$dg" || true)
 echo "GUARD acc=$acc dag_namekeyed=$nm dag_span_keyed=$sp"
 case "$KIND" in
+  pin)        { [ "$acc" = 0 ] && [ "$nm" = 0 ] && [ "$sp" = 0 ] && grep -q "MINT-BOUNDARY-INVENTORY" "$d/src/v1/tests/src/call_site_mint_boundary_test.rs" && grep -q "mod call_site_mint_boundary_test;" "$d/src/v1/tests/src/lib.rs"; } || { echo "VOID pin tree guard failed (mint present, or pin row absent)"; exit 8; } ;;
   repair)     { [ "$acc" = 0 ] && [ "$nm" = 1 ] && [ "$sp" = 1 ]; } || { echo "VOID repair tree guard failed (would measure the wrong tree)"; exit 8; } ;;
   name-keyed) { [ "$acc" = 0 ] && [ "$sp" = 0 ] && [ "$nm" -ge 1 ]; } || { echo "VOID name-keyed tree guard failed"; exit 8; } ;;
   main)       { [ "$acc" = 0 ] && [ "$sp" = 0 ]; } || { echo "VOID main tree guard failed (main must carry neither mint)"; exit 8; } ;;
