@@ -338,7 +338,7 @@ fn wrap_now() {
 fn last_cgroup_unit_with_suffix(text: &str, suffix: &str) -> Option<String> {
     text.split(['/', '\n'])
         .map(str::trim)
-        .filter(|seg| {
+        .rfind(|seg| {
             if seg.is_empty() {
                 return false;
             }
@@ -346,7 +346,6 @@ fn last_cgroup_unit_with_suffix(text: &str, suffix: &str) -> Option<String> {
             let last = parts.next().unwrap_or("");
             parts.next().is_some() && format!(".{last}") == suffix
         })
-        .next_back()
         .map(str::to_string)
 }
 
@@ -402,8 +401,7 @@ fn live_modeled_slice_standing(
 fn innermost_modeled_capped_slice(text: &str) -> Option<String> {
     text.split(['/', '\n'])
         .map(str::trim)
-        .filter(|seg| RECOGNIZED_SYSTEM_SLICES.contains(seg))
-        .next_back()
+        .rfind(|seg| RECOGNIZED_SYSTEM_SLICES.contains(seg))
         .map(str::to_string)
 }
 
