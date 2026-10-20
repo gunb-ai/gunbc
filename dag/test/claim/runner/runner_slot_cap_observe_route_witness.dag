@@ -9,11 +9,16 @@ module test.claim.runner.runner_slot_cap_observe_route_witness
 // read_host_cap_standings_over -> read_slot_cap_live_over -> typed_argv_exec_over_fleet_ssh ->
 // exec_as_fleet_principal -> ssh.Session.ExecPortableWords -- and reports `SlotCapStanding` per
 // slot, writing nothing. One route, no thin wet entry beside it (section 6: a second path to one
-// observation is the defect class). The base pair of these controls lives at
-// docs/plans/p4-base-red/runner_slot_cap_observe_base_witness.dag and is RUN AGAINST A WORKTREE AT
-// 750c5a01427 (the claim_batch --repo-root base run recorded in the plan); together they pin the fix
-// to ONE scripted world: the same host, the same bytes, a different verdict only because the code
-// finally LOOKED.
+// observation is the defect class). The base pair of these controls is git blob
+// a743cdc8984da250d254464a4192af6495a8f9f4 (branch history of this file, kept out of the tree: it
+// is fold scaffolding, not a fold witness). Reproduce: `git worktree add --detach <dir>
+// 750c5a01427`, drop the blob in as dag/test/claim/runner/runner_slot_cap_observe_base_witness.dag,
+// register its red_context in that tree's typed_remote_file_write_fleet_ssh_fixture admit_callers,
+// and run THIS tree's claim_batch binary with --source-root dag --source-root src/v2 from inside the
+// worktree. Observed matrix at 2026-10-20: base PASS/FAIL/PASS, HEAD FAIL/PASS/PASS (half-1 = no
+// read happened; half-2 = Owed with both read legs on the ledger; half-3 = one route, differs by
+// mode); together they pin the fix to ONE scripted world: the same host, the same bytes, a
+// different verdict only because the code finally LOOKED.
 //
 // THE CONTROLS DRIVE THE REAL ROUTE, end to end, inside one witness frame on a modeled
 // `ssh.Session.ExecPortableWords` (srv1's administrator principal is the executor bootstrap account,
