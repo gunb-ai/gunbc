@@ -187,12 +187,12 @@ test fn a_drained_host_is_drained_even_when_time_is_up() -> Bool {
 
 // THE STEP BUDGET IS THE POLICY'S THREE FIGURES, and a smaller one refuses before anything is masked.
 test fn the_budget_is_drain_plus_operations_plus_release() -> Bool {
-  second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) == 2700 + 600 + 300
+  second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) == 2700 + 600 + 240
 }
 
 test fn a_budget_short_of_the_bracket_refuses_before_masking() -> Bool {
-  (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3599)) { BudgetCannotCover { needed: n, given: g } => second_count(s: n) == 3600 && second_count(s: g) == 3599 BudgetCovers => false })
-    && (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3600)) { BudgetCovers => true BudgetCannotCover { needed: _, given: _ } => false })
+  (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3539)) { BudgetCannotCover { needed: n, given: g } => second_count(s: n) == 3540 && second_count(s: g) == 3539 BudgetCovers => false })
+    && (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3540)) { BudgetCovers => true BudgetCannotCover { needed: _, given: _ } => false })
 }
 
 // INTERRUPTION AFTER THE MASK. The driver is killed after masking; the release entry then meets a unit
