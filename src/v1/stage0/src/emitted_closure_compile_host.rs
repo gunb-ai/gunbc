@@ -3250,6 +3250,8 @@ mod tests {
     // `repo_self_emitted_cargo_build_flags`, the row the release job packs an emitted entry under.
     // The packed binary and the binary the probe's controls ran are one artifact only while these
     // two agree, so the mirror is compared with the row's own source text.
+    // SCAFFOLD (operator-approved on gunbc#14570): dissolves when the v2-native build probe takes its flags
+    // from the row, which deletes the mirror and this test.
     #[test]
     fn the_probe_build_flags_are_the_row_the_release_job_packs_under() {
         let row = include_str!("../../../../dag/gunbc/repo/repo_self_emitted_build.dag");
