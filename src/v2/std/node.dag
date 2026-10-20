@@ -750,46 +750,23 @@ fn bind_positional_slot(ordinal: Int) -> BindSlot {
 
 // THE NODE A Bind HOLDS IN A SLOT: its first positional child whose ordinal bind_positional_slot maps to
 // `slot` -- the binder, the value, or the (first) body. Readers of a Bind's parts read them here, so the
-// table above is the only place a Bind's slots are numbered.
+// table above is the only place a Bind's slots are numbered. The walk stops at that child.
 fn bind_slot_target(n: Node, slot: BindSlot) -> Optional<Node> {
-  fold(node_child_slots(n: n), init: optional_absent(), f: fn(acc, s) { bind_slot_target_step(acc: acc, s: s, slot: slot) })
+  bind_slot_target_from(edges: n.children, ordinal: 0, slot: slot)
 }
 
-fn bind_slot_target_step(acc: Optional<Node>, s: ChildSlot, slot: BindSlot) -> Optional<Node> {
-  match acc {
-    Present { value: _ } => acc
-    Absent =>
-      match s.ordinal {
-        PositionalOrdinal { index: i } =>
-          if bind_slot_is(a: bind_positional_slot(ordinal: i), b: slot) {
-            optional_present(value: s.edge.target)
-          } else {
-            acc
-          }
-        LabeledChild => acc
-      }
-  }
-}
-
-fn bind_slot_is(a: BindSlot, b: BindSlot) -> Bool {
-  match a {
-    BindBinderSlot =>
-      match b {
-        BindBinderSlot => true
-        BindValueSlot => false
-        BindBodySlot => false
-      }
-    BindValueSlot =>
-      match b {
-        BindBinderSlot => false
-        BindValueSlot => true
-        BindBodySlot => false
-      }
-    BindBodySlot =>
-      match b {
-        BindBinderSlot => false
-        BindValueSlot => false
-        BindBodySlot => true
+fn bind_slot_target_from(edges: List<Edge>, ordinal: Int, slot: BindSlot) -> Optional<Node> {
+  match edges {
+    Empty => optional_absent()
+    Cons { head: e, tail: rest } =>
+      if is_positional(e: e) {
+        if bind_positional_slot(ordinal: ordinal) == slot {
+          optional_present(value: e.target)
+        } else {
+          bind_slot_target_from(edges: rest, ordinal: ordinal + 1, slot: slot)
+        }
+      } else {
+        bind_slot_target_from(edges: rest, ordinal: ordinal, slot: slot)
       }
   }
 }
