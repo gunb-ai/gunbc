@@ -2,7 +2,8 @@ module v2.workflow.claim_coverage_census_s1
 
 import std.types { String, Bool, List, Int, Set }
 import std.optional { Optional, Absent, Present }
-import std.algebra { is_empty, string_contains }
+import std.algebra { is_empty }
+import v2.workflow.witness_admission { path_contains_substring }
 
 // THE DISCOVERED UNIVERSE, CLASSIFIED (manager ruling 2026-10-19, Charter 4, plus the two scope
 // additions: the ungroundable drop members, and jolly-boar-495's StaleEnrolled standing).
@@ -50,11 +51,14 @@ type ClaimRow {
 
 // HOW a file member selects files. The carriers disagree and BOTH relations are declared authorities:
 // a rung_drop population names whole paths (equality), while a witness_exclusion_frontier pattern is
-// matched by CONTAINMENT — the frontier's own matching authority is
-// `witness_row_excluded_from_discovery` in gunbc.ci.ci_layer_roots, which asks whether the row's entry
-// CONTAINS the pattern. Carrying the relation on the arm keeps the census from silently unifying two
-// relations into one equality, which would make every frontier pattern read as ungrounded (no entry
-// equals a bare stem) or every drop path read as grounded by accident.
+// matched by CONTAINMENT. The containment itself is NOT reimplemented here: `matches_member` calls
+// `path_contains_substring` in `v2.workflow.witness_admission`, which is the primitive
+// `witness_row_excluded_from_discovery` (same module) applies when it asks whether a row's entry contains
+// an exclusion pattern. One rule, one body — if the frontier ever changes its matching (anchoring, a path
+// prefix, normalization), the census classifies frontier rows the same way discovery excludes them,
+// because it is the same call (DESIGN §3, §6b). Carrying the RELATION on the arm is still necessary: it
+// keeps the census from silently unifying two relations into one equality, which would make every frontier
+// pattern read as ungrounded (no entry equals a bare stem) or every drop path read as grounded by accident.
 type ClaimMemberMatch
   = ExactMemberMatch
   | SubstringMemberMatch
@@ -178,7 +182,7 @@ fn narrows_to(named: Optional<String>, claim: ClaimRow) -> Bool {
 fn matches_member(relation: ClaimMemberMatch, member: String, path: String) -> Bool {
   match relation {
     ExactMemberMatch => member == path
-    SubstringMemberMatch => string_contains(s: path, pattern: member)
+    SubstringMemberMatch => path_contains_substring(path: path, sub: member)
   }
 }
 

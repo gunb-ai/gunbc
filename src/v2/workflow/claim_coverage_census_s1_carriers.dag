@@ -150,8 +150,10 @@ fn bin_wet_classifier_rows() -> List<ClassifierRow> {
 }
 
 // The exclusion frontier: file-grain cover rows matched by CONTAINMENT, because that is the
-// frontier's own matching authority — witness_row_excluded_from_discovery asks whether a row's
-// entry CONTAINS the pattern, and its patterns are stems and directory prefixes ("impossible_bug",
+// frontier's own matching authority — `witness_row_excluded_from_discovery` in
+// `v2.workflow.witness_admission` asks whether a row's entry CONTAINS the pattern, through
+// `path_contains_substring` in the same module, which is the body `matches_member` calls (one rule,
+// one body — DESIGN §3). Its patterns are stems and directory prefixes ("impossible_bug",
 // "test/claim/long/"), not paths. Carrying SubstringMemberMatch keeps the census from reading every
 // frontier pattern as ungrounded (no entry EQUALS a stem) — and a pattern that matches no discovered
 // file still fails the fold's empty-expansion refusal, so it cannot read as grounded by accident.

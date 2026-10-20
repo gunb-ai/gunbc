@@ -124,8 +124,13 @@ fn claim_coverage_census_exit() -> CliWireResponse {
   let c = claim_coverage(inputs: ClaimCoverageInputs { sources: claim_sources(), jobs: claim_executors() })
   let s1 = s1_live_block()
   // THE LOCATOR IS STAMPED BESIDE THE OUTPUT BY THIS RUNNER (warm-wolf-570): the census is a pure function
-  // of the tree, so the revision is the runner's business -- and a runner that cannot ask (the host-native
-  // route has no git) omits the line rather than printing a placeholder.
+  // of the tree, so the revision is the runner's business. THIS runner has git, so it asks and prints what
+  // it got: `S1-CENSUS head:<rev>` from `RevisionRead`, or `S1-CENSUS head UNREADABLE: <cause>` from
+  // `RevisionAbsent` -- the typed cause, never a fabricated revision (review 82943 allowed either printing
+  // a typed cause or omitting the line; printing it is chosen here because a git that refused IS a finding
+  // this receipt should show). Omitting the line is what a runner with NO way to ask does -- the host-native
+  // route has no git to run -- and it omits it because the question does not arise there, not because an
+  // answer was missing.
   let s1_lines = concat([s1_head_receipt_line()], s1.lines)
   let bytes = concat(
     concat(claim_coverage_receipt_lines(c: c) |> join(separator: "\n"), "\n"),

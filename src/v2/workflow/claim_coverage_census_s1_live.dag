@@ -477,10 +477,10 @@ fn s1_compose_scoped(roots: List<String>) -> S1Composition {
 // countable; §3b's absence domain is `std.optional::Optional`). The first version collapsed both refusals
 // to the empty string and then tested `!= ""`, and when neither authority answered it RETURNED THE STRING
 // "UNREADABLE (...)" -- a placeholder printed where a revision belongs, which is the fabricated default §5
-// rejects, and which contradicted the comment on the line that prints it. Now: `Present { value }` carries a
-// revision that was actually read, and `Absent { cause }` carries WHY the locator could not be read,
-// including the exit code and stderr the process reported. Nothing downstream has to guess whether an empty
-// string meant absent, and a reader can tell a refused git from an unset variable.
+// rejects, and which contradicted the comment on the line that prints it. Now: `RevisionRead { revision }`
+// carries a revision that was actually read, and `RevisionAbsent { cause }` carries WHY the locator could
+// not be read, including the exit code and stderr the process reported. Nothing downstream has to guess
+// whether an empty string meant absent, and a reader can tell a refused git from an unset variable.
 type HeadReading
   = RevisionRead { revision: String }
   | RevisionAbsent { cause: String }
