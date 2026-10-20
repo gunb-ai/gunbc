@@ -231,7 +231,7 @@ import v1.compiler.infer_patterns {
   node_is_never_declaration,
   constructor_roster_for,
   ConstructorRoster, ConstructorsClosed, ConstructorsOpen,
-  expand_scrut_type_for_variant_lookup,
+  expand_scrut_type_for_variant_lookup, instantiate_scrutinee_expansion,
   pattern_matches_constructor,
   constructor_fields
 }
@@ -7427,7 +7427,7 @@ fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_s
 fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject) -> PatternSubject {
   match scrutinee_subject {
     PatternResolved { node: scrutinee_type } =>
-      pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)))
+      pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: instantiate_scrutinee_expansion(use_site: scrutinee_type, expanded: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type), env: scope.type_env)))
     PatternDynamic { span: dynamic_span } =>
       PatternDynamic { span: dynamic_span }
     PatternLookupBlocked =>
