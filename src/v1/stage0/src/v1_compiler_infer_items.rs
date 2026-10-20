@@ -26,10 +26,10 @@ use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
 pub use crate::v1_std_core::{
-    authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
-    make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
-    resource_use_name_at, resource_use_resource, Cardinality, Connective, ErrorNode, InferredNode,
-    LeafOwner, NewlineIndex, Node,
+    authored_ident, authored_name_at, expr_has_non_tail_self_call, expr_has_self_call,
+    make_field_node, make_param_node, no_span, node_ident, node_name_span, param_node_name_at,
+    param_node_type_expr, resource_use_name_at, resource_use_resource, Cardinality, Connective,
+    ErrorNode, InferredNode, LeafOwner, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -219,7 +219,7 @@ pub fn inferred_to_outputs(
                                                 std::option::Option::None,
                                                 Rc::new(vec![]),
                                                 span.clone(),
-                                                crate::v1_std_core::node_name_span(child.clone()),
+                                                crate::v1_std_core::node_ident(child.clone()),
                                             )
                                         });
                                     }
@@ -234,7 +234,10 @@ pub fn inferred_to_outputs(
                                     std::option::Option::None,
                                     Rc::new(vec![]),
                                     span.clone(),
-                                    crate::v1_std_core::no_span(),
+                                    crate::v1_std_core::authored_ident(
+                                        crate::v1_std_core::no_span(),
+                                        "value".to_string(),
+                                    ),
                                 )])
                             }
                         } else {
@@ -246,7 +249,10 @@ pub fn inferred_to_outputs(
                                 std::option::Option::None,
                                 Rc::new(vec![]),
                                 span.clone(),
-                                crate::v1_std_core::no_span(),
+                                crate::v1_std_core::authored_ident(
+                                    crate::v1_std_core::no_span(),
+                                    "value".to_string(),
+                                ),
                             )])
                         }
                     }
@@ -264,7 +270,10 @@ pub fn inferred_to_outputs(
                             std::option::Option::None,
                             Rc::new(vec![]),
                             span.clone(),
-                            crate::v1_std_core::no_span(),
+                            crate::v1_std_core::authored_ident(
+                                crate::v1_std_core::no_span(),
+                                "value".to_string(),
+                            ),
                         )])
                     }
                 }
