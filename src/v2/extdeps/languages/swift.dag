@@ -789,6 +789,7 @@ fn swift_type_expression_projection() -> TargetTypeExpressionProjection {
       field_label_separator: optional_absent(),
       close: ^swift_token_gt
     },
+    optional_head: ^Optional,
     instantiation_form: TargetGenericApply {
       surface: ^swift_decl_type_generic_apply,
       open: ^swift_token_lt,

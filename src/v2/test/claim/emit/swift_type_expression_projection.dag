@@ -118,11 +118,11 @@ test fn swift_instantiation_emits_a_generic_argument_clause_holds() -> Bool {
 test fn swift_occupancy_emits_optional_with_every_layer_spelled_holds() -> Bool {
   swift_te_is(
     node: swift_te_optional(base: swift_te_atom(id: ^X)),
-    expected: "Gunbc.std.optional.Optional<X>"
+    expected: "Optional<X>"
   ) &&
   swift_te_is(
     node: swift_te_optional(base: swift_te_optional(base: swift_te_atom(id: ^X))),
-    expected: "Gunbc.std.optional.Optional<Gunbc.std.optional.Optional<X>>"
+    expected: "Optional<Optional<X>>"
   )
 }
 
@@ -217,10 +217,10 @@ test fn swift_declaration_reference_spelling_is_injective_holds() -> Bool {
 test fn swift_nested_optional_keeps_its_depth_holds() -> Bool {
   swift_te_is(
     node: swift_te_optional(base: swift_te_atom(id: ^X)),
-    expected: "Gunbc.std.optional.Optional<X>"
+    expected: "Optional<X>"
   ) &&
   !swift_te_is(
     node: swift_te_optional(base: swift_te_optional(base: swift_te_atom(id: ^X))),
-    expected: "Gunbc.std.optional.Optional<X>"
+    expected: "Optional<X>"
   )
 }

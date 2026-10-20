@@ -1574,6 +1574,7 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
       field_label_separator: optional_absent(),
       close: ^ts_token_gt
     },
+    optional_head: ^Optional,
     instantiation_form: TargetGenericApply {
       surface: ^ts_surface_type_generic_apply,
       open: ^ts_token_lt,

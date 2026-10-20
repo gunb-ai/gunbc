@@ -4245,6 +4245,9 @@ fn decode_type_expression_projection_bundle(
                                             o: decode_generic_apply_shape_bundle(bundle: occupancy_bundle),
                                             f: fn(optional_instantiation_form) {
                                               bind_outcome(
+                                                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_optional_head),
+                                                f: fn(optional_head) {
+                                              bind_outcome(
                                                 o: projection_bundle_child(
                                                   bundle: bundle,
                                                   name: ^target_type_expr_field_instantiation
@@ -4265,6 +4268,7 @@ fn decode_type_expression_projection_bundle(
                                                           disj_form: disj_form,
                                                           arrow_form: arrow_form,
                                                           optional_instantiation_form: optional_instantiation_form,
+                                                          optional_head: optional_head,
                                                           instantiation_form: instantiation_form,
                                                           declaration_reference_form: declaration_reference_form
                                                         }
@@ -4273,6 +4277,8 @@ fn decode_type_expression_projection_bundle(
                                                       )
                                                     }
                                                   )
+                                                }
+                                              )
                                                 }
                                               )
                                             }
@@ -10377,6 +10383,7 @@ type TargetTypeExpressionProjection {
   disj_form: TargetSumTypeShape
   arrow_form: TargetFunctionTypeShape
   optional_instantiation_form: TargetGenericApply
+  optional_head: Symbol
   instantiation_form: TargetGenericApply
   declaration_reference_form: DeclarationReferenceForm
 }
@@ -14235,7 +14242,13 @@ fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection)
     kind: TypeNode { connective: Conj },
     children: list_append(
       left: rows.children,
-      right: target_type_expr_declaration_reference_form_node(form: projection.declaration_reference_form)
+      right: Cons {
+        head: target_model_named_edge(
+          name: ^target_type_expr_field_optional_head,
+          target: target_type_expr_symbol_atom(id: projection.optional_head)
+        ),
+        tail: target_type_expr_declaration_reference_form_node(form: projection.declaration_reference_form)
+      }
     ),
     occurrence_id: OccurrenceSynthetic
   }

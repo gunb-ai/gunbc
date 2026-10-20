@@ -4416,6 +4416,7 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
       field_label_separator: optional_absent(),
       close: ^rust_token_gt
     },
+    optional_head: ^Option,
     instantiation_form: TargetGenericApply {
       surface: ^rust_surface_type_generic_apply,
       open: ^rust_token_lt,
