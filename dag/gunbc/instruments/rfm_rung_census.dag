@@ -152,6 +152,7 @@ fn standing_is_admitted(s: RungStanding) -> Bool {
     StandingAdmitted => true
     StandingNotBelowCeiling { subject: _ } => false
     StandingTriggerRefused { subject: _, admission: _ } => false
+    StandingBlockerContradictsCeiling { subject: _ } => false
   }
 }
 
