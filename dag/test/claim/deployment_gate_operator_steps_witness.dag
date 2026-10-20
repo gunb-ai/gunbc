@@ -595,7 +595,7 @@ fn standing_fixture(
     reviewer_present: reviewer_present,
     main_only: main_only,
     attempt: standing_attempt(),
-    observed_at: standing_instant as Timestamp,
+    observed_at: standing_ts(s: standing_instant),
   )
 }
 
@@ -645,7 +645,7 @@ fn standing_at(
     ),
     boundary: standing_boundary_for(environment: environment, identity_repo: identity_repo),
     attempt: attempt as AttemptIdentity,
-    observed_at: observed_at as Timestamp,
+    observed_at: standing_ts(s: observed_at as String),
   )
 }
 
@@ -779,7 +779,7 @@ fn ready_act() -> HumanIntervention?
     admission: admitted_pair(),
     standing: standing_for_trial(),
     removal_attempt: standing_attempt(),
-    now: standing_instant as Timestamp,
+    now: standing_ts(s: standing_instant),
   ) {
     ReviewerRemovalReady { admitted: a } => Present { value: a.intervention }
     ReviewerRemovalBlocked { missing: _ } => none
@@ -905,7 +905,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     admission: admitted_pair(),
     standing: standing_disabled_rule(),
     removal_attempt: standing_attempt(),
-    now: standing_instant as Timestamp,
+    now: standing_ts(s: standing_instant),
   ) {
          ReviewerRemovalReady { admitted: _ } => false
          ReviewerRemovalBlocked {
@@ -933,7 +933,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     main_only: true,
 ),
       removal_attempt: standing_attempt(),
-      now: standing_instant as Timestamp,
+      now: standing_ts(s: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -959,7 +959,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     main_only: true,
 ),
       removal_attempt: standing_attempt(),
-      now: standing_instant as Timestamp,
+      now: standing_ts(s: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -980,7 +980,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
       admission: admitted_pair(),
       standing: standing_no_reviewer(),
       removal_attempt: standing_attempt(),
-      now: standing_instant as Timestamp,
+      now: standing_ts(s: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -997,7 +997,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
       admission: admitted_pair(),
       standing: standing_no_branch_rule(),
       removal_attempt: standing_attempt(),
-      now: standing_instant as Timestamp,
+      now: standing_ts(s: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -1014,7 +1014,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
       admission: admitted_pair(),
       standing: standing_for_trial(),
       removal_attempt: standing_attempt(),
-      now: standing_instant as Timestamp,
+      now: standing_ts(s: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: a } =>
              a.boundary.environment_name == gate_env
@@ -1120,13 +1120,23 @@ fn attempt_or_default(a: AttemptIdentity?) -> AttemptIdentity {
   }
 }
 
-data standing_instant: Timestamp = "2026-10-19T12:00:00Z" as Timestamp
+// THE INSTANTS, AS STRINGS, BANDED AT THE CROSSING BY A DECLARED RETURN TYPE. Timestamp is a
+// transparent alias of String, so `x as Timestamp` on a reference keeps String and a `data` row's
+// annotation does not brand what callers see either -- the checker then refuses the mint's
+// Timestamp parameter. The spelling this corpus proves is a helper whose OWN return type is
+// declared, exactly as runner_connectivity_recovery_witness writes `fn act_ts(s: String) ->
+// Timestamp { s as Timestamp }`.
+fn standing_ts(s: String) -> Timestamp {
+  s as Timestamp
+}
+
+data standing_instant: String = "2026-10-19T12:00:00Z"
 
 // AN INSTANT at most standing_max_age past standing_instant, and one well past it. The staleness red
 // needs both, and needs them as REAL instants rather than as a Bool somebody set.
-data standing_instant_fresh: Timestamp = "2026-10-19T12:01:00Z" as Timestamp
+data standing_instant_fresh: String = "2026-10-19T12:01:00Z"
 
-data standing_instant_stale: Timestamp = "2026-10-19T13:00:00Z" as Timestamp
+data standing_instant_stale: String = "2026-10-19T13:00:00Z"
 
 // THE STANDING VARIANTS THE RED NEEDS, each built through the one admitted door with its facts changed.
 // THE STANDING CANNOT BE BUILT FROM TWO ENVIRONMENTS (side chat round 4, blocker 1). The standing used
@@ -1199,10 +1209,10 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
       reviewer_present: true,
       main_only: true,
       attempt: later_attempt(),
-      observed_at: standing_instant as Timestamp,
+      observed_at: standing_ts(s: standing_instant),
     ),
     removal_attempt: standing_attempt(),
-    now: standing_instant as Timestamp,
+    now: standing_ts(s: standing_instant),
   ) {
     ReviewerRemovalBlocked {
       missing: ActStandingIsForAnotherAttempt { standing_attempt: a, removal_attempt: r },
@@ -1223,7 +1233,7 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
         main_only: true,
       ),
       removal_attempt: standing_attempt(),
-      now: standing_instant as Timestamp,
+      now: standing_ts(s: standing_instant),
     ) {
       ReviewerRemovalReady { admitted: a } => a.standing.observation_attempt == standing_attempt()
       ReviewerRemovalBlocked { missing: _ } => false
@@ -1243,7 +1253,7 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
         main_only: true,
       ),
       removal_attempt: standing_attempt(),
-      now: standing_instant_stale as Timestamp,
+      now: standing_ts(s: standing_instant_stale),
     ) {
       ReviewerRemovalBlocked {
         missing: ActStandingIsStale { observed_at: o, now: n, max_age: m },
@@ -1267,7 +1277,7 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
         main_only: true,
       ),
       removal_attempt: standing_attempt(),
-      now: standing_instant_fresh as Timestamp,
+      now: standing_ts(s: standing_instant_fresh),
     ) {
       ReviewerRemovalReady { admitted: a } => a.standing.observed_at == standing_instant
       ReviewerRemovalBlocked { missing: _ } => false
@@ -1286,7 +1296,7 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
         main_only: true,
       ),
       removal_attempt: standing_attempt(),
-      now: standing_instant as Timestamp,
+      now: standing_ts(s: standing_instant),
     ) {
       ReviewerRemovalReady { admitted: a } =>
         a.standing.ownership.rule_id == a.evidence.approved.rule_id
@@ -1418,7 +1428,7 @@ test fn a_standing_cannot_join_ownership_with_another_environments_protection() 
            ),
            boundary: srv1_deployment_gate_boundary,
            attempt: standing_attempt(),
-           observed_at: standing_instant as Timestamp,
+           observed_at: standing_ts(s: standing_instant),
          ) {
            StandingRead { standing: _ } => false
            StandingRefused { because: _ } => true
@@ -1444,7 +1454,7 @@ fn standing_disabled_rule() -> RemovalBoundaryStandingObservation
     ),
     boundary: standing_boundary_for(environment: gate_env, identity_repo: gate_repo),
     attempt: standing_attempt(),
-    observed_at: standing_instant as Timestamp,
+    observed_at: standing_ts(s: standing_instant),
   )
 }
 
@@ -1477,7 +1487,7 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
     admission: admitted_pair(),
     standing: standing_for_trial(),
     removal_attempt: standing_attempt(),
-    now: standing_instant as Timestamp,
+    now: standing_ts(s: standing_instant),
   ) {
          ReviewerRemovalReady { admitted: a } =>
            let i = a.intervention
@@ -1498,7 +1508,7 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
 ),
       standing: standing_for_trial(),
       removal_attempt: standing_attempt(),
-      now: standing_instant as Timestamp,
+      now: standing_ts(s: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -1517,7 +1527,7 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
       admission: admitted_pair(),
       standing: standing_for_trial(),
       removal_attempt: standing_attempt(),
-      now: standing_instant as Timestamp,
+      now: standing_ts(s: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: _ } => false
            ReviewerRemovalBlocked {
@@ -1578,7 +1588,7 @@ test fn the_removal_act_names_its_subject_in_its_identity_and_in_its_route() -> 
     admission: admitted_pair(),
     standing: standing_for_trial(),
     removal_attempt: standing_attempt(),
-    now: standing_instant as Timestamp,
+    now: standing_ts(s: standing_instant),
   ) {
          ReviewerRemovalReady { admitted: a } =>
            let i = a.intervention
@@ -1618,7 +1628,7 @@ test fn the_removal_act_is_admitted_only_by_a_typed_prerequisite() -> Bool {
 // that did not happen keeps the refusal honest about which axis is empty.
 standing: standing_never_read(),
     removal_attempt: standing_attempt(),
-    now: standing_instant as Timestamp,
+    now: standing_ts(s: standing_instant),
   ) {
          ReviewerRemovalReady { admitted: _ } => false
          ReviewerRemovalBlocked { missing: NoApprovingReview } => true
@@ -1630,7 +1640,7 @@ standing: standing_never_read(),
       admission: admitted_pair(),
       standing: standing_for_trial(),
       removal_attempt: standing_attempt(),
-      now: standing_instant as Timestamp,
+      now: standing_ts(s: standing_instant),
     ) {
            ReviewerRemovalReady { admitted: a } =>
              let i = a.intervention
@@ -1655,7 +1665,7 @@ test fn the_ready_act_claims_no_completion_before_the_human_acts() -> Bool {
     admission: admitted_pair(),
     standing: standing_for_trial(),
     removal_attempt: standing_attempt(),
-    now: standing_instant as Timestamp,
+    now: standing_ts(s: standing_instant),
   ) {
     ReviewerRemovalReady { admitted: a } =>
       match a.intervention.completion_evidence {
@@ -1681,7 +1691,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: true,
     ),
-    observed_at: standing_instant_fresh as Timestamp,
+    observed_at: standing_ts(s: standing_instant_fresh),
   ) {
     ReviewerRemovalCompletionRecorded { receipt } =>
       receipt.reviewer_removed && receipt.main_only_policy_present
@@ -1698,7 +1708,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: true,
       main_only: true,
     ),
-    observed_at: standing_instant_fresh as Timestamp,
+    observed_at: standing_ts(s: standing_instant_fresh),
   ) {
     ReviewerRemovalCompletionRefused { because: ReviewerIsStillPresent { environment: e } } => e == gate_env
     _ => false
@@ -1712,7 +1722,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: false,
     ),
-    observed_at: standing_instant_fresh as Timestamp,
+    observed_at: standing_ts(s: standing_instant_fresh),
   ) {
     ReviewerRemovalCompletionRefused { because: BranchPolicyWentWithTheReviewer { environment: e } } =>
       e == gate_env
@@ -1727,7 +1737,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: true,
     ),
-    observed_at: standing_instant_fresh as Timestamp,
+    observed_at: standing_ts(s: standing_instant_fresh),
   ) {
     ReviewerRemovalCompletionRecorded { receipt } => receipt.boundary.environment_name == sibling_env
     _ => false
@@ -1741,7 +1751,7 @@ test fn completion_is_a_read_after_the_removal_not_the_admission() -> Bool {
       reviewer_present: false,
       main_only: true,
     ),
-    observed_at: standing_instant_fresh as Timestamp,
+    observed_at: standing_ts(s: standing_instant_fresh),
   ) {
     ReviewerRemovalCompletionRefused {
       because: CompletionReadIsOfAnotherSubject { subject: m },
