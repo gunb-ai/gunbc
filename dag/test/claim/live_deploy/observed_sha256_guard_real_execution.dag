@@ -2,6 +2,7 @@ module test.claim.live_deploy.observed_sha256_guard_real_execution
 
 import std.logic { Bool }
 import std.types { String }
+import std.optional { Present, Absent }
 import extdeps.exec.command { LocalExec }
 import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_observe }
@@ -67,8 +68,35 @@ test fn a_non_hex_digest_is_refused_before_any_write_by_real_execution() -> Bool
   refused(observed_line: "zzzz456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  /opt/x/bin")
 }
 
-// AGREEMENT: the grep pattern is derived from the validator's width, and on the fixtures it admits exactly
-// what std.content_hash lower_hex_64 admits (the first field of the line).
+// MISSING SEPARATOR: a 64-digit line with no separator, and one with a single space, are refused -- the two-space
+// separator is half of deploy_observed_sha256_line_ere.
+test fn a_digest_without_the_separator_is_refused_before_any_write_by_real_execution() -> Bool {
+  refused(observed_line: hex64)
+}
+
+test fn a_digest_with_a_single_space_separator_is_refused_before_any_write_by_real_execution() -> Bool {
+  refused(observed_line: join([hex64, " /opt/x/bin"], ""))
+}
+
+fn first_field(line: String) -> String {
+  match get(xs: split(s: line, delimiter: " "), index: 0) {
+    Present { value: f } => f
+    Absent => ""
+  }
+}
+
+// AGREEMENT, BY EXECUTION: for each fixture line whose separator is well formed, the real guard refuses exactly when
+// std.content_hash lower_hex_64 rejects the line's first field. The grep pattern is derived from the validator's
+// width (lower_hex_prefix_ere); this is the claim that the derivation did not drift.
+fn guard_agrees(line: String) -> Bool {
+  let obs = run_shell_command_observe(command: bash_program_command(script: guard_program(observed_line: line)), transport: LocalExec)
+  (obs.exit_code == 0) == lower_hex_64(value: first_field(line: line))
+}
+
 test fn the_guard_agrees_with_the_sha256_digest_hex_validator() -> Bool {
-  lower_hex_64(value: hex64) && !lower_hex_64(value: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef")
+  guard_agrees(line: join([hex64, "  /p"], ""))
+    && guard_agrees(line: "  /p")
+    && guard_agrees(line: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde  /p")
+    && guard_agrees(line: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef  /p")
+    && guard_agrees(line: "zzzz456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  /p")
 }
