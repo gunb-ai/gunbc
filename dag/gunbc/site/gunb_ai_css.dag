@@ -15,7 +15,7 @@ import extdeps.languages.css.values {
 import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_property_wire, BoxSizing, Background, Color, FontFamily, FontSize, LineHeight, WebkitFontSmoothing, ColorScheme, Margin,
   AlignItems, BorderBottom, BorderBottomColor, Display, Flex, FlexWrap, FontWeight, Gap, GridTemplateColumns, Height, LetterSpacing,
   MarginBottom, MarginInline, MarginLeft, MarginTop, MaxWidth, Opacity, PaddingBlock, PaddingTop, TextDecoration, TextTransform, TextWrap, Transition, Width,
-  BorderLeft, BorderRadius, BorderTop, Content, OverflowX, Padding, Transform, UserSelect, WhiteSpace }
+  Border, BorderLeft, BorderRadius, BorderTop, Content, OverflowX, Padding, Transform, UserSelect, WhiteSpace }
 import extdeps.languages.css.complex_selector {
   SelectorList, ComplexSelector, CompoundSelector, TypeSelector, SimpleSelector, UniversalType, ElementType, ClassPart, PseudoClassPart, PseudoElementPart,
   selector_list_wire, element_compound, class_compound,
