@@ -51,14 +51,22 @@ fn materialized(case: String, env_name: String) -> String {
   }
 }
 
-// install is shadowed to `cat` its stdin into the destination argument; sudo -n drops its flag and runs the rest.
-data harness_prelude: String = "sudo() { shift; \"$@\"; }; install() { shift 6; cat > \"$2\"; }; "
+// The lowered script names /usr/bin/sudo by absolute path, so a shell function cannot shadow it. The harness writes the
+// materialized text to a file, repoints that one path at a scratch shim, and runs it. The shim drops `-n`, then the
+// `install -m MODE -o OWNER -g OWNER` words, and copies stdin to the destination, so the root-owned install lands
+// in the scratch directory. sha256sum shadowing, when a case needs a chosen observation, is a function in the prelude.
+data sudo_path: String = "/usr/bin/sudo"
+data sudo_shim_body: String = "#!/bin/sh\nshift 8\ncat > \"$2\"\n"
+data script_end: String = "GUNBC_SCRIPT_END"
 
 fn run_case(case: String, shadow: String) -> String {
   let dir = join([scratch_root, "/", case], "")
   join([
-    "rm -rf ", dir, " && mkdir -p ", dir, " && : > ", dir, "/observed && ", harness_prelude, shadow,
-    materialized(case: case, env_name: "NAME"), "; status=$?; test -f ", dir, "/dest.env && cat ", dir, "/dest.env; ",
+    "rm -rf ", dir, " && mkdir -p ", dir, " && : > ", dir, "/observed && ",
+    "printf '%b' '", sudo_shim_body, "' > ", dir, "/sudo && chmod +x ", dir, "/sudo && ",
+    "cat > ", dir, "/script.sh <<'", script_end, "'\n", shadow, materialized(case: case, env_name: "NAME"), "\n", script_end, "\n",
+    "sed -i 's#", sudo_path, "#", dir, "/sudo#' ", dir, "/script.sh; ",
+    "bash ", dir, "/script.sh; status=$?; test -f ", dir, "/dest.env && cat ", dir, "/dest.env; ",
     "test $status -eq 0 && echo ", write_marker, "; exit $status",
   ], "")
 }
