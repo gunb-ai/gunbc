@@ -228,6 +228,12 @@ test fn oar_optional_at_optional_is_decided_by_peeling_holds() -> Bool {
   }
 }
 
+// STALE EXPECTATION, DECLARED, NOT ASSERTED AWAY. The first half of this claim reads an unresolvable
+// alias reference (`v2.test.oar_alias.Maybe` names no declaration) as counted-undecidable. That premise
+// is no longer an admitted semantic expectation: a reference naming an Optional is decided once its
+// alias settles. The assertion is left unchanged and red on purpose. After the Occupancy cut
+// (cool-gull-100) it is replaced by a ROUTE claim on an alias fixture, `type Maybe = Optional<Int>`:
+// the alias value is accepted and `Present { value: "s" }` is refused at the payload.
 // An optional at a declared type the relation cannot know to be required is NOT refused: a
 // declaration reference may name an alias of an optional type, and a type variable may be
 // instantiated at one. Both stay counted (the type variable as the generic formal it is).
