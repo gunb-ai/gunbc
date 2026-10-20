@@ -152,11 +152,12 @@ fn iam_bootstrap_ensure_identity(f: DedicatedFederation, own_trust: Bool, token:
   }
 }
 
-// EVERY SECRET THE CAPABILITIES STAGE BINDS ON IS CREATED BARE HERE (iam_bootstrap_bound_secrets: a
-// grant set's, a target's, the job's own), as a target's pool and account are, so each per-secret
-// role has a resource to be bound on and no recurring identity needs the project-level
-// secretmanager.secrets.create. Bare means no version: the container carries no payload until the
-// mint flow adds one.
+// THE BARE-SECRET ROUTE (iam_bootstrap_ensure_bare_secret). The ceremony creates no trust-root secret: the
+// secrets it binds a cell on (iam_bootstrap_bound_secrets) are trust roots, whose containers are their
+// value ceremonies' (custody_container_ceremony), so an absent one refuses and names that ceremony. Every
+// delta-owned secret (a grant set's, a target's) is created bare by the delta apply through this same
+// route, so no recurring identity needs the project-level secretmanager.secrets.create. Bare means no
+// version: the container carries no payload until the mint flow adds one.
 //
 // A CREATE IS JOURNALED ACROSS RUNS AND WORKSPACES, in the durable bootstrap journal
 // (gunbc.auth.gcp_iam_bootstrap_journal, a GCS bucket of gunbai-secrets), never in the checkout: a rerun
@@ -503,8 +504,8 @@ fn iam_bootstrap_write_policy(resource: IamBootstrapResource, policy: GcpPolicy,
 
 // THE JOURNAL BUCKET EXISTS BEFORE ITS CELLS ARE BOUND: created by the ceremony when absent (409 means
 // present), with uniform bucket-level access and public access prevented.
-// THE JOURNAL BUCKET'S IDENTITY AND ACCESS MODEL, joined to the declared rows. RED STUB: today any bucket
-// answering with the name is admitted.
+// THE JOURNAL BUCKET'S IDENTITY AND ACCESS MODEL, joined to the declared rows on all five axes (name,
+// project number, location, uniform bucket-level access, public access prevention).
 type JournalBucketIdentity = JournalBucketAdmitted | JournalBucketMismatch { reason: NonEmptyStr }
 
 fn journal_bucket_identity(bucket: NonEmptyStr, name: String, project_number: String?, location: String?, uniform_access: Bool?, public_access_prevention: String?) -> JournalBucketIdentity {
@@ -1347,7 +1348,7 @@ data iam_bootstrap_journal_bucket_services: List<GcpService> = [GcpStorage]
 
 data iam_bootstrap_required_services: List<String> = [
   "iam.googleapis.com", "iamcredentials.googleapis.com", "cloudresourcemanager.googleapis.com",
-  "secretmanager.googleapis.com", "sts.googleapis.com",
+  "secretmanager.googleapis.com", "sts.googleapis.com", "storage.googleapis.com",
 ]
 
 fn iam_bootstrap_service_enabled(name: String, state: String, service: String) -> Bool {
