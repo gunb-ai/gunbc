@@ -43,8 +43,8 @@ fn generated_provider_demand(declaration: DeclarationRef, site: GeneratedProvide
 // Group by declaration identity, keeping every site. First-seen order of declarations; the
 // acquisition decision below reads the grouped demands as a set, so order never selects.
 fn group_provider_demands(demands: List<GeneratedProviderDemand>) -> List<GeneratedProviderDemand> {
-  let none: List<GeneratedProviderDemand> = []
-  reverse(demands |> fold(init: none, f: fn(acc, d) {
+  let no_groups: List<GeneratedProviderDemand> = []
+  reverse(demands |> fold(init: no_groups, f: fn(acc, d) {
     if acc |> any(g => declaration_ref_eq(a: g.declaration, b: d.declaration)) {
       acc |> map(g =>
         if declaration_ref_eq(a: g.declaration, b: d.declaration) {
@@ -142,8 +142,8 @@ fn observed_acquire(o: ObservedProviderDemand, closure_modules: List<NonEmptyStr
 }
 
 fn distinct_module_paths(xs: List<NonEmptyStr>) -> List<NonEmptyStr> {
-  let none: List<NonEmptyStr> = []
-  reverse(xs |> fold(init: none, f: fn(acc, m) {
+  let no_modules: List<NonEmptyStr> = []
+  reverse(xs |> fold(init: no_modules, f: fn(acc, m) {
     if acc |> any(a => a == m) { acc } else { concat([m], acc) }
   }))
 }
