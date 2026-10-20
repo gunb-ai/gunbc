@@ -3,6 +3,7 @@ module v1.tests.claim.parse_allocator_postcondition_test
 import extdeps.languages.dag.syntax { dag_parse_environment }
 import std.types { String, List, Int, Bool }
 import std.algebra { FreeMonoid, Empty, Cons }
+import std.process { ProcessExit, ExitFailure }
 import v1.compiler.tokenize { tokenize }
 import v1.compiler.parse { parse_with_table, ParseWithTableResult }
 import v1.std.core { build_newline_index, empty_intern_table }
@@ -89,12 +90,29 @@ fn chain_source(terms: Int) -> String {
   )
 }
 
-// The chain's published ids, rendered for the before/after reading (P1.3 asks: occurrence ids
-// and transport identical across the deletion). Run with --function; the PR diff compares two
-// dumps of THIS function, old parser vs regenerated parser.
-fn chain_dump_ids(terms: Int) -> String {
-  let parsed = parse_chain_source(source: chain_source(terms: terms))
-  published_ids(parsed: parsed) |> fold(init: "", f: (s, k) => concat(s, to_string(k), "\n"))
+// The published ids of each specimen, rendered for the before/after reading (P1.3 asks:
+// occurrence ids and transport identical across the deletion). A ProcessExit is the host's
+// verdict carrier and ExitFailure's reason reaches the operator verbatim through the run's
+// stderr, so the dump rides the channel the verdict already has -- no new output surface.
+// Run with --function chain_dump_ids; exit 42 is the dump's own marker, not a failure of the
+// postcondition claims. The PR diff compares two runs of THIS function: tree at the deletion
+// commit vs tree with the pre-deletion 02_parse.dag restored.
+fn ids_dump(tag: String, parsed: ParseWithTableResult) -> String {
+  let ids = published_ids(parsed: parsed) |> fold(init: "", f: (s, k) => concat(s, to_string(k), "\n"))
+  concat(tag, " allocator_next_id=", to_string(parsed.occurrence_allocator.next_id),
+        " transport_entries=", to_string(parsed.occurrence_transport.index.entries |> fold(init: 0, f: (n, _) => n + 1)),
+        "\n", ids)
+}
+
+fn chain_dump_ids() -> ProcessExit {
+  ExitFailure {
+    code: 42,
+    reason: concat(
+      ids_dump(tag: "CHAIN40", parsed: parse_chain_source(source: chain_source(terms: 40))),
+      ids_dump(tag: "CHAIN200", parsed: parse_chain_source(source: chain_source(terms: 200))),
+      ids_dump(tag: "FOLDS", parsed: parse_chain_source(source: fold_fixture_source)),
+    ),
+  }
 }
 
 test fn long_left_associated_chain_postcondition() -> Bool {
