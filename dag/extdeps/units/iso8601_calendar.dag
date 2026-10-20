@@ -29,6 +29,24 @@ fn iso8601_floor_div(a: Int, b: Int) -> Int {
   if a >= 0 { a / b } else { 0 - ((0 - a + b - 1) / b) }
 }
 
+// UNIX SECONDS AT A UTC CIVIL DATE PLUS A SECONDS-SINCE-MIDNIGHT -- the one place the combination of
+// the scale factors is written. DESIGN §6b (root generalization): the trigger is the second local
+// implementation of one rule, and this rule (days_from_civil * seconds_per_day + seconds_of_day) was
+// hand-written at three call sites. The least general rule that covers all three: a civil date and a
+// count of seconds since midnight. The function is total, like the day count beside it; a caller that
+// must refuse a pre-epoch instant checks the result and refuses it itself, as the roadmap parser does.
+fn iso8601_unix_seconds_at(date: Iso8601CivilDate, since_midnight: Int) -> Int {
+  iso8601_days_from_civil(y: date.year, m: date.month, d: date.day) * iso8601_seconds_per_day() + since_midnight
+}
+
+// SECONDS SINCE MIDNIGHT AT A TIME-OF-DAY READ OFF A CLOCK. Written once for the same §6b reason: the
+// two leaves that spell hour, minute and second out (the roadmap timestamp parser and the recovery
+// capture mint) composed the three products by hand, word for word. The minute factor is a Nat in
+// extdeps.units.iso8601 and every consumer here counts seconds in Int, so the cast lives with the rule.
+fn iso8601_seconds_since_midnight(hour: Int, minute: Int, second: Int) -> Int {
+  hour * iso8601_seconds_per_hour() + minute * (iso8601_seconds_per_minute() as Int) + second
+}
+
 fn iso8601_days_from_civil(y: Int, m: Int, d: Int) -> Int {
   let yy = if m <= 2 { y - 1 } else { y }
   let era = iso8601_floor_div(a: yy, b: 400)

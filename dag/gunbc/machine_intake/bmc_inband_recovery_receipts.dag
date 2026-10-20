@@ -27,7 +27,7 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_openbmc_3_22_00_capabilitie
 import extdeps.clock { epoch_secs_of_millis }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute }
 import extdeps.units.iso8601_calendar {
-  Iso8601CivilDate, iso8601_days_from_civil, iso8601_seconds_per_day, iso8601_seconds_per_hour, iso8601_utc_text,
+  Iso8601CivilDate, iso8601_seconds_since_midnight, iso8601_unix_seconds_at, iso8601_utc_text,
 }
 import std.interval {
   IntervalConstructionFold, OrderedClosedInterval, closed_interval, interval_construction_fold,
@@ -405,35 +405,27 @@ fn recovery_capture_day() -> Iso8601CivilDate {
   Iso8601CivilDate { year: 2026, month: 10, day: 16 }
 }
 
-// one UTC instant on a NAMED DAY, from the hour/minute/second a capture line shows. Every scale factor
-// is asked of the module that owns it -- extdeps.units.iso8601_calendar for the hour and the day,
-// extdeps.units.iso8601 for the minute, std.measure for the millisecond scale -- so the mint and the
-// bands above it rest on one authority, and no round number sits here that could disagree with it.
-// The DAY is a parameter, and the parameter this module passes is its own notebook's date.
+// one UTC instant on a NAMED DAY, from the hour/minute/second a capture line shows. The combination of
+// the calendar's scale factors is owned by extdeps.units.iso8601_calendar (DESIGN §6b: this was the
+// third hand-written copy of it), and std.measure owns only the second-to-millisecond scale, which is
+// this mint's own concern. The DAY is a parameter, and the parameter this module passes is its own
+// notebook's date.
 fn captured_epoch_millisecond(day: Iso8601CivilDate, hour: Int, minute: Int, second: Int) -> EpochMs {
-  (
-    iso8601_days_from_civil(y: day.year, m: day.month, d: day.day) * iso8601_seconds_per_day()
-      + hour * iso8601_seconds_per_hour()
-      + minute * (iso8601_seconds_per_minute() as Int)
-      + second
+  iso8601_unix_seconds_at(
+    date: day,
+    since_midnight: iso8601_seconds_since_midnight(hour: hour, minute: minute, second: second),
   ) * (milliseconds_per_second() as Int)
-}
-
-// THE ONE ORDERING AN EpochMs HAS IN THIS REPOSITORY. std.types defines EpochMs as a refinement of
-// Int, and the corpus' other EpochMs comparisons (gunbc.fleet.mtcollins_firmware_converge's later_of)
-// are ordinary comparisons of the refined value; std.interval requires a caller-supplied proof either
-// way. So this is the ordering, written once, next to the bands that use it -- not a cast to a plain
-// number, which is what the earlier version was and what let arithmetic escape the unit.
-fn captured_milliseconds_le(earlier: EpochMs, later: EpochMs) -> Bool {
-  earlier <= later
 }
 
 // THE ONE MINT EVERY BAND GOES THROUGH, including what a claim asks when it wants to know what an
 // out-of-order pair does. A claim that re-implemented this fold would be checking a copy of the mint,
-// not the mint: same shape, and no way to tell the two apart when they diverge.
+// not the mint: same shape, and no way to tell the two apart when they diverge. The ordering argument
+// is spelled inline rather than behind a named function: EpochMs is a refinement of Int, the corpus'
+// other EpochMs comparisons (gunbc.fleet.mtcollins_firmware_converge's later_of) are ordinary
+// comparisons of the refined value, and a name for `<=` alone would be a second name for one operator.
 fn captured_band(low: EpochMs, high: EpochMs) -> CapturedInstant {
   interval_construction_fold(
-    construction: closed_interval(low: low, high: high, le: captured_milliseconds_le),
+    construction: closed_interval(low: low, high: high, le: (earlier, later) => earlier <= later),
     fold: IntervalConstructionFold {
       ready: i => CaptureTimeBand { band: i },
       refused: r => CaptureTimeBandInverted { reason: r },
@@ -481,7 +473,7 @@ fn captured_band_ordering(earlier: CapturedInstant, later: CapturedInstant) -> C
       match later {
         CaptureTimeBandInverted { reason: r } => LaterBandRefuses { reason: r }
         CaptureTimeBand { band: l } =>
-          if captured_milliseconds_le(earlier: interval_high(interval: e), later: interval_low(interval: l)) {
+          if interval_high(interval: e) <= interval_low(interval: l) {
             BandPrecedes
           } else {
             BandDoesNotPrecede

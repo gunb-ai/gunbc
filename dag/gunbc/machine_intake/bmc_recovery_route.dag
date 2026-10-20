@@ -34,7 +34,7 @@ import gunbc.machine_intake.bmc_inband_recovery_receipts {
   captured_epoch_millisecond, captured_band, captured_instant_band, captured_band_precedes,
   captured_band_ordering, CapturedBandOrdering, BandPrecedes, BandDoesNotPrecede,
   EarlierBandRefuses, LaterBandRefuses,
-  captured_bound_utc_text, captured_milliseconds_le, recovery_inband_channel_instant,
+  captured_bound_utc_text, recovery_inband_channel_instant,
   recovery_device_node_creation_instant, recovery_reset_instant, recovery_post_reset_instant,
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
@@ -4639,7 +4639,7 @@ test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool 
       // mint's words, so the claim asks the mint directly and compares. The mint's sentence is never
       // retyped here; a re-typed copy could go stale against std.interval and still pass.
       CaptureTimeBandInverted { reason: r } =>
-        match closed_interval(low: reversed_low, high: reversed_high, le: captured_milliseconds_le) {
+        match closed_interval(low: reversed_low, high: reversed_high, le: (earlier, later) => earlier <= later) {
           IntervalRefused { reason: m } => r == m
           IntervalReady { interval: _ } => false
         }
