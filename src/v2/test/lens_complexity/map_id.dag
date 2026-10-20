@@ -12,7 +12,9 @@ import v2.std.diagnostic {
 }
 import v2.std.node {
   Atom,
-  Occupancy,
+  Loop,
+  LoopBoundEdge,
+  core_edge_label,
   ComputationNode,
   Edge,
   Node,
@@ -45,18 +47,25 @@ data map_id_body: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
+data map_id_measure: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^map_id_measure_atom } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
 data map_id_input: Node = Node {
-  kind: TypeNode { connective: Occupancy },
+  kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: map_id_body }
+    Edge { label: Positional, target: map_id_body },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: map_id_measure }
   ],
   occurrence_id: OccurrenceSynthetic
 }
 
 data map_id_claim: LensComplexityClaim = LensComplexityClaim {
   input: map_id_input,
-  expected_cost: LinearCost { variable: SizeVariable { source: map_id_input } },
-  expected_complexity: linear_complexity(size_var: SizeVariable { source: map_id_input }),
+  expected_cost: LinearCost { variable: SizeVariable { source: map_id_measure } },
+  expected_complexity: linear_complexity(size_var: SizeVariable { source: map_id_measure }),
   falsification: Diagnostic {
     reason: ^map_id_claim_reason,
     at: Textual { file: ^map_id_claim_file, extent: WholeFile },

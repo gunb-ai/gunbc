@@ -25366,6 +25366,75 @@ pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
     }
 }
 
+pub fn type_node_carries_applicationless_parametric_head(
+    n: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let mut __found = false;
+        for c in n.children.clone().iter().cloned() {
+            if {
+                let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
+                (((n.connective.clone() != Connective::Disj)
+                    && rust_type_renders_bare_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    || type_node_carries_applicationless_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
+pub fn rust_type_renders_bare_parametric_head(
+    t: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    if !type_node_declares_parameters(t.clone(), emit_info.fn_type_env.clone()) {
+        false
+    } else {
+        {
+            let head = crate::v1_std_core::qualified_last_segment(
+                crate::v1_std_core::authored_name_at(source_indices.clone(), t.clone()),
+            );
+            let rendered = render_rust_type(
+                t.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            );
+            ((rendered.clone() == head.clone())
+                || (rendered.clone()
+                    == v1_rt::concat(
+                        v1_rt::concat("Rc<".to_string(), head.clone()),
+                        ">".to_string(),
+                    )))
+        }
+    }
+}
+
+pub fn type_node_declares_parameters(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+        Some(binding) => ((binding.params.clone().len() as i64) > 0),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn rust_empty_map_init_expr(
     map_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
@@ -25384,13 +25453,19 @@ pub fn rust_empty_map_init_expr(
                 "HashMap::new() /* BRIDGE: empty_map value type unresolved */".to_string(),
             )
         } else {
-            if ((rust_fold_rendered_type_has_any_spurious_generic(
+            if (((rust_fold_rendered_type_has_any_spurious_generic(
                 v1_rt::concat(
                     v1_rt::concat("<".to_string(), kv_type_str.clone()),
                     ">".to_string(),
                 ),
                 emit_info.fn_generic_param_names.clone(),
             ) || type_node_carries_erased_type_argument(map_type.clone()))
+                || type_node_carries_applicationless_parametric_head(
+                    map_type.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                ))
                 || {
                     let mut __found = false;
                     for c in map_type.children.clone().iter().cloned() {
@@ -29542,12 +29617,19 @@ pub fn emit_rust_fold_method_call(
         );
         let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
             && crate::std_types::is_container_type(acc_type_name.clone()));
-        let lambda_acc_type_str = if (((((is_bare_container.clone()
+        let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(
+            acc_type_node.clone(),
+            shared_types.clone(),
+            scope.type_env.source_indices.clone(),
+            fold_emit_info.clone(),
+        );
+        let lambda_acc_type_str = if ((((((is_bare_container.clone()
             || acc_type_is_type_var.clone())
             || acc_child_is_type_var.clone())
             || acc_has_unbound_type_var.clone())
             || acc_has_closure_unbound_generic.clone())
             || acc_render_has_spurious_generic.clone())
+            || acc_carries_bare_parametric_head.clone())
         {
             "_".to_string()
         } else {
