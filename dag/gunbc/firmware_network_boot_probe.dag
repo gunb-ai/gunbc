@@ -506,6 +506,6 @@ type AxisReplyInhabitation
 
 data firmware_boot_axis_reply_inhabitation: AxisReplyInhabitation = AxisReplyUninhabited {
   owed_by: firmware_boot_axis_reader_ref(),
-  over: "AxisReply: one reply per answered axis decoded from an extdeps.bmc reply, BootOrder entries carried as references with no kind (BootOptions are not read), every BMC refusal a FirmwareReadRefusal",
+  over: "AxisReply: one reply per answered axis decoded from an extdeps.bmc reply, boot entries classified by RedfishBootSourceOverrideTarget kind, every BMC refusal a FirmwareReadRefusal",
   falsified_by: "a reader that maps an empty or malformed BMC body to an Observed empty list, guesses a boot-entry kind from a label, or turns a refusal into no reply",
 }
