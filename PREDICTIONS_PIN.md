@@ -83,3 +83,27 @@ exactly three files and all additions, and the deleted-symbol grep over
 `4e32f5a1007..7d4cadbe844` found the only declaration-level removals to be a `pub use` of
 `function_value_params` / `is_host_text_carrier_type`, both of which are absent from my merged tree
 (main's deletion taken, not silently retained).
+
+## B4 re-run, pre-registered BEFORE the run (the first attempt's verdict was unreadable)
+
+The first B4 dispatch (job jefbf6d42, exit 0, 42 min) is VOID as evidence, for a reason of my own making:
+the script ends by tar-gzipping its logs and base64-encoding them inside one 200 KB line, and my dispatch
+printed the verdict with `tail -c 4000` -- which landed inside that base64 blob. No number from it is read,
+and I am not treating its exit 0 as a pass. Fix: capture the band between `PINNED head=` and `GATE DONE`
+with awk, not a byte tail.
+
+PREDICTION at head 5cc80be8e59 (pin tree) vs main 7d4cadbe844, per closure, before the comparator runs:
+- Both sides' binaries are built from the SAME compiler sources: `src/v1/04_infer.dag` and all 268 stage0
+  projections are byte-identical to origin/main at this head, and nothing else in the diff is a compiler
+  input (the third file is a v1 Rust unit test, and the RFM row is imported by no closure -- verified:
+  RFM rows reach a closure only through an explicit `import gunbc.recurring_failure_mode.<name>`, and no
+  file outside `dag/gunbc/recurring_failure_mode/` names my row). So the two sides must AGREE exactly.
+- self-host: `type-mismatch=0`, and the comparator's two identity sections are both EMPTY (0 identities at
+  HEAD that MAIN does not have; 0 identities MAIN has that HEAD lost). `unparsed` must be 0 on both sides,
+  else the counts are incomplete and the run is not usable.
+- v2-native-cli: same expectation -- 0 hard diagnostics beyond main's, and both identity sections empty.
+- The Acc-era numbers 43 and 45 must NOT appear. If either closure reports 43 or 45 conflict rows, that is
+  a stale-log artifact of this instrument (it reuses `$LOGS` and a shared target dir across dispatches), not
+  a property of this head, and the run is void rather than a red.
+- Each side's `build rc=0` with a non-empty `binary=`, and `emitted>0` per closure per side; `emitted=0`
+  means the log never reached an emit and is NOT a green.
