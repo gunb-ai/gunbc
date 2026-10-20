@@ -23,8 +23,8 @@ import v2.lens.enforcement.standing_intent { whole_corpus_scope }
 // THE POSITION-TO-HOME-KIND RULE (tidy-ant-251's roster correction on #14435, msg_66a5409b). A site needs its home's
 // import when its head is unbound AND its reference position is compatible with the KIND its home declaration declares
 // -- the kind is read from the home's declaration identity, NEVER from the spelling:
-//   Value                    <-> a value declaration (fn, service, other)
-//   TypeAnnotation, Return   <-> a type or data declaration
+//   Value                    <-> a value declaration (fn, service, or a typed data constant)
+//   TypeAnnotation, Return   <-> a type declaration (TypeItem)
 //   Label, PatternTag        <-> neither, unless the home declaration says so
 // The manager's third type position, BinderType, is not a separate ReferencePosition arm: occurrence_role issues a
 // binder's type annotation as TypeAnnotationPosition through CoreMarker{CoreBinderTypeEdge} (its one marker table), so
@@ -66,9 +66,10 @@ fn roster_site_needs_home_import(
   }
 }
 
-// THE ONE COMPATIBILITY PREDICATE. A type position (annotation, return) matches a type or data declaration; a value
-// position matches a value declaration; a label or pattern tag matches nothing unless the home declaration says so,
-// and no declaration in the row table's homes says so, so neither position imports anything.
+// THE ONE COMPATIBILITY PREDICATE. A type position (annotation, return) matches a TYPE declaration; a value position
+// matches a VALUE declaration (fn, service, or a typed `data` constant); a label or pattern tag matches nothing unless
+// the home declaration says so, and no declaration in the row table's homes says so, so neither position imports
+// anything.
 fn position_matches_home_kind(position: ReferencePosition, home: String, import_name: String) -> Bool {
   match position {
     ValuePosition => roster_home_declaration_is_value(home: home, import_name: import_name)
@@ -111,27 +112,33 @@ fn roster_corpus_pool_roots_text() -> String {
   fold_list(xs: roster_corpus_pool_roots(), empty: "", cons: fn(acc, r) { acc + r + " " })
 }
 
-// THE KIND READING, and the honest one. TypeItem and DataItem are the census's two type-declaration answers (the host
-// assigns them from a type declaration's connective, v1_compiler_infer_items.rs item_kind:274); FnItem and ServiceItem
-// are its two value answers. OtherItem matches NEITHER, in either direction, and is not a silent default: it is the
-// census's own "I cannot classify this declaration" answer, measured on the corpus (std.types.List -- declared
-// `type List<element> = FreeMonoid<element>` at dag/std/types.dag:119 -- keys a row whose kind is OtherItem, while the
-// opaque `type FreeMonoid<a>` at dag/std/algebra.dag:34 keys TypeItem). Nothing downstream of it can repair that: the
-// host marshals an OtherItem fact's node as a unit node (coproduct_reflection.rs marshal_decl_fact_node:1794, the `_ =>
-// unit_type_node(ctx)` arm), so v2.std.type_binder type_decl_view has no shape to read, and v2.std.decl_index
-// type_declarer_qualified_names -- the seam v2.std.node_reflection resolve_type_node goes through -- filters on
-// `kind == TypeItem` (coproduct_reflection.rs:2012), so it does not count an aliased type either. Reading OtherItem as
-// type, or as value, would be me deciding what the census could not; reading it as neither makes the position rule
-// import nothing for such a home and leaves the gap VISIBLE. The gap is reported, not absorbed: a home whose declaration
-// the census cannot classify is a census-kind defect (the aliased-type case is the measured one), and until
-// item_kind issues a type-declaration kind for an aliased type declaration, a Wave-2 row whose home is an alias emits
-// no import.
+// THE KIND READING, and what each answer is grounded in -- the host's own assignment, item_kind
+// (v1_compiler_infer_items.rs:274): TypeItem = a connective without a transport (an OPAQUE type declaration);
+// ServiceItem = has a transport; FnItem = has a body (with params, or without an annotation); DataItem = has a BODY
+// AND a type annotation (v1_compiler_infer_items.rs:291-293) -- a TYPED CONSTANT, a value definition the emitter treats
+// as a data definition (v1/05_emit_rust.dag:11785/11856 `info.kind == DataItem`, v1/04_infer.dag:15105 DataItem =>
+// ExportData); OtherItem = none of the above. So the value side is FnItem | ServiceItem | DataItem (a `data` row is
+// referenced at VALUE positions -- the very `whole_corpus_scope.roots` this module reads is a `data` row, and review
+// 83165 caught the earlier revision classing DataItem as a type, which would have refused a data constant its import at
+// a call head and granted a type mention of it in an annotation), and the type side is TypeItem alone. OtherItem matches
+// NEITHER, in either direction, and is not a silent default: it is the census's own "I cannot classify this
+// declaration" answer, measured on the corpus (std.types.List -- declared `type List<element> = FreeMonoid<element>` at
+// dag/std/types.dag:119 -- keys a row whose kind is OtherItem, while the opaque `type FreeMonoid<a>` at
+// dag/std/algebra.dag:34 keys TypeItem). Nothing downstream of it can repair that: the host marshals an OtherItem fact's
+// node as a unit node (coproduct_reflection.rs marshal_decl_fact_node:1794, the `_ => unit_type_node(ctx)` arm), so
+// v2.std.type_binder type_decl_view has no shape to read, and v2.std.decl_index type_declarer_qualified_names -- the
+// seam v2.std.node_reflection resolve_type_node goes through -- filters on `kind == TypeItem`
+// (coproduct_reflection.rs:2012). Reading OtherItem as type, or as value, would be me deciding what the census could
+// not; reading it as neither makes the position rule import nothing for such a home and leaves the gap VISIBLE. The gap
+// is reported, not absorbed: a home whose declaration the census cannot classify is a census-kind defect (the
+// aliased-type case is the measured one), and until item_kind issues a type-declaration kind for an aliased type
+// declaration, a Wave-2 row whose home is an alias emits no import.
 fn kind_is_type_declaration(kind: ItemKind) -> Bool {
   match kind {
     TypeItem => true
-    DataItem => true
     FnItem => false
     ServiceItem => false
+    DataItem => false
     OtherItem => false
   }
 }
@@ -140,8 +147,8 @@ fn kind_is_value_declaration(kind: ItemKind) -> Bool {
   match kind {
     FnItem => true
     ServiceItem => true
+    DataItem => true
     TypeItem => false
-    DataItem => false
     OtherItem => false
   }
 }
