@@ -53,6 +53,17 @@ module gunbc.provisioning.altra_autoinstall_seed
 // of reading them from that row, the figures and their citation have come apart, which is the §4d failure the
 // standing field exists to make visible.
 //
+// A SECOND EXTERNAL FACT SITS ON ITS OWN SHELF FOR THE SAME REASON, AND IT ARRIVED LATE (review 83132). The
+// debconf selection line — four fields in a fixed order, separated by runs of whitespace, with nine legal type
+// words and a flag that marks rather than answers — is a fact about debconf, versioned with debconf, and
+// Canonical does not author it either. It is extdeps.debian.debconf, cited to the release Noble ships
+// (debconf 1.5.86ubuntu1), consumed below by name. What stays here is ours: WHICH questions must be answered,
+// what counts as an answer for this programme (stricter than upstream on the empty value, and the difference is
+// stated at the shelf's constructor), and the silence that must be proven rather than assumed. The earlier
+// revision of this module kept that grammar in a tokenizer here, which is why the comment-line defect could
+// exist at all: any fix was a fix to a copy. If a future edit re-spells "select" or re-splits a line here, it
+// has re-minted an upstream fact and the shelf's citation is now a comment.
+//
 // NO MACHINE IS NAMED AND NO DELIVERY IS CHOSEN HERE, and both refusals are structural rather than
 // stylistic, each witnessed. What is absent, precisely: NO FIELD CARRIES THE TARGET UNIT'S OWN LABEL, and
 // no decision in this module reads a string. A hostname in a seed is a per-unit special case wearing a
@@ -78,6 +89,18 @@ import std.content_hash {
   content_hash_tagged_structural,
 }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited, cited_figure_read_obligation }
+import extdeps.debian.debconf {
+  DebconfSelectionKind,
+  DebconfSelectionRecord,
+  debconf_answer_kind_is_answer,
+  debconf_selection_kind,
+  debconf_selection_kind_spelling,
+  debconf_selection_label,
+  debconf_selection_line,
+  debconf_selection_owner,
+  debconf_selection_record,
+  debconf_selection_value,
+}
 import extdeps.libxcrypt.crypt_scheme {
   CryptSchemeFormat,
   Sha512CryptFormat,
@@ -580,10 +603,45 @@ data package_axis_authority: ExternalAuthority = ExternalAuthority {
 // row while leaving the name intact. A future package adds a row to the set below (or a caller mints a receipt
 // of its own); nothing about the audit changes.
 type PackageIntent =
-    QuestionAnswered { package: KnownPromptingPackage, debconf_seed: NonEmptyStr }
+    QuestionAnswered { package: KnownPromptingPackage, answers: List<DebconfSelectionRecord> }
   | QuestionUnanswered { package: KnownPromptingPackage }
-  | UnclassifiedPackage { name: NonEmptyStr, debconf_seed: Optional<NonEmptyStr> }
+  | UnclassifiedPackage { name: NonEmptyStr, answers: List<DebconfSelectionRecord> }
   | PackageVerifiedSilent { silence: PackageSilenceReceipt }
+
+// THE ONE MINT FOR AN ANSWER, and the reason it returns a LIST rather than an Optional. The record's legality is
+// decided by extdeps.debian.debconf's constructor — no whitespace in a key field, a non-empty value — and a
+// consumer that had to unwrap an Optional at every literal would be tempted to mint around it. Collapsing an
+// illegal attempt to NO RECORDS is the safe direction and cannot certify anything: no record means the required
+// key is unestablished, the verdict is OpenQuestion, and the seed is refused. An answer that would have been
+// silently mis-parsed by the old tokenizer (an owner with a space in it, a value with nothing in it) now becomes
+// a refused seed instead of a green proof.
+fn debconf_answer(
+  owner: NonEmptyStr,
+  kind: DebconfSelectionKind,
+  label: NonEmptyStr,
+  value: NonEmptyStr,
+) -> List<DebconfSelectionRecord> {
+  match debconf_selection_record(owner: owner, label: label, kind: kind, value: value) {
+    Present { value: record } => [record]
+    Absent => []
+  }
+}
+
+// THE SAME ANSWER UNDER THE PACKAGE'S OWN NAME, which is the form almost every caller wants: the owner is not a
+// free string to get wrong, it is read from the known package the arm already names.
+fn debconf_answer_for(
+  package: KnownPromptingPackage,
+  kind: DebconfSelectionKind,
+  label: NonEmptyStr,
+  value: NonEmptyStr,
+) -> List<DebconfSelectionRecord> {
+  debconf_answer(
+    owner: known_prompting_package_name(package: package),
+    kind: kind,
+    label: label,
+    value: value,
+  )
+}
 
 // THE WARRANT BEHIND A SILENCE CLAIM, AND HOW FAR IT REACHES. `observed_version` is the build the claim was made
 // against, and it travels with the claim because silence is a property of a BUILD, not of a name: an upstream
@@ -668,11 +726,17 @@ fn debconf_requirements(package: KnownPromptingPackage) -> List<DebconfRequireme
 
 // THE LABEL A REQUIREMENT IS SATISFIED BY, or Absent when the answer it is parametric on was never established —
 // in which case there is no label to look for and the requirement is unanswered, not silently skipped.
-fn requirement_label(seed: String, owner: NonEmptyStr, requirement: DebconfRequirement) -> Optional<NonEmptyStr> {
+fn requirement_label(
+  answers: List<DebconfSelectionRecord>,
+  owner: NonEmptyStr,
+  requirement: DebconfRequirement,
+) -> Optional<NonEmptyStr> {
   match requirement {
     FixedKey { key: key } => Present { value: key }
+    // The parametric label is BUILT FROM THE SIBLING RECORD'S VALUE, so the join between tzdata's area and its
+    // zone key is a data dependency between two records rather than a string that has to appear in a blob.
     ParametricKey { prefix: prefix, answered_by: source } =>
-      match established_content(seed: seed, owner: owner, label: source) {
+      match value_established_for(records: answers, owner: owner, label: source) {
         Present { value: area } => Present { value: concat(prefix, area) as NonEmptyStr }
         Absent => Absent
       }
@@ -680,18 +744,13 @@ fn requirement_label(seed: String, owner: NonEmptyStr, requirement: DebconfRequi
 }
 
 // THE AUDIT ANSWERS KEYS, NOT PACKAGES, AND A KEY IS ANSWERED BY A RECORD AND NOTHING ELSE. Every key the row
-// requires must be the LABEL of an established record whose OWNER is this package and which carries a value, so a
-// partially answered package stays an open question instead of being credited as closed. This used to be a
-// substring test over the whole seeded text, which is the defect merry-fox-82 caught: a line that merely MENTIONS
-// a key closed the audit — including a comment line, which debconf's own reader drops (debconf 1.5.92
-// debconf-set-selections line 206, `next if /^\s*$/ || /^\s*\#/;`). The parse here follows that reader's shape,
-// record by record (line 209 requires the fourth field, so this module is deliberately stricter than a lenient
-// grep and refuses a value-less record it could not have installed anyway). Absence of a record is the only
-// honest "not answered"; no sentinel, no empty string, no substring.
+// requires must be the LABEL of a record whose OWNER is this package and which carries a value, so a partially
+// answered package stays an open question instead of being credited as closed. Absence of a record is the only
+// honest "not answered": no sentinel, no empty string, no substring, and no text for a substring to live in.
 fn package_prompting_verdict(intent: PackageIntent) -> PackagePromptingVerdict {
   match intent {
-    QuestionAnswered { package: named, debconf_seed: answer } =>
-      match all_required_keys_present(package: named, seed: answer as String) {
+    QuestionAnswered { package: named, answers: answer } =>
+      match all_required_keys_present(package: named, answers: answer) {
         False => OpenQuestion {
           name: known_prompting_package_name(package: named),
           question: known_prompting_package_question(package: named),
@@ -705,8 +764,10 @@ fn package_prompting_verdict(intent: PackageIntent) -> PackagePromptingVerdict {
       name: known_prompting_package_name(package: named),
       question: known_prompting_package_question(package: named),
     }
-    UnclassifiedPackage { name: un, debconf_seed: _ } =>
-      UnclassifiedPrompting { name: un }
+    // ANSWERS ATTACHED TO AN UNCLASSIFIED PACKAGE PROVE NOTHING. The refusal is about our IGNORANCE — nobody has
+    // established whether this package prompts at all — and no volume of supplied answers can turn ignorance into
+    // knowledge. A caller who has checked silence mints PackageVerifiedSilent with its receipt instead.
+    UnclassifiedPackage { name: un, answers: _ } => UnclassifiedPrompting { name: un }
     PackageVerifiedSilent { silence: receipt } => NothingToAsk {
       name: silenced_package(receipt: receipt),
       silence: receipt,
@@ -714,225 +775,75 @@ fn package_prompting_verdict(intent: PackageIntent) -> PackagePromptingVerdict {
   }
 }
 
-// WHAT COUNTS AS AN ANSWER: AN ESTABLISHED RECORD, NOT A MENTION.
+// WHAT COUNTS AS AN ANSWER: AN ESTABLISHED RECORD, AND NOTHING ELSE.
 //
-// WHY THE OLD FORM WAS WRONG (review: merry-fox-82, HOLD section 5). The audit asked whether each required key
-// name was a SUBSTRING of the seed text. debconf's own selection reader SKIPS blank lines and lines whose first
-// non-space character is `#` (debconf 1.5.92, debconf-set-selections line 206:
-// `next if /^\s*$/ || /^\s*\#/;`), and it splits every line it does read into an owner, a label, a type, and a
-// content (same file, line 209: `my ($owner, $label, $type, $content) =
-// /^\s*(\S+)\s+(\S+)\s+(\S+)(?:\s(.*))?/;`). A tzdata postinst that comments its own zone template while
-// leaving the question live therefore CLOSED the whole tzdata audit under the substring rule:
-//     # tzdata/Areas tzdata/Zones/America
-// is a comment, and a comment is not an answer. That is precisely the failure this module exists to prevent — a
-// seed that certifies itself non-interactive and then hangs at minute twelve with nobody at the panel.
+// THERE IS NO PARSER HERE, AND THAT IS THE POINT (review 83132). An earlier revision of this section carried a
+// hand-written tokenizer — a comment-skipping prefix, a four-field field splitter, a separator-run scanner, a
+// space predicate — that took back a String this very module had authored and tried to recover its owner, label,
+// type and value from it. That is DESIGN §2's String leaf hiding named parts, and §5's validation where §5 asks
+// for construction: the parts were already known when the intent was built, so recovering them could only lose
+// information or invent it. The defects it caused were the predictable ones. Because debconf's reader drops any
+// line whose first non-space character is `#`, a line that merely MENTIONED a question closed the audit — a tzdata
+// postinst commenting its own zone template while leaving the question live certified the whole seed
+// non-interactive (merry-fox-82's catch), and each fix tightened the scanner instead of removing the text it was
+// scanning.
 //
-// ONE DECODER, ONE AUTHORITY. Text becomes records here and only here; every question the audit asks is asked
-// of the records. Nothing may ask the seed string whether it "contains" a key again.
-type EstablishedAnswer {
-  owner: NonEmptyStr
-  label: NonEmptyStr
-  kind: NonEmptyStr
-  content: NonEmptyStr
-}
-
-// WHAT IS OURS AND WHAT IS UPSTREAM'S, stated because a reviewer must be able to tell (DESIGN.md §4d, "do not
-// assert as deduced what is only inferred"). Skipping comments and blanks is upstream's rule, cited above.
-// Splitting on whitespace and keeping the tail whole is upstream's regex, also cited. THE VALUE FIELD IS
-// REQUIRED HERE AND IS OPTIONAL UPSTREAM: a three-field line makes upstream store an EMPTY content, and an
-// empty answer to `tzdata/Areas` selects no area, so the package still asks. Refusing to credit it is STRICTER
-// than upstream and is our policy, not its spelling. A future requirement to match upstream's leniency exactly
-// adds one arm to `established_answer_from` admitting an empty content for a kind whose empty value is
-// meaningful, and would have to name which question that unblocks; there is no such kind in this seed today.
+// THE RECORDS COME FROM extdeps.debian.debconf, whose shelf owns the field count, the field order, the separator
+// rule, the nine legal type words and the empty-value policy — because those are debconf's facts, in a package
+// with its own version, and not ours (DESIGN §3). The consumer mints records through debconf_answer_for and reads
+// them through the accessors; the wire line exists only as debconf_selection_line, derived at the moment something
+// is shipped. `is_space`, the boundary scanner and the comment check are gone: with records there is no text to
+// ask a question of, so "a comment is not an answer" is no longer a rule anybody has to remember correctly.
 //
-// A record whose LABEL names a question this module has no row for is KEPT, not dropped, and is inert: the
-// audit only ever asks for a label it took from required_debconf_keys, so an unrecognised label can neither pass
-// nor fail anything. Filtering it here instead would mean a second copy of the key table — the same keys spelled
-// twice, which is the drift §3 forbids and which an earlier revision of this module actually had.
-fn established_answer_from(line: String) -> Optional<EstablishedAnswer> {
-  let trimmed = leading_spaces_removed(text: line)
-  match trimmed {
-    // Blank, or a comment. Neither establishes anything, however precisely it spells a question.
-    "" => Absent
-    _ => match trimmed.starts_with(prefix: "#") {
-      True => Absent
-      False => match record_fields(line: trimmed) {
-        Present { value: triple } =>
-          Present { value: EstablishedAnswer {
-            owner: triple.owner,
-            label: triple.label,
-            kind: triple.kind,
-            content: triple.value,
-          } }
-        Absent => Absent
-      }
-    }
-  }
-}
+// THE VALUE IS REQUIRED. That policy moved to the shelf with the rest of the grammar, and it is stricter than
+// upstream on purpose: upstream stores an EMPTY content when the fourth field is missing (debconf 1.5.86ubuntu1,
+// debconf-set-selections lines 133-135), and an empty answer to `tzdata/Areas` selects no area, so the package
+// asks the question anyway. Crediting it would certify a seed that hangs.
+//
+// A record whose LABEL names a question this module has no row for is KEPT, not dropped, and is inert: the audit
+// only ever asks for a label it took from required_debconf_keys, so an unrecognised label can neither pass nor
+// fail anything. Filtering here instead would mean a second copy of the key table — the same keys spelled twice,
+// which is the drift §3 forbids and which an earlier revision of this module actually had.
 
-// A CANDIDATE RECORD CARRIES THREE KEY FIELDS AND THEN A VALUE. Each key field is non-empty and separated from
-// the next by at least one space; the fourth field is what remains, and must exist (see the policy note above).
-// The value is cut HERE rather than by a second pass over the line: scanning the same text twice is how the two
-// halves of a record came to disagree about where the fields end.
-type RecordFields { owner: NonEmptyStr label: NonEmptyStr kind: NonEmptyStr value: NonEmptyStr }
-
-fn record_fields(line: String) -> Optional<RecordFields> {
-  match first_field(text: line) {
-    Present { value: first } =>
-      match remainder_after_first_field(text: line) {
-        Present { value: after_first } =>
-          match first_field(text: after_first) {
-            Present { value: second } =>
-              match remainder_after_first_field(text: after_first) {
-                Present { value: after_second } =>
-                  match first_field(text: after_second) {
-                    Present { value: third } =>
-                      match remainder_after_first_field(text: after_second) {
-                        Present { value: value_tail } =>
-                          match value_tail.trim() {
-                            "" => Absent
-                            _ => Present { value: RecordFields {
-                              owner: first as NonEmptyStr,
-                              label: second as NonEmptyStr,
-                              kind: third as NonEmptyStr,
-                              value: value_tail.trim() as NonEmptyStr,
-                            } }
-                          }
-                        Absent => Absent
-                      }
-                    Absent => Absent
-                  }
-                Absent => Absent
-              }
-            Absent => Absent
-          }
-        Absent => Absent
-      }
-    Absent => Absent
-  }
-}
-
-// THE FIRST WHITESPACE-DELIMITED FIELD, or Absent when the text opens with a separator or is empty. Built from
-// substring and length alone: this language exposes no character-indexing builtin for a String, and a scanner
-// written against one would not typecheck.
-fn first_field(text: String) -> Optional<NonEmptyStr> {
-  field_end_of(text: text, index: 0, seen: false)
-}
-
-fn field_end_of(text: String, index: Int, seen: Bool) -> Optional<NonEmptyStr> {
-  match index < text.length() {
-    True => match is_space(text: text, index: index) {
-      True => match seen {
-        True => Present { value: text.substring(start: 0, end: index) as NonEmptyStr }
-        False => field_end_of(text: text, index: index + 1, seen: false)
-      }
-      False => field_end_of(text: text, index: index + 1, seen: true)
-    }
-    False => match seen {
-      True => Present { value: text.substring(start: 0, end: index) as NonEmptyStr }
-      False => Absent
-    }
-  }
-}
-
-// WHAT FOLLOWS A FIELD AND ITS SEPARATOR RUN — the boundary the value is cut at. Absent means the text ended
-// with the field: there was no separator, so there is nothing after it.
-fn remainder_after_first_field(text: String) -> Optional<NonEmptyStr> {
-  field_boundary_of(text: text, index: 0, seen: false)
-}
-
-fn field_boundary_of(text: String, index: Int, seen: Bool) -> Optional<NonEmptyStr> {
-  match index < text.length() {
-    True => match is_space(text: text, index: index) {
-      True => match seen {
-        True => skip_separator_run(text: text, index: index)
-        False => field_boundary_of(text: text, index: index + 1, seen: false)
-      }
-      False => field_boundary_of(text: text, index: index + 1, seen: true)
-    }
-    False => Absent
-  }
-}
-
-fn skip_separator_run(text: String, index: Int) -> Optional<NonEmptyStr> {
-  match index < text.length() {
-    True => match is_space(text: text, index: index) {
-      True => skip_separator_run(text: text, index: index + 1)
-      False => Present { value: text.substring(start: index, end: text.length()) as NonEmptyStr }
-    }
-    // The line ends inside the separator run. Upstream would store an empty content for it; we say there is no
-    // value field at all, which is the stricter policy stated above.
-    False => Absent
-  }
-}
-
-fn is_space(text: String, index: Int) -> Bool {
-  match text.substring(start: index, end: index + 1) {
-    " " => true
-    "\t" => true
-    _ => false
-  }
-}
-
-fn leading_spaces_removed(text: String) -> String {
-  match text.length() {
-    0 => ""
-    _ => match is_space(text: text, index: 0) {
-      True => leading_spaces_removed(text: text.substring(start: 1, end: text.length()))
-      False => text
-    }
-  }
-}
-
-// THE ANSWERS THE SEED HAS ESTABLISHED, in seed order, comments and malformed lines dropped. EVERY question the
-// audit asks goes through this list; no caller may interrogate the seed text directly. That single change is
-// what closes the defect this section was written for.
-fn established_answers(seed: String) -> List<EstablishedAnswer> {
-  answers_from_lines(lines: seed.split(sep: "\n"), kept: [])
-}
-
-fn answers_from_lines(lines: List<String>, kept: List<EstablishedAnswer>) -> List<EstablishedAnswer> {
-  match lines {
-    Empty => kept
-    Cons { head: line, tail: rest } =>
-      match established_answer_from(line: line) {
-        Present { value: answer } => answers_from_lines(lines: rest, kept: kept.append(value: answer))
-        Absent => answers_from_lines(lines: rest, kept: kept)
-      }
-  }
-}
-
-// THE RECORD ESTABLISHED UNDER ONE KEY BY ONE OWNER, if any. THE OWNER IS CHECKED, which is what makes an
-// answer BELONG to a package: a record written for `keyboard-configuration` cannot close a tzdata question, and
-// — symmetrically, which is the half that matters for the 8-bay board — a record written for some other package
-// can never close this package's question, so a seed cannot answer tzdata by mentioning tzdata inside another
-// package's line.
-fn established_content(seed: String, owner: NonEmptyStr, label: NonEmptyStr) -> Optional<NonEmptyStr> {
-  content_from(answers: established_answers(seed: seed), owner: owner, label: label)
-}
-
-fn content_from(answers: List<EstablishedAnswer>, owner: NonEmptyStr, label: NonEmptyStr) -> Optional<NonEmptyStr> {
-  match answers {
+// THE ONE THING THE AUDIT ASKS OF A RECORD LIST: does this owner carry a value under this label? Written once, and
+// it is the only reader of the record fields anywhere in this module — no caller gets to inspect a record and
+// decide for itself what counts.
+//
+// THE OWNER IS CHECKED, which is what makes an answer BELONG to a package: a record written for
+// `keyboard-configuration` cannot close a tzdata question, and symmetrically — the half that matters on an 8-bay
+// board — a record written for some other package can never close this package's question, so a seed cannot answer
+// tzdata by mentioning tzdata inside another package's line. THE KIND IS CHECKED TOO: a `seen` line sets a flag on
+// a question that must already exist, so it answers nothing, and a seed that certified a question closed by a flag
+// would be hung by a package that still asks.
+fn value_established_for(
+  records: List<DebconfSelectionRecord>,
+  owner: NonEmptyStr,
+  label: NonEmptyStr,
+) -> Optional<NonEmptyStr> {
+  match records {
     Empty => Absent
-    Cons { head: answer, tail: rest } =>
-      match answer.owner == owner {
-        True => match answer.label == label {
-          True => Present { value: answer.content }
-          False => content_from(answers: rest, owner: owner, label: label)
+    Cons { head: record, tail: rest } =>
+      match debconf_selection_owner(record: record) == owner {
+        True => match debconf_selection_label(record: record) == label {
+          True =>
+            match debconf_answer_kind_is_answer(kind: debconf_selection_kind(record: record)) {
+              True => Present { value: debconf_selection_value(record: record) }
+              False => value_established_for(records: rest, owner: owner, label: label)
+            }
+          False => value_established_for(records: rest, owner: owner, label: label)
         }
-        False => content_from(answers: rest, owner: owner, label: label)
+        False => value_established_for(records: rest, owner: owner, label: label)
       }
   }
 }
 
-// THE AUDIT, OVER ESTABLISHED RECORDS ONLY. Every key the package will ask must be the LABEL of a record whose
-// OWNER is the package and which carries a value. A comment, a three-field fragment, a record belonging to
-// another package, and a parametric key named in prose are all the same thing here: no record, no answer, seed
-// refused.
-fn all_required_keys_present(package: KnownPromptingPackage, seed: String) -> Bool {
+// THE AUDIT, OVER RECORDS. Every key the package will ask must be the LABEL of a record whose OWNER is the package
+// and which carries a value. A mention, a flag line, a record belonging to another package, and a parametric key
+// named in prose are all the same thing here: no record, no answer, seed refused.
+fn all_required_keys_present(package: KnownPromptingPackage, answers: List<DebconfSelectionRecord>) -> Bool {
   match first_unestablished(
     needed: debconf_requirements(package: package),
-    seed: seed,
+    answers: answers,
     owner: known_prompting_package_name(package: package),
   ) {
     Absent => true
@@ -942,18 +853,18 @@ fn all_required_keys_present(package: KnownPromptingPackage, seed: String) -> Bo
 
 fn first_unestablished(
   needed: List<DebconfRequirement>,
-  seed: String,
+  answers: List<DebconfSelectionRecord>,
   owner: NonEmptyStr,
 ) -> Optional<DebconfRequirement> {
   match needed {
     Empty => Absent
     Cons { head: requirement, tail: rest } =>
-      match requirement_label(seed: seed, owner: owner, requirement: requirement) {
+      match requirement_label(answers: answers, owner: owner, requirement: requirement) {
         // The label this requirement is answered under, looked up as a RECORD of this owner — so the answer must
-        // exist, carry a value, and name this package. A comment that spells the label is not a record.
+        // exist, carry a value, and name this package.
         Present { value: label } =>
-          match established_content(seed: seed, owner: owner, label: label) {
-            Present { value: _ } => first_unestablished(needed: rest, seed: seed, owner: owner)
+          match value_established_for(records: answers, owner: owner, label: label) {
+            Present { value: _ } => first_unestablished(needed: rest, answers: answers, owner: owner)
             Absent => Present { value: requirement }
           }
         // Its sibling answer never existed, so this question cannot have been answered either. Reporting the
@@ -964,19 +875,18 @@ fn first_unestablished(
 }
 
 // THE AREA/ZONE JOIN, AS AN ARM OF THE AUDIT RATHER THAN A COMMENT ABOUT IT. tzdata's second key is
-// `tzdata/Zones/<area>`, so the zone record is looked up under the key the AREA RECORD BUILDS from its own
-// content. Seeding `tzdata tzdata/Areas select Etc` while the only zone record is `tzdata/Zones/America`
-// establishes nothing: the key built is tzdata/Zones/Etc, no record carries it, the verdict is OpenQuestion and
-// the seed is refused. Under the old substring rule the bare word "America" anywhere in the seed — including in
-// a comment — passed this.
+// `tzdata/Zones/<area>`, so the zone record is looked up under the key the AREA RECORD BUILDS from its own value.
+// Seeding `tzdata/Areas select Etc` while the only zone record is `tzdata/Zones/America` establishes nothing: the
+// key built is tzdata/Zones/Etc, no record carries it, the verdict is OpenQuestion and the seed is refused. Under
+// the old substring rule the bare word "America" anywhere in the seed — including inside a comment — passed this.
 fn zone_key_for_area(area: NonEmptyStr) -> NonEmptyStr {
   concat("tzdata/Zones/", area) as NonEmptyStr
 }
 
 // THE ZONE KEY THE SEED'S OWN AREA ANSWER BUILDS, or Absent when no area is established. Exposed so a consumer
 // can see WHICH area a seed committed to, rather than taking the join on faith.
-fn established_zone_key(seed: String, owner: NonEmptyStr) -> Optional<NonEmptyStr> {
-  match established_content(seed: seed, owner: owner, label: "tzdata/Areas" as NonEmptyStr) {
+fn established_zone_key(answers: List<DebconfSelectionRecord>, owner: NonEmptyStr) -> Optional<NonEmptyStr> {
+  match value_established_for(records: answers, owner: owner, label: "tzdata/Areas" as NonEmptyStr) {
     Present { value: area } => Present { value: zone_key_for_area(area: area) }
     Absent => Absent
   }
@@ -1772,9 +1682,9 @@ fn blocking_refusal(intent: PackageIntent) -> Optional<SeedInteractiveCause> {
 // mirror terms match their source sum types directly rather than through a Bool helper.
 fn intent_answered_its_question(intent: PackageIntent) -> Bool {
   match intent {
-    QuestionAnswered { package: _, debconf_seed: _ } => true
+    QuestionAnswered { package: _, answers: _ } => true
     QuestionUnanswered { package: _ } => false
-    UnclassifiedPackage { name: _, debconf_seed: _ } => false
+    UnclassifiedPackage { name: _, answers: _ } => false
     // SILENT IS NOT ANSWERED. The tally counts questions the seed CLOSED; a package that never asked one closed
     // nothing, so crediting it would let a seed pad its own proof of non-interactivity by installing packages.
     // This arm and the blocking arm below are deliberately different answers about the same value.
@@ -2912,6 +2822,71 @@ fn payload_delivery_for(delivery: SeedDeliveryStrategy) -> AutoinstallDeliveryMe
   }
 }
 
+// THE PRESEED THE DELIVERY LAYER OWES, DERIVED FROM THE RECORDS AND FROM NOTHING ELSE. (review: merry-fox-82
+// HOLD 1 / 83132) The audit above proves the ANSWER SET is complete; this fn produces the thing that has to
+// arrive at the board for that proof to mean anything, as text in upstream's four-field form. Two claims live
+// here, and only one of them is mine:
+//
+//   MINE: the file is a pure derivation from the records, in intent order, with no line invented and none
+//   dropped. A row that carries records and contributes no line would let an unanswered question reach the
+//   installer while the audit still reports SeedIsNonInteractive — the exact class of bug the tokenizer used to
+//   make possible, now expressible only as a defect in this fn, where a witness can catch it.
+//
+// The return is String and not NonEmptyStr BECAUSE THE EMPTY FILE IS A LEGITIMATE ANSWER: a seed whose packages
+// ask nothing has no preseed to ship, and forcing NonEmptyStr here would either refuse a correct seed or push a
+// sentinel newline into a file the installer would then have to skip. Emptiness is carried to the delivery layer
+// honestly and the row that measures it is a_seed_of_silent_packages_alone_yields_an_empty_preseed.
+//
+//   NOT MINE: WHETHER THE FILE IS SHIPPED. Upstream autoinstall carries preseed text under a debconf_selections
+//   key, and the payload type this module hands to gunbc.os_install_emit (UbuntuAutoinstallPayload, owned by
+//   extdeps.os.ubuntu_autoinstall) has NO such field today. I do not edit that module, so the seam stays open
+//   and is named rather than papered over: a consumer must add the field and feed it exactly this string. Until
+//   that happens, a seed whose answers change renders an IDENTICAL document — which the binding exposes
+//   honestly rather than hiding: seed_digest (derived from the semantic axes, so it moves with the answers) and
+//   document_digest (the served bytes, which do not) then differ in behaviour, and any claim that "the machine
+//   booted these answers" must cite the seed_digest, not the document. A future edit that adds the field has to
+//   delete the sentence you are reading; a future edit that does NOT add it must not claim unattended
+//   non-interactivity for a package that answers only through debconf.
+fn seed_preseed_file(intents: List<PackageIntent>) -> String {
+  debconf_selection_file(records: preseed_records(intents: intents))
+}
+
+// STRUCTURAL RECURSION OVER THE INTENTS, WITH ALL FOUR ARMS NAMED. The two arms that carry answers (a known
+// asker that was answered, and an unclassified row that carries records anyway) contribute their records. The two
+// that do not — a row proven SILENT, and a known asker deliberately left unanswered — contribute NOTHING, and
+// there is no branch that could invent a line from a package name. That asymmetry is the property this fn owes:
+// a silent package has no question, so a line rendered for it would be an answer to a question that does not
+// exist, which debconf would store happily and the installer would never ask. The unanswered arm contributes
+// nothing for the opposite reason and is safe only because the audit refuses a seed containing it — the file is
+// rendered from intents the audit has ALREADY refused to certify, which is why this fn is total and why no line
+// here says "unanswered": a refusal has no preseed to speak of.
+fn preseed_records(intents: List<PackageIntent>) -> List<DebconfSelectionRecord> {
+  match intents {
+    Empty => []
+    Cons { head: intent, tail: rest } =>
+      match intent {
+        PackageVerifiedSilent { silence: _ } => preseed_records(intents: rest)
+        QuestionUnanswered { package: _ } => preseed_records(intents: rest)
+        QuestionAnswered { package: _, answers: answers } =>
+          records_before(answers: answers, later: preseed_records(intents: rest))
+        UnclassifiedPackage { name: _, answers: answers } =>
+          records_before(answers: answers, later: preseed_records(intents: rest))
+      }
+  }
+}
+
+// AN INTENT'S OWN RECORDS FIRST, THEN EVERYTHING AFTER IT. Consed one record at a time rather than concatenated
+// as lists, so the ORDER of answers inside one package survives — the order upstream's reader applies them in,
+// which matters when a package's later question depends on an earlier one (tzdata's zone after its area). A list
+// concatenation would give the same result here and cost an import this module does not otherwise need; the
+// construction says what is actually true, that records are added one at a time in the order they were written.
+fn records_before(answers: List<DebconfSelectionRecord>, later: List<DebconfSelectionRecord>) -> List<DebconfSelectionRecord> {
+  match answers {
+    Empty => later
+    Cons { head: record, tail: rest } => Cons { head: record, tail: records_before(answers: rest, later: later) }
+  }
+}
+
 // THE FIRST INTENT NAMING A PACKAGE, whichever arm it is in. The arms classify WHY a package is installable;
 // they do not classify its name, so a lookup has to see through all four. Kept as its own fn rather than
 // inlined into the caller because the audit below and the payload projection above must ask the same question of
@@ -2932,10 +2907,10 @@ fn first_intent_named(intents: List<PackageIntent>, wanted: NonEmptyStr) -> Opti
 // duplicates a name, it reads the one that exists.
 fn package_intent_names(intent: PackageIntent, wanted: NonEmptyStr) -> Bool {
   match intent {
-    QuestionAnswered { package: named, debconf_seed: _ } =>
+    QuestionAnswered { package: named, answers: _ } =>
       wanted == known_prompting_package_name(package: named)
     QuestionUnanswered { package: named } => wanted == known_prompting_package_name(package: named)
-    UnclassifiedPackage { name: un, debconf_seed: _ } => wanted == un
+    UnclassifiedPackage { name: un, answers: _ } => wanted == un
     PackageVerifiedSilent { silence: receipt } => wanted == silenced_package(receipt: receipt)
   }
 }
@@ -3102,6 +3077,53 @@ fn int_diagnostic(count: Int) -> NonEmptyStr {
 // depend on the bytes while publishing nothing, and it is the same primitive the seed digest itself is built
 // from, so there is no second hashing story to keep consistent. A future requirement to SHOW a value must add a
 // separate rendering function with its own consumers, not weaken this one.
+// ANSWER COVERAGE, OVER RECORDS. Folded through the SAME content-hash combine the authorised-key coverage uses,
+// so the diagnostic moves when the OWNER, the LABEL, the KIND or the VALUE of any record moves, and moves when
+// their ORDER moves. A count would survive all four substitutions, and the substitution it exists to make visible
+// is exactly the one a count hides: a seed whose answers have been swapped for another package's, or reordered so
+// a parametric key no longer joins to its area. It deliberately does not print values — a seeded answer can name
+// infrastructure, and this string is printed in reports.
+fn answers_coverage(answers: List<DebconfSelectionRecord>) -> NonEmptyStr {
+  let folded = fold(
+    answers,
+    init: content_hash_atom(value: "gunbc.altra.debconf_answers/1"),
+    f: (acc, record) =>
+      content_hash_combine_structural(left: acc, right: record_coverage(record: record)),
+  )
+  concat(concat("answers=", folded.digest as String), concat(",answered=", int_diagnostic(count: answers.length()))) as NonEmptyStr
+}
+
+// ONE RECORD'S CONTRIBUTION, as a GROUPED tuple rather than four separately folded fields. Grouping matters:
+// folding every owner of every record and then every label would let two seeds with the same answers re-assigned
+// to different packages collide, because the multiset of owners and the multiset of labels would both be
+// unchanged. The four fields are combined inside one record's digest, and only then into the list's.
+//
+// EACH FIELD IS FRAMED BY ITS OWN LENGTH so the tuple is invertible before it is hashed: an unframed
+// concatenation reads "openssh" + "server/…" the same as "openssh-server" + "/…", and two different record sets
+// would then certify the same seed.
+fn record_coverage(record: DebconfSelectionRecord) -> Fnv1a64Structural {
+  let owner = content_hash_atom(
+    value: framed_field(label: "owner", value: debconf_selection_owner(record: record)),
+  )
+  let label = content_hash_combine_structural(
+    left: owner,
+    right: content_hash_atom(value: framed_field(label: "label", value: debconf_selection_label(record: record))),
+  )
+  let kind = content_hash_combine_structural(
+    left: label,
+    right: content_hash_atom(
+      value: framed_field(
+        label: "kind",
+        value: debconf_selection_kind_spelling(kind: debconf_selection_kind(record: record)),
+      ),
+    ),
+  )
+  content_hash_combine_structural(
+    left: kind,
+    right: content_hash_atom(value: framed_field(label: "value", value: debconf_selection_value(record: record))),
+  )
+}
+
 fn content_coverage(label: NonEmptyStr, content: String) -> NonEmptyStr {
   concat(concat(label, "="), content_hash_atom(value: content as NonEmptyStr).digest as String) as NonEmptyStr
 }
@@ -3231,18 +3253,18 @@ fn package_list_diagnostic(intents: List<PackageIntent>) -> NonEmptyStr {
 // the exact thing that was tried.
 fn package_intent_diagnostic(intent: PackageIntent) -> NonEmptyStr {
   match intent {
-    QuestionAnswered { package: named, debconf_seed: answer } =>
+    QuestionAnswered { package: named, answers: answer } =>
       concat(
         concat(known_prompting_package_name(package: named), "+answered,"),
-        content_coverage(label: "answer", content: answer as String),
+        answers_coverage(answers: answer),
       ) as NonEmptyStr
     QuestionUnanswered { package: named } =>
       concat(known_prompting_package_name(package: named), "+UNANSWERED") as NonEmptyStr
-    UnclassifiedPackage { name: un, debconf_seed: answer } =>
+    UnclassifiedPackage { name: un, answers: answer } =>
       match answer {
-        Absent => concat(un, "+unclassified") as NonEmptyStr
-        Present { value: given } =>
-          concat(concat(un, "+unclassified,"), content_coverage(label: "answer", content: given as String)) as NonEmptyStr
+        Empty => concat(un, "+unclassified") as NonEmptyStr
+        Cons { head: _, tail: _ } =>
+          concat(concat(un, "+unclassified,"), answers_coverage(answers: answer)) as NonEmptyStr
       }
     // THE SILENCE TRAVELS INTO THE DIGEST AS ITS OWN EVIDENCE: name, the version the silence was established at,
     // and how it was established. A seed that carried a silent row at one version and another at a second
@@ -3251,7 +3273,7 @@ fn package_intent_diagnostic(intent: PackageIntent) -> NonEmptyStr {
     PackageVerifiedSilent { silence: receipt } =>
       concat(
         concat(concat(silenced_package(receipt: receipt), "+silent,"), silence_receipt_diagnostic(receipt: receipt)),
-        ",count=0",
+        ",answered=0",
       ) as NonEmptyStr
   }
 }

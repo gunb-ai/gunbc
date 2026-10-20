@@ -1,0 +1,399 @@
+module extdeps.debian.debconf
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { Cons, Empty, list_append }
+import std.optional { Present, Absent, Optional }
+import extdeps.external_authority { CitedToAuthority, CitedFigureStanding, ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// DEBCONF SELECTION RECORDS — the shape of one answered debconf question, as the tool that installs it reads it.
+//
+// WHY THIS SHELF EXISTS (review 83132, DESIGN §3 'External upstream decomposition'). This record used to live
+// inside gunbc.provisioning.altra_autoinstall_seed as four bare NonEmptyStrs, reconstructed by TOKENIZING a
+// string the same module had authored. Four named parts behind a String is §2's anemic leaf, and re-parsing text
+// you wrote yourself is §5's validation where §5 asks for construction. The record is debconf's — its field count,
+// its field order, its separator rule and its set of legal types are set by an independently versioned upstream
+// script — so it gets a shelf, and the consumer carries records and asks them questions.
+//
+// THE WIRE SPELLING IS DERIVED, NEVER STORED. One line is `<owner> <label> <type> <content>`, fields separated by
+// whitespace, the content running to the end of the line. Nothing in this module stores that line beside its
+// fields: debconf_selection_line computes it, so the line and the record cannot disagree. The preseed text the
+// installer consumes is an OUTPUT of this model, produced at the last moment by the consumer that ships it.
+//
+// WHAT THE CONSUMER MUST NOT DO IS STATED HERE BECAUSE THE CONSUMER IS THE ONLY READER. Do not hand this record
+// back to a parser. Upstream parses text because it is handed text by an operator's file; a consumer that authored
+// records and then tokenized its own rendering would reintroduce the exact class of defect this shelf was cut to
+// remove. Upstream's reader has three behaviours a record cannot have, each at a named line of the script cited
+// above: a line ending in a backslash is JOINED to the next line (127-130), so a record's rendered line is not
+// necessarily one record by the time it is read; a missing fourth field is stored as an EMPTY content (133-135),
+// which selects nothing yet still occupies the record slot; and any line whose first non-space character is '#'
+// is SKIPPED outright (131), so a comment naming a question is not an answer no matter how exactly it spells it.
+// Each is a divergence waiting to happen if the rendered text is ever made the source of truth again — and the
+// third is the defect this repository actually shipped once, in a comment, not in upstream.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "sources.debian.org/api/src/debconf/1.5.86ubuntu1/tools/debconf-set-selections"
+  }
+}
+
+// THE MEASURED RELEASE, named because the type list below is a transcription and a transcription needs a date.
+// Noble's arm64 pool publishes debconf 1.5.86ubuntu1 (ports.ubuntu.com noble main, Packages index: Version
+// 1.5.86ubuntu1, SHA256 of the .deb bb390da466a7461bfc87aa3e6b7cd145dae84af3e26bf437f2c0c218ba226294); the script
+// inside that archive is 156 lines and the three facts below are at lines 77, 78, 131 and 132 of it. The locator
+// above points at the same version's source on sources.debian.org, which is where a reader can check the lines
+// without downloading an archive. A future Ubuntu release moves this row's version and re-checks all four lines.
+data debconf_release_observed: NonEmptyStr = "1.5.86ubuntu1 (Ubuntu 24.04 noble, arm64 pool)"
+
+// ---------------------------------------------------------------------------
+// 1. The type field, as a closed set rather than a string.
+// ---------------------------------------------------------------------------
+
+// THE TYPE FIELD IS A CLOSED UNION (review 83132). Upstream keeps the legal set as a list of words and only ever
+// tests membership: `my @knowntypes = qw(select boolean string multiselect note password text title);` and
+// `my @knownflags = qw(seen);` (lines 77-78), and a line whose type is in neither list is DROPPED with a warning
+// (ok_format, line 86-88: `warning "Unknown type $type, skipping line $.")`. So an answer whose type is not one of
+// these nine is not a strict-but-valid answer; upstream refuses to install it, and the installer never asks the
+// question, which on a headless board means the package asks it interactively at the console nobody is standing
+// at. Modelling the field as a String would let that state be written, and only a scan could notice.
+//
+// THE WIRE SPELLING OF EACH ARM IS DERIVED by debconf_selection_kind_spelling, never stored next to the arm: a
+// stored spelling is a second copy of the word, and the drift that review caught in the sibling libxcrypt shelf —
+// an alphabet list that disagreed with the rule beside it — is what two copies of a word do.
+type DebconfSelectionKind
+  = KindSelect
+  | KindBoolean
+  | KindString
+  | KindMultiselect
+  | KindNote
+  | KindPassword
+  | KindText
+  | KindTitle
+  // 'seen' is a FLAG, not a template type: upstream routes it to set_flag rather than load_answer (lines
+  // 136-144). It shares the field position and the wire spelling, so it shares this union, but it is kept
+  // distinguishable because a seed that sets a flag has not answered anything — see debconf_selection_kind_is_answer.
+  //
+  // EVERY ARM IS PREFIXED `Kind`, including KindString. The field's own words are the upstream vocabulary, and one
+  // of them is `string`, which is also the substrate's text type in scope in this very file: an arm named `String`
+  // sits one resolver change away from meaning the type. The prefix costs nothing at the call sites (the spelling
+  // function, not the arm name, is what produces the wire word) and removes a whole class of ambiguity.
+  | KindSeenFlag
+
+// THE SPELLING, in the order the union lists them and the order the upstream qw() lists them. A future type
+// (debconf gains types over releases) adds an arm here and a row in debconf_answer_kind_spellings; nothing that
+// matches on this union can silently accept the new word, which is the point.
+fn debconf_selection_kind_spelling(kind: DebconfSelectionKind) -> NonEmptyStr {
+  match kind {
+    KindSelect => "select"
+    KindBoolean => "boolean"
+    KindString => "string"
+    KindMultiselect => "multiselect"
+    KindNote => "note"
+    KindPassword => "password"
+    KindText => "text"
+    KindTitle => "title"
+    KindSeenFlag => "seen"
+  }
+}
+
+// THE NINE WORDS UPSTREAM ACCEPTS, as data so the set is cited rather than inferred from a qw() someone
+// transcribed. Consumed by the sweep in test.claim.altra_autoinstall_seed_witness, which asserts the derived
+// spellings are exactly these words in this order — the only way to notice that an arm and a word have parted.
+data debconf_known_kind_spellings: List<NonEmptyStr> = [
+  "select", "boolean", "string", "multiselect", "note", "password", "text", "title", "seen",
+]
+
+// THE TYPES THAT ANSWER A QUESTION, which is everything except the flag. WHY THIS IS NOT THE WHOLE UNION: a line
+// of type `seen` sets a flag on a question that must already exist, so it establishes no answer to anything;
+// crediting one as an answer is how a seed certifies a question closed that the package will still ask. Keeping
+// the flag in the union (it is legal in the field) while excluding it from this list is what makes the
+// distinction structural instead of a string comparison in a caller.
+fn debconf_answer_kind_is_answer(kind: DebconfSelectionKind) -> Bool {
+  match kind {
+    KindSeenFlag => false
+    KindSelect => true
+    KindBoolean => true
+    KindString => true
+    KindMultiselect => true
+    KindNote => true
+    KindPassword => true
+    KindText => true
+    KindTitle => true
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2. The record itself.
+// ---------------------------------------------------------------------------
+
+// ONE ANSWERED QUESTION, SEALED. The four parts are debconf's fields; the seal is ours, and it exists because the
+// wire spelling must be INVERTIBLE. A record whose owner contained a space would render as a line with one field
+// too many; a record whose value was empty would render as the three-field line upstream reads as an empty answer
+// (lines 133-135 store '' there) and so selects nothing. Both are writable states that make the record and the
+// thing the installer consumes disagree, and neither can be named once debconf_selection_record is the only way to
+// hold one. The constructor's signature is what makes that unnameable, not a check later.
+//
+// WHY `kind` IS THE UNION AND NOT A STRING, stated again at the record because it is the field the seal cannot
+// guard by itself: the type is what decides whether a line is an answer at all, and a String there is the same
+// defect as a String owner.
+type DebconfSelectionRecord sole_constructor {
+  owner: NonEmptyStr
+  label: NonEmptyStr
+  kind: DebconfSelectionKind
+  value: NonEmptyStr
+}
+
+// THE ONLY MINT. Refuses an empty key field, a key field carrying whitespace, and an empty value — the three ways
+// a record could be authored that would not survive the trip to the installer.
+//
+// KEY FIELDS MAY NOT CONTAIN WHITESPACE, and the reason is upstream's reader rather than tidiness: the regex that
+// splits a line is `/^\s*(\S+)\s+(\S+)\s+(\S+)(?:\s(.*))?/` (line 132), so each of the first three fields is a
+// MAXIMAL RUN OF NON-WHITESPACE. A key field carrying a space does not parse as that field; it silently shifts
+// every field after it, which is how an owner with a space in it turns a tzdata answer into an owner nobody owns.
+// THE VALUE MAY CONTAIN WHITESPACE: the regex's last group is `(.*)` and takes the whole tail, which is what makes
+// `select No configuration` and `select English (US)` legal answers, and both appear in fixtures.
+//
+// THE VALUE IS REQUIRED, STRICTER THAN UPSTREAM, AND THAT IS OUR POLICY NOT ITS SPELLING. Upstream accepts the
+// three-field line and stores an empty content; an empty answer to `tzdata/Areas` selects no area, so the package
+// prompts anyway, and a seed that credits it has certified a question that will still be asked. A requirement to
+// match upstream's leniency exactly adds one arm here admitting an empty value for a kind whose empty value is
+// meaningful, and must name which question that unblocks; there is no such kind in this programme today.
+fn debconf_selection_record(
+  owner: NonEmptyStr,
+  label: NonEmptyStr,
+  kind: DebconfSelectionKind,
+  value: NonEmptyStr,
+) -> Optional<DebconfSelectionRecord> {
+  match key_field_is_well_formed(text: owner as String) {
+    False => Absent
+    True =>
+      match key_field_is_well_formed(text: label as String) {
+        False => Absent
+        True =>
+          match value_is_well_formed(text: value as String) {
+            False => Absent
+            True => Present { value: DebconfSelectionRecord {
+              owner: owner,
+              label: label,
+              kind: kind,
+              value: value,
+            } }
+          }
+      }
+  }
+}
+
+// A VALUE THAT SELECTS NOTHING IS NOT AN ANSWER. Upstream stores an empty content happily (lines 133-135) and
+// the package then prompts for the answer anyway, which for a headless board is the hang this whole module
+// exists to prevent. So the mint is STRICTER than upstream on purpose, and the difference is stated here rather
+// than hidden: the refinement already refuses the empty string at the type, and what this check adds is the
+// whitespace-only value — " " is a non-empty String that selects no choice, so it would be credited as closing
+// a question it leaves open. A future requirement to carry upstream's empty content verbatim (a preseed that
+// deliberately clears a value) is an honest reason to add a second constructor named for that intent, not a
+// reason to relax this one.
+// THE VALUE'S TWO REFUSALS, in one gate. A NEWLINE IS STRUCTURAL AND MAY NOT RIDE IN A VALUE: upstream reads
+// the file line by line and matches the content as (.*) to end of line, so an embedded newline does not survive
+// as content — it SPLITS the record, and the tail is read as a separate record whose owner is whatever text
+// follows. That is an answer smuggled in as a continuation, and it is invisible in the record list, where there
+// is exactly one record. A SPACE, by contrast, is legal content ("English (US)" is a real answer), which is why
+// this check refuses exactly the newline and nothing else in that direction; the second refusal is the
+// selects-nothing case below.
+fn value_is_well_formed(text: String) -> Bool {
+  match text.contains(needle: "\n") {
+    True => false
+    False => value_selects_something(text: text)
+  }
+}
+
+// NO ZERO-LENGTH ARM HERE, DELIBERATELY. The value is a NonEmptyStr, so the type already refuses the empty
+// string before this function can be entered; adding a `0 => false` arm would be a second representation of a
+// guarantee the model carries once, and a mutation of a dead arm cannot go RED — which is how an untested check
+// hides behind a tested-looking one. What this function owns is the case the refinement CANNOT see: a
+// whitespace-only value, which is non-empty as text and selects nothing.
+fn value_selects_something(text: String) -> Bool {
+  match text.contains(needle: " ") {
+    True => match text.length() == 1 {
+      // A SINGLE SPACE SELECTS NOTHING. One character, and it is a separator, so there is no candidate left.
+      True => false
+      // A space inside a longer value is normal ("English (US)") and is not this check's business; the separator
+      // rule is about the FIELD's own delimiting, which key_field_is_well_formed already holds.
+      False => value_has_a_character_that_is_not_a_separator(text: text)
+    }
+    False => value_has_a_character_that_is_not_a_separator(text: text)
+  }
+}
+
+// EVERY CHARACTER A SEPARATOR MEANS NOTHING WAS CHOSEN. Substring-and-length walking again, because this
+// language has no character indexing; the claim is small and deliberately so — it refuses the strings made
+// entirely of space, tab and newline, which are exactly the ones a human types into a preseed editor and
+// nothing notices.
+fn value_has_a_character_that_is_not_a_separator(text: String) -> Bool {
+  match text.length() {
+    // EXHAUSTED MEANS NOTHING WAS FOUND. The base case is the whole value of this walker: a string made only of
+    // separators reaches it having never returned true, so a value that selects nothing is refused. Writing the
+    // base case the other way round would accept every whitespace-only value while every accessor, the line and
+    // the record itself stayed well-formed — the defect would live only in what the audit credits.
+    0 => false
+    _ =>
+      match text.substring(start: 0, end: 1) {
+        one =>
+          match one == " " {
+            True => value_has_a_character_that_is_not_a_separator(text: text.substring(start: 1, end: text.length()))
+            False =>
+              match one == "\t" {
+                True => value_has_a_character_that_is_not_a_separator(text: text.substring(start: 1, end: text.length()))
+                False =>
+                  match one == "\n" {
+                    True => value_has_a_character_that_is_not_a_separator(text: text.substring(start: 1, end: text.length()))
+                    False => true
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A KEY FIELD: non-empty, with no space or tab in it. Written against substring and length because this language
+// exposes no character-indexing builtin for a String; the scan stops at the first separator it finds.
+fn key_field_is_well_formed(text: String) -> Bool {
+  match text.length() {
+    0 => false
+    _ => match text.contains(needle: " ") {
+      True => false
+      False => match text.contains(needle: "\t") {
+        True => false
+        // A record is one line. A newline inside a field would render two lines out of one record, and the second
+        // would be read by upstream as a separate record whose owner is whatever follows — an answer smuggled in
+        // as a continuation. The regex has no such concept because its reader is line-based; the record must not
+        // grow one either.
+        False => match text.contains(needle: "\n") {
+          True => false
+          False => true
+        }
+      }
+    }
+  }
+}
+
+// THE ACCESSORS, so a consumer reads fields instead of reaching into the record's shape.
+fn debconf_selection_owner(record: DebconfSelectionRecord) -> NonEmptyStr {
+  match record {
+    DebconfSelectionRecord { owner: name, label: _, kind: _, value: _ } => name
+  }
+}
+
+fn debconf_selection_label(record: DebconfSelectionRecord) -> NonEmptyStr {
+  match record {
+    DebconfSelectionRecord { owner: _, label: name, kind: _, value: _ } => name
+  }
+}
+
+fn debconf_selection_kind(record: DebconfSelectionRecord) -> DebconfSelectionKind {
+  match record {
+    DebconfSelectionRecord { owner: _, label: _, kind: shape, value: _ } => shape
+  }
+}
+
+fn debconf_selection_value(record: DebconfSelectionRecord) -> NonEmptyStr {
+  match record {
+    DebconfSelectionRecord { owner: _, label: _, kind: _, value: content } => content
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3. The wire spelling, derived.
+// ---------------------------------------------------------------------------
+
+// THE ONE LINE THIS RECORD BECOMES when it is finally handed to an installer: `<owner> <label> <type> <content>`,
+// with exactly one space between each pair (line 132's separator class admits more than one, and one is the
+// canonical form debconf's own examples use). DERIVED, so that the record is the truth and the text is an output:
+// a consumer that shipped a hand-written line beside a record would have two answers, and only one of them is
+// installed.
+fn debconf_selection_line(record: DebconfSelectionRecord) -> NonEmptyStr {
+  // owner SP label SP type SP value — four parts, three separators, no more and no fewer. Written as one
+  // expression over the four part-functions so there is exactly one place the separators are decided.
+  concat(
+    concat(concat(concat(deconf_owner_part(record: record), " "), deconf_label_part(record: record)), " "),
+    concat(deconf_type_part(record: record), concat(" ", deconf_value_part(record: record))),
+  ) as NonEmptyStr
+}
+
+fn deconf_owner_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+  debconf_selection_owner(record: record)
+}
+
+fn deconf_label_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+  debconf_selection_label(record: record)
+}
+
+fn deconf_type_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+  debconf_selection_kind_spelling(kind: debconf_selection_kind(record: record))
+}
+
+fn deconf_value_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+  debconf_selection_value(record: record)
+}
+
+// THE WHOLE PRESEED FILE, one record per line. Kept here so the ONLY place that knows debconf's line syntax is
+// this shelf; the consumer asks for the file and never assembles lines itself. An empty list renders an empty
+// file, which is what a package with nothing to answer needs — the absence type is not needed at this level
+// because "no lines" and "no file" install identically.
+fn debconf_selection_file(records: List<DebconfSelectionRecord>) -> String {
+  file_from_lines(lines: lines_from_records(records: records))
+}
+
+// THE FILE IS THE RECORDS, IN ORDER, ONE LINE EACH. Built by structural recursion on the record list — the
+// order of the file IS the order of the list, and a fold that reversed it would silently swap which answer a
+// dependency sees first, which is precisely the kind of thing an accumulator cannot show you.
+fn lines_from_records(records: List<DebconfSelectionRecord>) -> List<String> {
+  match records {
+    Empty => []
+    Cons { head: record, tail: rest } =>
+      list_append(
+        left: [debconf_selection_line(record: record) as String],
+        right: lines_from_records(records: rest),
+      )
+  }
+}
+
+fn file_from_lines(lines: List<String>) -> String {
+  match lines {
+    Empty => ""
+    Cons { head: first, tail: rest } => joined_after(first: first, rest: rest)
+  }
+}
+
+// ONE NEWLINE BETWEEN LINES AND NONE AFTER THE LAST. The separator lives in the tail arm only, so the trailing
+// newline a naive fold appends is not merely avoided by convention, it is unwritable: the Empty arm contributes
+// nothing. That matters to a reader that splits on the newline instead of matching — a terminated file has an
+// extra empty record in it, and upstream's reader's own skip rule (/^\s*$/ on line 131) is the only thing that
+// makes that harmless, which is an argument about THEIR parser, not about ours.
+fn joined_after(first: String, rest: List<String>) -> String {
+  match rest {
+    Empty => first
+    Cons { head: next, tail: tail } => concat(concat(first, "\n"), joined_after(first: next, rest: tail)) as String
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4. The obligation, read out of the standing.
+// ---------------------------------------------------------------------------
+
+// THE STANDING, in the idiom of the sibling shelf: CitedToAuthority, because the nine words and the separator rule
+// are transcriptions from a named release, and the release is named above so a reader can re-check them. No
+// accessor here reads it — the shared extdeps.external_authority reader already decides, exhaustively over all
+// three arms, whether a figure carries an unread obligation, and restating that decision on this shelf would be a
+// second copy of a rule the model already carries. The witness asks the shared reader about this standing, which
+// is the executing route.
+data debconf_selection_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+// THE AUTHORITY, READ OUT OF THE STANDING BY THE CONSUMER THAT CHECKS IT. Exposed as an accessor rather than
+// leaving the data open, so the only way a consumer reaches the citation is through the standing it is attached
+// to: a row that points somewhere else has to go through the standing too, and the witness that compares the
+// citation's version against the transcription's catches it.
+fn debconf_selection_authority() -> ExternalAuthority {
+  extdeps_external_authority_anchor
+}
+

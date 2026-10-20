@@ -9,8 +9,35 @@ module test.claim.altra_autoinstall_seed_witness
 // (a headless box nobody can log into must be unrepresentable as valid).
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.algebra { Cons, Empty, list_append }
 import std.measure { byte_size }
 import std.optional { Optional, Absent, Present }
+import extdeps.debian.debconf {
+  DebconfSelectionKind,
+  DebconfSelectionRecord,
+  KindBoolean,
+  KindMultiselect,
+  KindNote,
+  KindPassword,
+  KindSelect,
+  KindSeenFlag,
+  KindString,
+  KindText,
+  KindTitle,
+  debconf_answer_kind_is_answer,
+  debconf_known_kind_spellings,
+  debconf_selection_kind,
+  debconf_selection_kind_spelling,
+  debconf_selection_label,
+  debconf_selection_line,
+  debconf_selection_file,
+  debconf_selection_owner,
+  debconf_selection_record,
+  debconf_release_observed,
+  debconf_selection_authority,
+  debconf_selection_standing,
+  debconf_selection_value,
+}
 import extdeps.storage.types { storage_device_serial }
 import extdeps.libxcrypt.crypt_scheme {
   Sha512CryptFormat,
@@ -30,6 +57,7 @@ import gunbc.os_install_emit {
 }
 import extdeps.external_authority {
   CitedToAuthority,
+  cited_figure_read_obligation,
   ExternalAuthority,
   ObservedByReceipt,
   TranscribedUncited,
@@ -234,6 +262,7 @@ import gunbc.provisioning.altra_autoinstall_seed {
   console_stanza_for,
   project_autoinstall_identity,
   render_altra_autoinstall_seed,
+  seed_preseed_file,
   select_target_disk,
   selector_admits_observed,
 }
@@ -381,11 +410,21 @@ data posture_installer_managed: SeedNetworkPosture = SeedNetworkPosture {
 data clean_packages: List<PackageIntent> = [
   QuestionAnswered {
     package: OpenSshServerPackage,
-    debconf_seed: "openssh-server openssh-server/password-authentication boolean false" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: KindBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
   },
   QuestionAnswered {
     package: PostfixPackage,
-    debconf_seed: "postfix postfix/main_mailer_type select No configuration" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: PostfixPackage,
+        kind: KindSelect,
+        label: "postfix/main_mailer_type" as NonEmptyStr,
+        value: "No configuration" as NonEmptyStr,
+      ),
   },
 ]
 
@@ -394,11 +433,21 @@ data clean_packages: List<PackageIntent> = [
 data reversed_packages: List<PackageIntent> = [
   QuestionAnswered {
     package: PostfixPackage,
-    debconf_seed: "postfix postfix/main_mailer_type select No configuration" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: PostfixPackage,
+        kind: KindSelect,
+        label: "postfix/main_mailer_type" as NonEmptyStr,
+        value: "No configuration" as NonEmptyStr,
+      ),
   },
   QuestionAnswered {
     package: OpenSshServerPackage,
-    debconf_seed: "openssh-server openssh-server/password-authentication boolean false" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: KindBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
   },
 ]
 
@@ -407,7 +456,12 @@ data reversed_packages: List<PackageIntent> = [
 data unseeded_tzdata_packages: List<PackageIntent> = [
   QuestionAnswered {
     package: OpenSshServerPackage,
-    debconf_seed: "openssh-server openssh-server/password-authentication boolean false" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: KindBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
   },
   QuestionUnanswered { package: TzdataPackage },
 ]
@@ -420,11 +474,21 @@ data unseeded_tzdata_packages: List<PackageIntent> = [
 data half_answered_tzdata_packages: List<PackageIntent> = [
   QuestionAnswered {
     package: OpenSshServerPackage,
-    debconf_seed: "openssh-server openssh-server/password-authentication boolean false" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: KindBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
   },
   QuestionAnswered {
     package: TzdataPackage,
-    debconf_seed: "tzdata tzdata/Areas select America" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: TzdataPackage,
+        kind: KindSelect,
+        label: "tzdata/Areas" as NonEmptyStr,
+        value: "America" as NonEmptyStr,
+      ),
   },
 ]
 
@@ -435,11 +499,27 @@ data half_answered_tzdata_packages: List<PackageIntent> = [
 data answered_tzdata_packages: List<PackageIntent> = [
   QuestionAnswered {
     package: OpenSshServerPackage,
-    debconf_seed: "openssh-server openssh-server/password-authentication boolean false" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: KindBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
   },
   QuestionAnswered {
     package: TzdataPackage,
-    debconf_seed: "tzdata tzdata/Areas select America\ntzdata tzdata/Zones/America select New_York" as NonEmptyStr,
+    answers: list_append(left: debconf_answer_for(
+      package: TzdataPackage,
+      kind: KindSelect,
+      label: "tzdata/Areas" as NonEmptyStr,
+      value: "America" as NonEmptyStr,
+    ),
+      right: debconf_answer_for(
+        package: TzdataPackage,
+        kind: KindSelect,
+        label: "tzdata/Zones/America" as NonEmptyStr,
+        value: "New_York" as NonEmptyStr,
+      )),
   },
 ]
 
@@ -447,26 +527,46 @@ data answered_tzdata_packages: List<PackageIntent> = [
 data two_answered_packages: List<PackageIntent> = [
   QuestionAnswered {
     package: OpenSshServerPackage,
-    debconf_seed: "openssh-server openssh-server/password-authentication boolean false" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: KindBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
   },
   QuestionAnswered {
     package: PostfixPackage,
-    debconf_seed: "postfix postfix/main_mailer_type select No configuration" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: PostfixPackage,
+        kind: KindSelect,
+        label: "postfix/main_mailer_type" as NonEmptyStr,
+        value: "No configuration" as NonEmptyStr,
+      ),
   },
   QuestionAnswered {
     package: KeyboardConfigurationPackage,
-    debconf_seed: "keyboard-configuration keyboard-configuration/layout select English (US)" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: KeyboardConfigurationPackage,
+        kind: KindSelect,
+        label: "keyboard-configuration/layout" as NonEmptyStr,
+        value: "English (US)" as NonEmptyStr,
+      ),
   },
 ]
 
 data unclassified_packages: List<PackageIntent> = [
   QuestionAnswered {
     package: OpenSshServerPackage,
-    debconf_seed: "openssh-server openssh-server/password-authentication boolean false" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: KindBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
   },
   UnclassifiedPackage {
     name: "some-fleet-exporter" as NonEmptyStr,
-    debconf_seed: Absent,
+    answers: [],
   },
 ]
 
@@ -476,11 +576,16 @@ data unclassified_packages: List<PackageIntent> = [
 data clean_head_then_unclassified_tail: List<PackageIntent> = [
   QuestionAnswered {
     package: PostfixPackage,
-    debconf_seed: "postfix postfix/main_mailer_type select No configuration" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: PostfixPackage,
+        kind: KindSelect,
+        label: "postfix/main_mailer_type" as NonEmptyStr,
+        value: "No configuration" as NonEmptyStr,
+      ),
   },
   UnclassifiedPackage {
     name: "some-fleet-exporter" as NonEmptyStr,
-    debconf_seed: Absent,
+    answers: [],
   },
 ]
 
@@ -532,7 +637,12 @@ fn audit_refuses_naming_one_of_its_own_packages(
 data unclassified_but_seeded_packages: List<PackageIntent> = [
   UnclassifiedPackage {
     name: "some-fleet-exporter" as NonEmptyStr,
-    debconf_seed: Present { value: "some-fleet-exporter/dummy string true" as NonEmptyStr },
+    answers: debconf_answer(
+      owner: "some-fleet-exporter" as NonEmptyStr,
+      kind: KindString,
+      label: "some-fleet-exporter/dummy" as NonEmptyStr,
+      value: "true" as NonEmptyStr,
+    ),
   },
 ]
 
@@ -3278,18 +3388,23 @@ test fn an_unexpected_segment_count_is_refused_as_not_a_digest() -> Bool {
 test fn an_unclassified_row_carries_the_answer_it_was_given() -> Bool {
   let seeded = package_intent_diagnostic(intent: UnclassifiedPackage {
     name: "some-fleet-exporter" as NonEmptyStr,
-    debconf_seed: Present { value: "some-fleet-exporter/dummy string true" as NonEmptyStr },
+    answers: debconf_answer(
+      owner: "some-fleet-exporter" as NonEmptyStr,
+      kind: KindString,
+      label: "some-fleet-exporter/dummy" as NonEmptyStr,
+      value: "true" as NonEmptyStr,
+    ),
   })
   let unseeded = package_intent_diagnostic(intent: UnclassifiedPackage {
     name: "some-fleet-exporter" as NonEmptyStr,
-    debconf_seed: Absent,
+    answers: [],
   })
   seeded.contains("some-fleet-exporter")
     && seeded.contains("unclassified")
     // THE ANSWER'S COVERAGE IS IN THE SEEDED SPELLING AND IN NO OTHER, so the row records that an answer was
     // supplied without reproducing it: an unseeded row says only that the package is unknown.
-    && seeded.contains("answer=")
-    && !unseeded.contains("answer=")
+    && seeded.contains("answers=")
+    && !unseeded.contains("answers=")
 }
 
 // THE AUTHORISED-KEY LINE COUNTS THE KEYS IT WAS GIVEN. Two mutations hide here and they hide from each other:
@@ -3379,7 +3494,12 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
                 install_packages: clean_packages,
                 late_packages: [QuestionAnswered {
                   package: CloudInitPackage,
-                  debconf_seed: "cloud-init cloud-init/datasources multiselect None" as NonEmptyStr,
+                    answers: debconf_answer_for(
+                      package: CloudInitPackage,
+                      kind: KindMultiselect,
+                      label: "cloud-init/datasources" as NonEmptyStr,
+                      value: "None" as NonEmptyStr,
+                    ),
                 }],
                 locale: EnUsUtf8,
                 entry: entry,
@@ -3410,9 +3530,9 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
                       Absent => false
                       Present { value: built } =>
                         render_altra_autoinstall_seed(seed: built)
-                          .contains("nvme-cli+silent,silent@2.8-1build2,cited,count=0")
+                          .contains("nvme-cli+silent,silent@2.8-1build2,cited,answered=0")
                           && render_altra_autoinstall_seed(seed: built)
-                            .contains("ipmitool+silent,silent@1.8.19-7build2,cited,count=0")
+                            .contains("ipmitool+silent,silent@1.8.19-7build2,cited,answered=0")
                     }
               }
           }
@@ -3468,7 +3588,7 @@ test fn a_silence_whose_reading_is_owed_says_what_must_be_read() -> Bool {
     Absent => false
     Present { value: built } =>
       // The shipped rows are cited, so the render carries ",cited" and no owed text...
-      render_altra_autoinstall_seed(seed: built).contains("nvme-cli+silent,silent@2.8-1build2,cited,count=0")
+      render_altra_autoinstall_seed(seed: built).contains("nvme-cli+silent,silent@2.8-1build2,cited,answered=0")
         // ...and a row whose standing owes a reading carries the obligation itself, verbatim from the standing.
         && match build_seed_with_late(
           late: [
@@ -3719,11 +3839,27 @@ test fn every_setting_the_library_hashed_without_a_stored_hash_is_refused_by_its
 data los_angeles_tzdata_packages: List<PackageIntent> = [
   QuestionAnswered {
     package: OpenSshServerPackage,
-    debconf_seed: "openssh-server openssh-server/password-authentication boolean false" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: KindBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
   },
   QuestionAnswered {
     package: TzdataPackage,
-    debconf_seed: "tzdata tzdata/Areas select America\ntzdata tzdata/Zones/America select Los_Angeles" as NonEmptyStr,
+    answers: list_append(left: debconf_answer_for(
+      package: TzdataPackage,
+      kind: KindSelect,
+      label: "tzdata/Areas" as NonEmptyStr,
+      value: "America" as NonEmptyStr,
+    ),
+      right: debconf_answer_for(
+        package: TzdataPackage,
+        kind: KindSelect,
+        label: "tzdata/Zones/America" as NonEmptyStr,
+        value: "Los_Angeles" as NonEmptyStr,
+      )),
   },
 ]
 
@@ -3773,33 +3909,60 @@ test fn an_admitted_answer_value_moves_the_seed_digest_without_moving_admission(
 data comment_only_tzdata_packages: List<PackageIntent> = [
   QuestionAnswered {
     package: OpenSshServerPackage,
-    debconf_seed: "openssh-server openssh-server/password-authentication boolean false" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: KindBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
   },
   QuestionAnswered {
     package: TzdataPackage,
-    // THE COMMENT IS WRITTEN SO IT WOULD PARSE, IF THE HASH WERE TREATED AS LEADING WHITESPACE: strip the
-    // leading '#' and the first line becomes a well-formed four-field record for the very key the AREA answer
-    // builds. That is what makes this row a test of the comment rule rather than of the four-field rule; a
-    // comment that could never be a record anyway would stay refused under a mutation that stopped skipping
-    // comments, and the row would go green over the defect.
-    debconf_seed: "# tzdata tzdata/Zones/America select New_York\ntzdata tzdata/Areas select America" as NonEmptyStr,
+    // ONLY THE AREA RECORD. THE ZONE RECORD IS DELIBERATELY MISSING, and what it replaces is the line that used
+    // to close this audit by subterfuge: under the old tokenizer, a line COMMENTING a zone template — "# tzdata
+    // tzdata/Zones/America select New_York" — was matched by substring and certified the question answered while
+    // debconf's own reader drops comment lines and the package asks the question anyway. With records there is no
+    // text for that comment to live in, so the omission is the whole test: the audit asks for the key the area
+    // builds (tzdata/Zones/America), finds no record carrying it, and refuses the seed.
+    answers: debconf_answer_for(
+      package: TzdataPackage,
+      kind: KindSelect,
+      label: "tzdata/Areas" as NonEmptyStr,
+      value: "America" as NonEmptyStr,
+    ),
   },
 ]
 
 data mismatched_area_tzdata_packages: List<PackageIntent> = [
   QuestionAnswered {
     package: OpenSshServerPackage,
-    debconf_seed: "openssh-server openssh-server/password-authentication boolean false" as NonEmptyStr,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: KindBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
   },
-  QuestionAnswered { package: TzdataPackage, debconf_seed: mismatched_area_seed() as NonEmptyStr },
+  QuestionAnswered { package: TzdataPackage, answers: mismatched_area_records() },
 ]
 
 // THE SEEDED TEXT BEHIND THE AREA/ZONE REFUSAL, IN ONE PLACE. The refusal row and the row that pins which key
 // the audit looks for both read this, so the two claims cannot drift apart. It used to be typed twice, and the
 // second copy carried a two-character escape the lexer does not expand — so the key claim was made about a
 // string that was never two records, and it passed by accident. One spelling, one truth.
-fn mismatched_area_seed() -> String {
-  "tzdata tzdata/Areas select Etc\ntzdata tzdata/Zones/America select New_York"
+fn mismatched_area_records() -> List<DebconfSelectionRecord> {
+  list_append(left: debconf_answer_for(
+    package: TzdataPackage,
+    kind: KindSelect,
+    label: "tzdata/Areas" as NonEmptyStr,
+    value: "Etc" as NonEmptyStr,
+  ),
+      right: debconf_answer_for(
+      package: TzdataPackage,
+      kind: KindSelect,
+      label: "tzdata/Zones/America" as NonEmptyStr,
+      value: "New_York" as NonEmptyStr,
+    ))
 }
 
 // THE OWNER FIELD IS THE ANSWER'S OTHER HALF (mutation: a scan that ignores the owner). "tzdata tzdata/Areas
@@ -3830,7 +3993,23 @@ test fn an_answer_record_written_by_another_package_closes_nothing_and_the_seed_
 data impersonated_tzdata_packages: List<PackageIntent> = [
   QuestionAnswered {
     package: TzdataPackage,
-    debconf_seed: "openssh-server tzdata/Areas select America\nopenssh-server tzdata/Zones/America select New_York" as NonEmptyStr,
+    // THE OWNER IS openssh-server, NOT tzdata — and it has to be spelled through the generic mint for exactly
+    // that reason. debconf_answer_for derives the owner from the package the arm names, which is right for every
+    // honest fixture and useless for this one: the point here is a well-shaped record, with the right label and
+    // the right value, claimed by a package that does not own the question. Only the first field separates it
+    // from an answer, which is the property a scan matching label+value alone would throw away.
+    answers: list_append(left: debconf_answer(
+      owner: "openssh-server" as NonEmptyStr,
+      kind: KindSelect,
+      label: "tzdata/Areas" as NonEmptyStr,
+      value: "America" as NonEmptyStr,
+    ),
+      right: debconf_answer(
+        owner: "openssh-server" as NonEmptyStr,
+        kind: KindSelect,
+        label: "tzdata/Zones/America" as NonEmptyStr,
+        value: "New_York" as NonEmptyStr,
+      )),
   },
 ]
 
@@ -3867,10 +4046,10 @@ test fn an_area_and_a_zone_that_do_not_join_are_refused_and_the_zone_key_names_t
   // established_zone_key reads the area record and builds the key itself, so this pins which key the audit looks
   // for: Etc's answer must be looked up as tzdata/Zones/Etc.
   let key = established_zone_key(
-    // THE SAME SEEDED TEXT the refusal above is about, read through the shared fixture rather than re-typed:
-    // this file re-typed it once with a two-character escape, which the lexer does not expand, and the row then
-    // tested a string that was never two lines. One fixture, one spelling, no drift between the two claims.
-    seed: mismatched_area_seed(),
+    // THE SAME RECORDS the refusal above is about, read through the shared fixture rather than re-typed: this
+    // file re-typed the pair once before, and the copy drifted. One fixture, one spelling, no drift between the
+    // two claims.
+    answers: mismatched_area_records(),
     owner: known_prompting_package_name(package: TzdataPackage),
   )
   match key {
@@ -4106,4 +4285,533 @@ test fn two_selectors_that_differ_only_inside_a_value_are_not_the_same_selector(
       left: content_hash_atom(value: configuration_identity_of_selector(selector: glued_looking_one)),
       right: content_hash_atom(value: configuration_identity_of_selector(selector: glued_looking_two)),
     )
+}
+
+// ===========================================================================
+// THE DEBCONF SHELF: THE RECORD IS THE TRUTH AND THE LINE IS DERIVED FROM IT
+// (review 83132). The seed AUTHORS its answers, so the tokenizer this module used to carry existed only to
+// recover parts the module already knew — and it is where the comment-line trap lived, because text can
+// mention a question that no answer answered. These rows hold the two properties the replacement owes: the
+// wire spelling is DERIVED from the semantic arms rather than stored beside them (so it can never go stale,
+// which is the failure the sibling libxcrypt shelf actually had), and an answer that could not survive the
+// trip to the installer is unauthorizable rather than mis-rendered.
+// ===========================================================================
+
+// THE DERIVED LINE IS THE CANONICAL FOUR-FIELD FORM. Upstream's reader is
+// /^\s*(\S+)\s+(\S+)\s+(\S+)(?:\s(.*))?/ (debconf-set-selections, debconf 1.5.86ubuntu1, line 132):
+// owner, label, type, then the content to the end of the line. This is the row that makes the derivation
+// load-bearing — drop a separator and the string differs; store the kind word beside the arm instead of
+// deriving it and it goes stale exactly the way the sibling shelf's alphabet list did.
+test fn a_record_renders_the_canonical_four_field_line() -> Bool {
+  match debconf_selection_record(
+    owner: "tzdata" as NonEmptyStr,
+    label: "tzdata/Areas" as NonEmptyStr,
+    kind: KindSelect,
+    value: "America" as NonEmptyStr,
+  ) {
+    Absent => false
+    Present { value: record } =>
+      (debconf_selection_line(record: record) as String) == "tzdata tzdata/Areas select America"
+  }
+}
+
+// THE VALUE'S OWN WHITESPACE SURVIVES VERBATIM and only the three separators are added. "English (US)" is a
+// real answer whose value contains a space, and the regex's last group is (.*) precisely so the tail is taken
+// as-is. A derivation that re-split or re-joined the value would change what the installer selects while
+// leaving every field accessor untouched — the record/rendering seam is exactly where that class of bug
+// lives, so the separator COUNT is asserted, not merely the shape.
+test fn a_value_with_spaces_renders_with_exactly_three_separators() -> Bool {
+  match debconf_selection_record(
+    owner: "keyboard-configuration" as NonEmptyStr,
+    label: "keyboard-configuration/layout" as NonEmptyStr,
+    kind: KindSelect,
+    value: "English (US)" as NonEmptyStr,
+  ) {
+    Absent => false
+    Present { value: record } =>
+      match (debconf_selection_line(record: record) as String) {
+        line =>
+          line == "keyboard-configuration keyboard-configuration/layout select English (US)"
+            // THREE SEPARATORS ADDED, ONE SPACE PRESERVED. The value carries a space of its own, so a count of
+            // four is the only number that is simultaneously "the derivation added exactly three" and "nothing
+            // was stripped from the value". Three would mean the value lost its space; five would mean the
+            // derivation added a separator somewhere.
+            && count_character(text: line, character: " ", seen: 0) == 4
+      }
+  }
+}
+
+// SPACES, COUNTED ONE CHARACTER AT A TIME. The language exposes no character indexing for a String, so the
+// count walks substrings; it is written here rather than imported because the number it checks is this row's
+// own claim about how many separators a derived line may contain.
+fn count_character(text: String, character: String, seen: Int) -> Int {
+  match text.length() {
+    0 => seen
+    _ =>
+      match text.substring(start: 0, end: 1) == character {
+        True => count_character(text: text.substring(start: 1, end: text.length()), character: character, seen: seen + 1)
+        False => count_character(text: text.substring(start: 1, end: text.length()), character: character, seen: seen)
+      }
+  }
+}
+
+// THE NINE DERIVED SPELLINGS ARE EXACTLY UPSTREAM'S WORDS, IN ORDER. The list on the shelf is the citation of
+// `my @knowntypes = qw(select boolean string multiselect note password text title);` together with `my
+// @knownflags = qw(seen);`; this row is the equation between that citation and the union's arms. An arm added
+// without its word, or a word whose spelling drifted, fails here — the only defence against the drift review
+// caught in the sibling shelf, where a stored list disagreed with the rule printed beside it.
+test fn every_answer_kind_spells_itself_the_word_upstream_accepts() -> Bool {
+  let derived = [
+    debconf_selection_kind_spelling(kind: KindSelect),
+    debconf_selection_kind_spelling(kind: KindBoolean),
+    debconf_selection_kind_spelling(kind: KindString),
+    debconf_selection_kind_spelling(kind: KindMultiselect),
+    debconf_selection_kind_spelling(kind: KindNote),
+    debconf_selection_kind_spelling(kind: KindPassword),
+    debconf_selection_kind_spelling(kind: KindText),
+    debconf_selection_kind_spelling(kind: KindTitle),
+    debconf_selection_kind_spelling(kind: KindSeenFlag),
+  ]
+  match derived.length() == debconf_known_kind_spellings.length() {
+    False => false
+    True => same_spelling_list(left: derived, right: debconf_known_kind_spellings)
+  }
+}
+
+// STRUCTURAL WALK, NOT AN INDEXED READ. Both sides are lists this shelf owns, so equality is settled by taking
+// them apart. An index into either list would be a second, partial definition of what "the same list" means, and
+// a length mismatch that outranks a word mismatch is exactly the kind of thing an indexed loop hides (an
+// off-by-one simply stops early instead of failing).
+fn same_spelling_list(left: List<NonEmptyStr>, right: List<NonEmptyStr>) -> Bool {
+  match left {
+    Empty =>
+      match right {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: one, tail: rest } =>
+      match right {
+        Empty => false
+        Cons { head: other, tail: tail } =>
+          match (one as String) == (other as String) {
+            False => false
+            True => same_spelling_list(left: rest, right: tail)
+          }
+      }
+  }
+}
+
+// THE FLAG IS LEGAL IN THE FIELD AND ANSWERS NOTHING, checked through the PUBLIC PRODUCER (mutation:
+// debconf_answer_kind_is_answer returns true for the flag arm). Upstream routes `seen` to set_flag rather than
+// load_answer (lines 136-144): it marks a question as already seen, a question that has to EXIST first. A seed
+// that let a flag certify an answer would be hung by a package that still asks, on a board with nobody at the
+// console. The flag is still a legal record — its field position and its word are upstream's — so the refusal
+// has to come from the audit reading the kind, which is what this row pins.
+test fn a_seen_flag_closes_nothing_and_the_seed_is_refused_as_prompting() -> Bool {
+  // THE ZONE RECORD IS SUPPLIED AS A REAL ANSWER ON PURPOSE, so the seed's fate hinges on the FLAG ALONE. A
+  // flag-only fixture would be refused whatever the audit does with the flag, because tzdata's second question is
+  // parametric on the first and there would be no zone record to satisfy it — the row would then be unable to tell
+  // "the flag closed no question" from "the parametric key closed nothing", and a mutation that made the flag an
+  // answer would go undetected. With the zone answered, crediting the flag completes BOTH requirements and the
+  // seed would render; refusing it leaves tzdata/Areas open. That is the difference this row measures.
+  match list_append(
+    left: debconf_answer_for(
+      package: TzdataPackage,
+      kind: KindSeenFlag,
+      label: "tzdata/Areas" as NonEmptyStr,
+      value: "America" as NonEmptyStr,
+    ),
+    right: debconf_answer_for(
+      package: TzdataPackage,
+      kind: KindSelect,
+      label: "tzdata/Zones/America" as NonEmptyStr,
+      value: "New_York" as NonEmptyStr,
+    ),
+  ) {
+    records =>
+      match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+        Present { value: entry } =>
+          match audit_altra_autoinstall_seed(
+            network: network_posture,
+            install_packages: [QuestionAnswered { package: TzdataPackage, answers: records }],
+            late_packages: [],
+            locale: EnUsUtf8,
+            entry: entry,
+            strategy: virtual_media_strategy,
+          ) {
+            SeedIsNonInteractive { evidence: _ } => false
+            // THE QUESTION REPORTED IS tzdata/Areas — the flag's own label — and not the zone, so a future
+            // reordering that refused on the parametric key instead would be visible here rather than silently
+            // changing which question the operator is told about.
+            SeedRefused { cause: PackagePrompts { name: named, question: asked } } =>
+              named == known_prompting_package_name(package: TzdataPackage)
+                && (asked as String).contains("tzdata/Areas")
+            SeedRefused { cause: _ } => false
+          }
+        Absent => false
+      }
+  }
+}
+
+// THE FLAG IS STILL A RECORD. Refusing it at the mint would be the wrong fix: it is a legal debconf line, and
+// a consumer that wants to carry one (a preseed that suppresses a question some earlier step answered) must be
+// able to. It answers nothing, and that is expressed by the kind, in one place.
+test fn the_seen_flag_is_a_well_formed_record_in_its_own_right() -> Bool {
+  match debconf_selection_record(
+    owner: "tzdata" as NonEmptyStr,
+    label: "tzdata/Areas" as NonEmptyStr,
+    kind: KindSeenFlag,
+    value: "true" as NonEmptyStr,
+  ) {
+    Absent => false
+    Present { value: record } =>
+      match debconf_answer_kind_is_answer(kind: debconf_selection_kind(record: record)) {
+        True => false
+        // AND EVERY REAL ANSWER KIND DOES ANSWER, so the exclusion is exactly one arm wide and not a rule that
+        // quietly grows.
+        False =>
+          debconf_answer_kind_is_answer(kind: KindSelect)
+            && debconf_answer_kind_is_answer(kind: KindBoolean)
+            && debconf_answer_kind_is_answer(kind: KindMultiselect)
+            && debconf_answer_kind_is_answer(kind: KindString)
+      }
+  }
+}
+
+// A RECORD THAT COULD NOT SURVIVE THE TRIP IS NEVER WRITTEN, AND THE REFUSAL REACHES THE AUDIT (mutation:
+// key_field_is_well_formed returning true unconditionally). Upstream splits the first three fields as (\S+)
+// runs, so an owner carrying a space does not parse as that owner — it shifts every field after it, and the
+// answer lands on a package nobody meant to configure while tzdata's own question stays live. The mint refusing
+// it is half the claim; that a seed assembled from it is REFUSED AS PROMPTING is the half that matters,
+// because collapsing an illegal record to no-records is only safe if no-records still means unanswered.
+test fn an_answer_whose_owner_carries_a_space_closes_nothing_and_the_seed_is_refused() -> Bool {
+  // THE MINT REFUSED IT FIRST, so the audit is being handed no records at all. Asserted separately from the
+  // refusal below: an audit that credited an owner-mismatched record would still refuse THIS seed (its own
+  // owner is "tzdata extra", which never matches tzdata's question), so the refusal alone cannot tell a
+  // well-formed refusal from an accepted-but-ignored record. The two claims together pin the whole path.
+  match list_length(items: debconf_answer(
+    owner: "tzdata extra" as NonEmptyStr,
+    kind: KindSelect,
+    label: "tzdata/Areas" as NonEmptyStr,
+    value: "America" as NonEmptyStr,
+  )) {
+    // ZERO RECORDS: the mint refused it, which is what makes the audit's refusal mean something.
+    0 =>
+      match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+        Present { value: entry } =>
+          match audit_altra_autoinstall_seed(
+            network: network_posture,
+            install_packages: [QuestionAnswered {
+              package: TzdataPackage,
+              answers: debconf_answer(
+                owner: "tzdata extra" as NonEmptyStr,
+                kind: KindSelect,
+                label: "tzdata/Areas" as NonEmptyStr,
+                value: "America" as NonEmptyStr,
+              ),
+            }],
+            late_packages: [],
+            locale: EnUsUtf8,
+            entry: entry,
+            strategy: virtual_media_strategy,
+          ) {
+            SeedIsNonInteractive { evidence: _ } => false
+            SeedRefused { cause: PackagePrompts { name: named, question: _ } } =>
+              named == known_prompting_package_name(package: TzdataPackage)
+            SeedRefused { cause: _ } => false
+          }
+        Absent => false
+      }
+    // A RECORD MINTED FROM THAT OWNER WOULD BE THE DEFECT: it means key_field_is_well_formed let a delimiter
+    // through, and the seed below would then be hung by a question nobody can answer.
+    _ => false
+  }
+}
+
+// A RECORD THAT COULD NOT SURVIVE THE TRIP IS NEVER WRITTEN, field by field, and the refusals are each
+// separately load-bearing (mutation: key_field_is_well_formed returning true unconditionally, or
+// value_selects_something returning true unconditionally). The three reasons come from upstream's reader rather
+// than from taste. A SPACE OR NEWLINE IN A KEY FIELD re-aligns every field after it — upstream splits the first
+// three as (\S+) runs, so the answer lands on a package nobody meant to configure while tzdata's own question
+// stays live. A NEWLINE IN A VALUE renders one record as two lines, and the second line is read as a separate
+// record whose owner is whatever follows: an answer smuggled in as a continuation. A VALUE THAT SELECTS NOTHING
+// is upstream-legal (it stores '' at lines 133-135) and leaves the package prompting anyway, so this programme
+// is STRICTER than upstream and the difference is stated at the constructor; the empty string itself is already
+// refused one level down, by the NonEmptyStr refinement, so the arm below is the whitespace-only value the
+// refinement cannot see, which is the one a human actually types into a preseed editor.
+test fn the_mint_refuses_the_fields_that_could_not_survive_the_trip() -> Bool {
+  match debconf_selection_record(
+    owner: "tzdata extra" as NonEmptyStr,
+    label: "tzdata/Areas" as NonEmptyStr,
+    kind: KindSelect,
+    value: "America" as NonEmptyStr,
+  ) {
+    Present { value: _ } => false
+    Absent =>
+      match debconf_selection_record(
+        owner: "tzdata" as NonEmptyStr,
+        label: "tzdata Areas" as NonEmptyStr,
+        kind: KindSelect,
+        value: "America" as NonEmptyStr,
+      ) {
+        Present { value: _ } => false
+        Absent =>
+          match debconf_selection_record(
+            owner: "tzdata" as NonEmptyStr,
+            label: "tzdata/Areas" as NonEmptyStr,
+            kind: KindSelect,
+            value: "America\ntzdata tzdata/Zones/America select New_York" as NonEmptyStr,
+          ) {
+            Present { value: _ } => false
+            Absent =>
+              match debconf_selection_record(
+                owner: "tzdata" as NonEmptyStr,
+                label: "tzdata/Areas" as NonEmptyStr,
+                kind: KindSelect,
+                value: "  " as NonEmptyStr,
+              ) {
+                Present { value: _ } => false
+                // AND A LEGAL RECORD STILL MINTS, so the refusals above are not a mint that always fails. Its
+                // fields are read back through the accessors rather than compared as a whole record, because a
+                // record whose fields were swapped at the constructor would still be the record the caller asked
+                // for under a whole-record compare.
+                Absent =>
+                  match debconf_selection_record(
+                    owner: "tzdata" as NonEmptyStr,
+                    label: "tzdata/Areas" as NonEmptyStr,
+                    kind: KindSelect,
+                    value: "America" as NonEmptyStr,
+                  ) {
+                    Absent => false
+                    Present { value: good } =>
+                      (debconf_selection_owner(record: good) as String) == "tzdata"
+                        && (debconf_selection_label(record: good) as String) == "tzdata/Areas"
+                        && (debconf_selection_value(record: good) as String) == "America"
+                        && debconf_selection_kind(record: good) == KindSelect
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE OTHER TWO DELIMITERS AND THE ONE-CHARACTER VALUE, refused at the mint. The sibling row above covers a SPACE
+// in the owner and in a label; upstream's reader refuses all of space, tab and NEWLINE in the first three fields
+// because each is what (\S+) treats as a boundary — a tab re-aligns the later fields exactly as a space does, and
+// a newline in a key field is worse still because it ends the line, so the record's remaining fields are read from
+// whatever the NEXT line happens to be. The third leg is the one-character value " ": it is non-empty (so the
+// refinement lets it through) and it contains a separator, so the mint's own single-character arm is what refuses
+// it — distinct code from the whitespace-walker path that "  " travels.
+test fn a_tab_in_a_key_field_a_newline_in_a_key_field_and_a_one_character_value_are_all_refused() -> Bool {
+  match debconf_selection_record(
+    owner: "tzdata\textra" as NonEmptyStr,
+    label: "tzdata/Areas" as NonEmptyStr,
+    kind: KindSelect,
+    value: "America" as NonEmptyStr,
+  ) {
+    Present { value: _ } => false
+    Absent =>
+      match debconf_selection_record(
+        owner: "tzdata" as NonEmptyStr,
+        label: "tzdata/Areas\nzones" as NonEmptyStr,
+        kind: KindSelect,
+        value: "America" as NonEmptyStr,
+      ) {
+        Present { value: _ } => false
+        Absent =>
+          match debconf_selection_record(
+            owner: "tzdata" as NonEmptyStr,
+            label: "tzdata/Areas" as NonEmptyStr,
+            kind: KindSelect,
+            value: " " as NonEmptyStr,
+          ) {
+            Present { value: _ } => false
+            // AND A ONE-CHARACTER VALUE THAT IS NOT A SEPARATOR STILL MINTS, so the arm above is about separators
+            // specifically and not a mint that refuses short values out of hand.
+            Absent =>
+              match debconf_selection_record(
+                owner: "x" as NonEmptyStr,
+                label: "x/y" as NonEmptyStr,
+                kind: KindBoolean,
+                value: "1" as NonEmptyStr,
+              ) {
+                Absent => false
+                Present { value: short } => (debconf_selection_value(record: short) as String) == "1"
+              }
+          }
+      }
+  }
+}
+
+// THE PRESEED IS THE INTENT LIST'S RECORDS AND NOTHING ELSE (review: merry-fox-82 HOLD 1). The audit certifies
+// the answer set; the thing that has to reach the board is this file, so the two properties it owes are measured
+// through the PUBLIC producer. SILENT PACKAGES CONTRIBUTE NO LINE: a cited silent package has no question, and
+// debconf would store an answer to a question that does not exist, so an intent that renders a line without ever
+// having been asked one is a defect. ANSWERED INTENTS CONTRIBUTE ALL THEIR RECORDS: dropping one would leave the
+// question live on a board with nobody at the panel while the audit still reported the seed non-interactive — that
+// direction is covered by a mutation (M24-Preseed-AnsweredRecordsDropped, M24-Preseed-UnclassifiedRecordsDropped).
+// The ABSENCE asserted here is the other direction and its evidence is this row rather than a mutation: a silent
+// arm carries no records, so "render a line for it anyway" is not a one-line edit of an existing expression but
+// new code that could not resolve, which means there is no mutation to run and the assertion has to stand on its
+// own. Saying so is the honest version of claiming the property is tested.
+test fn the_preseed_names_every_answered_record_and_invents_no_line_for_a_silent_package() -> Bool {
+  match seed_preseed_file(intents: [
+    PackageVerifiedSilent { silence: nvme_cli_silence_receipt },
+    QuestionAnswered {
+      package: TzdataPackage,
+      answers: list_append(
+        left: debconf_answer_for(
+          package: TzdataPackage,
+          kind: KindSelect,
+          label: "tzdata/Areas" as NonEmptyStr,
+          value: "America" as NonEmptyStr,
+        ),
+        right: debconf_answer_for(
+          package: TzdataPackage,
+          kind: KindSelect,
+          label: "tzdata/Zones/America" as NonEmptyStr,
+          value: "New_York" as NonEmptyStr,
+        ),
+      ),
+    },
+    PackageVerifiedSilent { silence: ipmitool_silence_receipt },
+  ]) {
+    file =>
+      // BOTH ANSWER LINES PRESENT, in intent order.
+      match (file == "tzdata tzdata/Areas select America\ntzdata tzdata/Zones/America select New_York") {
+        False => false
+        // AND NO LINE FOR EITHER SILENT PACKAGE, checked on the package NAMES rather than on a line count: a
+        // count would be satisfied by any two stray lines, and the names are what a silent package could forge.
+        True =>
+          match file.contains(needle: "nvme-cli") {
+            True => false
+            False =>
+              match file.contains(needle: "ipmitool") {
+                True => false
+                False => true
+              }
+          }
+      }
+  }
+}
+
+// AN UNCLASSIFIED ROW'S ANSWERS TRAVEL TOO. UnclassifiedPackage is the arm for a package whose question behaviour
+// this programme has not classified, and it carries records for exactly the same reason QuestionAnswered does —
+// so its arm must not be the one that quietly renders nothing while the digest still counts the answer. Both
+// record-bearing arms therefore have a row here, each mutating separately.
+test fn the_preseed_carries_the_records_of_an_unclassified_row() -> Bool {
+  match seed_preseed_file(intents: [
+    UnclassifiedPackage {
+      name: "some-asker" as NonEmptyStr,
+      answers: debconf_answer(
+        owner: "some-asker" as NonEmptyStr,
+        kind: KindString,
+        label: "some-asker/first" as NonEmptyStr,
+        value: "yes" as NonEmptyStr,
+      ),
+    },
+  ]) {
+    file => file == "some-asker some-asker/first string yes"
+  }
+}
+
+// THE PRESEED IS EMPTY WHEN NOTHING IS ANSWERED, INCLUDING A SEED FULL OF SILENT PACKAGES. This is the same
+// claim as the row above reached from the other side: the file's emptiness is a property of the ANSWERS and not
+// of the package list, so a seed with five packages and no questions ships no preseed at all. It is also the arm
+// that makes `seed_preseed_file` total — every seed has a preseed, and for a seed with no questions that preseed
+// is legitimately the empty file rather than a refusal, because there is nothing for the installer to read.
+test fn a_seed_of_silent_packages_alone_yields_an_empty_preseed() -> Bool {
+  match seed_preseed_file(intents: [
+    PackageVerifiedSilent { silence: nvme_cli_silence_receipt },
+    PackageVerifiedSilent { silence: ipmitool_silence_receipt },
+  ]) {
+    file => file.length() == 0
+  }
+}
+
+// THE FILE IS THE RECORDS, IN ORDER, JOINED BY EXACTLY ONE NEWLINE AND NO MORE. The records are the truth and
+// the text is derived, which is the whole claim of this shelf — so the derived text needs an executing reader,
+// not a comment, or the shelf has grown a render path nothing walks (DESIGN §3c). The claim worth a row is the
+// JOINER: one newline between lines, none after the last. A trailing newline is an extra empty record for any
+// reader that splits rather than matches, and a missing joiner welds two answers into one unparseable line —
+// both are invisible in the record list and visible only here. tzdata's two records are used because a
+// one-record file cannot distinguish "joined" from "terminated".
+test fn the_file_is_the_records_joined_by_one_newline_and_no_more() -> Bool {
+  match list_append(
+    left: debconf_answer_for(
+      package: TzdataPackage,
+      kind: KindSelect,
+      label: "tzdata/Areas" as NonEmptyStr,
+      value: "America" as NonEmptyStr,
+    ),
+    right: debconf_answer_for(
+      package: TzdataPackage,
+      kind: KindSelect,
+      label: "tzdata/Zones/America" as NonEmptyStr,
+      value: "New_York" as NonEmptyStr,
+    ),
+  ) {
+    records =>
+      match (debconf_selection_file(records: records) as String) {
+        file =>
+          file == "tzdata tzdata/Areas select America\ntzdata tzdata/Zones/America select New_York"
+            && count_character(text: file, character: "\n", seen: 0) == 1
+      }
+  }
+}
+
+// NOTHING TO ANSWERS ASKERS RENDERS NO FILE AT ALL, not an empty line and not a newline. Both `lines_from_records`
+// and `file_from_lines` reach their Empty arm here, and the installer treats "no file" and "no lines" alike; a
+// rendered newline in the empty case ships an almost-empty file whose single empty record is only harmless
+// because upstream's own reader skips blank lines — an argument about THEIR parser standing in for a claim about
+// ours.
+test fn nothing_to_answer_renders_no_file_at_all() -> Bool {
+  match (debconf_selection_file(records: []) as String) {
+    file => file.length() == 0
+  }
+}
+
+// THE CITATION IS CLOSED AND NOTHING IS OWED, read through the shelf's own obligation so the number of arms is
+// the claim rather than a sentence about it. CitedToAuthority is the only standing today, which is the honest
+// description: the nine type words and the separator rule are transcriptions from a named release, the release is
+// named on the shelf, and a consumer may rely on them. Add a rung whose standing nobody read and this row goes RED
+// instead of a silent answer shipping under an obligation nobody opened — the same discipline the sibling
+// libxcrypt shelf states for its figure.
+test fn the_debconf_citation_carries_no_unread_obligation() -> Bool {
+  // THE SHELF'S OWN STANDING, ASKED OF THE SHARED READER. Not a wrapper on the shelf: the shared
+  // extdeps.external_authority reader already decides, exhaustively over the three arms of CitedFigureStanding,
+  // whether a figure carries an obligation, and a per-shelf copy of that decision would be a second
+  // representation of a rule the model carries once (§5). The contrast arm is what makes this a claim and not a
+  // tautology: the SAME authority, standing TranscribedUncited, must come back Present — otherwise the row would
+  // still pass if the reader always answered Absent, which is the failure mode a "cited" claim has to exclude.
+  match cited_figure_read_obligation(standing: debconf_selection_standing) {
+    Present { value: _ } => false
+    Absent =>
+      match cited_figure_read_obligation(
+        standing: TranscribedUncited { read_obligation: "read debconf-set-selections before believing it" as NonEmptyStr },
+      ) {
+        Absent => false
+        Present { value: owed } => (owed as String) == "read debconf-set-selections before believing it"
+      }
+  }
+}
+
+// THE CITATION AND THE TRANSCRIPTION NAME THE SAME RELEASE. The shelf's authority locator is a URI whose path
+// carries a version, and its measured-release row is the version the type words were read out of; if those two
+// ever disagree, the citation points at a release nobody checked and the transcription has no source — the exact
+// §4d failure the standing exists to make visible, arriving quietly through a version bump on one row only.
+// Compared by containment on the version token rather than by equality, because the two spellings differ on
+// purpose: the locator is a Debian source path and the measured row is an Ubuntu pool release.
+test fn the_citation_and_the_transcription_name_the_same_release() -> Bool {
+  match debconf_selection_authority() {
+    authority =>
+      (authority.uri.locator as String).contains(needle: debconf_release_token())
+        && (debconf_release_observed as String).contains(needle: debconf_release_token())
+  }
+}
+
+// THE TOKEN BOTH SIDES ARE CHECKED AGAINST, taken from the measured release rather than typed twice, so the row
+// above cannot pass by checking the locator against a string that matches nothing.
+fn debconf_release_token() -> NonEmptyStr {
+  "1.5.86ubuntu1" as NonEmptyStr
 }
