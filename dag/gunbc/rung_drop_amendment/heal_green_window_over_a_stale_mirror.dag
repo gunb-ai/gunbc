@@ -1,0 +1,14 @@
+module gunbc.rung_drop_amendment.heal_green_window_over_a_stale_mirror
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+data heal_green_window_over_a_stale_mirror: RungDropAmendment = RungDropAmendment {
+  drop_identity: "v1_required_lanes_withdrawn" as NonEmptyStr,
+
+  amended: "2026-10-20",
+
+  later_event: "gunbc#14493 head a642bb2194a was green on the required `witnesses` job over a stage0 mirror stale against its .dag (v2-bootstrap green 06:33:00Z; heal run 39378154865 done 07:01:45Z holding the repair candidate; heal-publish run 39383896432 pushed bot commit 5b255a972a6, readback 07:14:18Z: exposure about 41 minutes, of which 12 minutes is the publisher tail). In the first specimen v2-bootstrap built the seed from the stale mirror. SECOND SPECIMEN: on gunbc#14493 head 8807d2405c6 heal run 39389776978 uploaded a correct repair candidate, and heal-publish run 39396236576 concluded FAILURE (resolve failure of gunbc.heal_publication from the LogicalNot non-exhaustive match in extdeps.github.expressions), so the candidate was never pushed while no PR context went red, and v2-bootstrap built the seed from the stale mirror. SECOND CONSUMER OF THE SAME LOSS: gunbc.regen_affected_set drives a diff-scoped heal round, and v2.workflow.required_regen RegenEmissionScope records as PRECONDITION 3 that a scoped round cannot discover a mirror outside its bound that was committed stale, because it relied on the unscoped comparison only the withdrawn generated lane gave" as NonEmptyStr,
+
+  bearing: "members (2) and (8) of the population: a landing in the window between a green required context and the unapplied heal candidate takes the stale mirror, and a stale mirror outside a scoped round's bound is compared by nothing. In both specimens the window is the publisher, not a scoped-bound miss: latency in the first, and in the second a publisher FAILURE that leaves the window open with no bound until someone notices. Heal green with no bot commit is not a convergence verdict on the head. The scoped arm itself is sound for a .dag edited on the branch with its mirror equal to main (it seeds the edited module's own mirror). A required-path refusal is the operator's call; the restoration trigger is unchanged" as NonEmptyStr,
+}
