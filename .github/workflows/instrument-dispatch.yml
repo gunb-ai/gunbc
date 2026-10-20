@@ -294,6 +294,18 @@ jobs:
                       out.append((str(w.get('created_at') or ''), rid))
               out.sort(reverse=True)
               return out
+          class _StripAuthRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return urllib.request.Request(newurl, headers={}, method=req.get_method())
+          def download(url, path):
+              opener = urllib.request.build_opener(_StripAuthRedirect)
+              req = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + TOKEN})
+              with opener.open(req, timeout=600) as r, open(path, 'wb') as f:
+                  while True:
+                      chunk = r.read(1048576)
+                      if not chunk:
+                          break
+                      f.write(chunk)
           def fetch(wid, dest, want_name, must_glob):
               for a in api('/repos/' + REPO + '/actions/runs/' + str(wid) + '/artifacts')['artifacts']:
                   if a.get('name') != want_name or a.get('expired'):
@@ -303,13 +315,7 @@ jobs:
                       continue
                   tmp = tempfile.mkdtemp(dir=os.path.dirname(dest))
                   zp = os.path.join(tmp, 'receipt.zip')
-                  req = urllib.request.Request(a['archive_download_url'], headers={'Authorization': 'Bearer ' + TOKEN})
-                  with urllib.request.urlopen(req, timeout=600) as r, open(zp, 'wb') as f:
-                      while True:
-                          chunk = r.read(1048576)
-                          if not chunk:
-                              break
-                          f.write(chunk)
+                  download(a['archive_download_url'], zp)
                   with zipfile.ZipFile(zp) as z:
                       z.extractall(tmp)
                   os.remove(zp)
