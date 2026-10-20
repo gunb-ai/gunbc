@@ -311,7 +311,7 @@ pub fn marshal_disj_type_item(
 
 fn logical_qualified_name(module_name: &str, name: &str) -> String {
     // Concept-index reflection keeps the authored module path (including `v2.`).
-    // Decl-index uses `decl_logical_qualified_name` instead (strips `v2.`).
+    // Decl-index uses `decl_qualified_name` instead (strips `v2.`).
     if module_name.is_empty() {
         name.to_string()
     } else {
@@ -1505,15 +1505,14 @@ pub struct DeclFactRaw {
     pub source_indices: SourceIndices,
 }
 
-/// Qualified name for `decl_facts` / `decl_index` — strips the `v2.` layer prefix to match
-/// `v2.std.decl_index.logical_qualified_name_from_module` (concept reflection keeps the
-/// full module path including `v2.` for `concept_index` consumers).
-fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
-    let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
-    if logical.is_empty() {
+/// Qualified name for `decl_facts` / `decl_index`: the module's OWN qualified name, `v2.` included,
+/// matching `v2.std.decl_index.qualified_name_from_module`. Stripping the layer prefix made
+/// `v2.std.integer.Int` and `std.integer.Int` share one key (two declarations, one identity).
+fn decl_qualified_name(module_name: &str, name: &str) -> String {
+    if module_name.is_empty() {
         name.to_string()
     } else {
-        format!("{logical}.{name}")
+        format!("{module_name}.{name}")
     }
 }
 
@@ -1734,7 +1733,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             }
             let kind = item_kind(item.clone());
             out.push(DeclFactRaw {
-                qualified_name: decl_logical_qualified_name(&module_path, &name),
+                qualified_name: decl_qualified_name(&module_path, &name),
                 name,
                 kind,
                 node: item.clone(),
