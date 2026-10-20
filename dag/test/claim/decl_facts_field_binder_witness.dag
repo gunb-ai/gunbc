@@ -165,3 +165,14 @@ test fn concept_index_reads_coproduct_arms_with_named_fields() -> Bool {
   let fs = concept_fields(qn: "v2.test.claim.concept_index_enumeration.concept_index_enumeration.ConceptIndexWitnessCoproduct")
   count(fs) == 2 && has_field(fields: fs, fname: "NullaryArm", tname: "coproduct_nullary_payload") && has_field(fields: fs, fname: "NamedFieldArm", tname: "{ alpha: String, beta: Bool }")
 }
+
+// RED: a literal default node with MORE than one child is malformed -- the extra child is never
+// silently dropped, so the first child's spelling is not read as the literal. CONTROL: the same
+// first child alone reads as the literal, so the refusal is the overfull shape and not the atom.
+test fn an_overfull_literal_default_is_malformed_and_its_single_child_form_is_a_literal() -> Bool {
+  let second = Edge { label: Authored { name: symbol_of(text: "1") } target: atom(name: "extra") }
+  let first = Edge { label: Authored { name: symbol_of(text: "0") } target: atom(name: "true") }
+  let overfull = Node { kind: ComputationNode { behavior: Value }, children: [first, second], occurrence_id: OccurrenceSynthetic }
+  let single = Node { kind: ComputationNode { behavior: Value }, children: [first], occurrence_id: OccurrenceSynthetic }
+  render_default(d: optional_present(value: overfull)) == "=MALFORMED" && render_default(d: optional_present(value: single)) == "=L:true"
+}
