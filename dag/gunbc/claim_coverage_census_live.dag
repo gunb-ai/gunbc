@@ -16,7 +16,8 @@ import gunbc.claim_coverage_census {
   ClaimCoverageHeld, ClaimCoverageDidNotHold,
   claim_coverage, claim_coverage_standing, claim_coverage_receipt_lines,
 }
-import v2.workflow.claim_coverage_census_s1_live { s1_live_block, s1_head_receipt_line }
+import v2.workflow.claim_coverage_census_s1_live { s1_compose, s1_head_receipt_line }
+import v2.workflow.claim_coverage_census_s1 { s1_block }
 import v2.workflow.claim_coverage_census_s1 {
   S1Standing, S1Held, S1DidNotHold, S1Unread,
   s1_exit_code_did_not_hold, s1_exit_code_unread
@@ -173,7 +174,15 @@ fn claim_coverage_composed_exit(
 
 fn claim_coverage_census_exit() -> CliWireResponse {
   let c = claim_coverage(inputs: ClaimCoverageInputs { sources: claim_sources(), jobs: claim_executors() })
-  let s1 = s1_live_block()
+  // THE FOLD, THEN THE BLOCK. Two functions, in the two modules they belong to: `s1_compose` performs the
+  // governed-root fold and `s1_block` turns a composition into printable lines plus a standing. This call
+  // site read `s1_live_block()` -- a name that has NEVER existed in this module or any earlier commit, in any
+  // file -- so the instrument's own entry could not resolve. Nothing noticed, because until this head no
+  // claim imported this module: the resolve pass only ever saw files that a per-file sweep happened to parse
+  // (the same invisibility the manager's import-the-live-module claim was opened to close, now proven on the
+  // entry itself rather than on a helper). The fix composes the two halves that do exist; it does not invent a
+  // third function, and the head stays stamped beside the output by this runner, not inside the fold.
+  let s1 = s1_block(s1: s1_compose())
   // THE LOCATOR IS STAMPED BESIDE THE OUTPUT BY THIS RUNNER (warm-wolf-570): the census is a pure function
   // of the tree, so the revision is the runner's business. THIS runner has git, so it asks and prints what
   // it got: `S1-CENSUS head:<rev>` from `RevisionRead`, or `S1-CENSUS head UNREADABLE: <cause>` from
