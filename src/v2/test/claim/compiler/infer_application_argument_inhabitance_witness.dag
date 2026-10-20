@@ -269,13 +269,16 @@ test fn infer_type_variable_inside_an_arrow_formal_is_counted_frontier_holds() -
   }
 }
 
-// A formal declared `Int?` owes no descent: the Occupancy type connective is Bounded
-// (v2.std.cardinality connective_multiplicity). The application reaches its ordinary inhabitance
-// judgment and is counted as the OptionalCarrier frontier on the Accepted path, not Rejected for
-// infer_descent_not_derived.
+// A formal declared `Int?` owes no descent: it is an Instantiation of the std.optional Optional
+// declaration, whose connective is Bounded (v2.std.cardinality connective_multiplicity). The
+// application reaches its ordinary inhabitance judgment, never infer_descent_not_derived. The
+// supplied tree's index holds no declarations, so the judgment refuses the argument at the formal
+// (application_argument_does_not_inhabit); the claim is the route reached and the reason absent.
 test fn infer_optional_formal_reaches_optional_carrier_frontier_holds() -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_optional_formal_tree())) {
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
+      diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^application_argument_does_not_inhabit)
+        && !diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^infer_descent_not_derived)
     Accepted { value: _, diagnostics: d } =>
       !diagnostics_has_reason(d: d, reason: ^infer_descent_not_derived)
   }

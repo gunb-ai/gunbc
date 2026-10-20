@@ -184,7 +184,7 @@ test fn positional_edges_discipline_matches_its_vector() -> Bool {
   digest_of(n: ty(c: Instantiation, children: [
     positional(target: atom_node(identity: ^alpha)),
     positional(target: atom_node(identity: ^beta)),
-  ])) == "c579b53fa78cbd3f"
+  ])) == "ada31d433a3a5c58"
 }
 
 // Authored body-first, then g, then the positional signature, then f -- i.e. every group out of

@@ -4204,7 +4204,10 @@ fn resolve_instantiation_walk_from_head(ctx: ResolveContext, n: Node, head_walk:
   match resolve_instantiation_head_kinds(ctx: ctx, head_walk: head_walk) {
     InstantiationKindsDeclared { admitted: declared } =>
       if count(declared) != count(positional_child_target_nodes(node: n)) - 1 {
-        resolve_walk_refused_one(chain: diagnostics_singleton(d: resolve_type_application_diagnostic(reason: ^resolve_reason_type_application_arity_mismatch, at: n)))
+        match resolve_optional_application_contract_refusal_optional(ctx: ctx, n: n) {
+          Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
+          Absent => resolve_walk_refused_one(chain: diagnostics_singleton(d: resolve_type_application_diagnostic(reason: ^resolve_reason_type_application_arity_mismatch, at: n)))
+        }
       } else {
         resolve_instantiation_walk_arguments(ctx: ctx, n: n, head_walk: head_walk, kinds: declared)
       }

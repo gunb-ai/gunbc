@@ -73,7 +73,7 @@ test fn onc_present_string_at_int_optional_refuses_at_the_payload() -> Bool {
 }
 
 test fn onc_nested_optional_keeps_its_depth() -> Bool {
-  onc_infer_accepted(body: "fn n(x: Int??) -> Int?? { x }\n") && onc_assembles(body: "fn n(x: Int??) -> Int? { x }\n") && !onc_infer_accepted(body: "fn n(x: Int??) -> Int? { x }\n")
+  onc_infer_accepted(body: "fn n(x: Optional<Int>?) -> Optional<Int>? { x }\n") && onc_assembles(body: "fn n(x: Optional<Int>?) -> Int? { x }\n") && !onc_infer_accepted(body: "fn n(x: Optional<Int>?) -> Int? { x }\n")
 }
 
 test fn onc_planted_error_refuses() -> Bool {
