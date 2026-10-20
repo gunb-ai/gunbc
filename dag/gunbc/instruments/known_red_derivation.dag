@@ -5,6 +5,14 @@ import std.process { ExitSuccess, ExitFailure }
 import std.optional { Absent, Optional, Present }
 import std.logic { Bool }
 import std.algebra { Cons, Empty, contains, list_snoc_item, length, trim }
+// `list_member` is the sanctioned custom-equality membership, not `std.algebra.contains`: the seed
+// intercepts `contains` and discards its `eq` argument (declared at `std.list`'s own header, tracked by
+// `gunbc.list_membership_operation_gap`), so `contains(xs:, item:, eq:)` silently falls back to whole-
+// struct structural equality. Dedup here compares `KnownRedSubject`s whose `origin` differs between the
+// wet schedule and the roster, so that fallback never collapsed a dual-membership identity and a claim
+// enrolled AND scheduled was dispatched twice. `list_member` runs `xs.any`, which does honour its
+// predicate, so the comparison below is the one actually executed.
+import std.list { list_member }
 import std.measure { byte_size, ByteSize }
 import std.shell_stream_capture { BoundedTail }
 import std.integer { int_to_decimal_string }
@@ -438,8 +446,15 @@ fn known_red_same_identity(a: WitnessIdentity, b: WitnessIdentity) -> Bool {
   a.module_path == b.module_path && a.function == b.function
 }
 
+// MEMBERSHIP ON IDENTITY, NOT ON THE WHOLE SUBJECT. The two populations carry the SAME identity with
+// DIFFERENT `origin` (a claim both wet-scheduled and enrolled appears once per source), so the collapse
+// test must compare `identity` only. It goes through `list_member` deliberately: the `contains` here would
+// take an `eq` the seed discards, leaving structural equality over `KnownRedSubject` — which includes
+// `origin` — and so it would keep both copies and dispatch the claim twice. That is the fleet's
+// `duplicated 7`: the seven Group-C identities that are both scheduled and enrolled. `list_member` runs
+// `xs.any`, whose predicate is honoured, so the comparison that executes is the one written here.
 fn known_red_seen(seen: List<KnownRedSubject>, s: KnownRedSubject) -> Bool {
-  contains(xs: seen, item: s, eq: fn(a, b) { known_red_same_identity(a: a.identity, b: b.identity) })
+  list_member(xs: seen, x: s, eq: fn(a, b) { known_red_same_identity(a: a.identity, b: b.identity) })
 }
 
 fn known_red_dedup(rest: List<KnownRedSubject>, seen: List<KnownRedSubject>) -> List<KnownRedSubject> {
