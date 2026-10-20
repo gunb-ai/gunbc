@@ -21,7 +21,8 @@ data generated_pub_mod_basenames: List<String> = [
   "evaluation_budget_consequence_generated",
   "gunbc_file_transport_generated",
   "release_locus_seed_constants_generated",
-  "native_route_seed_boundary_generated"
+  "native_route_seed_boundary_generated",
+  "emitted_build_seed_constants_generated"
 ]
 
 data generated_stage0_filenames: List<String> = [
@@ -55,6 +56,7 @@ data generated_stage0_filenames: List<String> = [
   "gunbc_file_transport_generated.rs",
   "release_locus_seed_constants_generated.rs",
   "native_route_seed_boundary_generated.rs",
+  "emitted_build_seed_constants_generated.rs",
   "main.rs"
 ]
 
