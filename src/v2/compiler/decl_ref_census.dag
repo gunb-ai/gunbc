@@ -62,6 +62,7 @@ type DeclRefCensus {
   cited: List<CitedRef>
   resolutions: List<DeclarationRefResolution>
   prose: List<ProseSpan>
+  sites: List<String>
 }
 
 fn token_is_ident(t: Token, lexeme: String) -> Bool {
@@ -576,7 +577,10 @@ fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
     ],
     right: list_append(
       left: decl_ref_refusal_lines(c: c),
-      right: fold_list(xs: unmatched_roster_rows(c: c), empty: [], cons: fn(acc, d) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] roster row matches no unresolved citation: ", d.subject)) })
+      right: list_append(
+        left: fold_list(xs: c.sites, empty: [], cons: fn(acc, s) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] site ", s)) }),
+        right: fold_list(xs: unmatched_roster_rows(c: c), empty: [], cons: fn(acc, d) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] roster row matches no unresolved citation: ", d.subject)) })
+      )
     )
   )
 }
@@ -592,7 +596,7 @@ fn top_level_namespaces(all: List<String>) -> List<String> {
   )
 }
 
-data empty_decl_ref_census: DeclRefCensus = DeclRefCensus { refused_files: [], cited: [], resolutions: [], prose: [] }
+data empty_decl_ref_census: DeclRefCensus = DeclRefCensus { refused_files: [], cited: [], resolutions: [], prose: [], sites: [] }
 
 // ONE FILE'S CONTRIBUTION, reduced at once: the driver tokenizes a file, calls this and drops the
 // tokens, so the census never holds the corpus's token lists (the whole-tree variant exhausted a
@@ -617,7 +621,19 @@ fn decl_ref_census_of_file(
       prose_spans_of(file: file, tokens: tokens, namespaces: namespaces, context: context)
     } else {
       []
-    }
+    },
+    sites: fold_list(
+      xs: cited,
+      empty: [],
+      cons: fn(acc, c) {
+        let r = resolve_declaration_ref(ref: c.ref, context: context)
+        if resolution_is_unresolved(r: r, refused: []) {
+          list_snoc_item(xs: acc, item: concat(c.file as String, " cites ", resolution_subject(r: r)))
+        } else {
+          acc
+        }
+      }
+    )
   }
 }
 
@@ -626,6 +642,7 @@ fn decl_ref_census_merge(left: DeclRefCensus, right: DeclRefCensus) -> DeclRefCe
     refused_files: left.refused_files,
     cited: list_append(left: left.cited, right: right.cited),
     resolutions: list_append(left: left.resolutions, right: right.resolutions),
-    prose: list_append(left: left.prose, right: right.prose)
+    prose: list_append(left: left.prose, right: right.prose),
+    sites: list_append(left: left.sites, right: right.sites)
   }
 }
