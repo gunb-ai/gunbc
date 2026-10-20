@@ -1,7 +1,7 @@
 module v1.tests.claim.carrier_realization_census
 
 import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_resolved }
-import v1.compiler.emit_rust { is_host_text_carrier_type, function_value_params }
+import v1.compiler.emit_rust { is_host_text_carrier_type, function_value_params, emit_native_serve_driver_main_rs }
 import v1.compiler.emit_core_support { is_type_def_item }
 import v1.compiler.infer_types { is_coproduct_type, child_type_node }
 import v1.compiler.coercion { type_realization_decision }
@@ -15,7 +15,7 @@ import v1.compiler.infer_env {
 }
 import v1.compiler.infer { declared_return_type_node, build_emit_graph_info }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
-import v1.std.core { ModuleItemTypeDeclaration, Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file, type_reference_identity }
+import v1.std.core { TextFile, ModuleItemTypeDeclaration, Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file, type_reference_identity }
 import std.coercion {
   TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, DeclarationIdentityAbsent,
   TypeReferenceIdentity, ReferenceResolvedToDeclaration, ReferenceIsTheDeclaration, ReferenceIsTypeVariableBinder, ReferenceIdentityUnavailable,
@@ -483,4 +483,50 @@ fn typed_census_from_sources(sources: List<SourceFile>) -> String {
       typed_census_tsv(rows: g.modules |> fold(init: no_typed_rows(), f: (acc, m) =>
         concat(acc, typed_module_rows(m: m, type_decls: type_decls, si: result.source_indices))))
   }
+}
+
+// THE EMITTED SERVE MAIN'S TWO ORDERINGS (v1.compiler.emit_rust emit_native_serve_driver_main_rs), read off the text before
+// the first `TcpListener::bind`, the one site the order is decided at. A driver that declares native_serve_startup realizes its
+// first worker -- which runs the startup fold, within its own startup_deadline -- BEFORE the bind, so a self-check that refuses
+// never becomes reachable; a driver that declares none is emitted unchanged: bind first, realize after, on the request deadline.
+fn crc_serve_before_bind(startup: Bool) -> String {
+  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: startup, startup_bound: false)
+  match (file.content |> split(delimiter: "TcpListener::bind((")).first() {
+    Present { value: head } => head
+    Absent => ""
+  }
+}
+
+test fn a_startup_entry_realizes_its_worker_before_it_binds_and_bounds_it_by_the_startup_deadline() -> Bool {
+  let head = crc_serve_before_bind(startup: true)
+  string_contains(s: head, pattern: "realize_generation(&stuck, ready_within)") && string_contains(s: head, pattern: "contract.startup_deadline")
+}
+
+test fn a_driver_with_no_startup_binds_before_it_realizes_its_worker_on_the_request_deadline() -> Bool {
+  let head = crc_serve_before_bind(startup: false)
+  !string_contains(s: head, pattern: "realize_generation(&stuck") && !string_contains(s: head, pattern: "startup_deadline")
+}
+
+test fn a_declared_startup_bound_replaces_the_contracts_default_in_the_readiness_wait() -> Bool {
+  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: true, startup_bound: true)
+  match (file.content |> split(delimiter: "TcpListener::bind((")).first() {
+    Present { value: head } => string_contains(s: head, pattern: "second_count(native_serve_startup_bound())") && !string_contains(s: head, pattern: "second_count(contract.startup_deadline.clone())")
+    Absent => false
+  }
+}
+
+fn crc_realize_generation_body(startup: Bool) -> String {
+  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: startup, startup_bound: false)
+  match (file.content |> split(delimiter: "fn realize_generation(")).last() {
+    Present { value: tail } => tail
+    Absent => ""
+  }
+}
+
+test fn a_startup_refusal_is_classified_from_its_own_channel_and_reads_no_shared_state_after_the_wait() -> Bool {
+  let body = crc_realize_generation_body(startup: true)
+  string_contains(s: body, pattern: "started_rx.recv_timeout(ready_within).is_err()")
+    && !string_contains(s: body, pattern: "AtomicBool")
+    && !string_contains(s: body, pattern: "started.load")
+    && !string_contains(s: body, pattern: "started_flag")
 }
