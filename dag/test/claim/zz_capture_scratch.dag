@@ -1,8 +1,0 @@
-from gunbc.compile_census_probe require census_verdict, total_blocking_census
-from std.process require ProcessExit
-
-fn capture_probe() -> ProcessExit {
-  let bound = 3
-  let label = "three"
-  census_verdict(census: total_blocking_census(source: "fn main() {}"), holds: fn(n) { n == bound || label == "x" })
-}
