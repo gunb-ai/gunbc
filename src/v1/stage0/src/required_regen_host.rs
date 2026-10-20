@@ -8103,6 +8103,93 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
             vec![s("src/v1/stage0/src/v1_rt.rs")]
         );
     }
+
+    /// LINE-STOP gunbc#14493 (a642bb2194a): a `.dag` edited on the branch whose mirror was taken
+    /// from main at merge. The diff names the `.dag` and NOT the mirror (the mirror equals main),
+    /// and the affected-set bound must still name that mirror, because the bound is derived from
+    /// the edited AUTHORITY, never from which mirrors moved.
+    #[test]
+    fn a_dag_edit_whose_mirror_equals_main_still_bounds_to_that_mirror() {
+        let diff = "\
+diff --git a/dag/std/content_hash.dag b/dag/std/content_hash.dag
+--- a/dag/std/content_hash.dag
++++ b/dag/std/content_hash.dag
+@@ -1,1 +1,2 @@
+ module std.content_hash
++data planted: Int = 1
+";
+        let population = edited_population_from_diff(&workspace_root(), diff);
+        assert_eq!(population.edited_modules, vec![s("std.content_hash")]);
+        assert!(
+            population.unlocatable.is_empty(),
+            "{:?}",
+            population.unlocatable
+        );
+        assert!(
+            population.non_dag_paths.is_empty(),
+            "no mirror is in the diff"
+        );
+        let edges = vec![(s("std.dependent"), s("std.content_hash"))];
+        let compared: Vec<(String, String)> = [
+            ("std.content_hash", "std_content_hash.rs"),
+            ("std.dependent", "std_dependent.rs"),
+            ("std.unrelated", "std_unrelated.rs"),
+        ]
+        .iter()
+        .map(|(m, b)| (s(m), s(b)))
+        .collect();
+        let bound = render_affected_set_bound(
+            &roots(),
+            &population.edited_modules,
+            &population.unlocatable,
+            &edges,
+            &compared,
+        )
+        .expect("the bound answers");
+        assert_eq!(bound.arm, "AffectedMirrors", "{}", bound.line);
+        assert!(
+            bound.members.contains(&s("std_content_hash.rs")),
+            "{:?}",
+            bound.members
+        );
+        assert!(
+            bound.members.contains(&s("std_dependent.rs")),
+            "{:?}",
+            bound.members
+        );
+        assert!(
+            !bound.members.contains(&s("std_unrelated.rs")),
+            "{:?}",
+            bound.members
+        );
+    }
+
+    /// The same shape on the emitter's own source: `src/v1/05_emit_rust.dag` is module
+    /// `v1.compiler.emit_rust`, under a generation-input prefix, so the answer is the whole
+    /// population (what heal answered on a642bb2194a), not a subset.
+    #[test]
+    fn an_emitter_dag_edit_whose_mirror_equals_main_bounds_to_the_whole_population() {
+        let edited = vec![s("v1.compiler.emit_rust")];
+        let compared = vec![(s("v1.compiler.emit_rust"), s("v1_compiler_emit_rust.rs"))];
+        let bound = render_affected_set_bound(&roots(), &edited, &[], &[], &compared)
+            .expect("the bound answers");
+        assert_eq!(bound.arm, "WholePopulation", "{}", bound.line);
+    }
+
+    /// DOCUMENTS DECLARED PRECONDITION 3 of `v2.workflow.required_regen` (`RegenEmissionScope`):
+    /// a scoped round never compares a mirror OUTSIDE the bound, so a mirror committed stale for
+    /// an unedited `.dag` (a merge that took one side) is not selected. Only an unscoped
+    /// adjudication discovers it, and that gate is the withdrawn lane
+    /// (`gunbc.rung_drop` `v1_required_lanes_withdrawn`).
+    #[test]
+    fn a_scoped_round_does_not_select_a_stale_mirror_outside_the_bound() {
+        let committed = vec![s("std_content_hash.rs"), s("std_stale_outside.rs")];
+        let scope = RegenEmissionScope::Affected {
+            members: vec![s("std_content_hash.rs")],
+        };
+        let selected = scope_selection(&scope, &committed).expect("selects");
+        assert_eq!(selected, vec![s("std_content_hash.rs")]);
+    }
 }
 
 // ---------------------------------------------------------------------------
