@@ -1,0 +1,153 @@
+module v2.workflow.outside_discovery_roots_census_live
+
+// THE LIVE ENTRY for the outside-discovery-roots census: it performs the ONE effect (ask git which paths
+// the index tracks) and hands the listing to the pure census, which turns each path into a typed standing.
+// The split is the one the S1 census proved: a claim cannot perform its own effect (the interpreter refuses
+// with "the claim runs no effectful operation: every effect is supplied through the hermetic envelope"), so
+// the capture lives here, in the function the runner calls, and every assertion stays pure over the listing
+// this function returns.
+//
+// ROUTE, and where it cannot go (warm-wolf-570's wording ruling; DESIGN §5 calls "never" the trap):
+// this path runs on the interpreted live route, which sits under C4-E's declared drop --
+// `v2.workflow.floor_pure_producer_share`'s fill-debt row names the same cause (`acquisition_test_markers`
+// is interpreted; trigger: the host-native marker read on the C4-E native route). This census cannot join
+// the native lane until the file list is supplied to the native entry as an input (the same move as the
+// stamped head) or a native git read is admitted. It does not fabricate an answer when git is unavailable:
+// the census answers ListingUnread, and the runner exits on the no-observation code, never as a clean
+// census over an empty population (§5: an unreadable input is typed, located, countable, and outranks a
+// finding).
+//
+// THE LOCATOR IS NOT AN INPUT. The census output is a pure function of the index listing; the revision it
+// describes is stamped beside the output by whoever runs it (head_stamp_line below), exactly as the S1
+// census has it -- which is also the move that would let a native runner supply the listing as an input.
+
+import std.types { String, Bool, List, Int }
+import std.optional { Optional, Absent, Present }
+import std.algebra { Cons, Empty, is_empty, trim, reverse }
+import v2.std.text { Char, string_split }
+import gunbc.command_runner { run_shell_command_capture, CommandTransport }
+import extdeps.exec.command { LocalExec }
+import extdeps.git { git_ls_files_command }
+import v2.workflow.outside_discovery_roots_census {
+  OutsideRootsStanding,
+  InsideGovernedTree,
+  OutsideDiscoveryRoots,
+  NotAClaimFile,
+  ListingUnread,
+  census_rows,
+  outside_roots_findings,
+  findings_under_note_subject,
+  findings_outside_note_subject,
+  listing_unread_row,
+  listing_is_unread,
+  outside_roots_receipt_lines,
+  outside_roots_header_lines
+}
+
+// The checkout the index is asked in. Same convention as the S1 census's live route.
+data census_checkout_dir: String = "."
+
+// The claim-file pathspec. A pattern, not a list: the population is whatever the index tracks under it,
+// so nothing is transcribed (§6).
+data claim_file_pathspec: String = "*.dag"
+
+// THE CAPTURE. git's own answer, or a typed refusal -- never an empty listing standing in for a failure.
+type TrackedListing
+  = ListingRead { paths: List<String> }
+  | ListingRefused { cause: String }
+
+fn tracked_claim_listing() -> TrackedListing {
+  match run_shell_command_capture(
+    command: git_ls_files_command(repository_dir: census_checkout_dir, pathspec: claim_file_pathspec),
+    transport: LocalExec
+  ) {
+    ProcessOutputPresent { text: text } => listing_from_captured_text(text: text)
+    ProcessOutputAbsent => ListingRefused { cause: "the index could not be asked" }
+    ProcessRefused { exit_code: exit_code, stderr: stderr } =>
+      ListingRefused { cause: concat("the index refused (exit ", concat(to_string(exit_code), concat("): ", trim(s: stderr)))) }
+  }
+}
+
+// THE DECISION, PURE, SO IT CAN BE REFUSED. An executed-but-silent transport gave no observation:
+// "nothing is tracked" and "the transport said nothing" are different claims, and only the second is what
+// an empty stdout licenses -- so it refuses rather than handing the census an empty population that would
+// read as a clean census. Split out of the capture so a claim can put an answer in its hand (the capture
+// itself can only be exercised by the real route).
+fn listing_from_captured_text(text: String) -> TrackedListing {
+  let body = trim(s: text)
+  if body != "" {
+    ListingRead { paths: listing_paths(text: body) }
+  } else {
+    ListingRefused { cause: "the index returned no listing at all" }
+  }
+}
+
+// git prints one path per line; the trailing newline is not a path, and a field that is only whitespace is
+// the listing's own line ending rather than a tracked file. One fold, prepending a singleton and reversed
+// once -- the cost shape DESIGN §6 asks for, the same one the S1 census uses.
+data newline_char: Char = 10
+
+fn listing_paths(text: String) -> List<String> {
+  let fields = string_split(source: text, delimiter: Cons { head: newline_char, tail: Empty {} })
+  let kept = fold(
+    fields,
+    init: [],
+    f: fn(acc, field) {
+      let path = trim(s: field)
+      if path != "" {
+        concat([path], acc)
+      } else {
+        acc
+      }
+    }
+  )
+  reverse(kept)
+}
+
+// The census, composed: rows, findings, refusal, receipt. Pure over the listing the capture handed back.
+type OutsideRootsCensusOutput {
+  standing_rows: List<OutsideRootsStanding>,
+  findings: List<String>,
+  note_vouched: List<String>,
+  undeclared: List<String>,
+  unread: Bool,
+  lines: List<String>
+}
+
+fn outside_roots_census(listing: TrackedListing) -> OutsideRootsCensusOutput {
+  match listing {
+    ListingRefused { cause: cause } => {
+      let rows = [listing_unread_row()]
+      OutsideRootsCensusOutput {
+        standing_rows: rows,
+        findings: [],
+        note_vouched: [],
+        undeclared: [],
+        unread: true,
+        lines: concat(outside_roots_header_lines(), [concat("OUTSIDE-DISCOVERY-ROOTS UNREAD: ", cause)])
+      }
+    }
+    ListingRead { paths: paths } => {
+      let rows = census_rows(listing: paths)
+      let findings = outside_roots_findings(rows: rows)
+      OutsideRootsCensusOutput {
+        standing_rows: rows,
+        findings: findings,
+        note_vouched: findings_under_note_subject(findings: findings),
+        undeclared: findings_outside_note_subject(findings: findings),
+        unread: listing_is_unread(rows: rows),
+        lines: concat(outside_roots_header_lines(), outside_roots_receipt_lines(findings: findings))
+      }
+    }
+  }
+}
+
+// THE LOCATOR, stamped beside the output by the runner. A revision that could not be read stays a typed
+// absence; nothing here invents one.
+fn head_stamp_line(revision: String) -> String {
+  if revision != "" {
+    concat("OUTSIDE-DISCOVERY-ROOTS head: ", revision)
+  } else {
+    "OUTSIDE-DISCOVERY-ROOTS head: no revision supplied"
+  }
+}

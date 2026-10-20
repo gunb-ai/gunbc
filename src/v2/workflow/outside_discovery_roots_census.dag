@@ -1,0 +1,172 @@
+module v2.workflow.outside_discovery_roots_census
+
+// THE OUTSIDE-DISCOVERY-ROOTS CENSUS. One question: which tracked claim files can NO governed acquirer
+// see? The answer is a TYPED STANDING computed from the layout authority, never a transcription of a
+// listing (§6: "name the instrument, never transcribe its output" -- twelve paths copied into source
+// would rot the moment one is renamed, and the census would pass by agreeing with itself).
+//
+// WHY A STANDING AND NOT AN ENUMERATION OF ABSENT ANSWERS (warm-wolf-570's ruling). The repo already
+// declares this population: `v1_claim_scoped_witness_batch_deleted_note` in gunbc.ci.ci_layer_roots states
+// that the entries under src/v1/tests/claim have no executing consumer, that their stage0 emissions
+// "compile into the seed crate, which is not execution", and what restores them ("one prepared subject
+// spanning dag, src/v1 and src/v2"). A census that answered Absent twelve times would re-derive one call's
+// fact twelve times and would be a claim about twelve strings rather than about the MODEL. The standing
+// here says the stronger thing: a path is OutsideDiscoveryRoots BECAUSE the layout admits only two
+// governed trees, so git lists it while every governed reader refuses it, for one reason. The RED is the
+// listed paths, and dropping one from the listing makes the census name exactly it.
+//
+// WHY THE ENUMERATION COMES FROM `git ls-files`. `v2.cli.repository_layout repository_tree_of_root_argument`
+// matches over [V2Tree, DagTree] and nothing else, so a tree outside those two can never be a
+// --source-root and no discovery walk will ever list it -- the tree is not merely unbound today, it is
+// unrepresentable in the layout model (the mechanical cause of the S1 census answering S1InputsUnread for
+// roots under src/v1). `extdeps.git git_ls_files_command` asks the index instead; it is an argv builder
+// beside its siblings and reuses the already-declared `git_ls_files_external_authority_anchor` rather
+// than adding an anchor.
+//
+// GRAIN. One row per tracked .dag FILE, at path grain. Claim identities are deliberately NOT rows: a
+// claim inside an unacquirable file cannot be read by any governed marker route, so stating identities
+// would assert more than the instrument can observe. The file population is reported here and the note
+// owns the restoration.
+//
+// NO COUNT LITERALS (§5/§6). Every number is derived from the listing handed to the census, and the
+// population is stated as a PREDICATE over paths (the subject of the note it cites), not as a snapshot of
+// what the tree contains today.
+
+import std.types { String, Bool, List }
+import std.optional { Optional, Absent, Present }
+import std.algebra { is_empty, list_map }
+import v2.cli.repository_layout { repository_module_file_of_path, repository_tree_directory }
+
+// THE STANDING. Four states, each a decision the census can actually make from its inputs:
+//   InsideGovernedTree    -- the layout owns the path; a governed reader can acquire it. Not a finding.
+//   OutsideDiscoveryRoots -- tracked, a .dag, and the layout owns NO tree for it. THE FINDING.
+//   NotAClaimFile         -- outside the trees but not a claim file. Not a finding.
+//   ListingUnread         -- the enumeration itself could not be obtained. "Could not look" is not
+//                            "nothing to report": it refuses, and it outranks an empty census (§5).
+type OutsideRootsStanding
+  = InsideGovernedTree { path: String, tree_directory: String }
+  | OutsideDiscoveryRoots { path: String, cause: String }
+  | NotAClaimFile { path: String }
+  | ListingUnread { cause: String }
+
+// THE NOTE, cited at identity rather than paraphrased: the population is declared there and the trigger
+// that retires it is that note's own restoration clause. The census reports what the note declared.
+data v1_claim_note_identity: String = "v1_claim_scoped_witness_batch_deleted_note"
+data v1_claim_note_location: String = "gunbc.ci.ci_layer_roots"
+data outside_roots_cause: String = "tracked by the index; declared by the note; under no governed tree per v2.cli.repository_layout"
+data listing_unread_cause: String = "the tracked listing could not be obtained from the index"
+data layout_authority_identity: String = "v2.cli.repository_layout.repository_module_file_of_path"
+
+// THE POPULATION PREDICATE, spelled from the note rather than from a snapshot. The note's subject is claim
+// files under the v1 test tree; this is the one path fact the census states outright, because it is the
+// subject of the note it cites -- not a list of the files found under it.
+data note_declared_prefix: String = "src/v1/tests/claim/"
+
+fn path_is_claim_file(path: String) -> Bool {
+  path.ends_with(suffix: ".dag")
+}
+
+fn path_is_under_note_subject(path: String) -> Bool {
+  path.starts_with(prefix: note_declared_prefix)
+}
+
+// ONE ROW. The layout authority is the only thing consulted for ownership; this module carries no copy of
+// the tree list (§6b -- a second local implementation of one rule is the trigger). If a governed tree is
+// ever bound over the note's population, this call starts answering Present and the standing moves on its
+// own, which is the correct behaviour and the reason the standing is computed rather than written down.
+fn outside_roots_row(path: String) -> OutsideRootsStanding {
+  match repository_module_file_of_path(path: path) {
+    Present { value: file } =>
+      InsideGovernedTree { path: path, tree_directory: repository_tree_directory(tree: file.tree) }
+    Absent =>
+      if path_is_claim_file(path: path) {
+        OutsideDiscoveryRoots { path: path, cause: outside_roots_cause }
+      } else {
+        NotAClaimFile { path: path }
+      }
+  }
+}
+
+// THE CENSUS: rows in, standings out. Nothing is skipped and nothing is invented -- a path handed in
+// appears exactly once in the output, in whatever state the layout puts it in.
+fn census_rows(listing: List<String>) -> List<OutsideRootsStanding> {
+  list_map(xs: listing, f: fn(path) { outside_roots_row(path: path) })
+}
+
+// THE FINDINGS. Only OutsideDiscoveryRoots rows are findings; the other states are the census's answers
+// about the rest of the listing, not defects.
+fn outside_roots_findings(rows: List<OutsideRootsStanding>) -> List<String> {
+  let finding_rows = filter(
+    xs: rows,
+    predicate: fn(row) {
+      match row {
+        OutsideDiscoveryRoots { path: _, cause: _ } => true
+        InsideGovernedTree { path: _, tree_directory: _ } => false
+        NotAClaimFile { path: _ } => false
+        ListingUnread { cause: _ } => false
+      }
+    }
+  )
+  list_map(
+    xs: finding_rows,
+    f: fn(row) {
+      match row {
+        OutsideDiscoveryRoots { path: path, cause: _ } => path
+        InsideGovernedTree { path: path, tree_directory: _ } => path
+        NotAClaimFile { path: path } => path
+        ListingUnread { cause: _ } => ""
+      }
+    }
+  )
+}
+
+// FINDINGS THE NOTE DOES NOT VOUCH FOR. A finding outside the note's declared subject is a NEW population
+// and must not be absorbed under the note's authority -- it is reported separately so it cannot quietly
+// become "covered by the note" the way a widening would.
+fn findings_outside_note_subject(findings: List<String>) -> List<String> {
+  findings |> filter(fn(path) { !(path_is_under_note_subject(path: path)) })
+}
+
+// FINDINGS THE NOTE DOES VOUCH FOR: the declared population, as computed rather than transcribed.
+fn findings_under_note_subject(findings: List<String>) -> List<String> {
+  findings |> filter(fn(path) { path_is_under_note_subject(path: path) })
+}
+
+// THE REFUSAL. An unreadable listing is not an empty one; it outranks a clean census and reports its cause.
+fn listing_unread_row() -> OutsideRootsStanding {
+  ListingUnread { cause: listing_unread_cause }
+}
+
+fn listing_is_unread(rows: List<OutsideRootsStanding>) -> Bool {
+  any(xs: rows, predicate: fn(row) {
+    match row {
+      ListingUnread { cause: _ } => true
+      InsideGovernedTree { path: _, tree_directory: _ } => false
+      OutsideDiscoveryRoots { path: _, cause: _ } => false
+      NotAClaimFile { path: _ } => false
+    }
+  })
+}
+
+// THE RECEIPT. One line per finding, at the grain the note names. No count is transcribed: the line count
+// IS the population, produced by the fold over the listing handed in.
+fn outside_roots_receipt_lines(findings: List<String>) -> List<String> {
+  list_map(
+    xs: findings,
+    f: fn(path) {
+      concat(
+        concat("OUTSIDE-DISCOVERY-ROOTS ", path),
+        concat(" | declared by ", concat(v1_claim_note_location, concat(":", v1_claim_note_identity)))
+      )
+    }
+  )
+}
+
+// THE LOCATOR IS NOT AN INPUT. Like the S1 census, this census is a pure function of the listing handed
+// to it; the revision it describes is stamped beside the output by whoever ran it.
+fn outside_roots_header_lines() -> List<String> {
+  [
+    concat("OUTSIDE-DISCOVERY-ROOTS census: ownership authority ", layout_authority_identity),
+    concat("OUTSIDE-DISCOVERY-ROOTS census: declared population ", concat(v1_claim_note_location, concat(":", v1_claim_note_identity)))
+  ]
+}
