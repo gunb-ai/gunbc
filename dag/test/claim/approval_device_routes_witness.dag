@@ -19,9 +19,9 @@ import gunbc.auth.approval_capability { ProposeApprove }
 import extdeps.apple.apns { ApnsProduction }
 import gunbc.auth.approval_app_attest_config { approval_app_attest_verifier, approval_app_attest_app_id, approval_app_bundle_id, AppAttestVerifierAwaitingOperator, AppAttestVerifierConfigured }
 import gunbc.auth.approval_device_crypto_realization {
-  DeviceCryptoRealization, DeviceCryptoObligation, NativeDeviceCryptoBound, DeviceCryptoHandlerReceipt, DeviceCryptoAdmitted, DeviceCryptoRefused,
+  DeviceCryptoRealization, DeviceCryptoObligation, NativeDeviceCryptoBound, NativeDeviceCryptoUnavailable, DeviceCryptoRequirement, DeviceCryptoGateOpen, DeviceCryptoGateRefused,
   P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder,
-  device_crypto_admission, approval_device_crypto_realization,
+  device_crypto_gate,
 }
 import gunbc.roadmap.roadmap_serve { roadmap_mounts_during_cutover }
 import gunbc.auth.approval_broker_serve { DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler }
@@ -33,12 +33,13 @@ import gunbc.auth.approval_broker_serve { DeviceEnrolHandler, DeviceRedeemHandle
 // configuration row names, and a claim that greened them from designed bytes would assert a
 // route nothing can reach.
 
-// The production binding, read from its row: every claim below that passes it asserts what the
-// served route answers today.
-data fx_unbound: DeviceCryptoRealization = approval_device_crypto_realization
+// An unavailable realization: the route's gate refuses before any decode beyond the wire's, store read or verifier call.
+// The production row is Bound (the gate opens and the sidecar answers); its claims live in
+// test.claim.approval_device_crypto_client_witness.
+data fx_unbound: DeviceCryptoRealization = NativeDeviceCryptoUnavailable { cause: "fixture: no native handler bound" }
 
 fn fx_bound(covered: List<DeviceCryptoObligation>) -> DeviceCryptoRealization {
-  NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture-native-handler", exact_revision: "0000000", covered: covered } }
+  NativeDeviceCryptoBound { requirement: DeviceCryptoRequirement { handler_identity: "fixture-native-handler", required: covered } }
 }
 
 data fx_now: Timestamp = "2026-09-21T12:00:00Z"
@@ -164,7 +165,7 @@ test fn the_roadmap_mounts_no_device_route() -> Bool {
 // THE VERIFIER-DEPENDENT ROUTES REFUSE 503 ON THE UNBOUND REALIZATION BEFORE ANY CRYPTO RUNS. Every
 // body here is well formed and reaches past the wire and writer gates, the verifier row is
 // configured, and each assertion/attestation/signature is bytes that would be handed to a verifier
-// -- yet all six answer the realization's own reason. The route asks device_crypto_admission before
+// -- yet all six answer the realization's own reason. The route asks device_crypto_gate before
 // it reads the enrolment store or calls a verifier, so no crypto can have started.
 data fx_unrealized: String = "native device-crypto realization is unavailable"
 
@@ -220,14 +221,14 @@ fn writer_route_refused_unrealized(name: String, route: fn(String) -> DeviceRout
 // THE RECEIPT MUST COVER THE NAMED POPULATION, THE P-256 ORDER FACT INCLUDED: a bound handler whose
 // receipt covers every verifier but not the base-point order is refused 503 naming that witness and
 // its (n-1)*G control; the full receipt is admitted with its identity and revision.
-test fn a_bound_handler_without_the_base_point_order_fact_is_refused() -> Bool {
-  (match device_crypto_admission(r: fx_bound(covered: [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification])) {
-    DeviceCryptoRefused { status: s, reason: why } => s == 503 && string_contains(s: why, pattern: "the_base_point_has_order_n") && string_contains(s: why, pattern: "(n-1)*G != infinity")
-    DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } => false
+test fn a_bound_requirement_without_the_base_point_order_fact_is_refused() -> Bool {
+  (match device_crypto_gate(r: fx_bound(covered: [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification])) {
+    DeviceCryptoGateRefused { status: s, reason: why } => s == 503 && string_contains(s: why, pattern: "the_base_point_has_order_n") && string_contains(s: why, pattern: "(n-1)*G != infinity")
+    DeviceCryptoGateOpen { requirement: _ } => false
   })
-    && (match device_crypto_admission(r: fx_bound(covered: [P256BasePointOrder, AppAttestAssertionVerification, AppAttestAttestationVerification, P256SignatureVerification])) {
-      DeviceCryptoAdmitted { handler_identity: h, exact_revision: v } => (h as String) == "fixture-native-handler" && (v as String) == "0000000"
-      DeviceCryptoRefused { status: _, reason: _ } => false
+    && (match device_crypto_gate(r: fx_bound(covered: [P256BasePointOrder, AppAttestAssertionVerification, AppAttestAttestationVerification, P256SignatureVerification])) {
+      DeviceCryptoGateOpen { requirement: q } => (q.handler_identity as String) == "fixture-native-handler"
+      DeviceCryptoGateRefused { status: _, reason: _ } => false
     })
 }
 

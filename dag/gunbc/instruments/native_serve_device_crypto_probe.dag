@@ -16,8 +16,8 @@ import gunbc.native_serve_probe_plan {
 }
 import extdeps.crypto.signature { SignatureVerified, SignatureInvalid }
 import gunbc.auth.approval_device_crypto_realization {
-  DeviceCryptoAdmission, NativeDeviceCryptoBound, DeviceCryptoHandlerReceipt, device_crypto_admission, device_crypto_obligations,
-  DeviceCryptoExpectation, DeviceCryptoEchoJoined, DeviceCryptoEchoRefused, device_crypto_echo_join, device_crypto_handler_identity,
+  DeviceCryptoAdmission, DeviceCryptoHandlerReceipt, device_crypto_receipt_admission, device_crypto_obligations,
+  DeviceCryptoExpectation, DeviceCryptoRequirement, DeviceCryptoEchoJoined, DeviceCryptoEchoRefused, device_crypto_echo_join, device_crypto_handler_identity,
 }
 import gunbc.auth.approval_device_crypto_client { SidecarAnswered, SidecarFailed, signature_from_answer }
 import gunbc.auth.approval_device_crypto_wire {
@@ -229,7 +229,7 @@ fn crypto_case_failure(c: DeviceCryptoProbeCase, response: String) -> String {
 
 // The admission the broker would hold: the realization is bound over every obligation with the fixture receipt.
 fn probe_admission() -> DeviceCryptoAdmission {
-  device_crypto_admission(r: NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "probe", exact_revision: "0000000", covered: device_crypto_obligations } })
+  device_crypto_receipt_admission(receipt: DeviceCryptoHandlerReceipt { handler_identity: "probe", exact_revision: "0000000", covered: device_crypto_obligations }, required: device_crypto_obligations)
 }
 
 // THE ECHO THE REAL BINARY WROTE, JOINED TO AN EXPECTATION. The positive control: the expectation naming the digest the
@@ -240,15 +240,15 @@ fn echo_join_failure(c: DeviceCryptoProbeCase, body: String) -> String {
   match decode_device_crypto_echoed_answer(text: body) {
     WireRefused { at: a, cause: x } => concat(c.identity, concat(": the answer carries no decodable echo at ", concat(a as String, concat(": ", x as String))))
     WireDecoded { value: e } =>
-      let own = DeviceCryptoExpectation { handler_identity: device_crypto_handler_identity, deployed_digest: e.echo.exact_revision }
-      let other = DeviceCryptoExpectation { handler_identity: device_crypto_handler_identity, deployed_digest: concat(e.echo.exact_revision as String, "0") as NonEmptyStr }
-      let joins_own = match device_crypto_echo_join(expectation: own, echo: e.echo) { DeviceCryptoEchoJoined => true  DeviceCryptoEchoRefused { cause: _ } => false }
-      let refuses_other = match device_crypto_echo_join(expectation: other, echo: e.echo) { DeviceCryptoEchoJoined => false  DeviceCryptoEchoRefused { cause: _ } => true }
+      let own = DeviceCryptoExpectation { requirement: DeviceCryptoRequirement { handler_identity: device_crypto_handler_identity, required: device_crypto_obligations }, deployed_digest: e.echo.exact_revision }
+      let other = DeviceCryptoExpectation { requirement: DeviceCryptoRequirement { handler_identity: device_crypto_handler_identity, required: device_crypto_obligations }, deployed_digest: concat(e.echo.exact_revision as String, "0") as NonEmptyStr }
+      let joins_own = match device_crypto_echo_join(expectation: own, echo: e.echo) { DeviceCryptoEchoJoined { admission: _ } => true  DeviceCryptoEchoRefused { cause: _ } => false }
+      let refuses_other = match device_crypto_echo_join(expectation: other, echo: e.echo) { DeviceCryptoEchoJoined { admission: _ } => false  DeviceCryptoEchoRefused { cause: _ } => true }
       let refuses_each_drop = device_crypto_obligations |> all(dropped =>
         match device_crypto_echo_join(
           expectation: own,
           echo: DeviceCryptoHandlerReceipt { handler_identity: e.echo.handler_identity, exact_revision: e.echo.exact_revision, covered: e.echo.covered |> filter(o => o != dropped) },
-        ) { DeviceCryptoEchoJoined => false  DeviceCryptoEchoRefused { cause: _ } => true })
+        ) { DeviceCryptoEchoJoined { admission: _ } => false  DeviceCryptoEchoRefused { cause: _ } => true })
       let covers_all = (e.echo.covered |> count) == (device_crypto_obligations |> count)
       if !joins_own { concat(c.identity, ": the expectation naming the echoed digest did not join") }
       else if !refuses_other { concat(c.identity, ": an expectation naming another digest joined the echo") }
