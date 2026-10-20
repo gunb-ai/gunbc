@@ -666,10 +666,15 @@ fn serialize_concrete_syntax_layout_to_source_string(
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: partial, diagnostics: ad } =>
-          bind_outcome(
-            o: serialize_concrete_syntax_layout_item(target: target, item: item),
-            f: fn(text) { Accepted { value: target_text_seq(acc: partial, next: text), diagnostics: ad } }
-          )
+          match serialize_concrete_syntax_layout_item(target: target, item: item) {
+            Accepted { value: text, diagnostics: td } =>
+              Accepted {
+                value: target_text_seq(acc: partial, next: text),
+                diagnostics: diagnostics_merge(outer: ad, inner: td)
+              }
+            Rejected { diagnostics: r } =>
+              Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+          }
       }
     }
   )
@@ -679,15 +684,26 @@ fn serialize_concrete_syntax_layout_item(target: TargetModel, item: ConcreteSynt
   match item {
     LayoutToken { token: tok } => serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: [tok])
     LayoutNest { unit: unit, items: inner } =>
-      match map_get_checked(target.binding_spellings, unit) {
-        Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
-          bind_outcome(
-            o: serialize_concrete_syntax_layout_to_source_string(target: target, items: inner),
-            f: fn(body) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: body)) }
-          )
-        Accepted { value: Absent, diagnostics: _ } => outcome_rejected(translate_layout_unit_unspelled_diagnostic(unit: unit))
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      }
+      nest_by_spelled_unit(
+        target: target,
+        unit: unit,
+        body: fn() { serialize_concrete_syntax_layout_to_source_string(target: target, items: inner) }
+      )
+  }
+}
+
+// The one rule both routes nest by: the unit must be spelled by the target (an unspelled unit refuses), and the
+// body is built only once it is, then wrapped in the std.layout nest.
+fn nest_by_spelled_unit(target: TargetModel, unit: Symbol, body: fn() -> Outcome<TargetText>) -> Outcome<TargetText> {
+  match map_get_checked(target.binding_spellings, unit) {
+    Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
+      bind_outcome(
+        o: body(),
+        f: fn(text) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: text)) }
+      )
+    Accepted { value: Absent, diagnostics: _ } =>
+      outcome_rejected(translate_layout_unit_unspelled_diagnostic(unit: unit))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
@@ -1288,16 +1304,11 @@ fn serialize_relation_row_nested_bounded(
   unit: Symbol,
   tokens: List<Node>
 ) -> Outcome<TargetText> {
-  match map_get_checked(target.binding_spellings, unit) {
-    Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
-      bind_outcome(
-        o: serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens),
-        f: fn(body) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: body)) }
-      )
-    Accepted { value: Absent, diagnostics: _ } =>
-      outcome_rejected(translate_layout_unit_unspelled_diagnostic(unit: unit))
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
+  nest_by_spelled_unit(
+    target: target,
+    unit: unit,
+    body: fn() { serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens) }
+  )
 }
 
 // A nest's unit must be spelled by the target. The binding lookup's fallback to the symbol's own
