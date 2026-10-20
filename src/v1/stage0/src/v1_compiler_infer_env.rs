@@ -3127,6 +3127,13 @@ pub fn type_reference_declaration_reading(
     }
 }
 
+pub fn is_type_variable_name(name: String) -> bool {
+    (((((name.clone() == "T".to_string()) || (name.clone() == "K".to_string()))
+        || (name.clone() == "V".to_string()))
+        || (name.clone() == "MappedElement".to_string()))
+        || (name.clone() == "FoldAccumulator".to_string()))
+}
+
 pub fn kernel_or_unidentified(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3145,10 +3152,16 @@ pub fn kernel_or_unidentified(
                         name: nm.clone(),
                     })
                 } else {
-                    Rc::new(TypeReferenceDeclarationReading::TypeReferenceUnidentified {
-                        authored: authored.clone(),
-                        resolved: resolved.clone(),
-                    })
+                    if node_is_kernel_mint(n.clone()) {
+                        Rc::new(TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
+                            name: nm.clone(),
+                        })
+                    } else {
+                        Rc::new(TypeReferenceDeclarationReading::TypeReferenceUnidentified {
+                            authored: authored.clone(),
+                            resolved: resolved.clone(),
+                        })
+                    }
                 }
             }
         }
