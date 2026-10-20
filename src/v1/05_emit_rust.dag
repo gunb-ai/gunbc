@@ -457,7 +457,7 @@ fn render_rust_leaf_declaration_type(n: Node, shared_types: Set<String>, source_
   } else if leaf_is_conj {
     if n.type_annotation != none {
       match n.children |> first {
-        Present { value: base } => render_rust_type(n: base, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+        Present { value: base } => rust_carrier_optional_wrap(n: n, rendered: render_rust_type(n: base, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
         Absent => coerce_primitive_type(decision: type_realization_decision(target: Rust, dag_name: "Refined", provenance: DeclarationIdentityAbsent), dag_name: "Refined")
       }
     } else if n.ident_span == none {
