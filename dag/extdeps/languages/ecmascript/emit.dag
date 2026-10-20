@@ -88,11 +88,3 @@ fn es_property_key(key: String) -> String {
 fn es_separated(e: EsExpr) -> String {
   concat(es_text(e: e), ",")
 }
-
-// A CallExpression whose argument list is still open because the next argument is an ArrayLiteral that
-// continues on following lines: `callee(a, b,`. es_call_array_end closes it.
-fn es_call_open(callee: String, leading: List<EsExpr>) -> String {
-  join([callee, "(", join(map(leading, x => es_text(e: x)), ", "), ","], "")
-}
-
-data es_call_array_end: String = "])"

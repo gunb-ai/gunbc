@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.ecmascript.emit {
   EsExpr, EsString, EsInt, EsNull, EsCall, EsArray, EsPropertyPath, es_text, es_member, es_member_separated,
-  es_property_key, es_separated, es_call_open, es_call_array_end,
+  es_property_key, es_separated,
   es_lbrace, es_rbrace, es_lbracket, es_rbracket, es_lparen, es_rparen
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -154,6 +154,14 @@ type RetainedJs {
 
 type DeckSegment = SegmentRetained { block: RetainedJs } | SegmentGenerated { content: DeckContent }
 
+// DECK-LOCAL GLUE, NOT AN ECMA-262 FORM: a call whose argument list is still open because the next argument is an ArrayLiteral that
+// continues on following lines: `callee(a, b,`. call_array_end closes it.
+fn call_open(callee: String, leading: List<EsExpr>) -> String {
+  join([callee, "(", join(map(leading, x => es_text(e: x)), ", "), ","], "")
+}
+
+data call_array_end: String = "])"
+
 fn str(s: String) -> EsExpr {
   EsString { value: s }
 }
@@ -206,9 +214,9 @@ fn part_wire(p: CodePart) -> String {
 
 fn line_prefix(l: CodeLine) -> String {
   match l {
-    SourceLine { n: n, rows: _ } => es_call_open(callee: "ln", leading: [num(n: n)])
-    RemovedLine { n: n, rows: _ } => es_call_open(callee: "diffRm", leading: [num(n: n)])
-    AddedLine { n: n, rows: _ } => es_call_open(callee: "diffAdd", leading: [num(n: n)])
+    SourceLine { n: n, rows: _ } => call_open(callee: "ln", leading: [num(n: n)])
+    RemovedLine { n: n, rows: _ } => call_open(callee: "diffRm", leading: [num(n: n)])
+    AddedLine { n: n, rows: _ } => call_open(callee: "diffAdd", leading: [num(n: n)])
     BlankLine { n: n } => call(callee: "blank", arguments: [num(n: n)])
   }
 }
@@ -242,7 +250,7 @@ fn listing_head(l: CodeLine, width: Int) -> String {
 }
 
 fn listing_rows(head: String, rows: List<List<CodePart>>) -> String {
-  concat(join(map(enumerate(rows), pair => concat(if pair.first == 0 { head } else { spaces(n: text_width(s: head)) }, join(map(pair.second, p => part_wire(p: p)), ", "))), ",\n"), es_call_array_end)
+  concat(join(map(enumerate(rows), pair => concat(if pair.first == 0 { head } else { spaces(n: text_width(s: head)) }, join(map(pair.second, p => part_wire(p: p)), ", "))), ",\n"), call_array_end)
 }
 
 fn listing_line(l: CodeLine, lines: List<CodeLine>) -> String {
