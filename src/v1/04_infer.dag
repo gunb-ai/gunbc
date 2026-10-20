@@ -11560,6 +11560,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           Absent => []
         }
     }
+  } else if instantiated_struct_fields != none {
+    match instantiated_struct_fields {
+      Present { value: inst_fields } => inst_fields
+      Absent => []
+    }
   } else {
     match presence_variant_owner {
       Present { value: variant_owner } =>
@@ -11702,7 +11707,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
   let owner_seed_subst = match expected {
     Present { value: ex } =>
       let ex_resolved = ex
-      if match owner_for_params { Present { value: owner } => authored_name_at(source_indices: scope.type_env.source_indices, node: owner) == type_node_label(n: ex_resolved, source_indices: scope.type_env.source_indices)  Absent => false } {
+      if match owner_for_params { Present { value: owner } => (match lookup_type_for(env: scope.type_env, node: ex_resolved) { Present { value: ex_decl } => ex_decl.span == owner.span  Absent => false })  Absent => false } {
         fold(uninstantiated_owner_param_names |> enumerate, init: empty_map(), f: (acc, pair) =>
           match ex_resolved.children |> skip(pair.first) |> first {
             Present { value: arg } => map_insert(acc, pair.second, child_type_node(ch: arg))
@@ -11772,7 +11777,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     match fv.field_declared_type {
       Present { value: ft } =>
         if (uninstantiated_owner_param_names |> count) == 0 { acc } else {
-          unify_generics(formal: match fv.field_conformance_type.inferred { Present { value: Resolved { node: rt } } => rt  _ => fv.field_conformance_type }, actual: resolved_type(n: fv.ar.typed), generic_names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, acc: acc)
+          unify_generics(formal: match ft.inferred { Present { value: Resolved { node: rt } } => rt  _ => ft }, actual: resolved_type(n: fv.ar.typed), generic_names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, acc: acc)
         }
       Absent => acc
     }
