@@ -57,9 +57,9 @@ fn rmd_target(row: TargetEmitHostRuntimeRow) -> TargetModel {
   rust_semantic_decl_target_model_with_runtime(runtime_row: row)
 }
 
-fn rmd_source(row: TargetEmitHostRuntimeRow) -> Medium<String> {
+fn rmd_source(row: TargetEmitHostRuntimeRow, imports: List<Symbol>) -> Medium<String> {
   match emit_semantic_type_decl(
-    members: [ TargetSemanticDeclMember { name: ^VERSION, literal: ^V1 } ],
+    imports: imports, members: [ TargetSemanticDeclMember { name: ^VERSION, literal: ^V1 } ],
     name: ^Point,
     params: [],
     node: rmd_point_record(),
@@ -71,8 +71,8 @@ fn rmd_source(row: TargetEmitHostRuntimeRow) -> Medium<String> {
   }
 }
 
-fn rmd_verdict_bytes(row: TargetEmitHostRuntimeRow) -> String {
-  match run_emit_host(target: rmd_target(row: row), source: rmd_source(row: row), fixture_inputs: rmd_probe_inputs()) {
+fn rmd_verdict_bytes(row: TargetEmitHostRuntimeRow, imports: List<Symbol>) -> String {
+  match run_emit_host(target: rmd_target(row: row), source: rmd_source(row: row, imports: imports), fixture_inputs: rmd_probe_inputs()) {
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
         Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
@@ -87,9 +87,14 @@ fn rmd_verdict_bytes(row: TargetEmitHostRuntimeRow) -> String {
 }
 
 test fn rust_member_decl_builds_and_reads_its_constant() -> Bool {
-  rmd_verdict_bytes(row: rust_member_decl_runtime_row()) == emit_host_octets_byte_string(octets: [0, 5, 0, 0, 0])
+  rmd_verdict_bytes(row: rust_member_decl_runtime_row(), imports: [^serde]) == emit_host_octets_byte_string(octets: [0, 5, 0, 0, 0])
 }
 
 test fn rust_member_decl_wrong_constant_is_not_reported_as_success() -> Bool {
-  rmd_verdict_bytes(row: rust_member_decl_inject_fault_runtime_row()) == emit_host_octets_byte_string(octets: [0, 4, 0, 0, 0])
+  rmd_verdict_bytes(row: rust_member_decl_inject_fault_runtime_row(), imports: [^serde]) == emit_host_octets_byte_string(octets: [0, 4, 0, 0, 0])
+}
+
+// An import the build cannot resolve must leave no success verdict: the `use` line is real source cargo reads.
+test fn rust_unresolvable_use_does_not_build() -> Bool {
+  rmd_verdict_bytes(row: rust_member_decl_runtime_row(), imports: [^gunbc_no_such_crate]) != emit_host_octets_byte_string(octets: [0, 5, 0, 0, 0])
 }

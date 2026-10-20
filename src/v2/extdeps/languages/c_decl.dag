@@ -15,6 +15,7 @@ import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductDecorationRule,
   TargetSemanticDeclCoproductEnumSurface,
   TargetSemanticDeclCoproductTaggedUnionSurface,
+  ImportsUnwired,
   MembersUnwired,
   TargetSemanticDeclDecorationLine,
   TargetSemanticDeclSurfaceProjection,
@@ -391,6 +392,7 @@ fn c_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
       union_field: ^c_token_union_field
     },
     member_projection: MembersUnwired,
+    import_projection: ImportsUnwired,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_all_variants_nullary,

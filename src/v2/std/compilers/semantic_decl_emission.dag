@@ -115,7 +115,15 @@ type TargetSemanticDeclSurfaceProjection {
   field_type_permit_only_int: Bool
   coproduct_layout: TargetSemanticDeclCoproductSurfaceLayout
   member_projection: TargetSemanticDeclMemberProjection
+  import_projection: TargetSemanticDeclImportProjection
 }
+
+// WHERE A TARGET PUTS A DECLARATION'S IMPORTS, the one authority for import position. `ImportsLeading` places
+// them before the declaration in the same emission; a target with no import spelling says so and an import
+// refuses, located, rather than being dropped. `path` is the imported name as the target's own grammar prints it.
+type TargetSemanticDeclImportProjection
+  = ImportsUnwired
+  | ImportsLeading
 
 // A constant a declaration carries beside its fields: `name` is the member's identifier and `literal` the
 // text of its string value (printed through the target's string-quote transform row). The member's type is
@@ -1341,6 +1349,10 @@ fn semantic_decl_surface_projection_bundle(
         target_model_named_edge(
           name: ^semantic_decl_surface_field_member_projection,
           target: semantic_decl_member_projection_node(projection: projection.member_projection)
+        ),
+        target_model_named_edge(
+          name: ^semantic_decl_surface_field_import_projection,
+          target: semantic_decl_import_projection_node(projection: projection.import_projection)
         )
       ],
       right: semantic_decl_surface_projection_coproduct_layout_extra_edges(
@@ -1356,6 +1368,28 @@ fn semantic_decl_member_projection_node(projection: TargetSemanticDeclMemberProj
     MembersInsideTypeBody => target_model_type_atom_node(identity: ^semantic_decl_members_inside_type_body)
     MembersInAssociatedBlock => target_model_type_atom_node(identity: ^semantic_decl_members_in_associated_block)
   }
+}
+
+fn semantic_decl_import_projection_node(projection: TargetSemanticDeclImportProjection) -> Node {
+  match projection {
+    ImportsUnwired => target_model_type_atom_node(identity: ^semantic_decl_imports_unwired)
+    ImportsLeading => target_model_type_atom_node(identity: ^semantic_decl_imports_leading)
+  }
+}
+
+fn decode_semantic_decl_import_projection(bundle: Node) -> Outcome<TargetSemanticDeclImportProjection> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^semantic_decl_surface_field_import_projection),
+    f: fn(id) {
+      if id == ^semantic_decl_imports_unwired {
+        outcome_accepted(value: ImportsUnwired)
+      } else if id == ^semantic_decl_imports_leading {
+        outcome_accepted(value: ImportsLeading)
+      } else {
+        outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle))
+      }
+    }
+  )
 }
 
 fn decode_semantic_decl_member_projection(bundle: Node) -> Outcome<TargetSemanticDeclMemberProjection> {
@@ -1577,6 +1611,9 @@ fn decode_semantic_decl_surface_projection_bundle(
                                           bind_outcome(
                                             o: decode_semantic_decl_member_projection(bundle: bundle),
                                             f: fn(member_projection) {
+                                          bind_outcome(
+                                            o: decode_semantic_decl_import_projection(bundle: bundle),
+                                            f: fn(import_projection) {
                                           outcome_accepted(
                                             TargetSemanticDeclSurfaceProjection {
                                               record_decoration_lines: record_decoration_lines,
@@ -1587,7 +1624,10 @@ fn decode_semantic_decl_surface_projection_bundle(
                                               enum_name_after_variants: enum_name_after_variants,
                                               field_type_permit_only_int: field_type_permit_only_int,
                                               coproduct_layout: coproduct_layout,
-                                              member_projection: member_projection
+                                              member_projection: member_projection,
+                                              import_projection: import_projection
+                                            }
+                                          )
                                             }
                                           )
                                             }
@@ -2022,6 +2062,55 @@ fn target_semantic_decl_surface_struct_nongeneric(
       )
     )
   )
+}
+
+fn target_semantic_decl_import_surface(path: Symbol) -> Node {
+  target_semantic_decl_surface_conj(
+    children: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: path)) ]
+  )
+}
+
+// The imports a declaration leads with, one arm per import projection. Under a wired target the leading edge is
+// ALWAYS present (an empty list is the nil terminator the target's nullable import list consumes), so a
+// declaration without imports prints nothing extra; under an unwired target an import refuses, located.
+fn target_semantic_decl_surface_with_imports(
+  projection: TargetSemanticDeclSurfaceProjection,
+  imports: List<Symbol>,
+  surface: Node
+) -> Outcome<Node> {
+  match projection.import_projection {
+    ImportsUnwired =>
+      if is_empty(xs: imports) {
+        outcome_accepted(value: surface)
+      } else {
+        outcome_rejected(d: Diagnostic {
+              reason: ^target_semantic_decl_imports_unwired,
+              at: node_locus(node: surface),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            })
+      }
+    ImportsLeading =>
+      outcome_accepted(
+        value: Node {
+          kind: surface.kind,
+          children: list_append(
+            left: [
+              target_semantic_decl_surface_pos(
+                target: target_semantic_decl_surface_cons_list(
+                  items: fold_list(
+                    xs: imports,
+                    empty: Empty,
+                    cons: fn(acc, path) { list_snoc_item(xs: acc, item: target_semantic_decl_import_surface(path: path)) }
+                  )
+                )
+              )
+            ],
+            right: surface.children
+          ),
+          occurrence_id: surface.occurrence_id
+        }
+      )
+  }
 }
 
 fn target_semantic_decl_member_surface(m: TargetSemanticDeclMember) -> Node {
