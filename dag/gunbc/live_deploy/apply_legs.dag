@@ -47,7 +47,7 @@ import gunbc.live_deploy.spec {
   deployment_slice_unit_path, gunbc_user_work_slice_unit_path, gunbc_repository_convergence_slice_unit_path,
   tree_sync_unit_path, gunbc_service_uid,
 }
-import gunbc.live_deploy.host_layout { instance_receipts_dir }
+import gunbc.host.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc, convergence_receipt_path, convergence_placement_entry_path }
 import gunbc.live_deploy.release_locus { release_revision_execstart_text }
 
