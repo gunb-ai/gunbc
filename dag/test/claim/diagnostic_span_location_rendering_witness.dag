@@ -148,6 +148,23 @@ data digits: List<String> = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
 // predicate: the predicate is the structural one below.
 data observed_offset_shapes: List<String> = ["m.dag:90-90", "m.dag:64-64", "m.dag:133-134", "m.dag:0-0"]
 
+// ROW 1'S POSITION, ASSERTED EXACTLY. `names_a_position` asks only that SOME digit run follow the
+// file name, and that is too weak for the policy this row witnesses: the EOF span may end either at
+// the last lexeme or at the scanner's CONSUMED position, and BOTH render as `m.dag:<line>:<col>`,
+// so a digit-level test is satisfied by the wrong answer -- measured: reverting ONLY the EOF policy
+// (one seed expression, mirrors written by the regenerator) left all seven rows PASS. Measured on
+// this fixture (90 bytes, sha 09ad825f57dc5934), where line 6 is `  }` and line 7 is
+// `  // trailing note`, both figures printed by `gunbc compile` and not reasoned out:
+//   the fixed build prints      m.dag:6:4:   (last lexeme ends at offset 71 -- the policy)
+//   the reverted build prints   m.dag:7:19:  (consumed position 90, one column past the comment)
+// A row that accepted either would witness nothing about WHERE the EOF span ends, so the row asserts
+// the first and refuses the second.
+data eof_after_comment_position: String = "m.dag:6:4:"
+
+// The consumed-position answer this row must REFUSE, named for the same reason: it is the other
+// half of the discrimination, and it is a legal `file:line:col` so no shape test rejects it.
+data eof_after_comment_consumed_position: String = "m.dag:7:19:"
+
 // ---------------------------------------------------------------------------------------------
 // THE HARNESS. Each row CREATES its fixtures at run time from the literals above and deletes them
 // afterwards, so nothing refusing is committed and no reader has to reproduce a file that exists
@@ -573,10 +590,14 @@ test fn an_end_of_input_refusal_after_a_comment_is_located_at_the_last_lexeme_in
       let usable = discard_scratch(root: root)
       let refused_our_file = result.exit_code != 0 && contains(text, "m.dag")
       let is_our_refusal = contains(text, "unterminated function body")
+      // EXACT, not 'a position appears': both EOF policies render as file:line:col, so only the
+      // precise position witnesses WHERE the span ends. See `eof_after_comment_position` above for
+      // where both literals come from.
       verdict(
         usable && (
           refused_our_file && is_our_refusal
-            && names_a_position(text: text, file: "m.dag")
+            && any_line_with(lines: lines, needle: eof_after_comment_position)
+            && !any_line_with(lines: lines, needle: eof_after_comment_consumed_position)
             && !shows_an_offset_run(text: text, file: "m.dag")
             && !shows_a_named_offset_shape(text: text)
         ),
