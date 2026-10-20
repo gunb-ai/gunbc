@@ -1959,7 +1959,6 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         };
     }
     const READER: &str = "dag/gunbc/instruments/namespace_wave_binding_diff.dag";
-    let phase_start = std::time::Instant::now();
     let roots = cli_run::default_source_roots();
     let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
         Ok(resolved) => resolved,
@@ -1969,10 +1968,6 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         graph.as_ref(),
         source_indices,
         crate::v1_interpreter::ExecutionMode::Wet,
-    );
-    eprintln!(
-        "{label_name}: phase: context-built {:.1}s",
-        phase_start.elapsed().as_secs_f64()
     );
     let scratch = std::path::Path::new("target").join(label_name);
     let write_root = |name: &str, function: &str| -> Result<String, String> {
@@ -1992,10 +1987,6 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         }
         Ok(root.to_string_lossy().into_owned())
     };
-    eprintln!(
-        "{label_name}: phase: fixtures-skipped-to-base-ref {:.1}s",
-        phase_start.elapsed().as_secs_f64()
-    );
     let base_ref = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
         "binding_diff_base_ref",
@@ -2042,10 +2033,6 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         (Ok(a), Ok(b), Ok(c)) => (a, b, c),
         (Err(cause), _, _) | (_, Err(cause), _) | (_, _, Err(cause)) => return unreached(cause),
     };
-    eprintln!(
-        "{label_name}: phase: decisions-read {:.1}s",
-        phase_start.elapsed().as_secs_f64()
-    );
     let merge_base = match census_merge_base(&head, &base_ref) {
         Ok(merge_base) => merge_base,
         Err(cause) => return unreached(format!("merge base: {cause}")),
@@ -2059,24 +2046,12 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
             return unreached(format!("the rewritten modules could not be read: {cause}"))
         }
     };
-    eprintln!(
-        "{label_name}: phase: git-diff-read {:.1}s",
-        phase_start.elapsed().as_secs_f64()
-    );
     let instr_rev = match instrument_revision(source_roots, &head) {
         Ok(rev) => rev,
         Err(cause) => return unreached(format!("instrument revision: {cause}")),
     };
-    eprintln!(
-        "{label_name}: phase: pre-preflight {:.1}s",
-        phase_start.elapsed().as_secs_f64()
-    );
     // The merge reads the receipt set first: a merge whose receipts are not whole refuses 2 here, before any worktree,
     // census or control runs. The reader decides (`binding_diff_merge_preflight`); the host only carries it out.
-    eprintln!(
-        "{label_name}: phase: instr-rev-read {:.1}s",
-        phase_start.elapsed().as_secs_f64()
-    );
     let preflight_args = [
         (
             Some("head_root".to_string()),
