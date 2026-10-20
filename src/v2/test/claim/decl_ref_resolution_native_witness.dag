@@ -1,0 +1,79 @@
+module v2.test.claim.decl_ref_resolution_native_witness
+
+import std.algebra { Empty, FreeMonoid }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr }
+import v2.compiler.name_resolve { ResolutionContext, resolution_context }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.decl_ref_resolution { DeclarationRefDeclarationAbsent, DeclarationRefModuleAbsent, DeclarationRefOutsideIndex, DeclarationRefResolved, resolve_declaration_ref }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted, bind_outcome }
+import v2.std.resolution_policy { ImportScoped }
+import v2.test.claim.name_resolve.admission_fail_closed { fc_admitted, fc_module_root_export }
+
+// The native DeclarationRef resolver, executed on the real ResolutionContext path over a one-module
+// fixture whose module `fc_import_a_seg` declares `fc_export_a_sym`. Positive control: the declared
+// reference resolves. Discriminating REDs: an invented declaration and an invented module are each
+// refused with their own typed arm, and a test-witness module the ingest did not read is counted
+// OutsideIndex rather than resolved or dropped.
+
+fn dr_context() -> Outcome<ResolutionContext> {
+  bind_outcome(o: fc_admitted(n: fc_module_root_export(seg: ^fc_import_a_seg, export_sym: ^fc_export_a_sym)), f: fn(root) {
+    resolution_context(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: [root],
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: ImportScoped
+    )
+  })
+}
+
+fn dr_ref(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef { module_path: module_path as NonEmptyStr, decl_name: decl_name as NonEmptyStr, field: WholeDeclaration }
+}
+
+test fn declared_reference_resolves() -> Bool {
+  match dr_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match resolve_declaration_ref(ref: dr_ref(module_path: "fc_import_a_seg", decl_name: "fc_export_a_sym"), context: c) {
+        DeclarationRefResolved { declaration_identity: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn invented_declaration_is_refused() -> Bool {
+  match dr_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match resolve_declaration_ref(ref: dr_ref(module_path: "fc_import_a_seg", decl_name: "invented_decl"), context: c) {
+        DeclarationRefDeclarationAbsent { reference: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn invented_module_is_refused() -> Bool {
+  match dr_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match resolve_declaration_ref(ref: dr_ref(module_path: "invented_module", decl_name: "fc_export_a_sym"), context: c) {
+        DeclarationRefModuleAbsent { reference: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn unread_test_witness_module_is_outside_the_index() -> Bool {
+  match dr_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match resolve_declaration_ref(ref: dr_ref(module_path: "v2.test.claim.unread", decl_name: "x"), context: c) {
+        DeclarationRefOutsideIndex { reference: _, coverage: _ } => true
+        _ => false
+      }
+  }
+}

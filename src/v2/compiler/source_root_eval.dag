@@ -77,6 +77,7 @@ import v2.compiler.infer {
 import v2.compiler.type_declaration_use_census {
   TypeCensusContribution, AsTypedBy, AsUntyped, type_census_contribution, type_census_unreached
 }
+import v2.compiler.wildcard_arm_census { WildcardCensusContribution, WildcardTypedBy, WildcardUntyped, wildcard_census_contribution, wildcard_census_unreached }
 import v2.compiler.occurrence_binding_census {
   occurrence_binding_contribution, occurrence_binding_contribution_lines, occurrence_binding_partial_lines, occurrence_binding_locus_text
 }
@@ -3443,6 +3444,23 @@ fn native_census_infer_type_contribution(
       type_census_contribution(module: entry.module, resolved: r, normalized: native_census_normalized_tree(context: context, module: entry.module), typing: AsTypedBy { tree: i, resolved: r })
     NativeInferCensusInferRefused { resolved: r, chain: c } =>
       type_census_contribution(module: entry.module, resolved: r, normalized: native_census_normalized_tree(context: context, module: entry.module), typing: AsUntyped { cause: "module did not infer: " + symbol_lexeme(sym: diagnostics_fatal_reason(d: c)) })
+  }
+}
+
+fn native_census_infer_wildcard_contribution(
+  context: NativeTestContext,
+  entry: NativeCensusModule,
+  outcome: NativeInferCensusOutcome
+) -> WildcardCensusContribution {
+  match outcome {
+    NativeInferCensusFileRefused =>
+      wildcard_census_unreached(module: entry.module, stage: "front_end", cause: "file refused by the context")
+    NativeInferCensusResolveRefused { first: f, rest: _, observation: _, partial: _ } =>
+      wildcard_census_unreached(module: entry.module, stage: "resolve", cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: f)))
+    NativeInferCensusInferred { resolved: r, inferred: i, frontier: _ } =>
+      wildcard_census_contribution(module: entry.module, resolved: r, typing: WildcardTypedBy { tree: i, resolved: r })
+    NativeInferCensusInferRefused { resolved: r, chain: _ } =>
+      wildcard_census_contribution(module: entry.module, resolved: r, typing: WildcardUntyped { cause: "module did not infer" })
   }
 }
 

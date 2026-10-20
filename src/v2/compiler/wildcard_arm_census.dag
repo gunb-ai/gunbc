@@ -1,0 +1,222 @@
+module v2.compiler.wildcard_arm_census
+
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, list_at_optional, skip }
+import std.types { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.node { positional_child_target_nodes, Edge, Authored, StructuralLabel, Positional, Node, symbol_lexeme,
+  TypeNode, ComputationNode, Match, MatchArmPatternEdge }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import std.optional { Optional, Present, Absent }
+import v2.compiler.inferred_tree { InferredTree, authored_occurrence_id }
+import v2.compiler.infer { infer_branch_operand_resolved_type_in_tree, infer_match_coproduct_of_type, CoproductRead, CoproductNotDeclared, CoproductArityMismatch, UninhabitedScrutinee }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.node_query { find_arrow_body_child, find_core_child, is_wildcard_pattern }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.witness { Holds, Violates }
+import std.compiler_entry { NativeClaimTerminal, NativeClaimHeld, NativeClaimNoObservation }
+import v2.compiler.emit_produced { module_bodies_in_tree, module_body_member_edges }
+
+// THE NATIVE WILDCARD-ARM CENSUS (capability X). One per-module fold over the RESOLVED tree beside
+// its INFERRED facts: for every wildcard arm of every Match inside a bodied Arrow member it reads the
+// scrutinee's inferred type -- the same reading infer's exhaustiveness check takes
+// (infer_match_coproduct_of_type) -- and records whether that type is a closed coproduct. Keyed on the
+// inferred scrutinee type, so a local, a field read or a call result is classified like a parameter.
+// A scrutinee whose type is not derived is a typed WildcardScrutinee refusal, never a default.
+// It keeps rows only: the per-module trees live for one step.
+
+type WildcardScrutinee
+  = WildcardClosedCoproduct { path: String }
+  | WildcardOpenDomain
+  | WildcardScrutineeNotDerived { cause: String }
+
+type WildcardArmRow {
+  module: String
+  enclosing: String
+  occurrence: Int
+  scrutinee: WildcardScrutinee
+}
+
+type WildcardTyping
+  = WildcardTypedBy { tree: InferredTree, resolved: ResolvedTree }
+  | WildcardUntyped { cause: String }
+
+type WildcardCensusModule {
+  module: String
+  arms: FreeMonoid<WildcardArmRow>
+}
+
+type WildcardUnreached {
+  module: String
+  stage: String
+  cause: String
+}
+
+type WildcardCensusRun {
+  modules: FreeMonoid<WildcardCensusModule>
+  unreached: FreeMonoid<WildcardUnreached>
+}
+
+type WildcardCensusContribution
+  = WildcardCensusContributed { module: WildcardCensusModule }
+  | WildcardCensusUnreached { unreached: WildcardUnreached }
+
+type WildcardCensusReceipt {
+  lines: FreeMonoid<String>
+  terminal: NativeClaimTerminal
+}
+
+fn wildcard_scrutinee_read(typing: WildcardTyping, scrutinee: Node) -> WildcardScrutinee {
+  match typing {
+    WildcardUntyped { cause: c } => WildcardScrutineeNotDerived { cause: c }
+    WildcardTypedBy { tree: t, resolved: r } =>
+      match t.facts.lookup(scrutinee) {
+        Absent => WildcardScrutineeNotDerived { cause: "infer_facts_lookup_miss" }
+        Present { value: facts } =>
+          match infer_branch_operand_resolved_type_in_tree(node: scrutinee, facts: facts, resolved: r) {
+            Violates { diagnostic: d } => WildcardScrutineeNotDerived { cause: symbol_lexeme(sym: d.reason) }
+            Holds { value: ty } =>
+              match infer_match_coproduct_of_type(scrutinee_type: ty, resolved: r) {
+                CoproductRead { coproduct: c } => WildcardClosedCoproduct { path: qualified_name_to_dotted_string(qn: c.path) }
+                UninhabitedScrutinee => WildcardOpenDomain
+                CoproductNotDeclared => WildcardOpenDomain
+                CoproductArityMismatch => WildcardScrutineeNotDerived { cause: "coproduct_arity_mismatch" }
+              }
+          }
+      }
+  }
+}
+
+fn wildcard_occurrence(n: Node) -> Int {
+  match authored_occurrence_id(n: n) {
+    Present { value: id } => id.value
+    Absent => 0 - 1
+  }
+}
+
+fn wildcard_arm_is_wildcard(arm: Node) -> Bool {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
+    Accepted { value: pat, diagnostics: _ } => is_wildcard_pattern(pattern: pat)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn wildcard_match_rows(
+  module: String,
+  enclosing: String,
+  typing: WildcardTyping,
+  match_node: Node,
+  acc: FreeMonoid<WildcardArmRow>
+) -> FreeMonoid<WildcardArmRow> {
+  let targets: List<Node> = positional_child_target_nodes(node: match_node)
+  match list_at_optional(xs: targets, index: 0) {
+    Absent => acc
+    Present { value: scrutinee } =>
+      fold_list(xs: skip(xs: targets, n: 1), empty: acc, cons: fn(a, arm) {
+        if wildcard_arm_is_wildcard(arm: arm) {
+          list_snoc_item(xs: a, item: WildcardArmRow {
+            module: module,
+            enclosing: enclosing,
+            occurrence: wildcard_occurrence(n: match_node),
+            scrutinee: wildcard_scrutinee_read(typing: typing, scrutinee: scrutinee)
+          })
+        } else { a }
+      })
+  }
+}
+
+fn wildcard_walk(
+  module: String,
+  enclosing: String,
+  typing: WildcardTyping,
+  n: Node,
+  acc: FreeMonoid<WildcardArmRow>
+) -> FreeMonoid<WildcardArmRow> {
+  let here = match n.kind {
+    ComputationNode { behavior: Match } => wildcard_match_rows(module: module, enclosing: enclosing, typing: typing, match_node: n, acc: acc)
+    ComputationNode { behavior: _ } => acc
+    TypeNode { connective: _ } => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) {
+    wildcard_walk(module: module, enclosing: enclosing, typing: typing, n: e.target, acc: a)
+  })
+}
+
+fn wildcard_arm_rows(module: String, root: Node, typing: WildcardTyping) -> FreeMonoid<WildcardArmRow> {
+  let members = fold(module_bodies_in_tree(node: root, acc: []), init: [], f: fn(acc, b) {
+    concat(acc, module_body_member_edges(body: b))
+  })
+  fold_list(xs: members, empty: Empty, cons: fn(acc, edge) {
+    match edge.label {
+      Authored { name: n } =>
+        match find_arrow_body_child(root: edge.target) {
+          Accepted { value: body, diagnostics: _ } =>
+            wildcard_walk(module: module, enclosing: symbol_lexeme(sym: n), typing: typing, n: body, acc: acc)
+          Rejected { diagnostics: _ } => acc
+        }
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+}
+
+fn wildcard_census_contribution(module: String, resolved: ResolvedTree, typing: WildcardTyping) -> WildcardCensusContribution {
+  WildcardCensusContributed { module: WildcardCensusModule {
+    module: module,
+    arms: wildcard_arm_rows(module: module, root: resolved.root, typing: typing)
+  } }
+}
+
+fn wildcard_census_unreached(module: String, stage: String, cause: String) -> WildcardCensusContribution {
+  WildcardCensusUnreached { unreached: WildcardUnreached { module: module, stage: stage, cause: cause } }
+}
+
+fn wildcard_census_run_empty() -> WildcardCensusRun {
+  WildcardCensusRun { modules: Empty, unreached: Empty }
+}
+
+fn wildcard_census_run_add(run: WildcardCensusRun, c: WildcardCensusContribution) -> WildcardCensusRun {
+  match c {
+    WildcardCensusContributed { module: m } => WildcardCensusRun { modules: list_snoc_item(xs: run.modules, item: m), unreached: run.unreached }
+    WildcardCensusUnreached { unreached: u } => WildcardCensusRun { modules: run.modules, unreached: list_snoc_item(xs: run.unreached, item: u) }
+  }
+}
+
+fn wildcard_scrutinee_text(s: WildcardScrutinee) -> String {
+  match s {
+    WildcardClosedCoproduct { path: p } => "closed_coproduct " + p
+    WildcardOpenDomain => "open_domain"
+    WildcardScrutineeNotDerived { cause: c } => "not_derived " + c
+  }
+}
+
+fn wildcard_scrutinee_underived(s: WildcardScrutinee) -> Bool {
+  match s {
+    WildcardClosedCoproduct { path: _ } => false
+    WildcardOpenDomain => false
+    WildcardScrutineeNotDerived { cause: _ } => true
+  }
+}
+
+fn wildcard_census_receipt(run: WildcardCensusRun) -> WildcardCensusReceipt {
+  let unreached_lines: FreeMonoid<String> = fold_list(xs: run.unreached, empty: Empty, cons: fn(acc, u) {
+    list_snoc_item(xs: acc, item: "unreached " + u.module + " stage=" + u.stage + " cause=" + u.cause)
+  })
+  let with_arms: FreeMonoid<String> = fold_list(xs: run.modules, empty: unreached_lines, cons: fn(acc, m) {
+    fold_list(xs: m.arms, empty: acc, cons: fn(a, r) {
+      list_snoc_item(xs: a, item: "wildcard " + r.module + " " + r.enclosing + " scrutinee=" + wildcard_scrutinee_text(s: r.scrutinee))
+    })
+  })
+  let underived: Int = fold_list(xs: run.modules, empty: 0, cons: fn(acc, m) {
+    fold_list(xs: m.arms, empty: acc, cons: fn(a, r) { if wildcard_scrutinee_underived(s: r.scrutinee) { a + 1 } else { a } })
+  })
+  let lines: FreeMonoid<String> = list_snoc_item(xs: with_arms, item: "summary modules " + to_string(length(xs: run.modules)) + " unreached " + to_string(length(xs: run.unreached)) + " underived " + to_string(underived))
+  if length(xs: run.unreached) > 0 {
+    WildcardCensusReceipt { lines: lines, terminal: NativeClaimNoObservation { reason: to_string(length(xs: run.unreached)) + " modules have no reference index (listed as unreached)" } }
+  } else if underived > 0 {
+    WildcardCensusReceipt { lines: lines, terminal: NativeClaimNoObservation { reason: to_string(underived) + " wildcard arms have an underived scrutinee type" } }
+  } else {
+    WildcardCensusReceipt { lines: lines, terminal: NativeClaimHeld }
+  }
+}
