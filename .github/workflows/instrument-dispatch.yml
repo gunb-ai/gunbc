@@ -163,9 +163,7 @@ jobs:
           memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
           'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"
           if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
-          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYT
-[14191 more bytes: job_output {"id": "j718f2848", "from": 24000}]
-ES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
         shell: bash
         env:
