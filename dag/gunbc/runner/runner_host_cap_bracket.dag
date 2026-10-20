@@ -22,11 +22,6 @@ import gunbc.runner.runner_slot_actuation {
   read_slot_worker_over,
   run_slot_steps_over,
   activate_runner_slot_over,
-  activate_runner_slot_through,
-  SlotActuationThrough,
-  read_slot_through,
-  SlotTransport,
-  SlotTransportFleetSsh,
   slot_activation_read_back_holds,
   slot_actuation_settled,
   slot_actuation_outcome_wire,
@@ -518,37 +513,23 @@ fn owned_set_of(readings: List<SlotDrainReading>) -> OwnedSetVerdict {
 // the host drained. The judgment is the activation readback authority (slot_activation_read_back_holds),
 // not a second definition of admitting. An unreadable show is not "not masked": it falls to activation,
 // which reads again and refuses with the read cause.
-fn release_slot_through(transport: SlotTransport, unit: NonEmptyStr) -> SlotActuationThrough
+fn release_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
 {
-  let first = read_slot_through(transport: transport, unit: unit)
-  match first.read {
-    SlotReadRefused { reason: _ } => activate_runner_slot_through(transport: first.transport, unit: unit)
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: _ } => activate_runner_slot_over(target: target, context: context, unit: unit)
     SlotRead { reading: r } =>
-      if slot_is_masked(r: r) { activate_runner_slot_through(transport: first.transport, unit: unit) }
+      if slot_is_masked(r: r) { activate_runner_slot_over(target: target, context: context, unit: unit) }
       else if slot_activation_read_back_holds(r: r) {
-        SlotActuationThrough { outcome: SlotActuationNoop { unit: unit, state: "not masked and read back loaded, enabled and active: no argv issued" }, transport: first.transport }
+        SlotActuationNoop { unit: unit, state: "not masked and read back loaded, enabled and active: no argv issued" }
       } else {
-        SlotActuationThrough { outcome: SlotActuationRefused { unit: unit, step: "readback", reason: "not masked, but not loaded, enabled and active: the unit is out of service and no argv was issued" }, transport: first.transport }
+        SlotActuationRefused { unit: unit, step: "readback", reason: "not masked, but not loaded, enabled and active: the unit is out of service and no argv was issued" }
       }
   }
 }
 
-type ReleaseThrough {
-  outcomes: List<SlotActuationOutcome>
-  transport: SlotTransport
-}
-
-fn release_owned_slots_through(transport: SlotTransport, units: List<NonEmptyStr>) -> ReleaseThrough
-{
-  fold(units, init: ReleaseThrough { outcomes: [], transport: transport }, f: (acc, u) => {
-    let one = release_slot_through(transport: acc.transport, unit: u)
-    ReleaseThrough { outcomes: concat(acc.outcomes, [one.outcome]), transport: one.transport }
-  })
-}
-
 fn release_owned_slots_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> List<SlotActuationOutcome>
 {
-  release_owned_slots_through(transport: SlotTransportFleetSsh { target: target, context: context }, units: units).outcomes
+  map(units, u => release_slot_over(target: target, context: context, unit: u))
 }
 
 // THE RELEASE RESULT, PURE: what the finalizer exits with and what its receipt says, from the decision and
