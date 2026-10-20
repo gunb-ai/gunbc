@@ -30,6 +30,7 @@ import gunbc.instruments.fabric_ci_evidence {
   FabricCiEvidenceUndecodable,
   decode_fabric_ci_evidence_wire,
 }
+import std.host_text { chars }
 
 // THE CALIBRATION ACTUATOR. It realizes the ordered FabricCiCalibrationStep rows of
 // gunbc.instruments.fabric_ci_evidence directly: the row is matched, not serialized to a plan text

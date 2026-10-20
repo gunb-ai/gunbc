@@ -45,10 +45,11 @@ import product.fabric.flex_market {
   FlexCapUnder, FlexCapOver, FlexCapAtLimit, FlexCapNeedsExhaustedRoster, FlexCapUnreadable, FlexCapUnobserved,
 }
 import product.fabric.flex_vast_shadow {
+  flex_offer_disk_rate, flex_vast_storage_billing_month, flex_offer_quote,
   flex_trial_fleet_rate_cap, flex_trial_total, flex_trial_policy, flex_objective,
   flex_serving_recipe, flex_host_image, flex_serving_template, FlexTemplateResolved, FlexTemplateImageUnread,
   FlexTemplateServedIdUnread, flex_offer_screen_by_recipe, flex_offer_in_shadow_field,
-  FlexShadowFieldEntry, ShadowEntryEstablished, ShadowEntryEstimated, ShadowEntryExcluded, FlexVramTolerance, flex_vram_tolerance, flex_offer_screen_with_tolerance,
+  FlexShadowFieldEntry, ShadowEntryEstablished, ShadowEntryEstimated, ShadowEntryExcluded, flex_vast_offer_query, flex_host_images, FlexVastHostFilters, flex_flash_next_vast_filters,
   flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
   flex_bind_attempt_to_offer, FlexAttemptBound, FlexAttemptCandidateUnestablished,
   flex_vast_offer_key, flex_keyset_page_limit,
@@ -71,12 +72,12 @@ import std.rational { NonzeroNatFraction }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.procps.kill { procps_kill_standing }
 import product.fabric.serving_recipe {
-  ServingRecipe, ServingDriverFloor, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm,
+  ServingRecipe, ServingDriverFloor, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, SelectionQuoteRefusedEstimated,
 }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
-  vast_ai_search_type_bid, vast_ai_quote_currency, vast_ai_keyset_page_limit,
+  vast_ai_search_type_bid, vast_ai_search_type_ondemand, vast_ai_wire_mb, vast_ai_wire_mbps, vast_ai_quote_currency, vast_ai_keyset_page_limit,
   vast_ai_ingest_search_offer_driver, vast_ai_driver_version_from_search_offers_text,
   VastAiDriverVersionStanding, VastAiDriverVersionUnread, VastAiDriverVersionRead, VastAiDriverVersionMalformed,
 }
@@ -238,6 +239,8 @@ fn wire_offer(name: String, ram: Int, bid: Bool, rentable: Bool) -> VastAiOffer 
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     gpu_ram: ram,
     driver_version: Present { value: "580.65.06" },
+    cuda_max_good: Present { value: ExactDecimal { units: 130, fraction_digits: 1 } },
+    inet_down: Present { value: ExactDecimal { units: 2500, fraction_digits: 0 } },
   }
 }
 
@@ -296,19 +299,20 @@ fn qwen_image() -> String {
 }
 
 test fn flex_template_is_the_recipes_realization() -> Bool {
-  match flex_serving_template(recipe: flex_serving_recipe) {
-    FlexTemplateResolved { template: t } =>
-      (t.image as String == "vastai/vllm:v0.30.0-cuda-13.0")
-        && t.published_tcp_port == 8000
-        && byte_size_count(b: t.disk) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 32)))
-        && (t.model_id as String == "qwen")
-    FlexTemplateImageUnread => false
-    FlexTemplateServedIdUnread => false
-  }
-    && match flex_serving_template(recipe: serving_recipe_flash_next_lab_vllm) {
-      FlexTemplateImageUnread => true
+  // Flash-Next: the image is read, the served model id is not (ruling flex_first_recipe_is_flash_next), so the
+  // template refuses to realize rather than invent an id. The 27B recipe stays modelled and realizes, and is not selected.
+  (match flex_serving_template(recipe: flex_serving_recipe) {
+    FlexTemplateServedIdUnread => true
+    _ => false
+  })
+    && (match flex_host_image(recipe: flex_serving_recipe) {
+      Present { value: i } => i as String == "ghcr.io/local-inference-lab/vllm@sha256:751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7"
+      Absent => false
+    })
+    && (match flex_serving_template(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+      FlexTemplateResolved { template: t } => t.model_id as String == "qwen"
       _ => false
-    }
+    })
 }
 
 test fn operator_template_and_policy_are_named_facts() -> Bool {
@@ -477,81 +481,6 @@ fn objective_is_cost_per_accepted_unit() -> Bool {
   }
 }
 
-fn flex_offer_accepted_by_recipe(offer: VastAiOffer, recipe: ServingRecipe) -> Bool {
-  match flex_offer_screen_by_recipe(offer: offer, recipe: recipe) {
-    ShadowEntryEstablished => true
-    ShadowEntryEstimated { provisional_member: m, standings: _ } => m
-    ShadowEntryExcluded => false
-  }
-}
-
-fn field_member(offer: VastAiOffer) -> Bool {
-  match flex_offer_in_shadow_field(offer: offer) {
-    ShadowEntryEstablished => true
-    ShadowEntryEstimated { provisional_member: m, standings: _ } => m
-    ShadowEntryExcluded => false
-  }
-}
-
-test fn pro_5000_spellings_are_admitted_and_a_name_vram_disagreement_is_refused() -> Bool {
-  flex_offer_accepted_by_recipe(
-    offer: wire_offer(name: "RTX PRO 5000", ram: 49140, bid: true, rentable: true),
-    recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
-  )
-    && flex_offer_accepted_by_recipe(
-      offer: wire_offer(name: "RTX PRO 5000 72GB", ram: 73700, bid: true, rentable: true),
-      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
-    )
-    && !flex_offer_accepted_by_recipe(
-      offer: wire_offer(name: "RTX PRO 5000", ram: 49140, bid: true, rentable: true),
-      recipe: serving_recipe_flash_next_lab_vllm,
-    )
-    && flex_offer_accepted_by_recipe(
-      offer: wire_offer(name: "RTX PRO 6000 S", ram: 97887, bid: true, rentable: true),
-      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
-    )
-    && !flex_offer_accepted_by_recipe(
-      offer: wire_offer(name: "RTX PRO 6000 S", ram: 49140, bid: true, rentable: true),
-      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
-    )
-    && !flex_offer_accepted_by_recipe(
-      offer: wire_offer(name: "RTX PRO 5000", ram: 98304, bid: true, rentable: true),
-      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
-    )
-}
-
-test fn supported_gpu_classes_screen_offers() -> Bool {
-  !flex_offer_accepted_by_recipe(
-    offer: wire_offer(name: "RTX 5000 Ada", ram: 49152, bid: true, rentable: true),
-    recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
-  )
-    && !field_member(offer: wire_offer(name: "RTX 5000 Ada", ram: 49152, bid: true, rentable: true))
-    && !flex_offer_accepted_by_recipe(
-      offer: wire_offer(name: "RTX 4090", ram: 49152, bid: true, rentable: true),
-      recipe: serving_recipe_flash_next_lab_vllm,
-    )
-    && !flex_offer_accepted_by_recipe(
-      offer: wire_offer(name: "H100", ram: 73728, bid: true, rentable: true),
-      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
-    )
-    && flex_offer_accepted_by_recipe(
-      offer: wire_offer(name: "RTX PRO 6000 WS", ram: 98304, bid: true, rentable: true),
-      recipe: serving_recipe_flash_next_lab_vllm,
-    )
-    && flex_offer_accepted_by_recipe(
-      offer: wire_offer(name: "RTX PRO 6000 Max-Q", ram: 98304, bid: true, rentable: true),
-      recipe: serving_recipe_flash_next_lab_vllm,
-    )
-    && !flex_offer_accepted_by_recipe(
-      offer: wire_offer(name: "RTX PRO 6000 Blackwell", ram: 98304, bid: true, rentable: true),
-      recipe: serving_recipe_flash_next_lab_vllm,
-    )
-    && field_member(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: true, rentable: true))
-    && !field_member(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: false, rentable: true))
-    && !field_member(offer: wire_offer(name: "RTX 4090", ram: 24576, bid: true, rentable: true))
-    && host_driver_screens_the_serving_unit()
-}
-
 fn wire_offer_driver(name: String, ram: Int, driver: String?) -> VastAiOffer {
   VastAiOffer {
     id: 7,
@@ -572,19 +501,9 @@ fn wire_offer_driver(name: String, ram: Int, driver: String?) -> VastAiOffer {
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     gpu_ram: ram,
     driver_version: driver,
+    cuda_max_good: Present { value: ExactDecimal { units: 130, fraction_digits: 1 } },
+    inet_down: Present { value: ExactDecimal { units: 2500, fraction_digits: 0 } },
   }
-}
-
-fn host_driver_screens_the_serving_unit() -> Bool {
-  let ok = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "580.65.06" })
-  let unread = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: none)
-  let malformed = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "x" })
-  let low_ninfer = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "570.0" })
-  field_member(offer: ok)
-    && !field_member(offer: unread)
-    && !field_member(offer: malformed)
-    && !field_member(offer: low_ninfer)
-    && driver_wire_standing_discriminates()
 }
 
 fn driver_wire_standing_discriminates() -> Bool {
@@ -976,90 +895,11 @@ fn estimated_standing_count(e: FlexShadowFieldEntry) -> Int {
   }
 }
 
-test fn an_offer_screened_on_an_uncited_floor_enters_the_field_estimated_and_its_cited_twin_established() -> Bool {
-  // identical offer (580.65.06 driver, exact 96 GiB VRAM) and identical floor number (580); only the standing differs.
-  let offer = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "580.65.06" })
-  let uncited = flex_offer_screen_by_recipe(offer: offer, recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer)
-  let cited = flex_offer_screen_by_recipe(offer: offer, recipe: recipe_with_driver_standing(sd: procps_kill_standing()))
-  estimated_standing_count(e: uncited) == 1
-    && (match cited {
-      ShadowEntryEstablished => true
-      _ => false
-    })
-}
-
-test fn the_vram_tolerance_is_an_uncited_standing_carried_only_when_it_was_used() -> Bool {
-  // 49140 MB is under the 48 GiB row (tolerance used); a cited floor leaves the tolerance as the only standing.
-  let under = wire_offer_driver(name: "RTX PRO 5000", ram: 49140, driver: Present { value: "580.65.06" })
-  let exact = wire_offer_driver(name: "RTX PRO 5000", ram: 49152, driver: Present { value: "580.65.06" })
-  let cited = recipe_with_driver_standing(sd: procps_kill_standing())
-  estimated_standing_count(e: flex_offer_screen_by_recipe(offer: under, recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer)) == 2
-    && estimated_standing_count(e: flex_offer_screen_by_recipe(offer: under, recipe: cited)) == 1
-    && (match flex_offer_screen_by_recipe(offer: exact, recipe: cited) {
-      ShadowEntryEstablished => true
-      _ => false
-    })
-    && (match flex_vram_tolerance.standing {
-      TranscribedUncited { read_obligation: _ } => true
-      _ => false
-    })
-}
-
-fn cited_tolerance() -> FlexVramTolerance {
-  FlexVramTolerance { shortfall: flex_vram_tolerance.shortfall, standing: procps_kill_standing() }
-}
-
-test fn citing_the_vram_tolerance_changes_the_verdict_on_both_sides_of_it() -> Bool {
-  // same offers, same shortfall number: only the tolerance's standing differs.
-  let cited_floor = recipe_with_driver_standing(sd: procps_kill_standing())
-  let within = wire_offer_driver(name: "RTX PRO 5000", ram: 49140, driver: Present { value: "580.65.06" })
-  let beyond = wire_offer_driver(name: "RTX PRO 5000", ram: 98304, driver: Present { value: "580.65.06" })
-  // uncited: within is a provisional member, beyond a provisional non-member
-  (match flex_offer_screen_with_tolerance(offer: within, recipe: cited_floor, vram_tolerance: flex_vram_tolerance) {
-    ShadowEntryEstimated { provisional_member: m, standings: _ } => m
-    _ => false
-  })
-    && is_provisional_non_member(e: flex_offer_screen_with_tolerance(offer: beyond, recipe: cited_floor, vram_tolerance: flex_vram_tolerance), standings: 1)
-    // cited: within is established, beyond an established exclusion
-    && (match flex_offer_screen_with_tolerance(offer: within, recipe: cited_floor, vram_tolerance: cited_tolerance()) {
-      ShadowEntryEstablished => true
-      _ => false
-    })
-    && (match flex_offer_screen_with_tolerance(offer: beyond, recipe: cited_floor, vram_tolerance: cited_tolerance()) {
-      ShadowEntryExcluded => true
-      _ => false
-    })
-}
-
 fn is_provisional_non_member(e: FlexShadowFieldEntry, standings: Int) -> Bool {
   match e {
     ShadowEntryEstimated { provisional_member: m, standings: ss } => !m && length(ss) == standings
     _ => false
   }
-}
-
-test fn a_floor_not_met_on_an_uncited_floor_is_a_provisional_non_member_and_on_a_cited_floor_excluded() -> Bool {
-  // 575 and 570 are below the 580 floor. The floor is uncited, so the rejection itself is a bet: Estimated, not a member.
-  let low = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "575.0" })
-  let lower = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "570.0" })
-  is_provisional_non_member(e: flex_offer_screen_by_recipe(offer: low, recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer), standings: 1)
-    && is_provisional_non_member(e: flex_offer_screen_by_recipe(offer: lower, recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer), standings: 1)
-    && (match flex_offer_screen_by_recipe(offer: low, recipe: recipe_with_driver_standing(sd: procps_kill_standing())) {
-      ShadowEntryExcluded => true
-      _ => false
-    })
-}
-
-test fn a_name_vram_gap_beyond_the_tolerance_is_a_provisional_non_member_carrying_the_tolerance() -> Bool {
-  // The 1 GiB tolerance is uncited, so a gap just over it cannot establish "no card". An unmapped name stays structural.
-  let gap = wire_offer_driver(name: "RTX PRO 5000", ram: 98304, driver: Present { value: "580.65.06" })
-  let unmapped = wire_offer_driver(name: "H100", ram: 73728, driver: Present { value: "580.65.06" })
-  is_provisional_non_member(e: flex_offer_screen_by_recipe(offer: gap, recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer), standings: 1)
-    && !field_member(offer: wire_offer(name: "RTX PRO 5000", ram: 98304, bid: true, rentable: true))
-    && (match flex_offer_screen_by_recipe(offer: unmapped, recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
-      ShadowEntryExcluded => true
-      _ => false
-    })
 }
 
 test fn the_operator_template_ruling_is_a_dated_design_ruling_that_leaves_empirical_figures_uncited() -> Bool {
@@ -1073,4 +913,199 @@ test fn the_operator_template_ruling_is_a_dated_design_ruling_that_leaves_empiri
         && string_contains(s: r.provenance, pattern: "qwen oct 11")
         && string_contains(s: r.provenance, pattern: "stay TranscribedUncited")),
   )
+}
+
+// ── FLASH-NEXT IS THE SELECTED FLEX RECIPE (ruling flex_first_recipe_is_flash_next) ───────────────
+
+// ── FLASH-NEXT IS THE SELECTED FLEX RECIPE (ruling flex_first_recipe_is_flash_next) ───────────────
+fn host_of(offer: VastAiOffer) -> VastAiOfferHostResources {
+  VastAiOfferHostResources { id: offer.id, cpu_arch: "amd64", cpu_cores: 64, cpu_ram: 256000, disk_space: ExactDecimal { units: 1000, fraction_digits: 0 } }
+}
+
+fn offer_cuda(name: String, ram: Int, cuda: ExactDecimal?) -> VastAiOffer {
+  let o = wire_offer_driver(name: name, ram: ram, driver: Present { value: "580.65.06" })
+  VastAiOffer {
+    id: o.id, machine_id: o.machine_id, gpu_name: o.gpu_name, num_gpus: o.num_gpus, compute_cap: o.compute_cap,
+    gpu_arch: o.gpu_arch, verification: o.verification, geolocation: o.geolocation, rentable: o.rentable, rented: o.rented,
+    is_bid: o.is_bid, min_bid: o.min_bid, dph_total: o.dph_total, storage_cost: o.storage_cost, inet_up_cost: o.inet_up_cost,
+    inet_down_cost: o.inet_down_cost, gpu_ram: o.gpu_ram, driver_version: o.driver_version, cuda_max_good: cuda, inet_down: o.inet_down,
+  }
+}
+
+fn qualifying_pro_6000() -> VastAiOffer {
+  wire_offer_driver(name: "RTX PRO 6000 S", ram: 97887, driver: Present { value: "580.65.06" })
+}
+
+fn screened(offer: VastAiOffer) -> FlexShadowFieldEntry {
+  flex_offer_in_shadow_field(offer: offer, host: host_of(offer), search_type: flex_search_type)
+}
+
+fn is_established(e: FlexShadowFieldEntry) -> Bool {
+  match e {
+    ShadowEntryEstablished => true
+    _ => false
+  }
+}
+
+fn is_excluded(e: FlexShadowFieldEntry) -> Bool {
+  match e {
+    ShadowEntryExcluded => true
+    _ => false
+  }
+}
+
+test fn the_selected_recipe_is_flash_next_and_not_the_27b() -> Bool {
+  declaration_ref_eq(a: flex_serving_recipe.id, b: serving_recipe_flash_next_lab_vllm.id)
+    && !declaration_ref_eq(a: flex_serving_recipe.id, b: serving_recipe_qwen3_8_27b_nvfp4_ninfer.id)
+    && is_excluded(e: flex_offer_screen_by_recipe(offer: qualifying_pro_6000(), host: host_of(qualifying_pro_6000()), recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer))
+}
+
+test fn a_qualifying_pro_6000_offer_of_each_edition_is_admitted_established() -> Bool {
+  is_established(e: screened(offer: qualifying_pro_6000()))
+    && is_established(e: screened(offer: wire_offer_driver(name: "RTX PRO 6000 WS", ram: 97887, driver: Present { value: "595.1" })))
+    && is_established(e: screened(offer: wire_offer_driver(name: "RTX PRO 6000 Max-Q", ram: 97887, driver: Present { value: "580.65.06" })))
+}
+
+test fn a_non_blackwell_96gb_card_is_refused() -> Bool {
+  is_excluded(e: screened(offer: wire_offer_driver(name: "H200", ram: 144000, driver: Present { value: "580.65.06" })))
+    && is_excluded(e: screened(offer: wire_offer_driver(name: "B200", ram: 183000, driver: Present { value: "580.65.06" })))
+    && is_excluded(e: screened(offer: wire_offer_driver(name: "RTX PRO 5000", ram: 97887, driver: Present { value: "580.65.06" })))
+}
+
+test fn a_cuda_12_host_or_an_unread_cuda_is_refused() -> Bool {
+  is_excluded(e: screened(offer: offer_cuda(name: "RTX PRO 6000 S", ram: 97887, cuda: Present { value: ExactDecimal { units: 128, fraction_digits: 1 } })))
+    && is_excluded(e: screened(offer: offer_cuda(name: "RTX PRO 6000 S", ram: 97887, cuda: none)))
+    && is_established(e: screened(offer: offer_cuda(name: "RTX PRO 6000 S", ram: 97887, cuda: Present { value: ExactDecimal { units: 13, fraction_digits: 0 } })))
+}
+
+test fn a_gpu_ram_of_89000_is_refused_and_90000_is_admitted() -> Bool {
+  is_excluded(e: screened(offer: wire_offer_driver(name: "RTX PRO 6000 S", ram: 89000, driver: Present { value: "580.65.06" })))
+    && is_established(e: screened(offer: wire_offer_driver(name: "RTX PRO 6000 S", ram: 90000, driver: Present { value: "580.65.06" })))
+}
+
+test fn a_host_below_the_driver_floor_or_cpu_ram_floor_is_refused() -> Bool {
+  let low = wire_offer_driver(name: "RTX PRO 6000 S", ram: 97887, driver: Present { value: "575.1" })
+  let ok = qualifying_pro_6000()
+  let small_host = VastAiOfferHostResources { id: ok.id, cpu_arch: "amd64", cpu_cores: 64, cpu_ram: 127999, disk_space: ExactDecimal { units: 1000, fraction_digits: 0 } }
+  is_excluded(e: screened(offer: low))
+    && is_excluded(e: flex_offer_in_shadow_field(offer: ok, host: small_host, search_type: flex_search_type))
+}
+
+fn flash_next_with_driver_standing(sd: CitedFigureStanding) -> ServingRecipe {
+  ServingRecipe {
+    id: serving_recipe_flash_next_lab_vllm.id,
+    model: serving_recipe_flash_next_lab_vllm.model,
+    engine: serving_recipe_flash_next_lab_vllm.engine,
+    catalog_unit: serving_recipe_flash_next_lab_vllm.catalog_unit,
+    published_tcp_port: serving_recipe_flash_next_lab_vllm.published_tcp_port,
+    cards: serving_recipe_flash_next_lab_vllm.cards,
+    driver_floor: ServingDriverFloor { major: serving_recipe_flash_next_lab_vllm.driver_floor.major, standing: sd },
+    disk: serving_recipe_flash_next_lab_vllm.disk,
+    cache: serving_recipe_flash_next_lab_vllm.cache,
+    start: serving_recipe_flash_next_lab_vllm.start,
+    throughput: serving_recipe_flash_next_lab_vllm.throughput,
+    settings: serving_recipe_flash_next_lab_vllm.settings,
+  }
+}
+
+test fn the_driver_floor_standing_alone_decides_estimated_against_established() -> Bool {
+  // identical offer and identical floor number (580); only the standing differs.
+  let o = qualifying_pro_6000()
+  let uncited = flex_offer_screen_by_recipe(offer: o, host: host_of(o), recipe: flash_next_with_driver_standing(sd: serving_recipe_qwen3_8_27b_nvfp4_ninfer.driver_floor.standing))
+  let low = wire_offer_driver(name: "RTX PRO 6000 S", ram: 97887, driver: Present { value: "575.1" })
+  let uncited_low = flex_offer_screen_by_recipe(offer: low, host: host_of(low), recipe: flash_next_with_driver_standing(sd: serving_recipe_qwen3_8_27b_nvfp4_ninfer.driver_floor.standing))
+  (match uncited {
+    ShadowEntryEstimated { provisional_member: m, standings: ss } => m && length(ss) == 1
+    _ => false
+  })
+    && (match uncited_low {
+      ShadowEntryEstimated { provisional_member: m, standings: _ } => !m
+      _ => false
+    })
+    && is_established(e: flex_offer_screen_by_recipe(offer: o, host: host_of(o), recipe: serving_recipe_flash_next_lab_vllm))
+}
+
+test fn the_flash_next_driver_floor_is_cited_and_derives_from_the_cuda_requirement() -> Bool {
+  serving_recipe_flash_next_lab_vllm.published_tcp_port == 18000
+    && serving_recipe_flash_next_lab_vllm.driver_floor.major == cuda_13_0_driver_requirement.min_driver_major
+    && flex_flash_next_vast_filters.cuda_max_good_min == cuda_13_0_driver_requirement.toolkit_major
+    && (match serving_recipe_flash_next_lab_vllm.driver_floor.standing {
+      CitedToAuthority { authority: _ } => true
+      _ => false
+    })
+}
+
+test fn the_search_query_and_the_screen_read_one_filter_fact() -> Bool {
+  match flex_vast_offer_query(recipe: flex_serving_recipe) {
+    Absent => false
+    Present { value: q } =>
+      vast_ai_wire_mb(b: q.gpu_ram_min) == 90000
+        && q.cuda_max_good_min == 13
+        && vast_ai_wire_mb(b: q.cpu_ram_min) == 128000
+        && vast_ai_wire_mbps(b: q.inet_down_min) == 1000
+        && q.verified
+  }
+    && (match flex_vast_offer_query(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+      Absent => true
+      Present { value: _ } => false
+    })
+}
+
+// INTERRUPTIBLE IS THE SEARCH, NOT is_bid. A live bid search (2026-10-18) answered is_bid false on every
+// offer, so a qualifying PRO 6000 read from a bid search with is_bid false is a member; the same offer
+// returned by an on-demand search is not an interruptible candidate. A screen keyed on is_bid fails both.
+fn with_is_bid(o: VastAiOffer, bid: Bool) -> VastAiOffer {
+  VastAiOffer {
+    id: o.id, machine_id: o.machine_id, gpu_name: o.gpu_name, num_gpus: o.num_gpus, compute_cap: o.compute_cap,
+    gpu_arch: o.gpu_arch, verification: o.verification, geolocation: o.geolocation, rentable: o.rentable, rented: o.rented,
+    is_bid: Present { value: bid }, min_bid: o.min_bid, dph_total: o.dph_total, storage_cost: o.storage_cost, inet_up_cost: o.inet_up_cost,
+    inet_down_cost: o.inet_down_cost, gpu_ram: o.gpu_ram, driver_version: o.driver_version, cuda_max_good: o.cuda_max_good, inet_down: o.inet_down,
+  }
+}
+
+fn member_entry(e: FlexShadowFieldEntry) -> Bool {
+  match e {
+    ShadowEntryEstablished => true
+    ShadowEntryEstimated { provisional_member: m, standings: _ } => m
+    ShadowEntryExcluded => false
+  }
+}
+
+test fn interruptibility_is_the_search_type_not_is_bid() -> Bool {
+  let observed = with_is_bid(o: qualifying_pro_6000(), bid: false)
+  member_entry(e: flex_offer_in_shadow_field(offer: observed, host: host_of(observed), search_type: vast_ai_search_type_bid))
+    && !member_entry(e: flex_offer_in_shadow_field(offer: with_is_bid(o: qualifying_pro_6000(), bid: true), host: host_of(observed), search_type: vast_ai_search_type_ondemand))
+}
+
+// THE DISK RATE: $0.15/GB-month on the 730-hour month the quote rests on is 221 micro-dollars per
+// GiB-hour (0.15 * 2^30/10^9 / 730, rounded up). A fold that kept decimal GB reads 206; one that forgot the
+// hours reads a monthly figure. The quote built on it is Estimated, naming the uncited month.
+test fn the_disk_rate_converts_gb_month_to_gib_hour_and_the_quote_stays_estimated() -> Bool {
+  match flex_offer_disk_rate(offer: qualifying_pro_6000(), month: flex_vast_storage_billing_month) {
+    Absent => false
+    Present { value: r } => money_amount_micro_count(m: r.rate.amount) == 221
+  } && match flex_offer_quote(offer: qualifying_pro_6000(), recipe: flex_serving_recipe) {
+    SelectionQuoteRefusedEstimated { standings: ss } => any(ss, s => match s { TranscribedUncited { read_obligation: o } => string_contains(s: o as String, pattern: "storage_cost") _ => false })
+    _ => false
+  }
+}
+
+// ONE CARD PER RENTAL. A Vast offer is a whole machine at one price, so a two-GPU machine of the right class
+// is not a one-card Flash-Next rental: its min_bid prices two cards. The first live flex_pass (fleet-converge
+// run 39214273788) admitted x2, x4 and x8 machines; the same offer as a one-GPU machine is admitted.
+fn with_num_gpus(o: VastAiOffer, n: Int) -> VastAiOffer {
+  VastAiOffer {
+    id: o.id, machine_id: o.machine_id, gpu_name: o.gpu_name, num_gpus: n, compute_cap: o.compute_cap,
+    gpu_arch: o.gpu_arch, verification: o.verification, geolocation: o.geolocation, rentable: o.rentable, rented: o.rented,
+    is_bid: o.is_bid, min_bid: o.min_bid, dph_total: o.dph_total, storage_cost: o.storage_cost, inet_up_cost: o.inet_up_cost,
+    inet_down_cost: o.inet_down_cost, gpu_ram: o.gpu_ram, driver_version: o.driver_version, cuda_max_good: o.cuda_max_good, inet_down: o.inet_down,
+  }
+}
+
+test fn a_multi_gpu_machine_is_not_a_one_card_rental() -> Bool {
+  let one = with_num_gpus(o: qualifying_pro_6000(), n: 1)
+  let two = with_num_gpus(o: qualifying_pro_6000(), n: 2)
+  member_entry(e: flex_offer_in_shadow_field(offer: one, host: host_of(one), search_type: vast_ai_search_type_bid))
+    && !member_entry(e: flex_offer_in_shadow_field(offer: two, host: host_of(two), search_type: vast_ai_search_type_bid))
+    && (match flex_vast_offer_query(recipe: flex_serving_recipe) { Present { value: q } => q.num_gpus == 1  Absent => false })
 }

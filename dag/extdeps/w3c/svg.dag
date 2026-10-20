@@ -1,6 +1,7 @@
 module extdeps.w3c.svg
 
-import std.types { String, List, Int }
+import std.types { String, List, Int, NonEmptyStr }
+import std.algebra { Empty, FreeSemigroup }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.markup {
   Fragment,
@@ -9,10 +10,13 @@ import std.markup {
   Attribute,
   attr,
   MarkupMedium,
+  CommentGrammar,
+  DeclaresDocument,
   MarkupBracket,
   EscapeHtml,
   SelfClose,
   serialize_fragment_with,
+  MarkupSerializeResult,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -69,6 +73,30 @@ data svg_xml_brackets: MarkupBracket = MarkupBracket {
   attr_quote: "\"",
 }
 
+// XML's comment and document-type spellings, in THIS module. They coincide character-for-character
+// with HTML's, and they are still not imported from extdeps.languages.html: HTML and XML agree by
+// coincidence of ancestry, not because one specification defers to the other (which is the
+// relationship that makes Markdown's import of the HTML rows a read rather than a copy — CommonMark
+// 0.30 §6.6/§4.2 pass HTML blocks through). Two languages that happen to spell the same thing are two
+// facts, each with its own home, so XML's can be corrected without touching HTML's.
+// XML 1.0 §2.5 for comments, §2.8 for the document type declaration.
+data xml_comment_open_sequence: NonEmptyStr = "<!-- " as NonEmptyStr
+data xml_comment_close_sequence: NonEmptyStr = " -->" as NonEmptyStr
+// ONE MEMBER, and that is XML's grammar rather than an omission. XML has no comment-end-bang state: a
+// comment ends at "-->" and XML 1.0 §2.5 forbids "--" inside a comment at all, so "--!>" cannot appear
+// in well-formed XML. Contrast html_comment_terminators, where the tokenizer does have the second exit.
+// Same carrier in both, so std.markup asks one question of every medium.
+data xml_comment_terminators: FreeSemigroup<NonEmptyStr> = FreeSemigroup {
+  head: "-->" as NonEmptyStr,
+  tail: Empty,
+}
+data xml_doctype_open_sequence: NonEmptyStr = "<!DOCTYPE " as NonEmptyStr
+
+// XML's own copy of the boundary character (XML 1.0 §2.8's ExternalID production is terminated by
+// whitespace). Not imported from the HTML module: XML and HTML agree on this by ancestry, not because one
+// specification defers to the other, and a row each is what lets either be corrected alone.
+data xml_doctype_name_end_whitespace: NonEmptyStr = " " as NonEmptyStr
+
 fn svg_markup_medium() -> MarkupMedium {
   MarkupMedium {
     tag_overrides: [],
@@ -77,6 +105,21 @@ fn svg_markup_medium() -> MarkupMedium {
     void_tags: [svg_rect_tag, svg_circle_tag],
     void_rendering: SelfClose,
     raw_text_tags: [],
+    // Filled because this change gave the serializer a comment arm and a Document arm: a medium that
+    // left these unset would have its comment's delimiters silently dropped — the body emitted as
+    // markup, which is §5's silent degradation, not a refusal. Filling them from XML's own rows is
+    // what makes a comment through this medium serialize as a comment.
+    comment_grammar: CommentGrammar {
+      open: xml_comment_open_sequence,
+      close: xml_comment_close_sequence,
+      terminators: xml_comment_terminators,
+    },
+    // XML documents carry a document type declaration (XML 1.0 §2.8), so a Document node is meaningful
+    // through this medium even though nothing builds one for SVG today.
+    document_grammar: DeclaresDocument {
+      open: xml_doctype_open_sequence,
+      name_end_whitespace: xml_doctype_name_end_whitespace,
+    },
   }
 }
 
@@ -133,6 +176,8 @@ fn svg_text(x: Int, y: Int, label: String, class_name: String) -> Fragment {
   ], children: [FragmentText { content: label }])
 }
 
-fn serialize_svg_document(doc: Fragment) -> String {
+// The typed result, for the same reason as the HTML and JSX serializers: this is a route straight to the
+// emitter, and the comment / raw-text checks now live in the emitter.
+fn serialize_svg_document(doc: Fragment) -> MarkupSerializeResult {
   serialize_fragment_with(frag: doc, medium: svg_markup_medium())
 }
