@@ -29,9 +29,11 @@ type CssPropertyName
   | AnimationDelay
   | AnimationDuration
   | TransformOrigin
+  | WebkitFontSmoothing
   | Background
   | Border
   | BorderBottom
+  | BorderBottomColor
   | BorderCollapse
   | BorderColor
   | BorderLeft
@@ -43,6 +45,7 @@ type CssPropertyName
   | ClipPath
   | Color
   | ColorScheme
+  | Content
   | Cursor
   | Display
   | Fill
@@ -66,6 +69,7 @@ type CssPropertyName
   | ListStyle
   | Margin
   | MarginBottom
+  | MarginInline
   | MarginLeft
   | MarginRight
   | MarginTop
@@ -75,16 +79,21 @@ type CssPropertyName
   | Opacity
   | Outline
   | Overflow
+  | OverflowX
   | Padding
+  | PaddingBlock
   | PaddingLeft
+  | PaddingTop
   | Position
   | Stroke
   | TextAlign
   | TextDecoration
   | TextOverflow
   | TextTransform
+  | TextWrap
   | Transform
   | Transition
+  | UserSelect
   | VerticalAlign
   | WhiteSpace
   | Width
@@ -98,9 +107,11 @@ fn css_property_wire(p: CssPropertyName) -> String {
     AnimationDelay => "animation-delay"
     AnimationDuration => "animation-duration"
     TransformOrigin => "transform-origin"
+    WebkitFontSmoothing => "-webkit-font-smoothing"
     Background => "background"
     Border => "border"
     BorderBottom => "border-bottom"
+    BorderBottomColor => "border-bottom-color"
     BorderCollapse => "border-collapse"
     BorderColor => "border-color"
     BorderLeft => "border-left"
@@ -112,6 +123,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     ClipPath => "clip-path"
     Color => "color"
     ColorScheme => "color-scheme"
+    Content => "content"
     Cursor => "cursor"
     Display => "display"
     Fill => "fill"
@@ -135,6 +147,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     ListStyle => "list-style"
     Margin => "margin"
     MarginBottom => "margin-bottom"
+    MarginInline => "margin-inline"
     MarginLeft => "margin-left"
     MarginRight => "margin-right"
     MarginTop => "margin-top"
@@ -144,16 +157,21 @@ fn css_property_wire(p: CssPropertyName) -> String {
     Opacity => "opacity"
     Outline => "outline"
     Overflow => "overflow"
+    OverflowX => "overflow-x"
     Padding => "padding"
+    PaddingBlock => "padding-block"
     PaddingLeft => "padding-left"
+    PaddingTop => "padding-top"
     Position => "position"
     Stroke => "stroke"
     TextAlign => "text-align"
     TextDecoration => "text-decoration"
     TextOverflow => "text-overflow"
     TextTransform => "text-transform"
+    TextWrap => "text-wrap"
     Transform => "transform"
     Transition => "transition"
+    UserSelect => "user-select"
     VerticalAlign => "vertical-align"
     WhiteSpace => "white-space"
     Width => "width"
