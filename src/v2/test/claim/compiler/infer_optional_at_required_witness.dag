@@ -192,10 +192,15 @@ test fn oar_an_optional_at_a_required_kernel_type_is_refused_holds() -> Bool {
   oar_refused_optional_at_required(declared: integer_int_type_node(), produced: oar_optional_int(), type_variables: [])
 }
 
-// THE CONTROLS THAT MUST NOT REFUSE. The lift `Int` at `Int?` keeps the counted optional-carrier
-// verdict it had: whether a value inhabits an optional carrier is not decided by the relation.
-test fn oar_the_lift_stays_counted_holds() -> Bool {
-  oar_counted_optional_carrier(declared: oar_optional_int(), produced: integer_int_type_node(), type_variables: [])
+// THE CONTROL THAT MUST NOT REFUSE. The lift `Int` at `Int?` is DECIDED: `T?` is the std.optional
+// instance, so the relation judges the produced `Int` against the declared payload `Int` and it inhabits.
+// It was once counted (UndecidableOptionalCarrier), which admitted `String` at `Int?` the same way.
+test fn oar_the_lift_is_decided_holds() -> Bool {
+  match declared_type_inhabitance(obligation: oar_obligation(declared: oar_optional_int(), produced: integer_int_type_node(), type_variables: [])) {
+    Inhabits { homomorphism: _ } => true
+    InhabitanceRefused { find_witness_reason: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
 }
 
 // `Int?` at `Int?` is DECIDED, no longer counted: v2.compiler.infer infer_match_generic_formal peels

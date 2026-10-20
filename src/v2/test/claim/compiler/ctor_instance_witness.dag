@@ -1,0 +1,118 @@
+module v2.test.claim.compiler.ctor_instance_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason, diagnostics_has_reason, Some }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, Int, List, String }
+import v2.compiler.infer { infer }
+import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ers_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_artifact, file_path: "src/v2/pilot/ers_pilot.dag" }
+data ers_collection_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_collection_artifact, file_path: "src/v2/pilot/ers_collection_pilot.dag" }
+data ers_algebra_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_algebra_artifact, file_path: "src/v2/pilot/ers_algebra_pilot.dag" }
+data ers_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_std_artifact, file_path: "src/v2/pilot/ers_std_pilot.dag" }
+
+fn ers_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^infer_expected_return_seed_cu,
+    source_root: V2Tree
+  }
+}
+
+fn ers_assemble(body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: [
+      ers_witness(src: concat("module p\n\nimport std.optional { Absent, Optional, Present }\nimport v2.std.collection { List }\nimport std.algebra { collection_concat_shape }\n\n", body), artifact: ers_artifact),
+      ers_witness(src: osd_std_optional(), artifact: ers_std_artifact),
+      ers_witness(src: "module v2.std.collection\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = std.algebra.FreeMonoid<T>\n", artifact: ers_collection_artifact),
+      ers_witness(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n\nfn collection_concat_shape() -> Int { 0 }\n", artifact: ers_algebra_artifact)
+    ],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+
+
+fn ers_infer_accepted(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn ers_fatal_is(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+      }
+  }
+}
+
+fn ers_has(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: reason)
+      }
+  }
+}
+
+fn ers_error_count(o: Outcome<ResolvedTree>) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => 0
+        Rejected { diagnostics: d } => fold(d.tail, init: 1, f: fn(acc, _x) { acc + 1 })
+      }
+  }
+}
+
+
+fn ci_plain() -> Outcome<ResolvedTree> { ers_assemble(body: "fn plain() -> Int? { 1 }\n") }
+fn ci_bare() -> Outcome<ResolvedTree> { ers_assemble(body: "fn a() -> Int? { Absent }\n") }
+fn ci_rigid() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f<T>() -> T? { Absent }\n") }
+fn ci_present() -> Outcome<ResolvedTree> { ers_assemble(body: "fn s() -> Int? { Present { value: \"s\" } }\n") }
+fn ci_unsolved() -> Outcome<ResolvedTree> { ers_assemble(body: "fn u() -> Int? {\n  let x = Absent\n  Absent\n}\n") }
+fn ci_planted() -> Outcome<ResolvedTree> { ers_assemble(body: "fn bad() -> Bool { 1 }\n") }
+
+test fn ci_positive_control_plain_infers_holds() -> Bool { ers_infer_accepted(o: ci_plain()) }
+test fn ci_planted_error_counts_one_holds() -> Bool { ers_error_count(o: ci_planted()) == 1 }
+// EXPECTED RED, trigger: the native T? producer cut (adhoc-1c3afc22-276), after which Occupancy no longer reaches infer
+// and the constructor-use variable of Absent at Int? is solved. Flips to accepts when the cut lands.
+test fn ci_bare_absent_at_optional_int_is_expected_red_holds() -> Bool { !ers_infer_accepted(o: ci_bare()) }
+test fn ci_absent_at_rigid_optional_accepts_holds() -> Bool { ers_infer_accepted(o: ci_rigid()) }
+test fn ci_present_string_at_optional_int_refuses_holds() -> Bool { ers_error_count(o: ci_present()) >= 1 }
+test fn ci_unsolved_constructor_variable_refuses_holds() -> Bool { ers_error_count(o: ci_unsolved()) >= 1 }
+
+fn ci_rigid_payload() -> Outcome<ResolvedTree> { ers_assemble(body: "fn r<T>(x: T) -> Int? { Present { value: x } }\n") }
+// EXPECTED ACCEPTED (a hole), trigger: the rigid-T decision owned by jolly-bee-729 (undecidable_generic_formal admits it).
+test fn ci_rigid_payload_at_optional_int_is_still_accepted_holds() -> Bool { ers_infer_accepted(o: ci_rigid_payload()) }
+
+fn ci_two_uses() -> Outcome<ResolvedTree> { ers_assemble(body: "fn a() -> Int? { Absent }\nfn b() -> String? { Absent }\nfn c() -> Int? {\n  let x: String? = Absent\n  Absent\n}\n") }
+// EXPECTED RED, same trigger as ci_bare_absent_at_optional_int_is_expected_red_holds.
+test fn ci_two_absent_uses_at_distinct_types_is_expected_red_holds() -> Bool { !ers_infer_accepted(o: ci_two_uses()) }

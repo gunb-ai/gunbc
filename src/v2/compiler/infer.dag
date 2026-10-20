@@ -6,6 +6,7 @@ import std.primitive_projection { never_type_declaration }
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic, occurrence_id_eq }
 import v2.std.provenance { node_occurrence_id_optional }
+import std.integer { int_to_decimal_string }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
 import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup, map_support_keys, collection_concat_shape, collection_count_shape }
 import v2.std.bounded_lattice_completeness {
@@ -1483,6 +1484,29 @@ type InferVariantArmReferenceValue
   | VariantArmReferenceValueIdentityContested { claimants: FreeMonoid<QualifiedName> }
   | VariantArmReferenceValueBodyUnavailable
 
+// A CONSTRUCTOR USE INSTANTIATES ITS DECLARATION'S TYPE PARAMETERS AS FRESH INSTANCE VARIABLES, never
+// as the declaration's parameter atom: `^T` of std.optional Optional is spelled like a rigid fn type
+// variable `T`, and closing a produced type by parameter NAME (infer_produced_open_type_params) solved
+// the rigid one as if it were the use's own. The variable is minted like v2.std.anonymous_binder
+// fresh_type_variable (unspellable, path-keyed) under its own prefix, so a closer can tell an instance
+// variable of a use from a binder placeholder; the path is the use node's occurrence id, so two uses in
+// one fn are two variables.
+fn infer_constructor_use_variable_prefix() -> String {
+  "<constructor-use@"
+}
+
+fn infer_constructor_use_variable(use: Node, label: Symbol) -> Symbol {
+  let path = match node_occurrence_id_optional(node: use) {
+    Absent => ""
+    Present { value: id } => int_to_decimal_string(value: id.value)
+  }
+  symbol_intern_lexeme(lexeme: infer_constructor_use_variable_prefix() + path + ":" + symbol_lexeme(sym: label) + ">")
+}
+
+fn infer_symbol_is_constructor_use_variable(id: Symbol) -> Bool {
+  symbol_lexeme(sym: id).starts_with(prefix: infer_constructor_use_variable_prefix())
+}
+
 fn infer_open_type_param_atom(name: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: name } },
@@ -1491,7 +1515,7 @@ fn infer_open_type_param_atom(name: Symbol) -> Node {
   }
 }
 
-fn infer_coproduct_type_applied_open(bindings: SymbolIndex, coproduct: QualifiedName) -> Node {
+fn infer_coproduct_type_applied_open(bindings: SymbolIndex, coproduct: QualifiedName, use: Node) -> Node {
   let head = declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic)
   let params = symbol_index_declared_type_params_at(index: bindings, qualified_path: coproduct)
   match params {
@@ -1502,7 +1526,7 @@ fn infer_coproduct_type_applied_open(bindings: SymbolIndex, coproduct: Qualified
         children: Cons {
           head: Edge { label: Positional, target: head },
           tail: list_map(xs: params, f: fn(p) {
-            Edge { label: Positional, target: infer_open_type_param_atom(name: p) }
+            Edge { label: Positional, target: infer_open_type_param_atom(name: infer_constructor_use_variable(use: use, label: p)) }
           })
         },
         occurrence_id: OccurrenceSynthetic
@@ -1637,7 +1661,7 @@ fn infer_variant_arm_value_reference_facts(
         o: infer_facts_denoting(
           o: inferred_facts_from_derived_type(
             node: n,
-            derived_type: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct),
+            derived_type: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct, use: n),
             descent: Holds { value: descent_proof }
           ),
           declaration: declared
@@ -2095,7 +2119,7 @@ fn infer_branch_operand_resolved_type_with_entries(
           match verdict {
             VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
               Holds {
-                value: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct)
+                value: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct, use: node)
               }
             VariantArmReferenceValueNotDerived => inferred_facts_resolved_type(facts: facts)
             VariantArmReferenceValueIdentityUnavailable =>
@@ -4675,21 +4699,17 @@ type InferTypePair {
 // infer_match_generic_formal used for generic formals -- produced as the formal, declared as
 // the instance source. Not a second solver.
 fn infer_produced_open_type_params(produced: Node, declarations: SymbolIndex) -> List<Symbol> {
-  match declaration_denotation_of_type(t: produced) {
-    Absent => Empty
-    Present { value: denotation } =>
-      fold(
-        symbol_index_declared_type_params_at(index: declarations, qualified_path: denotation.declaration),
-        init: Empty,
-        f: fn(acc, p) {
-          if inhabitance_node_mentions_type_variable(n: produced, type_variables: [p]) {
-            list_snoc_item(xs: acc, item: p)
-          } else {
-            acc
-          }
+  fold(node_subtree_nodes(root: produced), init: Empty, f: fn(acc, m) {
+    match m.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if infer_symbol_is_constructor_use_variable(id: id) && !fold(acc, init: false, f: fn(found, v) { found || (v == id) }) {
+          list_snoc_item(xs: acc, item: id)
+        } else {
+          acc
         }
-      )
-  }
+      _ => acc
+    }
+  })
 }
 
 fn infer_close_produced_at_declared(
