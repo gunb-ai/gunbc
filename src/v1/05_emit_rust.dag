@@ -15898,6 +15898,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                       rust_shared_wrap_ctor(inner_expr: struct_lit)
                     } else { struct_lit }
                   } else { fval0 }
+                  // Unreachable by totality: a count==1 list always has a first element.
                   Absent => fval0
                 }
               } else if single_candidates |> count > 1 {
@@ -15935,6 +15936,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                 if set_contains(shared_types, resolved_sn) {
                   rust_shared_wrap_ctor(inner_expr: struct_lit)
                 } else { struct_lit }
+              // Unreachable by totality: a count==1 list always has a first element; the
+              // zero-candidate case is the else branch below, and many refuses above.
               Absent =>
                 let vals = fields |> map(f =>
                   emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
