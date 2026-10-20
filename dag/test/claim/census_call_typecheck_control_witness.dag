@@ -1,0 +1,29 @@
+module test.claim.census_call_typecheck_control_witness
+
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable,
+  census_blocking_rows, census_total_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn wrong_ground_type_source() -> String {
+  "module census.typecheck.control\nfn takes_int(x: Int) -> Int { 0 }\nfn bad() -> Int { takes_int(x: \"s\") }\n"
+}
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+  }
+}
+
+test fn the_typecheck_control_census_could_run() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(wrong_ground_type_source())) != -1
+}
+
+test fn the_typecheck_control_is_refused() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(wrong_ground_type_source())) >= 1
+}
