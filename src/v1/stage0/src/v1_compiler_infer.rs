@@ -26,14 +26,15 @@ pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
 pub use crate::gunbc_structural_realization_bindings::{
-    kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name,
-    literal_homomorphism_rows,
+    conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows,
+    kernel_optional_mint_name, literal_homomorphism_rows,
 };
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{
     carrier_container_equality_rows, kernel_carrier_admits_numeral, CollectionSizeEffect,
     FreeMonoid,
 };
+use crate::std_coercion::ConversionPhase::{InverseUnfoldPhase, UnfoldPhase};
 use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
 use crate::std_coercion::TextRepresentation::{
     CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
@@ -42,8 +43,9 @@ use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 pub use crate::std_coercion::{
-    dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type, SubtractionRefinement,
-    TextRepresentation, TypeDeclarationProvenance,
+    dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type, unicode_scalar_unfold,
+    ConversionPhase, ConversionPlan, SubtractionRefinement, TextRepresentation,
+    TypeDeclarationProvenance,
 };
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
@@ -12067,7 +12069,7 @@ pub fn host_text_unfolded_at_code_point_boundary(
     value: Rc<Node>,
     destination_type: Rc<Node>,
     scope: Rc<InferScope>,
-) -> Rc<Node> {
+) -> Rc<InferResult> {
     match value.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: _, .. }) => {
             match argument_text_representation(value.clone(), scope.type_env.clone()) {
@@ -12076,31 +12078,148 @@ pub fn host_text_unfolded_at_code_point_boundary(
                         destination_type.clone(),
                         scope.clone(),
                     ) {
-                        crate::v1_std_core::make_named_expr_node(
-                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            "chars".to_string(),
-                            Rc::new(ExprData::ExprMethodCall {
-                                method_semantics: Some(Rc::new(
-                                    MethodSemantics::PlainMethodSemantics,
-                                )),
-                            }),
-                            Rc::new(vec![value.clone()]),
-                            Some(Rc::new(InferredNode::Resolved {
-                                node: destination_type.clone(),
-                            })),
-                            value.span.clone(),
-                            elaborated_span("chars".to_string()),
+                        host_text_crossing_call(
+                            value.clone(),
+                            destination_type.clone(),
+                            scope.clone(),
                         )
                     } else {
-                        value.clone()
+                        Rc::new(InferResult {
+                            typed: value.clone(),
+                            diagnostics: Rc::new(vec![]),
+                        })
                     }
                 }
-                TextRepresentation::CodePointSequence => value.clone(),
-                TextRepresentation::NotText => value.clone(),
-                TextRepresentation::TextRepresentationUnidentified => value.clone(),
+                TextRepresentation::CodePointSequence => Rc::new(InferResult {
+                    typed: value.clone(),
+                    diagnostics: Rc::new(vec![]),
+                }),
+                TextRepresentation::NotText => Rc::new(InferResult {
+                    typed: value.clone(),
+                    diagnostics: Rc::new(vec![]),
+                }),
+                TextRepresentation::TextRepresentationUnidentified => Rc::new(InferResult {
+                    typed: value.clone(),
+                    diagnostics: Rc::new(vec![]),
+                }),
             }
         }
-        _ => value.clone(),
+        _ => Rc::new(InferResult {
+            typed: value.clone(),
+            diagnostics: Rc::new(vec![]),
+        }),
+    }
+}
+
+pub fn scalar_unfold_conversion_routes() -> Rc<Vec<Rc<DeclarationRef>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for plan in Rc::new({
+            let mut __result = Vec::new();
+            for plan in conversion_plan_rows().iter().cloned() {
+                if match (*plan.phase.clone()).clone() {
+                    ConversionPhase::UnfoldPhase { row: r, .. } => {
+                        match (*r.producer.clone()).clone() {
+                            LiteralUnfolding::UnicodeScalarSequenceUnfold => true,
+                            _ => false,
+                        }
+                    }
+                    ConversionPhase::InverseUnfoldPhase { row: _, .. } => false,
+                } {
+                    __result.push(plan);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(plan.route.clone());
+        }
+        __result
+    })
+}
+
+pub fn host_text_crossing_refused(
+    value: Rc<Node>,
+    message: String,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    Rc::new(InferResult {
+        typed: value.clone(),
+        diagnostics: Rc::new(vec![inference_error(
+            v1_rt::concat("host-text crossing: ".to_string(), message.clone()),
+            value.span.clone(),
+            scope.module_name.clone(),
+        )]),
+    })
+}
+
+pub fn host_text_crossing_call(
+    value: Rc<Node>,
+    destination_type: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    {
+        let routes = scalar_unfold_conversion_routes();
+        if ((routes.clone().len() as i64) != 1) {
+            host_text_crossing_refused(
+                value.clone(),
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "gunbc.structural_realization_bindings conversion_plan_rows names "
+                            .to_string(),
+                        (routes.clone().len() as i64).to_string(),
+                    ),
+                    " plans for the Unicode scalar unfold; the crossing needs exactly one"
+                        .to_string(),
+                ),
+                scope.clone(),
+            )
+        } else {
+            match routes.clone().first().cloned() {
+                std::option::Option::None => host_text_crossing_refused(
+                    value.clone(),
+                    "no conversion plan for the Unicode scalar unfold".to_string(),
+                    scope.clone(),
+                ),
+                Some(route) => {
+                    let identity = Rc::new(DeclaredCallableIdentity {
+                        owner_module_path: route.module_path.clone(),
+                        decl_name: route.decl_name.clone(),
+                    });
+                    let qualified = crate::v1_std_core::callable_identity(identity.clone());
+                    match (*crate::v1_compiler_infer_lookup::lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), qualified.clone())).clone() {
+    FuncSigLookup::FuncSigResolved { sig, declared, .. } => if ((declared.owner_module_path.clone() != identity.owner_module_path.clone()) || (declared.decl_name.clone() != identity.decl_name.clone())) {
+                    host_text_crossing_refused(value.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the route ".to_string(), qualified.clone()), " resolved to ".to_string()), crate::v1_std_core::callable_identity(declared.clone())), ", not to itself".to_string()), scope.clone())
+                } else {
+                    match sig.params.clone().first().cloned() {
+    std::option::Option::None => host_text_crossing_refused(value.clone(), v1_rt::concat(v1_rt::concat("the route ".to_string(), qualified.clone()), " declares no parameter to take the host text".to_string()), scope.clone()),
+    Some(param) => {
+                        let param_name = crate::v1_std_core::param_node_name_at(param.clone(), scope.type_env.source_indices.clone());
+Rc::new(InferResult {
+    typed: crate::v1_std_core::make_named_expr_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), qualified.clone(), Rc::new(ExprData::ExprCall {
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: Rc::new(CallTargetIdentity::SourceDeclarationCall {
+    owner_module_path: identity.owner_module_path.clone(),
+    decl_name: identity.decl_name.clone(),
+}),
+})),
+    descent_evidence: std::option::Option::None,
+}), Rc::new(vec![crate::v1_std_core::make_arg_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), Some(param_name.clone()), value.clone(), value.span.clone(), elaborated_span(param_name.clone()))]), Some(Rc::new(InferredNode::Resolved {
+    node: destination_type.clone(),
+})), value.span.clone(), elaborated_span(qualified.clone())),
+    diagnostics: Rc::new(vec![]),
+})
+},
+}
+                },
+    FuncSigLookup::FuncSigUnresolved => host_text_crossing_refused(value.clone(), v1_rt::concat(v1_rt::concat("its declared route ".to_string(), qualified.clone()), " is not in this compile's closure; the crossing refuses rather than reach `chars` by spelling".to_string()), scope.clone()),
+    FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => host_text_crossing_refused(value.clone(), v1_rt::concat(v1_rt::concat("its declared route ".to_string(), qualified.clone()), " resolves ambiguously".to_string()), scope.clone()),
+}
+                }
+            }
+        }
     }
 }
 
@@ -12283,14 +12402,20 @@ pub fn infer_call_arguments_generic_pass(
                 expected.clone(),
             );
             let ar = if formal_is_code_point_sequence.clone() {
-                Rc::new(InferResult {
-                    typed: host_text_unfolded_at_code_point_boundary(
+                {
+                    let crossed = host_text_unfolded_at_code_point_boundary(
                         ar_inferred.typed.clone(),
                         code_point_formal.clone(),
                         scope.clone(),
-                    ),
-                    diagnostics: ar_inferred.diagnostics.clone(),
-                })
+                    );
+                    Rc::new(InferResult {
+                        typed: crossed.typed.clone(),
+                        diagnostics: v1_rt::concat(
+                            ar_inferred.diagnostics.clone(),
+                            crossed.diagnostics.clone(),
+                        ),
+                    })
+                }
             } else {
                 ar_inferred.clone()
             };
@@ -12749,7 +12874,7 @@ pub fn unfold_scalar_sequence_image(
     {
         let scalar_nodes = Rc::new({
             let mut __result = Vec::new();
-            for cp in Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+            for cp in crate::std_coercion::unicode_scalar_unfold(s.clone())
                 .iter()
                 .cloned()
             {
