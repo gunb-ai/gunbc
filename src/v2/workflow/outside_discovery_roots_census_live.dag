@@ -23,8 +23,7 @@ module v2.workflow.outside_discovery_roots_census_live
 
 import std.types { String, Bool, List, Int }
 import std.optional { Optional, Absent, Present }
-import std.algebra { Cons, Empty, trim }
-import v2.std.text { Char, string_split }
+import std.algebra { trim }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.exec.command { LocalExec }
 import extdeps.git { git_ls_files_command }
@@ -84,25 +83,18 @@ fn listing_from_captured_text(text: String) -> TrackedListing {
 }
 
 // git prints one path per line; the trailing newline is not a path, and a field that is only whitespace is
-// the listing's own line ending rather than a tracked file. One fold, prepending a singleton and reversed
-// once -- the cost shape DESIGN §6 asks for, the same one the S1 census uses.
-data newline_char: Char = 10
-
+// the listing's own line ending rather than a tracked file.
+//
+// WHY THIS SPLIT AND NOT `v2.std.text`'s: captured process output is kernel host text (`std.types`
+// String), and `v2.std.text::string_split` splits THAT into `String` = `FreeMonoid<Char>` fields -- a
+// different carrier, which is why feeding its fields to `trim` (a host-text operation) is a type error.
+// This is the same shape `extdeps.linux.proc_self_cgroup`'s `proc_self_cgroup_nonempty_lines` uses for
+// captured wire content: the host-text `split` on the newline, then drop the fields that are only the
+// line ending. One rule, one home: line splitting of captured output is not re-implemented here.
 fn listing_paths(text: String) -> List<String> {
-  let fields = string_split(source: text, delimiter: Cons { head: newline_char, tail: Empty {} })
-  let kept = fold(
-    fields,
-    init: [],
-    f: fn(acc, field) {
-      let path = trim(s: field)
-      if path != "" {
-        concat([path], acc)
-      } else {
-        acc
-      }
-    }
-  )
-  kept |> reverse()
+  split(s: text, delimiter: "\n")
+    |> filter(line => trim(s: line) != "")
+    |> map(line => trim(s: line))
 }
 
 // The census, composed: rows, findings, refusal, receipt. Pure over the listing the capture handed back.
