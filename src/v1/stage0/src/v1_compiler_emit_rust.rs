@@ -3641,7 +3641,12 @@ pub fn render_rust_declaration_position(
             .clone())
             .clone()
             {
-                TypeDeclResolution::TypeDeclResolved { .. } => true,
+                TypeDeclResolution::TypeDeclResolved { decl: d, .. } => {
+                    !crate::v1_compiler_emit_core_support::is_type_alias_item(
+                        d.clone(),
+                        source_indices.clone(),
+                    )
+                }
                 _ => false,
             };
         let bare_declared_leaf = (((names_declaration.clone()
