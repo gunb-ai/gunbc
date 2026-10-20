@@ -69,6 +69,8 @@ import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.posix.test_utility {
   test_exists_command,
+  test_symbolic_link_command,
+  entry_existence_reading,
   test_executable_command,
   PathExistenceReading,
   PathPresent,
@@ -248,7 +250,7 @@ import gunbc.ci.ci_deploy_access {
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep, EnsuredPackage, EnsuredOwnershipMarker }
 import gunbc.fabric.fabric_storage_placement { FabricStorageOwnershipMarkerSpec }
 import extdeps.access.posix { FileMode, file_mode_octal }
-import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_off_argv, tailscale_program }
+import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_off_command }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.host.host_axis_caps { CapConvergeWithheld, cap_converge_decision }
 import gunbc.runner.runner_host_deploy {
@@ -5369,7 +5371,7 @@ fn realize_live_deploy_retract_on_host(
     ports: deploy_retract_ports_on_host(transport: transport),
     host: spec.target.host.identity,
     intent: intent,
-  )
+  ).verdict
 }
 
 type DeployRetractPorts {
@@ -5386,6 +5388,15 @@ fn deploy_retract_ports_on_host(transport: HostEffectTransport) -> DeployRetract
   }
 }
 
+// THE ORCHESTRATION'S ANSWER CARRIES THE PORT CALLS IT MADE. A control asserting that no leg was
+// dispatched reads this record, which is built at the single site that invokes each port
+// (retract_run_command / retract_run_remove / retract_run_load), so a preamble refusal that also ran a
+// leg shows it here and not only in the return value.
+type RetractOrchestration {
+  verdict: Reconciliation<HostEffectIntent, HostEffectEvidence>
+  calls: List<RetractPortCall>
+}
+
 fn live_deploy_retract_orchestrate(
   locus_refusal: Optional<String>,
   plan: DeployRetractPlan,
@@ -5394,34 +5405,54 @@ fn live_deploy_retract_orchestrate(
   ports: DeployRetractPorts,
   host: NonEmptyStr,
   intent: HostEffectIntent,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> RetractOrchestration {
   match locus_refusal {
-    Present { value: why } => NotConverged { reason: why, applied: intent }
+    Present { value: why } => RetractOrchestration { verdict: NotConverged { reason: why, applied: intent }, calls: [] }
     Absent =>
       match plan {
         RetractPlanRefused { step: s, reason: r } =>
-          NotConverged { reason: join(["live_deploy retract refused at step ", s, ": ", r], ""), applied: intent }
+          RetractOrchestration {
+            verdict: NotConverged { reason: join(["live_deploy retract refused at step ", s, ": ", r], ""), applied: intent },
+            calls: [],
+          }
         RetractPlanReady { legs: legs } =>
           match preamble(principal) {
             PreambleRefused { step: ps, reason: pr, legs_consumed: _ } =>
-              NotConverged {
-                reason: join(["live_deploy retract refused at preamble step ", live_deploy_preamble_step_name(step: ps), ": ", pr], ""),
-                applied: intent,
+              RetractOrchestration {
+                verdict: NotConverged {
+                  reason: join(["live_deploy retract refused at preamble step ", live_deploy_preamble_step_name(step: ps), ": ", pr], ""),
+                  applied: intent,
+                },
+                calls: [],
               }
-            PreambleConverged { principal: _, dropin: _, legs_consumed: _ } =>
-              live_deploy_retract_verdict(
-                run: live_deploy_retract_run_legs(legs: legs, ports: ports),
-                host: host,
-                intent: intent,
-              )
+            PreambleConverged { principal: _, dropin: _, legs_consumed: _ } => {
+              let run = live_deploy_retract_run_legs(legs: legs, ports: ports)
+              RetractOrchestration {
+                verdict: live_deploy_retract_verdict(run: run, host: host, intent: intent),
+                calls: deploy_retract_run_calls(run: run),
+              }
+            }
           }
       }
   }
 }
 
 type DeployRetractRun
-  = RetractRunOk { legs_run: Int }
-  | RetractRunFailed { step: String, reason: String, legs_run: Int }
+  = RetractRunOk { legs_run: Int, calls: List<RetractPortCall> }
+  | RetractRunFailed { step: String, reason: String, legs_run: Int, calls: List<RetractPortCall> }
+
+// ONE PORT INVOCATION, as the dispatch made it: which port and what it was asked.
+type RetractPortCall {
+  port: String
+  subject: String
+}
+
+fn deploy_retract_run_calls(run: DeployRetractRun) -> List<RetractPortCall> {
+  match run {
+    RetractRunOk { legs_run: _, calls: cs } => cs
+    RetractRunFailed { step: _, reason: _, legs_run: _, calls: cs } => cs
+  }
+}
 
 type RetractLoadState
   = RetractUnitNotFound
@@ -5440,12 +5471,12 @@ fn live_deploy_retract_verdict(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match run {
-    RetractRunFailed { step: s, reason: r, legs_run: n } =>
+    RetractRunFailed { step: s, reason: r, legs_run: n, calls: _ } =>
       NotConverged {
         reason: join(["live_deploy retract refused at step ", s, " after ", to_string(n), " completed legs: ", r], ""),
         applied: intent,
       }
-    RetractRunOk { legs_run: _ } =>
+    RetractRunOk { legs_run: _, calls: _ } =>
       Converged {
         evidence: ShellEffectApplied { exit_code: 0, stdout: live_deploy_receipt_line(host: host, fold: "retract"), stderr: "" },
         applied: intent,
@@ -5500,50 +5531,108 @@ fn deploy_retract_gone_failure(load: RetractLoadState) -> Optional<String> {
   }
 }
 
-fn live_deploy_retract_run_leg(leg: DeployRetractLeg, ports: DeployRetractPorts) -> Optional<String> {
-  let command = ports.command
-  let remove = ports.remove
-  let load_of = ports.load
-  match leg {
-    RetractServeOff { endpoint: e } =>
-      deploy_retract_command_failure(outcome: command(sudo_elevate_command(command: concat([tailscale_program().invocation as String], tailscale_serve_off_argv(endpoint: e)))))
-    RetractDisableIfLoaded { unit: u } => {
-      let load = deploy_retract_load_state_of(capture: load_of(u))
-      match load {
-        RetractUnitLoaded =>
-          deploy_retract_disable_failure(
-            load: load,
-            disable: command(sudo_elevate_command(command: systemctl_disable_now_argv(unit: u))),
-          )
-        RetractUnitNotFound => Absent
-        RetractLoadStateUnreadable { reason: _ } => deploy_retract_disable_failure(load: load, disable: RunArgvTransportRefused { reason: "disable not attempted" })
-      }
-    }
-    RetractRemoveForce { paths: ps } =>
-      deploy_retract_remove_failure(verdict: remove(RemoveForce { paths: ps }))
-    RetractRemoveEmptyDirectory { path: p } =>
-      deploy_retract_remove_failure(verdict: remove(RemoveEmptyDirectory { path: p }))
-    RetractRemoveRecursive { path: p } =>
-      deploy_retract_remove_failure(verdict: remove(RemoveForceRecursive { path: p }))
-    RetractDaemonReload =>
-      deploy_retract_command_failure(outcome: command(extdeps.systemd.systemctl.systemctl_daemon_reload_command()))
-    RetractUnitGoneReadback { unit: u } =>
-      deploy_retract_gone_failure(load: deploy_retract_load_state_of(capture: load_of(u)))
+type RetractLegRun {
+  failure: Optional<String>
+  calls: List<RetractPortCall>
+}
+
+type RetractCommandRan {
+  outcome: RunArgvTransportOutcome
+  call: RetractPortCall
+}
+
+type RetractRemoveRan {
+  verdict: Reconciliation<HostRemoveTarget, HostRemoveEvidence>
+  call: RetractPortCall
+}
+
+type RetractLoadRead {
+  capture: SystemdPropertyCapture
+  call: RetractPortCall
+}
+
+fn retract_run_command(ports: DeployRetractPorts, command: ArgvCommand) -> RetractCommandRan {
+  let run = ports.command
+  RetractCommandRan {
+    outcome: run(command),
+    call: RetractPortCall { port: "command", subject: join(argv_words(command: command), " ") },
   }
 }
 
-fn live_deploy_retract_run_legs(legs: List<DeployRetractLeg>, ports: DeployRetractPorts) -> DeployRetractRun {
-  live_deploy_retract_run_legs_from(legs: legs, ports: ports, done: 0)
+fn retract_run_remove(ports: DeployRetractPorts, target: HostRemoveTarget) -> RetractRemoveRan {
+  let remove = ports.remove
+  RetractRemoveRan {
+    verdict: remove(target),
+    call: RetractPortCall { port: "remove", subject: join([host_remove_arm_name(target: target), " ", host_remove_path_field(target: target)], "") },
+  }
 }
 
-fn live_deploy_retract_run_legs_from(legs: List<DeployRetractLeg>, ports: DeployRetractPorts, done: Int) -> DeployRetractRun {
-  match legs {
-    Empty => RetractRunOk { legs_run: done }
-    Cons { head: leg, tail: rest } =>
-      match live_deploy_retract_run_leg(leg: leg, ports: ports) {
-        Present { value: why } => RetractRunFailed { step: deploy_retract_leg_step(leg: leg), reason: why, legs_run: done }
-        Absent => live_deploy_retract_run_legs_from(legs: rest, ports: ports, done: done + 1)
+fn retract_run_load(ports: DeployRetractPorts, unit: NonEmptyStr) -> RetractLoadRead {
+  let load_of = ports.load
+  RetractLoadRead {
+    capture: load_of(unit),
+    call: RetractPortCall { port: "load", subject: unit as String },
+  }
+}
+
+fn live_deploy_retract_run_leg(leg: DeployRetractLeg, ports: DeployRetractPorts) -> RetractLegRun {
+  match leg {
+    RetractServeOff { endpoint: e } => {
+      let ran = retract_run_command(ports: ports, command: sudo_elevate_command(command: argv_words(command: tailscale_serve_off_command(endpoint: e))))
+      RetractLegRun { failure: deploy_retract_command_failure(outcome: ran.outcome), calls: [ran.call] }
+    }
+    RetractDisableIfLoaded { unit: u } => {
+      let read = retract_run_load(ports: ports, unit: u)
+      let load = deploy_retract_load_state_of(capture: read.capture)
+      match load {
+        RetractUnitLoaded => {
+          let ran = retract_run_command(ports: ports, command: sudo_elevate_command(command: systemctl_disable_now_argv(unit: u)))
+          RetractLegRun {
+            failure: deploy_retract_disable_failure(load: load, disable: ran.outcome),
+            calls: [read.call, ran.call],
+          }
+        }
+        RetractUnitNotFound => RetractLegRun { failure: Absent, calls: [read.call] }
+        RetractLoadStateUnreadable { reason: _ } =>
+          RetractLegRun {
+            failure: deploy_retract_disable_failure(load: load, disable: RunArgvTransportRefused { reason: "disable not attempted" }),
+            calls: [read.call],
+          }
       }
+    }
+    RetractRemoveForce { paths: ps } => retract_remove_leg(ran: retract_run_remove(ports: ports, target: RemoveForce { paths: ps }))
+    RetractRemoveEmptyDirectory { path: p } => retract_remove_leg(ran: retract_run_remove(ports: ports, target: RemoveEmptyDirectory { path: p }))
+    RetractRemoveRecursive { path: p } => retract_remove_leg(ran: retract_run_remove(ports: ports, target: RemoveForceRecursive { path: p }))
+    RetractDaemonReload => {
+      let ran = retract_run_command(ports: ports, command: extdeps.systemd.systemctl.systemctl_daemon_reload_command())
+      RetractLegRun { failure: deploy_retract_command_failure(outcome: ran.outcome), calls: [ran.call] }
+    }
+    RetractUnitGoneReadback { unit: u } => {
+      let read = retract_run_load(ports: ports, unit: u)
+      RetractLegRun { failure: deploy_retract_gone_failure(load: deploy_retract_load_state_of(capture: read.capture)), calls: [read.call] }
+    }
+  }
+}
+
+fn retract_remove_leg(ran: RetractRemoveRan) -> RetractLegRun {
+  RetractLegRun { failure: deploy_retract_remove_failure(verdict: ran.verdict), calls: [ran.call] }
+}
+
+fn live_deploy_retract_run_legs(legs: List<DeployRetractLeg>, ports: DeployRetractPorts) -> DeployRetractRun {
+  live_deploy_retract_run_legs_from(legs: legs, ports: ports, done: 0, calls: [])
+}
+
+fn live_deploy_retract_run_legs_from(legs: List<DeployRetractLeg>, ports: DeployRetractPorts, done: Int, calls: List<RetractPortCall>) -> DeployRetractRun {
+  match legs {
+    Empty => RetractRunOk { legs_run: done, calls: calls }
+    Cons { head: leg, tail: rest } => {
+      let ran = live_deploy_retract_run_leg(leg: leg, ports: ports)
+      let seen = concat(calls, ran.calls)
+      match ran.failure {
+        Present { value: why } => RetractRunFailed { step: deploy_retract_leg_step(leg: leg), reason: why, legs_run: done, calls: seen }
+        Absent => live_deploy_retract_run_legs_from(legs: rest, ports: ports, done: done + 1, calls: seen)
+      }
+    }
   }
 }
 
@@ -5677,8 +5766,8 @@ fn deploy_apply_digest_env_failure(binary: String, env_name: String, dest: Strin
 // ONE RETRACT LEG ON APPLY (a leftover timer's retirement), through the retract runner itself.
 fn deploy_apply_retract_leg_failure(leg: DeployRetractLeg, ports: DeployRetractPorts) -> Optional<String> {
   match live_deploy_retract_run_legs(legs: [leg], ports: ports) {
-    RetractRunOk { legs_run: _ } => Absent
-    RetractRunFailed { step: s, reason: r, legs_run: _ } => Present { value: join(["retract leg ", s, ": ", r], "") }
+    RetractRunOk { legs_run: _, calls: _ } => Absent
+    RetractRunFailed { step: s, reason: r, legs_run: _, calls: _ } => Present { value: join(["retract leg ", s, ": ", r], "") }
   }
 }
 
@@ -8346,30 +8435,36 @@ fn host_remove_parent_of(path: String) -> String {
   )
 }
 
-// THE READ-BACK PROBE. Unprivileged `test -e path`; a false is only trusted as absence when the parent
-// is searchable (`test -x parent`). The parent is probed only when the path's own reading is false.
-fn host_remove_probe_state(path: NonEmptyStr, transport: HostEffectTransport) -> HostRemovePathState {
-  let p = path as String
-  let reading = host_remove_reading(
-    path: p,
-    outcome: run_argv_over_host_effect_transport(command: test_exists_command(path: p), transport: transport),
-  )
+// THE READ-BACK PROBE, OF THE ENTRY AND NOT ITS REFERENT. Unprivileged `test -L` then `test -e`
+// (extdeps.posix.test_utility entry_existence_reading: lstat OR stat), so a symlink is Present whether
+// it dangles, points into an unsearchable directory or loops on itself -- `test -e` alone follows the
+// link and reads all three as false, and `rm` still removes the entry. A both-false reading is only
+// trusted as absence when the parent is searchable (`test -x parent`); the parent is probed only then.
+// The runner is a parameter so the same fold is driven by a control over supplied outcomes.
+fn host_remove_entry_state(path: String, run: fn(ArgvCommand) -> RunArgvTransportOutcome) -> HostRemovePathState {
+  let link = host_remove_reading(path: path, outcome: run(test_symbolic_link_command(path: path)))
+  let reading = match link {
+    PathPresent => PathPresent
+    PathAbsentOrUnstattable => entry_existence_reading(link: link, follow: host_remove_reading(path: path, outcome: run(test_exists_command(path: path))))
+    PathExistenceUnreadable { reason: _ } => entry_existence_reading(link: link, follow: host_remove_reading(path: path, outcome: run(test_exists_command(path: path))))
+  }
   match reading {
     PathPresent => HostRemovePathPresent
     PathExistenceUnreadable { reason: r } => HostRemovePathUnreadable { reason: r as String }
     PathAbsentOrUnstattable => {
-      let parent = host_remove_parent_of(path: p)
+      let parent = host_remove_parent_of(path: path)
       host_remove_state_of(
-        path: p,
+        path: path,
         parent: parent,
         reading: reading,
-        parent_reading: host_remove_reading(
-          path: parent,
-          outcome: run_argv_over_host_effect_transport(command: test_executable_command(path: parent), transport: transport),
-        ),
+        parent_reading: host_remove_reading(path: parent, outcome: run(test_executable_command(path: parent))),
       )
     }
   }
+}
+
+fn host_remove_probe_state(path: NonEmptyStr, transport: HostEffectTransport) -> HostRemovePathState {
+  host_remove_entry_state(path: path as String, run: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) })
 }
 
 // Probe every target path in order. A transport refusal is a path's Unreadable state, never absence.

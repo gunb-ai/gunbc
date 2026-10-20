@@ -78,6 +78,12 @@ fn tailscale_serve_status_json_argv() -> List<String> {
 // The status read as a command. The program is PATH-resolved, as the operations below spell it.
 fn tailscale_program() -> ProgramIdentity = uncataloged_program(invocation: "tailscale")
 
+// The off form as a command, so a caller sources the program from the module that owns it rather than
+// spelling `tailscale` beside the argv.
+fn tailscale_serve_off_command(endpoint: TailscaleServeEndpoint) -> ArgvCommand {
+  argv_command(program: tailscale_program(), arguments: tailscale_serve_off_argv(endpoint: endpoint))
+}
+
 fn tailscale_serve_status_json_command() -> ArgvCommand {
   argv_command(program: tailscale_program(), arguments: tailscale_serve_status_json_argv())
 }

@@ -17,6 +17,8 @@ module test.claim.host.host_remove_on_host_witness
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.algebra { Empty, FreeSemigroup, non_empty_append, non_empty_singleton, non_empty_to_list }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.posix.test_utility { test_symbolic_link_command }
 import gunbc.host.host_effect_realize {
   HostRemoveTarget,
   HostRemoveEvidence,
@@ -28,6 +30,7 @@ import gunbc.host.host_effect_realize {
   HostRemovePathUnreadable,
   host_remove_reading,
   host_remove_state_of,
+  host_remove_entry_state,
   host_remove_arm_name,
   host_remove_step_name,
   RunArgvTransportOutcome,
@@ -341,4 +344,71 @@ test fn test_status_is_absent_only_under_a_searchable_parent() -> Bool {
   state_is_absent(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0))))
     && state_is_unreadable(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 1))))
     && state_is_unreadable(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 2)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0))))
+}
+
+// -- THE ENTRY, NOT ITS REFERENT. `test -e` follows symlinks (POSIX stat), so a link whose referent is
+// missing, unreachable or itself reads false under it while the entry exists and rm removes it. The
+// production fold host_remove_entry_state is driven here over a SUPPLIED runner keyed on the test
+// operand (-L lstat, -e stat, -x parent search), so the probe vector is the interface and no
+// filesystem is touched. The inhabitance pairing is that the same fold is what
+// host_remove_probe_state hands the real transport.
+fn probe_by_operand(c: ArgvCommand, link: Int, follow: Int, parent: Int) -> RunArgvTransportOutcome {
+  let words = join(argv_words(command: c), " ")
+  if string_contains(s: words, pattern: "test -L ") {
+    probe_observed(code: link)
+  } else if string_contains(s: words, pattern: "test -e ") {
+    probe_observed(code: follow)
+  } else {
+    probe_observed(code: parent)
+  }
+}
+
+fn entry_state(link: Int, follow: Int, parent: Int) -> HostRemovePathState {
+  host_remove_entry_state(path: "/p/c", run: fn(c) { probe_by_operand(c: c, link: link, follow: follow, parent: parent) })
+}
+
+test fn the_link_operand_is_posix_test_dash_l() -> Bool {
+  join(argv_words(command: test_symbolic_link_command(path: "/p/c")), " ") == "test -L /p/c"
+}
+
+// A GENUINELY ABSENT path (both lookups false, searchable parent) stays absent, so the no-follow fix is
+// not satisfied by calling everything present.
+test fn a_genuinely_absent_entry_is_absent() -> Bool {
+  state_is_absent(st: entry_state(link: 1, follow: 1, parent: 0))
+}
+
+// A DANGLING LINK, A LINK TO A REFERENT BEHIND AN UNSEARCHABLE DIRECTORY AND A SELF-LOOP all give
+// lstat success and stat failure: -L 0, -e 1, parent searchable. That vector is a PRESENT entry; the
+// follow-only reading classified it Absent.
+test fn a_symlink_whose_referent_does_not_resolve_is_present() -> Bool {
+  host_remove_state_present(state: entry_state(link: 0, follow: 1, parent: 0))
+    && host_remove_state_present(state: entry_state(link: 0, follow: 2, parent: 0))
+}
+
+// An entry that resolves is present however the link probe answered, and an unreadable lookup stays
+// distinct from absence in each position.
+test fn a_resolving_entry_is_present_and_unreadable_lookups_stay_unreadable() -> Bool {
+  host_remove_state_present(state: entry_state(link: 1, follow: 0, parent: 0))
+    && state_is_unreadable(st: entry_state(link: 2, follow: 1, parent: 0))
+    && state_is_unreadable(st: entry_state(link: 1, follow: 2, parent: 0))
+    && state_is_unreadable(st: entry_state(link: 1, follow: 1, parent: 1))
+}
+
+// REMOVAL OF A DANGLING LINK IS CONFIRMED, NOT A NO-OP: pre (link present) then rm then post (genuinely
+// absent) is RemovedConfirmed. Under follow-only probes this read pre 1 / post 1 and was RemovedNoOp
+// though an entry was removed.
+test fn removing_a_dangling_link_is_confirmed_not_a_noop() -> Bool {
+  match host_remove_verdict(
+    target: RemoveForceRecursive { path: "/p/c" as NonEmptyStr },
+    pre_state: [entry_state(link: 0, follow: 1, parent: 0)],
+    outcome: remove_ok(),
+    post_state: [entry_state(link: 1, follow: 1, parent: 0)],
+  ) {
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        RemovedConfirmed { paths: _, exit_code: _ } => true
+        RemovedNoOp { path: _ } => false
+      }
+    NotConverged { reason: _, applied: _ } => false
+  }
 }
