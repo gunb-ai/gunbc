@@ -9099,36 +9099,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             diagnostics: concat(formal_authority_diags, arg_diags)
           }
         } else {
-
-        // A declared parameter that the call leaves unbound gets a variable of its own, so two
-        // unrelated calls to the same generic function cannot share one and silently unify.
-        // NARROWED to calls that carry NO argument nodes, which is the producer this repair was
-        // dispatched for: an argument-less generic call builds an empty instantiation map, and
-        // substitute_generics_apply short-circuits on an empty map, handing the callee's own
-        // formal parameters to the caller as if instantiated.
-        //
-        // For a call WITH arguments the guard is deliberately silent. Absence from call_subst
-        // there means unify_generics failed to bind the parameter from an actual, and minting a
-        // fresh variable would FABRICATE a binding for something the actuals were supposed to
-        // determine -- a silent wrong binding, the very class this repair closes. Measured cost of
-        // staying silent: dag/std/realization_measurement.dag:391
-        // `fn witness_measured_rollup_differs_from_predicted_zero<S>` calls a generic whose
-        // actual's leaf is the caller's own `S`; unify_generics records no binding for that, so a
-        // mint here replaced the caller's `S` with a variable no actual mentions, the emitted
-        // signature lost its `S: Clone` bound (the emitter's clone-bound pre-pass keys on the
-        // parameter NAME -- src/v1/05_emit_rust.dag clone_param), and the self-host product failed
-        // to build with error[E0277]. Both fragilities are recorded, not fixed, on
-        // gunbc.recurring_failure_mode.silent_first_wins_rebind_of_a_generic_type_variable_in_unify_generics.
-        let mint_only_without_actuals = (typed_arg_nodes |> count) == 0
-        let uninstantiated_call_generics = if mint_only_without_actuals {
-          call_sig_split.generic_names |> filter(g => !map_has(call_subst, g))
-        } else {
-          []
-        }
-        let fresh_call_variables = fold(uninstantiated_call_generics, init: empty_map(), f: (acc, g) =>
-          map_insert(acc, g, type_variable_node(id: concat(g, "@", span.file, ":", to_string(span.start), "-", to_string(span.end)))))
         let resolved_type = match sig {
-          Present { value: s } => substitute_generics(n: s.inferred, subst: map_merge(call_subst, fresh_call_variables), source_indices: scope.type_env.source_indices)
+          Present { value: s } => substitute_generics(n: s.inferred, subst: call_subst, source_indices: scope.type_env.source_indices)
           Absent => error_type
         }
         let value_params_for_check = call_sig_split.value_params

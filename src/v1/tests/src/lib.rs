@@ -23,6 +23,8 @@ mod ambiguous_prefix_infix_newline_test;
 #[cfg(test)]
 mod anonymous_record_struct_resolution_test;
 #[cfg(test)]
+mod call_site_mint_boundary_test;
+#[cfg(test)]
 mod class_b_trim_specimen_test;
 #[cfg(test)]
 mod decl_facts_dimensionless_projection_test;
@@ -32,8 +34,6 @@ mod emitted_symbol_collision_test;
 mod field_of_fractions_construction_test;
 #[cfg(test)]
 mod field_of_fractions_single_declaration_test;
-#[cfg(test)]
-mod generic_call_variable_freshness_test;
 #[cfg(test)]
 mod item_kind_dispatch_totality_test;
 #[cfg(test)]
