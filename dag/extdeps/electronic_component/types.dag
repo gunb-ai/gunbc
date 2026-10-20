@@ -232,6 +232,50 @@ type LevelTranslatorSpecification {
   pins: List<TranslatorPin>
 }
 
+// A SINGLE LOGIC GATE'S PINS, BY THE FUNCTION ITS DATASHEET GIVES EACH: inputs, the output, ground and
+// supply. The function is the AND of its inputs, inverted or not: the two-input positive AND gate read
+// so far is { inputs: 2, inverted_output: false }, a NAND would be the same with the output inverted.
+type GateFunction {
+  inputs: Nat
+  inverted_output: Bool
+}
+
+type GatePinRole
+  = GateInput { name: NonEmptyStr }
+  | GateOutput
+  | GateGround
+  | GateSupply
+
+type GatePin {
+  number: Nat
+  name: NonEmptyStr
+  role: GatePinRole
+}
+
+type LogicGateSpecification {
+  function: GateFunction
+  supply: MillivoltRange
+  pins: List<GatePin>
+}
+
+type GatePinStanding
+  = GateInputPin { pin: GatePin }
+  | GateOutputPin { pin: GatePin }
+  | GateSupplyOrReturn { pin: GatePin }
+  | NoGatePinNumbered { number: Nat }
+
+fn gate_pin_standing(spec: LogicGateSpecification, number: Nat) -> GatePinStanding {
+  match (filter(spec.pins, p => p.number == number)).first() {
+    Absent => NoGatePinNumbered { number: number }
+    Present { value: pin } => match pin.role {
+      GateInput { name: _ } => GateInputPin { pin: pin }
+      GateOutput => GateOutputPin { pin: pin }
+      GateGround => GateSupplyOrReturn { pin: pin }
+      GateSupply => GateSupplyOrReturn { pin: pin }
+    }
+  }
+}
+
 // What a net meeting a translator pin is, from the pin's role: one end of a data channel (its direction
 // a live fact of that channel's direction input, not of the pin), a direction or enable input the part
 // receives, its supply or return, or no such pin.
@@ -290,6 +334,7 @@ type ComponentSpecification
   | HotSwapControllerSpec { controller: HotSwapControllerSpecification }
   | ShiftRegisterSpec { register: ShiftRegisterSpecification }
   | LevelTranslatorSpec { translator: LevelTranslatorSpecification }
+  | LogicGateSpec { gate: LogicGateSpecification }
 
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
@@ -324,5 +369,6 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     HotSwapControllerSpec { controller: _ } => Absent
     ShiftRegisterSpec { register: _ } => Absent
     LevelTranslatorSpec { translator: _ } => Absent
+    LogicGateSpec { gate: _ } => Absent
   }
 }

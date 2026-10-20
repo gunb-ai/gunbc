@@ -1,0 +1,58 @@
+module extdeps.electronic_component.ti_sn74lv1t08
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.texas_instruments { texas_instruments }
+import std.measure { millivolt }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow, LogicGateSpec, LogicGateSpecification, GateFunction, MillivoltRange, GatePin,
+  GateInput, GateOutput, GateGround, GateSupply,
+}
+
+// TI's SN74LV1T08 datasheet, SCLS739F (September 2013, revised October 2025; read 2026-10-20): "Single
+// Power Supply 2-Input Positive AND Gate CMOS Logic Level Shifter", recommended VCC 1.6 V to 5.5 V,
+// the DCK (SC70, 5) pin table, and the package option addendum, which gives orderable SN74LV1T08DCKR
+// the part markings 1QZ, WE3, WEJ and WES (one appears on a part) and notes that a part may carry an
+// additional marking for the lot trace code. TI's quality report for SN74LV1T08DCKR lists the same
+// four device markings.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/lit/gpn/sn74lv1t08"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.ti_sn74lv1t08",
+      decl_name: "sn74lv1t08_dck",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data sn74lv1t08_dck: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: texas_instruments,
+  ordering_code: "SN74LV1T08DCKR",
+  package: "SC70-5 (DCK)",
+  top_marking: "WEJ (one of 1QZ, WE3, WEJ, WES)",
+  specification: LogicGateSpec { gate: LogicGateSpecification {
+    function: GateFunction { inputs: 2, inverted_output: false },
+    supply: MillivoltRange { minimum: millivolt(count: 1600), maximum: millivolt(count: 5500) },
+    pins: [
+      GatePin { number: 1, name: "A", role: GateInput { name: "A" } },
+      GatePin { number: 2, name: "B", role: GateInput { name: "B" } },
+      GatePin { number: 3, name: "GND", role: GateGround },
+      GatePin { number: 4, name: "Y", role: GateOutput },
+      GatePin { number: 5, name: "VCC", role: GateSupply },
+    ],
+  } },
+  vendor_application_statements: [
+    "SN74LV1T08 Single Power Supply 2-Input Positive AND Gate CMOS Logic Level Shifter",
+    "the output Y is the AND of inputs A and B, referenced to VCC; the input thresholds are reduced so a lower logic domain can drive it",
+  ],
+}
