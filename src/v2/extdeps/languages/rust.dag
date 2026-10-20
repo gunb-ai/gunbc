@@ -139,7 +139,9 @@ import v2.std.model_core {
 import v2.std.compilers.coproduct_variant_shape {
   coproduct_all_variants_nullary
 }
-import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
+import v2.std.compilers.target_model { EmitSpellingEscape,
+  EmitSpellingQuote,
+  PrimitiveRealizationsUnwired,
   TargetPrimitiveRealization,
   TargetPrimitiveArgument,
   PrimitivePassBySharedReference,
@@ -296,11 +298,9 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductDecorationRule,
   TargetSemanticDeclCoproductEnumSurface,
-  DeclEmitStringQuote,
   HeaderLeadingLines,
   ImportsLeading,
   MembersInAssociatedBlock,
-  TargetSemanticDeclEmitEscape,
   TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclDecorationLine,
   TargetSemanticDeclEmission,
@@ -2956,13 +2956,14 @@ fn rust_semantic_decl_serialize_profile_bundle_node() -> Node {
     emit_transform_rows: [
       TargetSemanticDeclEmitTransformRow {
         token_class: ^rust_token_str_lit,
-        transform: DeclEmitStringQuote {
-          open: "\"",
-          close: "\"",
+        transform: EmitSpellingQuote {
+        prefix: "",
+        open: "\"",
+        close: "\"",
           escapes: [
-            TargetSemanticDeclEmitEscape { from: "\\", to: "\\\\" },
-            TargetSemanticDeclEmitEscape { from: "\"", to: "\\\"" },
-            TargetSemanticDeclEmitEscape { from: "\r", to: "\\r" }
+            EmitSpellingEscape { from: "\\", to: "\\\\" },
+            EmitSpellingEscape { from: "\"", to: "\\\"" },
+            EmitSpellingEscape { from: "\r", to: "\\r" }
           ]
         }
       }

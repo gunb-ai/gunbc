@@ -2,8 +2,8 @@ module v2.test.claim.emit.decl_nested_layout
 
 import v2.compiler.translate { serialize_concrete_syntax_layout_to_source }
 import v2.extdeps.languages.swift { swift_target_model }
-import v2.std.compilers.semantic_decl_emission { DeclEmitLineBreaks, TargetSemanticDeclEmitTransformRow, TargetSemanticDeclSerializeProfile, semantic_decl_binding_spelling_row, semantic_decl_emission_from_target, semantic_decl_serialize_target }
-import v2.std.compilers.target_model { ConcreteSyntaxLayoutItem, FixedToken, LayoutNest, LayoutToken }
+import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclEmitTransformRow, TargetSemanticDeclSerializeProfile, semantic_decl_binding_spelling_row, semantic_decl_emission_from_target, semantic_decl_serialize_target }
+import v2.std.compilers.target_model { ConcreteSyntaxLayoutItem, EmitLineBreaks, FixedToken, LayoutNest, LayoutToken }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Symbol, symbol_lexeme }
 import std.algebra { list_append }
@@ -40,8 +40,8 @@ fn dnl_profile(base: TargetSemanticDeclSerializeProfile) -> TargetSemanticDeclSe
     lex_rule_rows: base.lex_rule_rows,
     binding_spelling_rows: list_append(left: base.binding_spelling_rows, right: [ semantic_decl_binding_spelling_row(binding: ^dnl_indent, spelling: "    ") ]),
     emit_transform_rows: [
-      TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_colon, transform: DeclEmitLineBreaks { before: 1, after: 0 } },
-      TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_rbrace, transform: DeclEmitLineBreaks { before: 1, after: 0 } }
+      TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_colon, transform: EmitLineBreaks { before: 1, after: 0 } },
+      TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_rbrace, transform: EmitLineBreaks { before: 1, after: 0 } }
     ]
   }
 }
