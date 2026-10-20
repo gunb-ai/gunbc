@@ -60,7 +60,7 @@ fn rmd_target(row: TargetEmitHostRuntimeRow) -> TargetModel {
 fn rmd_source(row: TargetEmitHostRuntimeRow, imports: List<Symbol>) -> Medium<String> {
   match emit_semantic_type_decl(
     header: [],
-    docs: [],
+    docs: [], field_docs: [],
     conformances: ConformancesTargetDefault,
     imports: imports, members: [ TargetSemanticDeclMember { name: ^VERSION, literal: ^V1 } ],
     name: ^Point,

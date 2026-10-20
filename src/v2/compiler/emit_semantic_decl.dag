@@ -4,7 +4,7 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 import std.types { List, Map }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
-import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclConformances, TargetSemanticDeclSurfaceProjection, TargetSemanticDeclMember, TargetSemanticDeclSerializeProfile, semantic_decl_emission_from_target, semantic_decl_profile_binding_spellings_over, semantic_decl_serialize_target, target_semantic_decl_import_surfaces, target_semantic_decl_line_surfaces, target_semantic_decl_surface_with_leading_lines, target_semantic_enum_surface_from_coproduct, target_semantic_struct_surface_from_record }
+import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclFieldDoc, TargetSemanticDeclConformances, TargetSemanticDeclSurfaceProjection, TargetSemanticDeclMember, TargetSemanticDeclSerializeProfile, semantic_decl_emission_from_target, semantic_decl_profile_binding_spellings_over, semantic_decl_serialize_target, target_semantic_decl_import_surfaces, target_semantic_decl_line_surfaces, target_semantic_decl_surface_with_leading_lines, target_semantic_enum_surface_from_coproduct, target_semantic_struct_surface_from_record }
 import std.optional { Absent, Present }
 import v2.std.witness { map_get_checked }
 import v2.std.qualified_name { declaration_reference_path_optional }
@@ -122,6 +122,7 @@ fn emit_semantic_type_decl(
   imports: List<Symbol>,
   header: List<String>,
   docs: List<String>,
+  field_docs: List<TargetSemanticDeclFieldDoc>,
   conformances: TargetSemanticDeclConformances,
   target: TargetModel,
   realization_host: TargetModel
@@ -176,6 +177,7 @@ fn emit_semantic_type_decl(
                   record: node,
                   members: members,
                   conformances: conformances,
+                  field_docs: field_docs,
                   type_binding: semantic_decl_type_binding(params: params, resolve: produced_type_binding_over(target: realization_host, spellings: spellings))
                 ),
                 f: fn(undecorated) {

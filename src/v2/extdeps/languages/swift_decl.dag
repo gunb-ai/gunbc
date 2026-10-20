@@ -125,6 +125,7 @@ fn swift_decl_struct_field_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^swift_decl_field,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_doc_list),
         grammar_formal_terminal(identity: ^swift_token_kw_let),
         grammar_formal_terminal_free(identity: ^swift_token_ident),
         grammar_formal_terminal(identity: ^swift_token_colon),

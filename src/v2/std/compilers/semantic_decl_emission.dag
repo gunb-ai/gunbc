@@ -2680,9 +2680,29 @@ fn target_semantic_decl_coproduct_decoration_lines(
     )
   }
 }
+// The doc lines a field states ahead of itself, keyed by the field's declared name.
+type TargetSemanticDeclFieldDoc { field: Symbol, lines: List<String> }
+
+fn target_semantic_decl_field_doc_lines(edge: Edge, field_docs: List<TargetSemanticDeclFieldDoc>) -> List<String> {
+  match declared_field_from_edge(e: edge) {
+    Present { value: binder } =>
+      fold_list(
+        xs: field_docs,
+        empty: Empty,
+        cons: fn(acc, d) { if d.field == binder.name { list_append(left: acc, right: d.lines) } else { acc } }
+      )
+    Absent => Empty
+  }
+}
+
+// Field docs ride the declaration's doc column, one leading list per field, so a field's docs state themselves
+// under the same wired/unwired rule a declaration's do. A position that takes no field docs passes ColumnUnwired
+// and an empty list, which adds no edge.
 fn target_semantic_decl_field_surfaces(
   edges: List<Edge>,
   projection: TargetSemanticDeclSurfaceProjection,
+  doc_column: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>,
+  field_docs: List<TargetSemanticDeclFieldDoc>,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<Node>> {
   fold_list(
@@ -2698,8 +2718,16 @@ fn target_semantic_decl_field_surfaces(
               projection: projection,
               type_binding: type_binding
             ),
-            f: fn(fnode) {
-              outcome_accepted(value: list_snoc_item(xs: acc, item: fnode))
+            f: fn(bare) {
+              bind_outcome(
+                o: target_semantic_decl_surface_with_leading_lines(
+                  column: doc_column,
+                  reason: ^target_semantic_decl_doc_unwired,
+                  items: target_semantic_decl_line_surfaces(lines: target_semantic_decl_field_doc_lines(edge: edge, field_docs: field_docs)),
+                  surface: bare
+                ),
+                f: fn(fnode) { outcome_accepted(value: list_snoc_item(xs: acc, item: fnode)) }
+              )
             }
           )
         }
@@ -2720,6 +2748,8 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
             projection: projection,
+            doc_column: ColumnUnwired,
+            field_docs: Empty,
             type_binding: type_binding
           ),
           f: fn(fields) {
@@ -2789,6 +2819,8 @@ fn target_semantic_decl_variant_surface_from_edge(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
             projection: projection,
+            doc_column: ColumnUnwired,
+            field_docs: Empty,
             type_binding: type_binding
           ),
           f: fn(fields) {
@@ -3020,6 +3052,7 @@ fn target_semantic_struct_surface_from_record(
   record: Node,
   members: List<TargetSemanticDeclMember>,
   conformances: TargetSemanticDeclConformances,
+  field_docs: List<TargetSemanticDeclFieldDoc>,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match type_decl_view(target: record) {
@@ -3032,7 +3065,7 @@ fn target_semantic_struct_surface_from_record(
     NotATypeDecl =>
       outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: record))
     PlainTypeDecl { member: m } =>
-      target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m, members: members, conformances: conformances, type_binding: type_binding)
+      target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m, members: members, conformances: conformances, field_docs: field_docs, type_binding: type_binding)
   }
 }
 
@@ -3043,6 +3076,7 @@ fn target_semantic_struct_surface_from_record_admitted(
   record: Node,
   members: List<TargetSemanticDeclMember>,
   conformances: TargetSemanticDeclConformances,
+  field_docs: List<TargetSemanticDeclFieldDoc>,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match record.kind {
@@ -3051,6 +3085,8 @@ fn target_semantic_struct_surface_from_record_admitted(
         o: target_semantic_decl_field_surfaces(
           edges: record.children,
           projection: projection,
+          doc_column: projection.doc_projection,
+          field_docs: field_docs,
           type_binding: type_binding
         ),
         f: fn(fields) {
