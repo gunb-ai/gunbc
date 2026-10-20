@@ -13941,7 +13941,7 @@ Rc::new(InferResult {
                                 }
                             }
                         };
-                        let arg_infer_results = variant_tag_reference_argument_results(
+                        let arg_infer_results = payload_arm_tag_reference_waiver_results(
                             func_name.clone(),
                             crate::v1_compiler_infer_sigs::call_target_is_locally_bound(
                                 call_target.clone(),
@@ -17517,13 +17517,22 @@ pub fn sole_constructor_construction_diags(
 pub fn zero_field_variant_tag_reference_frontier_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the seam is deleted and the sites migrate to the carrier.".to_string()
+            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15; REPLACED 2026-10-20): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its tag without materializing a value. The corpus-wide seam that sanctioned it was measured dead for zero-field arms (the field wall never fires on them) and live only for payload arms, where the literal is a HOLLOW value. It is now the enumerated waiver payload_arm_tag_reference_waiver_results over payload_arm_tag_reference_waiver_sites (gunbc.rung_drop payload_arm_tag_reference_hollow_value); a hollow payload-arm literal at `discriminant` in any other module refuses with one MissingField per owed field. DISSOLVE-ON: an arm-name capability from a resolved arm, at which point the function, the list and the row are deleted together.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn variant_tag_reference_argument_results(
+pub fn payload_arm_tag_reference_waiver_sites() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["v2.std.compilers.target_model.AlgebraPrimitive".to_string(), "v2.std.compilers.target_model.AlgebraInverseCompose".to_string(), "v2.std.compilers.target_model.OrderingComparison".to_string(), "v2.std.compilers.target_model.EqualityComparison".to_string(), "v2.std.compilers.target_model.CoercionCrossing".to_string(), "v2.std.compilers.target_model.InfixToken".to_string(), "v2.std.compilers.target_model.PrefixToken".to_string(), "v2.std.compilers.target_model.CallIdent".to_string(), "v2.std.compilers.target_model.MethodIdent".to_string(), "probe_floor_tag_ref_seam.Fielded".to_string(), "vtag.Fielded".to_string()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
+pub fn payload_arm_tag_reference_waiver_results(
     func_name: String,
     callee_is_body_binding: bool,
     results: Rc<Vec<Rc<ArgInferResult>>>,
@@ -17549,8 +17558,29 @@ pub fn variant_tag_reference_argument_results(
                                     scope.type_env.source_indices.clone(),
                                 ) {
                                     Some(tn) => {
-                                        if (variant_owner_node(scope.clone(), tn.clone())
+                                        if ((variant_owner_node(scope.clone(), tn.clone())
                                             != std::option::Option::None)
+                                            && {
+                                                let mut __found = false;
+                                                for w in payload_arm_tag_reference_waiver_sites()
+                                                    .iter()
+                                                    .cloned()
+                                                {
+                                                    if (w.clone()
+                                                        == v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                scope.module_name.clone(),
+                                                                ".".to_string(),
+                                                            ),
+                                                            tn.clone(),
+                                                        ))
+                                                    {
+                                                        __found = true;
+                                                        break;
+                                                    }
+                                                }
+                                                __found
+                                            })
                                         {
                                             Rc::new(ArgInferResult {
                                                 typed_arg: air.typed_arg.clone(),
