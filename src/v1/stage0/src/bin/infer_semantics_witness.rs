@@ -2440,10 +2440,9 @@ fn main() -> ExitCode {
             return fail(format!("{name} panicked"));
         }
     }
-    if filter.is_some() && ran == 0 {
+    if let (Some(filter), 0) = (filter, ran) {
         return fail(format!(
-            "no infer_semantics_witness test name contains '{}'",
-            filter.unwrap()
+            "no infer_semantics_witness test name contains '{filter}'"
         ));
     }
 
