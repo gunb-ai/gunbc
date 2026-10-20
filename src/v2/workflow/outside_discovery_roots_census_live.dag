@@ -204,6 +204,9 @@ fn refused_census(cause: String) -> OutsideRootsCensusOutput {
     findings: [],
     note_vouched: [],
     undeclared: [],
+    // Empty here is not an observation of "no gap"; it is the absence of any read, and `unread: true` is what
+    // says so. The wet claim reads the two together for exactly that reason.
+    scan_dir_gap: [],
     unread: true,
     lines: concat(outside_roots_header_lines(), [concat("OUTSIDE-DISCOVERY-ROOTS UNREAD: ", cause)])
   }
