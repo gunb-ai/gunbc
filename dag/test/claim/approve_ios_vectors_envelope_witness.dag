@@ -76,12 +76,17 @@ fn carrier_source_carries_no_envelope_call_literal_helper() -> Bool {
 }
 
 // POSITIVE, the join the construction is responsible for and the lenses cannot restate: at_envelope takes
-// the fixture's ROW and renders the row's own name, so the string in the file is read off the value.
+// the fixture's ROW and renders the string by READING IT OFF THE VALUE, so no name can be spelled here
+// that the row does not carry. Both halves are needed and neither is enough alone: the signature alone is
+// satisfied by a body that hardcodes a name, and the substring `sw_str(s: v.name as String)` alone is
+// satisfied by any other map over a row (surface_vectors renders it too), so an earlier version of this
+// claim survived a control that hardcoded "pending_list" into the envelope call. The whole expression is
+// therefore asserted, and it occurs exactly once in the module, at the envelope call.
 fn carrier_renders_the_rows_own_name_helper() -> Bool {
   let src = carrier_source()
   src != ""
     && src.contains("fn at_envelope(v: EnvelopeVector)")
-    && src.contains("sw_str(s: v.name as String)")
+    && src.contains("sw_try(e: sw_calln(f: \"envelope\", a: [sw_pos(v: sw_str(s: v.name as String))]))")
 }
 
 // POSITIVE, the fixture side of the join: the fixture spells every row with a non-empty name, so the

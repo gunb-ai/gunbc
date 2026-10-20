@@ -90,13 +90,16 @@ fn emitted_bytes_carry_no_hand_typed_escape_helper() -> Bool {
     && text.contains("v.object_json")
 }
 
-// POSITIVE: the emitted file still asks for the escape section by name, so the section the loop reads is
-// the one the fixture emits — a renamed or dropped section fails the Swift decode, not this claim's guard.
+// POSITIVE: the emitted file declares the escape section and reads exactly that section. Both shapes are
+// checked at their whole spelling (`var escape: [Escape]?` is the Codable field, `try load().escape,` is
+// the read) because a loose `load().escape` substring survives renaming the field to `escapes` — which is
+// the regression this claim has to catch: the loop would then read a section the fixture does not emit,
+// XCTUnwrap would fail on every Mac, and nothing in the merge path runs the tests.
 fn emitted_bytes_read_the_escape_section_helper() -> Bool {
   let text = emission_text()
   text != ""
-    && text.contains("load().escape")
-    && text.contains("has no escape section")
+    && text.contains("var escape: [Escape]?")
+    && text.contains("try load().escape,")
 }
 
 // ---------------------------------------------------------------- evidence wrappers (ProcessExit)
