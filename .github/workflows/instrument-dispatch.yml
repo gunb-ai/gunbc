@@ -226,7 +226,7 @@ jobs:
         id: wave_receipt_transport
         run: |
           python3 - <<'PYEOF'
-          import glob, json, os, shutil, subprocess, urllib.request, urllib.error, zipfile
+          import glob, json, os, shutil, subprocess, tempfile, urllib.request, urllib.error, zipfile
           HEAD = os.environ['GITHUB_SHA']
           REPO = os.environ['GITHUB_REPOSITORY']
           RUN = int(os.environ['GITHUB_RUN_ID'])
@@ -255,6 +255,11 @@ jobs:
               raise SystemExit('wave-transport: the merge base object is unreachable after 8 deepen rounds -- refusing before the instrument runs')
           def merge_base():
               return api('/repos/' + REPO + '/compare/main...' + HEAD)['merge_base_commit']['sha']
+          def clear(dest):
+              os.makedirs(dest, exist_ok=True)
+              for old in os.listdir(dest):
+                  p = os.path.join(dest, old)
+                  shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
           ARTIFACT_PREFIX = 'instrument-dispatch-receipt'
           SHARD_ROLES = ['0-of-4', '1-of-4', '2-of-4', '3-of-4']
           def role_artifact_name(role):
@@ -296,7 +301,8 @@ jobs:
                   st = a.get('state')
                   if st is not None and st != 'completed':
                       continue
-                  zp = os.path.join(dest, 'receipt-' + str(wid) + '.zip')
+                  tmp = tempfile.mkdtemp(dir=os.path.dirname(dest))
+                  zp = os.path.join(tmp, 'receipt.zip')
                   req = urllib.request.Request(a['archive_download_url'], headers={'Authorization': 'Bearer ' + TOKEN})
                   with urllib.request.urlopen(req, timeout=600) as r, open(zp, 'wb') as f:
                       while True:
@@ -305,15 +311,21 @@ jobs:
                               break
                           f.write(chunk)
                   with zipfile.ZipFile(zp) as z:
-                      z.extractall(dest)
+                      z.extractall(tmp)
                   os.remove(zp)
-                  return bool(glob.glob(os.path.join(dest, '**', must_glob), recursive=True))
+                  hits = glob.glob(os.path.join(tmp, '**', must_glob), recursive=True)
+                  if not hits:
+                      shutil.rmtree(tmp)
+                      return False
+                  for root, dirs, files in os.walk(tmp):
+                      for name in files:
+                          sub = os.path.relpath(root, tmp)
+                          dst_dir = dest if sub == '.' else os.path.join(dest, sub)
+                          os.makedirs(dst_dir, exist_ok=True)
+                          shutil.copy2(os.path.join(root, name), os.path.join(dst_dir, name))
+                  shutil.rmtree(tmp)
+                  return True
               return False
-          def clear(dest):
-              os.makedirs(dest, exist_ok=True)
-              for old in os.listdir(dest):
-                  p = os.path.join(dest, old)
-                  shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
           os.makedirs(STAGING, exist_ok=True)
           clear(STAGING)
           MB = merge_base()
