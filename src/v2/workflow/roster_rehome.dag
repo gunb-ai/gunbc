@@ -22,6 +22,7 @@ import std.integer { int_to_decimal_string }
 import std.optional { Absent, Optional, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.types { List, Bool }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.workflow.roster_import_sweep {
   ImportDeclFact,
   RosterHeldLock,
@@ -763,6 +764,17 @@ fn rehome_write(held: RosterHeldLock, path: String, before: String, splices: Lis
 fn rehome_controls_exit() -> ProcessExit {
   let report = rehome_controls_report()
   if report == "" { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+// THE GATED ENTRY: `gunbc test //gunbc/instruments:roster-rehome-controls` (gunbc.instrument_targets
+// roster_rehome_controls_binding).
+fn rehome_controls_wire() -> CliWireResponse {
+  let report = rehome_controls_report()
+  if report == "" {
+    CliWirePrintable { bytes: "roster-rehome controls held\n", exit: ExitSuccess }
+  } else {
+    CliWirePrintable { bytes: report, exit: exit_failure(reason: report) }
+  }
 }
 
 fn rehome_control_row() -> RehomeRow {
