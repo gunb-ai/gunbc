@@ -10,7 +10,7 @@ import v2.std.decl_ref_resolution {
   DeclarationRefDeclarationAbsent,
   DeclarationRefFieldAbsent,
   DeclarationRefModuleAbsent,
-  DeclarationRefOutsideIndex,
+  DeclarationRefContested,
   DeclarationRefResolution,
   DeclarationRefResolved,
   resolve_declaration_ref
@@ -47,7 +47,6 @@ type CitedRef {
 type SpanStanding
   = SpanResolves
   | SpanStale
-  | SpanOutsideIndex
   | SpanNotASymbol
   | SpanUnclassified
 
@@ -298,8 +297,7 @@ fn join_segments(segs: List<String>) -> String {
 fn symbol_span_standing(span: String, context: ResolutionContext) -> SpanStanding {
   let segs = span.split(delimiter: ".")
   match span_longest_module(segs: segs, k: length(xs: segs), context: context) {
-    Absent =>
-      if span.starts_with(prefix: "test.") || span.starts_with(prefix: "v2.test.") { SpanOutsideIndex } else { SpanStale }
+    Absent => SpanStale
     Present { value: k } =>
       let rest = drop_segments(segs: segs, k: k)
       match rest {
@@ -326,7 +324,7 @@ fn ref_standing(module: String, decl: String, field: DeclField, context: Resolut
     DeclarationRefModuleAbsent { reference: _ } => SpanStale
     DeclarationRefDeclarationAbsent { reference: _ } => SpanStale
     DeclarationRefFieldAbsent { reference: _ } => SpanStale
-    DeclarationRefOutsideIndex { reference: _, coverage: _ } => SpanOutsideIndex
+    DeclarationRefContested { reference: _, claimants: _ } => SpanStale
   }
 }
 
@@ -400,7 +398,6 @@ fn span_is_refusal(s: ProseSpan, refused: List<String>) -> Bool {
   match s.standing {
     SpanStale => !span_in_refused_file(span: s.span, refused: refused) && !roster_has(subject: s.span)
     SpanResolves => false
-    SpanOutsideIndex => false
     SpanNotASymbol => false
     SpanUnclassified => false
   }
@@ -410,7 +407,6 @@ fn span_has_standing(s: ProseSpan, wanted: SpanStanding) -> Bool {
   match s.standing {
     SpanStale => match wanted { SpanStale => true, _ => false }
     SpanResolves => match wanted { SpanResolves => true, _ => false }
-    SpanOutsideIndex => match wanted { SpanOutsideIndex => true, _ => false }
     SpanNotASymbol => match wanted { SpanNotASymbol => true, _ => false }
     SpanUnclassified => match wanted { SpanUnclassified => true, _ => false }
   }
@@ -460,17 +456,17 @@ fn resolution_subject(r: DeclarationRefResolution) -> String {
     DeclarationRefModuleAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
     DeclarationRefDeclarationAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
     DeclarationRefFieldAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
-    DeclarationRefOutsideIndex { reference: x, coverage: _ } => concat(x.module_path as String, " ", x.decl_name as String)
+    DeclarationRefContested { reference: x, claimants: _ } => concat(x.module_path as String, " ", x.decl_name as String)
   }
 }
 
 fn resolution_is_unresolved(r: DeclarationRefResolution, refused: List<String>) -> Bool {
   match r {
     DeclarationRefResolved { declaration_identity: _ } => false
-    DeclarationRefOutsideIndex { reference: _, coverage: _ } => false
     DeclarationRefModuleAbsent { reference: x } => !ref_in_seed_layer(x: x) && !ref_in_refused_file(x: x, refused: refused)
     DeclarationRefDeclarationAbsent { reference: _ } => true
     DeclarationRefFieldAbsent { reference: _ } => true
+    DeclarationRefContested { reference: _, claimants: _ } => true
   }
 }
 
@@ -513,7 +509,7 @@ fn resolution_arm_name(r: DeclarationRefResolution, refused: List<String>) -> St
     DeclarationRefModuleAbsent { reference: x } => if ref_in_seed_layer(x: x) { "seed-layer" } else if ref_in_refused_file(x: x, refused: refused) { "uncheckable" } else { "module-absent" }
     DeclarationRefDeclarationAbsent { reference: _ } => "declaration-absent"
     DeclarationRefFieldAbsent { reference: _ } => "field-absent"
-    DeclarationRefOutsideIndex { reference: _, coverage: _ } => "outside-index"
+    DeclarationRefContested { reference: _, claimants: _ } => "contested"
   }
 }
 
@@ -524,7 +520,7 @@ fn resolution_cited_name(r: DeclarationRefResolution) -> String {
     DeclarationRefModuleAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
     DeclarationRefDeclarationAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
     DeclarationRefFieldAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
-    DeclarationRefOutsideIndex { reference: x, coverage: _ } => concat(x.module_path as String, " ", x.decl_name as String)
+    DeclarationRefContested { reference: x, claimants: _ } => concat(x.module_path as String, " ", x.decl_name as String)
   }
 }
 
@@ -564,14 +560,13 @@ fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
         " module_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "module-absent", refused: c.refused_files)),
         " declaration_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "declaration-absent", refused: c.refused_files)),
         " field_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "field-absent", refused: c.refused_files)),
-        " outside_index=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "outside-index", refused: c.refused_files)),
+        " contested=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "contested", refused: c.refused_files)),
         " seed_layer=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "seed-layer", refused: c.refused_files)),
         " uncheckable=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "uncheckable", refused: c.refused_files))),
       concat("[decl-ref-census] prose spans=", to_string(n: length(xs: c.prose)),
         " resolves=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanResolves)),
         " stale=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanStale)),
         " refused=", to_string(n: count_refused_spans(xs: c.prose, refused: c.refused_files)),
-        " outside_index=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanOutsideIndex)),
         " not_a_symbol=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanNotASymbol)),
         " unclassified=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanUnclassified)))
     ],
