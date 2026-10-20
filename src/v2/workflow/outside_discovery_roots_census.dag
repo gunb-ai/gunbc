@@ -181,7 +181,7 @@ fn census_rows(listing: List<String>, claim_bearers: List<String>) -> List<Outsi
 fn emitted_entry_for_module(module_name: String) -> String {
   concat(
     concat(stage0_package_root, stage0_source_dir_relative_to_package),
-    concat(module_to_filename(module_name: module_name), ".rs")
+    concat(module_to_filename(name: module_name), ".rs")
   )
 }
 
