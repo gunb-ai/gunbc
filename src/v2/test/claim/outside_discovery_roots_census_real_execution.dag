@@ -47,7 +47,7 @@ import v2.workflow.outside_discovery_roots_census_live {
 // THE EXPECTATION, imported rather than restated: the same list the hermetic witness holds its injected
 // listings against. Two copies of a population, in two files, is the second-implementation defect this repo
 // calls §3's fork; one list, read by both the hermetic and the wet observer, is one fact with two readers.
-import v2.workflow.outside_discovery_roots_census { subject_population_expected }
+import v2.test.claim.outside_discovery_roots_census_helpers { subject_population_expected }
 
 fn is_in(listing: List<String>, path: String) -> Bool {
   any(xs: listing, predicate: fn(candidate) { candidate == path })

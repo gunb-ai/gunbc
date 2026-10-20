@@ -27,6 +27,11 @@ import std.types { String, Bool, List }
 import std.optional { Optional, Absent, Present }
 import std.algebra { Cons, Empty, is_empty }
 
+import v2.test.claim.outside_discovery_roots_census_helpers {
+  prose_mentioning_paths,
+  subject_helpers_declare_nothing,
+  subject_population_expected
+}
 import v2.workflow.outside_discovery_roots_census {
   OutsideRootsStanding,
   InsideGovernedTree,
@@ -46,9 +51,6 @@ import v2.workflow.outside_discovery_roots_census {
   path_is_under_note_subject,
   v1_claim_note_identity,
   v1_claim_note_location,
-  subject_population_expected,
-  subject_helpers_declare_nothing,
-  prose_mentioning_paths,
   scan_dir_gap_population,
   scan_dir_gap_receipt_lines,
   scan_dir_gap_header_lines,
