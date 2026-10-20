@@ -687,10 +687,14 @@ type DeploymentProtectionRuleReview {
 // DIFFERENT call rather than a variant of this one -- a caller cannot survive the substitution by
 // accident. It is data rather than prose because the auth layer's barrier claim compares against it,
 // so a hand-fed list of strings cannot keep a barrier green.
+data human_review_body_environment_ids_field: NonEmptyStr = "environment_ids"
+data human_review_body_state_field: NonEmptyStr = "state"
+data human_review_body_comment_field: NonEmptyStr = "comment"
+
 data human_review_body_documented_field_names: List<NonEmptyStr> = [
-  "environment_ids",
-  "state",
-  "comment",
+  human_review_body_environment_ids_field,
+  human_review_body_state_field,
+  human_review_body_comment_field,
 ]
 
 fn human_review_body_matches_the_documented_fields(body: List<NonEmptyStr>) -> Bool {
@@ -1104,11 +1108,27 @@ fn pending_deployment_wait_field_names() -> List<NonEmptyStr> {
 data human_review_endpoint_path: NonEmptyStr = "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/pending_deployments"
 data human_review_endpoint_method: HttpMethod = POST
 
+// The body that surface accepts, typed apart from DeploymentProtectionRuleReview on purpose: the
+// pinned blob requires [environment_ids, state, comment] here and [environment_name, state, comment]
+// there, with environment_ids a list of INTEGERS. A single type covering both would have to make one
+// of those fields optional, and an optional field is one a caller can forget -- which is exactly how a
+// broker would end up answering a human gate by accident. Two types, two authorities, one per
+// decision-maker (§3).
 type HumanDeploymentReview {
   environment_ids: List<Int>,
   state: ReviewState,
   comment: NonEmptyStr,
 }
+
+// GitHub's worked example for that body, transcribed as a VALUE of the type rather than described:
+// the REST reference gives environment_ids [161171787, 161171795], state "approved", comment "Ship
+// it!". Completeness is then decided by construction, the same way the App's example is (§5).
+data human_review_documented_example_body: HumanDeploymentReview = HumanDeploymentReview {
+  environment_ids: [161171787, 161171795],
+  state: Approved,
+  comment: "Ship it!",
+}
+
 
 // Only three protection-rule types exist in the environment projection, and they are GitHub's own
 // names. Modelled as a sum so a fold cannot carry a fourth; the wire strings come from the type.

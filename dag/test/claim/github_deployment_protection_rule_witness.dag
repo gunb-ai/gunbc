@@ -116,6 +116,11 @@ import extdeps.github.deployment_protection_rule {
   review_endpoint_path,
   pending_deployments_endpoint_path,
   human_review_endpoint_path,
+  HumanDeploymentReview,
+  human_review_documented_example_body,
+  human_review_body_documented_field_names,
+  human_review_body_matches_the_documented_fields,
+  the_two_review_surfaces_are_distinguishable,
   review_endpoint_method,
   human_review_endpoint_method,
   review_endpoint_body_state_field,
@@ -417,7 +422,6 @@ test fn the_app_and_human_review_endpoints_do_not_collapse() -> Bool {
   (review_endpoint_path as String) != (human_review_endpoint_path as String)
     && review_endpoint_method == POST
     && human_review_endpoint_method == POST
-    && (review_endpoint_path as String) != (human_review_endpoint_path as String)
     && (human_review_endpoint_path |> contains("pending_deployments"))
     && (review_endpoint_path |> contains("deployment_protection_rule"))
     && (pending_deployments_endpoint_path |> contains("pending_deployments"))
@@ -433,11 +437,48 @@ test fn the_two_review_bodies_are_different_types_with_different_fields() -> Boo
     && (review_documented_example_body.comment != none)
     && (review_body_field_names(review: sanctioned_review())
         |> any(f => f == review_endpoint_body_environment_name_field))
-    // The human body's field names, spelled as upstream spells them, are NOT the rule body's.
     && (review_endpoint_body_environment_name_field as String) == "environment_name"
     && (review_endpoint_body_state_field as String) == "state"
     && (review_endpoint_body_comment_field as String) == "comment"
+    // THE HUMAN CENSUS, COMPARED AND NOT JUST ASSERTED TO EXIST. This is the clause the comment above
+    // has always promised: the environment field differs in NAME and in KIND (a list of ids over
+    // there, a single name here), so a body that answers one surface cannot be read as a body for the
+    // other. Delete it and the two censuses could silently converge while every other clause stays
+    // green -- which is the failure the two separate types exist to make impossible.
+    && !human_review_body_matches_the_documented_fields(
+      body: review_body_field_names(review: sanctioned_review())
+    )
+    && human_review_body_matches_the_documented_fields(
+      body: human_review_body_documented_field_names
+    )
+    && the_two_review_surfaces_are_distinguishable()
     && pending_deployments_endpoint_method == GET
+}
+
+// THE HUMAN SURFACE'S DOCUMENTED EXAMPLE IS A VALUE OF ITS OWN TYPE, the same treatment the App's
+// worked example gets above. Transcribed from the REST reference: environment_ids
+// [161171787, 161171795], state "approved", comment "Ship it!". Two claims, not one:
+//
+//   (a) it is a COMPLETE request for that surface -- completeness decided by construction, so nobody
+//       has to remember to update a field count when the type changes; and
+//   (b) it is NOT interchangeable with ours. The example's environment field is a list of integers
+//       where ours is a single name, so the substitution that would let the broker answer a human gate
+//       is a type error rather than a policy someone has to remember (§3: one tap, one gate).
+test fn the_documented_human_example_is_a_value_of_the_human_type() -> Bool {
+  human_review_documented_example_body.state == Approved
+    && ((human_review_documented_example_body.comment as String) == "Ship it!")
+    && (length(human_review_documented_example_body.environment_ids) == 2)
+    && (human_review_documented_example_body.environment_ids |> all(id => id > 0))
+    // Its own census, derived from the type's own field rows rather than restated.
+    && human_review_body_matches_the_documented_fields(
+      body: human_review_body_documented_field_names
+    )
+    // And not ours. This is the clause that makes "the App cannot answer a human's gate" a fact about
+    // the shapes rather than a rule the broker has to obey.
+    && !human_review_body_matches_the_documented_fields(
+      body: review_body_field_names(review: sanctioned_review())
+    )
+    && the_two_review_surfaces_are_distinguishable()
 }
 
 // ---------------------------------------------------------------------------
