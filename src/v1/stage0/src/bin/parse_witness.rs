@@ -322,6 +322,16 @@ fn add(x: Int, y: Int) -> Int { x + y }
 // slices from the source at that span, for every reachable node. The source puts a non-BMP
 // scalar before the identifiers, because spans index Unicode scalars and a UTF-16 or byte
 // offset would shift the slice. The RED control rewrites one carried text and must be seen.
+// The comparison the differential runs at every node: the carried text equals the source
+// slice authored_name_at re-derives at the node's span.
+fn carried_text_matches_source(
+    indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    n: &Rc<v1_compiler::v1_std_core::Node>,
+) -> bool {
+    let ident = n.ident_span.as_ref().expect("node carries an ident");
+    ident.text == v1_compiler::v1_std_core::authored_name_at(indices.clone(), n.clone())
+}
+
 fn carried_ident_text_equals_authored_name_at() {
     let source = "module test\n// \u{1F600}\ntype Widget = String\nfn \u{1F600}_pad() -> Int { 1 }\nfn make_widget(w: Widget) -> Widget {\n  w\n}\nservice weather.api {\n}";
     let result = parse_source(source);
@@ -345,10 +355,9 @@ fn carried_ident_text_equals_authored_name_at() {
     walk(&module, &mut nodes);
     let mut checked = 0;
     for n in &nodes {
-        if let Some(ident) = n.ident_span.as_ref() {
-            let sliced = v1_compiler::v1_std_core::authored_name_at(indices.clone(), n.clone());
-            assert_eq!(
-                ident.text, sliced,
+        if n.ident_span.is_some() {
+            assert!(
+                carried_text_matches_source(&indices, n),
                 "carried text differs at node {}",
                 n.name
             );
@@ -368,9 +377,8 @@ fn carried_ident_text_equals_authored_name_at() {
             .map(|i| v1_compiler::v1_std_core::authored_ident(i.span.clone(), "Wrong".to_string())),
         ..(*victim).clone()
     });
-    assert_ne!(
-        tampered.ident_span.as_ref().unwrap().text,
-        v1_compiler::v1_std_core::authored_name_at(indices.clone(), tampered.clone()),
+    assert!(
+        !carried_text_matches_source(&indices, &tampered),
         "RED control did not discriminate"
     );
 }
