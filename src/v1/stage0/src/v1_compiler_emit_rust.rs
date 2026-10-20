@@ -48,7 +48,7 @@ pub use crate::v1_compiler_closure_stub_v2_std_text_rust::{closure_stub_v2_std_t
 pub use crate::v1_compiler_coercion::{coerce_primitive_type, is_copy, target_callable, rust_lookup_exact_binding, declaration_realizes_natively_on_rust, type_reference_realization, declaration_realization, type_realization_decision, realized_checkpoint, realization_host_numeric_spelling, realization_is_host_numeric, provenance_declares_structurally, target_checkpoints, rust_variant_value_realization, rust_variant_arm_is_bound_somewhere};
 pub use crate::v1_compiler_compiler_tests_rust::{compiler_tests_source};
 pub use crate::v1_compiler_dag_collect_support::{connective_name};
-pub use crate::v1_compiler_emit::{BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node, emit_data_value_json, emit_declared_optional_row_json, EmitterOutcome, is_null_coalesce, has_service_items, order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared, emit_typed_let_shared, child_from_key, BoundOperation, ShellResultField, ShellResultChannel, shell_emission_refusal_fact, shell_result_channel_key, shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy, bind_operation_transport, transport_binding_refusal_fact, NativeEffectRealizationAdmission, NativeEffectDeclSite, native_effect_resolution, admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal, FileVerb, FileResultField, FileResultChannel, ShellEmissionRefusal, NativeEffectContract, NativeEffectHandler};
+pub use crate::v1_compiler_emit::{BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, named_type_vars_in_node, emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node, emit_data_value_json, emit_declared_optional_row_json, EmitterOutcome, is_null_coalesce, has_service_items, order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared, emit_typed_let_shared, child_from_key, BoundOperation, ShellResultField, ShellResultChannel, shell_emission_refusal_fact, shell_result_channel_key, shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy, bind_operation_transport, transport_binding_refusal_fact, NativeEffectRealizationAdmission, NativeEffectDeclSite, native_effect_resolution, admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal, FileVerb, FileResultField, FileResultChannel, ShellEmissionRefusal, NativeEffectContract, NativeEffectHandler};
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection, escape_json_string, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent, to_snake, to_screaming_snake, is_upper, sanitize_service_name, capitalize_first, service_var_name, to_pascal, escape_string_literal_body, unique_strings, to_string, to_string_helper, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_type_alias_return_node, is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item, has_mock_prefix, extract_test_projections};
 pub use crate::v1_compiler_infer::{is_lambda_expr, InferScope, build_params_scope, extend_scope, build_emit_graph_info, declared_return_type_node, match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, expr_span, resolved_type_name, expand_type_for_field_access, is_where_refinement_type, call_args_by_name, caller_resource_requirements, established_resource_binding};
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling};
@@ -403,23 +403,28 @@ pub fn render_rust_leaf_declaration_type(
             tn.clone(),
         );
         let spec = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust);
-        let declared_spelled = if ((n.params.clone().len() as i64) > 0) {
+        let explicit_params = Rc::new({
+            let mut __result = Vec::new();
+            for p in n.params.clone().iter().cloned() {
+                __result.push(render_rust_type(
+                    crate::v1_std_core::param_node_type_expr(p.clone()),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                ));
+            }
+            __result
+        });
+        let declared_params = if ((explicit_params.clone().len() as i64) == 0) {
+            crate::v1_compiler_emit::named_type_vars_in_node(n.clone())
+        } else {
+            explicit_params.clone()
+        };
+        let declared_spelled = if ((declared_params.clone().len() as i64) > 0) {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(named_base.clone(), spec.type_arg_open.clone()),
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for p in n.params.clone().iter().cloned() {
-                            __result.push(render_rust_type(
-                                crate::v1_std_core::param_node_type_expr(p.clone()),
-                                shared_types.clone(),
-                                source_indices.clone(),
-                                emit_info.clone(),
-                            ));
-                        }
-                        __result
-                    })
-                    .join(&", ".to_string()),
+                    declared_params.clone().join(&", ".to_string()),
                 ),
                 spec.type_arg_close.clone(),
             )
