@@ -824,7 +824,7 @@ fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<Strin
             if node_is_keyed_collection(n: n, source_indices: source_indices) && field_name == "lookup" {
               let value_child = match n.children |> skip(1) |> first {
                 Present { value: child } => child_type_node(ch: child)
-                Absent => nominal_type_ref(name: "V")
+                Absent => type_variable_node(id: "V")
               }
               Present { value: with_optional_cardinality(n: value_child) }
             } else {

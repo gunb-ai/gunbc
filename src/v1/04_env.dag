@@ -230,7 +230,7 @@ type SymbolIndex {
   transparent_alias_rep: Map<String, String>
   type_head_exposures: Map<String, TypeHeadExposure>
   file_modules: Map<String, String>
-  generic_declarations_by_file: Map<String, List<Node>>
+  declarations_by_file: Map<String, List<Node>>
   module_named_imports: Map<String, Map<String, String>>
 }
 
@@ -239,7 +239,7 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map(), file_modules: empty_map(), generic_declarations_by_file: empty_map(), module_named_imports: empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map(), file_modules: empty_map(), declarations_by_file: empty_map(), module_named_imports: empty_map() }
 }
 
 fn empty_type_env() -> TypeEnv {
@@ -413,7 +413,7 @@ fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Nod
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
-    generic_declarations_by_file: index.generic_declarations_by_file,
+    declarations_by_file: index.declarations_by_file,
     module_named_imports: index.module_named_imports
   }
 }
@@ -426,7 +426,7 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
-    generic_declarations_by_file: index.generic_declarations_by_file,
+    declarations_by_file: index.declarations_by_file,
     module_named_imports: index.module_named_imports
   }
 }
@@ -439,7 +439,7 @@ fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: St
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
-    generic_declarations_by_file: index.generic_declarations_by_file,
+    declarations_by_file: index.declarations_by_file,
     module_named_imports: index.module_named_imports
   }
 }
@@ -1826,20 +1826,28 @@ fn is_type_variable_name(name: String) -> Bool {
 // THE TYPE PARAMETER A GENERIC DECLARATION DECLARES, recognised by DECLARATION and never by spelling. A match binding
 // over a generic's result (list_head(xs: List<String>) -> Present { value: c }) carries the declaring type's
 // UNINSTANTIATED parameter as its type: it has no declaration of its own and is no kernel, but it is not an unknown
-// head either. The node is that parameter when some declaration in the node's own file CONTAINS it and DECLARES a
-// parameter of that name; a user type named T or V is identified by its own declaration before this is asked, and a
-// reference to an undeclared T is contained by no declaration that declares one, so it refuses.
+// head either. A top-level item's node span is its keyword only (its extent lives in the parse side table, not on the
+// node), so the item that CONTAINS a node is the last item of the node's own file starting at or before it; the node
+// is that parameter when that item DECLARES a parameter of the name. A user type named T or V is identified by its own
+// declaration before this is asked, and a reference to a T no enclosing item declares refuses.
 // BELOW-CEILING RESIDUAL (gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel): only this
 // reading is unjudged by the declared-type wall; every other Unidentified head refuses. Retired when pattern bindings
 // carry the instantiated type (C1.2c arity + C1.2d tail/split on top of pattern_binding_type).
-fn declaration_encloses_type_parameter(d: Node, n: Node, parameter: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  d.span.file == n.span.file && d.span.start <= n.span.start && n.span.end <= d.span.end
-    && d.params |> any(p => authored_name_at(source_indices: source_indices, node: p) == parameter)
+fn enclosing_declaration_of(declarations: List<Node>, n: Node) -> Node? {
+  declarations |> filter(d => d.span.start <= n.span.start) |> fold(init: none, f: (best, d) =>
+    match best {
+      Present { value: b } => if b.span.start >= d.span.start { best } else { Present { value: d } }
+      Absent => Present { value: d }
+    })
 }
 
 fn is_declared_type_parameter_of_enclosing_declaration(n: Node, parameter: String, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
-  match map_get(env.symbol_index.generic_declarations_by_file, n.span.file) {
-    Present { value: declarations } => declarations |> any(d => declaration_encloses_type_parameter(d: d, n: n, parameter: parameter, source_indices: source_indices))
+  match map_get(env.symbol_index.declarations_by_file, n.span.file) {
+    Present { value: declarations } =>
+      match enclosing_declaration_of(declarations: declarations, n: n) {
+        Present { value: d } => d.params |> any(p => authored_name_at(source_indices: source_indices, node: p) == parameter)
+        Absent => false
+      }
     Absent => false
   }
 }
