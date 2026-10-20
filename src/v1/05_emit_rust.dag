@@ -452,9 +452,9 @@ fn render_rust_leaf_declaration_type(n: Node, shared_types: Set<String>, source_
   let named_base = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: Rust), dag_name: tn)
   let spec = language_spec(target: Rust)
   let explicit_params = n.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
-  let leaf_is_reference = n.connective == NoConnective
+  let leaf_is_reference = n.connective == NoConnective && !(emit_info.fn_generic_param_names |> any(g => g == tn))
   let applied_args = if leaf_is_reference { n.children |> map(c => render_rust_type(n: child_type_node(ch: c), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)) } else { [] }
-  let declared_params = if explicit_params |> count > 0 { explicit_params } else if applied_args |> count > 0 { applied_args } else { named_type_vars_in_node(n: n) }
+  let declared_params = if explicit_params |> count > 0 { explicit_params } else if applied_args |> count > 0 { applied_args } else if emit_info.fn_generic_param_names |> any(g => g == tn) { [] } else { named_type_vars_in_node(n: n) }
   let declared_spelled = if declared_params |> count > 0 { concat(named_base, spec.type_arg_open, declared_params |> join(separator: ", "), spec.type_arg_close) } else { named_base }
   let leaf_is_disj = n.connective == Disj
   let leaf_is_conj = n.connective == Conj
@@ -2034,7 +2034,7 @@ fn render_rust_declaration_position(n: Node, spelled: String, shared_types: Set<
     TypeDeclResolved { identity: _, decl: _ } => true
     _ => false
   }
-  let bare_declared_leaf = names_declaration && find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) == none && n.return_cardinality != CardOptional && !is_container_type(name: leaf) && !(generic_param_names |> any(g => g == leaf))
+  let bare_declared_leaf = names_declaration && n.return_cardinality != CardOptional && !is_container_type(name: leaf) && !(generic_param_names |> any(g => g == leaf))
   if bare_declared_leaf {
     concat(rust_field_stored_layer_type(rt_field: n, ty: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names))
   } else {
