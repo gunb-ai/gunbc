@@ -16,7 +16,6 @@ import v2.extdeps.languages.dag_surface_item_standing {
 import v2.std.node {
   production_edge_label,
   Disj,
-  Occupancy,
   MatchArmScopeExitEdge,
   arrow_named_edge_is_non_binder,
   arrow_first_positional_target,
@@ -183,7 +182,6 @@ fn type_decl_wrapper_params_once(n: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -772,7 +770,6 @@ fn type_binder_node_conforms(n: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     TypeNode { connective: Conj } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     TypeNode { connective: Disj } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
-    TypeNode { connective: Occupancy } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     TypeNode { connective: Instantiation } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     ComputationNode { behavior: Value } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     ComputationNode { behavior: Branch } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
