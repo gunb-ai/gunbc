@@ -1959,6 +1959,7 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         };
     }
     const READER: &str = "dag/gunbc/instruments/namespace_wave_binding_diff.dag";
+    let phase_start = std::time::Instant::now();
     let roots = cli_run::default_source_roots();
     let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
         Ok(resolved) => resolved,
@@ -1986,25 +1987,6 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
             std::fs::write(&target, content).map_err(|e| e.to_string())?;
         }
         Ok(root.to_string_lossy().into_owned())
-    };
-    let fixture_roots = write_root("rebind_base", "binding_diff_rebind_base_files")
-        .and_then(|b| write_root("rebind_head", "binding_diff_rebind_head_files").map(|h| (b, h)));
-    let (rebind_base, rebind_head) = match fixture_roots {
-        Ok(pair) => pair,
-        Err(cause) => return unreached(cause),
-    };
-    let wave_roots = write_root("wave_base", "binding_diff_wave_base_files")
-        .and_then(|b| write_root("wave_admit", "binding_diff_wave_head_files").map(|a| (b, a)))
-        .and_then(|(b, a)| {
-            write_root("wave_moved", "binding_diff_wave_moved_head_files").map(|m| (b, a, m))
-        })
-        .and_then(|(b, a, m)| {
-            write_root("wave_wrong_home", "binding_diff_wave_wrong_home_head_files")
-                .map(|w| (b, a, m, w))
-        });
-    let (wave_base, wave_admit, wave_moved, wave_wrong_home) = match wave_roots {
-        Ok(roots) => roots,
-        Err(cause) => return unreached(cause),
     };
     let base_ref = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
@@ -2069,6 +2051,10 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         Ok(rev) => rev,
         Err(cause) => return unreached(format!("instrument revision: {cause}")),
     };
+    eprintln!(
+        "{label_name}: phase: pre-preflight {:.1}s",
+        phase_start.elapsed().as_secs_f64()
+    );
     // The merge reads the receipt set first: a merge whose receipts are not whole refuses 2 here, before any worktree,
     // census or control runs. The reader decides (`binding_diff_merge_preflight`); the host only carries it out.
     let preflight_args = [
@@ -2132,6 +2118,26 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         }
         Err(cause) => return unreached(format!("the merge preflight failed: {cause}")),
     }
+    // The control fixtures are written only past the preflight: a refused merge never reads them.
+    let fixture_roots = write_root("rebind_base", "binding_diff_rebind_base_files")
+        .and_then(|b| write_root("rebind_head", "binding_diff_rebind_head_files").map(|h| (b, h)));
+    let (rebind_base, rebind_head) = match fixture_roots {
+        Ok(pair) => pair,
+        Err(cause) => return unreached(cause),
+    };
+    let wave_roots = write_root("wave_base", "binding_diff_wave_base_files")
+        .and_then(|b| write_root("wave_admit", "binding_diff_wave_head_files").map(|a| (b, a)))
+        .and_then(|(b, a)| {
+            write_root("wave_moved", "binding_diff_wave_moved_head_files").map(|m| (b, a, m))
+        })
+        .and_then(|(b, a, m)| {
+            write_root("wave_wrong_home", "binding_diff_wave_wrong_home_head_files")
+                .map(|w| (b, a, m, w))
+        });
+    let (wave_base, wave_admit, wave_moved, wave_wrong_home) = match wave_roots {
+        Ok(roots) => roots,
+        Err(cause) => return unreached(cause),
+    };
     // The base receipt covers the roster plus every module of the MERGE-BASE tree that spells a name the wave rows move;
     // it is chosen from git at the merge base alone, never from the head (so one base serves every wave on that revision).
     let population = if shard_mode == "base" {
