@@ -73,6 +73,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
 };
+use crate::v1_std_core::SpanLocation::Located;
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::TokenShape::{
     ShAnd, ShArrow, ShBang, ShCaret, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq,
@@ -89,20 +90,20 @@ pub use crate::v1_std_core::{
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, file_transport_node, import_node, intern,
     intern_table_with_authored_token_ordinals, is_compiler_error, kernel_span, leaf_node_with_span,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_field_node,
-    make_interp_part_node, make_named_expr_node, make_param_node,
+    local_transport_node, locate_span, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
+    make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
     make_pattern_binder_declaration_node, make_resource_use_node, make_text_part_node,
     make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
-    param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
-    shell_transport_node, transport_auth_basic_key, transport_body_key, transport_headers_key,
-    transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
-    transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
-    type_param_kind_property_name, variant_node_fields, variant_node_name_at,
-    with_required_cardinality, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
-    ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable,
-    MatchPattern, NewlineIndex, Node, OperationModifier, ParsedModuleItemKind, StringPart, Token,
-    TokenShape, UnaryOpKind,
+    param_node_type_expr, pre_intern_tokens, render_span_location, rest_transport_node,
+    service_config_properties, shell_transport_node, transport_auth_basic_key, transport_body_key,
+    transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
+    transport_query_key, transport_response_format_key, transport_stdin_key, transport_tls_key,
+    transport_url_key, type_param_kind_property_name, unlocated_cause_phrase, variant_node_fields,
+    variant_node_name_at, with_required_cardinality, Cardinality, CompilerDiagnostic, Connective,
+    DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode,
+    InternResult, InternTable, MatchPattern, NewlineIndex, Node, OperationModifier,
+    ParsedModuleItemKind, SpanLocation, StringPart, Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -145,16 +146,32 @@ pub fn token_stream_first(stream: Rc<TokenStream>) -> Option<Rc<Token>> {
 }
 
 pub fn token_stream_advance(stream: Rc<TokenStream>, n: i64) -> Rc<TokenStream> {
-    Rc::new(TokenStream {
-        all: stream.all.clone(),
-        pos: v1_rt::int_add(stream.pos.clone(), n.clone()),
-        consumed_end: token_window_consumed_end(
+    {
+        let __rb_0_0 = stream.all.clone();
+        let __rb_1_0 = v1_rt::int_add(stream.pos.clone(), n.clone());
+        let __rb_2_0 = token_window_consumed_end(
             stream.all.clone(),
             stream.pos.clone(),
             v1_rt::int_add(stream.pos.clone(), n.clone()),
             stream.consumed_end.clone(),
-        ),
-    })
+        );
+        let mut __rb_h = stream;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.all = __rb_0_0;
+                __rb_r.pos = __rb_1_0;
+                __rb_r.consumed_end = __rb_2_0;
+            }
+            None => {
+                __rb_h = Rc::new(TokenStream {
+                    all: __rb_0_0,
+                    pos: __rb_1_0,
+                    consumed_end: __rb_2_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn token_window_consumed_end(
@@ -830,17 +847,45 @@ pub fn parse_context_with_source_extents(
     ctx: Rc<ParseContext>,
     source_extents: Rc<ParseSourceExtentState>,
 ) -> Rc<ParseContext> {
-    Rc::new(ParseContext {
-        source_indices: ctx.source_indices.clone(),
-        intern_table: ctx.intern_table.clone(),
-        occurrence_allocator: ctx.occurrence_allocator.clone(),
-        occurrence_index: ctx.occurrence_index.clone(),
-        declaration_occurrences: ctx.declaration_occurrences.clone(),
-        reference_occurrences: ctx.reference_occurrences.clone(),
-        heads_only: ctx.heads_only.clone(),
-        env: ctx.env.clone(),
-        source_extents: source_extents.clone(),
-    })
+    {
+        let __rb_0_0 = ctx.source_indices.clone();
+        let __rb_1_0 = ctx.intern_table.clone();
+        let __rb_2_0 = ctx.occurrence_allocator.clone();
+        let __rb_3_0 = ctx.occurrence_index.clone();
+        let __rb_4_0 = ctx.declaration_occurrences.clone();
+        let __rb_5_0 = ctx.reference_occurrences.clone();
+        let __rb_6_0 = ctx.heads_only.clone();
+        let __rb_7_0 = ctx.env.clone();
+        let __rb_8_0 = source_extents.clone();
+        let mut __rb_h = ctx;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.source_indices = __rb_0_0;
+                __rb_r.intern_table = __rb_1_0;
+                __rb_r.occurrence_allocator = __rb_2_0;
+                __rb_r.occurrence_index = __rb_3_0;
+                __rb_r.declaration_occurrences = __rb_4_0;
+                __rb_r.reference_occurrences = __rb_5_0;
+                __rb_r.heads_only = __rb_6_0;
+                __rb_r.env = __rb_7_0;
+                __rb_r.source_extents = __rb_8_0;
+            }
+            None => {
+                __rb_h = Rc::new(ParseContext {
+                    source_indices: __rb_0_0,
+                    intern_table: __rb_1_0,
+                    occurrence_allocator: __rb_2_0,
+                    occurrence_index: __rb_3_0,
+                    declaration_occurrences: __rb_4_0,
+                    reference_occurrences: __rb_5_0,
+                    heads_only: __rb_6_0,
+                    env: __rb_7_0,
+                    source_extents: __rb_8_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn parse_context_occurrence_index(ctx: Rc<ParseContext>) -> Rc<OccurrenceIndex> {
@@ -877,34 +922,90 @@ pub fn parse_context_with_occurrence_state(
     declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
     reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
 ) -> Rc<ParseContext> {
-    Rc::new(ParseContext {
-        source_indices: ctx.source_indices.clone(),
-        intern_table: ctx.intern_table.clone(),
-        occurrence_allocator: occurrence_allocator.clone(),
-        occurrence_index: occurrence_index.clone(),
-        declaration_occurrences: declaration_occurrences.clone(),
-        reference_occurrences: reference_occurrences.clone(),
-        heads_only: ctx.heads_only.clone(),
-        env: ctx.env.clone(),
-        source_extents: ctx.source_extents.clone(),
-    })
+    {
+        let __rb_0_0 = ctx.source_indices.clone();
+        let __rb_1_0 = ctx.intern_table.clone();
+        let __rb_2_0 = occurrence_allocator.clone();
+        let __rb_3_0 = occurrence_index.clone();
+        let __rb_4_0 = declaration_occurrences.clone();
+        let __rb_5_0 = reference_occurrences.clone();
+        let __rb_6_0 = ctx.heads_only.clone();
+        let __rb_7_0 = ctx.env.clone();
+        let __rb_8_0 = ctx.source_extents.clone();
+        let mut __rb_h = ctx;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.source_indices = __rb_0_0;
+                __rb_r.intern_table = __rb_1_0;
+                __rb_r.occurrence_allocator = __rb_2_0;
+                __rb_r.occurrence_index = __rb_3_0;
+                __rb_r.declaration_occurrences = __rb_4_0;
+                __rb_r.reference_occurrences = __rb_5_0;
+                __rb_r.heads_only = __rb_6_0;
+                __rb_r.env = __rb_7_0;
+                __rb_r.source_extents = __rb_8_0;
+            }
+            None => {
+                __rb_h = Rc::new(ParseContext {
+                    source_indices: __rb_0_0,
+                    intern_table: __rb_1_0,
+                    occurrence_allocator: __rb_2_0,
+                    occurrence_index: __rb_3_0,
+                    declaration_occurrences: __rb_4_0,
+                    reference_occurrences: __rb_5_0,
+                    heads_only: __rb_6_0,
+                    env: __rb_7_0,
+                    source_extents: __rb_8_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn parse_context_with_intern_table(
     ctx: Rc<ParseContext>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ParseContext> {
-    Rc::new(ParseContext {
-        source_indices: ctx.source_indices.clone(),
-        intern_table: intern_table.clone(),
-        occurrence_allocator: ctx.occurrence_allocator.clone(),
-        occurrence_index: ctx.occurrence_index.clone(),
-        declaration_occurrences: ctx.declaration_occurrences.clone(),
-        reference_occurrences: ctx.reference_occurrences.clone(),
-        heads_only: ctx.heads_only.clone(),
-        env: ctx.env.clone(),
-        source_extents: ctx.source_extents.clone(),
-    })
+    {
+        let __rb_0_0 = ctx.source_indices.clone();
+        let __rb_1_0 = intern_table.clone();
+        let __rb_2_0 = ctx.occurrence_allocator.clone();
+        let __rb_3_0 = ctx.occurrence_index.clone();
+        let __rb_4_0 = ctx.declaration_occurrences.clone();
+        let __rb_5_0 = ctx.reference_occurrences.clone();
+        let __rb_6_0 = ctx.heads_only.clone();
+        let __rb_7_0 = ctx.env.clone();
+        let __rb_8_0 = ctx.source_extents.clone();
+        let mut __rb_h = ctx;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.source_indices = __rb_0_0;
+                __rb_r.intern_table = __rb_1_0;
+                __rb_r.occurrence_allocator = __rb_2_0;
+                __rb_r.occurrence_index = __rb_3_0;
+                __rb_r.declaration_occurrences = __rb_4_0;
+                __rb_r.reference_occurrences = __rb_5_0;
+                __rb_r.heads_only = __rb_6_0;
+                __rb_r.env = __rb_7_0;
+                __rb_r.source_extents = __rb_8_0;
+            }
+            None => {
+                __rb_h = Rc::new(ParseContext {
+                    source_indices: __rb_0_0,
+                    intern_table: __rb_1_0,
+                    occurrence_allocator: __rb_2_0,
+                    occurrence_index: __rb_3_0,
+                    declaration_occurrences: __rb_4_0,
+                    reference_occurrences: __rb_5_0,
+                    heads_only: __rb_6_0,
+                    env: __rb_7_0,
+                    source_extents: __rb_8_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn parsed_node_with_ident(node: Rc<Node>, ident: i64) -> Rc<Node> {
@@ -18643,16 +18744,13 @@ pub fn duplicate_field_init_message(
 }
 
 pub fn field_init_position(ctx: Rc<ParseContext>, span: Rc<SourceSpan>) -> String {
-    match v1_rt::map_get(&ctx.source_indices.clone(), span.file.clone()) {
-        Some(index) => {
-            let lc = crate::v1_std_core::byte_to_line_col(index.clone(), span.start.clone());
-            v1_rt::concat(
-                v1_rt::concat(int_to_string(lc.line.clone()), ":".to_string()),
-                int_to_string(lc.col.clone()),
-            )
-        }
-        std::option::Option::None => {
-            v1_rt::concat("byte ".to_string(), int_to_string(span.start.clone()))
+    match (*crate::v1_std_core::locate_span(span.clone(), ctx.source_indices.clone())).clone() {
+        SpanLocation::Located { at: at, .. } => v1_rt::concat(
+            v1_rt::concat(int_to_string(at.start_line.clone()), ":".to_string()),
+            int_to_string(at.start_col.clone()),
+        ),
+        SpanLocation::Unlocated { cause: cause, .. } => {
+            crate::v1_std_core::unlocated_cause_phrase(cause.clone())
         }
     }
 }
