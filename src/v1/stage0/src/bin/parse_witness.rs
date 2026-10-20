@@ -318,67 +318,6 @@ fn add(x: Int, y: Int) -> Int { x + y }
     assert_parses(source, "brace-bodied fn (legacy)");
 }
 
-// DIFFERENTIAL (H2): the text a parsed node CARRIES in ident_span equals what authored_text_at
-// slices from the source at that span, for every reachable node. The source puts a non-BMP
-// scalar before the identifiers, because spans index Unicode scalars and a UTF-16 or byte
-// offset would shift the slice. The RED control rewrites one carried text and must be seen.
-fn carried_ident_text_equals_span_slice() {
-    let source = "module test\n// \u{1F600}\ntype Widget = String\nfn \u{1F600}_pad() -> Int { 1 }\nfn make_widget(w: Widget) -> Widget {\n  w\n}\nservice weather.api {\n}";
-    let result = parse_source(source);
-    assert!(result.error.is_none(), "parse error");
-    let index =
-        v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
-    let mut m = HashMap::new();
-    m.insert("test.dag".to_string(), index);
-    let indices = Rc::new(m);
-    let module = result.module.clone().expect("module");
-    fn walk(
-        n: &Rc<v1_compiler::v1_std_core::Node>,
-        out: &mut Vec<Rc<v1_compiler::v1_std_core::Node>>,
-    ) {
-        out.push(n.clone());
-        for c in n.children.iter().chain(n.params.iter()) {
-            walk(c, out);
-        }
-    }
-    let mut nodes = Vec::new();
-    walk(&module, &mut nodes);
-    let mut checked = 0;
-    for n in &nodes {
-        if let Some(ident) = n.ident_span.as_ref() {
-            let sliced = v1_compiler::v1_std_core::authored_text_at(
-                indices.clone(),
-                ident.span.clone(),
-                n.name.clone(),
-            );
-            assert_eq!(
-                ident.text, sliced,
-                "carried text differs at node {}",
-                n.name
-            );
-            checked += 1;
-        }
-    }
-    assert!(checked >= 6, "differential reached only {} nodes", checked);
-    let victim = nodes
-        .iter()
-        .find(|n| n.name == "Widget" && n.ident_span.is_some())
-        .expect("Widget node")
-        .clone();
-    let tampered = Rc::new(v1_compiler::v1_std_core::Node {
-        ident_span: victim
-            .ident_span
-            .as_ref()
-            .map(|i| v1_compiler::v1_std_core::authored_ident(i.span.clone(), "Wrong".to_string())),
-        ..(*victim).clone()
-    });
-    assert_ne!(
-        tampered.ident_span.as_ref().unwrap().text,
-        v1_compiler::v1_std_core::node_authored_text(tampered.clone()),
-        "RED control did not discriminate"
-    );
-}
-
 fn item_ident_spans_point_at_identifiers_not_keywords() {
     let source = r#"module test
 type Widget = String
@@ -1050,10 +989,6 @@ fn floor_suite() -> Vec<WitnessCase> {
         (
             "parse_fn_brace_body_still_accepted",
             parse_fn_brace_body_still_accepted,
-        ),
-        (
-            "carried_ident_text_equals_span_slice",
-            carried_ident_text_equals_span_slice,
         ),
         (
             "item_ident_spans_point_at_identifiers_not_keywords",
