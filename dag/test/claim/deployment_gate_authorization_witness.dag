@@ -29,6 +29,10 @@ import std.measure {
 }
 import std.optional { Optional, Present, Absent }
 import std.scoped_authorization { AttemptIdentity }
+// A ROUTE SEGMENT IS EXTDEPS' BUSINESS, not a policy type: it describes which part of GitHub's URL an
+// argument fills, so the refusal that names it is imported from where the route is modelled.
+// THE TWO SURFACES, so the overlap control below can state what a human gate looks like and check
+// that nothing in our ladder answers it. Both paths come from the substrate; neither is spelled here.
 import extdeps.github.deployment_protection_rule {
   InstallationAccessToken,
   OAuthClassicWithRepoScope,
@@ -51,12 +55,8 @@ import extdeps.github.deployment_protection_rule {
   installation_field_app_slug,
   installation_readback_success_status,
   ReviewState,
-  // A ROUTE SEGMENT IS EXTDEPS' BUSINESS, not a policy type: it describes which part of GitHub's URL an
-  // argument fills, so the refusal that names it is imported from where the route is modelled.
   OwnerSegment,
   RepoSegment,
-  // THE TWO SURFACES, so the overlap control below can state what a human gate looks like and check
-  // that nothing in our ladder answers it. Both paths come from the substrate; neither is spelled here.
   review_endpoint_path,
   human_review_endpoint_path,
   the_two_review_surfaces_are_distinguishable,
@@ -82,6 +82,9 @@ import gunbc.auth.approval_capability {
   ProposeDeny,
 }
 import extdeps.crypto.mac { MacKeyId }
+// THE BARRIER AND THE LADDER IT READS. Imported rather than restated so the witness exercises the
+// same data the model consumes: a test that rebuilt the ladder from strings would pass while the
+// real ladder widened.
 import gunbc.auth.deployment_gate_authorization {
   GateRequestClaim,
   WebhookRelayFallback,
@@ -104,9 +107,6 @@ import gunbc.auth.deployment_gate_authorization {
   BrokerRefused,
   BrokerAnswerRefusal,
   broker_answer_refusal_name,
-  // THE BARRIER AND THE LADDER IT READS. Imported rather than restated so the witness exercises the
-  // same data the model consumes: a test that rebuilt the ladder from strings would pass while the
-  // real ladder widened.
   BrokerAnswerBarrier,
   BrokerIsBarredFromTheHumanReviewEndpoint,
   BrokerMayPostToTheHumanReviewEndpoint,

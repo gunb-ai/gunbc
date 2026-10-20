@@ -16,20 +16,20 @@ module test.claim.deployment_gate_operator_steps_witness
 // a row; the permission census by widening the App by one axis; the readback control by citing the
 // endpoint that cannot answer the question.
 
+// Timestamp: the instant a standing was read. The standing's fixtures brand their instants with
+// `as Timestamp`, the spelling the sibling approval witnesses use, because a data row's annotation
+// alone left the value as a plain String at the call sites and the mint refused it.
 import std.types {
   String,
   Int,
   Bool,
   NonEmptyStr,
   HttpStatus,
-  // THE INSTANT THE STANDING WAS READ AT. Without this the annotations below resolve to nothing and
-  // the checker falls back to String, which then mismatches the mint's Timestamp -- an error reported
-  // eight rows deep in call sites rather than here.
   Timestamp,
 }
+// AttemptIdentity: the dispatch a standing is bound to, the same carrier the act refuses a mismatch
+// against.
 import std.scoped_authorization {
-  // THE DISPATCH THE STANDING IS BOUND TO, the same branded carrier the act refuses a mismatch
-  // against. Same lesson as Timestamp above.
   AttemptIdentity,
 }
 import std.human_intervention { DischargedAt }
@@ -115,8 +115,8 @@ import gunbc.auth.deployment_gate_authorization {
   gate_app_permission_set_is_exact,
   GateInstallationClaim,
 }
+// THE DECLARED RESIDUAL, consumed by the test below so the row is not an unconsumed paragraph (§3c).
 import gunbc.auth.deployment_gate_operator_steps {
-  // THE DECLARED RESIDUAL, consumed by the test below so the row is not an unconsumed paragraph (§3c).
   reviewer_removal_observation_window,
   reviewer_removal_act_for,
   ReviewerRemovalStepDecision,
@@ -1115,13 +1115,13 @@ fn attempt_or_default(a: AttemptIdentity?) -> AttemptIdentity {
   }
 }
 
-data standing_instant: Timestamp = "2026-10-19T12:00:00Z"
+data standing_instant: Timestamp = "2026-10-19T12:00:00Z" as Timestamp
 
 // AN INSTANT at most standing_max_age past standing_instant, and one well past it. The staleness red
 // needs both, and needs them as REAL instants rather than as a Bool somebody set.
-data standing_instant_fresh: Timestamp = "2026-10-19T12:01:00Z"
+data standing_instant_fresh: Timestamp = "2026-10-19T12:01:00Z" as Timestamp
 
-data standing_instant_stale: Timestamp = "2026-10-19T13:00:00Z"
+data standing_instant_stale: Timestamp = "2026-10-19T13:00:00Z" as Timestamp
 
 // THE STANDING VARIANTS THE RED NEEDS, each built through the one admitted door with its facts changed.
 // THE STANDING CANNOT BE BUILT FROM TWO ENVIRONMENTS (side chat round 4, blocker 1). The standing used
