@@ -27,6 +27,13 @@ fn outcome_is_rejected<T>(o: Outcome<T>) -> Bool {
   }
 }
 
+fn outcome_is_rejected_for<T>(o: Outcome<T>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == reason
+  }
+}
+
 fn outcome_is_accepted<T>(o: Outcome<T>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
@@ -228,7 +235,23 @@ test fn cited_pair_across_the_two_trees_reads_one_declaration_each() -> Bool {
 // THE MULTIPLICITY ARM STAYS ENROLLED. With the `v2.` strip gone the cross-tree pair no longer reaches
 // two rows, but the arm in resolve_type_node_at that refuses a cited name reaching more than one row
 // still exists, and one module read through two overlapping pool roots reaches it. The refusal is the
-// subject here: delete the `length(xs: scoped) > 1` arm and this reds.
+// subject here, and it must be refused FOR THAT REASON: v2.std.integer.Int is an alias, which the
+// coproduct resolver refuses for its own reason, so it cannot witness this arm. v2.std.node.Connective
+// is a coproduct read three times through the repeated root; delete both multiplicity guards (the
+// `> 1` in resolve_type_node_at and in accept_sole_declaration) and this reds.
+test fn cited_name_reached_through_overlapping_roots_refuses_as_ambiguous() -> Bool {
+  outcome_is_rejected_for(
+    o: resolve_type_node_at(
+      pool_roots: ["dag", "src/v2", "src/v2"],
+      ref: DeclarationRef {
+        module_path: "v2.std.node",
+        decl_name: "Connective",
+        field: WholeDeclaration
+      }
+    ),
+    reason: ^cited_type_qualified_name_ambiguous
+  )
+}
 
 // THE SPECIMEN A PRODUCTION CLAIM NOW DEPENDS ON, which is what makes this pair a regression control
 // rather than a second copy of the Representation pair above. Bool was declared as a closed coproduct
