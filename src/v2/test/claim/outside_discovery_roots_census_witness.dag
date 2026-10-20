@@ -658,24 +658,34 @@ test fn the_gap_receipt_says_it_rules_no_standing_and_names_the_lane_authority()
 data emitted_registry_path: String = "src/v1/stage0/src/emitted_population.rs"
 data emitted_registry_subject_prefix: String = "src/v1_tests_claim_"
 
-// One name derivation, one place, and it is the rule READ OFF THE REGISTRY rather than guessed: every line
-// is `// src/v1_tests_claim_<stem>.rs`, where <stem> is the file name minus `.dag`. The only bend is the
-// `_test` strip, applied solely to a path that already ends in `_test.dag`, so it can never excuse a typo in
-// any other name. Verified over all sixteen subject paths before this function was written.
-fn emitted_registry_token(path: String) -> String {
-  let stem = replace(s: path, from: "src/v1/tests/claim/", to: emitted_registry_subject_prefix)
-  let rust = replace(s: stem, from: ".dag", to: ".rs")
-  if ends_with(s: path, suffix: "_test.dag") {
-    replace(s: rust, from: "_test.rs", to: ".rs")
-  } else {
-    rust
-  }
+// THE TOKEN RULE, READ OFF THE REGISTRY rather than guessed, and reported honestly including its ragged
+// edge. Every line is `// src/v1_tests_claim_<stem>.rs`. For FIFTEEN of the sixteen subject files the <stem>
+// is the file name minus `.dag`, `_test` included. For ONE --
+// `tco_tail_call_assigns_every_loop_slot_witness_test.dag` -- the registry carries the name WITHOUT `_test`.
+//
+// So the emitter's naming is NOT uniform, and I am not going to claim it is. The module-name rule of the
+// import cutover (#13783) strips `_test` when mapping a path to a module, and that rule is the plausible
+// reason the tco entry lost its suffix; it does NOT explain the other fifteen, which kept it. What is
+// verified is the containment, not the etymology: plain first, and the `_test`-stripped form only as a
+// FALLBACK for a path that already ends in `_test.dag`. A fallback that is tried before the plain form would
+// have been wrong on fifteen paths and passed only because I checked "is either candidate present" instead of
+// "which one is" -- the first version of this function did exactly that, and the green run caught it.
+fn emitted_registry_plain_token(path: String) -> String {
+  replace(s: replace(s: path, from: "src/v1/tests/claim/", to: emitted_registry_subject_prefix), from: ".dag", to: ".rs")
 }
 
-// The token is matched WITH its `.rs` terminator, so containment is exact here: `// src/a_b.rs` is not a
-// substring of `// src/a_b_c.rs`, because after `a_b` comes `_`, not `.`.
+fn emitted_registry_token(path: String) -> String {
+  replace(s: emitted_registry_plain_token(path: path), from: "_test.rs", to: ".rs")
+}
+
+// Two candidates, ordered: the plain spelling is what the registry holds for all but one subject file, and
+// the stripped spelling is what it holds for that one. Both are tried, so neither the fifteen nor the
+// exception is a special case hidden in a comment.
 fn registry_names_path(registry: String, path: String) -> Bool {
-  string_contains(s: registry, pattern: concat("// ", emitted_registry_token(path)))
+  let plain = concat("// ", emitted_registry_plain_token(path: path))
+  let stripped = concat("// ", emitted_registry_token(path: path))
+  string_contains(s: registry, pattern: plain)
+    || (ends_with(s: path, suffix: "_test.dag") && string_contains(s: registry, pattern: stripped))
 }
 
 test fn every_expected_subject_path_is_named_by_the_emitter() -> Bool {
@@ -683,6 +693,17 @@ test fn every_expected_subject_path_is_named_by_the_emitter() -> Bool {
   let population = concat(subject_population_expected, subject_helpers_declare_nothing)
   read.success
     && all(xs: population, predicate: fn(path) { registry_names_path(registry: read.content, path: path) })
+}
+
+// THE ASYMMETRY IS ASSERTED, NOT ABSORBED. If the emitter ever normalises and every file drops its `_test`,
+// this claim says so loudly instead of letting a fallback quietly become the only working spelling.
+test fn the_emitter_keeps_the_test_suffix_for_most_subject_files_and_drops_it_for_exactly_one() -> Bool {
+  let read = Filesystem.Read(path: emitted_registry_path)
+  read.success
+    && string_contains(s: read.content, pattern: "// src/v1_tests_claim_parse_source_extent_control_test.rs")
+    && !(string_contains(s: read.content, pattern: "// src/v1_tests_claim_parse_source_extent_control.rs"))
+    && string_contains(s: read.content, pattern: "// src/v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness.rs")
+    && !(string_contains(s: read.content, pattern: "// src/v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness_test.rs"))
 }
 
 // THE NEGATIVE CONTROL. A containment join that always answers true passes the positive claim too, so the
