@@ -1037,7 +1037,7 @@ fn semantic_decl_emit_transform_to_token_class_transform(t: TargetSemanticDeclEm
         escapes: fold_list(
           xs: es,
           empty: Empty,
-          cons: fn(acc, e) { list_snoc_item(xs: acc, item: EmitSpellingEscape { from: chars(s: e.from), to: chars(s: e.to) }) }
+          cons: fn(acc, e) { list_snoc_item(xs: acc, item: EmitSpellingEscape { from: chars(text: e.from), to: chars(text: e.to) }) }
         )
       }
   }
