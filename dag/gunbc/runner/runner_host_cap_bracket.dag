@@ -399,14 +399,22 @@ fn obligation_reading_of_text(text: String, expected_key: String) -> ObligationR
   let discharged = length(filter(lines, l => l == "DISCHARGED")) > 0
   let body = filter(lines, l => l != "DISCHARGED")
   let key_lines = filter(body, l => starts_with(s: l, prefix: "key "))
+  let unit_lines = filter(body, l => starts_with(s: l, prefix: "unit "))
+  let unit_names = map(unit_lines, l => skip_prefix_text(s: l, prefix: "unit "))
   if length(key_lines) != 1 {
     ObligationUnreadable { cause: "the obligation file does not carry exactly one key line" }
+  } else if length(key_lines) + length(unit_lines) != length(body) {
+    ObligationUnreadable { cause: "the obligation file carries a line that is neither a key line nor a unit line" }
+  } else if length(filter(unit_names, n => n == "")) > 0 {
+    ObligationUnreadable { cause: "the obligation file carries a unit line with an empty unit name" }
   } else if length(filter(key_lines, l => l == concat("key ", expected_key))) != 1 {
     ObligationStale { found: join(key_lines, "") }
   } else if discharged {
     ObligationDischarged
+  } else if length(unit_names) == 0 {
+    ObligationUnreadable { cause: "the held obligation file lists no unit" }
   } else {
-    ObligationHeld { units: map(filter(body, l => starts_with(s: l, prefix: "unit ")), l => skip_prefix_text(s: l, prefix: "unit ") as NonEmptyStr) }
+    ObligationHeld { units: map(unit_names, n => n as NonEmptyStr) }
   }
 }
 

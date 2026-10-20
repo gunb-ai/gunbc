@@ -264,3 +264,8 @@ test fn the_declared_release_is_a_typed_residual_against_the_cancellation_envelo
   (match release_envelope_standing(policy: runner_host_cap_drain_policy) { ReleaseMayOutliveCancellation { needed: _, envelope: _ } => true ReleaseFitsEnvelope => false })
     && (match release_envelope_standing(policy: HostCapDrainPolicy { wait_bound: runner_host_cap_drain_policy.wait_bound, poll_interval: runner_host_cap_drain_policy.poll_interval, operations_allowance: runner_host_cap_drain_policy.operations_allowance, release_allowance: second(count: 100), cancellation_envelope: runner_host_cap_drain_policy.cancellation_envelope, release_startup_allowance: second(count: 60) }) { ReleaseFitsEnvelope => true ReleaseMayOutliveCancellation { needed: _, envelope: _ } => false })
 }
+
+test fn an_unrecognized_line_or_an_empty_unit_name_is_untrusted_not_a_shrunken_release() -> Bool {
+  (match release_decision_of(reading: obligation_reading_of_text(text: concat(held_text(), "uint 02\n"), expected_key: okey())) { ReleaseObligationUntrusted { cause: _ } => true _ => false })
+    && (match release_decision_of(reading: obligation_reading_of_text(text: concat(held_text(), "unit \n"), expected_key: okey())) { ReleaseObligationUntrusted { cause: _ } => true _ => false })
+}
