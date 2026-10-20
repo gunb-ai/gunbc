@@ -4,6 +4,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.lexical_scope { ModuleRootBinding, module_root_bindings }
+import v2.compiler.reference_site_collector { HeadBindingUndecided, HeadBoundAtRootValue, HeadBoundInFrame, HeadLexicallyUnbound, ScopedReferenceSite, SiteHeadBinding, collect_scoped_module_reference_sites }
 import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
 import v2.std.compilers.lexing { Token }
 import v2.extdeps.languages.dag { parse_production_captured_child_optional, parse_qualified_name_segments_from_capture, qualified_name_from_module_node }
@@ -141,6 +143,7 @@ type RehomeRefusal
   | RehomeLockNotHeld
   | RehomeSweep { reason: String }
   | RehomeRepresentationSitesRemain { sites: String }
+  | RehomeContractUnestablishedRefusal { cause: String }
 
 fn rehome_refusal_text(r: RehomeRefusal) -> String {
   match r {
@@ -162,6 +165,7 @@ fn rehome_refusal_text(r: RehomeRefusal) -> String {
     RehomeLockNotHeld => "lock-not-held"
     RehomeSweep { reason: t } => t
     RehomeRepresentationSitesRemain { sites: ss } => "rehome-representation-sites-remain " + ss
+    RehomeContractUnestablishedRefusal { cause: c } => "rehome-contract-unestablished " + c
   }
 }
 
@@ -180,7 +184,7 @@ fn rehome_pool_roots() -> List<String> {
   ["dag", "src/v2"]
 }
 
-fn rehome_pair_verdict(row: RehomeRow) -> RehomePairVerdict {
+fn rehome_pair_verdict(row: RehomeRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> RehomePairVerdict {
   match rehome_sole_fact(home: row.from_home, name: row.name) {
     RehomeFactRefused { reason: r } => RehomePairRefused { reason: r }
     RehomeFactFound { fact: from } =>
@@ -189,7 +193,7 @@ fn rehome_pair_verdict(row: RehomeRow) -> RehomePairVerdict {
         RehomeFactFound { fact: to } =>
           match row.representation {
             Present { value: _ } => rehome_kind_verdict(from: from, to: to)
-            Absent => rehome_facts_verdict(from: from, to: to)
+            Absent => rehome_facts_verdict(from: from, to: to, row: row, prepared: prepared, lex: lex)
           }
       }
   }
@@ -229,13 +233,102 @@ fn rehome_facts_in(facts: List<DeclFact>, path: String) -> List<DeclFact> {
   fold_list(xs: facts, empty: [], cons: fn(acc, f) { if f.rel_path == path { list_snoc_item(xs: acc, item: f) } else { acc } })
 }
 
-fn rehome_facts_verdict(from: DeclFact, to: DeclFact) -> RehomePairVerdict {
+// SAME KIND FROM decl_index, SAME CONTRACT FROM THE DECLARATIONS THEMSELVES (side chat on #14553). decl_index's node is a
+// lossy projection (type fields are authored-name atoms with no resolved identity, a fn is a body data-flow skeleton,
+// data drops its annotation), so equal digests of it are not equal declarations. The shape is read from each home's own
+// normalized declaration (rehome_contract_of) and compared with every referenced name resolved to its identity. A
+// contract that cannot be established refuses typed; an incomplete projection is never read as equality.
+fn rehome_facts_verdict(from: DeclFact, to: DeclFact, row: RehomeRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> RehomePairVerdict {
   if rehome_kind_text(k: from.kind) != rehome_kind_text(k: to.kind) {
     RehomePairRefused { reason: RehomeKindDiffers }
-  } else if content_hash(n: from.node) != content_hash(n: to.node) {
-    RehomePairRefused { reason: RehomeSignatureDiffers }
   } else {
-    RehomePairSame
+    rehome_contracts_verdict(
+      a: rehome_contract_of(home: row.from_home, name: row.name, path: from.rel_path, prepared: prepared, lex: lex),
+      b: rehome_contract_of(home: row.to_home, name: row.name, path: to.rel_path, prepared: prepared, lex: lex)
+    )
+  }
+}
+
+// ---- the declaration contract ------------------------------------------------------------------------------------------------
+
+// A declaration's contract: its whole normalized node (parameters, return, fields, variants, applied arguments, body; the
+// digest ignores occurrences) and, in the collector's site order, the identity every referenced name resolves to in its
+// own module -- an import's target, the home's own root declaration, or the collector's head class for a frame binder.
+type RehomeContract
+  = RehomeContractRead { node: Node, identities: List<String> }
+  | RehomeContractUnestablished { cause: String }
+
+fn rehome_contracts_verdict(a: RehomeContract, b: RehomeContract) -> RehomePairVerdict {
+  match a {
+    RehomeContractUnestablished { cause: c } => RehomePairRefused { reason: RehomeContractUnestablishedRefusal { cause: c } }
+    RehomeContractRead { node: an, identities: ai } =>
+      match b {
+        RehomeContractUnestablished { cause: c } => RehomePairRefused { reason: RehomeContractUnestablishedRefusal { cause: c } }
+        RehomeContractRead { node: bn, identities: bi } =>
+          if content_hash(n: an) == content_hash(n: bn) && roster_join(xs: ai, sep: ",") == roster_join(xs: bi, sep: ",") { RehomePairSame } else { RehomePairRefused { reason: RehomeSignatureDiffers } }
+      }
+  }
+}
+
+fn rehome_contract_of(home: String, name: String, path: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RehomeContract {
+  let read = Filesystem.Read(path: path)
+  if !read.success { RehomeContractUnestablished { cause: "unreadable " + path } } else { rehome_contract_from_text(home: home, name: name, path: path, text: read.content, prepared: prepared, lex: lex) }
+}
+
+fn rehome_contract_from_text(home: String, name: String, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RehomeContract {
+  match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
+    Rejected { diagnostics: _ } => RehomeContractUnestablished { cause: "tokenize " + path }
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module_prepared(tokens: stream, prepared: prepared) {
+        Rejected { diagnostics: _ } => RehomeContractUnestablished { cause: "parse " + path }
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+            Rejected { diagnostics: _ } => RehomeContractUnestablished { cause: "normalize " + path }
+            Accepted { value: scoped, diagnostics: _ } => rehome_contract_in(home: home, name: name, root: scoped.tree.root, imported: scoped.tree.import_bindings)
+          }
+      }
+  }
+}
+
+fn rehome_contract_in(home: String, name: String, root: Node, imported: List<AliasBindingRow>) -> RehomeContract {
+  let bindings = module_root_bindings(root: root)
+  let matches = rehome_root_bindings_named(bindings: bindings, name: name)
+  match matches {
+    Cons { head: decl, tail: Empty } => {
+      let collected = collect_scoped_module_reference_sites(root: decl.declaration, imported: list_map(xs: imported, f: fn(b) { b.binding }))
+      if !is_empty(xs: collected.unreadable_roots) {
+        RehomeContractUnestablished { cause: "unreadable-reference-root " + home + "." + name }
+      } else {
+        RehomeContractRead { node: decl.declaration, identities: list_map(xs: collected.sites, f: fn(st) { rehome_site_identity(site: st, home: home, imported: imported, bindings: bindings) }) }
+      }
+    }
+    Empty => RehomeContractUnestablished { cause: "no-root-declaration " + home + "." + name }
+    _ => RehomeContractUnestablished { cause: "several-root-declarations " + home + "." + name }
+  }
+}
+
+fn rehome_root_bindings_named(bindings: List<ModuleRootBinding>, name: String) -> List<ModuleRootBinding> {
+  fold_list(xs: bindings, empty: [], cons: fn(acc, b) { if symbol_lexeme(sym: b.name) == name { list_snoc_item(xs: acc, item: b) } else { acc } })
+}
+
+fn rehome_site_identity(site: ScopedReferenceSite, home: String, imported: List<AliasBindingRow>, bindings: List<ModuleRootBinding>) -> String {
+  let spelled = roster_qn_text(qn: site.site.spelling)
+  let via_import = fold_list(xs: imported, empty: "", cons: fn(acc, b) { if acc == "" && symbol_lexeme(sym: b.binding) == spelled { roster_qn_text(qn: b.target) } else { acc } })
+  if via_import != "" {
+    via_import
+  } else if !is_empty(xs: rehome_root_bindings_named(bindings: bindings, name: spelled)) {
+    home + "." + spelled
+  } else {
+    rehome_head_text(head: site.head) + ":" + spelled
+  }
+}
+
+fn rehome_head_text(head: SiteHeadBinding) -> String {
+  match head {
+    HeadLexicallyUnbound => "ambient"
+    HeadBindingUndecided => "undecided"
+    HeadBoundAtRootValue => "root"
+    HeadBoundInFrame => "frame"
   }
 }
 
@@ -469,7 +562,8 @@ fn rehome_representation_sites(tokens: List<Token>, parse_root: Node, spans: Spa
       let imports = roster_import_decl_facts(parse_root: parse_root, spans: spans)
       let bare_sites = if bound { rehome_outside_imports(sites: rehome_token_sites(tokens: tokens, lexeme: bare, what: "constructor"), imports: imports) } else { [] }
       let spelled = list_map(xs: rehome_qualified_uses(parse_root: parse_root, spans: spans, qualified_name: rep.constructor), f: fn(u) { RehomeSite { start: u.start, end: u.end, what: "constructor" } })
-      fold_list(xs: rep.fields, empty: list_append_sites(a: bare_sites, b: spelled), cons: fn(acc, field) { list_append_sites(a: acc, b: rehome_field_read_sites(tokens: tokens, field: field)) })
+      let through_alias = rehome_outside_imports(sites: rehome_record_sites(tokens: tokens, lexeme: row.name), imports: imports)
+      fold_list(xs: rep.fields, empty: list_append_sites(a: list_append_sites(a: bare_sites, b: spelled), b: through_alias), cons: fn(acc, field) { list_append_sites(a: acc, b: rehome_field_read_sites(tokens: tokens, field: field)) })
     }
   }
 }
@@ -497,6 +591,27 @@ fn rehome_token_sites(tokens: List<Token>, lexeme: String, what: String) -> List
       sites: if rehome_lexeme_text(t: t) == lexeme && acc.prev != "." { list_snoc_item(xs: acc.sites, item: RehomeSite { start: t.start, end: t.end, what: what }) } else { acc.sites }
     }
   }).sites
+}
+
+// RECORD CONSTRUCTION OR DESTRUCTURING THROUGH THE REHOMED NAME ITSELF (side chat on #14553): `Int { pos: p, neg: n }` with
+// Int = GroupCompletion<Nat> is an admitted form that builds the old representation without naming its constructor. The site
+// is the name token directly followed by `{`.
+fn rehome_record_sites(tokens: List<Token>, lexeme: String) -> List<RehomeSite> {
+  fold_list(xs: tokens, empty: RehomeRecordScan { prev_text: "", prev_start: 0, prev_end: 0, sites: [] }, cons: fn(acc, t) {
+    RehomeRecordScan {
+      prev_text: rehome_lexeme_text(t: t),
+      prev_start: t.start,
+      prev_end: t.end,
+      sites: if rehome_lexeme_text(t: t) == "{" && acc.prev_text == lexeme { list_snoc_item(xs: acc.sites, item: RehomeSite { start: acc.prev_start, end: acc.prev_end, what: "record-through-alias" }) } else { acc.sites }
+    }
+  }).sites
+}
+
+type RehomeRecordScan {
+  prev_text: String
+  prev_start: Int
+  prev_end: Int
+  sites: List<RehomeSite>
 }
 
 // `.field` reads: an identifier spelled `field` directly after a `.` token.
@@ -703,7 +818,7 @@ fn rehome_sweep(root: String, paths_csv: String, row: RehomeRow) -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "REFUSE * " + rehome_refusal_text(r: RehomeGrammarUnprepared) + "\n"
     Accepted { value: prepared, diagnostics: _ } => {
-      let pair = rehome_pair_verdict(row: row)
+      let pair = rehome_pair_verdict(row: row, prepared: prepared, lex: dag_prepared_lex())
       let closures = [roster_home_closure_read(home: row.to_home, bindings: roster_repository_bindings(root: root))]
       fold_list(xs: split(s: paths_csv, delimiter: ","), empty: "", cons: fn(acc, path) {
         acc + rehome_sweep_path(path: path, prepared: prepared, lex: dag_prepared_lex(), row: row, pair: pair, closures: closures)
@@ -739,7 +854,7 @@ fn rehome_apply_locked(held: RosterHeldLock, paths_csv: String, row: RehomeRow) 
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "REFUSE * " + rehome_refusal_text(r: RehomeGrammarUnprepared) + "\n"
     Accepted { value: prepared, diagnostics: _ } => {
-      let pair = rehome_pair_verdict(row: row)
+      let pair = rehome_pair_verdict(row: row, prepared: prepared, lex: dag_prepared_lex())
       let closures = [roster_home_closure_read(home: row.to_home, bindings: roster_repository_bindings(root: held.root))]
       fold_list(xs: split(s: paths_csv, delimiter: ","), empty: "", cons: fn(acc, path) {
         acc + rehome_apply_path(held: held, path: path, prepared: prepared, lex: dag_prepared_lex(), row: row, pair: pair, closures: closures)
@@ -834,7 +949,8 @@ fn rehome_controls_report() -> String {
         + rehome_control_refuses(name: "closes-cycle", prepared: prepared, lex: lex, pair: RehomePairSame, closures: [RosterClosureRead { home: "c.new", modules: ["c.new", "c.user"] }], want: "import-closes-cycle home=c.new module=c.user")
         + rehome_control_representation(prepared: prepared, lex: lex)
         + rehome_control_record()
-        + rehome_control_pair_inhabited()
+        + rehome_control_pair_inhabited(prepared: prepared, lex: lex)
+        + rehome_control_contracts(prepared: prepared, lex: lex)
     }
   }
 }
@@ -906,11 +1022,17 @@ fn rehome_control_representation(prepared: PreparedGrammar, lex: PreparedLexRule
     _ => "CONTROL-FAIL rehome representation: a module with representation sites was not refused\n"
   }
   let kinds = rehome_facts_kind_control()
+  let via_alias = "module c.user\n\nimport c.old { Token }\n\nfn f() -> Token {\n  Token { left: 1, right: 2 }\n}\n"
+  let alias_refused = match rehome_text(path: "control/user.dag", text: via_alias, prepared: prepared, lex: lex, row: row, pair: RehomePairSame, closures: rehome_control_closures()) {
+    RehomeRefused { reason: r } =>
+      if rehome_count_of(text: rehome_refusal_text(r: r), what: "record-through-alias@") == 1 { "" } else { "CONTROL-FAIL rehome representation: construction through the alias refused as " + rehome_refusal_text(r: r) + "\n" }
+    _ => "CONTROL-FAIL rehome representation: construction through the rehomed alias was not counted\n"
+  }
   let moved = match rehome_text(path: "control/user.dag", text: clean, prepared: prepared, lex: lex, row: row, pair: RehomePairSame, closures: rehome_control_closures()) {
     RehomeSplices { splices: _ } => ""
     _ => "CONTROL-FAIL rehome representation: a module with no representation site did not move\n"
   }
-  refused + moved + kinds
+  refused + moved + kinds + alias_refused
 }
 
 // A declared representation still refuses a real kind difference (reviews 83176, 83179): fn against type and an OtherItem
@@ -936,6 +1058,28 @@ fn rehome_control_node() -> Node {
 
 fn rehome_count_of(text: String, what: String) -> Int {
   length(xs: split(s: text, delimiter: what)) - 1
+}
+
+// THE CONTRACT COMPARATOR ON REAL PARSES (side chat on #14553): the same pair spelled alike but bound differently refuses,
+// a different fn signature refuses, and an identical declaration with identical bindings is the same.
+fn rehome_control_contracts(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  rehome_contract_case(name: "field-bound-differently", prepared: prepared, lex: lex,
+    a: "module c.a\n\nimport c.x { Payload }\n\ntype Token {\n  value: Payload\n}\n",
+    b: "module c.b\n\nimport c.y { Payload }\n\ntype Token {\n  value: Payload\n}\n", same: false)
+    + rehome_contract_case(name: "fn-signature-differs", prepared: prepared, lex: lex,
+      a: "module c.a\n\nfn Token(x: Int) -> Int {\n  x\n}\n",
+      b: "module c.b\n\nfn Token(x: Bool) -> Bool {\n  x\n}\n", same: false)
+    + rehome_contract_case(name: "same-contract", prepared: prepared, lex: lex,
+      a: "module c.a\n\nimport c.x { Payload }\n\ntype Token {\n  value: Payload\n}\n",
+      b: "module c.b\n\nimport c.x { Payload }\n\ntype Token {\n  value: Payload\n}\n", same: true)
+}
+
+fn rehome_contract_case(name: String, prepared: PreparedGrammar, lex: PreparedLexRules, a: String, b: String, same: Bool) -> String {
+  match rehome_contracts_verdict(a: rehome_contract_from_text(home: "c.a", name: "Token", path: "control/a.dag", text: a, prepared: prepared, lex: lex), b: rehome_contract_from_text(home: "c.b", name: "Token", path: "control/b.dag", text: b, prepared: prepared, lex: lex)) {
+    RehomePairSame => if same { "" } else { "CONTROL-FAIL rehome contract " + name + ": different declarations compared equal\n" }
+    RehomePairRefused { reason: RehomeSignatureDiffers } => if same { "CONTROL-FAIL rehome contract " + name + ": identical declarations compared different\n" } else { "" }
+    RehomePairRefused { reason: r } => "CONTROL-FAIL rehome contract " + name + ": " + rehome_refusal_text(r: r) + "\n"
+  }
 }
 
 // A splice whose base bytes are not what it expects refuses; the record's head extents follow earlier splices' deltas.
@@ -964,8 +1108,8 @@ fn rehome_control_record() -> String {
 // (= GroupCompletion<Nat>) as OtherItem against std.integer.Int's TypeItem. Both arms are "not a rename". TRIGGER: when
 // adhoc-0f4309c5-074 lands (aliased type declarations read TypeItem), delete the RehomeKindDiffers arm below, so the
 // control pins the signature arm alone.
-fn rehome_control_pair_inhabited() -> String {
-  match rehome_pair_verdict(row: RehomeRow { name: "Int", from_home: "v2.std.integer", to_home: "std.integer", representation: Absent }) {
+fn rehome_control_pair_inhabited(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match rehome_pair_verdict(row: RehomeRow { name: "Int", from_home: "v2.std.integer", to_home: "std.integer", representation: Absent }, prepared: prepared, lex: lex) {
     RehomePairRefused { reason: RehomeSignatureDiffers } => ""
     RehomePairRefused { reason: RehomeKindDiffers } => ""
     RehomePairRefused { reason: r } => "CONTROL-FAIL rehome pair-inhabited: the real Int pair refused " + rehome_refusal_text(r: r) + "\n"
