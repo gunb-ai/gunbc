@@ -9,10 +9,12 @@ import v2.extdeps.languages.rust {
 import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_staging }
 import v2.std.compilers.semantic_decl_emission { ConformancesTargetDefault,
   semantic_decl_emission_from_target,
+  target_semantic_decl_surface_with_leading_lines,
   target_semantic_enum_surface_from_coproduct
 }
+import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclConformances, TargetSemanticDeclSurfaceProjection }
 import v2.std.compilers.target_model { concrete_syntax_token_list_from_node }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
 import std.algebra { Empty }
 
@@ -25,6 +27,37 @@ fn bool_coproduct() -> Node {
     ],
     occurrence_id: OccurrenceSynthetic
   }
+}
+
+// The surface exactly as emit_semantic_type_decl builds it: the header and import columns lead a declaration even
+// when empty (an empty list is the nil their nullable productions consume), so a hand-built surface without them
+// would not match the productions every target states.
+fn parity_enum_surface(
+  projection: TargetSemanticDeclSurfaceProjection,
+  name: Symbol,
+  params: List<Symbol>,
+  coproduct: Node,
+  conformances: TargetSemanticDeclConformances,
+  type_binding: fn(Node) -> Outcome<Symbol>
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_semantic_enum_surface_from_coproduct(
+      projection: projection,
+      name: name,
+      params: params,
+      coproduct: coproduct,
+      conformances: conformances,
+      type_binding: type_binding
+    ),
+    f: fn(bare) {
+      bind_outcome(
+        o: target_semantic_decl_surface_with_leading_lines(column: projection.import_projection, reason: ^target_semantic_decl_imports_unwired, items: [], surface: bare),
+        f: fn(with_imports) {
+          target_semantic_decl_surface_with_leading_lines(column: projection.header_projection, reason: ^target_semantic_decl_header_unwired, items: [], surface: with_imports)
+        }
+      )
+    }
+  )
 }
 
 fn tokens_for_rules(surface: Node, rules: Node) -> Bool {
@@ -45,7 +78,7 @@ fn tokens_for_rules(surface: Node, rules: Node) -> Bool {
 test fn emission_rules_match_rust_rules_for_generic_surface() -> Bool {
   match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
     Accepted { value: emission, diagnostics: _ } =>
-      match target_semantic_enum_surface_from_coproduct(
+      match parity_enum_surface(
         projection: emission.surface,
         name: ^Bool,
         params: Empty,
