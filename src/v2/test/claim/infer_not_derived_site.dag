@@ -9,7 +9,7 @@ import v2.compiler.source_root_eval {
   native_test_resolve_module,
   NativeTestPreparedModule
 }
-import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived, NotDerivedSite }
+import v2.compiler.inferred_tree { DeclarationWrapperEvidenceEdgesAbsent, DerivedGrounding, GroundingNotDerived, NotDerivedSite }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
@@ -110,12 +110,6 @@ test fn nds_q0_has_DeclarationWrapperEvidenceEdgesAbsent() -> Bool { contains(xs
 
 test fn nds_q0_has_ProductEvidenceEdgesAbsent() -> Bool { contains(xs: nds_q0_sites(), item: ProductEvidenceEdgesAbsent, eq: fn(a, b) { a == b }) }
 
-// The consumer's rows are the same census as the count the advisory reports: they sum to it. A module
-// the fixture route cannot prepare reports false, never a vacuous pass.
-fn nds_rows_total(rows: List<NativeInferSiteCount>) -> Int {
-  fold_list(xs: rows, empty: 0, cons: fn(acc, r) { acc + r.count })
-}
-
 // The frontier's total is read from the single walk's rows; the referent is this claim's own independent
 // count of GroundingNotDerived facts. A module the fixture route cannot prepare reports false.
 test fn nds_q1_frontier_total_matches_an_independent_count() -> Bool {
@@ -127,5 +121,54 @@ test fn nds_q1_frontier_total_matches_an_independent_count() -> Bool {
     Present { value: p } =>
       native_infer_accepted_frontier(tree: p.inferred, diagnostics: None).grounding_not_derived
         == length(xs: nds_sites(prepared: Present { value: p }))
+  }
+}
+
+// The per-site rows are the census of the same facts nds_sites lists: for each site, the row's count is how
+// often that site occurs. Rows are supplied so the control below can mutate one.
+fn nds_occurrences(sites: List<NotDerivedSite>, site: NotDerivedSite) -> Int {
+  fold_list(xs: sites, empty: 0, cons: fn(acc, s) { if s == site { acc + 1 } else { acc } })
+}
+
+fn nds_row_count(rows: List<NativeInferSiteCount>, site: NotDerivedSite) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, r) { if r.site == site { r.count } else { acc } })
+}
+
+fn nds_row_matches(rows: List<NativeInferSiteCount>, sites: List<NotDerivedSite>, site: NotDerivedSite) -> Bool {
+  nds_row_count(rows: rows, site: site) == nds_occurrences(sites: sites, site: site)
+}
+
+test fn nds_q1_wrapper_row_count_is_its_occurrence_count() -> Bool {
+  match nds_prepared(
+    read: nds_read(source: nds_q1_source, id: ^nds_q1_read, file: "src/v2/test/fixture/nds/q1.dag"),
+    module: [^v2, ^test, ^nds_q1]
+  ) {
+    Absent => false
+    Present { value: p } =>
+      nds_occurrences(sites: nds_sites(prepared: Present { value: p }), site: DeclarationWrapperEvidenceEdgesAbsent) >= 1
+        && nds_row_matches(
+          rows: native_infer_not_derived_site_counts(tree: p.inferred),
+          sites: nds_sites(prepared: Present { value: p }),
+          site: DeclarationWrapperEvidenceEdgesAbsent
+        )
+  }
+}
+
+// RED control: a bumped count does not match.
+test fn nds_a_mutated_row_count_is_refused() -> Bool {
+  match nds_prepared(
+    read: nds_read(source: nds_q1_source, id: ^nds_q1_read, file: "src/v2/test/fixture/nds/q1.dag"),
+    module: [^v2, ^test, ^nds_q1]
+  ) {
+    Absent => false
+    Present { value: p } =>
+      nds_row_matches(
+        rows: [NativeInferSiteCount {
+          site: DeclarationWrapperEvidenceEdgesAbsent,
+          count: nds_occurrences(sites: nds_sites(prepared: Present { value: p }), site: DeclarationWrapperEvidenceEdgesAbsent) + 1
+        }],
+        sites: nds_sites(prepared: Present { value: p }),
+        site: DeclarationWrapperEvidenceEdgesAbsent
+      ) == false
   }
 }
