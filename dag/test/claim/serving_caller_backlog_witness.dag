@@ -509,7 +509,7 @@ test fn w_typed_waiting_persist_is_the_admitted_publication_path() -> ProcessExi
     wanted_class: "ConstructorCallAdmissionRefused",
     wanted_subject: "persist_waiting_on_store",
   ), holds: fn(n) { n == 0 }),
-    census_premise(name: "length(xs: decl_facts_at( pool_roots: ["dag"], qualified_name: "gunbc.serving.caller_backlog.persist_record_cas", )) == 0", holds: length(xs: decl_facts_at( pool_roots: ["dag"], qualified_name: "gunbc.serving.caller_backlog.persist_record_cas", )) == 0),
+    census_premise(name: "the pool holds no decl fact for persist_record_cas", holds: length(xs: decl_facts_at( pool_roots: ["dag"], qualified_name: "gunbc.serving.caller_backlog.persist_record_cas", )) == 0),
   ])
 }
 

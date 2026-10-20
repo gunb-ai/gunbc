@@ -1,6 +1,6 @@
 module test.claim.fleet_observation_seal
 
-import gunbc.compile_census_probe { blocking_subject_census, census_ran, census_verdict }
+import gunbc.compile_census_probe { blocking_subject_census, census_ran, census_verdict, census_verdict_all }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
 import std.types { String, Bool, Int }
@@ -41,8 +41,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE COUNT COMES FROM THE DECLARED HOME, NOT FROM A LOCAL COPY. An earlier version of this file
 // declared census_of / keyed_count / seal_violations -- "compile this source string and count the
 // blocking diagnostics of class C at subject S, -1 when the census did not run" -- which is exactly
-// gunbc.compile_census_probe blocking_subject_count_for, down to the -1-never-0 rule and the reason
-// for it. That module's own header says it is THE SINGLE HOME for this fact and that copying it makes
+// what gunbc.compile_census_probe USED to answer with, down to the -1-never-0 rule and the reason for
+// it; the home has since returned the typed Observed/NotRunnable union instead of the sentinel. That module's own header says it is THE SINGLE HOME for this fact and that copying it makes
 // one concept answer from two authorities. Four witnesses already consume it; this is the fifth. The
 // local trio was the second-instance drift the census module documents, written while DFS-ing
 // carefully before minting StreamPosition and not at all before minting this.
@@ -50,10 +50,14 @@ fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
   blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
 }
 
-// RAN AT ALL, read through the home's own sentinel rather than a second census call: the contract is
-// that a census which did not run answers -1 and never 0, so a non-negative count IS the ran-check.
-fn census_ran(source: String) -> ProcessExit {
-  census_verdict(census: seal_violations(source: source, subject: "SoleConstructorViolation"), holds: fn(n) { n >= 0 })
+// THE RAN-CHECK FOR THIS FILE'S EIGHT ARMS, built from the home's typed probes: each arm below asks
+// the module census_ran of its keyed census, which passes on ANY observed count and REFUSES with the
+// census's own cause when the compile never ran. The old spelling was `seal_violations(...) >= 0` --
+// sound only while the home returned -1 for a census that did not run and 0 for one that ran empty;
+// with a non-negative Int the comparison would be vacuously true, which is why the ran-check moved
+// onto the union itself.
+fn arm_ran(source: String) -> ProcessExit {
+  census_ran(census: seal_violations(source: source, subject: "SoleConstructorViolation"))
 }
 
 // ── RED 1: the durable-commit proof ────────────────────────────────────────────────────────────
@@ -128,17 +132,20 @@ test fn the_sanctioned_silence_route_draws_no_violation() -> ProcessExit {
   census_verdict(census: seal_violations(source: sanctioned_silence_source, subject: "SilenceProof"), holds: fn(n) { n == 0 })
 }
 
-// BOTH ARMS MUST ACTUALLY HAVE COMPILED. blocking_subject_count_for returns -1 on a census that did
-// not run, never 0, so a probe that
-// never ran would otherwise be indistinguishable from one that ran and found nothing.
-test fn every_probe_in_this_file_actually_compiled() -> Bool {
-  census_ran(source: forged_commit_proof_source)
-  && census_ran(source: forged_continuity_reach_source)
-  && census_ran(source: forged_committed_chunk_source)
-  && census_ran(source: forged_silence_source)
-  && census_ran(source: sanctioned_commit_source)
-  && census_ran(source: sanctioned_chunk_source)
-  && census_ran(source: sanctioned_reach_source)
-  && census_ran(source: sanctioned_silence_source)
+// BOTH ARMS MUST ACTUALLY HAVE COMPILED. Under the home's OLD Int contract a census that never ran
+// answered -1 and never 0, and this claim read that sentinel; under the typed union it asks the
+// union directly, so an arm whose compile never ran refuses the claim with its own cause instead of
+// posing as a probe that ran and found nothing.
+test fn every_probe_in_this_file_actually_compiled() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    arm_ran(source: forged_commit_proof_source),
+    arm_ran(source: forged_continuity_reach_source),
+    arm_ran(source: forged_committed_chunk_source),
+    arm_ran(source: forged_silence_source),
+    arm_ran(source: sanctioned_commit_source),
+    arm_ran(source: sanctioned_chunk_source),
+    arm_ran(source: sanctioned_reach_source),
+    arm_ran(source: sanctioned_silence_source),
+  ])
 }
 
