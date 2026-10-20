@@ -16,7 +16,7 @@ import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_p
   AlignItems, BorderBottom, BorderBottomColor, Display, Flex, FlexWrap, FontWeight, Gap, GridTemplateColumns, Height, LetterSpacing,
   MarginBottom, MarginInline, MarginLeft, MarginTop, MaxWidth, Opacity, PaddingBlock, PaddingTop, TextDecoration, TextTransform, TextWrap, Transition, Width,
   Border, BorderLeft, BorderRadius, BorderTop, Content, OverflowX, Padding, Transform, UserSelect, WhiteSpace,
-  Outline, Overflow, BorderBottom, JustifyContent, MaxHeight, PaddingBottom, PaddingLeft,
+  Outline, Overflow, JustifyContent, MaxHeight, PaddingBottom, PaddingLeft,
   BorderColor, Cursor, Fill, FillOpacity, OutlineOffset, Stroke, StrokeDasharray, StrokeLinecap, StrokeLinejoin, StrokeOpacity, StrokeWidth }
 import extdeps.languages.css.complex_selector {
   SelectorList, ComplexSelector, CompoundSelector, TypeSelector, SimpleSelector, UniversalType, ElementType, ClassPart, PseudoClassPart, PseudoElementPart,
@@ -561,13 +561,17 @@ data carved_rule_pseudo_list: SelectorList = SelectorList { selectors: [
 data carved_entries: List<SheetEntry> = [
   EntryComment { lines: carved_banner },
   EntryGap { blank_lines: 1 },
-  block_rule(selector: class_list(name: "carved-rule"), items: [compact_decls(decls: [
-    sheet_ident(property: Display, ident: "flex"),
-    sheet_ident(property: AlignItems, ident: "center"),
-    sheet_expr(property: Gap, value: sheet_rem(milli: 700)),
-    sheet_expr(property: Width, value: sheet_len(milli: 100000, unit: Percent)),
-    sheet_expr(property: Margin, value: sheet_space(items: [sheet_rem(milli: 2750), ValNumber { milli: 0 }])),
-  ])]),
+  block_rule(selector: class_list(name: "carved-rule"), items: [
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: AlignItems, ident: "center"),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 700)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Width, value: sheet_len(milli: 100000, unit: Percent)),
+      sheet_expr(property: Margin, value: sheet_space(items: [sheet_rem(milli: 2750), ValNumber { milli: 0 }])),
+    ]),
+  ]),
   block_rule(selector: carved_rule_pseudo_list, items: [
     ItemDeclLine { decls: [
       sheet_expr(property: Content, value: ValString { text: "" }),
