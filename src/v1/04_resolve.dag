@@ -357,40 +357,33 @@ fn expand_nominal_alias_rhs_by_name(n: Node, env: TypeEnv, module_name: String) 
   let brand = authored_name_at(source_indices: source_indices, node: n)
   match lookup_type_for(env: env, node: n) {
     Present { value: resolved } =>
-      // D.5 (docs/plans/v1-interface-cull-audit.md, 69e4233d881): `structural` is read on exactly
-      // two paths — the brand arm (with_authored_identity) and the inferred-Resolved arm. Both
-      // pre-decisions that do not read `structural` are made BEFORE the walk: the brand arm's two
-      // brand-only conjuncts, and the second arm's demand test (structural is used there only when
-      // the inferred fact is a Resolved node). When neither can read it, the ordinary arm returns
-      // `resolved` unchanged and the walk would be discarded — deleted demand (§2), not a cache.
-      let brand_arm_possible = brand != "" && !is_declared_container_alias_spelling(name: brand)
-      let inferred_arm_uses_structural = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
-        match resolved.inferred {
-          Present { value: Resolved { node: _ } } => true
-          _ => false
-        }
-      } else { false }
-      if !brand_arm_possible && !inferred_arm_uses_structural { resolved } else {
-      let structural = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
-        match resolved.inferred {
-          Present { value: Resolved { node: target } } =>
-            resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0, masked: false).resolved
-          _ => resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0, masked: false).resolved
-        }
-      } else {
-        resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0, masked: false).resolved
+      // D.5 (docs/plans/v1-interface-cull-audit.md, 69e4233d881): ONE match on `resolved.inferred`
+      // decides, at one place, whether the inferred fact drives the walk (Some: the leaf's own
+      // target is walked) or not (Absent: the ordinary walk of `resolved`). The skip and both
+      // reading arms consume that single decision; the shape test lives inside the match alone
+      // (review 38608). `brand_only_possible` holds the two brand-only conjuncts of the brand arm
+      // - if neither brand nor the inferred fact can read `structural`, the ordinary arm returns
+      // `resolved` unchanged and the walk is deleted demand (DESIGN §2), not a cache.
+      let brand_only_possible = brand != "" && !is_declared_container_alias_spelling(name: brand)
+      let inferred_walk_target = match resolved.inferred {
+        Present { value: Resolved { node: target } } =>
+          if resolved.connective == NoConnective && resolved.children |> count == 0 { Present { value: target } } else { Absent }
+        _ => Absent
+      }
+      if !brand_only_possible && inferred_walk_target == none { resolved } else {
+      let structural = match inferred_walk_target {
+        Present { value: target } =>
+          resolve_node_bounded(n: target, env: env, module_name: module_name, depth: 0, masked: false).resolved
+        Absent =>
+          resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0, masked: false).resolved
       }
       if brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
         && !is_declared_container_alias_spelling(name: brand)
         && (!is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices)
           || is_kernel_type(name: qualified_last_segment(name: brand))) {
         with_authored_identity(identity: n, structural: structural)
-      } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
-        match resolved.inferred {
-          Present { value: Resolved { node: target } } =>
-            with_authored_identity(identity: n, structural: structural)
-          _ => resolved
-        }
+      } else if inferred_walk_target != none {
+        with_authored_identity(identity: n, structural: structural)
       } else { resolved }
       }
     Absent => n
@@ -630,16 +623,6 @@ fn resolve_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> Node
     let arg_results = n.children |> map(child => resolve_nominal_alias_rhs(n: child, env: env, module_name: module_name))
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
-    // D.6 (docs/plans/v1-interface-cull-audit.md, 69e4233d881): only diagnostics are consumed from
-    // the validation walk - `validation.resolved` was discarded at every use, a second transformed
-    // value built and thrown away (DESIGN 2). For this node shape (NoConnective, children > 0) at
-    // depth 0, resolve_node's arm analysis is exact and total: a keyed collection yields the key
-    // and value walks' diagnostics; a one-argument use yields the element walk's diagnostics;
-    // any other multi-argument use reaches the identity arm with NO diagnostics and no child walk
-    // at all. Taking the diagnostics from the same sub-walks deletes the parent's transformed
-    // value and the dead multi-argument walk - deleted demand, not a cache. Refusals are
-    // byte-identical: each arm below is the identical resolve_node_bounded call the old
-    // validation recursion made (same node via child_type_node, same depth 1, same masked: true).
     // D.6 (docs/plans/v1-interface-cull-audit.md, 69e4233d881): only diagnostics are consumed
     // from the validation walk; ask the single authority for the diagnostics projection instead
     // of building a second transformed value nobody reads (DESIGN §2). Arm selection - including
