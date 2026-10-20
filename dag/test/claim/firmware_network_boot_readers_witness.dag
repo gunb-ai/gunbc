@@ -14,7 +14,7 @@ import gunbc.firmware_network_boot_standing {
 import gunbc.firmware_network_boot_probe {
   AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder, NicsAxis,
   DecodedFromSuppliedReplies, SuppliedSilence, SuppliedRouteMismatch, ReadAttemptReceipt, ReadResponseReceipt, ProbeSubject, probe, firmware_boot_family_rows,
-  FirmwareFamilyStack,
+  FirmwareFamilyStack, FirmwareBootFamilyRow, ReadRoute,
 }
 import gunbc.firmware_network_boot_readers {
   RedfishGet, RedfishGetBody, RedfishGetStatus, RedfishBootReads, redfish_axis_replies, redfish_supplied_probe_input,
@@ -180,6 +180,8 @@ fn secure_ok(o: FirmwareBootObservation) -> Bool { match o.secure_boot { SecureB
 fn nics_ok_obs(o: FirmwareBootObservation) -> Bool { match o.nics { NicsObserved { nics: ns } => list_length(items: ns) == 2 _ => false } }
 fn bios_ok(o: FirmwareBootObservation) -> Bool { match o.bios_version { BiosVersionObserved { version: v } => v == "2.4.1" _ => false } }
 
+fn route_of(row: FirmwareBootFamilyRow) -> ReadRoute { row.route }
+
 // INHABITANCE: the reader's output is what probe() consumes, on the OpenBMC row, end to end.
 test fn reader_output_feeds_the_probe() -> Bool {
   let rows = firmware_boot_family_rows()
@@ -187,7 +189,7 @@ test fn reader_output_feeds_the_probe() -> Bool {
   match row {
     Absent => false
     Present { value: r } =>
-      match probe(input: redfish_supplied_probe_input(subject: ProbeSubject { unit_label: "u" }, row: r, response: ReadResponseReceipt { attempt: ReadAttemptReceipt { observed_at: 1, attempt_identity: "a", route: r.route }, response_identity: "r" }, reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok()))) {
+      match probe(input: redfish_supplied_probe_input(subject: ProbeSubject { unit_label: "u" }, row: r, response: ReadResponseReceipt { attempt: ReadAttemptReceipt { observed_at: 1, attempt_identity: "a", route: route_of(row: r) }, response_identity: "r" }, reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok()))) {
         DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
           order_ok(o: o) && options_unobserved(o: o) && secure_ok(o: o) && nics_ok_obs(o: o) && bios_ok(o: o)
         SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
