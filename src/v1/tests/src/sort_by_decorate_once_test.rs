@@ -1,8 +1,8 @@
 //! `sort_by` COMPUTES EACH KEY ONCE, AND THE PRE-CHANGE SHAPE IS THE RED CONTROL.
 //!
 //! `v1.compiler.emit_rust` `emit_rust_sort_by_method_call` used to emit
-//! `sort_by(|a, b| canonical_key_cmp(&(key)(a), &(key)(b)))`, running the supplied selector twice
-//! per comparison. It now decorates each element with its key once, stable-sorts on the stored key
+//! `__sorted.sort_by(|a, b| { let __ka = (key)(a); let __kb = (key)(b); canonical_key_cmp(&__ka, &__kb) })`,
+//! running the supplied selector twice per comparison. It now decorates each element with its key once, stable-sorts on the stored key
 //! with the same `canonical_key_cmp`, and undecorates, so multiplicity and tie order are those of
 //! the one stable sort.
 //!
@@ -73,9 +73,15 @@ fn sort_by_decorates_once_sorts_the_stored_key_and_undecorates() {
             "missing `{needle}` in the sort_by lowering; emitted:\n{emitted}"
         );
     }
-    assert!(
-        !emitted.contains("canonical_key_cmp(&("),
-        "RED CONTROL: the selector must not be applied inside the comparator (twice per comparison); \
-         emitted:\n{emitted}"
-    );
+    for old in [
+        "let __ka =",
+        "let __kb =",
+        "canonical_key_cmp(&__ka, &__kb)",
+    ] {
+        assert!(
+            !emitted.contains(old),
+            "RED CONTROL: `{old}` is the pre-change shape, which applies the selector inside the \
+             comparator (twice per comparison); emitted:\n{emitted}"
+        );
+    }
 }
