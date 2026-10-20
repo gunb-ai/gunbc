@@ -1307,11 +1307,13 @@ fn rust_primitive_unlabeled_argument(passing: TargetPrimitiveArgumentPassing) ->
 }
 
 // The primitives the Swift Protocol closure reaches. string_length and join mirror rt_function_registry and
-// rust_simple_method_specs and are backed by the differential witness. to_string and map do NOT: they are
-// transcribed from the control flow of v1.compiler.emit_rust (the free-call to_string arm and
-// emit_rust_map_method_call), which no table exposes, so the differential witness cannot cover them. Their backing is
-// the emitted-text claims in v2.test.claim.emit.rust_primitive_realization_emit plus the rustc receipt recorded in
-// that file. The map row's `(recv).map(f)` compiles for an Option or iterator receiver and does not for a Vec.
+// rust_simple_method_specs and are backed by the differential witness. to_string does NOT: it is transcribed from the
+// free-call to_string arm of v1.compiler.emit_rust, which no table exposes, so the differential witness cannot cover
+// it. Its backing is the emitted-text claim in v2.test.claim.emit.rust_primitive_realization_emit plus the rustc
+// receipt recorded in that file. map has NO row on purpose: the std.primitives map contract is receiver-polymorphic
+// (Optional and List), the seed picks `(recv).map(f)` for an Optional receiver and an iterator chain for a List, and a
+// row carries no receiver type, so one method-call row would emit uncompilable Rust (E0599) for a Vec. Absent, map
+// refuses typed as missing; it returns when a row can state its receiver type.
 fn rust_primitive_realization_rows() -> List<TargetPrimitiveRealization> {
   [
     rust_primitive_by_shared_reference_row(head: ^string_length),
@@ -1319,15 +1321,11 @@ fn rust_primitive_realization_rows() -> List<TargetPrimitiveRealization> {
       head: ^join,
       arguments: [rust_primitive_unlabeled_argument(passing: PrimitivePassBySharedReference { prefix_token: ^rust_token_amp })]
     ),
-    rust_primitive_method_row(head: ^to_string, arguments: []),
-    rust_primitive_method_row(
-      head: ^map,
-      arguments: [rust_primitive_unlabeled_argument(passing: PrimitivePassByValue)]
-    )
+    rust_primitive_method_row(head: ^to_string, arguments: [])
   ]
 }
 
-data rust_primitive_realization_seed_spelling_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the frozen v1 seed no longer reads rt_function_registry and rust_simple_method_specs (extdeps.languages.rust.emit) and no longer carries the control flow in v1.compiler.emit_rust (free-call to_string arm, emit_rust_map_method_call) from which the to_string and map rows were transcribed; those rows then dissolve into rust_primitive_realization_rows, and the differential witness v2.test.claim.emit.rust_primitive_seed_differential is deleted with them")
+data rust_primitive_realization_seed_spelling_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the frozen v1 seed no longer reads rt_function_registry and rust_simple_method_specs (extdeps.languages.rust.emit) and no longer carries the control flow in v1.compiler.emit_rust (free-call to_string arm) from which the to_string row was transcribed; that row then dissolves into rust_primitive_realization_rows, and the differential witness v2.test.claim.emit.rust_primitive_seed_differential is deleted with them")
 
 fn rust_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(rows: [

@@ -338,10 +338,10 @@ test fn rust_named_field_row_does_not_realize_a_whole_declaration_callee() -> Bo
 // emit_rust_map_method_call), not read from rt_function_registry or rust_simple_method_specs, so
 // v2.test.claim.emit.rust_primitive_seed_differential cannot back them. Backing is the text asserted here plus a
 // rustc receipt over exactly that text (manual, rustc 2021 edition; the claim cannot invoke a compiler):
-//   GREEN: `let s: String = (x).to_string(); let r = (o).map(y);` with x: i64, o: Option<i64>, y = |v| v + 1
-//          compiles, runs, and asserts s == "5" and r == Some(3).
-//   RED:   `(x).to_str()` fails E0599 (no method to_str on i64); `(o).mapp(y)` fails E0599 (no method mapp on Option).
-//   LIMIT: `(v).map(y)` on a Vec<i64> fails E0599, so the map row realizes an Option or iterator receiver only.
+//   GREEN: `let s: String = (x).to_string(); `  with x: i64 compiles, runs, and asserts s == "5".
+//   RED:   `(x).to_str()` fails E0599 (no method to_str on i64).
+//   map: `(v).map(y)` on a Vec<i64> fails E0599 while `(o).map(y)` on an Option<i64> compiles, so one receiver-blind method row
+//        cannot realize the receiver-polymorphic map contract; it has no row and refuses (the control below).
 fn rust_primitive_real_rows_text(callee: Symbol, args: List<TargetValueExpression>) -> String {
   match rust_primitive_emit(
     expr: target_value_expression_resolved_primitive_call(callee: callee, args: args),
@@ -360,12 +360,14 @@ test fn rust_to_string_row_emits_a_method_call_on_the_receiver() -> Bool {
   ) == "(x).to_string()"
 }
 
-test fn rust_map_row_emits_a_method_call_with_the_function_by_value() -> Bool {
+// RED: map has no Rust row (a row carries no receiver type, and `(recv).map(f)` is uncompilable for a List), so it refuses
+// typed as missing rather than emitting Rust that rustc rejects.
+test fn rust_map_has_no_row_because_its_receiver_is_polymorphic() -> Bool {
   rust_primitive_real_rows_text(
     callee: ^map,
     args: [
       target_value_expression_binding_ref(binding: ^rust_binding_param_x),
       target_value_expression_binding_ref(binding: ^rust_binding_param_y)
     ]
-  ) == "(x).map(y)"
+  ) == "REFUSED"
 }
