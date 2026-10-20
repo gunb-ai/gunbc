@@ -3,6 +3,9 @@ module v2.test.claim.is_surface
 import v2.compiler.resolve { ResolvedTree }
 import v2.test.claim.type_param_binder_frame { tpb_assemble, tpb_refuses_with }
 import v2.compiler.infer { infer }
+import v2.compiler.eval { eval, eval_default_interpretation, inputs_root_only }
+import v2.compiler.emit { emit }
+import v2.compiler.arm_resolution { arm_test_realization_refusal }
 import v2.compiler.arm_resolution { PayloadArmReferenceAwaited, ResolvedArm, UnitArmSameArm }
 import v2.std.diagnostic { diagnostics_fatal, diagnostics_fatal_reason, NodeLocus }
 
@@ -115,5 +118,50 @@ test fn is_authored_resolved_arm_refuses() -> Bool {
         Rejected { diagnostics: _ } => true
       }
     Rejected { diagnostics: _ } => true
+  }
+}
+
+fn is_tree_eval_reason(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: t, diagnostics: _ } =>
+          tpb_refuses_with(o: eval(tree: t, interpretation: eval_default_interpretation(), inputs: inputs_root_only(root: t.root)), reason: reason)
+      }
+  }
+}
+
+// An `is` test executes nowhere yet: eval refuses it, typed, naming the missing v2 realization of tag_of/same_arm.
+test fn is_unit_arm_eval_refuses_awaiting_realization() -> Bool {
+  is_tree_eval_reason(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red"), reason: ^arm_test_awaiting_v2_realization_of_tag_of_same_arm)
+}
+
+test fn is_payload_arm_eval_refuses_awaiting_realization() -> Bool {
+  is_tree_eval_reason(o: is_src(decls: "type Color = Red | Tint { r: Int }\n", body: "c is Tint"), reason: ^arm_test_awaiting_v2_realization_of_tag_of_same_arm)
+}
+
+// The shared table: a test with no ResolvedArm entry refuses with its own cause, and a program with no `is`
+// is not refused (positive control that the gate does not widen).
+test fn is_test_without_fact_entry_refuses() -> Bool {
+  match is_src(decls: "type Color = Red | Green\n", body: "c is Red") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match arm_test_realization_refusal(root: root.root, lookup: fn(k) { Absent }) {
+        Present { value: d } => d.reason == ^arm_test_without_resolved_arm
+        Absent => false
+      }
+  }
+}
+
+test fn no_is_node_is_not_refused() -> Bool {
+  match is_src(decls: "type Color = Red | Green\n", body: "true") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match arm_test_realization_refusal(root: root.root, lookup: fn(k) { Absent }) {
+        Present { value: _ } => false
+        Absent => true
+      }
   }
 }
