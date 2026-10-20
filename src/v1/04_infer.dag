@@ -14,6 +14,11 @@ import std.target_representation { VariantParentIdentity, VariantParentIdentifie
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
+  KernelGroundingView, PeanoGroundingView, SignedGroundingView, KernelGroundingArm,
+  GroundedConstructorShape, GroundedFieldShape, FieldAtGroundedNatural, FieldNotAtGroundedNatural,
+  GroundedDeclaredForm, DeclaredCoproduct, DeclaredNotACoproduct,
+  SignedViewDisagreement, SignedViewAgrees, SignedViewDisagrees, signed_view_reading, signed_view_disagreement_message,
+  declaration_is_grounded_natural,
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
@@ -4795,7 +4800,7 @@ fn product_versus_coproduct_head_mismatch(declared: Node, produced: Node, scope:
 // WHY A KERNEL LITERAL AT AN ALGEBRAICALLY-DECLARED NUMERIC IS ADMITTED, AND WHY THIS IS
 // CONSULTING AN AUTHORITY RATHER THAN WIDENING AN ARM. std.nat declares
 // `type Nat = Zero | Succ { prev: Nat }` and std.integer declares
-// `type Int = AbelianGroup<GroupCompletion<Nat>>`: the canonical form of both is a declared
+// `type Int = NonNegative { n: Nat } | Negative { pred: Nat }`: the canonical form of both is a declared
 // STRUCTURE while their values are authored as kernel integer literals. Read structurally that
 // is kernel-at-structured and the relation refused it -- measured, 33 of 50 sites at the
 // direct-call seam, every one correct code.
@@ -17112,6 +17117,17 @@ type TypecheckModuleResult {
 //   match n { .. }              with n grounded: an if-chain over n == k and n >= k, the
 //                               predecessor bound as n - k, the last arm unconditional because
 //                               the match was already judged exhaustive on the declaration
+//
+// A SIGNED carrier (std.integer Int = NonNegative { n: Nat } | Negative { pred: Nat }) folds by the
+// arms its row NAMES -- never by position, spelling or the order the fold meets them:
+//
+//   NonNegative { n: e }        e                (a numeral folds to the literal)
+//   Negative { pred: e }        -1 - e           (a numeral p folds to the literal -1 - p)
+//   match i { .. }              an if-chain over i >= 0 (non-negative) and i <= -1 - k (negative,
+//                               payload at least k), the payload bound as i - k and as (-1 - k) - i
+//
+// -1 - e is the encoding with no intermediate overflow on the machine integer: for every natural e
+// it lands in [MIN, -1], and the decoding -1 - i maps [MIN, -1] back onto the naturals exactly.
 //   a closed numeral pattern    nested in another constructor's field: the literal pattern k
 //
 // IDENTITY DECIDES, SPELLING ONLY PRE-FILTERS. A construct is folded only when the type it is
@@ -17131,16 +17147,36 @@ type TypecheckModuleResult {
 type GroundedView {
   carrier: DeclarationRef
   carrier_name: String
+  shape: GroundedViewShape
+  operand: OperandDeclaration
+}
+
+// The constructor roles a grounded carrier's declaration was read to have: a Peano carrier's are read
+// from its shape; a signed carrier's are the arms its row names, checked against the declaration, and
+// `natural` is the grounded natural carrier both payloads are declared at.
+type GroundedViewShape
+  = GroundedPeano { constructors: PeanoConstructors }
+  | GroundedSigned { nonnegative: String, nonnegative_payload: String, negative: String, negative_payload: String, natural: DeclarationRef }
+
+type PeanoConstructors {
   zero: String
   succ: String
   prev_field: String
-  operand: OperandDeclaration
 }
 
 type GroundedCarrierState
   = GroundedViewReadable { view: GroundedView }
   | GroundedCarrierDeclaresNoConstructors
-  | GroundedCarrierShapeRefused { carrier: DeclarationRef, span: SourceSpan }
+  | GroundedCarrierShapeRefused { carrier: DeclarationRef, span: SourceSpan, reason: GroundedShapeRefusal }
+
+type GroundedShapeRefusal
+  = PeanoShapeMismatch
+  | SignedViewRefused { reason: SignedViewDisagreement }
+
+type GroundedViewMatch
+  = NoGroundedView
+  | GroundedViewFound { view: GroundedView }
+  | GroundedViewUnidentified { view: GroundedView }
 
 type GroundCtx {
   env: TypeEnv
@@ -17169,6 +17205,25 @@ type PeanoPatternReading
   | PeanoAtLeast { k: Int, binder: Node? }
   | PeanoPatternUnreadable
 
+// ONE ARM, AS THE INTEGER TEST IT IS AND THE VALUE ITS BINDER TAKES -- the form both views read into,
+// so one chain builder serves both. A binder is bound to subject - k (a Peano predecessor; k = 0 is the
+// subject itself) or to c - subject (a signed negative arm's payload).
+type GroundedTest
+  = GroundedAlways
+  | GroundedCompare { op: BinOp, k: Int }
+
+type GroundedBound
+  = SubjectMinus { k: Int }
+  | ConstantMinusSubject { c: Int }
+
+type GroundedBinding
+  = GroundedNoBinder
+  | GroundedBinder { declaration: Node, value: GroundedBound, binder_type: Node }
+
+type GroundedArmReading
+  = GroundedArmPlan { test: GroundedTest, binding: GroundedBinding }
+  | GroundedArmUnreadable
+
 type GroundedPattern {
   pattern: MatchPattern
   changed: Bool
@@ -17177,13 +17232,22 @@ type GroundedPattern {
 
 // A row whose carrier declares no constructors (an alias or an opaque declaration) has nothing to
 // fold and is not a refusal: its realization is already the kernel value at every occurrence.
+// A row whose carrier declares no constructors (an alias or an opaque declaration) has nothing to
+// fold and is not a refusal: its realization is already the kernel value at every occurrence.
 fn grounded_carrier_state(row: KernelGrounding, decl: Node, env: TypeEnv) -> GroundedCarrierState {
+  match row.view {
+    PeanoGroundingView => peano_grounded_carrier_state(row: row, decl: decl, env: env)
+    SignedGroundingView { nonnegative: nn, negative: ng } => signed_grounded_carrier_state(row: row, decl: decl, nonnegative: nn, negative: ng, env: env)
+  }
+}
+
+fn peano_grounded_carrier_state(row: KernelGrounding, decl: Node, env: TypeEnv) -> GroundedCarrierState {
   let si = env.source_indices
   if decl.connective != Disj {
     GroundedCarrierDeclaresNoConstructors
   } else {
     let variants = decl.children
-    let refused = GroundedCarrierShapeRefused { carrier: row.carrier, span: decl.span }
+    let refused = GroundedCarrierShapeRefused { carrier: row.carrier, span: decl.span, reason: PeanoShapeMismatch }
     let nullary = variants |> filter(v => (variant_node_fields(n: v) |> count) == 0)
     let unary = variants |> filter(v => (variant_node_fields(n: v) |> count) == 1)
     if (variants |> count) != 2 {
@@ -17204,9 +17268,13 @@ fn grounded_carrier_state(row: KernelGrounding, decl: Node, env: TypeEnv) -> Gro
                       view: GroundedView {
                         carrier: row.carrier,
                         carrier_name: row.carrier.decl_name as String,
-                        zero: qualified_last_segment(name: authored_name_at(source_indices: si, node: z)),
-                        succ: qualified_last_segment(name: authored_name_at(source_indices: si, node: s)),
-                        prev_field: authored_name_at(source_indices: si, node: f),
+                        shape: GroundedPeano {
+                          constructors: PeanoConstructors {
+                            zero: qualified_last_segment(name: authored_name_at(source_indices: si, node: z)),
+                            succ: qualified_last_segment(name: authored_name_at(source_indices: si, node: s)),
+                            prev_field: authored_name_at(source_indices: si, node: f)
+                          }
+                        },
                         operand: OperandDeclaration { declaration: row.carrier, provenance: declaration_provenance_of_ref(d: row.carrier, env: env) }
                       }
                     }
@@ -17218,6 +17286,59 @@ fn grounded_carrier_state(row: KernelGrounding, decl: Node, env: TypeEnv) -> Gro
         Absent => refused
       }
     }
+  }
+}
+
+// A signed carrier's constructors as std.literal_elaboration signed_view_reading reads them: each
+// constructor's own name, and each field's name and the grounded natural it is declared at, if any.
+fn grounded_constructor_shapes(variants: List<Node>, env: TypeEnv) -> List<GroundedConstructorShape> {
+  let si = env.source_indices
+  variants |> map(v => GroundedConstructorShape {
+    constructor: qualified_last_segment(name: authored_name_at(source_indices: si, node: v)),
+    fields: variant_node_fields(n: v) |> map(f => GroundedFieldShape {
+      field: authored_name_at(source_indices: si, node: f),
+      declared_at: match type_reference_declaration_ref(n: child_type_node(ch: f), source_indices: si, env: env) {
+        Present { value: fd } =>
+          if declaration_is_grounded_natural(rows: kernel_grounding_rows, d: fd) { FieldAtGroundedNatural { natural: fd } } else { FieldNotAtGroundedNatural }
+        Absent => FieldNotAtGroundedNatural
+      }
+    })
+  })
+}
+
+// THE SIGNED VIEW TAKES ITS ROLES FROM THE ROW. Both arms carry one natural, so no shape can tell them
+// apart; the row names which constructor is non-negative and which is negative, and the shared check
+// (std.literal_elaboration signed_view_reading) decides whether the declaration agrees with it.
+// NO "NOTHING TO FOLD" ARM. A signed row asks whether the declaration implements two named
+// constructors, and an opaque, alias or product declaration answers no -- the shared check refuses it
+// (SignedCarrierNotACoproduct). This adapter only reads the declaration into its form; it decides nothing.
+fn grounded_declared_form(decl: Node, env: TypeEnv) -> GroundedDeclaredForm {
+  if decl.connective == Disj {
+    DeclaredCoproduct { constructors: grounded_constructor_shapes(variants: decl.children, env: env) }
+  } else {
+    DeclaredNotACoproduct
+  }
+}
+
+fn signed_grounded_carrier_state(row: KernelGrounding, decl: Node, nonnegative: KernelGroundingArm, negative: KernelGroundingArm, env: TypeEnv) -> GroundedCarrierState {
+  match signed_view_reading(nonnegative: nonnegative, negative: negative, declared: grounded_declared_form(decl: decl, env: env)) {
+    SignedViewDisagrees { reason: r } => GroundedCarrierShapeRefused { carrier: row.carrier, span: decl.span, reason: SignedViewRefused { reason: r } }
+    SignedViewAgrees { natural: natural } =>
+      GroundedViewReadable {
+        view: GroundedView {
+          carrier: row.carrier,
+          carrier_name: row.carrier.decl_name as String,
+          shape: GroundedSigned { nonnegative: nonnegative.constructor as String, nonnegative_payload: nonnegative.payload as String, negative: negative.constructor as String, negative_payload: negative.payload as String, natural: natural },
+          operand: OperandDeclaration { declaration: row.carrier, provenance: declaration_provenance_of_ref(d: row.carrier, env: env) }
+        }
+      }
+  }
+}
+
+fn grounded_shape_refusal_message(reason: GroundedShapeRefusal) -> String {
+  match reason {
+    PeanoShapeMismatch => "its declaration is not the inductive shape the row folds (exactly one constructor with no field and one with a single field of the carrier's own type)"
+    SignedViewRefused { reason: r } => signed_view_disagreement_message(reason: r)
   }
 }
 
@@ -17256,8 +17377,40 @@ fn ground_refused(n: Node, message: String, ctx: GroundCtx) -> GroundOut {
   }
 }
 
-fn grounded_view_for_constructor(name: String, ctx: GroundCtx) -> GroundedView? {
-  ctx.views |> filter(v => v.zero == name || v.succ == name) |> first
+fn grounded_view_spells(view: GroundedView, name: String) -> Bool {
+  match view.shape {
+    GroundedPeano { constructors: c } => c.zero == name || c.succ == name
+    GroundedSigned { nonnegative: nn, nonnegative_payload: _, negative: ng, negative_payload: _, natural: _ } => nn == name || ng == name
+  }
+}
+
+fn carrier_match_grounded(m: CarrierMatch) -> Bool {
+  match m {
+    GroundedCarrier => true
+    _ => false
+  }
+}
+
+fn carrier_match_unidentified(m: CarrierMatch) -> Bool {
+  match m {
+    GroundedCarrierUnidentified => true
+    _ => false
+  }
+}
+
+// EVERY VIEW THAT SPELLS THE CONSTRUCTOR IS ASKED, and identity picks among them: two grounded carriers
+// may share a constructor spelling, and taking the first view that spells it would leave an occurrence
+// of the second unfolded because the first's identity does not match.
+fn grounded_view_match(name: String, rt: Node, parent_enum: String?, ctx: GroundCtx) -> GroundedViewMatch {
+  let spelled = ctx.views |> filter(v => grounded_view_spells(view: v, name: name))
+  match spelled |> filter(v => carrier_match_grounded(m: grounded_carrier_match(rt: rt, parent_enum: parent_enum, view: v, ctx: ctx))) |> first {
+    Present { value: v } => GroundedViewFound { view: v }
+    Absent =>
+      match spelled |> filter(v => carrier_match_unidentified(m: grounded_carrier_match(rt: rt, parent_enum: parent_enum, view: v, ctx: ctx))) |> first {
+        Present { value: v } => GroundedViewUnidentified { view: v }
+        Absent => NoGroundedView
+      }
+  }
 }
 
 // Identity first. The spelling arm exists only to turn "the names say the grounded carrier and no
@@ -17308,11 +17461,45 @@ fn grounded_binop(op: BinOp, left: Node, k: Int, result_type: Node?, occurrence_
   )
 }
 
+// c - subject, the reflection a signed carrier's negative arm is: the operation is the CARRIER's
+// subtraction (its algebra field and its operand declaration), whatever the subject's own type, and
+// result_type is the value's -- the carrier when encoding a payload, the natural when decoding one.
+fn grounded_reflect(c: Int, subject: Node, carrier_type: Node, result_type: Node, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
+  let info = infer_binop_type_node(op: Sub, left_type: carrier_type, source_indices: ctx.env.source_indices, env: ctx.env)
+  make_expr_node(
+    occurrence_identity: occurrence_identity,
+    expr_data: ExprBinOp { op: Sub, algebra_field: info.algebra_field, operand: Present { value: view.operand } },
+    children: [grounded_int_literal(k: c, occurrence_identity: OccurrenceSynthetic, span: span), subject],
+    inferred: Present { value: Resolved { node: result_type } },
+    span: span
+  )
+}
+
+// A signed construct: the non-negative arm IS its payload, the negative arm is -1 - payload. A numeral
+// payload folds to the literal; any other payload keeps its own node, wrapped once so the construct's
+// occurrence and its carrier type survive.
+fn grounded_signed_construct(payload: Node, negative: Bool, carrier_type: Node, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
+  match payload.expr_data {
+    ExprLiteral { value: LitInt { value: j } } =>
+      grounded_int_literal(k: if negative { 0 - 1 - j } else { j }, occurrence_identity: occurrence_identity, span: span)
+    _ =>
+      if negative {
+        grounded_reflect(c: -1, subject: payload, carrier_type: carrier_type, result_type: carrier_type, occurrence_identity: occurrence_identity, span: span, view: view, ctx: ctx)
+      } else {
+        make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprBlock, children: [payload], inferred: Present { value: Resolved { node: carrier_type } }, span: span)
+      }
+  }
+}
+
 fn grounded_successor(prev: Node, carrier_type: Node, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
   match prev.expr_data {
     ExprLiteral { value: LitInt { value: j } } => grounded_int_literal(k: j + 1, occurrence_identity: occurrence_identity, span: span)
     _ => grounded_binop(op: Add, left: prev, k: 1, result_type: Present { value: carrier_type }, occurrence_identity: occurrence_identity, span: span, view: view, ctx: ctx)
   }
+}
+
+fn grounded_unidentified_message(name: String, view: GroundedView) -> String {
+  concat("the constructor `", name, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration this occurrence is typed at could not be read, so whether it folds to a kernel integer is undecided")
 }
 
 fn ground_record_lit(n: Node, parent_enum: String?, ctx: GroundCtx) -> GroundOut {
@@ -17321,19 +17508,17 @@ fn ground_record_lit(n: Node, parent_enum: String?, ctx: GroundCtx) -> GroundOut
     Present { value: t } => qualified_last_segment(name: t)
     Absent => ""
   }
-  match grounded_view_for_constructor(name: name, ctx: ctx) {
-    Absent => ground_unchanged(n: n)
-    Present { value: view } =>
-      let carrier_type = resolved_type(n: n)
-      match grounded_carrier_match(rt: carrier_type, parent_enum: parent_enum, view: view, ctx: ctx) {
-        NotGroundedCarrier => ground_unchanged(n: n)
-        GroundedCarrierUnidentified =>
-          ground_refused(n: n, message: concat("the constructor `", name, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration this occurrence is typed at could not be read, so whether it folds to a kernel integer is undecided"), ctx: ctx)
-        GroundedCarrier =>
-          if name == view.zero {
+  let carrier_type = resolved_type(n: n)
+  match grounded_view_match(name: name, rt: carrier_type, parent_enum: parent_enum, ctx: ctx) {
+    NoGroundedView => ground_unchanged(n: n)
+    GroundedViewUnidentified { view: view } => ground_refused(n: n, message: grounded_unidentified_message(name: name, view: view), ctx: ctx)
+    GroundedViewFound { view: view } =>
+      match view.shape {
+        GroundedPeano { constructors: c } =>
+          if name == c.zero {
             GroundOut { node: grounded_int_literal(k: 0, occurrence_identity: n.occurrence_identity, span: n.span), changed: true, diagnostics: [] }
           } else {
-            match n.children |> filter(c => field_init_node_name_at(n: c, source_indices: si) == view.prev_field) |> first {
+            match n.children |> filter(ch => field_init_node_name_at(n: ch, source_indices: si) == c.prev_field) |> first {
               Present { value: fi } =>
                 GroundOut {
                   node: grounded_successor(prev: field_init_node_value(n: fi), carrier_type: carrier_type, occurrence_identity: n.occurrence_identity, span: n.span, view: view, ctx: ctx),
@@ -17341,8 +17526,21 @@ fn ground_record_lit(n: Node, parent_enum: String?, ctx: GroundCtx) -> GroundOut
                   diagnostics: []
                 }
               Absent =>
-                ground_refused(n: n, message: concat("the successor constructor `", name, "` carries no `", view.prev_field, "` field to fold"), ctx: ctx)
+                ground_refused(n: n, message: concat("the successor constructor `", name, "` carries no `", c.prev_field, "` field to fold"), ctx: ctx)
             }
+          }
+        GroundedSigned { nonnegative: _, nonnegative_payload: nnp, negative: ng, negative_payload: ngp, natural: _ } =>
+          let negative = name == ng
+          let payload_name = if negative { ngp } else { nnp }
+          match n.children |> filter(ch => field_init_node_name_at(n: ch, source_indices: si) == payload_name) |> first {
+            Present { value: fi } =>
+              GroundOut {
+                node: grounded_signed_construct(payload: field_init_node_value(n: fi), negative: negative, carrier_type: carrier_type, occurrence_identity: n.occurrence_identity, span: n.span, view: view, ctx: ctx),
+                changed: true,
+                diagnostics: []
+              }
+            Absent =>
+              ground_refused(n: n, message: concat("the signed constructor `", name, "` carries no `", payload_name, "` field to fold"), ctx: ctx)
           }
       }
   }
@@ -17351,24 +17549,24 @@ fn ground_record_lit(n: Node, parent_enum: String?, ctx: GroundCtx) -> GroundOut
 fn ground_variant_value(n: Node, parent_enum: String, ctx: GroundCtx) -> GroundOut {
   let si = ctx.env.source_indices
   let name = qualified_last_segment(name: expr_var_name_at(texpr: n, source_indices: si))
-  match grounded_view_for_constructor(name: name, ctx: ctx) {
-    Absent => ground_unchanged(n: n)
-    Present { value: view } =>
-      match grounded_carrier_match(rt: resolved_type(n: n), parent_enum: Present { value: parent_enum }, view: view, ctx: ctx) {
-        NotGroundedCarrier => ground_unchanged(n: n)
-        GroundedCarrierUnidentified =>
-          ground_refused(n: n, message: concat("the constructor `", name, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration this occurrence is typed at could not be read, so whether it folds to a kernel integer is undecided"), ctx: ctx)
-        GroundedCarrier =>
-          if name == view.zero {
+  match grounded_view_match(name: name, rt: resolved_type(n: n), parent_enum: Present { value: parent_enum }, ctx: ctx) {
+    NoGroundedView => ground_unchanged(n: n)
+    GroundedViewUnidentified { view: view } => ground_refused(n: n, message: grounded_unidentified_message(name: name, view: view), ctx: ctx)
+    GroundedViewFound { view: view } =>
+      match view.shape {
+        GroundedPeano { constructors: c } =>
+          if name == c.zero {
             GroundOut { node: grounded_int_literal(k: 0, occurrence_identity: n.occurrence_identity, span: n.span), changed: true, diagnostics: [] }
           } else {
-            ground_refused(n: n, message: concat("the successor constructor `", name, "` is used as a value; a kernel-grounded successor is folded only where it is applied to its `", view.prev_field, "` field"), ctx: ctx)
+            ground_refused(n: n, message: concat("the successor constructor `", name, "` is used as a value; a kernel-grounded successor is folded only where it is applied to its `", c.prev_field, "` field"), ctx: ctx)
           }
+        GroundedSigned { nonnegative: _, nonnegative_payload: nnp, negative: ng, negative_payload: ngp, natural: _ } =>
+          ground_refused(n: n, message: concat("the signed constructor `", name, "` is used as a value; a kernel-grounded signed constructor is folded only where it is applied to its `", if name == ng { ngp } else { nnp }, "` field"), ctx: ctx)
       }
   }
 }
 
-fn peano_pattern_reading(p: MatchPattern, view: GroundedView, si: Map<String, NewlineIndex>) -> PeanoPatternReading {
+fn peano_pattern_reading(p: MatchPattern, c: PeanoConstructors, si: Map<String, NewlineIndex>) -> PeanoPatternReading {
   match p {
     Wildcard => PeanoAtLeast { k: 0, binder: none }
     Bind { declaration: d } => PeanoAtLeast { k: 0, binder: Present { value: d } }
@@ -17379,11 +17577,11 @@ fn peano_pattern_reading(p: MatchPattern, view: GroundedView, si: Map<String, Ne
       }
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
       let leaf = qualified_last_segment(name: n)
-      if leaf == view.zero {
+      if leaf == c.zero {
         PeanoExact { k: 0 }
-      } else if leaf == view.succ {
-        let inner = match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: si) == view.prev_field) |> first {
-          Present { value: fb } => peano_pattern_reading(p: field_binding_pattern(n: fb), view: view, si: si)
+      } else if leaf == c.succ {
+        let inner = match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: si) == c.prev_field) |> first {
+          Present { value: fb } => peano_pattern_reading(p: field_binding_pattern(n: fb), c: c, si: si)
           Absent => PeanoAtLeast { k: 0, binder: none }
         }
         match inner {
@@ -17397,10 +17595,103 @@ fn peano_pattern_reading(p: MatchPattern, view: GroundedView, si: Map<String, Ne
   }
 }
 
+fn peano_arm_reading(r: PeanoPatternReading, carrier_type: Node) -> GroundedArmReading {
+  match r {
+    PeanoExact { k: k } => GroundedArmPlan { test: GroundedCompare { op: Eq, k: k }, binding: GroundedNoBinder }
+    PeanoAtLeast { k: k, binder: b } =>
+      GroundedArmPlan {
+        test: if k == 0 { GroundedAlways } else { GroundedCompare { op: Ge, k: k } },
+        binding: match b {
+          Present { value: d } => GroundedBinder { declaration: d, value: SubjectMinus { k: k }, binder_type: carrier_type }
+          Absent => GroundedNoBinder
+        }
+      }
+    PeanoPatternUnreadable => GroundedArmUnreadable
+  }
+}
+
+// A signed payload pattern is read as a pattern over the grounded NATURAL its arm is declared at, through
+// that carrier's own Peano view; with no readable view for it the payload is unreadable, never guessed.
+fn natural_pattern_reading(p: MatchPattern, natural: DeclarationRef, ctx: GroundCtx) -> PeanoPatternReading {
+  let constructors = ctx.views |> flat_map(v =>
+    if declaration_ref_eq(a: v.carrier, b: natural) {
+      match v.shape {
+        GroundedPeano { constructors: c } => [c]
+        GroundedSigned { nonnegative: _, nonnegative_payload: _, negative: _, negative_payload: _, natural: _ } => []
+      }
+    } else { [] })
+  match constructors |> first {
+    Present { value: c } => peano_pattern_reading(p: p, c: c, si: ctx.env.source_indices)
+    Absent => PeanoPatternUnreadable
+  }
+}
+
+// A signed arm over a payload read as a natural. Non-negative with payload at least k: subject >= k, the
+// binder subject - k. Negative with payload at least k: the payload -1 - subject is at least k exactly when
+// subject <= -1 - k, and the binder is (-1 - k) - subject. An exact payload p is the one integer p, or -1 - p.
+fn signed_payload_plan(negative: Bool, r: PeanoPatternReading, payload_type: Node) -> GroundedArmReading {
+  match r {
+    PeanoExact { k: k } =>
+      GroundedArmPlan { test: GroundedCompare { op: Eq, k: if negative { 0 - 1 - k } else { k } }, binding: GroundedNoBinder }
+    PeanoAtLeast { k: k, binder: b } =>
+      let c = 0 - 1 - k
+      GroundedArmPlan {
+        test: if negative { GroundedCompare { op: Le, k: c } } else { GroundedCompare { op: Ge, k: k } },
+        binding: match b {
+          Present { value: d } =>
+            GroundedBinder { declaration: d, value: if negative { ConstantMinusSubject { c: c } } else { SubjectMinus { k: k } }, binder_type: payload_type }
+          Absent => GroundedNoBinder
+        }
+      }
+    PeanoPatternUnreadable => GroundedArmUnreadable
+  }
+}
+
+fn signed_arm_reading(p: MatchPattern, view: GroundedView, carrier_type: Node, ctx: GroundCtx) -> GroundedArmReading {
+  let si = ctx.env.source_indices
+  match view.shape {
+    GroundedPeano { constructors: _ } => GroundedArmUnreadable
+    GroundedSigned { nonnegative: nn, nonnegative_payload: nnp, negative: ng, negative_payload: ngp, natural: natural } =>
+      match p {
+        Wildcard => GroundedArmPlan { test: GroundedAlways, binding: GroundedNoBinder }
+        Bind { declaration: d } => GroundedArmPlan { test: GroundedAlways, binding: GroundedBinder { declaration: d, value: SubjectMinus { k: 0 }, binder_type: carrier_type } }
+        LitPattern { value: v } =>
+          match v {
+            LitInt { value: k } => GroundedArmPlan { test: GroundedCompare { op: Eq, k: k }, binding: GroundedNoBinder }
+            _ => GroundedArmUnreadable
+          }
+        VariantPattern { name: n, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
+          let leaf = qualified_last_segment(name: n)
+          if leaf != nn && leaf != ng {
+            GroundedArmUnreadable
+          } else {
+            let negative = leaf == ng
+            let payload_name = if negative { ngp } else { nnp }
+            match constructor_fields(type_node: carrier_type, ctor: leaf, env: ctx.env, module_name: ctx.module_name) |> filter(f => f.name == payload_name) |> first {
+              Absent => GroundedArmUnreadable
+              Present { value: field } =>
+                let reading = match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: si) == payload_name) |> first {
+                  Present { value: fb } => natural_pattern_reading(p: field_binding_pattern(n: fb), natural: natural, ctx: ctx)
+                  Absent => PeanoAtLeast { k: 0, binder: none }
+                }
+                signed_payload_plan(negative: negative, r: reading, payload_type: field.type_node)
+            }
+          }
+      }
+  }
+}
+
+fn grounded_arm_reading(p: MatchPattern, view: GroundedView, carrier_type: Node, ctx: GroundCtx) -> GroundedArmReading {
+  match view.shape {
+    GroundedPeano { constructors: c } => peano_arm_reading(r: peano_pattern_reading(p: p, c: c, si: ctx.env.source_indices), carrier_type: carrier_type)
+    GroundedSigned { nonnegative: _, nonnegative_payload: _, negative: _, negative_payload: _, natural: _ } => signed_arm_reading(p: p, view: view, carrier_type: carrier_type, ctx: ctx)
+  }
+}
+
 fn pattern_spells_grounded_constructor(p: MatchPattern, ctx: GroundCtx) -> Bool {
   match p {
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
-      grounded_view_for_constructor(name: qualified_last_segment(name: n), ctx: ctx) != none
+      ctx.views |> any(v => grounded_view_spells(view: v, name: qualified_last_segment(name: n)))
         || (fbs |> any(fb => pattern_spells_grounded_constructor(p: field_binding_pattern(n: fb), ctx: ctx)))
     _ => false
   }
@@ -17428,23 +17719,26 @@ fn ground_nested_pattern(p: MatchPattern, subject_type: Node, span: SourceSpan, 
         grounded_pattern_unchanged(p: p)
       } else {
         let leaf = qualified_last_segment(name: n)
-        let head = match grounded_view_for_constructor(name: leaf, ctx: ctx) {
-          Present { value: view } =>
-            match grounded_carrier_match(rt: subject_type, parent_enum: pe, view: view, ctx: ctx) {
-              GroundedCarrier =>
-                match peano_pattern_reading(p: p, view: view, si: si) {
-                  PeanoExact { k: k } =>
-                    Present { value: GroundedPattern { pattern: LitPattern { value: LitInt { value: k } }, changed: true, diagnostics: [] } }
-                  PeanoAtLeast { k: k, binder: _ } =>
-                    Present { value: grounded_pattern_refused(p: p, message: concat("an open successor pattern (at least ", to_string(k), ") of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is nested inside another pattern; bind the field and match it in its own match"), span: span, ctx: ctx) }
-                  PeanoPatternUnreadable =>
-                    Present { value: grounded_pattern_refused(p: p, message: concat("a pattern over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is neither a numeral nor a successor of a binder"), span: span, ctx: ctx) }
+        let head = match grounded_view_match(name: leaf, rt: subject_type, parent_enum: pe, ctx: ctx) {
+          GroundedViewFound { view: view } =>
+            match grounded_arm_reading(p: p, view: view, carrier_type: subject_type, ctx: ctx) {
+              GroundedArmPlan { test: t, binding: b } =>
+                match t {
+                  GroundedCompare { op: Eq, k: k } =>
+                    match b {
+                      GroundedNoBinder => Present { value: GroundedPattern { pattern: LitPattern { value: LitInt { value: k } }, changed: true, diagnostics: [] } }
+                      GroundedBinder { declaration: _, value: _, binder_type: _ } =>
+                        Present { value: grounded_pattern_refused(p: p, message: concat("an exact pattern of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " that binds a name is nested inside another pattern; bind the field and match it in its own match"), span: span, ctx: ctx) }
+                    }
+                  _ =>
+                    Present { value: grounded_pattern_refused(p: p, message: concat("an open pattern of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is nested inside another pattern; bind the field and match it in its own match"), span: span, ctx: ctx) }
                 }
-              GroundedCarrierUnidentified =>
-                Present { value: grounded_pattern_refused(p: p, message: concat("the pattern `", leaf, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration its subject is typed at could not be read"), span: span, ctx: ctx) }
-              NotGroundedCarrier => none
+              GroundedArmUnreadable =>
+                Present { value: grounded_pattern_refused(p: p, message: grounded_unreadable_arm_message(view: view), span: span, ctx: ctx) }
             }
-          Absent => none
+          GroundedViewUnidentified { view: view } =>
+            Present { value: grounded_pattern_refused(p: p, message: concat("the pattern `", leaf, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration its subject is typed at could not be read"), span: span, ctx: ctx) }
+          NoGroundedView => none
         }
         match head {
           Present { value: g } => g
@@ -17481,22 +17775,34 @@ fn grounded_comparison(op: BinOp, subject: Node, k: Int, span: SourceSpan, view:
   grounded_binop(op: op, left: subject, k: k, result_type: none, occurrence_identity: OccurrenceSynthetic, span: span, view: view, ctx: ctx)
 }
 
-fn grounded_arm_body(arm: Node, reading: PeanoPatternReading, subject: Node, carrier_type: Node, view: GroundedView, ctx: GroundCtx) -> Node {
+fn grounded_unreadable_arm_message(view: GroundedView) -> String {
+  match view.shape {
+    GroundedPeano { constructors: _ } => concat("a pattern over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is neither a numeral nor a successor of a binder")
+    GroundedSigned { nonnegative: nn, nonnegative_payload: _, negative: ng, negative_payload: _, natural: _ } => concat("a pattern over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is neither a numeral, a binder, nor `", nn, "` or `", ng, "` over a natural pattern")
+  }
+}
+
+fn grounded_arm_body(arm: Node, reading: GroundedArmReading, subject: Node, carrier_type: Node, view: GroundedView, ctx: GroundCtx) -> Node {
   let body = arm_body(n: arm)
   match reading {
-    PeanoAtLeast { k: k, binder: Present { value: decl } } =>
+    GroundedArmPlan { test: _, binding: GroundedBinder { declaration: decl, value: bound, binder_type: bt } } =>
       let name = authored_name_at(source_indices: ctx.env.source_indices, node: decl)
-      let value = if k == 0 {
-        subject
-      } else {
-        grounded_binop(op: Sub, left: subject, k: k, result_type: Present { value: carrier_type }, occurrence_identity: OccurrenceSynthetic, span: arm.span, view: view, ctx: ctx)
+      let value = match bound {
+        SubjectMinus { k: k } =>
+          if k == 0 {
+            subject
+          } else {
+            grounded_binop(op: Sub, left: subject, k: k, result_type: Present { value: bt }, occurrence_identity: OccurrenceSynthetic, span: arm.span, view: view, ctx: ctx)
+          }
+        ConstantMinusSubject { c: c } =>
+          grounded_reflect(c: c, subject: subject, carrier_type: carrier_type, result_type: bt, occurrence_identity: OccurrenceSynthetic, span: arm.span, view: view, ctx: ctx)
       }
       let let_node = make_named_expr_node(
         occurrence_identity: OccurrenceSynthetic,
         name: name,
         expr_data: ExprLet,
         children: [value],
-        inferred: Present { value: Resolved { node: carrier_type } },
+        inferred: Present { value: Resolved { node: bt } },
         span: arm.span,
         name_span: elaborated_span(name: name)
       )
@@ -17507,7 +17813,7 @@ fn grounded_arm_body(arm: Node, reading: PeanoPatternReading, subject: Node, car
 
 type GroundedArm {
   arm: Node
-  reading: PeanoPatternReading
+  reading: GroundedArmReading
 }
 
 // Built from the LAST arm backwards, so the chain is linear in the arm count. The last arm is
@@ -17520,15 +17826,13 @@ fn grounded_arm_chain(arms: List<GroundedArm>, subject: Node, carrier_type: Node
       Absent => Present { value: body }
       Present { value: tail } =>
         match a.reading {
-          PeanoExact { k: k } =>
-            Present { value: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprIf, children: [grounded_comparison(op: Eq, subject: subject, k: k, span: a.arm.span, view: view, ctx: ctx), body, tail], inferred: result, span: span) }
-          PeanoAtLeast { k: k, binder: _ } =>
-            if k == 0 {
-              Present { value: body }
-            } else {
-              Present { value: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprIf, children: [grounded_comparison(op: Ge, subject: subject, k: k, span: a.arm.span, view: view, ctx: ctx), body, tail], inferred: result, span: span) }
+          GroundedArmPlan { test: t, binding: _ } =>
+            match t {
+              GroundedAlways => Present { value: body }
+              GroundedCompare { op: op, k: k } =>
+                Present { value: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprIf, children: [grounded_comparison(op: op, subject: subject, k: k, span: a.arm.span, view: view, ctx: ctx), body, tail], inferred: result, span: span) }
             }
-          PeanoPatternUnreadable => Present { value: tail }
+          GroundedArmUnreadable => Present { value: tail }
         }
     })
 }
@@ -17538,11 +17842,11 @@ data grounded_scrutinee_binder: String = "__kernel_grounded_subject"
 fn ground_grounded_match(m: Node, scrut: Node, arms: List<Node>, view: GroundedView, ctx: GroundCtx) -> GroundOut {
   let si = ctx.env.source_indices
   let carrier_type = resolved_type(n: scrut)
-  let read = arms |> map(arm => GroundedArm { arm: arm, reading: peano_pattern_reading(p: arm_pattern(n: arm), view: view, si: si) })
+  let read = arms |> map(arm => GroundedArm { arm: arm, reading: grounded_arm_reading(p: arm_pattern(n: arm), view: view, carrier_type: carrier_type, ctx: ctx) })
   if arms |> any(arm => arm_guard(n: arm) != none) {
     ground_refused(n: m, message: concat("a match over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " carries an authored guard, which this fold does not carry into the integer form"), ctx: ctx)
-  } else if read |> any(a => match a.reading { PeanoPatternUnreadable => true  _ => false }) {
-    ground_refused(n: m, message: concat("a match over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " has an arm that is neither a numeral nor a successor of a binder"), ctx: ctx)
+  } else if read |> any(a => match a.reading { GroundedArmUnreadable => true  _ => false }) {
+    ground_refused(n: m, message: concat("a match over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " has an arm it cannot fold: ", grounded_unreadable_arm_message(view: view)), ctx: ctx)
   } else {
     let subject_is_variable = match scrut.expr_data {
       ExprVar { binding_kind: _ } => true
@@ -17772,9 +18076,9 @@ fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> 
     })
   let shape_diagnostics = states |> flat_map(s =>
     match s {
-      GroundedCarrierShapeRefused { carrier: c, span: sp } =>
+      GroundedCarrierShapeRefused { carrier: c, span: sp, reason: r } =>
         if (c.module_path as String) == module_name {
-          [inference_error(message: concat("kernel grounding: ", c.module_path as String, ".", c.decl_name as String, " carries a gunbc.structural_realization_bindings kernel_grounding_rows row but its declaration is not the inductive shape the row folds (exactly one constructor with no field and one with a single field of the carrier's own type)"), span: sp, module_name: module_name)]
+          [inference_error(message: concat("kernel grounding: ", c.module_path as String, ".", c.decl_name as String, " carries a gunbc.structural_realization_bindings kernel_grounding_rows row but ", grounded_shape_refusal_message(reason: r)), span: sp, module_name: module_name)]
         } else { [] }
       _ => []
     })
@@ -18189,6 +18493,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     type_summaries: empty_type_summary_index(),
     type_decl_items: type_decl_index_with_qualified_names(index: empty_type_decl_index(), qualified_names: qualified_names),
     fn_decl_items: empty_map(),
+    fn_decl_identity_items: empty_map(),
     structural_alias_fn_surface_names: empty_map(),
     structural_alias_direct_fn_names: empty_set()
   }
@@ -18202,7 +18507,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
       }
     )
   )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, fn_decl_identity_items: built_raw.fn_decl_identity_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       let recursive_name = intern_str(table: m.type_env.intern_table, id: ident)
@@ -18221,6 +18526,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     type_decl_items: built.type_decl_items,
     data_variant_wire_spellings: empty_map(),
     fn_decl_items: built.fn_decl_items,
+    fn_decl_identity_items: built.fn_decl_identity_items,
     fn_map_key_bounds: empty_map(),
     recursive_type_set: all_recursive,
     fielded_variants: variant_shapes.fielded,
@@ -18240,8 +18546,9 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     fn_type_env: empty_type_env(),
     fn_return_type: none,
     expected_type: none,
-    tco_cursor_param: "",
-    tco_cursor_tails: empty_map()
+    tco_cursor_params: [],
+    tco_cursor_tails: empty_map(),
+    dying_base_sites: empty_map()
   }
 }
 

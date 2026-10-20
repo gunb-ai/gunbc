@@ -1,4 +1,5 @@
 module test.claim.site_build_meter_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.markup { Fragment }
@@ -216,7 +217,7 @@ fn fx_summary(view: BuildMeterView) -> CompactWorkSummary {
 }
 
 fn fx_html(view: BuildMeterView) -> String {
-  serialize_html_source(node: build_meter(summary: fx_summary(view: view), link_attributes: []))
+  render_html(serialize_html_source(node: build_meter(summary: fx_summary(view: view), link_attributes: [])))
 }
 
 fn fx_drawn_round(step: Int, marks: List<BuildMeterMark>) -> BuildMeterRound {

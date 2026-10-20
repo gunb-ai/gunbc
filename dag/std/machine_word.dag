@@ -36,22 +36,23 @@ type WordWidth
 
 // THE BIT COUNT IS A MEASURE, AND std.measure ALREADY OWNS IT. BitWidth = Measure<Information,
 // One, Nat> is the corpus's carrier for exactly this fact, and std.integer
-// uint8_channel_bit_width_int consumes it for exactly this purpose -- so returning a bare Int here
-// would have been a second representation of a unit the corpus already models, which is section 2's
-// re-invention and section 3's fork in one. The width answers the CARRIER; word_width_bits is the
-// projection to Int for the arithmetic below, derived through bit_width_count rather than spelled
-// independently, which is the same two-step std.integer uses.
-fn word_bit_width(w: WordWidth) -> BitWidth {
+// uint8_channel_bit_width_int consumes it for exactly this purpose -- so a bare Int must not be the
+// only representation of a unit the corpus already models, which is section 2's re-invention and
+// section 3's fork in one. The width-to-count mapping is stated ONCE, as literal arms of
+// word_width_bits, because the Rust emitter reads exactly that total match at a literal width
+// (v1.compiler.emit_rust emit_machine_word_lowered_call); word_bit_width, the carrier, is derived
+// from it through bit_width, the same two-step std.integer uses in the other direction.
+fn word_width_bits(w: WordWidth) -> Int {
   match w {
-    Width8 => bit_width(count: 8)
-    Width16 => bit_width(count: 16)
-    Width32 => bit_width(count: 32)
-    Width64 => bit_width(count: 64)
+    Width8 => 8
+    Width16 => 16
+    Width32 => 32
+    Width64 => 64
   }
 }
 
-fn word_width_bits(w: WordWidth) -> Int {
-  bit_width_count(b: word_bit_width(w: w))
+fn word_bit_width(w: WordWidth) -> BitWidth {
+  bit_width(count: word_width_bits(w: w))
 }
 
 // THE CARRIER. The width travels WITH the value rather than beside it in a caller's convention,
