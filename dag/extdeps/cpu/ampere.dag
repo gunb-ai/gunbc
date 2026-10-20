@@ -1,6 +1,7 @@
 module extdeps.cpu.ampere
 
 import std.types { String, List }
+import std.optional { Absent, Present }
 import std.measure { Gram, gram, ByteSize, byte_size, celsius, hardware_thread_count, hertz, watt }
 import extdeps.external_authority { ExternalAuthority, FactCitation }
 import std.decl_ref { decl_field_ref, decl_ref }
@@ -127,6 +128,20 @@ data ampere_altra_max_m12830_thermal_limits: ProcessorThermalLimits = ProcessorT
 }
 
 // Ampere Altra Max Rev A1 datasheet issue 1.25, table 14: M128-30 maximum continuous junction temperature TCJ=100C, SoC thermal throttling TM1=105C, and thermal shutdown TM2=120C. These are processor facts. A fleet fan policy may derive its emergency ramp from them, but must not rewrite them as operator preference.
+// THERMAL LIMITS BY CATALOG ROW. Only the row the datasheet table above names has limits; every other
+// Altra row (the Q80-30 mtcollins1 carries included) is Absent, a datasheet read obligation, so a
+// consumer fails closed instead of borrowing the M128-30 figures. The key is the catalog row's vendor
+// AND model number (a model number alone is only unique within one vendor), which a host's CpuFacts
+// carries; it is not a free string.
+fn ampere_altra_thermal_limits_for_catalog(row: CpuModelCatalogRow) -> ProcessorThermalLimits? {
+  if row.vendor == altra_max_m12830_catalog.vendor
+    && (row.model_number as String) == (altra_max_m12830_catalog.model_number as String) {
+    Present { value: ampere_altra_max_m12830_thermal_limits }
+  } else {
+    Absent
+  }
+}
+
 data ampere_altra_l1_data_capacity_per_core: ByteSize = byte_size(65536)
 data ampere_altra_l1_instruction_capacity_per_core: ByteSize = byte_size(65536)
 data ampere_altra_l1_line_size: ByteSize = byte_size(64)

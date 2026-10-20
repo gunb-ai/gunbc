@@ -20,7 +20,7 @@ import extdeps.apple.app_attest {
   AssertionValidationCategoryAbsent, AssertionBundleVersionAbsent, AssertionBundleVersionUnexpected, AssertionUndecodable,
 }
 import gunbc.auth.approval_device_crypto_self_check { device_crypto_startup, p256_multiple_scalar, p256_scalar_is_infinity }
-import gunbc.auth.approval_device_crypto_realization { device_crypto_obligations }
+import gunbc.auth.approval_device_crypto_realization { device_crypto_obligations, DeviceCryptoHandlerReceipt }
 import gunbc.auth.approval_device_wire { WireDecode, WireDecoded, WireRefused }
 import gunbc.auth.approval_device_crypto_wire {
   device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path, device_crypto_p256_order_path,
@@ -30,7 +30,7 @@ import gunbc.auth.approval_device_crypto_wire {
   signature_negative_wire_arm, signature_negative_wire_fields, attestation_refusal_wire_arm, attestation_refusal_wire_fields,
   assertion_refusal_wire_arm, assertion_refusal_wire_fields, assertion_refusal_verdict, signed_payload_of, attested_payload_of, asserted_payload_of,
   device_crypto_arm_signature_verified, device_crypto_arm_attestation_verified, device_crypto_arm_assertion_verified, device_crypto_arm_infinity, device_crypto_arm_finite, device_crypto_arm_scalar_unrepresentable, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused, CryptoInfinity, CryptoFinite,
-  device_crypto_answer_json, device_crypto_wire_refusal_body,
+  device_crypto_echoed_answer_json, device_crypto_wire_refusal_body,
 }
 
 // THE DEVICE-CRYPTO VERIFIER SERVICE: the approval broker's verifier for the four obligations of
@@ -57,52 +57,52 @@ fn crypto_response(status: Int, body: String) -> ServeWireResponse {
   ServeWireResponse { status: status, content_type_label: native_serve_application_json, body: body, headers: [] }
 }
 
-fn crypto_answered(verdict: DeviceCryptoVerdict, arm: String) -> ServeWireResponse {
-  crypto_verified_with(verdict: verdict, arm: arm, payload: NoPayload)
+fn crypto_answered(verdict: DeviceCryptoVerdict, arm: String, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
+  crypto_verified_with(verdict: verdict, arm: arm, payload: NoPayload, receipt: receipt)
 }
 
 // A refusal answers with the fold's own arm and that arm's own members (device_crypto_wire *_wire_arm / *_wire_fields).
-fn crypto_refused_with(verdict: DeviceCryptoVerdict, arm: String, fields: RefusalFields) -> ServeWireResponse {
-  crypto_verified_with(verdict: verdict, arm: arm, payload: RefusedPayload { fields: fields })
+fn crypto_refused_with(verdict: DeviceCryptoVerdict, arm: String, fields: RefusalFields, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
+  crypto_verified_with(verdict: verdict, arm: arm, payload: RefusedPayload { fields: fields }, receipt: receipt)
 }
 
-fn crypto_verified_with(verdict: DeviceCryptoVerdict, arm: String, payload: DeviceCryptoPayload) -> ServeWireResponse {
-  crypto_response(status: 200, body: device_crypto_answer_json(a: DeviceCryptoAnswer { verdict: verdict, arm: arm, payload: payload }))
+fn crypto_verified_with(verdict: DeviceCryptoVerdict, arm: String, payload: DeviceCryptoPayload, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
+  crypto_response(status: 200, body: device_crypto_echoed_answer_json(a: DeviceCryptoAnswer { verdict: verdict, arm: arm, payload: payload }, receipt: receipt))
 }
 
 // ── Each fold's answer, named by its own arm ──────────────────────────────────────────────────
-fn signature_answer(v: SignatureVerification) -> ServeWireResponse {
+fn signature_answer(v: SignatureVerification, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   match v {
-    SignatureVerified { verified: m } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_signature_verified, payload: signed_payload_of(v: m))
-    SignatureInvalid { suite: _ } => crypto_refused_with(verdict: CryptoInvalid, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
-    SignatureMalformed { declared: _, expected: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
-    VerifyingKeyMalformed { declared: _, expected: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
-    SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
-    VerifyingKeyUndecodable { point_b64url: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
-    SignatureUndecodable { b64url: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v))
+    SignatureVerified { verified: m } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_signature_verified, payload: signed_payload_of(v: m), receipt: receipt)
+    SignatureInvalid { suite: _ } => crypto_refused_with(verdict: CryptoInvalid, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v), receipt: receipt)
+    SignatureMalformed { declared: _, expected: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v), receipt: receipt)
+    VerifyingKeyMalformed { declared: _, expected: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v), receipt: receipt)
+    SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v), receipt: receipt)
+    VerifyingKeyUndecodable { point_b64url: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v), receipt: receipt)
+    SignatureUndecodable { b64url: _ } => crypto_refused_with(verdict: CryptoRefused, arm: signature_negative_wire_arm(v: v), fields: signature_negative_wire_fields(v: v), receipt: receipt)
   }
 }
 
-fn attestation_answer(v: AttestationVerification) -> ServeWireResponse {
+fn attestation_answer(v: AttestationVerification, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   match v {
-    AttestationVerified { verified: a } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_attestation_verified, payload: attested_payload_of(v: a))
-    AttestationRefused { cause: c } => crypto_refused_with(verdict: CryptoRefused, arm: attestation_refusal_wire_arm(r: c), fields: attestation_refusal_wire_fields(r: c))
+    AttestationVerified { verified: a } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_attestation_verified, payload: attested_payload_of(v: a), receipt: receipt)
+    AttestationRefused { cause: c } => crypto_refused_with(verdict: CryptoRefused, arm: attestation_refusal_wire_arm(r: c), fields: attestation_refusal_wire_fields(r: c), receipt: receipt)
   }
 }
 
-fn assertion_answer(v: AssertionVerification) -> ServeWireResponse {
+fn assertion_answer(v: AssertionVerification, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   match v {
-    AssertionAuthentic { authentic: a } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_assertion_verified, payload: asserted_payload_of(v: a))
-    AssertionRefused { cause: c } => crypto_refused_with(verdict: assertion_refusal_verdict(r: c), arm: assertion_refusal_wire_arm(r: c), fields: assertion_refusal_wire_fields(r: c))
+    AssertionAuthentic { authentic: a } => crypto_verified_with(verdict: CryptoVerified, arm: device_crypto_arm_assertion_verified, payload: asserted_payload_of(v: a), receipt: receipt)
+    AssertionRefused { cause: c } => crypto_refused_with(verdict: assertion_refusal_verdict(r: c), arm: assertion_refusal_wire_arm(r: c), fields: assertion_refusal_wire_fields(r: c), receipt: receipt)
   }
 }
 
-fn order_answer(m: P256Multiple) -> ServeWireResponse {
+fn order_answer(m: P256Multiple, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   match p256_multiple_scalar(m: m) {
-    Absent => crypto_answered(verdict: CryptoRefused, arm: device_crypto_arm_scalar_unrepresentable)
+    Absent => crypto_answered(verdict: CryptoRefused, arm: device_crypto_arm_scalar_unrepresentable, receipt: receipt)
     Present { value: scalar } =>
-      if p256_scalar_is_infinity(scalar: scalar) { crypto_answered(verdict: CryptoInfinity, arm: device_crypto_arm_infinity) }
-      else { crypto_answered(verdict: CryptoFinite, arm: device_crypto_arm_finite) }
+      if p256_scalar_is_infinity(scalar: scalar) { crypto_answered(verdict: CryptoInfinity, arm: device_crypto_arm_infinity, receipt: receipt) }
+      else { crypto_answered(verdict: CryptoFinite, arm: device_crypto_arm_finite, receipt: receipt) }
   }
 }
 
@@ -111,40 +111,40 @@ fn crypto_unreadable(at: String, cause: String) -> ServeWireResponse {
   crypto_response(status: 400, body: device_crypto_wire_refusal_body(at: at as NonEmptyStr, cause: cause as NonEmptyStr))
 }
 
-fn signature_route(body: String) -> ServeWireResponse {
+fn signature_route(body: String, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   match decode_signature_check(text: body) {
     WireRefused { at: a, cause: c } => crypto_unreadable(at: a as String, cause: c as String)
-    WireDecoded { value: r } => signature_answer(v: verify_signature(key: r.key, signature: r.signature, message: r.message))
+    WireDecoded { value: r } => signature_answer(v: verify_signature(key: r.key, signature: r.signature, message: r.message), receipt: receipt)
   }
 }
 
-fn attestation_route(body: String) -> ServeWireResponse {
+fn attestation_route(body: String, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   match decode_attestation_check(text: body) {
     WireRefused { at: a, cause: c } => crypto_unreadable(at: a as String, cause: c as String)
-    WireDecoded { value: r } => attestation_answer(v: verify_attestation(object: r.object, e: r.expectation))
+    WireDecoded { value: r } => attestation_answer(v: verify_attestation(object: r.object, e: r.expectation), receipt: receipt)
   }
 }
 
-fn assertion_route(body: String) -> ServeWireResponse {
+fn assertion_route(body: String, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   match decode_assertion_check(text: body) {
     WireRefused { at: a, cause: c } => crypto_unreadable(at: a as String, cause: c as String)
-    WireDecoded { value: r } => assertion_answer(v: verify_assertion(object: r.object, e: r.expectation))
+    WireDecoded { value: r } => assertion_answer(v: verify_assertion(object: r.object, e: r.expectation), receipt: receipt)
   }
 }
 
-fn order_route(body: String) -> ServeWireResponse {
+fn order_route(body: String, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   match decode_p256_multiple(text: body) {
     WireRefused { at: a, cause: c } => crypto_unreadable(at: a as String, cause: c as String)
-    WireDecoded { value: m } => order_answer(m: m)
+    WireDecoded { value: m } => order_answer(m: m, receipt: receipt)
   }
 }
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   if method != "POST" { crypto_response(status: 405, body: "the verifier answers POST only\n") }
-  else if path == device_crypto_signature_path { signature_route(body: body) }
-  else if path == device_crypto_attestation_path { attestation_route(body: body) }
-  else if path == device_crypto_assertion_path { assertion_route(body: body) }
-  else if path == device_crypto_p256_order_path { order_route(body: body) }
+  else if path == device_crypto_signature_path { signature_route(body: body, receipt: receipt) }
+  else if path == device_crypto_attestation_path { attestation_route(body: body, receipt: receipt) }
+  else if path == device_crypto_assertion_path { assertion_route(body: body, receipt: receipt) }
+  else if path == device_crypto_p256_order_path { order_route(body: body, receipt: receipt) }
   else { crypto_response(status: 404, body: concat("no verifier route ", concat(path, "\n"))) }
 }
 
@@ -152,6 +152,6 @@ fn native_serve_handle(method: String, path: String, body: String, tailscale_ide
 // before it binds, with the octets of this very executable, and refuses to bind when it refuses. Every obligation of
 // device_crypto_obligations is executed on the real folds and the receipt minted over them carries the binary's
 // SHA-256 as its exact revision (gunbc.auth.approval_device_crypto_self_check device_crypto_startup).
-fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup {
+fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup<DeviceCryptoHandlerReceipt> {
   device_crypto_startup(obligations: device_crypto_obligations, executable_octets: executable_octets)
 }
