@@ -745,6 +745,48 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_posture" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_posture",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_apply_migration_step_grants_a_tree_and_refuses_one_it_has_not" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_apply_migration_step_grants_a_tree_and_refuses_one_it_has_not",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_grant_reaches_the_file_git_appends_to_and_stops_at_the_files_git_only_replaces" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_grant_reaches_the_file_git_appends_to_and_stops_at_the_files_git_only_replaces",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_migration_step_leaves_the_confined_interior_exactly_as_it_found_it" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_migration_step_leaves_the_confined_interior_exactly_as_it_found_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_spawn_grants_the_attempt_entry_and_refuses_to_start_the_unit_without_it" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_spawn_grants_the_attempt_entry_and_refuses_to_start_the_unit_without_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "a_linked_worktree_commit_writes_the_derived_write_set_and_nothing_confined" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "a_linked_worktree_commit_writes_the_derived_write_set_and_nothing_confined",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_grant_is_what_changes_the_tree_and_the_tree_can_carry_a_commit" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_grant_is_what_changes_the_tree_and_the_tree_can_carry_a_commit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.session_placement_wet_witness", function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after" },
       entry: "dag/test/claim/roadmap/session_placement_wet_witness.dag",
       function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after",

@@ -3189,13 +3189,23 @@ fn dispatch_attempt_worker_git_entry_readback_command(
   )
 }
 
-fn dispatch_attempt_worker_git_entry_migration(instance: HostDashboardInstance, attempt_worktree: String) -> List<ArgvCommand> {
+// THE SPAWN'S OWN GRANT OF THE PER-ATTEMPT ENTRY. THE GROUP IS A PARAMETER LIKE EVERY OTHER GRANT IN
+// THIS SLICE: the token is a host fact the caller owns, the production caller below binds the row
+// fleet_posix_accounts declares, and a witness on a host without that account supplies the token it can
+// resolve. NO DEFAULT -- and the dry pairing claim
+// the_production_route_names_the_declared_group_in_every_grant_command asserts the PRODUCTION route names
+// the declared group, so the substituted spelling is never the only route that runs.
+fn dispatch_attempt_worker_git_entry_migration(
+  instance: HostDashboardInstance,
+  attempt_worktree: String,
+  group: NonEmptyStr,
+) -> List<ArgvCommand> {
   match instance.worker {
     WorkerIsServiceUser => []
     WorkerDedicatedAccount => [
       dashboard_git_worker_subtree_chgrp_command(
         target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
-        group: fleet_posix_worker_shared_group_name,
+        group: group,
         // NOTHING UNDER THE ENTRY IS CONFINED: a worktree private gitdir holds commondir, gitdir,
         // index, HEAD, ORIG_HEAD, COMMIT_EDITMSG and logs/. It has no pack, no info, no hooks, so the
         // prune group is empty -- and the builder then emits NO prune words at all rather than an
@@ -3205,6 +3215,12 @@ fn dispatch_attempt_worker_git_entry_migration(instance: HostDashboardInstance, 
       dashboard_git_worker_subtree_chmod_command(
         target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
         pruned: [],
+        // ITS FILES DO GET g+w, and only its files: the entry holds a reflog of its own (logs/HEAD),
+        // which the worker's commit OPENS IN APPEND MODE, and a reflog left at git's own read-only mode
+        // dies with "unable to append: Permission denied" (measured, git 2.47.3). Its index and HEAD are
+        // replaced by rename and would need only the directory's write -- so this is the whole of the
+        // extra, one subtree's files, and not a sweep that makes a base object group-writable.
+        files_group_writable: dashboard_git_worker_entry_writes_files_in_place(),
         // NO STICKY BIT HERE, and it is the one granted subtree where getting it wrong would BREAK the
         // feature rather than weaken it: the instance principal's `git worktree add` checks the entry
         // out, so its index and HEAD are entries OWNED BY THAT ACCOUNT inside a directory the attempt
@@ -3951,6 +3967,10 @@ fn dispatch_spawn_commands_for_launch(
             dispatch_attempt_worker_git_entry_migration(
               instance: instance,
               attempt_worktree: worktree_path,
+              // THE PRODUCTION BINDING, AT THE SPAWN THAT RUNS THE GRANT: the declared group, the same
+              // row the belt's readback gate compares the walk against below -- one declaration, both
+              // halves of the grant-and-prove pair.
+              group: fleet_posix_worker_shared_group_name,
             ),
             command => dispatch_git_owned_host_step_argv(command: command),
           ),

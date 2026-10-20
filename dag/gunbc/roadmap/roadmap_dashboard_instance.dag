@@ -1836,7 +1836,18 @@ fn dashboard_instance_provider_state_directory(instance: HostDashboardInstance) 
 // write, and a group-writable parent would let a worker create entries of its own. The entry UNDER it
 // is what the commit writes (its own index, HEAD, reflog and ORIG_HEAD), and it is granted as a
 // subtree where the attempt key lives.
-data dashboard_git_worker_directory_children: List<NonEmptyStr> = [".git/objects", ".git/refs", ".git/logs"] as List<NonEmptyStr>
+// THE THREE SUBTREES, EACH AS ITS OWN ROW, so a subtree name is spelled once and the list below is built
+// from the rows rather than being the place the names live. The walk target, the prune group, the sticky
+// decision and the file-write decision are all keyed on these names; spelling them again at each use would
+// let one of the four keys drift from the others -- which is precisely the bug class this follow-up keeps
+// catching (a subtree that is walked but not judged, or judged and not walked).
+data dashboard_git_worker_objects_child: NonEmptyStr = ".git/objects"
+data dashboard_git_worker_refs_child: NonEmptyStr = ".git/refs"
+data dashboard_git_worker_logs_child: NonEmptyStr = ".git/logs"
+
+data dashboard_git_worker_directory_children: List<NonEmptyStr> = [
+  dashboard_git_worker_objects_child, dashboard_git_worker_refs_child, dashboard_git_worker_logs_child,
+] as List<NonEmptyStr>
 
 // THE CHILD OF THE REPO ROOT UNDER WHICH EVERY ATTEMPT'S PRIVATE GIT ENTRY SITS. Owned by the
 // account that creates the entries, world-traversable, never group-writable: git creates an entry there, and the worker's own
@@ -1959,7 +1970,7 @@ fn dashboard_instance_worker_git_unwritable_paths(instance: HostDashboardInstanc
 // named pack or branches) out of the walk forever. The builder splices each name under the target, so
 // what is pruned is exactly <target>/pack and <target>/info and nothing at any other depth.
 fn dashboard_git_worker_subtree_confined_children(child: NonEmptyStr) -> List<String> {
-  if (child as String) == ".git/objects" {
+  if (child as String) == (dashboard_git_worker_objects_child as String) {
     ["pack", "info"]
   } else {
     []
@@ -2004,20 +2015,56 @@ fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr
 // different, harder reason: root's `git worktree add` checks the entry out, so its index and HEAD
 // are root-owned entries that the worker's first `git add` renames OVER (index.lock -> index);
 // +t there would make the very commit this PR enables fail with EPERM.
-data dashboard_git_worker_sticky_children: List<NonEmptyStr> = [".git/objects"] as List<NonEmptyStr>
+data dashboard_git_worker_sticky_children: List<NonEmptyStr> = [dashboard_git_worker_objects_child] as List<NonEmptyStr>
 
 fn dashboard_git_worker_subtree_needs_sticky(child: NonEmptyStr) -> Bool {
   any(xs: dashboard_git_worker_sticky_children, predicate: c => (c as String) == (child as String))
 }
 
-// Group-writable on everything in ONE subtree, setgid on its DIRECTORIES ONLY -- the bit that makes a
-// fan-out directory git creates later inherit the attempt group -- and, where the subtree contains
-// entries the walker must not be able to remove, the sticky bit (dashboard_git_worker_subtree_needs_sticky).
-fn dashboard_git_worker_subtree_chmod_command(target: String, pruned: List<String>, sticky: Bool) -> ArgvCommand {
+// WHICH SUBTREE HOLDS A FILE GIT WRITES IN PLACE, and therefore which one's files must be group-writable.
+// DERIVED FROM THE WRITE-SET, NOT ASSUMED: git creates a loose object, a ref, an index and a HEAD by
+// writing a temporary and RENAMING it over the target -- a rename is a write to the PARENT DIRECTORY, so
+// the file's own mode is irrelevant to it (measured on git 2.47.3, 2026-10-19: four real linked-worktree
+// commits, every object and ref file at git's own 0444, all rc=0). A REFLOG is the exception: git opens it
+// in APPEND mode, and with an existing logs/refs/heads/<branch> at 0444 the commit dies with "unable to
+// append ... Permission denied" (same measurement). So `.git/logs` -- the branch reflogs, which arrive
+// with the repository at 0644 and are the ONLY pre-existing files a worker's commit writes IN PLACE -- is
+// the one repository subtree whose files need g+w. objects/ and refs/ are NOT on this list, and that is a
+// real narrowness rather than an omission: their files belong to the serve account, an object is
+// content-addressed, and a group-writable base object is one any attempt could rewrite in place,
+// corrupting it for every attempt that ever reads the same hash. The per-attempt worktree entry carries
+// its own reflog (logs/HEAD) and is covered by dashboard_git_worker_entry_writes_files_in_place.
+data dashboard_git_worker_appended_file_children: List<NonEmptyStr> = [dashboard_git_worker_logs_child] as List<NonEmptyStr>
+
+fn dashboard_git_worker_subtree_writes_files_in_place(child: NonEmptyStr) -> Bool {
+  any(xs: dashboard_git_worker_appended_file_children, predicate: c => (c as String) == (child as String))
+}
+
+// THE PER-ATTEMPT WORKTREE ENTRY WRITES FILES IN PLACE, so its files DO get g+w: the entry holds a
+// reflog of its own (logs/HEAD), which the worker's commit appends to, and its index and HEAD are
+// replaced by rename -- which needs the parent's write, granted by the directory mode, not the file's.
+// It is a separate row from dashboard_git_worker_subtree_writes_files_in_place because the entry is not
+// one of dashboard_git_worker_directory_children: no apply of an instance knows its attempts in advance.
+fn dashboard_git_worker_entry_writes_files_in_place() -> Bool {
+  true
+}
+
+// Group-writable on the DIRECTORIES the walk reaches, setgid on them (so a fan-out directory git creates
+// later inherits the attempt group), the sticky bit where the subtree holds entries the walker must not
+// remove (dashboard_git_worker_subtree_needs_sticky) -- and the FILES group-writable only where this
+// subtree holds a file git appends to (dashboard_git_worker_subtree_writes_files_in_place), which is a
+// per-subtree decision the caller passes rather than a constant the tool decides. See that row for why.
+fn dashboard_git_worker_subtree_chmod_command(
+  target: String,
+  pruned: List<String>,
+  sticky: Bool,
+  files_group_writable: Bool,
+) -> ArgvCommand {
   find_subtree_group_writable_command(
     target: target,
     pruned: pruned,
     sticky: sticky,
+    files_group_writable: files_group_writable,
     depth: dashboard_git_worker_subtree_walk_depth
   )
 }
@@ -2030,7 +2077,21 @@ fn dashboard_git_worker_subtree_path(instance: HostDashboardInstance, child: Non
 // Empty on the staged arm, so prod gets no step at all (WorkerIsServiceUser). The per-attempt entry
 // is NOT here -- it is the dispatch actuator's, next to the attempt key, at the spawn that creates
 // it.
-fn dashboard_instance_worker_git_subtree_migration(instance: HostDashboardInstance) -> List<ArgvCommand> {
+//
+// THE GROUP IS A PARAMETER BECAUSE IT IS A HOST FACT THE CALLER OWNS, not a constant the migration
+// may invent: every PRODUCTION call site binds fleet_posix_worker_shared_group_name (the row
+// fleet_posix_accounts declares, and the account creation this slice is built beside), and the wet
+// witness binds the group the runner can actually resolve -- a test on a machine it does not
+// administer cannot chgrp to a group the host has never been told about, and `find` fails closed when
+// it cannot (exit 1, verified). NO DEFAULT ARGUMENT: a default would let a call site silently take the
+// production name where it meant to name the host's group, which is a fabricated value (DESIGN 5). The
+// dry pairing claim the_production_route_names_the_declared_group_in_every_grant_command keeps the
+// production binding executed and asserted, so the substituted token is never the only route through
+// this code.
+fn dashboard_instance_worker_git_subtree_migration(
+  instance: HostDashboardInstance,
+  group: NonEmptyStr,
+) -> List<ArgvCommand> {
   match instance.worker {
     WorkerIsServiceUser => []
     WorkerDedicatedAccount => concat(
@@ -2038,7 +2099,7 @@ fn dashboard_instance_worker_git_subtree_migration(instance: HostDashboardInstan
         dashboard_git_worker_directory_children,
         child => dashboard_git_worker_subtree_chgrp_command(
           target: dashboard_git_worker_subtree_path(instance: instance, child: child),
-          group: fleet_posix_worker_shared_group_name,
+          group: group,
           pruned: dashboard_git_worker_subtree_confined_children(child: child),
         ),
       ),
@@ -2048,6 +2109,7 @@ fn dashboard_instance_worker_git_subtree_migration(instance: HostDashboardInstan
           target: dashboard_git_worker_subtree_path(instance: instance, child: child),
           pruned: dashboard_git_worker_subtree_confined_children(child: child),
           sticky: dashboard_git_worker_subtree_needs_sticky(child: child),
+          files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: child),
         ),
       ),
     )
@@ -2200,14 +2262,7 @@ data dashboard_git_worker_granted_shared_directory_mode: FileMode = FileMode {
   sticky: true,
 }
 
-data dashboard_git_worker_granted_file_mode: FileMode = FileMode {
-  owner: dashboard_git_worker_owner_group_write_bits,
-  group: dashboard_git_worker_owner_group_write_bits,
-  other: dashboard_git_worker_other_read_bits,
-  setuid: false,
-  setgid: false,
-  sticky: false,
-}
+
 
 // THE MEASURED STATE, as a row rather than a decimal: it is EVIDENCE read off srv1, and the number
 // that appears in the PR body and in the readback claim has to be the same one this model refuses.
@@ -2280,7 +2335,22 @@ fn dashboard_git_worker_interior_directory_mode_is_accepted(mode: FileMode) -> B
 // the readback pass over exactly the tree the migration was written to refuse. (A claim leg pins the
 // same refusal at the predicate itself, so it cannot quietly widen again.)
 fn dashboard_git_worker_file_mode_is_granted(mode: FileMode) -> Bool {
-  mode.group.write && !mode.other.write && !mode.setgid && !mode.sticky
+  mode.group.write && !mode.other.write && !mode.setuid && !mode.setgid && !mode.sticky
+}
+
+// THE FILE LEG FOR A SUBTREE WHOSE FILES GIT NEVER OPENS FOR WRITING. DERIVED FROM THE SAME WRITE-SET
+// MEASUREMENT as dashboard_git_worker_appended_file_children: objects, refs, an index and a HEAD are
+// replaced by lock-and-rename, which asks the PARENT DIRECTORY for write and the file for nothing -- so
+// demanding group-write there would (i) be wider than the commit needs and (ii) refuse the tree git is
+// actually in: a loose object git writes under core.sharedRepository=group comes out at 0444 (measured,
+// git 2.47.3 -- the group triple only reaches the mode umask left readable, and 0444 has none to add),
+// while a ref cloned from a remote is 0644 and one written under the posture is 0664. What this leg DOES
+// refuse is the two shapes that are never legitimate on a file, wherever they come from: world-write, and
+// a special bit -- setgid on an executable file is how a lab turns a group grant into a privilege. It
+// accepts 0444 and 0644 and refuses 02775, which is the pair the appended leg also refuses, so a setgid
+// file cannot pass either branch of the readback.
+fn dashboard_git_worker_readonly_file_mode_is_accepted(mode: FileMode) -> Bool {
+  !mode.other.write && !mode.setgid && !mode.sticky
 }
 
 // THE PRE-MIGRATION STATE, stated as its negation so a claim can point at it directly: what srv1
@@ -2332,23 +2402,34 @@ fn dashboard_ensure_git_shared_repository_posture(instance: HostDashboardInstanc
 // not a granted entry, and guessing which of the two it was would be DESIGN 5's fabricated verdict. The
 // subtree's own directory is the line whose `%P` came back EMPTY, and only a directory can be the start
 // point -- so a file claiming the empty path is not a line either.
+// EVERY CASE CARRIES THE GROUP, because every case was chgrp'd by the migration and a line without a
+// group would be a line whose group half of the grant was never observed. NonEmptyStr, not String: find
+// prints at least the numeric gid for every entry it can stat, so an empty group token is not a state of
+// the world -- it is a line the parser did not read.
 type DashboardGitSubtreeReadbackLine
   = ReadbackSubtreeTop {
       mode: FileMode,
+      group: NonEmptyStr,
     }
   | ReadbackInteriorDirectory {
       mode: FileMode,
+      group: NonEmptyStr,
       path: NonEmptyStr,
     }
   | ReadbackEntryFile {
       mode: FileMode,
+      group: NonEmptyStr,
       path: NonEmptyStr,
     }
 
-// THE ONE PARSER: `<letter> <mode> <path>`, split on the separator with the PATH TAKEN AS EVERYTHING
-// AFTER THE TWO PRINTED FIELDS so a path holding a space comes back whole. Every failure to read a line
-// -- no legs, a mode that is not octal, a letter the model does not name, a file claiming the empty path
-// that means "the start point" -- is `none`, and the fold refuses a receipt containing one.
+// THE ONE PARSER: `<letter> <mode> <group> <path>`, split on the separator with the PATH TAKEN AS
+// EVERYTHING AFTER THE THREE PRINTED FIELDS so a path holding a space comes back whole. Every failure to
+// read a line -- no legs, a mode that is not octal, a letter the model does not name, an EMPTY group
+// token (find prints at least the numeric gid, so a blank there means the line was not printed by the
+// walk this model reads), a file claiming the empty path that means "the start point" -- is `none`, and
+// the fold refuses a receipt containing one. THE GROUP IS READ HERE RATHER THAN LATER so a receipt
+// missing it is a PARSE failure and not a value somebody has to remember to check: an unreadable line has
+// no way to reach the fold looking like a granted entry.
 fn dashboard_git_subtree_readback_line(line: String) -> DashboardGitSubtreeReadbackLine? {
   let legs: List<String> = line.split(delimiter: " ")
   match legs.first() {
@@ -2357,32 +2438,46 @@ fn dashboard_git_subtree_readback_line(line: String) -> DashboardGitSubtreeReadb
       match legs.skip(n: 1).first() {
         Absent => none
         Present { value: printed_mode } =>
-          match file_mode_of_octal_text(text: trim(s: printed_mode)) {
+          match legs.skip(n: 2).first() {
             Absent => none
-            Present { value: mode } =>
-              {
-                let path = join(legs.skip(n: 2), " ")
-                if letter == (find_printf_type_directory_letter as String) {
-                  if path == "" {
-                    Present { value: ReadbackSubtreeTop { mode: mode } }
-                  } else {
-                    Present {
-                      value: ReadbackInteriorDirectory {
-                        mode: mode,
-                        path: path as NonEmptyStr,
-                      },
+            Present { value: printed_group } =>
+              if trim(s: printed_group) == "" {
+                none
+              } else {
+                match file_mode_of_octal_text(text: trim(s: printed_mode)) {
+                  Absent => none
+                  Present { value: mode } =>
+                    {
+                      let path = join(legs.skip(n: 3), " ")
+                      let group = trim(s: printed_group) as NonEmptyStr
+                      if letter == (find_printf_type_directory_letter as String) {
+                        if path == "" {
+                          Present { value: ReadbackSubtreeTop { mode: mode, group: group } }
+                        } else {
+                          Present {
+                            value: ReadbackInteriorDirectory {
+                              mode: mode,
+                              group: group,
+                              path: path as NonEmptyStr,
+                            },
+                          }
+                        }
+                      } else if letter == (find_printf_type_regular_file_letter as String) {
+                        if path == "" {
+                          none
+                        } else {
+                          Present {
+                            value: ReadbackEntryFile {
+                              mode: mode,
+                              group: group,
+                              path: path as NonEmptyStr,
+                            },
+                          }
+                        }
+                      } else {
+                        none
+                      }
                     }
-                  }
-                } else if letter == (find_printf_type_regular_file_letter as String) {
-                  if path == "" {
-                    none
-                  } else {
-                    Present {
-                      value: ReadbackEntryFile { mode: mode, path: path as NonEmptyStr },
-                    }
-                  }
-                } else {
-                  none
                 }
               }
           }
@@ -2406,14 +2501,34 @@ fn dashboard_git_subtree_readback_line(line: String) -> DashboardGitSubtreeReadb
 // subtree top is granted 02775 and which carries NO sticky bit anywhere, see
 // dispatch_attempt_worker_git_entry_migration -- is decided under dashboard_git_worker_granted_directory_mode.
 // One fold, both callers, so the apply, the spawn and the claims cannot disagree about "granted".
-fn dashboard_git_subtree_readback_is_granted(child: NonEmptyStr, receipt: String) -> Bool {
+// THE PER-SUBTREE READING OF THE FOLD: the caller says WHICH SUBTREE, and the top mode and the
+// files-are-replaced decision are derived from the rows that declare it, so a caller cannot grade objects/
+// against the refs/ shape. THE GROUP IS SUPPLIED, NOT READ HERE (no default, DESIGN 5): the fold compares
+// find's `%g` against the token the grant was told, and only the caller knows which token its host
+// resolves -- production binds fleet_posix_worker_shared_group_name at the two places that grant and prove
+// for real (roadmap_dashboard_instance_apply's refusal, roadmap_belt_actuate's spawn gate) and the dry
+// pairing claim the_production_route_names_the_declared_group_in_every_grant_command keeps that production
+// binding executed and asserted. A witness grouping a throwaway tree to a token its own host resolves
+// passes that token here, and the substitution is stated in place.
+fn dashboard_git_subtree_readback_is_granted(
+  child: NonEmptyStr,
+  group: NonEmptyStr,
+  receipt: String,
+) -> Bool {
   dashboard_git_subtree_readback_is_granted_under(
     top: dashboard_git_worker_subtree_granted_directory_mode(child: child),
+    group: group,
+    files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: child),
     receipt: receipt,
   )
 }
 
-fn dashboard_git_subtree_readback_is_granted_under(top: FileMode, receipt: String) -> Bool {
+fn dashboard_git_subtree_readback_is_granted_under(
+  top: FileMode,
+  group: NonEmptyStr,
+  files_group_writable: Bool,
+  receipt: String,
+) -> Bool {
   let lines = filter(split(s: receipt, delimiter: "\n"), l => trim(s: l) != "")
   let parsed = map(lines, l => dashboard_git_subtree_readback_line(line: l))
   length(parsed) > 0
@@ -2427,10 +2542,22 @@ fn dashboard_git_subtree_readback_is_granted_under(top: FileMode, receipt: Strin
     && any(parsed, entry => match entry {
       Absent => false
       Present { value: line } => match line {
-        ReadbackSubtreeTop { mode: _ } => true
-        ReadbackInteriorDirectory { mode: _, path: _ } => false
-        ReadbackEntryFile { mode: _, path: _ } => false
+        ReadbackSubtreeTop { mode: _, group: _ } => true
+        ReadbackInteriorDirectory { mode: _, group: _, path: _ } => false
+        ReadbackEntryFile { mode: _, group: _, path: _ } => false
       }
+    })
+    // THE GROUP HALF OF THE GRANT, ON EVERY LINE. The migration's first command is a chgrp, and a receipt
+    // that printed only modes would certify a tree whose chgrp never took -- including the state this
+    // whole slice exists to fix, where the subtree sits at 0775 with the WRONG GROUP and every mode a
+    // fold that cannot see groups calls correct. Compared as TEXT against the token the chgrp was told,
+    // because that is the same string the grant used: `chgrp 1003` and `find %g` both print 1003, and
+    // `chgrp gunbc-attempt` reads back as `gunbc-attempt` on a host that has the name. A host that groups
+    // by number and reads a number is the same comparison; the fold does not care which spelling the
+    // caller and the tool traded in, only that the entry's group IS what the grant was told to set.
+    && all(parsed, entry => match entry {
+      Absent => false
+      Present { value: line } => (line_group_of(line) as String) == (group as String)
     })
     && all(parsed, entry => match entry {
       Absent => false
@@ -2438,20 +2565,41 @@ fn dashboard_git_subtree_readback_is_granted_under(top: FileMode, receipt: Strin
         // The TOP is held to the exact per-subtree grant -- 03775 for objects/, 02775 elsewhere. Nothing
         // lenient here: this is the directory the migration itself sets, and the two shapes are not
         // interchangeable (see dashboard_git_worker_sticky_children).
-        ReadbackSubtreeTop { mode: mode } =>
+        ReadbackSubtreeTop { mode: mode, group: _ } =>
           dashboard_git_worker_file_modes_are_equal(a: mode, b: top)
         // An INTERIOR directory gets the lenient window, 02775 or 03775: a fan-out directory git creates
         // tomorrow inherits setgid from its parent but NOT the sticky bit, so demanding 03775 inside
         // objects/ would refuse a tree that is correctly granted.
-        ReadbackInteriorDirectory { mode: mode, path: _ } =>
+        ReadbackInteriorDirectory { mode: mode, group: _, path: _ } =>
           dashboard_git_worker_interior_directory_mode_is_accepted(mode: mode)
-        // A FILE must be group-writable and not world-writable. This is the case the execute-bit
-        // execute-bit classifier got wrong: a file at 02775 now lands here, where its missing
-        // world-write leg refuses it, instead of being read as an interior directory.
-        ReadbackEntryFile { mode: mode, path: _ } =>
-          dashboard_git_worker_file_mode_is_granted(mode: mode)
+        // A FILE's leg depends on what git does to that subtree's files, and the two branches refuse
+        // each other's shapes: a subtree git only REPLACES entries in (objects, refs) is correctly
+        // granted with its files at git's own read-only modes, because a lock-and-rename asks the
+        // PARENT for write and the file for nothing -- demanding group-write there would refuse a
+        // repository git itself left at 0444 (see dashboard_git_worker_readonly_file_mode_is_accepted,
+        // measured). A subtree git APPENDS to (a reflog, an entry's logs/HEAD) must be group-writable,
+        // and the 0444 that is right next door would die with "unable to append: Permission denied".
+        // BOTH branches refuse world-write and any special bit, so a setgid file -- the shape that
+        // turned a group grant into a privilege -- passes neither.
+        ReadbackEntryFile { mode: mode, group: _, path: _ } =>
+          if files_group_writable {
+            dashboard_git_worker_file_mode_is_granted(mode: mode)
+          } else {
+            dashboard_git_worker_readonly_file_mode_is_accepted(mode: mode)
+          }
       }
     })
+}
+
+// THE GROUP FIELD, READ OFF WHICHEVER CASE THE LINE IS. Its own function rather than three copies of a
+// three-way match at the call site: the field is the same fact in all three cases, and a fold that
+// spelled the match inline would have to be edited twice if a fourth kind of line were ever printed.
+fn line_group_of(line: DashboardGitSubtreeReadbackLine) -> NonEmptyStr {
+  match line {
+    ReadbackSubtreeTop { mode: _, group: group } => group
+    ReadbackInteriorDirectory { mode: _, group: group, path: _ } => group
+    ReadbackEntryFile { mode: _, group: group, path: _ } => group
+  }
 }
 
 // THE BUNDLE INBOX: where a bundle-seeded instance stages its source bundle. Demanded only by an
@@ -2665,6 +2813,19 @@ type DashboardInstanceProvisionOp
   // arm, so prod gets no op.
   | DashboardMigrateGitWorkerSubtree {
       repo: FilePath,
+      // THE GROUP THE GRANT SETS, CARRIED BY THE OPERATION RATHER THAN INVENTED INSIDE IT. The argv this
+      // arm runs are the argv some caller authored, and the token is part of them; the arm also reads the
+      // tree back through the fold that compares find's `%g` against it, so the operation that GRANTS and
+      // the operation that PROVES must carry one value rather than each read the row and risk disagreeing.
+      // THE PRODUCTION PLAN SITE BINDS fleet_posix_worker_shared_group_name -- the row fleet_posix_accounts
+      // declares, and the account creation this slice is built beside -- so no production route invents a
+      // name; a witness on a host that has no such group supplies the token it can resolve. NO DEFAULT: a
+      // default would let a call site silently take the production name where it meant to name the host's,
+      // which is a fabricated value (DESIGN 5). The dry pairing claim
+      // the_production_route_names_the_declared_group_in_every_grant_command asserts the PRODUCTION route
+      // -- the plan through to the argv -- names the declared group, so the supplied value is never the
+      // only route that executes (DESIGN 3 pairing).
+      group: NonEmptyStr,
     }
 
 // live_deploy systemd-launches the dashboard process only for deployment_spec_srv1 (srv1_live);
@@ -2699,7 +2860,12 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
     WorkerIsServiceUser => []
     WorkerDedicatedAccount => [
       DashboardEnsureGitSharedRepositoryPosture { repo: instance.repo_root },
-      DashboardMigrateGitWorkerSubtree { repo: instance.repo_root },
+      // THE PRODUCTION BINDING, AT THE ONLY PLACE THIS OPERATION IS CONSTRUCTED FOR REAL: the declared
+      // group, from the row that declares it. Nothing downstream chooses a group name again.
+      DashboardMigrateGitWorkerSubtree {
+        repo: instance.repo_root,
+        group: fleet_posix_worker_shared_group_name,
+      },
     ]
   }
   let common = [
@@ -2856,7 +3022,7 @@ fn dashboard_instance_provision_op_row(
         target: repo as String,
         detail: "core.sharedRepository=group, gc.auto=0, maintenance.auto=false; run by the instance principal, before any attempt worktree is added",
       }
-    DashboardMigrateGitWorkerSubtree { repo } =>
+    DashboardMigrateGitWorkerSubtree { repo: repo, group: group } =>
       DashboardInstanceProvisionPlanRow {
         kind: "migrate-git-worker-subtree" as NonEmptyStr,
         target: repo as String,
