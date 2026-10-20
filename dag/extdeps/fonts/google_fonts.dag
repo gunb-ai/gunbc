@@ -1,8 +1,8 @@
 module extdeps.fonts.google_fonts
 
-import std.types { String, CommitSha }
+import std.types { String, CommitSha, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Https, uri_https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -53,6 +53,38 @@ data roboto_source: GoogleFontsFamilySource = GoogleFontsFamilySource {
   licence_copy: "LICENSES/OFL-1.1-Roboto.txt",
 }
 
+// The two faces gunb.ai's page asks Google to serve, filed as upstream fact in the same form as the
+// rows above. Verified against this module's pinned commit 2026-10-18: ofl/jetbrainsmono/
+// JetBrainsMono[wght].ttf and ofl/notosans/NotoSans[wdth,wght].ttf both exist there (HTTP 200 on
+// raw.githubusercontent at google/fonts@7085eb8), each with its OFL.txt, whose text is the licence
+// copy beside it. Consumer: gunbc.site.gunb_ai_page reads .family and .weights to build the one
+// css2 request the page makes (DESIGN §3c — these rows did not exist before that page needed them).
+data jetbrains_mono_source: GoogleFontsFamilySource = GoogleFontsFamilySource {
+  family: "JetBrains Mono",
+  commit: google_fonts_commit,
+  source_path: "ofl/jetbrainsmono/JetBrainsMono[wght].ttf",
+  licence_path: "ofl/jetbrainsmono/OFL.txt",
+  licence: sil_open_font_license_1_1,
+  licence_copy: "LICENSES/OFL-1.1-JetBrainsMono.txt",
+}
+
+data noto_sans_source: GoogleFontsFamilySource = GoogleFontsFamilySource {
+  family: "Noto Sans",
+  commit: google_fonts_commit,
+  source_path: "ofl/notosans/NotoSans[wdth,wght].ttf",
+  licence_path: "ofl/notosans/OFL.txt",
+  licence: sil_open_font_license_1_1,
+  licence_copy: "LICENSES/OFL-1.1-NotoSans.txt",
+}
+
+// The weights a page asks a variable family to serve. A closed row, not a free Int: the css2 API
+// rejects a weight the family does not carry, so which weights are requestable is upstream fact.
+// Both rows are the weights the live gunb.ai page requests (its stylesheet uses 400/500 for the
+// mono face and 400/500/600 for the sans face), verified 2026-10-18 against the served
+// assets/site.css and index.html rather than from memory.
+data jetbrains_mono_weights: List<Int> = [400, 500]
+data noto_sans_weights: List<Int> = [400, 500, 600]
+
 data google_sans_source: GoogleFontsFamilySource = GoogleFontsFamilySource {
   family: "Google Sans",
   commit: google_fonts_commit,
@@ -60,4 +92,19 @@ data google_sans_source: GoogleFontsFamilySource = GoogleFontsFamilySource {
   licence_path: "ofl/googlesans/OFL.txt",
   licence: sil_open_font_license_1_1,
   licence_copy: "LICENSES/OFL-1.1-GoogleSans.txt",
+}
+
+// The hosts a page loads Google Fonts from, and the css2 endpoint it requests faces at. Upstream
+// interface facts (Google Fonts serves the stylesheet from the API host and the font files from the
+// static host; the stylesheet request is the css2 endpoint), declared as Uri values like the
+// anchors above. Consumer: gunbc.site.gunb_ai_page, which preconnects to the two hosts and builds
+// its one stylesheet request from the endpoint.
+data google_fonts_api_host: Uri = uri_https(locator: "fonts.googleapis.com" as NonEmptyStr)
+data google_fonts_static_host: Uri = uri_https(locator: "fonts.gstatic.com" as NonEmptyStr)
+data google_fonts_css2_endpoint: Uri = uri_https(locator: "fonts.googleapis.com/css2" as NonEmptyStr)
+
+// A row above, spelled as the URL a page's href carries. Every row here is Https, built with
+// uri_https, so the scheme prefix is the one this reads.
+fn google_fonts_url(uri: Uri) -> String {
+  join(["https://", uri.locator as String], "")
 }

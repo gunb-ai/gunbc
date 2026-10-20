@@ -305,7 +305,12 @@ fn stage0_foundation_runtime_dependencies() -> List<CargoDependency> {
     CargoDependency { name: "im", source: RegistryDep { version: "15.1", default_features: true, features: ["serde"] } },
     CargoDependency { name: "libc", source: RegistryDep { version: "0.2", default_features: true, features: [] } },
     CargoDependency { name: "serde", source: RegistryDep { version: "1", default_features: true, features: ["derive", "rc"] } },
-    CargoDependency { name: "serde_json", source: RegistryDep { version: "1", default_features: true, features: [] } },
+    // arbitrary_precision: a JSON number keeps the text it arrived as, so a declared ExactDecimal is
+    // decoded from the wire's own digits and scale, and a number with more digits than Int units carry
+    // refuses instead of rounding to the nearest f64 (gunbc.recurring_failure_mode
+    // rest_response_declared_exact_decimal_decoded_as_float). Cargo unifies the feature across every crate
+    // of the build that links serde_json, the interpreter's decode included.
+    CargoDependency { name: "serde_json", source: RegistryDep { version: "1", default_features: true, features: ["arbitrary_precision"] } },
     CargoDependency { name: "unicode-ident", source: RegistryDep { version: "1", default_features: true, features: [] } },
     CargoDependency { name: "unicode-properties", source: RegistryDep { version: "0.1", default_features: true, features: ["emoji"] } }
   ]

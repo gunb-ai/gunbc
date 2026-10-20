@@ -3,7 +3,7 @@ module gunbc.design.salience
 import std.types { Int, String, Bool, List }
 import extdeps.languages.css.values {
   CssLength, css_px,
-  CssLengthUnit, Px, Rem, Ch, Percent, css_length_unit_token,
+  CssLengthUnit, Px, Rem, Ch, Em, Vw, Percent, css_length_unit_token,
 }
 import gunbc.design.material { TimingToken, settle_spring }
 
@@ -166,6 +166,8 @@ fn length_is_px(l: CssLength) -> Bool {
     Px => true
     Rem => false
     Ch => false
+    Em => false
+    Vw => false
     Percent => false
   }
 }
