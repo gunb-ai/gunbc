@@ -1482,7 +1482,16 @@ fn infer_constructor_use_variable(use: Node, label: Symbol) -> Symbol {
     Absent => ""
     Present { value: id } => int_to_decimal_string(value: id.value)
   }
+  // Callers refuse a use with no occurrence id (infer_use_has_occurrence_identity) before minting, so the
+  // empty path is unreachable: a shared name would conflate two uses.
   symbol_intern_lexeme(lexeme: infer_constructor_use_variable_prefix() + path + ":" + symbol_lexeme(sym: label) + ">")
+}
+
+fn infer_use_has_occurrence_identity(use: Node) -> Bool {
+  match node_occurrence_id_optional(node: use) {
+    Absent => false
+    Present { value: _ } => true
+  }
 }
 
 fn infer_symbol_is_constructor_use_variable(id: Symbol) -> Bool {
@@ -1639,6 +1648,9 @@ fn infer_variant_arm_value_reference_facts(
     VariantArmReferenceValueNotDerived =>
       inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
     VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
+      if !infer_use_has_occurrence_identity(use: n) {
+        outcome_rejected(infer_declaration_identity_unavailable_diagnostic(at: n))
+      } else {
       infer_reference_facts_or_frontier(
         o: infer_facts_denoting(
           o: inferred_facts_from_derived_type(
@@ -1651,6 +1663,7 @@ fn infer_variant_arm_value_reference_facts(
         n: n,
         descent_proof: descent_proof
       )
+      }
   }
 }
 
@@ -2100,8 +2113,12 @@ fn infer_branch_operand_resolved_type_with_entries(
         Present { value: verdict } =>
           match verdict {
             VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
-              Holds {
-                value: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct, use: node)
+              if !infer_use_has_occurrence_identity(use: node) {
+                Violates { diagnostic: infer_declaration_identity_unavailable_diagnostic(at: node) }
+              } else {
+                Holds {
+                  value: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct, use: node)
+                }
               }
             VariantArmReferenceValueNotDerived => inferred_facts_resolved_type(facts: facts)
             VariantArmReferenceValueIdentityUnavailable =>
