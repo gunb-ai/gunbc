@@ -608,18 +608,19 @@ scratch witness dag/test/claim/alias_drift_sensitivity_probe_witness.dag (scratc
 - P4 local shadow `type List<element> = PointwisePower<element>` beside a FreeMonoid use: >=1 BLOCKING row
   (kc_own_freemonoid sibling says local aliases are not unfolded).
 
-## 2026-10-20T22:2x dispatch G (fix): the first drift battery was VOID, and its FAIL is now explained
+## 2026-10-20T22:2x dispatch G: the drift battery RAN (self-correction of a wrong VOID diagnosis)
 
-VOID cause (measured): the witness imported CompileDiagnosticCensusRow, NOT an export of
-gunbc/compile_diagnostic_census.dag (git grep 'CompileDiagnosticCensusRow' matches 0). run reports
-"module ... does not export CompileDiagnosticCensusRow" and exits BEFORE executing members -> the
-printed PASS/FAIL came from main's ExitSuccess, NOT from the test fns. Pre-registered P1-P4 remain
-UNMEASURED (no-vacuous-pass rule: an aborted run is not a pass).
-Dispatch G predictions at the FIXED witness (import list above):
-- G1: the run executes the members (each prints PASS or FAIL, or the run exits 101/102 on a compile
-  error INSIDE the witness); the anti-decoration control the_wrong_carrier_shape_is_refused_by_the_
-  harness FAILS if and only if blocking_total == 0 (a real accept), and PASSes when >=1.
-- G2: if the census itself could not run at all (CensusNotRunnable on every probe, i.e. all four
-  members print a -1-shaped answer), the printed outputs distinguish that from accepts: a member is
-  only PASS at ==0 (list/set/map) or >=1 (wrong-carrier); NOT_RUNNABLE (-1) makes BOTH fail.
-- G3: list/set/map accept == 0 blocking rows (P1). Wrong-carrier >= 1 (P2).
+WRONG CLAIM RETRACTED: I first recorded that the battery was VOID because CompileDiagnosticCensusRow
+"is not an export" -> falsified: it IS exported (type CompileDiagnosticCensusRow, gunbc/compile_-
+diagnostic_census.dag:75), the precedent witness imports it the same way, and the run printed three
+real PASS lines (members executed). What was genuinely ambiguous: blocking_total returns -1 for
+CensusNotRunnable, and the anti-decoration control asks >= 1, so its FAIL could have meant "census
+could not run" OR "the wrong-carrier shape was ACCEPTED (0)". Entry runs showed no per-file diagnostic
+because probe modules declare no main (NoSuchFunction) -- not evidence either way about the census.
+Dispatch G (fixed witness 9e3411beb8f, same head) predictions:
+- G1: exactly one of {wrong_carrier >=1 PASS, wrong_carrier ==0 PASS} holds, and !=-1 PASSes; if both
+  >=1 and ==0 fail while !=-1 fails, the census could not run -> instrument bug, fix before concluding.
+- G2: list/set/map accept == 0 blocking rows (P1 unchanged).
+- G3: if wrong_carrier is ACCEPTED (== 0), the census route cannot refuse the drift shape it is
+  supposed to catch -> the review's proposed semantic route fails its own control; the text check
+  stays, and finding 1 is answered by execution.
