@@ -120,39 +120,46 @@ match type_arg_kind_inhabitance(arg.clone(), kind_node.clone(), env.clone(), mod
     supplied: v1_rt::concat(v1_rt::concat("(kind declaration '".to_string(), kind_name.clone()), "' did not resolve, so inhabitance could not be established)".to_string()),
     span: arg.span.clone(),
 }), module_name.clone())]),
-    KindInhabitance::ForwardedParameterUnidentified => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    KindInhabitance::FwdParameterUnidentified => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ForwardedParameterUnidentified {
     type_name: type_name.clone(),
     param_name: param_name.clone(),
     kind_name: kind_name.clone(),
     supplied: v1_rt::concat(v1_rt::concat("(forwarded argument '".to_string(), type_arg_display_spelling(arg.clone(), env.clone())), "' carries no type-parameter declaration, so its kind is unknown and nothing is admitted)".to_string()),
     span: arg.span.clone(),
 }), module_name.clone())]),
-    KindInhabitance::ForwardedParameterOwnerUnresolved => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    KindInhabitance::FwdParameterOwnerUnresolved => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ForwardedParameterOwnerUnresolved {
     type_name: type_name.clone(),
     param_name: param_name.clone(),
     kind_name: kind_name.clone(),
     supplied: v1_rt::concat(v1_rt::concat("(the declaration said to own the forwarded parameter '".to_string(), type_arg_display_spelling(arg.clone(), env.clone())), "' did not resolve to one declaring module, so its kind could not be read)".to_string()),
     span: arg.span.clone(),
 }), module_name.clone())]),
-    KindInhabitance::ForwardedParameterNotDeclaredByOwner => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    KindInhabitance::FwdParameterNotDeclaredByOwner => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ForwardedParameterNotDeclaredByOwner {
     type_name: type_name.clone(),
     param_name: param_name.clone(),
     kind_name: kind_name.clone(),
     supplied: v1_rt::concat(v1_rt::concat("('".to_string(), type_arg_display_spelling(arg.clone(), env.clone())), "' is not a parameter of the declaration its binder names, so no kind was declared for it)".to_string()),
     span: arg.span.clone(),
 }), module_name.clone())]),
-    KindInhabitance::ForwardedParameterUnkinded => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    KindInhabitance::FwdParameterUnkinded => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ForwardedParameterUnkinded {
     type_name: type_name.clone(),
     param_name: param_name.clone(),
     kind_name: kind_name.clone(),
     supplied: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("(the forwarded parameter '".to_string(), type_arg_display_spelling(arg.clone(), env.clone())), "' declares no kind, so it cannot be shown to inhabit '".to_string()), kind_name.clone()), "')".to_string()),
     span: arg.span.clone(),
 }), module_name.clone())]),
-    KindInhabitance::ForwardedParameterKindUnresolved => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    KindInhabitance::FwdParameterKindUnresolved => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ForwardedParameterKindUnresolved {
     type_name: type_name.clone(),
     param_name: param_name.clone(),
     kind_name: kind_name.clone(),
     supplied: v1_rt::concat(v1_rt::concat("(a kind on the forwarded parameter '".to_string(), type_arg_display_spelling(arg.clone(), env.clone())), "' did not resolve to a single declaring position, so the two kinds could not be compared)".to_string()),
+    span: arg.span.clone(),
+}), module_name.clone())]),
+    KindInhabitance::FwdParameterKindDiffers => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ForwardedParameterKindDiffers {
+    type_name: type_name.clone(),
+    param_name: param_name.clone(),
+    kind_name: kind_name.clone(),
+    supplied: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("(the forwarded parameter '".to_string(), type_arg_display_spelling(arg.clone(), env.clone())), "' declares its own kind, and that kind resolves to a different declaration than the slot's '".to_string()), kind_name.clone()), "')".to_string()),
     span: arg.span.clone(),
 }), module_name.clone())]),
 }
@@ -181,11 +188,12 @@ pub enum KindInhabitance {
     KindInhabited,
     KindNotInhabited,
     KindDeclarationUnresolved,
-    ForwardedParameterUnidentified,
-    ForwardedParameterOwnerUnresolved,
-    ForwardedParameterNotDeclaredByOwner,
-    ForwardedParameterUnkinded,
-    ForwardedParameterKindUnresolved,
+    FwdParameterUnidentified,
+    FwdParameterOwnerUnresolved,
+    FwdParameterNotDeclaredByOwner,
+    FwdParameterUnkinded,
+    FwdParameterKindUnresolved,
+    FwdParameterKindDiffers,
 }
 
 pub fn type_arg_kind_inhabitance(
@@ -208,7 +216,7 @@ pub fn type_arg_kind_inhabitance(
             )
         } else {
             if arg_is_type_var.clone() {
-                KindInhabitance::ForwardedParameterUnidentified
+                KindInhabitance::FwdParameterUnidentified
             } else {
                 if (crate::v1_std_core::expr_literal_int_optional(arg.clone())
                     != std::option::Option::None)
@@ -365,13 +373,13 @@ pub fn forwarded_parameter_kind_matches(
     module_name: String,
 ) -> KindInhabitance {
     match arg.declaration.clone() {
-        std::option::Option::None => KindInhabitance::ForwardedParameterUnidentified,
+        std::option::Option::None => KindInhabitance::FwdParameterUnidentified,
         Some(carrier) => {
             if !crate::std_decl_ref::declaration_ref_is_type_parameter(carrier.clone()) {
-                KindInhabitance::ForwardedParameterUnidentified
+                KindInhabitance::FwdParameterUnidentified
             } else {
                 match crate::std_decl_ref::decl_type_parameter_name(carrier.clone()) {
-                    std::option::Option::None => KindInhabitance::ForwardedParameterUnidentified,
+                    std::option::Option::None => KindInhabitance::FwdParameterUnidentified,
                     Some(parameter_name) => {
                         let owner_qualified = v1_rt::concat(
                             v1_rt::concat(carrier.module_path.clone(), ".".to_string()),
@@ -382,31 +390,31 @@ pub fn forwarded_parameter_kind_matches(
                             owner_qualified.clone(),
                         ) {
                             std::option::Option::None => {
-                                KindInhabitance::ForwardedParameterOwnerUnresolved
+                                KindInhabitance::FwdParameterOwnerUnresolved
                             }
                             Some(owner_decl) => match v1_rt::map_get(
                                 &env.symbol_index.file_modules.clone(),
                                 owner_decl.span.file.clone(),
                             ) {
                                 std::option::Option::None => {
-                                    KindInhabitance::ForwardedParameterOwnerUnresolved
+                                    KindInhabitance::FwdParameterOwnerUnresolved
                                 }
                                 Some(owner_module) => {
                                     if (owner_module.clone() != carrier.module_path.clone()) {
-                                        KindInhabitance::ForwardedParameterOwnerUnresolved
+                                        KindInhabitance::FwdParameterOwnerUnresolved
                                     } else {
                                         match Rc::new({ let mut __result = Vec::new(); for param in owner_decl.params.clone().iter().cloned() { if (crate::v1_std_core::authored_name_at(env.source_indices.clone(), param.clone()) == parameter_name.clone()) { __result.push(param); } } __result }).first().cloned() {
-    std::option::Option::None => KindInhabitance::ForwardedParameterNotDeclaredByOwner,
+    std::option::Option::None => KindInhabitance::FwdParameterNotDeclaredByOwner,
     Some(binder) => match crate::v1_std_core::find_property(binder.properties.clone(), crate::v1_std_core::type_param_kind_property_name(), env.source_indices.clone()) {
-    std::option::Option::None => KindInhabitance::ForwardedParameterUnkinded,
+    std::option::Option::None => KindInhabitance::FwdParameterUnkinded,
     Some(binder_kind_node) => match kind_declaring_position(binder_kind_node.clone(), owner_module.clone(), env.clone()) {
-    std::option::Option::None => KindInhabitance::ForwardedParameterKindUnresolved,
+    std::option::Option::None => KindInhabitance::FwdParameterKindUnresolved,
     Some(binder_kind_decl) => match kind_declaring_position(slot_kind_node.clone(), module_name.clone(), env.clone()) {
-    std::option::Option::None => KindInhabitance::ForwardedParameterKindUnresolved,
+    std::option::Option::None => KindInhabitance::FwdParameterKindUnresolved,
     Some(slot_kind_decl) => if (((slot_kind_decl.span.file.clone() == binder_kind_decl.span.file.clone()) && (slot_kind_decl.span.start.clone() == binder_kind_decl.span.start.clone())) && (slot_kind_decl.span.end.clone() == binder_kind_decl.span.end.clone())) {
                     KindInhabitance::KindInhabited
                 } else {
-                    KindInhabitance::KindNotInhabited
+                    KindInhabitance::FwdParameterKindDiffers
                 },
 },
 },
@@ -4444,24 +4452,20 @@ pub fn binder_marked_member(
     env: Rc<TypeEnv>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (member.inferred.clone() != std::option::Option::None) {
-            node_with_children_params_inferred(
-                member.clone(),
-                member.children.clone(),
-                member.params.clone(),
-                binder_marked_inferred(
-                    member.inferred.clone(),
+        let marked_children = match member.children.clone().first().cloned() {
+            Some(te) => v1_rt::concat(
+                Rc::new(vec![binder_marked_type(
+                    te.clone(),
                     owner.clone(),
                     binders.clone(),
                     env.clone(),
-                ),
-            )
-        } else {
-            node_with_children_params_inferred(
-                member.clone(),
+                )]),
                 Rc::new({
                     let mut __result = Vec::new();
-                    for f in member.children.clone().iter().cloned() {
+                    for f in Rc::new(v1_rt::list_skip(&member.children.clone(), 1))
+                        .iter()
+                        .cloned()
+                    {
                         __result.push(binder_marked_member(
                             f.clone(),
                             owner.clone(),
@@ -4471,10 +4475,31 @@ pub fn binder_marked_member(
                     }
                     __result
                 }),
-                member.params.clone(),
+            ),
+            std::option::Option::None => Rc::new({
+                let mut __result = Vec::new();
+                for f in member.children.clone().iter().cloned() {
+                    __result.push(binder_marked_member(
+                        f.clone(),
+                        owner.clone(),
+                        binders.clone(),
+                        env.clone(),
+                    ));
+                }
+                __result
+            }),
+        };
+        node_with_children_params_inferred(
+            member.clone(),
+            marked_children.clone(),
+            member.params.clone(),
+            binder_marked_inferred(
                 member.inferred.clone(),
-            )
-        }
+                owner.clone(),
+                binders.clone(),
+                env.clone(),
+            ),
+        )
     })
 }
 
@@ -4912,7 +4937,7 @@ pub fn resolve_item_types(
             {
                 Rc::new({
                     let mut __result = Vec::new();
-                    for variant in item.children.clone().iter().cloned() {
+                    for variant in item_marked.children.clone().iter().cloned() {
                         __result.push({
                             let field_results = Rc::new({
                                 let mut __result = Vec::new();
@@ -5135,15 +5160,17 @@ pub struct KindNotInhabited;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KindDeclarationUnresolved;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ForwardedParameterUnidentified;
+pub struct FwdParameterUnidentified;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ForwardedParameterOwnerUnresolved;
+pub struct FwdParameterOwnerUnresolved;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ForwardedParameterNotDeclaredByOwner;
+pub struct FwdParameterNotDeclaredByOwner;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ForwardedParameterUnkinded;
+pub struct FwdParameterUnkinded;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ForwardedParameterKindUnresolved;
+pub struct FwdParameterKindUnresolved;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FwdParameterKindDiffers;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AliasParameterized;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

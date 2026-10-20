@@ -53,6 +53,21 @@ fn kind_mismatch_blocking_count(source: String) -> Int {
   }
 }
 
+// ONE COUNTER PER CAUSE CLASS. Each forwarded refusal now mints its OWN CompilerDiagnostic
+// constructor (src/v1/00_core.dag), so a row asserts on the class that names its own cause instead
+// of on the inhabitant-list class. That is what makes the negatives discriminate: with the judgment
+// removed, main's refusal lands under TypeArgumentKindMismatch, a DIFFERENT class, so a row counting
+// ForwardedParameterUnkinded goes green when the machinery is taken away and stays red while it runs.
+// Counting the shared class would have measured "some kind refusal happened", which the wall that
+// refuses everything also satisfies.
+fn forwarded_cause_blocking_count(source: String, cause: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: cause)))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
 fn type_param_value_position_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
@@ -243,7 +258,7 @@ fn forward_other_kind_source() -> String {
 // REFUSE, and it refuses at the judgment (ForwardedParameterKindUnresolved is impossible here -- both
 // kinds resolve; the two declaring positions simply differ).
 test fn a_forwarded_parameter_declaring_a_different_kind_must_refuse() -> Bool {
-  kind_mismatch_blocking_count(source: forward_other_kind_source()) >= 1
+  forwarded_cause_blocking_count(source: forward_other_kind_source(), cause: "ForwardedParameterKindDiffers") >= 1
 }
 
 fn forward_unkinded_source() -> String {
@@ -254,7 +269,7 @@ fn forward_unkinded_source() -> String {
 // MUST REFUSE, with its own cause (ForwardedParameterUnkinded) rather than the different-kind one:
 // an unknown is not a mismatch, and collapsing them would hide which link in the chain was missing.
 test fn a_forwarded_unkinded_parameter_must_refuse() -> Bool {
-  kind_mismatch_blocking_count(source: forward_unkinded_source()) >= 1
+  forwarded_cause_blocking_count(source: forward_unkinded_source(), cause: "ForwardedParameterUnkinded") >= 1
 }
 
 fn forward_lookalike_kind_source() -> String {
@@ -267,5 +282,5 @@ fn forward_lookalike_kind_source() -> String {
 // fallback the operator's 2026-10-15 ruling refuses, and the reason this row is separate from the
 // different-kind row above: `Other` could be refused by a shape or name proxy, `Lookalike` cannot.
 test fn a_forwarded_parameter_whose_kind_only_looks_like_the_slots_kind_must_refuse() -> Bool {
-  kind_mismatch_blocking_count(source: forward_lookalike_kind_source()) >= 1
+  forwarded_cause_blocking_count(source: forward_lookalike_kind_source(), cause: "ForwardedParameterKindDiffers") >= 1
 }

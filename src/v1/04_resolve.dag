@@ -111,47 +111,56 @@ fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env
                   },
                   module_name: module_name
                 )]
-              ForwardedParameterUnidentified =>
+              FwdParameterUnidentified =>
                 [make_error_node(
-                  diagnostic: TypeArgumentKindMismatch {
+                  diagnostic: ForwardedParameterUnidentified {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
                     supplied: concat("(forwarded argument '", type_arg_display_spelling(n: arg, env: env), "' carries no type-parameter declaration, so its kind is unknown and nothing is admitted)"),
                     span: arg.span
                   },
                   module_name: module_name
                 )]
-              ForwardedParameterOwnerUnresolved =>
+              FwdParameterOwnerUnresolved =>
                 [make_error_node(
-                  diagnostic: TypeArgumentKindMismatch {
+                  diagnostic: ForwardedParameterOwnerUnresolved {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
                     supplied: concat("(the declaration said to own the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' did not resolve to one declaring module, so its kind could not be read)"),
                     span: arg.span
                   },
                   module_name: module_name
                 )]
-              ForwardedParameterNotDeclaredByOwner =>
+              FwdParameterNotDeclaredByOwner =>
                 [make_error_node(
-                  diagnostic: TypeArgumentKindMismatch {
+                  diagnostic: ForwardedParameterNotDeclaredByOwner {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
                     supplied: concat("('", type_arg_display_spelling(n: arg, env: env), "' is not a parameter of the declaration its binder names, so no kind was declared for it)"),
                     span: arg.span
                   },
                   module_name: module_name
                 )]
-              ForwardedParameterUnkinded =>
+              FwdParameterUnkinded =>
                 [make_error_node(
-                  diagnostic: TypeArgumentKindMismatch {
+                  diagnostic: ForwardedParameterUnkinded {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
                     supplied: concat("(the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' declares no kind, so it cannot be shown to inhabit '", kind_name, "')"),
                     span: arg.span
                   },
                   module_name: module_name
                 )]
-              ForwardedParameterKindUnresolved =>
+              FwdParameterKindUnresolved =>
                 [make_error_node(
-                  diagnostic: TypeArgumentKindMismatch {
+                  diagnostic: ForwardedParameterKindUnresolved {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
                     supplied: concat("(a kind on the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' did not resolve to a single declaring position, so the two kinds could not be compared)"),
+                    span: arg.span
+                  },
+                  module_name: module_name
+                )]
+              FwdParameterKindDiffers =>
+                [make_error_node(
+                  diagnostic: ForwardedParameterKindDiffers {
+                    type_name: type_name, param_name: param_name, kind_name: kind_name,
+                    supplied: concat("(the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' declares its own kind, and that kind resolves to a different declaration than the slot's '", kind_name, "')"),
                     span: arg.span
                   },
                   module_name: module_name
@@ -181,11 +190,12 @@ type KindInhabitance
   // A forwarded parameter is JUDGED, never deferred: each unknown answers with its own cause, and
   // none of them admits. See forwarded_parameter_kind_matches for why an unjudged forward is the
   // widen this replaces.
-  | ForwardedParameterUnidentified
-  | ForwardedParameterOwnerUnresolved
-  | ForwardedParameterNotDeclaredByOwner
-  | ForwardedParameterUnkinded
-  | ForwardedParameterKindUnresolved
+  | FwdParameterUnidentified
+  | FwdParameterOwnerUnresolved
+  | FwdParameterNotDeclaredByOwner
+  | FwdParameterUnkinded
+  | FwdParameterKindUnresolved
+  | FwdParameterKindDiffers
 
 // WHAT THIS CHECKS, AND WHAT IT DELIBERATELY DOES NOT. The NAMED half is identity-keyed against the
 // kind's declared alias target, so a kind naming PointerWidth cannot be satisfied by an unrelated
@@ -214,10 +224,10 @@ fn type_arg_kind_inhabitance(arg: Node, kind_node: Node, env: TypeEnv, module_na
   // refusals fell through to the inhabitants arm and were refused as spellings ("'S [decl='Scale'
   // inferred=absent resolved_target='' children=23]' is not one of its inhabitants"), which is the
   // name-keyed reading this arm exists to replace. The carrier is the fact; inference is a hint.
-  // A variable that carries nothing answers ForwardedParameterUnidentified: being an inference unknown
+  // A variable that carries nothing answers FwdParameterUnidentified: being an inference unknown
   // is not evidence of inhabiting anything, and this arm admits nobody.
   if node_is_type_parameter_reference(n: arg) { forwarded_parameter_kind_matches(arg: arg, slot_kind_node: kind_node, env: env, module_name: module_name) }
-  else if arg_is_type_var { ForwardedParameterUnidentified }
+  else if arg_is_type_var { FwdParameterUnidentified }
   else if expr_literal_int_optional(expr: arg) != none { KindInhabited }
   else {
     match lookup_type_by_name(env: env, name: authored_name(env: env, node: kind_node)) {
@@ -323,43 +333,43 @@ fn node_authored_or_own_name(n: Node, env: TypeEnv) -> String {
 // or either kind cannot be resolved to a single declaring position.
 fn forwarded_parameter_kind_matches(arg: Node, slot_kind_node: Node, env: TypeEnv, module_name: String) -> KindInhabitance {
   match arg.declaration {
-    Absent => ForwardedParameterUnidentified
+    Absent => FwdParameterUnidentified
     Present { value: carrier } =>
-      if !declaration_ref_is_type_parameter(ref: carrier) { ForwardedParameterUnidentified }
+      if !declaration_ref_is_type_parameter(ref: carrier) { FwdParameterUnidentified }
       else {
         match decl_type_parameter_name(ref: carrier) {
-          Absent => ForwardedParameterUnidentified
+          Absent => FwdParameterUnidentified
           Present { value: parameter_name } =>
             // The owner is found in the module the CARRIER names, and the row reached must be that
             // module's own: a same-named declaration living elsewhere is not this parameter's owner.
             let owner_qualified = concat(carrier.module_path as String, ".", carrier.decl_name as String)
             match symbol_index_lookup(index: env.symbol_index, qualified_name: owner_qualified) {
-              Absent => ForwardedParameterOwnerUnresolved
+              Absent => FwdParameterOwnerUnresolved
               Present { value: owner_decl } =>
                 match map_get(env.symbol_index.file_modules, owner_decl.span.file) {
-                  Absent => ForwardedParameterOwnerUnresolved
+                  Absent => FwdParameterOwnerUnresolved
                   Present { value: owner_module } =>
-                    if owner_module != (carrier.module_path as String) { ForwardedParameterOwnerUnresolved }
+                    if owner_module != (carrier.module_path as String) { FwdParameterOwnerUnresolved }
                     else {
                       match owner_decl.params |> filter(param =>
                           authored_name_at(source_indices: env.source_indices, node: param) == parameter_name)
                           |> first {
-                        Absent => ForwardedParameterNotDeclaredByOwner
+                        Absent => FwdParameterNotDeclaredByOwner
                         Present { value: binder } =>
                           match find_property(props: binder.properties, prop_name: type_param_kind_property_name(), source_indices: env.source_indices) {
-                            Absent => ForwardedParameterUnkinded
+                            Absent => FwdParameterUnkinded
                             Present { value: binder_kind_node } =>
                               match kind_declaring_position(kind_node: binder_kind_node, declaring_module: owner_module, env: env) {
-                                Absent => ForwardedParameterKindUnresolved
+                                Absent => FwdParameterKindUnresolved
                                 Present { value: binder_kind_decl } =>
                                   match kind_declaring_position(kind_node: slot_kind_node, declaring_module: module_name, env: env) {
-                                    Absent => ForwardedParameterKindUnresolved
+                                    Absent => FwdParameterKindUnresolved
                                     Present { value: slot_kind_decl } =>
                                       if slot_kind_decl.span.file == binder_kind_decl.span.file
                                         && slot_kind_decl.span.start == binder_kind_decl.span.start
                                         && slot_kind_decl.span.end == binder_kind_decl.span.end {
                                         KindInhabited
-                                      } else { KindNotInhabited }
+                                      } else { FwdParameterKindDiffers }
                                   }
                               }
                           }
@@ -1643,11 +1653,21 @@ fn binder_marked_param(param: Node, owner: DeclarationRef, binders: List<String>
 
 // A field of a product carries its type reference in `inferred`; a coproduct variant carries fields.
 fn binder_marked_member(member: Node, owner: DeclarationRef, binders: List<String>, env: TypeEnv) -> Node {
-  if member.inferred != none {
-    node_with_children_params_inferred(n: member, children: member.children, params: member.params, inferred: binder_marked_inferred(inferred: member.inferred, owner: owner, binders: binders, env: env))
-  } else {
-    node_with_children_params_inferred(n: member, children: map(member.children, f => binder_marked_member(member: f, owner: owner, binders: binders, env: env)), params: member.params, inferred: member.inferred)
+  // A member's FIRST child is its type expression (`value: Width<T>`), and the kind wall judges the
+  // argument nodes inside that expression. The walker used to recurse through members without ever
+  // consulting binder_marked_type, so a binder reference standing in a member's type position carried
+  // no identity: measured, the four rows that fell through to the inhabitants arm (std.measure:269
+  // MeasureSubtraction<Q, S>, std.realization_schedule:79-80 CostTimeAxis<S>) and the matching-kind
+  // positive witness are all member type positions. One rule, no special case per site: wherever a
+  // type expression stands, the type walker stamps it. Recursing the remaining children happens in
+  // both arms now; the old leaf shortcut only saved a rebuild, and every stamping helper here is an
+  // identity-preserving node_with_* rebuild, so the extra descent adds no behaviour beyond identity.
+  let marked_children = match member.children |> first {
+    Present { value: te } =>
+      concat([binder_marked_type(n: te, owner: owner, binders: binders, env: env)], map(member.children |> skip(1), f => binder_marked_member(member: f, owner: owner, binders: binders, env: env)))
+    Absent => map(member.children, f => binder_marked_member(member: f, owner: owner, binders: binders, env: env))
   }
+  node_with_children_params_inferred(n: member, children: marked_children, params: member.params, inferred: binder_marked_inferred(inferred: member.inferred, owner: owner, binders: binders, env: env))
 }
 
 // THE ONE MARKING PASS, run by resolve_item_types BEFORE it resolves anything, over the positions
@@ -1792,7 +1812,10 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       }
     )
   } else if item.connective == Disj && item.transport == none {
-    item.children |> map(variant =>
+    // item_marked, not item: the binder identity lives on the marked children (binder_marked_item
+    // stamped them before any nested resolve ran), and reading the raw ones threw that away -- the
+    // four rows that fell through to the inhabitant-list refusal were Disj member type positions.
+    item_marked.children |> map(variant =>
       let field_results = variant.children |> map(field =>
         let authored_type = field_node_type_expr(n: field)
         let tr = resolve_node(n: authored_type, env: env, module_name: module_name)

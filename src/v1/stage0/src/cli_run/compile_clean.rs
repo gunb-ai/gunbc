@@ -884,6 +884,12 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         KernelMintDeclarationAmbiguousAtImport { name: s(), module_path: s(), importing_module: s(), row_count: 0, span: no_span() },
         UnresolvedType { name: s(), span: no_span() },
         TypeArgumentKindMismatch { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
+        ForwardedParameterUnidentified { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
+        ForwardedParameterOwnerUnresolved { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
+        ForwardedParameterNotDeclaredByOwner { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
+        ForwardedParameterUnkinded { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
+        ForwardedParameterKindUnresolved { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
+        ForwardedParameterKindDiffers { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
         TypeParameterInValuePosition { name: s(), span: no_span() },
         UnitVariantPhantomIdentityEvidenceUnavailable { name: s(), span: no_span() },
         TypeMismatch { expected: s(), got: s(), span: no_span() },
@@ -1423,6 +1429,20 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::TypeArgumentArityMismatch { .. } => "TypeArgumentArityMismatch",
         CompilerDiagnostic::TypeArgumentKindMismatch { .. } => "TypeArgumentKindMismatch",
+        CompilerDiagnostic::ForwardedParameterUnidentified { .. } => {
+            "ForwardedParameterUnidentified"
+        }
+        CompilerDiagnostic::ForwardedParameterOwnerUnresolved { .. } => {
+            "ForwardedParameterOwnerUnresolved"
+        }
+        CompilerDiagnostic::ForwardedParameterNotDeclaredByOwner { .. } => {
+            "ForwardedParameterNotDeclaredByOwner"
+        }
+        CompilerDiagnostic::ForwardedParameterUnkinded { .. } => "ForwardedParameterUnkinded",
+        CompilerDiagnostic::ForwardedParameterKindUnresolved { .. } => {
+            "ForwardedParameterKindUnresolved"
+        }
+        CompilerDiagnostic::ForwardedParameterKindDiffers { .. } => "ForwardedParameterKindDiffers",
         CompilerDiagnostic::TypeParameterInValuePosition { .. } => "TypeParameterInValuePosition",
         CompilerDiagnostic::EqualityOnFunctionMember { .. } => "EqualityOnFunctionMember",
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
@@ -1542,6 +1562,16 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
         CompilerDiagnostic::TypeArgumentArityMismatch { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::TypeArgumentKindMismatch { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::ForwardedParameterUnidentified { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::ForwardedParameterOwnerUnresolved { type_name, .. } => {
+            type_name.clone()
+        }
+        CompilerDiagnostic::ForwardedParameterNotDeclaredByOwner { type_name, .. } => {
+            type_name.clone()
+        }
+        CompilerDiagnostic::ForwardedParameterUnkinded { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::ForwardedParameterKindUnresolved { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::ForwardedParameterKindDiffers { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::TypeParameterInValuePosition { name, .. } => name.clone(),
         CompilerDiagnostic::EqualityOnFunctionMember { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::EqualityMemberUnjudgeable { type_name, .. } => type_name.clone(),

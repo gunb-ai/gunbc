@@ -440,6 +440,31 @@ type CompilerDiagnostic
   | EqualityOptionalityMismatch { optional_side: String, span: SourceSpan }
   | TypeArgumentArityMismatch { type_name: String, supplied: Int, declared: Int, span: SourceSpan }
   | TypeArgumentKindMismatch { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
+  // THE FIVE FORWARDED-PARAMETER CAUSES ARE OWN CLASSES, NOT ONE CLASS WITH FIVE MESSAGES.
+  // All five refusals used to mint TypeArgumentKindMismatch, the same constructor the inhabitance
+  // refusal mints, and the census row carries only {diagnostic_class, subject_name, blocking,
+  // count} (dag/gunbc/compile_diagnostic_census.dag) -- no message. A witness that counts blocking
+  // rows of the class therefore cannot tell "the forwarded judgment refused" from "the inhabitant
+  // list refused", and reverting the judgment would not visibly change what is counted: the
+  // discriminator an approval depends on (a RED that goes green when the machinery is removed) was
+  // not authorable. One class per cause makes each refusal a distinct census row. Per
+  // dag/gunbc/compiler_diagnostic_seed_projection.dag's boundary row, extending this coproduct
+  // forces arms in the four total folds below AND in the two hand-written exhaustive matches plus
+  // the specimen roster in src/v1/stage0/src/cli_run/compile_clean.rs; the bijection contract there
+  // refuses a constructor with no specimen, so none of these may be added in one place only.
+  | ForwardedParameterUnidentified { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
+  | ForwardedParameterOwnerUnresolved { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
+  | ForwardedParameterNotDeclaredByOwner { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
+  | ForwardedParameterUnkinded { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
+  | ForwardedParameterKindUnresolved { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
+  // THE DIFFER CASE IS ITS OWN CLASS TOO, for the same reason as the five above and with the
+  // native precedent: v2 gives a forwarded kind mismatch its own diagnostic
+  // (v2.std.type_binder TypeApplicationForwardedParameterKindDiffers, kept beside
+  // TypeApplicationKindNotInhabited), so the v1 side naming it after the inhabitant-list refusal would
+  // be the one place the two answers cannot be told apart. It also decides whether the two negative
+  // witnesses discriminate at all: both refuse by differing kinds, and if they minted the inhabitant
+  // class then removing the judgment would leave main's own refusal counted under the same name.
+  | ForwardedParameterKindDiffers { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
   | TypeParameterInValuePosition { name: String, span: SourceSpan }
   | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
   | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: SourceSpan }
@@ -687,6 +712,12 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     EqualityOptionalityMismatch { optional_side: _, span: s } => s
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: s } => s
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
+    ForwardedParameterUnidentified { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
+    ForwardedParameterOwnerUnresolved { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
+    ForwardedParameterNotDeclaredByOwner { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
+    ForwardedParameterUnkinded { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
+    ForwardedParameterKindUnresolved { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
+    ForwardedParameterKindDiffers { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
     TypeParameterInValuePosition { name: _, span: s } => s
     OccurrenceTransportViolation { refusal: refusal } =>
       match occurrence_transport_refusal_diagnostic_span(refusal: refusal) {
@@ -805,6 +836,18 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("type argument arity mismatch applying '", t, "': ", to_string(value: s), " type argument(s) supplied, ", to_string(value: d), " type parameter(s) declared")
     TypeArgumentKindMismatch { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
       concat("type argument does not inhabit the declared kind applying '", t, "': parameter '", p, "' is declared '", k, "', and '", sup, "' is not one of its inhabitants")
+    ForwardedParameterUnidentified { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
+      concat("forwarded type argument applies no kind applying '", t, "': parameter '", p, "' is declared '", k, "', and the argument supplied is '", sup, "' -- it carries no type-parameter declaration, so its kind is unknown and nothing is admitted")
+    ForwardedParameterOwnerUnresolved { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
+      concat("forwarded type argument owner unresolved applying '", t, "': parameter '", p, "' is declared '", k, "', and the argument supplied is '", sup, "' -- the declaration said to own the forwarded parameter did not resolve to one declaring module, so its kind could not be read")
+    ForwardedParameterNotDeclaredByOwner { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
+      concat("forwarded type argument not declared by its owner applying '", t, "': parameter '", p, "' is declared '", k, "', and the argument supplied is '", sup, "' -- it is not a parameter of the declaration its binder names, so no kind was declared for it")
+    ForwardedParameterUnkinded { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
+      concat("forwarded type argument declares no kind applying '", t, "': parameter '", p, "' is declared '", k, "', and the argument supplied is '", sup, "' -- the forwarded parameter declares no kind, so it cannot be shown to inhabit '", k, "'")
+    ForwardedParameterKindUnresolved { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
+      concat("forwarded type argument kind unresolved applying '", t, "': parameter '", p, "' is declared '", k, "', and the argument supplied is '", sup, "' -- a kind on the forwarded parameter did not resolve to a single declaring position, so the two kinds could not be compared")
+    ForwardedParameterKindDiffers { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
+      concat("forwarded type argument declares a different kind applying '", t, "': parameter '", p, "' is declared '", k, "', and the argument supplied is '", sup, "' -- its own declared kind resolves to a different declaration than the slot's, so it is refused by identity rather than by spelling")
     TypeParameterInValuePosition { name: n, span: _ } =>
       concat("'", n, "' is a type parameter, not a value: a name bound as a type may not stand in an expression position")
     OccurrenceTransportViolation { refusal: refusal } =>
@@ -940,6 +983,12 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     EqualityOptionalityMismatch { optional_side: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ForwardedParameterUnidentified { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ForwardedParameterOwnerUnresolved { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ForwardedParameterNotDeclaredByOwner { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ForwardedParameterUnkinded { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ForwardedParameterKindUnresolved { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ForwardedParameterKindDiffers { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeParameterInValuePosition { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     OccurrenceTransportViolation { refusal: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
