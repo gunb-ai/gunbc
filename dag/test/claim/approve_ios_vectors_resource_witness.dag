@@ -36,7 +36,7 @@ import gunbc.approve_ios_swift_protocol_vector_tests {
   approve_ios_vectors_artifact_resource_parts,
   approve_ios_vectors_emission,
   approve_ios_vectors_no_resource_parts,
-  approve_ios_vectors_resource_refusal_reason,
+  approve_ios_vectors_escape_refusal_reason,
   expected_approve_ios_protocol_vector_tests_swift,
 }
 
@@ -124,11 +124,19 @@ fn malformed_names_yield_no_parts_helper() -> Bool {
     }
 }
 
-// POSITIVE: with no parts the boundary refuses, and it refuses with THIS reason — a rename has to report
-// which join broke, not just fail. Reached by passing Absent, so the claim is green where it stands.
+// POSITIVE: with no parts the boundary refuses, and the refusal carries THIS diagnostic. The reason is
+// compared against the string spelled here, independently of the carrier's own data — asserting equality
+// with approve_ios_vectors_resource_refusal_reason would be a tautology, since that is the very constant
+// the boundary returns, and a control that renames it would stay green (caught by running exactly that
+// control). It must also not be the escape arm's reason, or a broken join would report the wrong fault.
+//
+// The literal below is the diagnostic's identity, so spelling it a second time is the point: it is what a
+// runbook and the CI log match against, not a derivation of anything.
 fn refusal_is_taken_and_carries_the_named_reason_helper() -> Bool {
   match approve_ios_vectors_emission(parts: approve_ios_vectors_no_resource_parts(), escape_present: true) {
-    SwiftRowEmissionRefused { reason: r } => r == approve_ios_vectors_resource_refusal_reason
+    SwiftRowEmissionRefused { reason: r } =>
+      r == "approve-ios-vectors-resource-name-not-a-stem-and-extension"
+        && r != approve_ios_vectors_escape_refusal_reason
     SwiftRowEmitted { source: _ } => false
   }
 }
