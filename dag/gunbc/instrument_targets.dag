@@ -817,6 +817,9 @@ fn self_host_behavioral_equivalence_binding() -> TargetBinding {
 
 fn dependency_demand_census_binding() -> TargetBinding {
   TargetBinding { target: dependency_demand_census_label() producer: DependencyDemandCensusProducer {} }
+}
+
+fn decl_ref_census_binding() -> TargetBinding {
   TargetBinding { target: decl_ref_census_label() producer: DeclRefCensusProducer {} }
 }
 
@@ -1217,7 +1220,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), decl_ref_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
