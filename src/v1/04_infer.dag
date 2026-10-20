@@ -9452,7 +9452,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               diagnostics: arg_diags
             }
           } else {
-          match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected) {
+          match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), ident: node_ident(n: texpr), scope: scope, expected: expected) {
             Present { value: ctor_result } => ctor_result
             Absent =>
               // CallTargetOutcome already selected a census callable. lookup_type_by_name
@@ -9936,7 +9936,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
     ExprRecordLit { parent_enum: _ } =>
       let span = texpr.span
       let field_inits = texpr.children
-      infer_record_lit(occurrence_identity: texpr.occurrence_identity, type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected)
+      infer_record_lit(occurrence_identity: texpr.occurrence_identity, type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), ident: node_ident(n: texpr), scope: scope, expected: expected)
 
     ExprListLit =>
       let span = texpr.span
@@ -10393,7 +10393,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 // named-field spelling of the same shape instantiated it. The call's expected type is now carried
 // through; when there is none and the owner declares no type parameters, the owner itself IS the
 // fully determined type of the construction and is supplied as the expectation.
-fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult? {
+fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, ident: AuthoredIdent?, scope: InferScope, expected: Node?) -> InferResult? {
   match lookup_variant_parent_enum(scope: scope, name: func_name) {
     Absent => none
     Present { value: parent_enum } =>
@@ -10429,6 +10429,7 @@ fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, f
                             field_inits: [payload_init],
                             span: span,
                             name_span: name_span,
+                            ident: ident,
                             scope: scope,
                             expected: if (expected == none && (parent_node.params |> count) == 0) { Present { value: parent_node } } else { expected }
                           ) }
@@ -11081,7 +11082,7 @@ fn transparent_alias_application_at_head(exp: Node, decl: Node, scope: InferScop
   }
 }
 
-fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
+fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, ident: AuthoredIdent?, scope: InferScope, expected: Node?) -> InferResult {
   let unrecovered_optional = match expected {
     Present { value: exp } =>
       if exp.return_cardinality == CardOptional { none } else {
@@ -11113,6 +11114,7 @@ fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: Stri
         field_inits: field_inits,
         span: span,
         name_span: name_span,
+        ident: ident,
         scope: scope,
         expected: record_lit_expected_through_generic_alias(expected: expected, scope: scope, fuel: 8)
       )
@@ -11362,7 +11364,7 @@ fn present_value_expected_from_optional(type_name: String, field_name: String, v
 // declares no fields, so `SingleAuthority { reason: "..." }` supplies one that does not exist. The
 // ambiguity guard is shared with MissingField for the same reason it exists there -- an ambiguous
 // name has not been resolved to a type, so neither half may judge its fields.
-fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
+fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, ident: AuthoredIdent?, scope: InferScope, expected: Node?) -> InferResult {
   let instantiated_struct_fields = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
   let expected_struct_fields = if instantiated_struct_fields == none {
     record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope)
@@ -11899,7 +11901,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       children: typed_field_nodes2,
       inferred: Present { value: Resolved { node: resolved_node } },
       span: span,
-      ident: Present { value: synthetic_ident(span: name_span, text: rl_name) })
+      ident: named_ident(name: rl_name, ident: ident))
     let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
     let optional_owner_unrecovered_diags = if parent_is_std_optional && std_optional_present_arm(scope: scope) == none {
       [inference_error(
