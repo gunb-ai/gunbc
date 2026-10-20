@@ -223,9 +223,9 @@ type SweepHostStanding
 fn sweep_host_standing(host: NonEmptyStr) -> SweepHostStanding {
   match managed_host_binding_for(host: host) {
     ManagedHostNotManaged { host: h } => SweepHostNotManaged { host: h as String }
-    ManagedHostFound { standing: s } => SweepHostBound { host: host as HostIdentity, standing: bmc_controlled_host(standing: s) }
-    ManagedHostFoundUnderDeclaredDrop { standing: s, drop: _, standing_subject: _, current_subject: _ } =>
-      SweepHostBound { host: host as HostIdentity, standing: bmc_controlled_host(standing: s) }
+    ManagedHostFound { host: _, control: c } => SweepHostBound { host: host as HostIdentity, standing: bmc_controlled_host(host: host as HostIdentity, standing: c) }
+    ManagedHostFoundUnderDeclaredDrop { host: _, control: c, drop: _, standing_subject: _, current_subject: _ } =>
+      SweepHostBound { host: host as HostIdentity, standing: bmc_controlled_host(host: host as HostIdentity, standing: c) }
   }
 }
 
