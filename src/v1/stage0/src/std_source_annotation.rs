@@ -241,7 +241,10 @@ pub fn annotation_region_index(
                 .fold(
                     children_seed.clone(),
                     |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
-                     key: _| match v1_rt::lookup(&grouped, key.clone()) {
+                     key: Rc<AnnotationScope>| match v1_rt::lookup(
+                        &grouped,
+                        key.clone(),
+                    ) {
                         Some(siblings) => v1_rt::rc_map_insert(
                             acc.clone(),
                             key.clone(),
