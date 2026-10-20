@@ -33,7 +33,7 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, read_host_idleness_over, drain_all_slots_over, drain_all_settled, drain_all_cause, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
+import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, read_host_idleness_over, drain_all_slots_over, drain_all_settled, drain_all_cause, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
@@ -2137,14 +2137,28 @@ fn runner_host_cap_gate_cause(standing: CapRaiseStanding) -> String? {
 type RunnerHostCapPhase
   = CapPhaseNotOwed
   | CapPhaseWithheld { cause: String }
+  | CapPhaseObserved { readings: List<SlotCapUnitStanding> }
   | CapPhaseRan { files: List<RunnerHostFileResult>, reload: RunnerHostManagerReload, slots: List<SlotCapOutcome> }
 
 data runner_host_cap_phase_not_owed: RunnerHostCapPhase = CapPhaseNotOwed
+
+// THE OBSERVED PHASE IS SETTLED WHEN EVERY READING READ. A cap that could not be looked at is never a
+// settled no: SlotCapUnread / SlotCapsUnread keep the phase unsettled, so an unreadable cap cannot hide
+// behind a mode (§5). AtDesired, Drifted (ReadingsDisagree), Owed (NeedRestart) and Stopped all READ
+// something, and reading something IS what observe mode came for -- settledness here names the quality
+// of the observation, not whether a change was applied.
+fn runner_host_cap_phase_observed_settled(readings: List<SlotCapUnitStanding>) -> Bool {
+  all(readings, r => match r.standing {
+    SlotCapsUnread { cause: _ } => false
+    _ => true
+  })
+}
 
 fn runner_host_cap_phase_settled(phase: RunnerHostCapPhase) -> Bool {
   match phase {
     CapPhaseNotOwed => true
     CapPhaseWithheld { cause: _ } => false
+    CapPhaseObserved { readings: rs } => runner_host_cap_phase_observed_settled(readings: rs)
     CapPhaseRan { files: fs, reload: rl, slots: ss } =>
       all(fs, r => runner_host_file_outcome_settled(outcome: r.outcome))
         && runner_host_manager_reload_settled(r: rl)
@@ -2152,10 +2166,36 @@ fn runner_host_cap_phase_settled(phase: RunnerHostCapPhase) -> Bool {
   }
 }
 
+// THE OBSERVE VERDICT ON THE CAP PHASE: observe succeeds only if the phase IS an observation and one
+// that was fully READ. Withheld (could not look at the population) and any Unread reading (could not
+// look at a slot) refuse -- a cap observation that could not be completed is not a success (section 5:
+// loud, never a pass). CapPhaseNotOwed refuses in observe too: production's observe arm cannot produce
+// it since P4, so one arriving on an observe run record was hand-fabricated -- the base defect, the
+// two-valued answer that hides "could not look". CapPhaseRan is the APPLY arm; a Ran phase riding an
+// observe run is from another route's run and says nothing about what THIS mode looked at.
+// At-desired is NOT required: Owed, Drifted/ReadingsDisagree and Stopped are all fully read, and the
+// READING is what observe came for -- a host that owes caps is observed, not failed.
+fn runner_host_cap_phase_observed_verdict(phase: RunnerHostCapPhase) -> Bool {
+  match phase {
+    // An EMPTY readings list observed nothing either -- all([]) is vacuously true, and a zero-reading
+    // "observation" is the same hiding as the base's two-valued answer. The featured observation has
+    // at least the featured unit; nothing to read is a subject refusal upstream, not a phase.
+    CapPhaseObserved { readings: rs } => length(rs) > 0 && runner_host_cap_phase_observed_settled(readings: rs)
+    CapPhaseNotOwed => false
+    CapPhaseWithheld { cause: _ } => false
+    CapPhaseRan { files: _, reload: _, slots: _ } => false
+  }
+}
+
 fn runner_host_cap_phase_text(phase: RunnerHostCapPhase) -> String {
   match phase {
     CapPhaseNotOwed => ""
     CapPhaseWithheld { cause: c } => join(["caps WITHHELD ", c, "\n"], "")
+    CapPhaseObserved { readings: rs } =>
+      join(
+        map(rs, r => concat(slot_cap_standing_wire(unit: r.unit, s: r.standing), "\n")),
+        "",
+      )
     CapPhaseRan { files: fs, reload: rl, slots: ss } =>
       join([
         join(map(fs, r => runner_host_file_result_line(r: r)), ""),
@@ -2248,6 +2288,10 @@ fn runner_host_cap_phase_bars_reload(phase: RunnerHostCapPhase) -> Bool {
   match phase {
     CapPhaseWithheld { cause: _ } => true
     CapPhaseNotOwed => false
+    // An observed-but-unread cap leaves the cap state UNKNOWN exactly as an unsettled ran phase does, so
+    // it bars host-wide reloads the same way. A reading that came back (any other standing) answers the
+    // question and opens the sites.
+    CapPhaseObserved { readings: rs } => !runner_host_cap_phase_observed_settled(readings: rs)
     CapPhaseRan { files: _, reload: _, slots: _ } => !runner_host_cap_phase_settled(phase: phase)
   }
 }
@@ -2261,6 +2305,29 @@ fn runner_host_cap_phase_bars_reload(phase: RunnerHostCapPhase) -> Bool {
 // otherwise be loaded by an unrelated reload). Files and live caps both at desired are left in place.
 // Otherwise every declared slot is drained and masked, the files are written, the manager reloaded,
 // every slot activated, and each one's live cgroup read back.
+// THE OBSERVE ARM OF THE CAP PHASE. It invokes the SAME live read the apply uses,
+// read_host_cap_standings_over (systemctl show + the /sys/fs/cgroup file reads, over
+// typed_argv_exec_over_fleet_ssh), for the same affected population -- and stops there. It writes no
+// drop-in, reloads no manager, drains no slot: the mode chooses the action, never whether the host was
+// looked at (§5, and the T2.2 ruling of clever-crane-830: an observation gated behind apply was the
+// defect -- observe claiming "not owed" while nothing was read was the two-valued answer that hides
+// "could not look"). An unobservable population withholds exactly as apply does: the cause is named,
+// never a silent settled.
+fn observe_runner_host_cap_phase(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  population: RunnerSlotPopulation,
+) -> RunnerHostCapPhase
+{
+  match population {
+    SlotPopulationUnobservable { reason: r } => CapPhaseWithheld { cause: concat("the slot population was not observed: ", r) }
+    SlotPopulationObserved { units: _ } => {
+      let affected = concat(subject.desired_units, runner_host_cap_extras(desired_units: subject.desired_units, retired_units: subject.retired_units, population: population))
+      CapPhaseObserved { readings: read_host_cap_standings_over(target: subject.target, context: context, units: affected, desired: gunbc_runner_slot_desired()) }
+    }
+  }
+}
+
 fn run_runner_host_cap_phase(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -2270,7 +2337,9 @@ fn run_runner_host_cap_phase(
 ) -> RunnerHostCapPhase
 {
   match mode {
-    RunnerHostFilesObserveOnly => CapPhaseNotOwed
+    // Observe asks the OBSERVER; the apply never reaches this arm. One route to the reading, whichever
+    // mode asked (the old NotOwed arm here claimed a settled no with nothing looked at).
+    RunnerHostFilesObserveOnly => observe_runner_host_cap_phase(subject: subject, context: context, population: population)
     RunnerHostFilesApply =>
       match population {
         SlotPopulationUnobservable { reason: r } => CapPhaseWithheld { cause: concat("the slot population was not observed: ", r) }
@@ -2426,9 +2495,15 @@ fn run_runner_host_files(
   })
   // THE CAP PHASE RUNS BEFORE ANY WRITE OR RELOAD: the template reload is host-wide, so every reload
   // below is barred when the phase withholds.
+  // THE OBSERVATION IS NOT GATED BEHIND THE APPLY (defect of record, T2.2): BOTH modes read the live slot
+  // caps through the same read_host_cap_standings_over route; the mode chooses only what the phase may DO.
+  // Observe reads per-slot standings and writes nothing — a mode that answered "caps not owed" without
+  // looking was a two-valued answer hiding "could not look" (§5). The population fold is read once here and
+  // shared by both arms; apply's behavior is byte-equal (same reads, same order).
+  let early_population = observe_runner_slot_population(subject: subject, context: context, expect: early_expect)
   let cap_phase = match mode {
-    RunnerHostFilesObserveOnly => CapPhaseNotOwed
-    RunnerHostFilesApply => run_runner_host_cap_phase(subject: subject, context: context, mode: mode, privilege: privilege, population: observe_runner_slot_population(subject: subject, context: context, expect: early_expect))
+    RunnerHostFilesObserveOnly => observe_runner_host_cap_phase(subject: subject, context: context, population: early_population)
+    RunnerHostFilesApply => run_runner_host_cap_phase(subject: subject, context: context, mode: mode, privilege: privilege, population: early_population)
   }
   let reload_barred = runner_host_cap_phase_bars_reload(phase: cap_phase)
   let unit_files = filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String))
@@ -2517,6 +2592,10 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         && !any(run.results, r => runner_host_file_planned_refused(p: r.planned))
         && retired_residue_observed(result: run.residue)
         && runner_slot_population_read_completely(population: run.slots)
+        // THE CAP PHASE IS CONSUMED HERE (manager ruling, review 5588645431): the phase is the last
+        // thing observe came for, so a run whose cap observation was withheld or any of it unread
+        // REFUSES -- it must not print OBSERVED-UNREAD and still exit success.
+        && runner_host_cap_phase_observed_verdict(phase: run.cap_phase)
     RunnerHostFilesApply =>
       all(run.results, r => runner_host_file_outcome_settled(outcome: r.outcome))
         && length(run.withheld) == 0
