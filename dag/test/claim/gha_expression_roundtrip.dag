@@ -294,3 +294,4 @@ test fn witness_tighter_operand_is_not_grouped() -> Bool {
   serialize_expression(expression: LogicalOr { left: LogicalAnd { left: a, right: b }, right: c }) == "github.a && github.b || github.c"
     && serialize_expression(expression: LogicalAnd { left: Equals { left: a, right: b }, right: c }) == "github.a == github.b && github.c"
 }
+
