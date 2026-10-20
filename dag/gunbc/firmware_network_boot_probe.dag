@@ -56,9 +56,12 @@ type FamilyKey {
 // instrument with its own admission, not an arm added to this union.
 type ReadRoute
   = RedfishGetRoute
-  | OpenBmcRedfishGetRoute
-  | MegaRacRestGetRoute
 
+// ONE ROUTE BECAUSE ONE READER: gunbc.firmware_network_boot_readers decodes every family as DMTF Redfish
+// GET results, so a MegaRAC or OpenBMC row names the route that is actually read. A MegaRAC REST route
+// returns as an arm only together with a reader that consumes it; until then it would be a declaration
+// no fold reads (DESIGN.md 3c).
+//
 // READ-ONLY IS THE ABSENCE OF A WRITE ARM: ReadRoute has only GET-shaped routes, so no row can carry
 // a mutating capability. A mutating family would be a new type with its own admission, never an
 // arm here, because every match over ReadRoute would then decide per call site whether to refuse.
@@ -325,25 +328,25 @@ fn firmware_boot_family_rows() -> List<FirmwareBootFamilyRow> {
     firmware_boot_family_row(
       family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: none, reach: DedicatedManagementPort },
       authority: TranscribedUncited { read_obligation: "Read the AMI MegaRAC SP-X Redfish and IPMI references for the boot-parameter and BIOS inventory surface; extdeps.bmc.megarac holds the transport." },
-      route: MegaRacRestGetRoute,
+      route: RedfishGetRoute,
       coverage: megarac_coverage()
     ),
     firmware_boot_family_row(
       family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: Present { value: "2.11.104000" }, reach: DedicatedManagementPort },
       authority: TranscribedUncited { read_obligation: "Read the MegaRAC 2.11.104000 release notes for which Redfish Systems properties it serves; extdeps.bmc.megarac holds the transport." },
-      route: MegaRacRestGetRoute,
+      route: RedfishGetRoute,
       coverage: megarac_coverage()
     ),
     firmware_boot_family_row(
       family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: Present { value: "3.22" }, reach: DedicatedManagementPort },
       authority: TranscribedUncited { read_obligation: "Read bmcweb's Redfish Systems schema for the OpenBMC 3.22 build (extdeps.bmc.openbmc); cite the release that serves Boot and SecureBoot." },
-      route: OpenBmcRedfishGetRoute,
+      route: RedfishGetRoute,
       coverage: all_axes_answered()
     ),
     firmware_boot_family_row(
       family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: none, reach: SharedHostNic },
       authority: TranscribedUncited { read_obligation: "Read the board's manual for how the shared-NIC management port behaves while the host NIC is down; the Redfish surface is extdeps.bmc.openbmc's." },
-      route: OpenBmcRedfishGetRoute,
+      route: RedfishGetRoute,
       coverage: all_axes_answered()
     ),
     firmware_boot_family_row(
