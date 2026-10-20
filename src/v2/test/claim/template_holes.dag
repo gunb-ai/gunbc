@@ -1,8 +1,8 @@
 module v2.test.claim.template_holes
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.template { Template, TemplateHolePart, TemplateLiteralPart, template_holes }
-import v2.std.operation_argv { ArgvTemplate, OperationInputName }
+import std.template { Template, TemplateHolePart, TemplateLiteralPart, template_holes }
+import std.operation_argv { ArgvTemplate, OperationInputName }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

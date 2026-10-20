@@ -693,7 +693,7 @@ fn bla_resolved_type_is(t: InferredTree, n: Node, ty: Node) -> Bool {
     Absent => false
     Present { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: _ } => false
+        GroundingNotDerived { node: _, site: _ } => false
         DerivedGrounding { grounding: g } => g.witness.structural.evidence == ty
       }
   }
