@@ -311,6 +311,13 @@ import product.p4261_carrier_layout {
   terminals_reading_at_most,
   e1_u500_pad,
   e1_pad_read,
+  e1_u55_resistances,
+  e1_u55_pins,
+  e1_u55_pin,
+  e1_u55_left_pad,
+  e1_u55_right_pad,
+  e1_u55_lower_pins,
+  e1_u55_left_capacitor,
   e1_u51_pin,
   e1_u51_resistances,
   e1_ranged_read,
@@ -2225,4 +2232,31 @@ test fn u500_meets_the_gate_network_at_one_contact() -> Bool {
     && all(component_of(layout: p4261_e1_layout, c: e1_y50), c => count(c.terminals) == 4)
     && count(component_of(layout: p4261_e1_layout, c: e1_u500)) == 1
     && carrier_input_reading(layout: p4261_e1_layout).contains("On the front, 1 of U500's contacts read at or below 500 ohm from Q300 lead b on the 2k range (upper-right contact), against 800 ohm to its ground contact")
+}
+
+// U55 READS AS THE CANDIDATE PREDICTS, AND ITS CONTROL AND SUPPLY PINS SIT 500 OHM FROM THE GATE. Live,
+// sixteen U55 readings: pins 14, 15 and 16 and no other read at or below 500 ohm from Q300's lead b
+// (VCCA, DIR1, DIR2 under the candidate pinout), pin 13 at 1200 joins them at that ceiling, the eight
+// data ports are hedged values of 1500 and pin 13 to its capacitor a hedged 500; the right bare pad reads
+// over range to pins 5 to 8 and joins none; pin 14's '0.00' to the left capacitor's near end, pin 8's 'ground' and the left bare pad's '0ohm' to pin 6 are
+// zeros without a baseline and join nothing in the live netlist; the report carries the count and the
+// pins. Supplied: pin 13 at 500 ohm makes four.
+test fn u55_control_and_supply_pins_sit_near_the_gate() -> Bool {
+  let live = board_netlist(b: e1_measured)
+  let rs = e1_measured.bench.resistances
+  let low = terminals_reading_at_most(rs: rs, c: e1_u55, names: e1_u55_pins, ceiling_ohms: 500)
+  let with_13 = map(e1_u55_resistances, o => if reads_pair(o: o, a: e1_q300_lead_b, b: e1_u55_pin(n: "pin 13")) { ResistanceObservation { asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: o.conditions, polarity: o.polarity, range: o.range, display: DisplayValue { ohms: 500, approximate: true }, stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence } } else { o })
+  count(e1_u55_resistances) == 22
+    && all(e1_u55_lower_pins, n => any(rs, o => reads_pair(o: o, a: e1_u55_right_pad, b: e1_u55_pin(n: n)) && match o.display { DisplayOverRange => true, _ => false }))
+    && !any(e1_u55_lower_pins, n => one_node(net: live, a: e1_u55_right_pad, b: e1_u55_pin(n: n)))
+    && any(rs, o => reads_pair(o: o, a: e1_u55_pin(n: "pin 14"), b: terminal_ref(component: e1_u55_left_capacitor, terminal: "end nearer U55" as TerminalIdentity)) && is_reported_zero(o: o))
+    && low == ["pin 14", "pin 15", "pin 16"]
+    && count(terminals_reading_at_most(rs: rs, c: e1_u55, names: e1_u55_pins, ceiling_ohms: 1200)) == 4
+    && count(terminals_reading_at_most(rs: with_13, c: e1_u55, names: e1_u55_pins, ceiling_ohms: 500)) == 4
+    && count(filter(e1_u55_resistances, o => match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 9
+    && !one_node(net: live, a: e1_u55_pin(n: "pin 8"), b: e1_ground_ref)
+    && !one_node(net: live, a: e1_u55_left_pad, b: e1_u55_pin(n: "pin 6"))
+    && any(rs, o => reads_pair(o: o, a: e1_u55_left_pad, b: e1_u55_pin(n: "pin 6")) && is_reported_zero(o: o))
+    && carrier_input_reading(layout: p4261_e1_layout).contains("Of U55's pins, 3 read at or below 500 ohm from Q300 lead b on the 2k range (pin 14, pin 15, pin 16)")
+    && translator_pin_text(layout: p4261_e1_layout, c: e1_u55, number: 14).contains("U55 pin 14 (VCCA) is its supply or return")
 }
