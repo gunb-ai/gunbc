@@ -341,15 +341,18 @@ type RehomeRowsRead
 // unobserved, never read as "no references"); any unlocated row, or any non-binding row, of the module refuses.
 fn rehome_rows_in(census: List<RehomeCensusRow>, module: String, text: String, start: Int, end: Int) -> RehomeRowsRead {
   let mine = fold_list(xs: census, empty: [], cons: fn(acc, r) { if r.module == module { list_snoc_item(xs: acc, item: r) } else { acc } })
+  let not_full = fold_list(xs: mine, empty: "", cons: fn(f, r) { if f == "" && r.kind != "binding" && r.kind != "binding_module_clean" { r.kind } else { f } })
   if is_empty(xs: mine) {
     RehomeRowsRefused { cause: "representation-unobserved " + module }
-  } else if fold_list(xs: mine, empty: false, cons: fn(f, r) { f || !rehome_located(locus: r.locus) }) {
+  } else if not_full != "" {
+    RehomeRowsRefused { cause: "module-not-fully-resolved " + module + " (" + not_full + ")" }
+  } else if !fold_list(xs: mine, empty: false, cons: fn(f, r) { f || r.kind == "binding_module_clean" }) {
+    RehomeRowsRefused { cause: "module-summary-absent " + module }
+  } else if fold_list(xs: mine, empty: false, cons: fn(f, r) { f || (r.kind == "binding" && !rehome_located(locus: r.locus)) }) {
     RehomeRowsRefused { cause: "unlocated-row " + module }
-  } else if fold_list(xs: mine, empty: false, cons: fn(f, r) { f || r.kind != "binding" }) {
-    RehomeRowsRefused { cause: "unanswered-row " + module }
   } else {
     let starts = line_starts(text: text)
-    RehomeRowsRead { rows: fold_list(xs: mine, empty: [], cons: fn(acc, r) { if rehome_offset_within(offset: rehome_row_offset(starts: starts, locus: r.locus), start: start, end: end) { list_snoc_item(xs: acc, item: r) } else { acc } }) }
+    RehomeRowsRead { rows: fold_list(xs: mine, empty: [], cons: fn(acc, r) { if r.kind == "binding" && rehome_offset_within(offset: rehome_row_offset(starts: starts, locus: r.locus), start: start, end: end) { list_snoc_item(xs: acc, item: r) } else { acc } }) }
   }
 }
 
@@ -407,7 +410,14 @@ fn rehome_census_row_snoc(acc: List<RehomeCensusRow>, line: String) -> List<Reho
       // head is a compiler-generated reference no one resolves, the same in every declaration. It is not a reference of the
       // declaration's own, so it neither joins a contract nor refuses one.
       acc
+    } else if kind == "binding_module" {
+      // THE MODULE SUMMARY (occurrence_binding_contribution_lines): rows, duplicate records, unreadable spellings,
+      // unrecorded references. Only a summary with no duplicate, unreadable or unrecorded reference admits the module.
+      let clean = rehome_field(fields: fields, at: 3) == "0" && rehome_field(fields: fields, at: 4) == "0" && rehome_field(fields: fields, at: 5) == "0"
+      list_snoc_item(xs: acc, item: RehomeCensusRow { kind: if clean { "binding_module_clean" } else { "binding_module_incomplete" }, module: rehome_field(fields: fields, at: 1), authored: "", source: "", target: "", locus: LocusAbsent })
     } else {
+      // Every other kind naming a module (binding_partial*, binding_unbound*, binding_unreached, an unanswered reference, or a
+      // kind this reader does not know) means the module was not fully resolved, and is kept so the module refuses.
       list_snoc_item(xs: acc, item: RehomeCensusRow { kind: kind, module: rehome_field(fields: fields, at: 1), authored: "", source: "", target: "", locus: LocusAbsent })
     }
   }
@@ -1453,10 +1463,25 @@ fn rehome_control_census() -> List<RehomeCensusRow> {
     "binding\tc.same_b\tPayload\t0\timport\tc.x.Payload\t6:10",
     "binding\tc.fn_a\tx\t0\tparameter\tparameter\t4:27",
     "binding\tc.fn_b\tx\t0\tparameter\tparameter\t4:29",
-    "binding_unanswered\tc.missing_a\tMissing\t0\t6:10",
-    "binding_unanswered\tc.missing_b\tMissing\t0\t6:10",
+    "binding_unbound\tc.missing_a\tMissing\t0\t6:10",
+    "binding_unbound\tc.missing_b\tMissing\t0\t6:10",
     "binding\tc.frame_a\tPayload\t0\tparameter\tparameter\t6:3",
-    "binding\tc.frame_b\tPayload\t0\tparameter\tparameter\t6:3"
+    "binding\tc.frame_b\tPayload\t0\tparameter\tparameter\t6:3",
+    "binding_module\tc.clean\t1\t0\t0\t0",
+    "binding_module\tc.dirty\t1\t0\t0\t0",
+    "binding_module\tc.via\t1\t0\t0\t0",
+    "binding_module\tc.local\t1\t0\t0\t0",
+    "binding_module\tc.unobserved\t1\t0\t0\t0",
+    "binding_module\tc.a\t1\t0\t0\t0",
+    "binding_module\tc.b\t1\t0\t0\t0",
+    "binding_module\tc.same_a\t1\t0\t0\t0",
+    "binding_module\tc.same_b\t1\t0\t0\t0",
+    "binding_module\tc.fn_a\t1\t0\t0\t0",
+    "binding_module\tc.fn_b\t1\t0\t0\t0",
+    "binding_module\tc.missing_a\t1\t0\t0\t0",
+    "binding_module\tc.missing_b\t1\t0\t0\t0",
+    "binding_module\tc.frame_a\t1\t0\t0\t0",
+    "binding_module\tc.frame_b\t1\t0\t0\t0"
   ]))
 }
 
