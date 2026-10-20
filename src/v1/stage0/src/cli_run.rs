@@ -15288,6 +15288,29 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                     // its only unlocated shape was the bare path.
                     let index =
                         crate::v1_std_core::build_newline_index(path_str.clone(), content.clone());
+                    // THE STREAM IS BUILT ONCE, BESIDE THE INDEX -- not once per diagnostic. The
+                    // stream depends only on `content` and `path_str`, neither of which moves inside
+                    // the loop below, so deriving it per iteration is a proven cost-shape defect
+                    // (DESIGN 6: a proven cost-shape defect is always fixed regardless of realized n
+                    // -- "n is small here" is not time-stable), and the real case this site exists
+                    // for is 52 refusals in one file: 52 full tokenizations of the same text.
+                    // `tokenize` returns `Rc<Vec<Rc<Token>>>`, so the N renderings below share ONE
+                    // stream by pointer -- `.clone()` is a refcount bump, not a re-lex.
+                    //
+                    // WHY NOT CARRY THE PARSE'S OWN STREAM, which would be better still (the parse
+                    // did lex this file): its result type -- `compile.dag`
+                    // `ParsedRevisionDeclarations` -- carries `modules`, `newline_indices`,
+                    // `diagnostics` and `occurrence_transport`, and NOT the token stream, so carrying
+                    // it means adding a field to a seed result type that `namespace_baseline::base_records`
+                    // also consumes. That is a model change with its own consumers, not a printer
+                    // change, and it is named here as the follow-up rather than done half-way or
+                    // skipped in silence. This hoist removes the per-iteration cost, which is the
+                    // defect; carrying would remove the second tokenization outright.
+                    let tokens = crate::v1_compiler_tokenize::tokenize(
+                        content.clone(),
+                        path_str.clone(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                    );
                     let mut lock = errors.lock().expect("parse error lock");
                     for d in fill.diagnostics.iter() {
                         let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
@@ -15320,18 +15343,11 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                         // the stream too: `render_span_location_in_stream` asks the tokeniser's own
                         // predicate whether any lexeme exists, and a file with none comes back
                         // `<path>: (no position: file has no lexemes)` -- typed, keeping the name.
-                        // Tokenised only on this refusal path, the same cost shape as reading the
-                        // file to build the index at all.
-                        let tokens = crate::v1_compiler_tokenize::tokenize(
-                            content.clone(),
-                            path_str.clone(),
-                            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-                        );
                         lock.push(format!(
                             "{}: {}",
                             crate::v1_compiler_tokenize::render_span_location_in_stream(
                                 span.clone(),
-                                tokens,
+                                tokens.clone(),
                                 Rc::new(source_indices),
                             ),
                             crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
