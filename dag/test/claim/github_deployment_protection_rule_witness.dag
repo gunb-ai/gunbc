@@ -467,8 +467,8 @@ test fn the_two_review_bodies_are_different_types_with_different_fields() -> Boo
 test fn the_documented_human_example_is_a_value_of_the_human_type() -> Bool {
   human_review_documented_example_body.state == Approved
     && ((human_review_documented_example_body.comment as String) == "Ship it!")
-    && (length(human_review_documented_example_body.environment_ids) == 2)
-    && (human_review_documented_example_body.environment_ids |> all(id => id > 0))
+    && length(xs: human_review_documented_example_body.environment_ids) == 2
+    && human_review_documented_example_body.environment_ids |> all(id => id > 0)
     // Its own census, derived from the type's own field rows rather than restated.
     && human_review_body_matches_the_documented_fields(
       body: human_review_body_documented_field_names

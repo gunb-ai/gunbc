@@ -229,7 +229,8 @@ fn ownership_for(
   // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
   // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
   // proxies is what makes the chain close end to end, because admission is enforced with no
-  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).    decl_ref(
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
     ),
@@ -500,7 +501,8 @@ fn admitted_pair() -> ReviewerRemovalAdmission
   // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
   // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
   // proxies is what makes the chain close end to end, because admission is enforced with no
-  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).    decl_ref(
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+    decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused"
     ),
