@@ -77,7 +77,7 @@ import v1.std.core { Unmarked, expr_literal_int_optional,
   NoConnective, Arrow, Cardinality, Required, CardOptional, is_rest_transport,
   transport_base_path, empty_intern_table,
   LeafOwner, SingleOwner, LeafAmbiguous,
-  authored_ident, node_ident
+  synthetic_ident, node_ident
 }
 
 import std.compiler_entry { NativeEffectDenominator, native_compiler_route_denominator, native_service_route_denominator, native_claim_route_denominator }
@@ -13489,7 +13489,7 @@ fn fill_op_default_args(ordered: List<Node>, op_params: List<Node>, registry: Ma
       Present { value: arg } => [arg]
       Absent =>
         if param_node_default_value(n: p) != none {
-          [make_arg_node(occurrence_identity: OccurrenceSynthetic, name: Present { value: pname }, value: param_node_default_value(n: p).value, span: p.span, ident: authored_ident(span: p.span, text: pname))]
+          [make_arg_node(occurrence_identity: OccurrenceSynthetic, name: Present { value: pname }, value: param_node_default_value(n: p).value, span: p.span, ident: Present { value: synthetic_ident(span: p.span, text: pname) })]
         } else { [] }
     }
   )

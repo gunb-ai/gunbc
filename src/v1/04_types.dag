@@ -26,7 +26,7 @@ import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
 
 import std.coercion { SubtractionRefinement, SubtractionStaysInOperandAlgebra, SubtractionEscapesTo, SubtractionRefinementAmbiguous, dag_subtraction_refinement }
 
-import v1.std.core { kernel_ident, authored_ident, Unmarked,
+import v1.std.core { kernel_ident, synthetic_ident, Unmarked,
   Node, make_param_node, param_node_type_expr,
   find_child_named, NewlineIndex,
   Connective, Conj, Disj, NoConnective,
@@ -321,9 +321,9 @@ fn bare_map_node() -> Node? {
       match container_param_name(kind_name: "Map", index: 1) {
         Present { value: val_id } =>
           Present {
-            value: Node { occurrence_identity: OccurrenceSynthetic, name: "Map", span: no_span(), ident_span: Present { value: authored_ident(span: no_span(), text: "Map") }, children: [
-              Node { occurrence_identity: OccurrenceSynthetic, name: key_id, span: no_span(), ident_span: Present { value: authored_ident(span: no_span(), text: key_id) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: key_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
-              Node { occurrence_identity: OccurrenceSynthetic, name: val_id, span: no_span(), ident_span: Present { value: authored_ident(span: no_span(), text: val_id) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: val_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+            value: Node { occurrence_identity: OccurrenceSynthetic, name: "Map", span: no_span(), ident_span: Present { value: synthetic_ident(span: no_span(), text: "Map") }, children: [
+              Node { occurrence_identity: OccurrenceSynthetic, name: key_id, span: no_span(), ident_span: Present { value: synthetic_ident(span: no_span(), text: key_id) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: key_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+              Node { occurrence_identity: OccurrenceSynthetic, name: val_id, span: no_span(), ident_span: Present { value: synthetic_ident(span: no_span(), text: val_id) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: val_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
             ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
           }
         Absent => none
@@ -336,8 +336,8 @@ fn bare_set_node() -> Node? {
   match container_param_name(kind_name: "Set", index: 0) {
     Present { value: elem_id } =>
       Present {
-        value: Node { occurrence_identity: OccurrenceSynthetic, name: "Set", span: no_span(), ident_span: Present { value: authored_ident(span: no_span(), text: "Set") }, children: [
-          Node { occurrence_identity: OccurrenceSynthetic, name: elem_id, span: no_span(), ident_span: Present { value: authored_ident(span: no_span(), text: elem_id) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: elem_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+        value: Node { occurrence_identity: OccurrenceSynthetic, name: "Set", span: no_span(), ident_span: Present { value: synthetic_ident(span: no_span(), text: "Set") }, children: [
+          Node { occurrence_identity: OccurrenceSynthetic, name: elem_id, span: no_span(), ident_span: Present { value: synthetic_ident(span: no_span(), text: elem_id) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: elem_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       }
     Absent => none
@@ -469,7 +469,7 @@ fn algebra_value_field(name: String, type_node: Node) -> Node {
 }
 
 fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node) -> Node {
-  let params = param_types |> map(t => make_param_node(occurrence_identity: OccurrenceSynthetic, name: "_", type_expr: t, default_value: none, span: no_span(), ident: authored_ident(span: no_span(), text: "_")))
+  let params = param_types |> map(t => make_param_node(occurrence_identity: OccurrenceSynthetic, name: "_", type_expr: t, default_value: none, span: no_span(), ident: Present { value: synthetic_ident(span: no_span(), text: "_") }))
   let callable = make_callable_type(func_params: params, ret: return_type)
   Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_ident(name: name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: callable } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
@@ -483,7 +483,7 @@ fn placeholder_type_node(name: String) -> Node {
 }
 
 fn nominal_type_ref(name: String) -> Node {
-  leaf_node_with_span(occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident: kernel_ident(name: name))
+  leaf_node_with_span(occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident: Present { value: kernel_ident(name: name) })
 }
 
 // Positions are argument evidence only on the nominal application retained by
@@ -547,7 +547,7 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_in
       let param_nodes = param_bs |> map(b => b.ty)
       let rb = instantiate_algebra_type(template: r, base: base, source_indices: source_indices)
       KernelTypeBuild {
-        ty: make_callable_type(func_params: param_nodes |> map(pn => make_param_node(occurrence_identity: OccurrenceSynthetic, name: "_", type_expr: pn, default_value: none, span: no_span(), ident: authored_ident(span: no_span(), text: "_"))), ret: rb.ty),
+        ty: make_callable_type(func_params: param_nodes |> map(pn => make_param_node(occurrence_identity: OccurrenceSynthetic, name: "_", type_expr: pn, default_value: none, span: no_span(), ident: Present { value: synthetic_ident(span: no_span(), text: "_") })), ret: rb.ty),
         diagnostics: concat(param_diags, rb.diagnostics)
       }
   }
@@ -773,7 +773,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       let param_diags = param_bs |> flat_map(b => b.diagnostics)
       let rb = apply_type_substitution(template: r, subst: subst, receiver: receiver, source_indices: source_indices)
       KernelTypeBuild {
-        ty: make_callable_type(func_params: param_nodes |> map(pn => make_param_node(occurrence_identity: OccurrenceSynthetic, name: "_", type_expr: pn, default_value: none, span: no_span(), ident: authored_ident(span: no_span(), text: "_"))), ret: rb.ty),
+        ty: make_callable_type(func_params: param_nodes |> map(pn => make_param_node(occurrence_identity: OccurrenceSynthetic, name: "_", type_expr: pn, default_value: none, span: no_span(), ident: Present { value: synthetic_ident(span: no_span(), text: "_") })), ret: rb.ty),
         diagnostics: concat(param_diags, rb.diagnostics)
       }
   }

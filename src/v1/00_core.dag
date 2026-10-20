@@ -94,7 +94,7 @@ type InferredNode
 // type for unreachable code. The name stays empty because there is genuinely no type
 // to name; what consumers match on is the fact, via type_is_divergent.
 fn divergent_type() -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: Present { value: authored_ident(span: no_span(), text: "") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Divergent }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: Present { value: synthetic_ident(span: no_span(), text: "") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Divergent }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn inferred_to_node(inferred: InferredNode) -> Node? {
@@ -1234,9 +1234,10 @@ type AuthoredIdent {
   text: String
 }
 
-// The explicit constructor: the caller supplies the spelling. For kernel and synthetic nodes only; a
-// node whose span lies in tokenized source takes authored_ident_in.
-fn authored_ident(span: SourceSpan, text: String) -> AuthoredIdent {
+// The declared SYNTHETIC constructor: the compiler mints the spelling itself for a node with no
+// authored identifier token. It is the only way to build an identity from a name other than
+// authored_ident_in (source slice), kernel_ident (kernel) or copying node_ident (rebuild).
+fn synthetic_ident(span: SourceSpan, text: String) -> AuthoredIdent {
   AuthoredIdent { span: span, text: text }
 }
 
@@ -1280,15 +1281,15 @@ fn authored_ident_refusal_span(refusal: AuthoredIdentRefusal) -> SourceSpan {
   }
 }
 
-// C4: a rebuild copies the identity of the node it rebuilds from; a node with none has the
-// synthetic spelling of its own structural name.
-fn node_ident(n: Node) -> AuthoredIdent {
-  match n.ident_span { Present { value: i } => i  Absent => authored_ident(span: n.span, text: n.name) }
+// C4: a rebuild copies the identity of the node it rebuilds from. A node with none stays without
+// one: absence is never filled with its structural name.
+fn node_ident(n: Node) -> AuthoredIdent? {
+  n.ident_span
 }
 
 // A named node carries its identity; an unnamed one (empty structural name) has none.
-fn named_ident(name: String, ident: AuthoredIdent) -> AuthoredIdent? {
-  if name == "" { none } else { Present { value: ident } }
+fn named_ident(name: String, ident: AuthoredIdent?) -> AuthoredIdent? {
+  if name == "" { none } else { ident }
 }
 
 fn node_name_span(n: Node) -> SourceSpan {
@@ -1312,7 +1313,7 @@ fn make_expr_node(occurrence_identity: NodeOccurrenceIdentity, expr_data: ExprDa
   }
 }
 
-fn make_named_expr_node(occurrence_identity: NodeOccurrenceIdentity, name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan, ident: AuthoredIdent) -> Node {
+fn make_named_expr_node(occurrence_identity: NodeOccurrenceIdentity, name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan, ident: AuthoredIdent?) -> Node {
   Node {
     occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: named_ident(name: name, ident: ident), children: children,
@@ -1333,7 +1334,7 @@ fn make_pattern_binder_declaration_node(occurrence_identity: NodeOccurrenceIdent
     children: [],
     inferred: none,
     span: span,
-    ident: authored_ident(span: span, text: name))
+    ident: Present { value: synthetic_ident(span: span, text: name) })
 }
 
 fn make_expr_error_node(occurrence_identity: NodeOccurrenceIdentity, kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
@@ -1349,7 +1350,7 @@ fn make_expr_error_node(occurrence_identity: NodeOccurrenceIdentity, kind: ExprE
   }
 }
 
-fn make_arg_node(occurrence_identity: NodeOccurrenceIdentity, name: String?, value: Node, span: SourceSpan, ident: AuthoredIdent) -> Node {
+fn make_arg_node(occurrence_identity: NodeOccurrenceIdentity, name: String?, value: Node, span: SourceSpan, ident: AuthoredIdent?) -> Node {
   let arg_name = match name { Present { value: n } => n  Absent => "" }
   Node {
     occurrence_identity: occurrence_identity,
@@ -1376,7 +1377,7 @@ fn make_arm_node(occurrence_identity: NodeOccurrenceIdentity, pattern: MatchPatt
   }
 }
 
-fn make_resource_use_node(occurrence_identity: NodeOccurrenceIdentity, name: String, resource: Node, span: SourceSpan, ident: AuthoredIdent) -> Node {
+fn make_resource_use_node(occurrence_identity: NodeOccurrenceIdentity, name: String, resource: Node, span: SourceSpan, ident: AuthoredIdent?) -> Node {
   Node {
     occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: named_ident(name: name, ident: ident), children: [resource], connective: NoConnective,
@@ -1397,7 +1398,7 @@ fn resource_use_resource(n: Node) -> Node {
   }
 }
 
-fn make_field_init_node(occurrence_identity: NodeOccurrenceIdentity, name: String, value: Node, span: SourceSpan, ident: AuthoredIdent) -> Node {
+fn make_field_init_node(occurrence_identity: NodeOccurrenceIdentity, name: String, value: Node, span: SourceSpan, ident: AuthoredIdent?) -> Node {
   Node {
     occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: named_ident(name: name, ident: ident), children: [value], connective: NoConnective,
@@ -1409,7 +1410,7 @@ fn make_field_init_node(occurrence_identity: NodeOccurrenceIdentity, name: Strin
   }
 }
 
-fn make_field_binding_node(occurrence_identity: NodeOccurrenceIdentity, field_name: String, binding: MatchPattern, span: SourceSpan, ident: AuthoredIdent) -> Node {
+fn make_field_binding_node(occurrence_identity: NodeOccurrenceIdentity, field_name: String, binding: MatchPattern, span: SourceSpan, ident: AuthoredIdent?) -> Node {
   Node {
     occurrence_identity: occurrence_identity,
     name: field_name, span: span, ident_span: named_ident(name: field_name, ident: ident), children: [], connective: NoConnective,
@@ -1451,7 +1452,7 @@ fn make_interp_part_node(occurrence_identity: NodeOccurrenceIdentity, expr: Node
   }
 }
 
-fn make_param_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, default_value: Node?, span: SourceSpan, ident: AuthoredIdent) -> Node {
+fn make_param_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, default_value: Node?, span: SourceSpan, ident: AuthoredIdent?) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
     occurrence_identity: occurrence_identity,
@@ -1463,7 +1464,7 @@ fn make_param_node(occurrence_identity: NodeOccurrenceIdentity, name: String, ty
   }
 }
 
-fn make_resolved_param_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, default_value: Node?, properties: List<Node>, span: SourceSpan, ident: AuthoredIdent) -> Node {
+fn make_resolved_param_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, default_value: Node?, properties: List<Node>, span: SourceSpan, ident: AuthoredIdent?) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
     occurrence_identity: occurrence_identity,
@@ -1526,7 +1527,7 @@ fn param_node_default_value(n: Node) -> Node? {
 
 fn param_node_span(n: Node) -> SourceSpan { n.span }
 
-fn make_field_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key_properties: List<Node>, span: SourceSpan, ident: AuthoredIdent) -> Node {
+fn make_field_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key_properties: List<Node>, span: SourceSpan, ident: AuthoredIdent?) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
     occurrence_identity: occurrence_identity,
@@ -1584,7 +1585,7 @@ fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> St
 
 fn field_node_span(n: Node) -> SourceSpan { n.span }
 
-fn make_variant_node(occurrence_identity: NodeOccurrenceIdentity, name: String, fields: List<Node>, span: SourceSpan, ident: AuthoredIdent) -> Node {
+fn make_variant_node(occurrence_identity: NodeOccurrenceIdentity, name: String, fields: List<Node>, span: SourceSpan, ident: AuthoredIdent?) -> Node {
   Node {
     occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: named_ident(name: name, ident: ident), children: fields, connective: NoConnective,
@@ -2042,25 +2043,25 @@ fn local_transport_node(occurrence_identity: NodeOccurrenceIdentity, span: Sourc
 
 fn rest_transport_node(occurrence_identity: NodeOccurrenceIdentity, base_url: Node, auth_props: List<Node>, headers: List<Node>, method: Node?, path: Node?, query: Node?, request_body: Node?, response_format: Node?, span: SourceSpan) -> Node {
   let zero_span = no_span()
-  let url_field = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_url_key, value: base_url, span: zero_span, ident: authored_ident(span: zero_span, text: transport_url_key))
+  let url_field = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_url_key, value: base_url, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: transport_url_key) })
   let method_props = match method {
-    Present { value: m } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_method_key, value: m, span: zero_span, ident: authored_ident(span: zero_span, text: transport_method_key))]
+    Present { value: m } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_method_key, value: m, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: transport_method_key) })]
     Absent => []
   }
   let path_props = match path {
-    Present { value: p } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_path_template_key, value: p, span: zero_span, ident: authored_ident(span: zero_span, text: transport_path_template_key))]
+    Present { value: p } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_path_template_key, value: p, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: transport_path_template_key) })]
     Absent => []
   }
   let query_props = match query {
-    Present { value: q } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_query_key, value: q, span: zero_span, ident: authored_ident(span: zero_span, text: transport_query_key))]
+    Present { value: q } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_query_key, value: q, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: transport_query_key) })]
     Absent => []
   }
   let body_props = match request_body {
-    Present { value: b } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_body_key, value: b, span: zero_span, ident: authored_ident(span: zero_span, text: transport_body_key))]
+    Present { value: b } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_body_key, value: b, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: transport_body_key) })]
     Absent => []
   }
   let rf_props = match response_format {
-    Present { value: rf } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_response_format_key, value: rf, span: zero_span, ident: authored_ident(span: zero_span, text: transport_response_format_key))]
+    Present { value: rf } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_response_format_key, value: rf, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: transport_response_format_key) })]
     Absent => []
   }
   let props = concat([url_field], method_props, path_props, query_props, body_props, rf_props, auth_props, headers)
@@ -2071,7 +2072,7 @@ fn shell_transport_node(occurrence_identity: NodeOccurrenceIdentity, argv: List<
   let shell_marker = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
   let zero_span = no_span()
   let stdin_props = match stdin {
-    Present { value: s } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_stdin_key, value: s, span: zero_span, ident: authored_ident(span: zero_span, text: transport_stdin_key))]
+    Present { value: s } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_stdin_key, value: s, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: transport_stdin_key) })]
     Absent => []
   }
   let all_props = concat(env, stdin_props)
@@ -2085,10 +2086,10 @@ fn shell_transport_node(occurrence_identity: NodeOccurrenceIdentity, argv: List<
 }
 
 fn file_transport_node(occurrence_identity: NodeOccurrenceIdentity, base_path: Node, verb: Node?, span: SourceSpan) -> Node {
-  let path_field = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_path_key, value: base_path, span: no_span(), ident: authored_ident(span: no_span(), text: transport_path_key))
+  let path_field = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_path_key, value: base_path, span: no_span(), ident: Present { value: synthetic_ident(span: no_span(), text: transport_path_key) })
   let props = match verb {
     Present { value: verb_expr } =>
-      [path_field, make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_verb_key, value: verb_expr, span: no_span(), ident: authored_ident(span: no_span(), text: transport_verb_key))]
+      [path_field, make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_verb_key, value: verb_expr, span: no_span(), ident: Present { value: synthetic_ident(span: no_span(), text: transport_verb_key) })]
     Absent => [path_field]
   }
   make_transport_node(occurrence_identity: occurrence_identity, properties: props, children: [], body: none, span: span)
@@ -2498,21 +2499,21 @@ fn service_config_field_for_property_name(name: String) -> ServiceConfigField? {
 // site, not as a literal frozen into a dependency's module.
 fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?) -> List<Node> {
   let zero_span = no_span()
-  let ep_prop = [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcEndpoint), value: endpoint, span: zero_span, ident: authored_ident(span: zero_span, text: service_config_field_property_name(field: SvcEndpoint)))]
+  let ep_prop = [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcEndpoint), value: endpoint, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: service_config_field_property_name(field: SvcEndpoint)) })]
   let auth_prop = match auth {
-    Present { value: a } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcAuth), value: a, span: zero_span, ident: authored_ident(span: zero_span, text: service_config_field_property_name(field: SvcAuth)))]
+    Present { value: a } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcAuth), value: a, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: service_config_field_property_name(field: SvcAuth)) })]
     Absent => []
   }
   let auth_input_prop = match auth_input {
-    Present { value: ai } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcAuthInput), value: ai, span: zero_span, ident: authored_ident(span: zero_span, text: service_config_field_property_name(field: SvcAuthInput)))]
+    Present { value: ai } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcAuthInput), value: ai, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: service_config_field_property_name(field: SvcAuthInput)) })]
     Absent => []
   }
   let auth_source_prop = match auth_source {
-    Present { value: src } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcAuthSource), value: src, span: zero_span, ident: authored_ident(span: zero_span, text: service_config_field_property_name(field: SvcAuthSource)))]
+    Present { value: src } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcAuthSource), value: src, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: service_config_field_property_name(field: SvcAuthSource)) })]
     Absent => []
   }
   let rate_prop = match rate_limit {
-    Present { value: r } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcRateLimit), value: r, span: zero_span, ident: authored_ident(span: zero_span, text: service_config_field_property_name(field: SvcRateLimit)))]
+    Present { value: r } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcRateLimit), value: r, span: zero_span, ident: Present { value: synthetic_ident(span: zero_span, text: service_config_field_property_name(field: SvcRateLimit)) })]
     Absent => []
   }
   concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop)
@@ -2544,7 +2545,7 @@ fn service_config_auth_source(n: Node, source_indices: Map<String, NewlineIndex>
 
 fn module_node(occurrence_identity: NodeOccurrenceIdentity, name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
   Node { occurrence_identity: occurrence_identity,
-    name: name, span: span, ident_span: named_ident(name: name, ident: authored_ident(span: span, text: name)), children: items, connective: NoConnective,
+    name: name, span: span, ident_span: named_ident(name: name, ident: Present { value: synthetic_ident(span: span, text: name) }), children: items, connective: NoConnective,
 
     params: imports, inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -2553,12 +2554,12 @@ fn module_node(occurrence_identity: NodeOccurrenceIdentity, name: String, import
   }
 }
 
-fn import_node(occurrence_identity: NodeOccurrenceIdentity, module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, ident: AuthoredIdent) -> Node {
+fn import_node(occurrence_identity: NodeOccurrenceIdentity, module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, ident: AuthoredIdent?) -> Node {
   let wildcard_marker = if is_all {
     Present { value: Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData } }
   } else { none }
   Node { occurrence_identity: occurrence_identity,
-    name: module_path, span: span, ident_span: Present { value: ident }, children: specific_names, connective: NoConnective,
+    name: module_path, span: span, ident_span: ident, children: specific_names, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: wildcard_marker, transport: none, properties: [],
@@ -2583,7 +2584,7 @@ fn module_items(n: Node) -> List<Node> {
   n.children
 }
 
-fn leaf_node_with_span(occurrence_identity: NodeOccurrenceIdentity, name: String, span: SourceSpan, ident: AuthoredIdent) -> Node {
+fn leaf_node_with_span(occurrence_identity: NodeOccurrenceIdentity, name: String, span: SourceSpan, ident: AuthoredIdent?) -> Node {
   Node { occurrence_identity: occurrence_identity, name: name, span: span, ident_span: named_ident(name: name, ident: ident), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 

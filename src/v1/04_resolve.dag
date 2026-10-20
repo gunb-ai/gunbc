@@ -40,7 +40,7 @@ import v1.std.core { kernel_ident, Unmarked,
   unit_type, string_type,
   named_ident, node_ident, kernel_span, node_name_span, intern,
   qualified_last_segment, resolved_node_is_kernel_identity_for_name,
-  authored_ident
+  synthetic_ident
 }
 
 import v1.compiler.infer_types {

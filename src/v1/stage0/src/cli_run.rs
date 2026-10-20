@@ -19178,7 +19178,7 @@ mod closure_bare_disposition_tests {
             name: decl_name.to_string(),
             ident: None,
             span: span.clone(),
-            ident_span: Some(crate::v1_std_core::authored_ident(
+            ident_span: Some(crate::v1_std_core::synthetic_ident(
                 span,
                 decl_name.to_string(),
             )),
@@ -31316,10 +31316,10 @@ mod peel_alias_fixpoint_termination {
                 ),
                 "PeelFixpointElem".to_string(),
                 crate::v1_std_core::kernel_span("PeelFixpointElem".to_string()),
-                crate::v1_std_core::authored_ident(
+                Some(crate::v1_std_core::synthetic_ident(
                     crate::v1_std_core::kernel_span("PeelFixpointElem".to_string()),
                     "PeelFixpointElem".to_string(),
-                ),
+                )),
             );
             let base = crate::v1_std_core::leaf_node_with_span(
                 std::rc::Rc::new(
@@ -31327,7 +31327,10 @@ mod peel_alias_fixpoint_termination {
                 ),
                 "PeelFixpointProbe".to_string(),
                 span.clone(),
-                crate::v1_std_core::authored_ident(span, "PeelFixpointProbe".to_string()),
+                Some(crate::v1_std_core::synthetic_ident(
+                    span,
+                    "PeelFixpointProbe".to_string(),
+                )),
             );
             let n = std::rc::Rc::new(crate::v1_std_core::Node {
                 children: std::rc::Rc::new(im::vector![elem]),
@@ -31443,10 +31446,10 @@ mod peel_alias_fixpoint_termination {
                 ),
                 "Int".to_string(),
                 crate::v1_std_core::kernel_span("Int".to_string()),
-                crate::v1_std_core::authored_ident(
+                Some(crate::v1_std_core::synthetic_ident(
                     crate::v1_std_core::kernel_span("Int".to_string()),
                     "Int".to_string(),
-                ),
+                )),
             );
             let quiet = crate::v1_compiler_infer::peel_alias_once_for_field_access(
                 plain_int,
@@ -31588,10 +31591,10 @@ mod sigs_env_flat_parents {
                 ),
                 marker.to_string(),
                 crate::v1_std_core::kernel_span(marker.to_string()),
-                crate::v1_std_core::authored_ident(
+                Some(crate::v1_std_core::synthetic_ident(
                     crate::v1_std_core::kernel_span(marker.to_string()),
                     marker.to_string(),
-                ),
+                )),
             ),
             output_provenance: Rc::new(im::vector![]),
             variant_provenance: crate::v1_rt::rc_empty_map(),

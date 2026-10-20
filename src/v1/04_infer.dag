@@ -33,7 +33,7 @@ import v1.compiler.type_head_exposure {
   type_declaration_identity_key,
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
-import v1.std.core { kernel_ident, authored_ident, AuthoredIdent, Unmarked, ModuleItemTypeDeclaration, declaration_provenance_of,
+import v1.std.core { kernel_ident, synthetic_ident, AuthoredIdent, Unmarked, ModuleItemTypeDeclaration, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
@@ -816,7 +816,7 @@ fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expe
       children: [],
       inferred: Present { value: Resolved { node: expected_decided_variant_type(name: name, decided: decided, decided_name: decided_name, expected: expected, scope: scope) } },
       span: texpr.span,
-      ident: authored_ident(span: texpr.span, text: name)),
+      ident: Present { value: synthetic_ident(span: texpr.span, text: name) }),
     diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: texpr.span, owner: Present { value: decided })
   }
 }
@@ -7779,8 +7779,8 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       match fold_acc_type {
       Present { value: fold_acc } =>
       let fold_params = [
-        make_param_node(occurrence_identity: OccurrenceSynthetic, name: "acc", type_expr: fold_acc, default_value: none, span: no_span(), ident: authored_ident(span: no_span(), text: "acc")),
-        make_param_node(occurrence_identity: OccurrenceSynthetic, name: "elem", type_expr: element_type, default_value: none, span: no_span(), ident: authored_ident(span: no_span(), text: "elem"))
+        make_param_node(occurrence_identity: OccurrenceSynthetic, name: "acc", type_expr: fold_acc, default_value: none, span: no_span(), ident: Present { value: synthetic_ident(span: no_span(), text: "acc") }),
+        make_param_node(occurrence_identity: OccurrenceSynthetic, name: "elem", type_expr: element_type, default_value: none, span: no_span(), ident: Present { value: synthetic_ident(span: no_span(), text: "elem") })
       ]
       let fold_callable = Node {
         occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [],
@@ -7961,7 +7961,7 @@ fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node
               children: [value],
               inferred: Present { value: Resolved { node: destination_type } },
               span: value.span,
-              ident: authored_ident(span: elaborated_span(name: "chars"), text: "chars"))
+              ident: Present { value: synthetic_ident(span: elaborated_span(name: "chars"), text: "chars") })
           } else { value }
         CodePointSequence => value
         NotText => value
@@ -8130,7 +8130,7 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan, 
                 children: [],
                 inferred: Present { value: Resolved { node: value_type } },
                 span: span,
-                ident: authored_ident(span: kernel_span(name: spine.dotted), text: spine.dotted))) }
+                ident: Present { value: synthetic_ident(span: kernel_span(name: spine.dotted), text: spine.dotted) })) }
           }
       }
   }
@@ -8201,7 +8201,7 @@ fn qualified_or_service_projection(texpr: Node, scope: InferScope, span: SourceS
             children: [],
             inferred: Present { value: Resolved { node: svc_type } },
             span: span,
-            ident: authored_ident(span: kernel_span(name: svc_name), text: svc_name),
+            ident: Present { value: synthetic_ident(span: kernel_span(name: svc_name), text: svc_name) },
           )) }
       }
   }
@@ -8324,7 +8324,7 @@ fn elaborated_span(name: String) -> SourceSpan {
 fn elaborated_expr_node(name: String, expr_data: ExprData, children: List<Node>, destination_type: Node, span: SourceSpan) -> Node {
   Node {
     occurrence_identity: OccurrenceSynthetic,
-    name: name, span: span, ident_span: Present { value: authored_ident(span: elaborated_span(name: name), text: name) }, children: children,
+    name: name, span: span, ident_span: Present { value: synthetic_ident(span: elaborated_span(name: name), text: name) }, children: children,
     connective: NoConnective,
     params: [], inferred: Present { value: Resolved { node: destination_type } }, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -8342,7 +8342,7 @@ fn unfold_peano_image(n: Int, zero: String, succ: String, prev_field: String, pa
     )
   } else {
     let prev = unfold_peano_image(n: n - 1, zero: zero, succ: succ, prev_field: prev_field, parent: parent, parent_identity: parent_identity, destination_type: destination_type, span: span)
-    let field = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: prev_field, value: prev, span: span, ident: authored_ident(span: elaborated_span(name: prev_field), text: prev_field))
+    let field = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: prev_field, value: prev, span: span, ident: Present { value: synthetic_ident(span: elaborated_span(name: prev_field), text: prev_field) })
     elaborated_expr_node(
       name: succ,
       expr_data: ExprRecordLit { parent_enum: Present { value: parent } },
@@ -8669,7 +8669,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   children: [],
                   inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: binding.resolved) } },
                   span: span,
-                  ident: authored_ident(span: span, text: name)),
+                  ident: Present { value: synthetic_ident(span: span, text: name) }),
                 diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
               }
             Absent =>
@@ -8681,7 +8681,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     children: [],
                     inferred: Present { value: Resolved { node: error_type } },
                     span: span,
-                    ident: authored_ident(span: span, text: name)),
+                    ident: Present { value: synthetic_ident(span: span, text: name) }),
                   diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)]
                 }
               } else {
@@ -8692,7 +8692,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 children: [],
                 inferred: Present { value: Resolved { node: binding.resolved } },
                 span: span,
-                ident: authored_ident(span: span, text: name)))
+                ident: Present { value: synthetic_ident(span: span, text: name) }))
               }
           }
         Absent =>
@@ -8706,7 +8706,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         children: [],
                         inferred: Present { value: Resolved { node: fsig.inferred } },
                         span: span,
-                        ident: authored_ident(span: span, text: name)))
+                        ident: Present { value: synthetic_ident(span: span, text: name) }))
                     false =>
                       ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: name,
@@ -8714,7 +8714,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         children: [],
                         inferred: Present { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
                         span: span,
-                        ident: authored_ident(span: span, text: name)))
+                        ident: Present { value: synthetic_ident(span: span, text: name) }))
                   }
             FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
               ambiguous_reference_refusal(name: name, candidates: callable_candidate_labels(candidates: ambiguous_fn_candidates), span: span, scope: scope)
@@ -8732,7 +8732,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                           children: [],
                           inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: gbinding.resolved) } },
                           span: span,
-                          ident: authored_ident(span: span, text: name)),
+                          ident: Present { value: synthetic_ident(span: span, text: name) }),
                         diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
                       }
                     Absent =>
@@ -8746,7 +8746,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               children: [],
                               inferred: Present { value: Resolved { node: exp_enum } },
                               span: span,
-                              ident: authored_ident(span: span, text: name)),
+                              ident: Present { value: synthetic_ident(span: span, text: name) }),
                             diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
                           }
                         Absent =>
@@ -8758,7 +8758,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                                 children: [],
                                 inferred: Present { value: Resolved { node: error_type } },
                                 span: span,
-                                ident: authored_ident(span: span, text: name)),
+                                ident: Present { value: synthetic_ident(span: span, text: name) }),
                               diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)]
                             }
                           } else if binding_names_a_coproduct_arm(binding: gbinding, name: name, scope: scope) {
@@ -8772,7 +8772,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               children: [],
                               inferred: Present { value: Resolved { node: gbinding.resolved } },
                               span: span,
-                              ident: authored_ident(span: span, text: name)),
+                              ident: Present { value: synthetic_ident(span: span, text: name) }),
                             diagnostics: bare_product_reference_missing_field_diagnostics(scope: scope, name: name, span: span)
                           }
                           }
@@ -8790,7 +8790,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                           children: [],
                           inferred: Present { value: Resolved { node: exp_enum } },
                           span: span,
-                          ident: authored_ident(span: span, text: name)),
+                          ident: Present { value: synthetic_ident(span: span, text: name) }),
                         diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
                       }
                     Absent =>
@@ -8804,7 +8804,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         children: [],
                         inferred: Present { value: Resolved { node: error_type } },
                         span: span,
-                        ident: authored_ident(span: span, text: name))
+                        ident: Present { value: synthetic_ident(span: span, text: name) })
                       InferResult {
                         typed: err_texpr,
                         diagnostics: [inference_error(
@@ -8862,7 +8862,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             children: [base_typed],
             inferred: Present { value: Resolved { node: field_type } },
             span: span,
-            ident: authored_ident(span: node_name_span(n: texpr), text: field_name))
+            ident: node_ident(n: texpr))
           InferResult {
             typed: fa_texpr,
             diagnostics: concat(base_diags, resolved_base_diags)
@@ -8877,7 +8877,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               children: [base_typed],
               inferred: Present { value: TypeVariable { id: "field_of_type_var" } },
               span: span,
-              ident: authored_ident(span: node_name_span(n: texpr), text: field_name))
+              ident: node_ident(n: texpr))
             InferResult {
               typed: fa_texpr,
               diagnostics: concat(base_diags, resolved_base_diags)
@@ -8891,7 +8891,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   children: [base_typed],
                   inferred: Present { value: Resolved { node: svc_type } },
                   span: span,
-                  ident: authored_ident(span: node_name_span(n: texpr), text: field_name))
+                  ident: node_ident(n: texpr))
                 InferResult {
                   typed: fa_texpr,
                   diagnostics: concat(base_diags, resolved_base_diags)
@@ -9078,7 +9078,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               children: typed_arg_nodes,
               inferred: Present { value: Resolved { node: error_type } },
               span: span,
-              ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+              ident: node_ident(n: texpr)),
             diagnostics: concat(formal_authority_diags, arg_diags)
           }
         } else {
@@ -9136,7 +9136,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             children: typed_arg_nodes,
             inferred: Present { value: Resolved { node: resolved_type } },
             span: span,
-            ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+            ident: node_ident(n: texpr)),
           diagnostics: concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, concat(generic_type_argument_inhabitance_diags, sibling_effect_order_arg_diags)))))))
         }
         }
@@ -9235,7 +9235,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               children: concat([final_receiver], remaining_arg_nodes),
               inferred: Present { value: Resolved { node: bridge_result_type } },
               span: span,
-              ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+              ident: node_ident(n: texpr)),
             diagnostics: concat(arg_diags, relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name))
           }
         } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match resolved_plain_call_target_for_outcome(outcome: call_target) { RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => true, _ => false } {
@@ -9256,7 +9256,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: inhabit } },
                     span: span,
-                    ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                    ident: node_ident(n: texpr)),
                   diagnostics: arg_diags
                 }
               } else {
@@ -9269,7 +9269,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: map_t } },
                         span: span,
-                        ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                        ident: node_ident(n: texpr)),
                       diagnostics: empty_map_diags
                     }
                   Absent =>
@@ -9279,7 +9279,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
-                        ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                        ident: node_ident(n: texpr)),
                       diagnostics: concat(empty_map_diags, [inference_error(message: "empty_map(): Map kernel container profile missing", span: span, module_name: scope.module_name)])
                     }
                 }
@@ -9293,7 +9293,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: map_t } },
                       span: span,
-                      ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                      ident: node_ident(n: texpr)),
                     diagnostics: arg_diags
                   }
                 Absent =>
@@ -9303,7 +9303,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
-                      ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                      ident: node_ident(n: texpr)),
                     diagnostics: concat(arg_diags, [inference_error(message: "empty_map(): Map kernel container profile missing", span: span, module_name: scope.module_name)])
                   }
               }
@@ -9326,7 +9326,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: inhabit } },
                     span: span,
-                    ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                    ident: node_ident(n: texpr)),
                   diagnostics: arg_diags
                 }
               } else {
@@ -9339,7 +9339,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: set_t } },
                         span: span,
-                        ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                        ident: node_ident(n: texpr)),
                       diagnostics: empty_set_diags
                     }
                   Absent =>
@@ -9349,7 +9349,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
-                        ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                        ident: node_ident(n: texpr)),
                       diagnostics: concat(empty_set_diags, [inference_error(message: "empty_set(): Set kernel container profile missing", span: span, module_name: scope.module_name)])
                     }
                 }
@@ -9363,7 +9363,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: set_t } },
                       span: span,
-                      ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                      ident: node_ident(n: texpr)),
                     diagnostics: arg_diags
                   }
                 Absent =>
@@ -9373,7 +9373,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
-                      ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                      ident: node_ident(n: texpr)),
                     diagnostics: concat(arg_diags, [inference_error(message: "empty_set(): Set kernel container profile missing", span: span, module_name: scope.module_name)])
                   }
               }
@@ -9392,7 +9392,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               children: typed_arg_nodes,
               inferred: Present { value: Resolved { node: bt } },
               span: span,
-              ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+              ident: node_ident(n: texpr)),
             diagnostics: concat(concat(arg_diags, tier2b.kernel_diags), builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope))
           }
         } else {
@@ -9423,7 +9423,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 children: typed_arg_nodes,
                 inferred: Present { value: Resolved { node: resolved_type } },
                 span: span,
-                ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                ident: node_ident(n: texpr)),
               diagnostics: arg_diags
             }
           } else {
@@ -9479,7 +9479,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   children: typed_arg_nodes,
                   inferred: Present { value: Resolved { node: resolved_type } },
                   span: span,
-                  ident: authored_ident(span: node_name_span(n: texpr), text: func_name)),
+                  ident: node_ident(n: texpr)),
                 diagnostics: concat(arg_diags, call_diags)
               }
           }
@@ -9516,7 +9516,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       children: mc_args,
                       inferred: none,
                       span: span,
-                      ident: authored_ident(span: kernel_span(name: dotted), text: dotted)),
+                      ident: Present { value: synthetic_ident(span: kernel_span(name: dotted), text: dotted) }),
                     scope: scope,
                     expected: expected
                   ) }
@@ -9601,7 +9601,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         children: concat([recv_typed], typed_mc_arg_nodes),
         inferred: Present { value: Resolved { node: result_type } },
         span: span,
-        ident: authored_ident(span: node_name_span(n: texpr), text: method_name))
+        ident: node_ident(n: texpr))
       InferResult {
         typed: mc_texpr,
         diagnostics: concat(concat(concat(recv_diags, mc_arg_diags), relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name)), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name))
@@ -9891,7 +9891,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let val_diags = concat(val_result.diagnostics, val_annotation_diags)
       let bound_type = annotated_let_bound_type(declared: declared_let_type, val_type: val_type)
       if body_expr == none {
-        let let_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: bound_type } }, span: span, ident: authored_ident(span: node_name_span(n: texpr), text: let_name))
+        let let_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: bound_type } }, span: span, ident: node_ident(n: texpr))
         InferResult {
           typed: let_texpr,
           diagnostics: val_diags
@@ -9901,7 +9901,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         let body_result = infer_expr(texpr: body_expr.value, scope: extended, expected: expected)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
-        let let_texpr2 = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed, body_typed], inferred: body_typed.inferred, span: span, ident: authored_ident(span: node_name_span(n: texpr), text: let_name))
+        let let_texpr2 = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed, body_typed], inferred: body_typed.inferred, span: span, ident: node_ident(n: texpr))
         InferResult {
           typed: let_texpr2,
           diagnostics: concat(val_diags, body_diags)
@@ -10229,7 +10229,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
-      let fe_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: variable, expr_data: ExprForEach, children: [coll_typed, body_typed], inferred: body_typed.inferred, span: span, ident: authored_ident(span: node_name_span(n: texpr), text: variable))
+      let fe_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: variable, expr_data: ExprForEach, children: [coll_typed, body_typed], inferred: body_typed.inferred, span: span, ident: node_ident(n: texpr))
       InferResult {
         typed: fe_texpr,
         diagnostics: concat(coll_diags, body_diags)
@@ -10397,7 +10397,7 @@ fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, f
                             name: "0",
                             value: payload_expr,
                             span: payload_expr.span,
-                            ident: authored_ident(span: kernel_span(name: "0"), text: "0"))
+                            ident: Present { value: synthetic_ident(span: kernel_span(name: "0"), text: "0") })
                           Present { value: infer_record_lit(
                             occurrence_identity: occurrence_identity,
                             type_name: Present { value: func_name },
@@ -11669,7 +11669,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Absent => []
     }
     FieldInferResult {
-      typed_field: make_field_init_node(occurrence_identity: fi.occurrence_identity, name: fi_name, value: ar_typed, span: fi.span, ident: authored_ident(span: node_name_span(n: fi), text: fi_name)),
+      typed_field: make_field_init_node(occurrence_identity: fi.occurrence_identity, name: fi_name, value: ar_typed, span: fi.span, ident: node_ident(n: fi)),
       infer_result: ar,
       diagnostics: concat(concat(concat(concat(ar_diags, field_type_diags), present_payload_diags), unknown_field_diags), bare_none_field_construction_diags(
         fi: fi,
@@ -11874,7 +11874,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       children: typed_field_nodes2,
       inferred: Present { value: Resolved { node: resolved_node } },
       span: span,
-      ident: authored_ident(span: name_span, text: rl_name))
+      ident: Present { value: synthetic_ident(span: name_span, text: rl_name) })
     let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
     let optional_owner_unrecovered_diags = if parent_is_std_optional && std_optional_present_arm(scope: scope) == none {
       [inference_error(
@@ -16164,7 +16164,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
-    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: authored_ident(span: unit_span, text: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: synthetic_ident(span: unit_span, text: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
     provenance: SubValueUnknown, alias_rhs: none
   })
   let kernel_optional = kernel_optional_type_node()
@@ -17767,7 +17767,7 @@ fn grounded_arm_body(arm: Node, reading: GroundedArmReading, subject: Node, carr
         children: [value],
         inferred: Present { value: Resolved { node: bt } },
         span: arm.span,
-        ident: authored_ident(span: elaborated_span(name: name), text: name))
+        ident: Present { value: synthetic_ident(span: elaborated_span(name: name), text: name) })
       make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprBlock, children: [let_node, body], inferred: body.inferred, span: arm.span)
     _ => body
   }
@@ -17824,7 +17824,7 @@ fn ground_grounded_match(m: Node, scrut: Node, arms: List<Node>, view: GroundedV
         children: [],
         inferred: scrut.inferred,
         span: scrut.span,
-        ident: authored_ident(span: elaborated_span(name: grounded_scrutinee_binder), text: grounded_scrutinee_binder))
+        ident: Present { value: synthetic_ident(span: elaborated_span(name: grounded_scrutinee_binder), text: grounded_scrutinee_binder) })
     }
     match grounded_arm_chain(arms: read, subject: subject, carrier_type: carrier_type, result: m.inferred, span: m.span, view: view, ctx: ctx) {
       Absent => ground_refused(n: m, message: "a match over a kernel-grounded carrier has no arms", ctx: ctx)
@@ -17839,7 +17839,7 @@ fn ground_grounded_match(m: Node, scrut: Node, arms: List<Node>, view: GroundedV
             children: [scrut],
             inferred: scrut.inferred,
             span: scrut.span,
-            ident: authored_ident(span: elaborated_span(name: grounded_scrutinee_binder), text: grounded_scrutinee_binder))
+            ident: Present { value: synthetic_ident(span: elaborated_span(name: grounded_scrutinee_binder), text: grounded_scrutinee_binder) })
           GroundOut {
             node: make_expr_node(occurrence_identity: m.occurrence_identity, expr_data: ExprBlock, children: [let_node, chain], inferred: m.inferred, span: m.span),
             changed: true,
@@ -18682,7 +18682,7 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
-    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: authored_ident(span: unit_span, text: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: synthetic_ident(span: unit_span, text: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
     provenance: SubValueUnknown, alias_rhs: none
   })
   let kernel_optional = kernel_optional_type_node()

@@ -4,7 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.syntax { LitStr }
 import v1.std.core {
-  Node, SourceSpan, NewlineIndex, ExprLiteral, no_span, authored_ident, make_expr_node, make_field_init_node,
+  Node, SourceSpan, NewlineIndex, ExprLiteral, no_span, synthetic_ident, make_expr_node, make_field_init_node,
   make_transport_node, local_transport_node, rest_transport_node, shell_transport_node,
   file_transport_node, classify_transport, is_local_transport,
   TransportKind, RestTransport, ShellTransport, FileTransport, LocalTransport
@@ -57,7 +57,7 @@ test fn bare_transport_classifies_as_local() -> Bool {
 
 fn keyless_transport() -> Node {
   make_transport_node(occurrence_identity: OccurrenceSynthetic,
-    properties: [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "unrecognized_key", value: str_expr(s: "v"), span: no_span(), ident: authored_ident(span: no_span(), text: "unrecognized_key"))],
+    properties: [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "unrecognized_key", value: str_expr(s: "v"), span: no_span(), ident: Present { value: synthetic_ident(span: no_span(), text: "unrecognized_key") })],
     children: [], body: none, span: no_span())
 }
 
@@ -83,8 +83,8 @@ test fn the_bare_node_is_still_local_positive_control() -> Bool {
 test fn rest_wins_over_a_file_key_on_the_same_transport() -> Bool {
   kind_name(t: make_transport_node(occurrence_identity: OccurrenceSynthetic,
     properties: [
-      make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "base_url", value: str_expr(s: "https://example.invalid"), span: no_span(), ident: authored_ident(span: no_span(), text: "base_url")),
-      make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "base_path", value: str_expr(s: "/tmp/x"), span: no_span(), ident: authored_ident(span: no_span(), text: "base_path"))
+      make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "base_url", value: str_expr(s: "https://example.invalid"), span: no_span(), ident: Present { value: synthetic_ident(span: no_span(), text: "base_url") }),
+      make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "base_path", value: str_expr(s: "/tmp/x"), span: no_span(), ident: Present { value: synthetic_ident(span: no_span(), text: "base_path") })
     ],
     children: [], body: none, span: no_span())) == "rest"
 }

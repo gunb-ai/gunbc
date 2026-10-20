@@ -27,7 +27,7 @@ fn named(name: &str, connective: Connective, children: Vec<Rc<Node>>) -> Node {
     );
     Node {
         name: name.to_string(),
-        ident_span: Some(v1_compiler::v1_std_core::authored_ident(
+        ident_span: Some(v1_compiler::v1_std_core::synthetic_ident(
             Rc::new(SourceSpan {
                 file: format!("<kernel:{}>", name),
                 start: 0,

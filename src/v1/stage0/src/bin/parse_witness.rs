@@ -446,7 +446,7 @@ fn with_carried_text(n: &CoreNode, text: &str) -> CoreNode {
         ident_span: n
             .ident_span
             .as_ref()
-            .map(|i| v1_compiler::v1_std_core::authored_ident(i.span.clone(), text.to_string())),
+            .map(|i| v1_compiler::v1_std_core::synthetic_ident(i.span.clone(), text.to_string())),
         ..(**n).clone()
     })
 }
@@ -579,7 +579,8 @@ fn rebuild_copies_the_carried_ident_instead_of_recomputing() {
         .expect("Widget node")
         .clone();
     let tampered = with_carried_text(&victim, "Carried");
-    let copied = v1_compiler::v1_std_core::node_ident(tampered.clone());
+    let copied = v1_compiler::v1_std_core::node_ident(tampered.clone())
+        .expect("a node carrying an identity copies it");
     assert_eq!(
         copied.text, "Carried",
         "node_ident did not copy the carried text"
@@ -591,6 +592,48 @@ fn rebuild_copies_the_carried_ident_instead_of_recomputing() {
         "Carried",
         "the recompute path cannot be told apart from a copy"
     );
+}
+
+// Absence stays absent through a rebuild: a node with no identity must not acquire one, from its
+// structural name or from anything else. RED: a copy that filled the gap would be Some here.
+fn rebuild_keeps_an_absent_identity_absent() {
+    let source = "module test\ntype Widget = String\n";
+    let (_, nodes, _) = parse_all_nodes(source);
+    let victim = nodes
+        .iter()
+        .find(|n| n.name == "Widget" && n.ident_span.is_some())
+        .expect("Widget node")
+        .clone();
+    let stripped = Rc::new(v1_compiler::v1_std_core::Node {
+        ident_span: None,
+        ..(*victim).clone()
+    });
+    assert!(
+        !stripped.name.is_empty(),
+        "control: the node still has a structural name to fall back on"
+    );
+    assert!(
+        v1_compiler::v1_std_core::node_ident(stripped.clone()).is_none(),
+        "node_ident gave an identity-less node an identity"
+    );
+    let rebuilt = v1_compiler::v1_std_core::leaf_node_with_span(
+        stripped.occurrence_identity.clone(),
+        stripped.name.clone(),
+        stripped.span.clone(),
+        v1_compiler::v1_std_core::node_ident(stripped.clone()),
+    );
+    assert!(
+        rebuilt.ident_span.is_none(),
+        "a rebuilt node with no identity acquired one"
+    );
+    // positive control: the same rebuild of a carrying node keeps its identity
+    let kept = v1_compiler::v1_std_core::leaf_node_with_span(
+        victim.occurrence_identity.clone(),
+        victim.name.clone(),
+        victim.span.clone(),
+        v1_compiler::v1_std_core::node_ident(victim.clone()),
+    );
+    assert_eq!(kept.ident_span, victim.ident_span);
 }
 
 // A span whose file has no tokenized source has no obtainable text: construction refuses with a
@@ -1329,6 +1372,10 @@ fn floor_suite() -> Vec<WitnessCase> {
         (
             "rebuild_copies_the_carried_ident_instead_of_recomputing",
             rebuild_copies_the_carried_ident_instead_of_recomputing,
+        ),
+        (
+            "rebuild_keeps_an_absent_identity_absent",
+            rebuild_keeps_an_absent_identity_absent,
         ),
         (
             "source_backed_construction_refuses_without_the_source_authority",

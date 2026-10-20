@@ -28,7 +28,7 @@ import v1.std.core {
   NewlineIndex, authored_name_at,
   LeafOwner, SingleOwner, LeafAmbiguous,
   resource_use_name_at, resource_use_resource,
-  authored_ident, node_ident
+  synthetic_ident, node_ident
 }
 import std.occurrence_identity { OccurrenceTransport, OccurrenceSynthetic }
 
@@ -280,15 +280,15 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
                 make_field_node(occurrence_identity: OccurrenceSynthetic, name: authored_name_at(source_indices: source_indices, node: child), type_expr: child_type, cardinality: Required, default_value: none, from_key_properties: [], span: span, ident: node_ident(n: child))
               )
             } else {
-              [make_field_node(occurrence_identity: OccurrenceSynthetic, name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key_properties: [], span: span, ident: authored_ident(span: no_span(), text: "value"))]
+              [make_field_node(occurrence_identity: OccurrenceSynthetic, name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key_properties: [], span: span, ident: Present { value: synthetic_ident(span: no_span(), text: "value") })]
             }
           } else {
-            [make_field_node(occurrence_identity: OccurrenceSynthetic, name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key_properties: [], span: span, ident: authored_ident(span: no_span(), text: "value"))]
+            [make_field_node(occurrence_identity: OccurrenceSynthetic, name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key_properties: [], span: span, ident: Present { value: synthetic_ident(span: no_span(), text: "value") })]
           }
         } else if rt.connective == Conj && rt.children |> count == 0 {
           []
         } else {
-          [make_field_node(occurrence_identity: OccurrenceSynthetic, name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key_properties: [], span: span, ident: authored_ident(span: no_span(), text: "value"))]
+          [make_field_node(occurrence_identity: OccurrenceSynthetic, name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key_properties: [], span: span, ident: Present { value: synthetic_ident(span: no_span(), text: "value") })]
         }
     }
   }
