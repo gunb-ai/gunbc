@@ -29562,20 +29562,18 @@ mod module_path_index_tests {
             root_a.to_string_lossy().into_owned(),
             root_b.to_string_lossy().into_owned(),
         ];
-        // RED control: same module declared in two files refuses loudly.
-        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index_or_refuse(&roots)
-        }))
-        .is_err();
+        // RED control: same module declared in two files refuses with a located Err.
+        let refusal = super::try_build_module_index(&roots);
         // GREEN control: distinct modules build fine.
         std::fs::write(root_b.join("m.dag"), "module collision.other\n").unwrap();
-        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index_or_refuse(&roots)
-        }))
-        .is_ok();
+        let built = super::try_build_module_index(&roots);
         std::fs::remove_dir_all(&dir).ok();
-        assert!(refused, "collision must refuse loudly, not shadow silently");
-        assert!(built, "distinct modules must still index");
+        let cause = refusal.expect_err("collision must refuse loudly, not shadow silently");
+        assert!(
+            cause.contains("collision.example"),
+            "refusal must name the module: {cause}"
+        );
+        assert!(built.is_ok(), "distinct modules must still index");
     }
 
     #[test]
@@ -29592,16 +29590,11 @@ mod module_path_index_tests {
         // copy is skipped and the source file indexes alone (the CI regression:
         // target/func_env_semantic_baseline_corpus tripped the collision wall).
         std::fs::write(root.join("Cargo.toml"), "[package]\n").unwrap();
-        let indexed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index_or_refuse(&roots)
-        }));
+        let indexed = super::try_build_module_index(&roots);
         // RED control: without Cargo.toml the same layout is two source files
         // declaring one module — the wall must still refuse.
         std::fs::remove_file(root.join("Cargo.toml")).unwrap();
-        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::build_module_index_or_refuse(&roots)
-        }))
-        .is_err();
+        let refused = super::try_build_module_index(&roots);
         std::fs::remove_dir_all(&dir).ok();
         let index = indexed.expect("cargo target output must be excluded, not collide");
         assert!(
@@ -29609,7 +29602,7 @@ mod module_path_index_tests {
             "the source-tree declaration must still index"
         );
         assert!(
-            refused,
+            refused.is_err(),
             "a plain (non-cargo) target dir is source like any other — collision must refuse"
         );
     }
