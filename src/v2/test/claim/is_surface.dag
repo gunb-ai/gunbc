@@ -4,7 +4,7 @@ import v2.compiler.resolve { ResolvedTree }
 import v2.test.claim.type_param_binder_frame { tpb_assemble, tpb_refuses_with }
 import v2.compiler.infer { infer }
 import v2.compiler.eval { eval, eval_default_interpretation, inputs_root_only }
-import v2.compiler.emit { emit }
+import v2.compiler.refinement_discharge { discharge_refinement_obligations }
 import v2.compiler.arm_resolution { arm_test_realization_refusal }
 import v2.compiler.arm_resolution { PayloadArmReferenceAwaited, ResolvedArm, UnitArmSameArm }
 import v2.std.diagnostic { diagnostics_fatal, diagnostics_fatal_reason, NodeLocus }
@@ -127,8 +127,12 @@ fn is_tree_eval_reason(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
     Accepted { value: root, diagnostics: _ } =>
       match infer(tree: root) {
         Rejected { diagnostics: _ } => false
-        Accepted { value: t, diagnostics: _ } =>
-          tpb_refuses_with(o: eval(tree: t, interpretation: eval_default_interpretation(), inputs: inputs_root_only(root: t.root)), reason: reason)
+        Accepted { value: ot, diagnostics: _ } =>
+          match discharge_refinement_obligations(t: ot) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: t, diagnostics: _ } =>
+              tpb_refuses_with(o: eval(tree: t, interpretation: eval_default_interpretation(), inputs: inputs_root_only(root: t.root)), reason: reason)
+          }
       }
   }
 }
