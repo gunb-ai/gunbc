@@ -98,6 +98,27 @@ test fn rust_member_prints_in_an_associated_impl_of_the_same_emission() -> Bool 
   }
 }
 
+// RUST: a bare CR is invalid inside a string literal, and rustc normalizes source CRLF to LF before tokenizing,
+// so an unescaped CR-LF changes the value silently. The goldens are exact emitted text (a compile alone would
+// miss the value change); removing the Rust CR row fails both.
+fn sdm_rust_member_text(lexeme: String) -> Outcome<String> {
+  sdm_text(members: [ TargetSemanticDeclMember { name: ^NOTE, literal: symbol_intern_lexeme(lexeme: lexeme) } ], target: rust_semantic_decl_target_model_staging())
+}
+
+test fn rust_member_literal_bare_cr_prints_as_the_escape() -> Bool {
+  match sdm_rust_member_text(lexeme: "a\rb") {
+    Accepted { value: text, diagnostics: _ } => text == concat(rust_struct_derives, "\nstruct Point { x: i32 } impl Point { pub const NOTE: &str = \"a\\rb\"; }")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_member_literal_crlf_keeps_the_cr_as_the_escape() -> Bool {
+  match sdm_rust_member_text(lexeme: "a\r\nb") {
+    Accepted { value: text, diagnostics: _ } => text == concat(rust_struct_derives, "\nstruct Point { x: i32 } impl Point { pub const NOTE: &str = \"a\\r\nb\"; }")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn rust_without_members_prints_no_impl() -> Bool {
   match sdm_text(members: [], target: rust_semantic_decl_target_model_staging()) {
     Accepted { value: text, diagnostics: _ } => text == concat(rust_struct_derives, "\nstruct Point { x: i32 }")
