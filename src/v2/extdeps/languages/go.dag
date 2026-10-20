@@ -1918,11 +1918,11 @@ fn go_target_model_int64_selection_policy() -> TargetModel {
 }
 
 fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(s: text) } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
 fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: KeywordPattern { text: chars(s: text) } }
+  TokenRule { token_class: token_class, pattern: KeywordPattern { text: text } }
 }
 
 fn go_whitespace_trivia_rule() -> LexRule {

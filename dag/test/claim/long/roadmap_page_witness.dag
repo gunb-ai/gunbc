@@ -1,4 +1,5 @@
 module test.claim.long.roadmap_page_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 import gunbc.roadmap.roadmap_page { workspace_column_label }
 import gunbc.roadmap.roadmap_surface_style { workspace_issue_tracks }
 import extdeps.languages.css.selectors { selector_subject_wire }
@@ -2210,7 +2211,7 @@ test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
 test fn witness_issue_rail_counts_unmet_prerequisites_from_readiness() -> Bool {
   let blocked_by = issue_detail_fixture_hierarchy().dependency.blocked_by
   let row = fn(scheduling) {
-    extdeps.languages.html.serialize_html_source(node: gunbc.site.element.field_list.field_list(input: gunbc.site.element.field_list.FieldList { rows: gunbc.roadmap.roadmap_page.issue_prerequisites_rail_rows(view: issue_detail_fixture_view_scheduled(scheduling: scheduling), blocked_by: blocked_by) }))
+    extdeps.languages.html.render_html(serialize_html_source(node: gunbc.site.element.field_list.field_list(input: gunbc.site.element.field_list.FieldList { rows: gunbc.roadmap.roadmap_page.issue_prerequisites_rail_rows(view: issue_detail_fixture_view_scheduled(scheduling: scheduling), blocked_by: blocked_by) })))
   }
   let unmet = row(gunbc.roadmap.roadmap_presentation.SchedulingNotReady { missing: [gunbc.roadmap.roadmap_readiness.GapDependencies { blockers: ["issue-detail-parent"] }] })
   let other_gap = row(gunbc.roadmap.roadmap_presentation.SchedulingNotReady { missing: [gunbc.roadmap.roadmap_readiness.GapCentering] })
@@ -2256,10 +2257,10 @@ test fn witness_issue_detail_attempt_does_not_invent_a_workflow_assignee() -> Bo
 // tab chip, and the element's revision is the producer's revision of that projection: the real
 // attempt reached the real element by the real derivation.
 fn fx_rail_meter_html(holder: gunbc.roadmap.roadmap_event_log.EventPrincipal?, attempts: List<gunbc.roadmap.roadmap_workflow_progress.WorkflowAttemptProgress>) -> String {
-  extdeps.languages.html.serialize_html_source(node: gunbc.site.element.field_list.field_list(input: gunbc.site.element.field_list.FieldList { rows: gunbc.roadmap.roadmap_page.issue_rail_build_meter_rows(
+  extdeps.languages.html.render_html(serialize_html_source(node: gunbc.site.element.field_list.field_list(input: gunbc.site.element.field_list.FieldList { rows: gunbc.roadmap.roadmap_page.issue_rail_build_meter_rows(
     view: issue_detail_fixture_view(),
     attempts: attempts,
-    assignment: gunbc.roadmap.roadmap_event_log.IssueAssignmentProjection { holder: holder, return_to: none }) }))
+    assignment: gunbc.roadmap.roadmap_event_log.IssueAssignmentProjection { holder: holder, return_to: none }) })))
 }
 
 test fn witness_issue_rail_renders_the_build_meter_for_a_fabric_attempt() -> Bool {
@@ -2287,7 +2288,7 @@ test fn witness_issue_rail_renders_no_build_meter_without_fabric_or_an_attempt()
 // working fixture), and the tab places the meter in the working pose from the producer's own
 // derivation; a node with no attempt gets no meter node at all rather than a fabricated one.
 fn fx_work_tab_html(attempts: List<gunbc.roadmap.roadmap_workflow_progress.WorkflowAttemptProgress>, holder: gunbc.roadmap.roadmap_event_log.EventPrincipal?) -> String {
-  extdeps.languages.html.serialize_html_source(node: gunbc.site.markup.el_class("section", "panel-work", gunbc.roadmap.roadmap_page.issue_work_meter_nodes(view: issue_detail_fixture_view(), attempts: attempts, assignment: gunbc.roadmap.roadmap_event_log.IssueAssignmentProjection { holder: holder, return_to: none })))
+  extdeps.languages.html.render_html(serialize_html_source(node: gunbc.site.markup.el_class("section", "panel-work", gunbc.roadmap.roadmap_page.issue_work_meter_nodes(view: issue_detail_fixture_view(), attempts: attempts, assignment: gunbc.roadmap.roadmap_event_log.IssueAssignmentProjection { holder: holder, return_to: none }))))
 }
 
 fn fx_working_attempt() -> gunbc.roadmap.roadmap_workflow_progress.WorkflowAttemptProgress {
@@ -2331,7 +2332,7 @@ test fn witness_issue_work_tab_draws_no_meter_without_an_attempt() -> Bool {
 // The reporter, which the ledger cannot name, is an absent value with its reason.
 test fn witness_issue_rail_is_one_field_list_with_no_empty_rows() -> Bool {
   let rows = gunbc.roadmap.roadmap_page.issue_rail_rows(view: issue_detail_fixture_view(), hierarchy: issue_detail_fixture_hierarchy(), attempts: [ completed_attempt_progress(node_id: "issue-detail-specimen") ], events: [], viewer: "", recents: [], expected_revision: "")
-  let h = extdeps.languages.html.serialize_html_source(node: gunbc.roadmap.roadmap_page.issue_metadata_rail_node(view: issue_detail_fixture_view(), hierarchy: issue_detail_fixture_hierarchy(), attempts: [ completed_attempt_progress(node_id: "issue-detail-specimen") ], events: [], viewer: "", recents: [], expected_revision: ""))
+  let h = extdeps.languages.html.render_html(serialize_html_source(node: gunbc.roadmap.roadmap_page.issue_metadata_rail_node(view: issue_detail_fixture_view(), hierarchy: issue_detail_fixture_hierarchy(), attempts: [ completed_attempt_progress(node_id: "issue-detail-specimen") ], events: [], viewer: "", recents: [], expected_revision: "")))
   string_contains(s: h, pattern: "<aside class=\"issue-rail\"><dl class=\"el-field-list\">")
     && occurrence_count(s: h, pattern: "class=\"el-field-list\"") == 1
     && occurrence_count(s: h, pattern: "<div class=\"el-field-list-row\"") == count(rows)
@@ -2353,7 +2354,7 @@ test fn witness_failure_link_targets_a_row_the_work_tab_renders() -> Bool {
   let rail = fx_rail_meter_html(holder: Present { value: fixture_fabric_principal() }, attempts: [ attempt ])
   let fragment = string_at(parts: split(s: string_at(parts: split(s: rail, delimiter: "class=\"el-build-meter\" href=\""), index: 1), delimiter: "\""), index: 0)
   let anchor = string_at(parts: split(s: fragment, delimiter: "#"), index: 1)
-  let row = extdeps.languages.html.serialize_html_source(node: gunbc.roadmap.roadmap_page.issue_attempt_history_row_node(progress: attempt))
+  let row = extdeps.languages.html.render_html(serialize_html_source(node: gunbc.roadmap.roadmap_page.issue_attempt_history_row_node(progress: attempt)))
   string_contains(s: anchor, pattern: "work-")
     && string_contains(s: row, pattern: join(["<li class=\"work-attempt-failure\" id=\"", anchor, "\">"], ""))
     && string_contains(s: rail, pattern: "data-history=\"not-recorded\"")

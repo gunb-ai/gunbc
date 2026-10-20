@@ -1,6 +1,7 @@
 module test.claim.cursor_cli_invocation_witness
 
 import std.types { Bool, String, NonEmptyStr, List, FilePath }
+import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program, cursor_agent_executable_path, cursor_agent_pinned_version }
 import extdeps.llm.cursor_cli {
   CursorAuth,
   CursorApiKeyArgument,
@@ -17,7 +18,6 @@ import extdeps.llm.cursor_cli {
   CursorOutputFormat,
   CursorStreamJson,
   cursor_api_key_env_var,
-  cursor_cli_program,
   cursor_model_auto,
   shape_cursor_invocation,
   cursor_automation_invocation,
@@ -51,6 +51,7 @@ fn witness_invocation(auth: CursorAuth) -> CursorInvocation {
 
 test fn environment_arm_binds_the_variable_and_keeps_argv_clean() -> Bool {
   let shaped = shape_cursor_invocation(
+    program: cursor_agent_pinned_program(),
     inv: witness_invocation(auth: CursorApiKeyEnvironment { key: witness_key }),
   )
   cursor_invocation_binds_env(shaped: shaped, name: cursor_api_key_env_var)
@@ -61,6 +62,7 @@ test fn environment_arm_binds_the_variable_and_keeps_argv_clean() -> Bool {
 
 test fn argument_arm_places_the_key_in_argv_and_binds_nothing() -> Bool {
   let shaped = shape_cursor_invocation(
+    program: cursor_agent_pinned_program(),
     inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),
   )
   cursor_argv_contains(argv: shaped.argv, token: witness_key as String)
@@ -73,9 +75,11 @@ test fn argument_arm_places_the_key_in_argv_and_binds_nothing() -> Bool {
 // field.
 test fn the_two_auth_arms_produce_different_processes() -> Bool {
   let env_shaped = shape_cursor_invocation(
+    program: cursor_agent_pinned_program(),
     inv: witness_invocation(auth: CursorApiKeyEnvironment { key: witness_key }),
   )
   let arg_shaped = shape_cursor_invocation(
+    program: cursor_agent_pinned_program(),
     inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),
   )
   !(count(env_shaped.argv) == count(arg_shaped.argv))
@@ -87,6 +91,7 @@ test fn the_two_auth_arms_produce_different_processes() -> Bool {
 // process actually receives, not how the value was labelled.
 test fn automation_constructor_only_materializes_into_the_env_var() -> Bool {
   let shaped = shape_cursor_invocation(
+    program: cursor_agent_pinned_program(),
     inv: cursor_automation_invocation(
       key: witness_key,
       model: cursor_model_auto,
@@ -101,11 +106,12 @@ test fn automation_constructor_only_materializes_into_the_env_var() -> Bool {
   )
   cursor_invocation_binds_env(shaped: shaped, name: cursor_api_key_env_var)
     && !cursor_argv_contains(argv: shaped.argv, token: witness_key as String)
-    && shaped.program == cursor_cli_program
+    && shaped.program == cursor_agent_executable_path(version: cursor_agent_pinned_version)
 }
 
 test fn headless_flags_survive_both_arms() -> Bool {
   let shaped = shape_cursor_invocation(
+    program: cursor_agent_pinned_program(),
     inv: witness_invocation(auth: CursorApiKeyEnvironment { key: witness_key }),
   )
   cursor_argv_contains(argv: shaped.argv, token: "--print")

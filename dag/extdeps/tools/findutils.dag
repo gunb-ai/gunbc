@@ -165,3 +165,11 @@ data find_program_running_actions: List<String> = ["-exec", "-execdir", "-ok", "
 fn find_command_runs_another_program(command: ArgvCommand) -> Bool {
   any(command.arguments, a => any(find_program_running_actions, x => a == x))
 }
+
+// ONE PATH'S OWN ENTRY, asked a question: `find PATH -maxdepth 0 -type KIND CLAUSE...` prints PATH iff the
+// entry is of that type and the clause (-user, -perm ...) holds, and prints nothing otherwise -- the
+// answer a caller reads is whether the path was printed (gunbc.fleet.host_credential_custody_converge
+// classify_find_answer). -maxdepth 0 keeps it to the entry itself.
+fn find_path_probe_command(path: String, kind: String, clause: List<String>) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: concat([path, "-maxdepth", "0", "-type", kind], clause))
+}

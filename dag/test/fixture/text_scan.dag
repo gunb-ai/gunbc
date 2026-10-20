@@ -1,0 +1,64 @@
+module test.fixture.text_scan
+
+// String-scan helpers for witnesses, in ONE place.
+//
+// WHY THIS EXISTS (§6b root generalization): the trigger was the second local implementation of
+// one rule. index_of existed claim-local in gunbc.site.gunb_ai_layout's witness, and the content
+// witness grew its own copy plus an occurrences counter — two implementations of "find the first
+// position of a needle" and of "count the splits", which is exactly how the two files drift into
+// disagreeing about edge cases (does an empty needle match at 0? does a trailing delimiter count?).
+// Both witnesses now import these.
+//
+// WHY NOT std.algebra, where string_contains lives: those functions are HostRealizedSeam
+// self-calls with native emit selected by a projection row (see the comment above std.algebra's
+// string_contains). A new function there needs a projection row and an emit path — a far larger
+// change than a test needs, and the wrong direction for helpers whose only consumer is a claim.
+//
+// WHY NOT the prelude: index_of and occurrences are not needed by production code today, and a
+// global name is a bigger commitment than the two claims that use them. This module names its
+// consumers below.
+//
+// CONSUMERS: test.claim.site_gunb_ai_content_witness (order comparisons, "exactly once" counts)
+// and test.claim.site_gunb_ai_layout_witness (ballot-distinguishability and cascade-order
+// position checks). If a third consumer appears that is NOT a claim, that is the signal these
+// belong in a production module, and this comment should move with them.
+
+import std.types { Int, String }
+import std.optional { Optional, Absent, Present }
+
+// First position of `needle` in `haystack`, searching [at, limit). Absent when the needle does not
+// occur, and also when it is longer than the remaining window — an empty needle matches at `at`,
+// which is what makes occurrences() below count N splits for N separators.
+fn index_of(haystack: String, needle: String, at: Int, limit: Int) -> Optional<Int> {
+  let n = string_length(s: needle)
+  if at + n > limit {
+    Absent
+  } else if substring(s: haystack, start: at, end: at + n) == needle {
+    Present { value: at }
+  } else {
+    index_of(haystack: haystack, needle: needle, at: at + 1, limit: limit)
+  }
+}
+
+// Number of non-overlapping occurrences. Defined by splitting, because this language has no
+// indexing: N separators produce N+1 pieces, so occurrences = pieces - 1.
+fn occurrences(s: String, pattern: String) -> Int {
+  count(split(s: s, delimiter: pattern)) - 1
+}
+
+// True when `before` occurs strictly before `after`. Order, not membership: two rows can both be
+// present and still be emitted in the wrong sequence, which every contains-check passes.
+// (`then` is a reserved word in the language's keyword set, so it cannot name a parameter — the
+// CI parse-population walk refuses the module for exactly that.)
+fn occurs_before(haystack: String, before: String, after: String) -> Bool {
+  let limit = string_length(s: haystack)
+  let a = index_of(haystack: haystack, needle: before, at: 0, limit: limit)
+  let b = index_of(haystack: haystack, needle: after, at: 0, limit: limit)
+  match a {
+    Absent => false
+    Present { value: ia } => match b {
+      Absent => false
+      Present { value: ib } => ia < ib
+    }
+  }
+}
