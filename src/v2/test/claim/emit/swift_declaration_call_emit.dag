@@ -1,0 +1,55 @@
+module v2.test.claim.emit.swift_declaration_call_emit
+
+import v2.compiler.self_host.closure_emission {
+  closure_emission_json,
+  emit_closure_from_ingest_located
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.swift { swift_target_model }
+import v2.test.claim.infer_not_derived_site { nds_read }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SWIFT DECLARATION-CALL CONTROL. A two-parameter declaration and a call to it, taken through the
+// door's own route (emit_closure_from_ingest_located, what `emit --entry` runs) on the Swift target.
+// Swift labels every parameter by default, so a declaration printed `a: T, b: T` is only callable as
+// `f(a: x, b: y)`; the call this emitter prints is positional, so the declaration must print `_ a: T, _ b: T`.
+// RED is the labelled layout: a declaration without the `_` pairs a labelled parameter list with an
+// unlabelled call and swiftc refuses "missing argument label".
+
+fn sdc_locus() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^sdc_entry_locus } }, children: [])
+}
+
+data sdc_source: String = "module v2.test.sdc_m1\n\nfn f(a: Int, b: Int) -> Int { a }\n\nfn g(x: Int, y: Int) -> Int { f(x, y) }\n"
+
+fn sdc_json() -> String {
+  match emit_closure_from_ingest_located(
+    ingest: [nds_read(source: sdc_source, id: ^sdc_m1_read, file: "src/v2/test/fixture/sdc/m1.dag")],
+    entry: qualified_name_from_dotted_string(dotted: "v2.test.sdc_m1"),
+    entry_locus: sdc_locus(),
+    target: swift_target_model()
+  ).outcome {
+    Rejected { diagnostics: _ } => "emit_refused"
+    Accepted { value: emission, diagnostics: _ } => closure_emission_json(emission: emission)
+  }
+}
+
+data sdc_expected: String = "{\"entry\": \"v2.test.sdc_m1\", \"members\": [\"v2.test.sdc_m1\"], \"modules\": [{\"module\": \"v2.test.sdc_m1\", \"emitted\": \"func f(_ a: Int32, _ b: Int32) -> Int32 { return a; }\\n\\nfunc g(_ x: Int32, _ y: Int32) -> Int32 { return Gunbc.v2.test.sdc_m1.f(x, y); }\\n\\n\"}]}"
+
+data sdc_labelled_layout: String = "{\"entry\": \"v2.test.sdc_m1\", \"members\": [\"v2.test.sdc_m1\"], \"modules\": [{\"module\": \"v2.test.sdc_m1\", \"emitted\": \"func f(a: Int32, b: Int32) -> Int32 { return a; }\\n\\nfunc g(x: Int32, y: Int32) -> Int32 { return Gunbc.v2.test.sdc_m1.f(x, y); }\\n\\n\"}]}"
+
+// GREEN: the two-parameter declaration prints `_ a: T, _ b: T` and the call prints `f(x, y)`.
+test fn swift_two_parameter_declaration_pairs_unlabelled_params_with_the_positional_call() -> Bool {
+  sdc_json() == sdc_expected
+}
+
+// RED: the labelled layout (the same text without the `_` pairs) is not what the emitter prints.
+test fn swift_labelled_parameter_layout_is_not_emitted() -> Bool {
+  sdc_json() != sdc_labelled_layout
+}

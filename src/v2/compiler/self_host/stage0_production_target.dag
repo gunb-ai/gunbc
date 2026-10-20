@@ -1,24 +1,9 @@
 module v2.compiler.self_host.stage0_production_target
 
 import std.types { List, Map }
-import v2.extdeps.languages.rust {
-  rust_binding_spellings,
-  rust_produced_decl_render_rows,
-  rust_production_lex_rules_with,
-  rust_target_model,
-  rust_visibility_public_lex_rule
-}
-import v2.std.compilers.lexing { LexRules, ModeledLexRules }
-import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
-  ProducedDeclRenderRows,
-  ProducedDeclSignatureSegment,
-  ProducedDeclSupport,
-  ProducedDeclUnwired,
-  ProducedDeclWired,
-  ProducedSignatureFixed,
-  TargetModel
-}
-import std.algebra { list_append, map_insert }
+import v2.extdeps.languages.rust { rust_binding_spellings, rust_closure_crate_target_model }
+import v2.std.compilers.target_model { TargetModel }
+import std.algebra { map_insert }
 
 import v2.std.node { Symbol }
 import v2.std.text { String }
@@ -36,7 +21,8 @@ import v2.std.text { String }
 //   other modules call across module boundaries (gunbc_rust_decl_type_overlay's function is
 //   called from v1_compiler_emit_rust). The .dag source spells no visibility, and Rust emission
 //   in general must not: a private item is correct at a boundary with no external consumer.
-//   So the keyword is a Rust row (rust_visibility_public_lex_rule) and its SELECTION is here.
+//   So the keyword is a Rust row (rust_visibility_public_lex_rule) selected by the closure-crate profile
+//   (rust_closure_crate_target_model), which this boundary takes whole.
 //
 //   INTEGER SPELLING, AND ONLY THE SPELLING. The committed stage0 ABI is i64 and the
 //   direct-door fixtures are organized around i32. Relabelling the fixture target to i64 would
@@ -66,47 +52,6 @@ import v2.std.text { String }
 
 data stage0_production_int_spelling: String = "i64"
 
-// The stage0 signature order is Rust's own, with the visibility keyword prepended. The
-// remaining segments are read from rust_produced_decl_render_rows rather than restated, so a
-// change to Rust's signature order reaches this profile without a second edit.
-fn stage0_production_signature_segments() -> List<ProducedDeclSignatureSegment> {
-  list_append(
-    left: [ProducedSignatureFixed { token_class: ^rust_token_kw_pub }],
-    right: rust_produced_decl_render_rows.signature
-  )
-}
-
-fn stage0_production_render_rows() -> ProducedDeclRenderRows {
-  ProducedDeclRenderRows {
-    signature: stage0_production_signature_segments(),
-    param_layout: rust_produced_decl_render_rows.param_layout,
-    param_separator: rust_produced_decl_render_rows.param_separator,
-    type_ref_token_class: rust_produced_decl_render_rows.type_ref_token_class,
-    block_close: rust_produced_decl_render_rows.block_close,
-    block_evaluation_mode: rust_produced_decl_render_rows.block_evaluation_mode,
-    function_type_realizations: rust_produced_decl_render_rows.function_type_realizations
-  }
-}
-
-// A target whose produced-declaration support is unwired refuses at emission with
-// produced_decl_target_unwired, and this profile has nothing to add to that refusal: it is the
-// same target, still unwired. The visibility selection can only apply to rows that exist.
-fn stage0_production_decl_support(base: ProducedDeclSupport) -> ProducedDeclSupport {
-  match base {
-    ProducedDeclUnwired => ProducedDeclUnwired
-    ProducedDeclWired {
-      render_rows: _,
-      scaffold_relation_rule_name: rule_name,
-      scaffold_base_row: base_row
-    } =>
-      ProducedDeclWired {
-        render_rows: stage0_production_render_rows(),
-        scaffold_relation_rule_name: rule_name,
-        scaffold_base_row: base_row
-      }
-  }
-}
-
 // The Rust map with one key replaced. A second map authored here would be a fork of a spelling
 // authority (DESIGN section 3): every other spelling this boundary needs is Rust's own and must
 // keep tracking it.
@@ -114,19 +59,16 @@ fn stage0_production_binding_spellings() -> Map<Symbol, String> {
   map_insert(rust_binding_spellings(), ^dag_binding_type_int, stage0_production_int_spelling)
 }
 
-fn stage0_production_lex() -> LexRules {
-  ModeledLexRules {
-    root: rust_production_lex_rules_with(extra: [rust_visibility_public_lex_rule()])
-  }
-}
-
+// The stage0 boundary is the closure-crate profile (v2.extdeps.languages.rust rust_closure_crate_target_model:
+// every module-level declaration `pub`) with the one integer spelling overlaid; the visibility rows are
+// Rust's, not restated here.
 fn stage0_production_target_model() -> TargetModel {
-  let base = rust_target_model()
+  let base = rust_closure_crate_target_model()
   TargetModel {
-    primitive_realizations: PrimitiveRealizationsUnwired,
-    produced_decl_support: stage0_production_decl_support(base: base.produced_decl_support),
+    primitive_realizations: base.primitive_realizations,
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
-    lex: stage0_production_lex(),
+    lex: base.lex,
     binding_spellings: stage0_production_binding_spellings(),
     token_class_emit_transforms: base.token_class_emit_transforms,
     authority_source_text: base.authority_source_text,
