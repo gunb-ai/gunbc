@@ -46,6 +46,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   TagBindingReading, TagBindingEstablished, TagBindingAbsent, TagBindingIncomplete, trust_root_tag_binding_reading,
   iam_bootstrap_tag_detach_permissions, iam_bootstrap_probe_accounts, iam_bootstrap_trust_root_tagged_accounts,
   iam_bootstrap_tag_value_detach_permissions, TagDetachProbeVerdict, TagDetachAbsent, TagDetachUndiscriminating, TagDetachHeld, tag_detach_probe_verdict,
+  TrustRootTagAdmission, TrustRootTagAdmitted, TrustRootTagRefused, trust_root_tag_key_admission, trust_root_tag_value_admission,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
   IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match,
   iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_ceremony_identity_population, iam_bootstrap_ceremony_identity_population_over, iam_bootstrap_identity_population_over, IamBootstrapIdentity, iam_bootstrap_bound_secrets,
@@ -652,8 +653,10 @@ fn tag_create_standing(what: String, done: Bool?, error: GoogleRpcStatus?) -> Ta
 
 fn ensure_trust_root_tag_key(token: Secret) -> TagResourceStanding {
   match gcp.ResourceManager.GetNamespacedTagKey(access_token: token, namespaced_name: iam_bootstrap_trust_root_tag_key_namespaced()) {
-    RestAnswered { answer: k } => if k.short_name == (iam_bootstrap_trust_root_tag_key_short as String) && k.parent == (iam_bootstrap_trust_root_tag_key_parent() as String) && k.name != "" { TagResourcePresent { name: k.name as NonEmptyStr } }
-      else { TagResourceRefused { reason: "the namespaced trust-root tag key reads with another parent or short name" } }
+    RestAnswered { answer: k } => match trust_root_tag_key_admission(name: k.name, parent: k.parent, short_name: k.short_name, namespaced_name: k.namespaced_name) {
+      TrustRootTagAdmitted { name } => TagResourcePresent { name: name }
+      TrustRootTagRefused { reason } => TagResourceRefused { reason: reason }
+    }
     RestRefused { refusal } => if !outcome_is_not_found(o: refusal) { TagResourceRefused { reason: rest_refusal_text(o: refusal) } }
       else { match gcp.ResourceManager.CreateTagKey(access_token: token, parent: iam_bootstrap_trust_root_tag_key_parent(), short_name: iam_bootstrap_trust_root_tag_key_short, description: "gunbc trust root: iam-bootstrap is denied account writes on resources carrying it") {
         RestAnswered { answer: a } => tag_create_standing(what: "trust-root tag key", done: a.done, error: a.error)
@@ -664,8 +667,10 @@ fn ensure_trust_root_tag_key(token: Secret) -> TagResourceStanding {
 
 fn ensure_trust_root_tag_value(key_name: NonEmptyStr, token: Secret) -> TagResourceStanding {
   match gcp.ResourceManager.GetNamespacedTagValue(access_token: token, namespaced_name: iam_bootstrap_trust_root_tag_value_namespaced()) {
-    RestAnswered { answer: v } => if v.short_name == (iam_bootstrap_trust_root_tag_value_short as String) && v.parent == (key_name as String) && v.name != "" { TagResourcePresent { name: v.name as NonEmptyStr } }
-      else { TagResourceRefused { reason: "the namespaced trust-root tag value reads under another key or short name" } }
+    RestAnswered { answer: v } => match trust_root_tag_value_admission(key_name: key_name as String, name: v.name, parent: v.parent, short_name: v.short_name, namespaced_name: v.namespaced_name) {
+      TrustRootTagAdmitted { name } => TagResourcePresent { name: name }
+      TrustRootTagRefused { reason } => TagResourceRefused { reason: reason }
+    }
     RestRefused { refusal } => if !outcome_is_not_found(o: refusal) { TagResourceRefused { reason: rest_refusal_text(o: refusal) } }
       else { match gcp.ResourceManager.CreateTagValue(access_token: token, parent: key_name, short_name: iam_bootstrap_trust_root_tag_value_short, description: "the account is a gunbc trust root") {
         RestAnswered { answer: a } => tag_create_standing(what: "trust-root tag value", done: a.done, error: a.error)
@@ -865,6 +870,21 @@ fn tag_detach_probe_read(o: IamBootstrapProbe) -> List<String>? {
   match o { IamBootstrapProbeRead { permissions } => Present { value: permissions }  IamBootstrapProbeUnreadable { reason: _ } => none }
 }
 
+// The trust-root value the probe may count: the key, then the value, each read by its namespaced name and
+// admitted by the same folds the tag stage uses. Absence is a refusal here: the stage ran before.
+fn admitted_trust_root_tag_value(token: Secret) -> TrustRootTagAdmission {
+  match gcp.ResourceManager.GetNamespacedTagKey(access_token: token, namespaced_name: iam_bootstrap_trust_root_tag_key_namespaced()) {
+    RestRefused { refusal } => TrustRootTagRefused { reason: concat("the trust-root tag key is unreadable: ", rest_refusal_text(o: refusal)) }
+    RestAnswered { answer: k } => match trust_root_tag_key_admission(name: k.name, parent: k.parent, short_name: k.short_name, namespaced_name: k.namespaced_name) {
+      TrustRootTagRefused { reason } => TrustRootTagRefused { reason: reason }
+      TrustRootTagAdmitted { name: key } => match gcp.ResourceManager.GetNamespacedTagValue(access_token: token, namespaced_name: iam_bootstrap_trust_root_tag_value_namespaced()) {
+        RestRefused { refusal } => TrustRootTagRefused { reason: concat("the trust-root tag value is unreadable: ", rest_refusal_text(o: refusal)) }
+        RestAnswered { answer: v } => trust_root_tag_value_admission(key_name: key as String, name: v.name, parent: v.parent, short_name: v.short_name, namespaced_name: v.namespaced_name)
+      }
+    }
+  }
+}
+
 fn tag_value_probe(value_name: NonEmptyStr, token: Secret) -> List<String>? {
   match gcp.ResourceManager.TestTagValueIamPermissions(access_token: token, tag_value: value_name, permissions: iam_bootstrap_tag_value_detach_permissions) {
     RestAnswered { answer: r } => Present { value: match r.permissions { Present { value: ps } => ps  Absent => [] } }
@@ -888,15 +908,13 @@ fn iam_bootstrap_tag_detach_probe(token: Secret) -> String {
           }
         })
       if accounts != "" { accounts } else {
-        match gcp.ResourceManager.GetNamespacedTagValue(access_token: token, namespaced_name: iam_bootstrap_trust_root_tag_value_namespaced()) {
-          RestRefused { refusal } => concat("the trust-root tag value is unreadable for the detach probe; workflow trust withheld: ", rest_refusal_text(o: refusal))
-          RestAnswered { answer: v } => if v.name == "" { "the trust-root tag value reads without a name; workflow trust withheld" } else {
-            match tag_value_probe(value_name: v.name as NonEmptyStr, token: token) {
-              Absent => "the operator's tag-value detach control is unreadable; workflow trust withheld"
-              Present { value: control } => match tag_value_probe(value_name: v.name as NonEmptyStr, token: bootstrap_token) {
-                Absent => "iam-bootstrap's tag-value detach probe is unreadable; workflow trust withheld"
-                Present { value: subject } => tag_detach_axis_text(what: v.name, v: tag_detach_probe_verdict(requested: iam_bootstrap_tag_value_detach_permissions, control: control, subject: subject))
-              }
+        match admitted_trust_root_tag_value(token: token) {
+          TrustRootTagRefused { reason } => concat(reason, "; the detach probe counts nothing, workflow trust withheld")
+          TrustRootTagAdmitted { name: value_name } => match tag_value_probe(value_name: value_name, token: token) {
+            Absent => "the operator's tag-value detach control is unreadable; workflow trust withheld"
+            Present { value: control } => match tag_value_probe(value_name: value_name, token: bootstrap_token) {
+              Absent => "iam-bootstrap's tag-value detach probe is unreadable; workflow trust withheld"
+              Present { value: subject } => tag_detach_axis_text(what: value_name as String, v: tag_detach_probe_verdict(requested: iam_bootstrap_tag_value_detach_permissions, control: control, subject: subject))
             }
           }
         }

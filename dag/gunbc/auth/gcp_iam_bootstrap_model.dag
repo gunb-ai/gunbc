@@ -484,6 +484,35 @@ fn iam_bootstrap_trust_root_tag_value_namespaced() -> NonEmptyStr {
   join([iam_bootstrap_trust_root_tag_key_namespaced() as String, "/", iam_bootstrap_trust_root_tag_value_short as String], "") as NonEmptyStr
 }
 
+// ── THE TRUST-ROOT TAG KEY AND VALUE ARE ADMITTED BY ONE IDENTITY FOLD EACH (side chat at 8cd119d93f) ─
+// The tag stage and the detach probe read the same namespaced endpoints and admit through these folds,
+// never their own derivations: a lookup answering another valid key or value establishes nothing, and
+// only an admitted tagKeys/<id> or tagValues/<id> name reaches a binding, a deny or a permission probe.
+type TrustRootTagAdmission = TrustRootTagAdmitted { name: NonEmptyStr } | TrustRootTagRefused { reason: String }
+
+fn tag_resource_name_admitted(name: String, collection: String) -> Bool {
+  let parts = split(s: name, delimiter: "/")
+  count(parts) == 2 && match parts.first() { Present { value: c } => c == collection  Absent => false }
+    && match parts.skip(n: 1).first() { Present { value: id } => id != ""  Absent => false }
+}
+
+fn trust_root_tag_admission(what: String, collection: String, name: String, parent: String, want_parent: String, short_name: String, want_short: String, namespaced_name: String?, want_namespaced: String) -> TrustRootTagAdmission {
+  let namespaced = match namespaced_name { Present { value: n } => n == want_namespaced  Absent => false }
+  if !tag_resource_name_admitted(name: name, collection: collection) { TrustRootTagRefused { reason: concat(what, " reads without an admitted resource name") } }
+  else if short_name != want_short || parent != want_parent || !namespaced { TrustRootTagRefused { reason: concat(what, " reads under another parent, short name or namespaced name") } }
+  else { TrustRootTagAdmitted { name: name as NonEmptyStr } }
+}
+
+fn trust_root_tag_key_admission(name: String, parent: String, short_name: String, namespaced_name: String?) -> TrustRootTagAdmission {
+  trust_root_tag_admission(what: "the trust-root tag key", collection: "tagKeys", name: name, parent: parent, want_parent: iam_bootstrap_trust_root_tag_key_parent() as String,
+    short_name: short_name, want_short: iam_bootstrap_trust_root_tag_key_short as String, namespaced_name: namespaced_name, want_namespaced: iam_bootstrap_trust_root_tag_key_namespaced() as String)
+}
+
+fn trust_root_tag_value_admission(key_name: String, name: String, parent: String, short_name: String, namespaced_name: String?) -> TrustRootTagAdmission {
+  trust_root_tag_admission(what: "the trust-root tag value", collection: "tagValues", name: name, parent: parent, want_parent: key_name,
+    short_name: short_name, want_short: iam_bootstrap_trust_root_tag_value_short as String, namespaced_name: namespaced_name, want_namespaced: iam_bootstrap_trust_root_tag_value_namespaced() as String)
+}
+
 fn iam_bootstrap_trust_root_tag_condition() -> GcpTagCondition {
   ResourceMatchTag { key_namespaced_name: iam_bootstrap_trust_root_tag_key_namespaced(), value_short_name: iam_bootstrap_trust_root_tag_value_short }
 }
