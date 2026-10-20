@@ -6,19 +6,18 @@ set -uo pipefail
 MEMTOTAL_KB=$(awk "/MemTotal/{print \$2}" /proc/meminfo)
 [ "$MEMTOTAL_KB" -ge 60000000 ] || { echo "runner memory too low: $MEMTOTAL_KB kB"; exit 3; }
 
-# the four new claim/lib files ride the checker gate; run them separately (claim_batch) so a
-# checker hiccup in them cannot block the corpus regen
-mkdir -p /tmp/aside
-for f in unary_prefix_v1_canon_lib.dag unary_prefix_v2_canon_lib.dag unary_prefix_v1_v2_agreement.dag unary_prefix_values.dag; do
-  mv "src/v2/test/claim/manual/$f" /tmp/aside/ 2>/dev/null || true
-done
 cargo build --release -p v1-compiler --bin gunbc --bin claim_executor 2>&1 | tail -2 || exit 1
 
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 PREV=-1
 for ROUND in 1 2 3 4; do
   echo "=== REGEN ROUND $ROUND ==="
-  target/release/claim_executor --regen-round-cost --source-root dag --source-root src/v2 2>&1 | tail -8
-  WRITTEN=$(git status --porcelain -- src/v1/stage0/src | wc -l | tr -d ' ')
+  target/release/claim_executor --regen-round-cost --source-root dag --source-root src/v2 2>&1 | tail -10
+  echo "--- overlap refusal (heal step 2) ---"
+  target/release/gunbc run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/heal_candidate_stage0.dag --function heal_stage0_overlap_refusal_wet 2>&1 | tail -3
+  echo "--- seed-build artifacts (heal step 3) ---"
+  target/release/gunbc run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/seed_build_artifacts_regen.dag --function main_wet 2>&1 | tail -3
+  WRITTEN=$(git status --porcelain | wc -l | tr -d ' ')
   echo "round $ROUND dirty_files=$WRITTEN"
   if [ "$WRITTEN" = "$PREV" ]; then
     echo "FIXED-POINT-CONFIRMED: round $ROUND wrote 0 new files (previous round already converged)"
@@ -36,7 +35,7 @@ echo "leftover literal-12 prefix arms (want 0):"
 grep -c "parse_expr_bp(token_stream_advance(tokens.clone(), 1), ctx.clone(), 12)" src/v1/stage0/src/v1_compiler_parse.rs || true
 
 echo "=== PUSH SCRATCH REF ==="
-git add -A src/v1/stage0/src
+git add -A
 git -c user.name=regen -c user.email=regen@gunbc commit -q -m "regen: seed mirror regenerated to the declared prefix binding powers (fixed point)" || true
 BRANCH="scratch/unary-prefix-regen-$(git rev-parse --short HEAD)"
 git push -f origin "HEAD:refs/heads/$BRANCH" 2>&1 | tail -2
