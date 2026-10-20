@@ -137,6 +137,12 @@ type AxisReply
   | ReplySecureBootDisabled
   | ReplyBiosVersion { version: NonEmptyStr }
   | ReplyRefusedByBmc { axis: ObservationAxis, refusal: FirmwareReadRefusal }
+  | ReplyBeyondDecoder { axis: ObservationAxis, why: NonEmptyStr }
+
+// TWO FACTS, TWO ARMS (review 83313). ReplyRefusedByBmc is the BMC's own refusal or a body that is
+// not what the schema says. ReplyBeyondDecoder is a VALID answer this decoder cannot read (for
+// instance a paged collection it does not follow); it resolves to Unobserved with our reason, so a
+// limit of the observing layer is never recorded as a property of the BMC.
 
 // UNREACHABLE IS A FACT ABOUT THE BMC, NOT AN EMPTY ANSWER. BmcResponded { replies: [] } means the
 // BMC answered and had nothing for the axes asked; BmcSilent means nothing answered at all (a
@@ -169,6 +175,7 @@ fn reply_axis(reply: AxisReply) -> ObservationAxis {
     ReplySecureBootDisabled => SecureBootAxis
     ReplyBiosVersion { version: _ } => BiosVersionAxis
     ReplyRefusedByBmc { axis: a, refusal: _ } => a
+    ReplyBeyondDecoder { axis: a, why: _ } => a
   }
 }
 
@@ -220,6 +227,7 @@ fn resolve_axis(row: FirmwareBootFamilyRow, replies: List<AxisReply>, axis: Obse
       match reply_for_axis(replies: replies, axis: axis) {
         Absent => AxisNotObserved { reason: no_reply_reason() }
         Present { value: ReplyRefusedByBmc { axis: _, refusal: f } } => AxisRefused { refusal: f }
+        Present { value: ReplyBeyondDecoder { axis: _, why: w } } => AxisNotObserved { reason: w }
         Present { value: r } => AxisPayload { reply: r }
       }
   }

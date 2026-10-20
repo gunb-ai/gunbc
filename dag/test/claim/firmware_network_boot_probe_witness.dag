@@ -3,7 +3,7 @@ module test.claim.firmware_network_boot_probe_witness
 import std.types { Bool, List }
 import gunbc.firmware_network_boot_standing {
   FirmwareBootObservation, SecureBootUnobserved, SecureBootEnabled, SecureBootDisabled, SecureBootRefused,
-  boot_order_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved, AuthenticationRequired,
+  NicsUnobserved, NicsRefused, boot_order_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved, AuthenticationRequired,
 }
 import gunbc.firmware_network_boot_probe {
   FirmwareBootFamilyRow, BmcStack, RouteVerdict,
@@ -19,8 +19,8 @@ import gunbc.firmware_network_boot_probe {
   firmware_boot_family_rows, firmware_boot_family_row, probe, route_for,
   FamilyKey, FirmwareFamilyStack, RedfishOnlyStack, DedicatedManagementPort, SharedHostNic,
   RedfishGetRoute,
-  TransportAnswers, BootOrderAxis, SecureBootAxis, TransportCannotAnswer,
-  ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc,
+  TransportAnswers, BootOrderAxis, NicsAxis, SecureBootAxis, TransportCannotAnswer,
+  ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc, ReplyBeyondDecoder,
   BmcResponded, BmcSilent, ConnectTimedOut,
   BmcUnreachable, BmcObserved, ProbeSubject,
   ReadAxisRequest, SetBootOverrideRequest, ChangeBootOrderRequest, PowerActionRequest,
@@ -184,4 +184,20 @@ test fn observer_frontier_is_pending_until_the_named_caller_appears() -> Bool {
     _ => false
   }
   pending && fired
+}
+
+// A valid answer the decoder cannot read is OUR limit: Unobserved, never a refusal pinned on the BMC.
+test fn a_reply_beyond_the_decoder_is_unobserved_not_refused() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: row } =>
+      match probe(row: row, subject: subject(), contact: BmcResponded { replies: [ReplyBeyondDecoder { axis: NicsAxis, why: "paged" }] }) {
+        BmcObserved { subject: _, observation: o } =>
+          match o.nics {
+            NicsUnobserved { reason: _ } => true
+            _ => false
+          }
+        BmcUnreachable { subject: _, attempt: _ } => false
+      }
+  }
 }

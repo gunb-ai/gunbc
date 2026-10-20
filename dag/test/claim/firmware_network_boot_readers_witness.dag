@@ -12,7 +12,7 @@ import gunbc.firmware_network_boot_standing {
   BootOrderEntry, FirmwareBootObservation,
 }
 import gunbc.firmware_network_boot_probe {
-  AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc,
+  AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder, NicsAxis,
   BmcResponded, BmcObserved, BmcUnreachable, ProbeSubject, probe, firmware_boot_family_rows,
   FirmwareFamilyStack,
 }
@@ -46,6 +46,9 @@ fn is_order_two(r: AxisReply) -> Bool {
 }
 fn is_options(r: AxisReply) -> Bool {
   match r { ReplyBootOptions { options: _ } => true _ => false }
+}
+fn is_beyond_decoder(r: AxisReply) -> Bool {
+  match r { ReplyBeyondDecoder { axis: NicsAxis, why: _ } => true _ => false }
 }
 fn is_two_nics(r: AxisReply) -> Bool {
   match r { ReplyNics { nics: ns } => ns == ["/redfish/v1/Systems/1/EthernetInterfaces/1", "/redfish/v1/Systems/1/EthernetInterfaces/2"] _ => false }
@@ -129,10 +132,10 @@ test fn empty_lists_are_refused_never_observed_empty() -> Bool {
   count_refusals(rs: rs) == 2
 }
 
-test fn a_paged_nic_collection_is_refused() -> Bool {
+test fn a_paged_nic_collection_is_beyond_the_decoder_not_a_bmc_refusal() -> Bool {
   let paged = RedfishGetBody { body: "{\"Members\":[{\"@odata.id\":\"/redfish/v1/Systems/1/EthernetInterfaces/1\"}],\"Members@odata.nextLink\":\"/redfish/v1/Systems/1/EthernetInterfaces?$skip=1\"}" }
   let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on(), nics: paged))
-  count_refusals(rs: rs) == 1 && !any_is_two_nics(rs: rs)
+  count_refusals(rs: rs) == 0 && !any_is_two_nics(rs: rs) && fold(rs, init: false, f: (a, r) => a || is_beyond_decoder(r: r))
 }
 
 test fn secure_boot_reads_the_flag_and_refuses_a_missing_one() -> Bool {

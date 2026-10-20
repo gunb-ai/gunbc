@@ -10,7 +10,7 @@ import extdeps.languages.json.parse { FieldAbsent, FieldRead, FieldMalformed, js
 import gunbc.firmware_network_boot_standing { boot_order_entry, FirmwareReadRefusal, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, ReplyShapeUnrecognized }
 import gunbc.firmware_network_boot_probe {
   AxisReply, ObservationAxis, BootOrderAxis, NicsAxis, SecureBootAxis, BiosVersionAxis,
-  ReplyBootOrder, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc,
+  ReplyBootOrder, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder,
 }
 
 // THE REDFISH READERS FOR THE FIRMWARE NETWORK-BOOT PROBE: the obligor of the frontier that
@@ -144,7 +144,7 @@ fn nics_reply(get: RedfishGet) -> AxisReply {
         ObservationRefused { cause: c } => refused_axis(axis: NicsAxis, refusal: ReplyShapeUnrecognized { detail: c })
         ObservationEstablished { observed: page } =>
           match page.next_link {
-            Present { value: _ } => refused_axis(axis: NicsAxis, refusal: shape_refusal(detail: "the EthernetInterfaces collection continues on another page"))
+            Present { value: _ } => ReplyBeyondDecoder { axis: NicsAxis, why: "the EthernetInterfaces collection continues on another page and this decoder does not follow next links, so the NICs are not observed" }
             Absent =>
               if page.member_links == [] { refused_axis(axis: NicsAxis, refusal: shape_refusal(detail: "the EthernetInterfaces collection has no members; an empty list is not read as no NICs")) }
               else if list_length(items: list_flat_map(xs: page.member_links, f: fn(l) { if l == "" { [l] } else { [] } })) > 0 { refused_axis(axis: NicsAxis, refusal: shape_refusal(detail: "an EthernetInterfaces member link is the empty string")) }
