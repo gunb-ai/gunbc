@@ -34,7 +34,10 @@ module v2.workflow.outside_discovery_roots_census
 
 import std.types { String, Bool, List }
 import std.optional { Optional, Absent, Present }
-import std.algebra { list_map }
+import std.algebra { Cons, Empty, list_map, list_reverse }
+import gunbc.rust_emitted_edge { module_to_filename }
+import gunbc.stage0.stage0_cargo_manifest { stage0_package_root, stage0_source_dir_relative_to_package }
+import v2.lens.module_graph { ModuleDeclarationFact }
 import gunbc.ci.ci_layer_roots { witness_discovery_scan_dirs }
 import v2.cli.repository_layout { repository_module_file_of_path, repository_tree_directory }
 
@@ -65,7 +68,10 @@ data layout_authority_identity: String = "v2.cli.repository_layout.repository_mo
 // THE POPULATION PREDICATE, spelled from the note rather than from a snapshot. The note's subject is claim
 // files under the v1 test tree; this is the one path fact the census states outright, because it is the
 // subject of the note it cites -- not a list of the files found under it.
-data note_declared_prefix: String = "src/v1/tests/claim/"
+// ONE fact, two spellings derived from it. The path prefix used for containment is the directory plus the
+// separator, so the two cannot drift apart -- a second literal would be a second source for one fact.
+data note_declared_subject_directory: String = "src/v1/tests/claim"
+data note_declared_prefix: String = concat(note_declared_subject_directory, "/")
 
 // TWO TESTS, AND THE SECOND IS DOING THE REAL WORK.
 //
@@ -133,29 +139,83 @@ fn census_rows(listing: List<String>, claim_bearers: List<String>) -> List<Outsi
 
 // THE FINDINGS. Only OutsideDiscoveryRoots rows are findings; the other states are the census's answers
 // about the rest of the listing, not defects.
+// THE FINDINGS, projected in ONE fold. The first version filtered to the finding arm and then mapped the
+// whole sum again, which forced four arms and made the unread arm invent an empty string to satisfy the
+// type. It was unreachable -- the filter had just removed those rows -- so it printed nothing wrong today;
+// it was a fabricated default waiting for someone to loosen the filter, which is the §5 hard reject. One
+// fold has no such arm: a row that is not a finding leaves the accumulator UNTOUCHED, so there is no value
+// to make up and no placeholder that could become a finding. Accumulate through Cons and reverse once at the
+// end, so the census still reports rows in listing order.
+// THE EMITTER JOIN, computed from two MODELED authorities and nothing else (review 83368).
+//
+// The first version of this check read `src/v1/stage0/src/emitted_population.rs` with `string_contains` over
+// `// src/v1_tests_claim_<stem>.rs` comment lines and carried a hand-written fallback that stripped `_test`
+// for one file. Wrong three ways at once, all of them mine: it re-implemented a reader the repo already
+// models, it re-implemented a naming rule the repo already models, and the fallback existed only because I
+// had never read that rule.
+//
+// What the repo models, and what this uses:
+//   - the artifact's SHAPE is owned by `gunbc.stage0.stage0_emitted_population_manifest`, whose
+//     `emitted_population_manifest_line_prefix` / `..._separator` the structural reader
+//     `gunbc.stage0.stage0_rust_host_observation::emitted_population_repo_paths` applies. The artifact is a
+//     `.rs` of COMMENT LINES precisely so the regen comparison covers it, and that reader documents the fact
+//     -- nothing here parses Rust, which is what the reviewer's "a comment in a seed Rust file" finding was
+//     pointing at.
+//   - the emitted file NAME for a module is `gunbc.rust_emitted_edge::module_to_filename` (dots to
+//     underscores), composed with the package root and source dir from `gunbc.stage0.stage0_cargo_manifest`.
+//   - WHICH module a `.dag` declares is `v2.lens.module_graph::ModuleDeclarationFact`, supplied by the caller:
+//     hermetic claims pass fixture facts, the wet claim passes `module_declaration_facts_live`.
+//
+// THE `_test` FALLBACK IS GONE, and the reason matters more than the deletion. It existed because I derived
+// the expected name from the file PATH, whose stem keeps `_test`, while the emitter names the file after the
+// DECLARED MODULE, whose name has no `_test` to strip.
+// `src/v1/tests/claim/tco_tail_call_assigns_every_loop_slot_witness_test.dag` declares
+// `module v1.tests.claim.tco_tail_call_assigns_every_loop_slot_witness`, and `module_to_filename` of THAT is
+// the emitter's line verbatim. Reading the rule removed the exception: there was never an anomaly to
+// tolerate, only a rule I had not read. Verified over all sixteen subject files -- every one matches through
+// `module_to_filename` alone, and zero are reachable only by the old strip hack.
+//
+// The facts are an ARGUMENT, so one pure function serves both routes: a witness that supplies its own facts
+// proves the shape, and the wet claim that supplies `module_declaration_facts_live` proves the route is
+// inhabited. Neither can be satisfied by the other.
+fn emitted_entry_for_module(module_name: String) -> String {
+  concat(
+    concat(stage0_package_root, stage0_source_dir_relative_to_package),
+    concat(module_to_filename(module_name: module_name), ".rs")
+  )
+}
+
+fn subject_path_is_emitted(
+  path: String,
+  emitted: List<String>,
+  facts: List<ModuleDeclarationFact>
+) -> Bool {
+  any(
+    xs: facts,
+    predicate: fn(fact) {
+      fact.path == path
+        && any(xs: emitted, predicate: fn(entry) { entry == emitted_entry_for_module(module_name: fact.module) })
+    }
+  )
+}
+
+// The completeness direction, over the same two authorities. The subject NAMESPACE is derived, not spelled:
+// it is the dotted form of the subject directory mapped through the emitter's own naming rule, so a rename of
+// either side moves this predicate with it instead of silently narrowing the population to nothing.
 fn outside_roots_findings(rows: List<OutsideRootsStanding>) -> List<String> {
-  let finding_rows = filter(
-    xs: rows,
-    predicate: fn(row) {
+  let collected = fold(
+    rows,
+    init: Empty,
+    f: fn(acc, row) {
       match row {
-        OutsideDiscoveryRoots { path: _, cause: _ } => true
-        InsideGovernedTree { path: _, tree_directory: _ } => false
-        NotAClaimFile { path: _ } => false
-        ListingUnread { cause: _ } => false
+        OutsideDiscoveryRoots { path: path, cause: _ } => Cons { head: path, tail: acc }
+        InsideGovernedTree { path: _, tree_directory: _ } => acc
+        NotAClaimFile { path: _ } => acc
+        ListingUnread { cause: _ } => acc
       }
     }
   )
-  list_map(
-    xs: finding_rows,
-    f: fn(row) {
-      match row {
-        OutsideDiscoveryRoots { path: path, cause: _ } => path
-        InsideGovernedTree { path: path, tree_directory: _ } => path
-        NotAClaimFile { path: path } => path
-        ListingUnread { cause: _ } => ""
-      }
-    }
-  )
+  list_reverse(xs: collected)
 }
 
 // FINDINGS THE NOTE DOES NOT VOUCH FOR. A finding outside the note's declared subject is a NEW population

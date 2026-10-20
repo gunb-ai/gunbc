@@ -3229,6 +3229,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "every_expected_subject_path_is_emitted_by_its_declared_module_by_real_execution" },
+      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
+      function: "every_expected_subject_path_is_emitted_by_its_declared_module_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.repository_convergence_wet_witness", function: "a_legacy_derived_roster_file_is_retired_and_read_back_absent" },
       entry: "dag/test/claim/repository_convergence_wet_witness.dag",
       function: "a_legacy_derived_roster_file_is_retired_and_read_back_absent",

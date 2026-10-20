@@ -38,6 +38,11 @@ module v2.test.claim.outside_discovery_roots_census_real_execution
 import std.types { String, Bool, List }
 import std.algebra { is_empty }
 
+import v2.workflow.outside_discovery_roots_census {
+  emitted_entry_for_module,
+  subject_path_is_emitted
+}
+
 import v2.workflow.outside_discovery_roots_census_live {
   tracked_claim_listing,
   tracked_claim_bearers,
@@ -47,7 +52,14 @@ import v2.workflow.outside_discovery_roots_census_live {
 // THE EXPECTATION, imported rather than restated: the same list the hermetic witness holds its injected
 // listings against. Two copies of a population, in two files, is the second-implementation defect this repo
 // calls §3's fork; one list, read by both the hermetic and the wet observer, is one fact with two readers.
-import v2.test.claim.outside_discovery_roots_census_helpers { subject_population_expected }
+import v2.test.claim.outside_discovery_roots_census_helpers {
+  subject_population_expected,
+  subject_helpers_declare_nothing,
+  emitted_registry_path
+}
+import gunbc.stage0.stage0_rust_host_observation { emitted_population_repo_paths }
+import v2.lens.module_graph { module_declaration_facts_live }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 fn is_in(listing: List<String>, path: String) -> Bool {
   any(xs: listing, predicate: fn(candidate) { candidate == path })
@@ -100,4 +112,35 @@ test fn the_scan_dir_gap_is_observed_on_the_real_route_by_real_execution() -> Bo
   !(out.unread)
     && !(is_empty(out.scan_dir_gap))
     && all(xs: out.scan_dir_gap, predicate: fn(path) { is_in(listing: out.findings, path: path) == false })
+}
+
+// THE JOIN, ON FACTS THE HOST SUPPLIES (review 83368).
+//
+// The hermetic witness can prove the census's SHAPE but not this, and the reason is the difference between
+// the two: a hermetic claim that checked "every subject path is emitted" would have to supply the declared
+// module name itself, and then it would be comparing a fixture against a fixture -- the join would pass no
+// matter what the tree said. Here the facts come from `module_declaration_facts_live`, the host's own scan of
+// `src/v1`: it parses each file and returns the module its `module` header DECLARES. Nothing in this file
+// names a module.
+//
+// What each half contributes, and why both are needed:
+//   - the EMITTED side is the artifact read through its modeled reader
+//     (`emitted_population_repo_paths`), not grepped;
+//   - the DECLARATIVE side is what the source files actually declare, from the host.
+// Joining them through `module_to_filename` is the same composition the emitter performs, so a mismatch is a
+// real disagreement between the tree and the registry rather than between two strings I wrote.
+//
+// Containment runs one way here (every expected subject path must be emitted, by identity, path by path); the
+// other way is the index pairing above, which compares the live `git ls-files` population against the same
+// list. A path the registry has never seen fails this claim by NAME, which is the RED the reviewer asked for
+// the registry join to be able to produce.
+test fn every_expected_subject_path_is_emitted_by_its_declared_module_by_real_execution() -> Bool {
+  let read = Filesystem.Read(path: emitted_registry_path)
+  let emitted = emitted_population_repo_paths(content: read.content)
+  let facts = module_declaration_facts_live(pool_roots: ["src/v1"])
+  let population = concat(subject_population_expected, subject_helpers_declare_nothing)
+  read.success && !(is_empty(emitted))
+    && all(xs: population, predicate: fn(path) {
+      subject_path_is_emitted(path: path, emitted: emitted, facts: facts)
+    })
 }

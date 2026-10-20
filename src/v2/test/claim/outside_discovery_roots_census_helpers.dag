@@ -1,6 +1,16 @@
 module v2.test.claim.outside_discovery_roots_census_helpers
 
 import std.types { String, List }
+import gunbc.stage0.stage0_cargo_manifest { stage0_package_root, stage0_source_dir_relative_to_package }
+import gunbc.stage0.stage0_emitted_population_manifest { emitted_population_manifest_basename }
+
+// The artifact's location, COMPOSED from the modeled manifest constants rather than spelled. Spelling
+// `src/v1/stage0/src/emitted_population.rs` here would be a second source for where that file lives -- the
+// same fact `gunbc.stage0.stage0_rust_host_observation` already owns.
+data emitted_registry_path: String = concat(
+  concat(stage0_package_root, stage0_source_dir_relative_to_package),
+  emitted_population_manifest_basename
+)
 
 // FIXTURE DATA for the outside-discovery-roots census -- the expected population, and the two edge cases the
 // census must classify differently. It lives in the TEST TREE, beside the claims that read it, because nothing

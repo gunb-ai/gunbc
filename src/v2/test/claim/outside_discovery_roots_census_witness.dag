@@ -11,14 +11,14 @@ module v2.test.claim.outside_discovery_roots_census_witness
 // WHAT GROUNDS THE EXPECTATION, and what does not. The fixture lists below are the EXPECTED SUBJECT
 // POPULATION at file grain. They are NOT what the note declares: that note declares a subject (the entries
 // under `src/v1/tests/claim` have no executing consumer) and names zero files, so a path-level "the note
-// declared this" would be a claim the cited source cannot support. Each path here is instead held against
-// `src/v1/stage0/src/emitted_population.rs`, the emitted population registry -- a different instrument with
-// different provenance (the v1 emitter, not `git ls-files`), joined at identity by
-// `every_expected_subject_path_is_named_by_the_emitter` and answered in the negative by
-// `a_name_the_emitter_never_produced_is_not_in_the_registry`. That is what keeps the wet pairing from collapsing to
-// `measure() == measure()`. If a file enters or leaves the tree without the registry moving, the pairing
-// claim fails loudly -- which is the point: the registry and the tree are held together by that claim, not
-// by agreement.
+// declared this" would be a claim the cited source cannot support. What grounds each item is the emitted
+// population registry, read through `gunbc.stage0.stage0_rust_host_observation::emitted_population_repo_paths`
+// and joined through `gunbc.rust_emitted_edge::module_to_filename` -- different instrument, different
+// provenance from `git ls-files`, so the pairing is not `measure() == measure()`. The declared-module facts
+// that complete the join come from the host's own scan
+// (`v2.lens.module_graph::module_declaration_facts_live`) in the wet claim, never from anything authored here.
+// If a file enters or leaves the tree without the registry moving, the pairing claim fails loudly, naming the
+// path.
 //
 // NO COUNT LITERALS (§5/§6). Equality of populations here is stated as containment both ways over derived
 // sets, never as a number copied from an instrument run.
@@ -30,7 +30,8 @@ import std.algebra { Cons, Empty, is_empty }
 import v2.test.claim.outside_discovery_roots_census_helpers {
   prose_mentioning_paths,
   subject_helpers_declare_nothing,
-  subject_population_expected
+  subject_population_expected,
+  emitted_registry_path
 }
 import v2.workflow.outside_discovery_roots_census {
   OutsideRootsStanding,
@@ -55,7 +56,9 @@ import v2.workflow.outside_discovery_roots_census {
   scan_dir_gap_receipt_lines,
   scan_dir_gap_header_lines,
   is_census_visible,
-  scan_dir_authority_identity
+  scan_dir_authority_identity,
+  emitted_entry_for_module,
+  subject_path_is_emitted
 }
 import v2.workflow.outside_discovery_roots_census_live {
   TrackedListing,
@@ -72,6 +75,11 @@ import v2.workflow.outside_discovery_roots_census_live {
   head_stamp_line
 }
 import v2.cli.repository_layout { repository_module_file_of_path }
+import gunbc.rust_emitted_edge { module_to_filename }
+import gunbc.stage0.stage0_cargo_manifest { stage0_package_root, stage0_source_dir_relative_to_package }
+import gunbc.stage0.stage0_emitted_population_manifest { emitted_population_manifest_basename }
+import gunbc.stage0.stage0_rust_host_observation { emitted_population_repo_paths }
+import v2.lens.module_graph { ModuleDeclarationFact }
 import std.types { Int }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared, prepare_grammar }
@@ -635,152 +643,98 @@ test fn the_gap_receipt_says_it_rules_no_standing_and_names_the_lane_authority()
 }
 
 // ---------------------------------------------------------------------------
-// THE EXPECTATION'S ACTUAL AUTHORITY: THE EMITTED POPULATION REGISTRY.
+// THE EMITTER JOIN, THROUGH THE REPO'S OWN MODELED AUTHORITIES (review 83368).
 //
-// The wet pairing compares what `git ls-files` + `git grep` say against `subject_population_expected`. If
-// that list had been COPIED FROM THE SAME COMMAND, the comparison would be `measure() == measure()` and
-// would check nothing (DESIGN §5). It is not, and this section is where that is shown rather than asserted:
-// the list is held against `src/v1/stage0/src/emitted_population.rs`, which is produced by the v1 emitter
-// and not by the index. Different instrument, different provenance, joined at IDENTITY.
+// This section used to `string_contains` over `// src/v1_tests_claim_<stem>.rs` comment lines in a seed Rust
+// file, with a hand-written fallback stripping `_test` for one file. The reviewer was right that a comment in
+// a Rust file is not a modeled authority -- and the reason it was worse than it looked is that the repo
+// ALREADY models both halves of what I hand-rolled:
 //
-// THE TOKEN RULE, and the one place it bends. A registry line reads `// src/<path, slashes to underscores>.rs`.
-// So `src/v1/tests/claim/foo.dag` is named by `// src/v1_tests_claim_foo.rs`. Fifteen of the sixteen subject
-// files follow that rule verbatim. The sixteenth,
-// `tco_tail_call_assigns_every_loop_slot_witness_test.dag`, is named WITHOUT its `_test` -- the import
-// cutover's own rule (#13783) strips `_test` when mapping a path to a module, so the emitter's name is what
-// the rule derives and not an anomaly to work around. The fallback is tried only for a path that already ends
-// in `_test.dag`, so it cannot silently excuse a typo in any other name.
+//   - READING the artifact: `gunbc.stage0.stage0_rust_host_observation::emitted_population_repo_paths` is the
+//     structural inverse of the emitter's own write, splitting on
+//     `emitted_population_manifest_line_separator` and stripping `emitted_population_manifest_line_prefix`,
+//     both read from `gunbc.stage0.stage0_emitted_population_manifest`. That module documents why the artifact
+//     is a `.rs` of COMMENT LINES: so the regen comparison covers it, with nothing parsing Rust. My grep was a
+//     second, dumber parser of the same artifact.
+//   - NAMING the emitted file: `gunbc.rust_emitted_edge::module_to_filename` maps a module to its file name,
+//     composed with `stage0_package_root` and `stage0_source_dir_relative_to_package`.
 //
-// WHY A NEGATIVE CONTROL IS IN THE SAME SECTION: a containment test that always answers true -- an
-// `any` over an empty list, a pattern that matches the file's own header -- passes the positive claim too.
-// A path no emitter has ever named must answer false, or the join proves nothing about the paths that answer
-// true.
+// THE `_test` SPECIAL CASE IS GONE ENTIRELY, and the reason matters more than the deletion. It existed
+// because I derived the expected name from the file PATH, whose stem keeps `_test`, while the emitter names the
+// file after the DECLARED MODULE, whose name has no `_test` to strip.
+// `src/v1/tests/claim/tco_tail_call_assigns_every_loop_slot_witness_test.dag` declares
+// `module v1.tests.claim.tco_tail_call_assigns_every_loop_slot_witness`; `module_to_filename` of THAT is the
+// artifact's line verbatim. There was never an irregularity to tolerate -- only a rule I had not read, and a
+// fallback written to paper over my own gap. Deleting the fallback deletes the exception.
+//
+// WHAT THIS FILE CAN PROVE HERMETICALLY, and what it cannot. The declared module of a source file is known to
+// the HOST -- it parses the file -- and is reachable through
+// `v2.lens.module_graph::module_declaration_facts_live`, a host effect a hermetic claim cannot perform. So a
+// hermetic claim here asserts the SHAPE of the join on facts it supplies, and says that in its name; the
+// inhabitation claim, where the facts come from the host's own scan, is the wet
+// `every_expected_subject_path_is_emitted_by_its_declared_module_by_real_execution`. A hermetic claim that
+// passed itself its own module names and called that the check would be a fixture compared to a fixture, which
+// is the exact failure mode the reviewer is guarding against.
 // ---------------------------------------------------------------------------
 
-data emitted_registry_path: String = "src/v1/stage0/src/emitted_population.rs"
-data emitted_registry_subject_prefix: String = "src/v1_tests_claim_"
-
-// THE TOKEN RULE, READ OFF THE REGISTRY rather than guessed, and reported honestly including its ragged
-// edge. Every line is `// src/v1_tests_claim_<stem>.rs`. For FIFTEEN of the sixteen subject files the <stem>
-// is the file name minus `.dag`, `_test` included. For ONE --
-// `tco_tail_call_assigns_every_loop_slot_witness_test.dag` -- the registry carries the name WITHOUT `_test`.
-//
-// So the emitter's naming is NOT uniform, and I am not going to claim it is. The module-name rule of the
-// import cutover (#13783) strips `_test` when mapping a path to a module, and that rule is the plausible
-// reason the tco entry lost its suffix; it does NOT explain the other fifteen, which kept it. What is
-// verified is the containment, not the etymology: plain first, and the `_test`-stripped form only as a
-// FALLBACK for a path that already ends in `_test.dag`. A fallback that is tried before the plain form would
-// have been wrong on fifteen paths and passed only because I checked "is either candidate present" instead of
-// "which one is" -- the first version of this function did exactly that, and the green run caught it.
-fn emitted_registry_plain_token(path: String) -> String {
-  replace(s: replace(s: path, from: "src/v1/tests/claim/", to: emitted_registry_subject_prefix), from: ".dag", to: ".rs")
-}
-
-fn emitted_registry_token(path: String) -> String {
-  replace(s: emitted_registry_plain_token(path: path), from: "_test.rs", to: ".rs")
-}
-
-// Two candidates, ordered: the plain spelling is what the registry holds for all but one subject file, and
-// the stripped spelling is what it holds for that one. Both are tried, so neither the fifteen nor the
-// exception is a special case hidden in a comment.
-fn registry_names_path(registry: String, path: String) -> Bool {
-  let plain = concat("// ", emitted_registry_plain_token(path: path))
-  let stripped = concat("// ", emitted_registry_token(path: path))
-  string_contains(s: registry, pattern: plain)
-    || (ends_with(s: path, suffix: "_test.dag") && string_contains(s: registry, pattern: stripped))
-}
-
-test fn every_expected_subject_path_is_named_by_the_emitter() -> Bool {
+test fn the_modeled_reader_yields_the_entry_the_declared_module_composes_to() -> Bool {
   let read = Filesystem.Read(path: emitted_registry_path)
-  let population = concat(subject_population_expected, subject_helpers_declare_nothing)
+  let emitted = emitted_population_repo_paths(content: read.content)
   read.success
-    && all(xs: population, predicate: fn(path) { registry_names_path(registry: read.content, path: path) })
+    && !(is_empty(emitted))
+    && any(
+      xs: emitted,
+      predicate: fn(entry) {
+        entry == emitted_entry_for_module(module_name: "v1.tests.claim.escape_json_string_differential")
+      }
+    )
 }
 
-// THE ASYMMETRY IS ASSERTED, NOT ABSORBED. If the emitter ever normalises and every file drops its `_test`,
-// this claim says so loudly instead of letting a fallback quietly become the only working spelling.
-test fn the_emitter_keeps_the_test_suffix_for_most_subject_files_and_drops_it_for_exactly_one() -> Bool {
+// THE NEGATIVE CONTROL. A join that cannot answer false proves nothing, so a module no emitter produced must
+// compose to nothing IN THE SAME LIST the positive claim reads. The two claims differ by one trailing `x`,
+// which is what makes the pair non-degenerate: satisfied together only by a predicate that discriminates.
+test fn a_module_the_emitter_never_produced_composes_to_no_entry_in_the_population() -> Bool {
   let read = Filesystem.Read(path: emitted_registry_path)
+  let emitted = emitted_population_repo_paths(content: read.content)
   read.success
-    && string_contains(s: read.content, pattern: "// src/v1_tests_claim_parse_source_extent_control_test.rs")
-    && !(string_contains(s: read.content, pattern: "// src/v1_tests_claim_parse_source_extent_control.rs"))
-    && string_contains(s: read.content, pattern: "// src/v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness.rs")
-    && !(string_contains(s: read.content, pattern: "// src/v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness_test.rs"))
+    && !(any(
+      xs: emitted,
+      predicate: fn(entry) {
+        entry == emitted_entry_for_module(module_name: "v1.tests.claim.escape_json_string_differentialx")
+      }
+    ))
 }
 
-// THE NEGATIVE CONTROL. A containment join that always answers true passes the positive claim too, so the
-// join is worthless unless a name the emitter never produced answers FALSE. `carrier_realization_census_not_emitted`
-// exists nowhere; the real neighbour two lines below must answer TRUE, so the pair cannot both be satisfied
-// by a predicate that ignores its argument. If the first ever flips to true, the join above is fiction.
-test fn a_name_the_emitter_never_produced_is_not_in_the_registry() -> Bool {
+// THE `_test` CASE, now an ordinary case. The declared module is asserted to carry no `_test` because that is
+// what the file's own `module` header says -- the same rule as every other file, exercised on the one name
+// that previously needed a fallback. Rename the module to keep `_test` and the entry stops matching, so the
+// change is reported rather than absorbed by a fallback.
+test fn the_test_suffixed_file_composes_to_its_entry_from_its_declared_module() -> Bool {
   let read = Filesystem.Read(path: emitted_registry_path)
+  let emitted = emitted_population_repo_paths(content: read.content)
+  let declared = "v1.tests.claim.tco_tail_call_assigns_every_loop_slot_witness"
   read.success
-    && !(registry_names_path(registry: read.content, path: "src/v1/tests/claim/carrier_realization_census_not_emitted.dag"))
-    && registry_names_path(registry: read.content, path: "src/v1/tests/claim/escape_json_string_differential.dag")
+    && !(string_contains(s: declared, pattern: "_test"))
+    && any(
+      xs: emitted,
+      predicate: fn(entry) { entry == emitted_entry_for_module(module_name: declared) }
+    )
 }
 
-// THE `_test` BEND IS EXERCISED, not just tolerated. Without the strip the tco file is named by no token, and
-// the honest response would be to exclude it from the population -- which is how a census quietly loses a
-// member it is supposed to be reporting.
-test fn the_test_suffixed_subject_file_is_named_after_the_module_rule_strips_it() -> Bool {
-  let read = Filesystem.Read(path: emitted_registry_path)
-  let tco = "src/v1/tests/claim/tco_tail_call_assigns_every_loop_slot_witness_test.dag"
-  read.success
-    && registry_names_path(registry: read.content, path: tco)
-    && ends_with(s: tco, suffix: "_test.dag")
-    && !(string_contains(s: emitted_registry_token(path: tco), pattern: "_test.rs"))
-}
+// THE JOIN PREDICATE, on supplied facts. Both halves must match -- the fact must name THIS path, and the
+// fact's module must compose to an emitted entry -- and each negative case removes exactly one half, so
+// neither half can be silently ignored. Without the facts-as-argument split this predicate could only have
+// been exercised on the wet lane, where a broken fact match is indistinguishable from a broken read.
+data join_fixture_path: String = "src/v1/tests/claim/escape_json_string_differential.dag"
+data join_fixture_module: String = "v1.tests.claim.escape_json_string_differential"
 
-// ---------------------------------------------------------------------------
-// THE ANTI-DROP DIRECTION: THE LITERAL IS A CLOSED UNIVERSE, NOT A COPY.
-//
-// Every claim above runs ONE way -- each path in `subject_population_expected` is named by the emitter. That
-// direction alone cannot catch the failure review 83348 named: a hand-copied list that quietly LOSES a member
-// passes every subset claim and reports a smaller census as clean. So the join must run the other way too,
-// over a DISCOVERY rather than over the list twice.
-//
-// The discovery is independent of the list: the registry's own lines are read and kept by PREFIX
-// (`// src/v1_tests_claim_` ... `.rs`), so what comes back is the emitter's decision, not a restatement of
-// what this file already remembers. The claim then requires every token that filter yields to land on a path
-// in `subject_population_expected` UNION the zero-claim helpers. A member dropped from either list now fails
-// at IDENTITY, on a named path, rather than changing a count.
-//
-// This is the §5 exemption read literally -- "a monotone debt contract over a closed, independently discovered
-// universe checked at identity grain": closed because completeness is asserted, independently discovered
-// because the universe comes from the emitter, identity grain because both directions compare paths and never
-// totals. It is falsified by RED-G, which deletes one line from the list.
-// ---------------------------------------------------------------------------
-
-// The discovery: every emitter line naming a file under the subject, kept by prefix rather than enumerated.
-fn registry_subject_tokens(registry: String) -> List<String> {
-  filter(
-    xs: split(s: registry, delimiter: "\n"),
-    predicate: fn(line) {
-      line.starts_with(prefix: "// src/v1_tests_claim_") && line.ends_with(suffix: ".rs")
-    }
-  )
-}
-
-// `// src/v1_tests_claim_<stem>.rs` -> the subject paths that token could be naming: the plain reconstruction
-// and the `_test`-restored one. Both are offered because the emitter strips `_test` for exactly one subject
-// file; a claim that accepted only the plain reconstruction would fail on that file and invite me to drop it
-// from the population, which is how a census quietly shrinks.
-fn registry_token_candidate_paths(token_line: String) -> List<String> {
-  let stem = replace(s: replace(s: token_line, from: "// src/v1_tests_claim_", to: ""), from: ".rs", to: "")
-  [concat("src/v1/tests/claim/", concat(stem, ".dag")), concat("src/v1/tests/claim/", concat(stem, "_test.dag"))]
-}
-
-test fn every_emitter_named_subject_file_is_in_the_expected_population() -> Bool {
-  let read = Filesystem.Read(path: emitted_registry_path)
-  let covered = concat(subject_population_expected, subject_helpers_declare_nothing)
-  let tokens = registry_subject_tokens(registry: read.content)
-  read.success
-    && !(is_empty(tokens))
-    && all(xs: tokens, predicate: fn(line) {
-      any(xs: covered, predicate: fn(path) {
-        any(xs: registry_token_candidate_paths(token_line: line), predicate: fn(candidate) {
-          candidate == path
-        })
-      })
-    })
+test fn the_join_requires_the_fact_to_name_the_path_and_the_module_to_be_emitted() -> Bool {
+  let facts = [ModuleDeclarationFact { module: join_fixture_module, path: join_fixture_path }]
+  let other_path = [ModuleDeclarationFact { module: join_fixture_module, path: "src/v1/tests/claim/other.dag" }]
+  let other_module = [ModuleDeclarationFact { module: "v1.tests.claim.carrier_realization_census", path: join_fixture_path }]
+  let emitted = [emitted_entry_for_module(module_name: join_fixture_module)]
+  subject_path_is_emitted(path: join_fixture_path, emitted: emitted, facts: facts)
+    && !(subject_path_is_emitted(path: join_fixture_path, emitted: emitted, facts: other_path))
+    && !(subject_path_is_emitted(path: join_fixture_path, emitted: emitted, facts: other_module))
+    && !(subject_path_is_emitted(path: join_fixture_path, emitted: [], facts: facts))
 }
