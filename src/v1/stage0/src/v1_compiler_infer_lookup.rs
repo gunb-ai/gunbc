@@ -31,10 +31,11 @@ pub use crate::v1_compiler_infer_emit_info::{
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
     authored_name, borrowed_generic_param_names, census_declaration_type_env,
-    declaration_substitution_basis, global_bare_policy_candidate, is_recursive_type,
-    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_by_name_local,
-    lookup_type, lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names,
-    symbol_index_lookup, GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
+    declaration_substitution_basis, fn_type_param_names, global_bare_policy_candidate,
+    is_recursive_type, listed_import_required_bare_call_blocked, lookup_binding_by_name,
+    lookup_binding_by_name_local, lookup_type, lookup_type_for, qualified_all_but_last,
+    qualify_borrowed_type_names, symbol_index_lookup, GlobalBareCandidate, GlobalBareLookupState,
+    TypeBinding, TypeEnv,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, OtherItem, ServiceItem, TypeItem,
@@ -46,7 +47,7 @@ use crate::v1_compiler_infer_method::NonDeclarationBinding::{
 pub use crate::v1_compiler_infer_method::{
     bare_call_non_declaration_binding, infer_builtin_call_type, NonDeclarationBinding,
 };
-pub use crate::v1_compiler_infer_resolve::{expand_nominal_alias_rhs, fn_type_param_names};
+pub use crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs;
 pub use crate::v1_compiler_infer_service::{
     check_service_method_call_node, OpEntry, ServiceMethodResult,
 };
@@ -737,7 +738,7 @@ pub fn census_declaration_bound_formals(
     node: Rc<Node>,
 ) -> Rc<Vec<Rc<ResolvedFormal>>> {
     {
-        let tp_names = crate::v1_compiler_infer_resolve::fn_type_param_names(
+        let tp_names = crate::v1_compiler_infer_env::fn_type_param_names(
             node.clone(),
             type_env.source_indices.clone(),
         );

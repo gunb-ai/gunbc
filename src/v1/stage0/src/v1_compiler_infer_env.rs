@@ -51,9 +51,9 @@ use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
-    authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
-    intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
-    param_node_name_at, param_node_type_expr, qualified_last_segment,
+    authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named,
+    generic_param_name_at, intern, intern_find, intern_str, kernel_span, merge_intern_tables,
+    module_path_segments, param_node_name_at, param_node_type_expr, qualified_last_segment,
     resolved_node_is_kernel_identity_for_name, source_text_at, Cardinality, CompilerDiagnostic,
     Connective, DeclarationMarker, ExprData, InferredNode, InternTable, NewlineIndex, Node,
 };
@@ -3182,6 +3182,60 @@ pub fn enclosing_declaration_of(declarations: Rc<Vec<Rc<Node>>>, n: Rc<Node>) ->
     }
 }
 
+pub fn fn_type_param_names(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in Rc::new({
+            let mut __result = Vec::new();
+            for p in item.params.clone().iter().cloned() {
+                if (crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone())
+                    == crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        crate::v1_std_core::param_node_type_expr(p.clone()),
+                    ))
+                {
+                    __result.push(p);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(crate::v1_std_core::param_node_name_at(
+                p.clone(),
+                source_indices.clone(),
+            ));
+        }
+        __result
+    })
+}
+
+pub fn declared_type_parameter_names(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    if ((item.connective.clone() != Connective::NoConnective)
+        && (item.transport.clone() == std::option::Option::None))
+    {
+        Rc::new({
+            let mut __result = Vec::new();
+            for p in item.params.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::generic_param_name_at(
+                    p.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        })
+    } else {
+        fn_type_param_names(item.clone(), source_indices.clone())
+    }
+}
+
 pub fn is_declared_type_parameter_of_enclosing_declaration(
     n: Rc<Node>,
     parameter: String,
@@ -3195,10 +3249,11 @@ pub fn is_declared_type_parameter_of_enclosing_declaration(
         Some(declarations) => match enclosing_declaration_of(declarations.clone(), n.clone()) {
             Some(d) => {
                 let mut __found = false;
-                for p in d.params.clone().iter().cloned() {
-                    if (crate::v1_std_core::authored_name_at(source_indices.clone(), p.clone())
-                        == parameter.clone())
-                    {
+                for tp in declared_type_parameter_names(d.clone(), source_indices.clone())
+                    .iter()
+                    .cloned()
+                {
+                    if (tp.clone() == parameter.clone()) {
                         __found = true;
                         break;
                     }

@@ -169,7 +169,7 @@ pub use crate::v1_compiler_infer_env::{
     build_unit_variant_index, census_declaration_type_env, declaration_named_by_type_name,
     declaration_node_of_ref, declaration_provenance_of_ref, declaration_ref_of_declaration_node,
     declaration_ref_of_type_node, declaration_substitution_basis, effective_visible_binding,
-    empty_symbol_index, empty_type_env_cache, env_with_type_variable_bindings,
+    empty_symbol_index, empty_type_env_cache, env_with_type_variable_bindings, fn_type_param_names,
     global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates,
     host_text_into_structural_sequence, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, is_type_variable_name, kernel_settled_name,
@@ -235,10 +235,9 @@ pub use crate::v1_compiler_infer_patterns::{
     ConstructorRoster, NodeLookupResult, PatternSubject,
 };
 pub use crate::v1_compiler_infer_resolve::{
-    expand_nominal_alias_rhs, fn_type_param_names, generic_declaration_application,
-    is_user_generic_use_site, preserve_nominal_brand_on_resolve, reference_with_declaration,
-    resolve_generic_use_decl, resolve_item_types, resolve_node, resolve_node_bounded,
-    ItemResolveResult, NodeResolveResult,
+    expand_nominal_alias_rhs, generic_declaration_application, is_user_generic_use_site,
+    preserve_nominal_brand_on_resolve, reference_with_declaration, resolve_generic_use_decl,
+    resolve_item_types, resolve_node, resolve_node_bounded, ItemResolveResult, NodeResolveResult,
 };
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
     ExpansionBudgetExhausted, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
@@ -9359,7 +9358,7 @@ pub fn borrowed_callable_call_type(
     {
         let source_indices = scope.type_env.source_indices.clone();
         let base = crate::v1_compiler_infer_types::callable_inferred(gnode.clone());
-        let tp_names = crate::v1_compiler_infer_resolve::fn_type_param_names(
+        let tp_names = crate::v1_compiler_infer_env::fn_type_param_names(
             gnode.clone(),
             source_indices.clone(),
         );
@@ -24738,7 +24737,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         lambda_param_provenance: fn_scope.lambda_param_provenance.clone(),
                         in_flight_lambda_param_names: Rc::new(vec![]),
                         enclosing_declared_type_param_names:
-                            crate::v1_compiler_infer_resolve::fn_type_param_names(
+                            crate::v1_compiler_infer_env::fn_type_param_names(
                                 item.clone(),
                                 scope.type_env.source_indices.clone(),
                             ),
@@ -28033,7 +28032,7 @@ pub fn census_upgrade_binding(
 ) -> Rc<TypeBinding> {
     if census_binding_is_borrowable_fn_sig(binding.clone(), source_indices.clone()) {
         {
-            let tp_names = crate::v1_compiler_infer_resolve::fn_type_param_names(
+            let tp_names = crate::v1_compiler_infer_env::fn_type_param_names(
                 binding.resolved.clone(),
                 source_indices.clone(),
             );
