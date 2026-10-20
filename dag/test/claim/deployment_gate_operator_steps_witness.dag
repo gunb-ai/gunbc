@@ -22,6 +22,15 @@ import std.types {
   Bool,
   NonEmptyStr,
   HttpStatus,
+  // THE INSTANT THE STANDING WAS READ AT. Without this the annotations below resolve to nothing and
+  // the checker falls back to String, which then mismatches the mint's Timestamp -- an error reported
+  // eight rows deep in call sites rather than here.
+  Timestamp,
+}
+import std.scoped_authorization {
+  // THE DISPATCH THE STANDING IS BOUND TO, the same branded carrier the act refuses a mismatch
+  // against. Same lesson as Timestamp above.
+  AttemptIdentity,
 }
 import std.human_intervention { DischargedAt }
 import extdeps.github.app { GitHubAppInstallationId, GitHubAppId }
@@ -236,10 +245,6 @@ fn ownership_for(
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "joined_pair"
-    ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "receipt_for"
     ),
     decl_ref(
@@ -269,11 +274,11 @@ fn ownership_with_enabled(
   admit_callers: [
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "ownership_for"
+      decl_name: "joined_pair"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "standing_disabled_rule"
+      decl_name: "ownership_for"
     ),
   ]
 {
@@ -1041,10 +1046,6 @@ fn protection_for(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "standing_at"
     ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "standing_disabled_rule"
-    ),
   ]
 {
   observe_environment_protection(
@@ -1064,7 +1065,12 @@ fn protection_for(
 fn joined_pair(
   environment: NonEmptyStr,
   reviewer_present: Bool,
-  main_only: Bool
+  main_only: Bool,
+  // WHETHER THE RULE IS STILL ENABLED. Defaulted by every healthy call to true and set false by the
+  // one fixture that needs it: a rule switched off between the trial and the removal ask is the case
+  // the whole historical-evidence test is about, and it has to arrive through the same join so that
+  // nothing else differs.
+  enabled: Bool
 ) -> ProtectionOwnershipJoin
   admit_callers: [
     decl_ref(
@@ -1081,7 +1087,8 @@ fn joined_pair(
       reviewer_present: reviewer_present,
       main_only: main_only,
     ),
-    ownership: ownership_for(
+    ownership: ownership_with_enabled(
+      enabled: enabled,
       environment: environment,
       installation_id: canonical_installation_id,
       identity_repo: gate_repo,
@@ -1408,7 +1415,7 @@ test fn a_standing_cannot_join_ownership_with_another_environments_protection() 
            attempt: standing_attempt(),
            observed_at: standing_instant,
          ) {
-           StandingRead { value: _ } => false
+           StandingRead { standing: _ } => false
            StandingRefused { because: _ } => true
          })
 }
@@ -1422,21 +1429,13 @@ fn standing_disabled_rule() -> RemovalBoundaryStandingObservation
   ]
 {
   observe_removal_boundary_standing(
+    // THE RULE IS OFF, and everything else is exactly as healthy as the control: joined_pair builds
+    // the pair from the two reads, and the disabled rule is the only thing that differs.
     joined: joined_pair(
-      ownership: ownership_with_enabled(
-        environment: gate_env,
-        installation_id: canonical_installation_id,
-        identity_repo: gate_repo,
-        rule_id: canonical_rule_id,
-        enabled: false,
-      ),
-      protection: protection_for(
-        owner: gate_owner,
-        repo: gate_repo,
-        environment: gate_env,
-        reviewer_present: true,
-        main_only: true,
-      ),
+      environment: gate_env,
+      reviewer_present: true,
+      main_only: true,
+      enabled: false,
     ),
     boundary: standing_boundary_for(environment: gate_env, identity_repo: gate_repo),
     attempt: standing_attempt(),
