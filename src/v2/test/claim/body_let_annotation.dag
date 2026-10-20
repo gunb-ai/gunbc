@@ -383,7 +383,6 @@ fn bla_undecided_count(o: Outcome<Bool>) -> Int {
       fold_list(xs: Cons { head: d.head, tail: d.tail }, empty: 0, cons: fn(acc, x) {
         if (x.reason == ^inhabitance_undecidable_argument_type_not_derived)
           || (x.reason == ^inhabitance_undecidable_formal_unresolved)
-          || (x.reason == ^inhabitance_undecidable_optional_carrier)
           || (x.reason == ^inhabitance_undecidable_generic_formal) { acc + 1 } else { acc }
       })
   }
@@ -406,7 +405,6 @@ fn bla_admits_decided(o: Outcome<Bool>) -> Bool {
     Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
       !bla_has_reason(d: d, reason: ^inhabitance_undecidable_argument_type_not_derived)
         && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
-        && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_optional_carrier)
         && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
   }
 }

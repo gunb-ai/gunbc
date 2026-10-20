@@ -4,7 +4,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import extdeps.cloud.gcp.iam { IamCondition, GcpTagBindingWire, gcp_tag_condition_expression }
+import extdeps.cloud.gcp.iam { IamCondition, GcpTagBindingWire, gcp_tag_condition_expression, gcp_service_account_tag_detach_requirement }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, iam_converge_service_account, iam_observe_service_account }
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account }
@@ -13,7 +13,9 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_deny_policies, iam_bootstrap_trust_root_wall_policy_id, iam_bootstrap_trust_root_tag_parents,
   iam_bootstrap_deny_rules_match, iam_bootstrap_trust_root_wall_rule,
   TagBindingEstablished, TagBindingAbsent, TagBindingIncomplete, trust_root_tag_binding_reading,
-  iam_bootstrap_probe_accounts, iam_bootstrap_tag_detach_permissions,
+  iam_bootstrap_probe_accounts, iam_bootstrap_tag_detach_permissions, iam_bootstrap_tag_value_detach_permissions,
+  TagDetachProbeVerdict, TagDetachAbsent, TagDetachUndiscriminating, TagDetachHeld, tag_detach_probe_verdict,
+  TrustRootTagAdmission, TrustRootTagAdmitted, TrustRootTagRefused, trust_root_tag_value_admission, iam_bootstrap_trust_root_tag_value_namespaced,
 }
 import gunbc.auth.gcp_iam_bootstrap { BootstrapTrustRootTags, BootstrapDeny, BootstrapIdentities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapWorkflowTrust, BootstrapCapabilities, BootstrapAuthorityCleanup, BootstrapProbeCleanup, iam_bootstrap_stage_admitted }
 
@@ -179,8 +181,56 @@ test fn an_unmatched_page_with_another_page_is_incomplete_never_absent() -> Bool
 test fn the_detach_probe_runs_as_iam_bootstrap_on_every_trust_root_before_workflow_trust() -> Bool {
   any(iam_bootstrap_probe_accounts, a => (a as String) == (iam_bootstrap_service_account as String))
     && all(iam_bootstrap_trust_root_tagged_accounts(), t => any(iam_bootstrap_probe_accounts, a => (a as String) == (t as String)))
-    && iam_bootstrap_tag_detach_permissions == ["iam.serviceAccounts.deleteTagBinding"]
     && iam_bootstrap_stage_admitted(stage: BootstrapPrivilegeReadback, completed: [BootstrapCapabilities, BootstrapTrustRootTags, BootstrapProbeAuthority])
     && !iam_bootstrap_stage_admitted(stage: BootstrapPrivilegeReadback, completed: [BootstrapCapabilities, BootstrapProbeAuthority])
     && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapProbeCleanup, BootstrapTrustRootTags])
+}
+
+// ── THE TAG-VALUE AXIS (closes the UNMET half of the drop's detach obligation) ──────────────────────
+// One verdict serves both detach axes. A probe whose discriminating control (the operator's answer)
+// lacks the permission establishes nothing; iam-bootstrap holding any of it refuses.
+test fn the_detach_verdict_needs_the_control_and_refuses_a_holder() -> Bool {
+  let p = iam_bootstrap_tag_value_detach_permissions
+  (match tag_detach_probe_verdict(requested: p, control: p, subject: []) { TagDetachAbsent => true  TagDetachUndiscriminating => false  TagDetachHeld => false })
+    && (match tag_detach_probe_verdict(requested: p, control: [], subject: []) { TagDetachAbsent => false  TagDetachUndiscriminating => true  TagDetachHeld => false })
+    && (match tag_detach_probe_verdict(requested: p, control: p, subject: p) { TagDetachAbsent => false  TagDetachUndiscriminating => false  TagDetachHeld => true })
+}
+
+// INHABITANCE, not a literal: each axis probes exactly its half of the cited upstream fact, so a probe
+// of any other permission (tagValueBindings.create, say) has nowhere to land but the cited fact itself.
+test fn each_detach_axis_probes_its_half_of_the_cited_upstream_requirement() -> Bool {
+  iam_bootstrap_tag_detach_permissions == [gcp_service_account_tag_detach_requirement.service_account_permission]
+    && iam_bootstrap_tag_value_detach_permissions == [gcp_service_account_tag_detach_requirement.tag_value_permission]
+}
+
+// ── ONE IDENTITY FOLD FOR THE TRUST-ROOT TAG VALUE (side chat at 8cd119d93f) ──────────────────────
+// The tag stage and the detach probe admit the value through the SAME fold: short name root, the declared
+// namespaced name, the exact trust-root key as parent, and a tagValues/<id> name. A lookup answering
+// another valid TagValue is refused before either permission probe can count.
+data trust_root_key_name: String = "tagKeys/281479000000001"
+
+fn value_admitted(name: String, parent: String, short_name: String, namespaced: String?) -> Bool {
+  match trust_root_tag_value_admission(key_name: trust_root_key_name, name: name, parent: parent, short_name: short_name, namespaced_name: namespaced) {
+    TrustRootTagAdmitted { name: _ } => true  TrustRootTagRefused { reason: _ } => false }
+}
+
+data declared_value_namespaced: String = "gunbai-secrets/gunbc-trust-root/root"
+
+test fn the_declared_trust_root_value_is_admitted() -> Bool {
+  iam_bootstrap_trust_root_tag_value_namespaced() as String == declared_value_namespaced
+    && value_admitted(name: "tagValues/281479000000002", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: declared_value_namespaced })
+}
+
+test fn another_valid_tag_value_is_refused_before_any_probe() -> Bool {
+  !value_admitted(name: "tagValues/281479000000099", parent: trust_root_key_name, short_name: "other", namespaced: Present { value: "gunbai-secrets/gunbc-trust-root/other" })
+    && !value_admitted(name: "tagValues/281479000000099", parent: "tagKeys/281479000000077", short_name: "root", namespaced: Present { value: declared_value_namespaced })
+    && !value_admitted(name: "tagValues/281479000000099", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: "gunbai-secrets/other-key/root" })
+    && !value_admitted(name: "tagValues/281479000000099", parent: trust_root_key_name, short_name: "root", namespaced: Absent)
+}
+
+test fn only_a_tag_values_id_name_is_admitted() -> Bool {
+  !value_admitted(name: "", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: declared_value_namespaced })
+    && !value_admitted(name: "tagValues/", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: declared_value_namespaced })
+    && !value_admitted(name: "tagKeys/281479000000002", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: declared_value_namespaced })
+    && !value_admitted(name: "tagValues/2/extra", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: declared_value_namespaced })
 }

@@ -565,6 +565,17 @@ fn gcp_tag_condition_expression(c: GcpTagCondition) -> String {
   }
 }
 
+// DETACHING A TAG FROM A SERVICE ACCOUNT needs BOTH resourcemanager.tagValueBindings.delete on the
+// TagValue AND iam.serviceAccounts.deleteTagBinding on the service account
+// (docs.cloud.google.com/iam/docs/service-accounts-tags, read 2026-10-19). Each half is one permission on
+// one resource; a caller lacking either cannot detach.
+type GcpServiceAccountTagDetachRequirement { tag_value_permission: String, service_account_permission: String }
+
+data gcp_service_account_tag_detach_requirement: GcpServiceAccountTagDetachRequirement = GcpServiceAccountTagDetachRequirement {
+  tag_value_permission: "resourcemanager.tagValueBindings.delete",
+  service_account_permission: "iam.serviceAccounts.deleteTagBinding",
+}
+
 // A SERVICE ACCOUNT'S FULL RESOURCE NAME, the tag binding parent
 // (docs.cloud.google.com/iam/docs/service-accounts-tags, read 2026-10-19).
 fn gcp_service_account_full_resource_name(project_id: GcpProjectId, account: ServiceAccountEmail) -> String {
@@ -601,6 +612,25 @@ service gcp.ResourceManager {
       401 => GcpErrorShape
       403 => GcpErrorShape
       409 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  // tagValues.testIamPermissions (Resource Manager v3 Discovery document, revision 20261011):
+  // POST v3/{+resource}:testIamPermissions, resource matching ^tagValues/[^/]+$, body
+  // TestIamPermissionsRequest { permissions }, answer TestIamPermissionsResponse { permissions }: the
+  // subset of the requested permissions the CALLER holds on that value.
+  operation TestTagValueIamPermissions {
+    requires Network
+    input { access_token: Secret, tag_value: NonEmptyStr, permissions: List<String> }
+    output { permissions: List<String>? }
+    readonly
+    transport rest { method: POST, path: "/v3/\{tag_value\}:testIamPermissions", body: { permissions: permissions } }
+    response {
+      200 => GcpPermissionProbeWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
       5xx => GcpErrorShape
     }
   }
