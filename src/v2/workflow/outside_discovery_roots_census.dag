@@ -2,8 +2,17 @@ module v2.workflow.outside_discovery_roots_census
 
 // THE OUTSIDE-DISCOVERY-ROOTS CENSUS. One question: which tracked claim files can NO governed acquirer
 // see? The answer is a TYPED STANDING computed from the layout authority, never a transcription of a
-// listing (§6: "name the instrument, never transcribe its output" -- twelve paths copied into source
-// would rot the moment one is renamed, and the census would pass by agreeing with itself).
+// listing (§6: "never transcribe its output" -- twelve paths copied into source would rot the moment one
+// is renamed, and the census would pass by agreeing with itself).
+//
+// CONSUMER, stated plainly because §3c makes "a module nothing imports" the red. This census has NO label
+// of its own, deliberately: it answers the same question as the existing
+// `gunbc test //gunbc/instruments:claim-coverage-census` -- which claims sit outside what is watched -- so
+// under the one-instrument ruling it enters that instrument as a SOURCE rather than becoming a second
+// label. The composition lands with that instrument's own PR (#14469); until it does, the consumers of
+// these builders are the claim files under src/v2/test/claim and the three enrollment rows that schedule
+// them. The receipt and header lines are therefore the shape the composed report will print, and they are
+// pinned by claims today and read by the label once the composition lands.
 //
 // WHY A STANDING AND NOT AN ENUMERATION OF ABSENT ANSWERS (warm-wolf-570's ruling). The repo already
 // declares this population: `v1_claim_scoped_witness_batch_deleted_note` in gunbc.ci.ci_layer_roots states
