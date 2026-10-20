@@ -38,15 +38,9 @@ fn node_field_names(n: Node) -> List<String> {
   fold(declared_field_list(payload: n), init: Empty, f: fn(acc, fld) { concat(acc, [symbol_lexeme(sym: fld.name)]) })
 }
 
-fn declared_names_of(qualified: String, facts: List<DeclFact>) -> List<List<String>> {
-  facts |> filter(f => f.qualified_name == qualified) |> map(f => node_field_names(n: f.node))
-}
-
 fn paired(p: ShapePair, facts: List<DeclFact>, shape: WireShape) -> Bool {
-  match declared_names_of(qualified: p.qualified, facts: facts) {
-    [declared] => declared == shape_member_names(shape: shape)
-    _ => false
-  }
+  let hits = facts |> filter(f => f.qualified_name == p.qualified)
+  count(hits) == 1 && all(hits, f => node_field_names(n: f.node) == shape_member_names(shape: shape))
 }
 
 fn all_facts() -> List<DeclFact> {
