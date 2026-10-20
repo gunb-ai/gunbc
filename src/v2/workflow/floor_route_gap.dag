@@ -1500,16 +1500,19 @@ fn floor_route_gap_expectation_chunk_19() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.the_live_index_agrees_with_the_emitted_subject_population_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.the_live_reads_produce_an_observed_population_rather_than_a_refusal_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.the_scan_dir_gap_is_observed_on_the_real_route_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.every_expected_subject_path_is_emitted_by_its_declared_module_by_real_execution", operation: "Read", ground: NoMockResponse {} },
-    head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.every_printed_citation_resolves_against_the_live_index_by_real_execution", operation: "Read", ground: NoMockResponse {} },
-    head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.a_citation_to_a_symbol_that_does_not_exist_is_refused_by_real_execution", operation: "Read", ground: NoMockResponse {} },
-    head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.every_citation_the_receipt_prints_is_a_citation_the_resolver_checks_by_real_execution", operation: "Read", ground: NoMockResponse {} },
-    tail: Empty {}
-  }  } } }
+      head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.the_live_reads_produce_an_observed_population_rather_than_a_refusal_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+      tail: Cons {
+        head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.the_scan_dir_gap_is_observed_on_the_real_route_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+        tail: Cons {
+          head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.every_expected_subject_path_is_emitted_by_its_declared_module_by_real_execution", operation: "Read", ground: NoMockResponse {} },
+          tail: Cons {
+            head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.every_printed_citation_resolves_against_the_live_index_by_real_execution", operation: "Read", ground: NoMockResponse {} },
+            tail: Cons {
+              head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.a_citation_to_a_symbol_that_does_not_exist_is_refused_by_real_execution", operation: "Read", ground: NoMockResponse {} },
+              tail: Cons {
+                head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.every_citation_the_receipt_prints_is_a_citation_the_resolver_checks_by_real_execution", operation: "Read", ground: NoMockResponse {} },
+                tail: Empty {}
+}}}}}}}
 }
 
 // ALL SIX test.claim.machine_intake.mtcollins1_census_image_local_wet identities: the census envelope grammar read
