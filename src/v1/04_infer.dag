@@ -5902,11 +5902,12 @@ fn build_call_argument_formal_correspondence(arguments: List<Node>, value_params
   let selections = arguments |> enumerate |> map(pair =>
     select_formal_for_call_argument(argument: pair.second, argument_index: pair.first, arguments: arguments, value_params: value_params, source_indices: source_indices))
   // The claimant groups build in ONE pass over the selections. This fold is not a copied
-  // accumulator (DESIGN.md §6): the runtime's lists and maps are im's persistent Vector and
-  // HashMap (src/v1/stage0/src/v1_rt.rs:6) and map insert is Rc::make_mut on a uniquely-owned
-  // accumulator (v1_rt.rs rc_map_insert), so each step is O(log n) structural sharing, not a
-  // whole-map or whole-list copy -- and the fold walks each argument once, replacing the
-  // per-(argument, earlier argument) rule re-runs it stands in for.
+  // accumulator (DESIGN.md §6): the v1.compiler.runtime lists and maps are im's persistent
+  // Vector and HashMap (v1_rt's `use im::{HashMap, Vector as Vec}` import), list append is
+  // VecCompat::append and map insert is rc_map_insert (Rc::make_mut on a uniquely-owned
+  // accumulator), so each step is O(log n) structural sharing, not a whole-map or whole-list
+  // copy -- and the fold walks each argument once, replacing the per-(argument, earlier
+  // argument) rule re-runs it stands in for.
   let claimant_seed: Map<Int, List<CallArgumentClaimant>> = empty_map()
   let claimants = fold(
     arguments |> enumerate,
