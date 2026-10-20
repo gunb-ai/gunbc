@@ -10,7 +10,8 @@ import v2.extdeps.languages.dag { parse_production_captured_child_optional, pars
 import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
 import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
 import v2.std.decl_index { DeclFact, ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem, decl_facts_at }
-import v2.std.node { Node, content_hash, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Conj, TypeNode, Node, content_hash, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.provenance { SpanIndex }
@@ -187,7 +188,7 @@ fn rehome_pair_verdict(row: RehomeRow) -> RehomePairVerdict {
         RehomeFactRefused { reason: r } => RehomePairRefused { reason: r }
         RehomeFactFound { fact: to } =>
           match row.representation {
-            Present { value: _ } => RehomePairSame
+            Present { value: _ } => rehome_kind_verdict(from: from, to: to)
             Absent => rehome_facts_verdict(from: from, to: to)
           }
       }
@@ -235,6 +236,21 @@ fn rehome_facts_verdict(from: DeclFact, to: DeclFact) -> RehomePairVerdict {
   }
 }
 
+// A DECLARED REPRESENTATION ADMITS A SHAPE DIFFERENCE, NEVER A KIND DIFFERENCE (review 83176): the content_hash comparison
+// is skipped, the kind comparison is not. INTERIM, BOUNDED TO THE ALIAS GAP: v2.std.decl_index reads an aliased type
+// declaration (v2.std.integer.Int = GroupCompletion<Nat>) as OtherItem, so a kind pair with OtherItem on either side is
+// the gap, not a real kind difference, and is admitted here only under a declared representation. TRIGGER: when
+// adhoc-0f4309c5-074 lands (aliased type declarations read TypeItem), delete the OtherItem arm, so any kind mismatch refuses.
+fn rehome_kind_verdict(from: DeclFact, to: DeclFact) -> RehomePairVerdict {
+  if rehome_kind_text(k: from.kind) == rehome_kind_text(k: to.kind) {
+    RehomePairSame
+  } else if rehome_kind_text(k: from.kind) == "other" || rehome_kind_text(k: to.kind) == "other" {
+    RehomePairSame
+  } else {
+    RehomePairRefused { reason: RehomeKindDiffers }
+  }
+}
+
 fn rehome_kind_text(k: ItemKind) -> String {
   match k {
     FnItem => "fn"
@@ -276,9 +292,11 @@ fn rehome_parsed(text: String, tokens: List<Token>, parse_root: Node, spans: Spa
       RehomePairSame =>
         if fold_list(xs: bound_old, empty: false, cons: fn(f, b) { f || symbol_lexeme(sym: b.binding) != row.name }) {
           RehomeRefused { reason: RehomeAliasUnsupported }
-        } else if !is_empty(xs: rehome_representation_sites(tokens: tokens, parse_root: parse_root, spans: spans, imported: imported, row: row)) {
-          RehomeRefused { reason: RehomeRepresentationSitesRemain { sites: rehome_sites_text(sites: rehome_representation_sites(tokens: tokens, parse_root: parse_root, spans: spans, imported: imported, row: row)) } }
         } else {
+          let rep_sites = rehome_representation_sites(tokens: tokens, parse_root: parse_root, spans: spans, imported: imported, row: row)
+          if !is_empty(xs: rep_sites) {
+            RehomeRefused { reason: RehomeRepresentationSitesRemain { sites: rehome_sites_text(sites: rep_sites) } }
+          } else {
           match rehome_cycle(parse_root: parse_root, closures: closures, row: row, needs_import: !is_empty(xs: bound_old)) {
             Present { value: reason } => RehomeRefused { reason: reason }
             Absent =>
@@ -287,6 +305,7 @@ fn rehome_parsed(text: String, tokens: List<Token>, parse_root: Node, spans: Spa
                 RehomeClean => rehome_with_uses(splices: [], uses: uses, row: row)
                 RehomeSplices { splices: ss } => rehome_with_uses(splices: ss, uses: uses, row: row)
               }
+          }
           }
         }
     }
@@ -878,11 +897,24 @@ fn rehome_control_representation(prepared: PreparedGrammar, lex: PreparedLexRule
       else { "CONTROL-FAIL rehome representation: refused " + rehome_refusal_text(r: r) + "\n" }
     _ => "CONTROL-FAIL rehome representation: a module with representation sites was not refused\n"
   }
+  let kinds = rehome_facts_kind_control()
   let moved = match rehome_text(path: "control/user.dag", text: clean, prepared: prepared, lex: lex, row: row, pair: RehomePairSame, closures: rehome_control_closures()) {
     RehomeSplices { splices: _ } => ""
     _ => "CONTROL-FAIL rehome representation: a module with no representation site did not move\n"
   }
-  refused + moved
+  refused + moved + kinds
+}
+
+// A declared representation still refuses a real kind difference (review 83176): fn against type refuses.
+fn rehome_facts_kind_control() -> String {
+  match rehome_kind_verdict(from: DeclFact { qualified_name: "c.old.Token", name: "Token", kind: FnItem, node: rehome_control_node(), rel_path: "c/old.dag" }, to: DeclFact { qualified_name: "c.new.Token", name: "Token", kind: TypeItem, node: rehome_control_node(), rel_path: "c/new.dag" }) {
+    RehomePairRefused { reason: RehomeKindDiffers } => ""
+    _ => "CONTROL-FAIL rehome representation: a declared representation admitted a fn-to-type kind change\n"
+  }
+}
+
+fn rehome_control_node() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
 fn rehome_count_of(text: String, what: String) -> Int {
