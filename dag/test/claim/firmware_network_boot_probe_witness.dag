@@ -8,7 +8,7 @@ import gunbc.firmware_network_boot_standing {
 import gunbc.firmware_network_boot_probe {
   FirmwareBootFamilyRow, BmcStack, RouteVerdict,
   firmware_boot_axis_reply_inhabitation, AxisReplyUninhabited, AxisReplyInhabitedByReader,
-  firmware_boot_observer_frontier_status,
+  firmware_boot_observer_frontier_status, no_reply_reason,
 }
 import std.optional { Present, Absent }
 import std.decl_ref { decl_ref }
@@ -210,7 +210,7 @@ fn options_unobserved_on(stack: BmcStack) -> Bool {
       match probe(row: row, subject: subject(), contact: BmcResponded { replies: [] }) {
         BmcObserved { subject: _, observation: o } =>
           match o.boot_options {
-            BootOptionsUnobserved { reason: _ } => true
+            BootOptionsUnobserved { reason: r } => r != no_reply_reason()
             _ => false
           }
         BmcUnreachable { subject: _, attempt: _ } => false
