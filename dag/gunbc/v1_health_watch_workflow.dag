@@ -88,6 +88,9 @@ data v1_health_capture_dir: String = "target/v1-health"
 
 // A CAPTURE NEVER FAILS ON ITS SUBJECT'S OWN EXIT: the verdict is the paired check step's, read from
 // the capture, so a failing subject is a finding and a missing capture is SubjectUnreached.
+// SCAFFOLD: the redirection, `2>&1` and `|| true` are shell text because no workflow run-step grammar models
+// redirection as structure yet. It dissolves when run steps are emitted from a modeled shell command
+// (bash-emit capability); the same literals live in ci_spec.dag run steps today, so this adds no new pattern.
 fn v1_health_capture_run(command: String, file: String) -> String {
   join(["mkdir -p ", v1_health_capture_dir, "\n", command, " > ", file, " 2>&1 || true"], "")
 }
