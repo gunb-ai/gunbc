@@ -408,9 +408,10 @@ type SlotCapRead
 
 // THE EXEC BOUNDARY AS A TYPED ARGUMENT (the machine_intake readback exemplar's RemoteAnswer shape):
 // what the exec EFFECT answers -- refused (never attempted), or a result. Splitting exec from judgement
-// is what makes the REAL route controllable: read_slot_cap_live_over and read_slot_cap_live_from_reads
-// share ONE decision core, so a scripted control and the live route cannot drift apart (§6b: script the
-// world the route reads, never the judgement it makes).
+// is what makes the REAL route controllable: read_slot_cap_live_over and the scripted controls both
+// pass their exec answers through slot_cap_read_of_answers -- ONE decision core -- so a scripted
+// control and the live route cannot drift apart (§6b: script the world the route reads, never the
+// judgement it makes).
 type SlotCapExecAnswer
   = SlotCapExecRefused { reason: String }
   | SlotCapExecRan { success: Bool, exit_code: Int, stdout: String, stderr: String }
@@ -490,14 +491,9 @@ fn read_slot_cap_live_over(target: SshTarget, context: FleetSshExecutionContext,
   slot_cap_read_of_answers(show: show, cgroup: cgroup)
 }
 
-// THE SCRIPTED TWIN OF THE LIVE READ: identical core; the ONLY difference is that the exec legs arrive
-// as answers instead of through the ssh effect. This is the control seam the P4 observation needs (a cap
-// observation must be demonstrable without a host), and every answer a control supplies is what the REAL
-// argv (systemctl show + the cgroup grep over the printed ControlGroup) must return -- the control
-// scripts the host, never the judgement.
-fn read_slot_cap_live_from_reads(show: SlotCapExecAnswer, cgroup: SlotCapExecAnswer?) -> SlotCapRead {
-  slot_cap_read_of_answers(show: show, cgroup: cgroup)
-}
+// THE SCRIPTED TWIN OF THE LIVE READ lives at slot_cap_standing_from_reads below: the same core, the
+// exec legs arriving as answers instead of through the ssh effect. This is the control seam the P4
+// observation needs (a cap observation must be demonstrable without a host).
 
 fn slot_cap_standing_over_from_read(read: SlotCapRead, desired: RunnerSlotDesired) -> SlotCapStanding {
   match read {
@@ -506,9 +502,13 @@ fn slot_cap_standing_over_from_read(read: SlotCapRead, desired: RunnerSlotDesire
   }
 }
 
-// THE OBSERVED STANDING OF ONE UNIT, from scripted exec answers -- the route the controls run.
+// THE OBSERVED STANDING OF ONE UNIT, from scripted exec answers -- the route the controls run. The
+// answers join the live route at slot_cap_read_of_answers: one decision core, two feeders (the ssh
+// effect above, the scripted control here). Every answer a control supplies is what the REAL argv
+// (systemctl show + the cgroup grep over the printed ControlGroup) must return -- the control scripts
+// the host, never the judgement.
 fn slot_cap_standing_from_reads(unit: NonEmptyStr, show: SlotCapExecAnswer, cgroup: SlotCapExecAnswer?, desired: RunnerSlotDesired) -> SlotCapUnitStanding {
-  SlotCapUnitStanding { unit: unit, standing: slot_cap_standing_over_from_read(read: read_slot_cap_live_from_reads(show: show, cgroup: cgroup), desired: desired) }
+  SlotCapUnitStanding { unit: unit, standing: slot_cap_standing_over_from_read(read: slot_cap_read_of_answers(show: show, cgroup: cgroup), desired: desired) }
 }
 
 fn slot_cap_standing_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, desired: RunnerSlotDesired) -> SlotCapStanding
