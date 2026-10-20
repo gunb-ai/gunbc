@@ -5097,10 +5097,6 @@ pub fn synthetic_span_file() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn unlocatable_span_offset() -> i64 {
-    v1_rt::int_neg(1)
-}
-
 pub fn file_has_no_lexemes(file: String) -> Rc<SpanLocation> {
     Rc::new(SpanLocation::Unlocated {
         cause: Rc::new(UnlocatedCause::FileHasNoLexemes { file: file.clone() }),
@@ -5118,41 +5114,35 @@ pub fn locate_span(
             }),
         })
     } else {
-        if ((span.start.clone() == unlocatable_span_offset())
-            && (span.end.clone() == unlocatable_span_offset()))
-        {
-            file_has_no_lexemes(span.file.clone())
-        } else {
-            match v1_rt::map_get(&source_indices, span.file.clone()) {
-                std::option::Option::None => Rc::new(SpanLocation::Unlocated {
-                    cause: Rc::new(UnlocatedCause::NoSourceIndex {
-                        file: span.file.clone(),
-                    }),
+        match v1_rt::map_get(&source_indices, span.file.clone()) {
+            std::option::Option::None => Rc::new(SpanLocation::Unlocated {
+                cause: Rc::new(UnlocatedCause::NoSourceIndex {
+                    file: span.file.clone(),
                 }),
-                Some(index) => {
-                    let src_len = (index.char_codes.clone().len() as i64);
-                    if (((span.start.clone() < 0) || (span.end.clone() < span.start.clone()))
-                        || (span.end.clone() > src_len.clone()))
+            }),
+            Some(index) => {
+                let src_len = (index.char_codes.clone().len() as i64);
+                if (((span.start.clone() < 0) || (span.end.clone() < span.start.clone()))
+                    || (span.end.clone() > src_len.clone()))
+                {
+                    Rc::new(SpanLocation::Unlocated {
+                        cause: Rc::new(UnlocatedCause::SpanOutsideIndexedSource {
+                            file: span.file.clone(),
+                        }),
+                    })
+                } else {
                     {
-                        Rc::new(SpanLocation::Unlocated {
-                            cause: Rc::new(UnlocatedCause::SpanOutsideIndexedSource {
+                        let from = byte_to_line_col(index.clone(), span.start.clone());
+                        let to = byte_to_line_col(index.clone(), span.end.clone());
+                        Rc::new(SpanLocation::Located {
+                            at: Rc::new(LocatedSpan {
                                 file: span.file.clone(),
+                                start_line: from.line.clone(),
+                                start_col: from.col.clone(),
+                                end_line: to.line.clone(),
+                                end_col: to.col.clone(),
                             }),
                         })
-                    } else {
-                        {
-                            let from = byte_to_line_col(index.clone(), span.start.clone());
-                            let to = byte_to_line_col(index.clone(), span.end.clone());
-                            Rc::new(SpanLocation::Located {
-                                at: Rc::new(LocatedSpan {
-                                    file: span.file.clone(),
-                                    start_line: from.line.clone(),
-                                    start_col: from.col.clone(),
-                                    end_line: to.line.clone(),
-                                    end_col: to.col.clone(),
-                                }),
-                            })
-                        }
                     }
                 }
             }
@@ -5190,7 +5180,11 @@ pub fn render_span_location(
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match (*locate_span(span.clone(), source_indices.clone())).clone() {
+    render_span_location_of(locate_span(span.clone(), source_indices.clone()))
+}
+
+pub fn render_span_location_of(location: Rc<SpanLocation>) -> String {
+    match (*location.clone()).clone() {
         SpanLocation::Located { at: at, .. } => v1_rt::concat(
             at.file.clone(),
             v1_rt::concat(

@@ -24,7 +24,10 @@ use crate::v1_std_core::TokenShape::{
     ShPipeArrow, ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin,
     ShStrEnd, ShStrMid, ShUnknown,
 };
-pub use crate::v1_std_core::{make_file_span, unlocatable_span_offset, Token, TokenShape};
+pub use crate::v1_std_core::{
+    file_has_no_lexemes, make_file_span, render_span_location, render_span_location_of,
+    NewlineIndex, Token, TokenShape,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -268,6 +271,34 @@ pub fn last_code_token_end(tokens: Rc<Vec<Rc<Token>>>) -> Option<i64> {
     })
 }
 
+pub fn token_stream_has_no_lexemes(tokens: Rc<Vec<Rc<Token>>>) -> bool {
+    ((Rc::new({
+        let mut __result = Vec::new();
+        for t in tokens.iter().cloned() {
+            if !is_trivia_shape(t.shape.clone()) {
+                __result.push(t);
+            }
+        }
+        __result
+    })
+    .len() as i64)
+        == 0)
+}
+
+pub fn render_span_location_in_stream(
+    span: Rc<SourceSpan>,
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if token_stream_has_no_lexemes(tokens.clone()) {
+        crate::v1_std_core::render_span_location_of(crate::v1_std_core::file_has_no_lexemes(
+            span.file.clone(),
+        ))
+    } else {
+        crate::v1_std_core::render_span_location(span.clone(), source_indices.clone())
+    }
+}
+
 pub fn tokenize_artifact(
     source: String,
     file: String,
@@ -297,11 +328,7 @@ pub fn tokenize_artifact(
             Some(end) => {
                 crate::v1_std_core::make_file_span(src.file.clone(), end.clone(), end.clone())
             }
-            std::option::Option::None => crate::v1_std_core::make_file_span(
-                src.file.clone(),
-                unlocatable_span_offset(),
-                unlocatable_span_offset(),
-            ),
+            std::option::Option::None => crate::v1_std_core::make_file_span(src.file.clone(), 0, 0),
         };
         Rc::new(V1LexArtifact {
             tokens: v1_rt::rc_list_push(
