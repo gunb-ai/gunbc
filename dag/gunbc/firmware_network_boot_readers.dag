@@ -1,14 +1,13 @@
 module gunbc.firmware_network_boot_readers
 
 import std.types { Bool, HttpStatus, List, list_length, NonEmptyStr, String }
-import std.algebra { list_map, list_flat_map, string_concat_join }
+import std.algebra { list_map, list_flat_map }
 import std.optional { Present, Absent }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
-import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetNone, BootTargetPxe, BootTargetHdd, BootTargetCd, BootTargetUsb, BootTargetBiosSetup, BootTargetDiags, BootTargetUefiHttp, redfish_boot_target_wire, redfish_boot_targets }
 import extdeps.bmc.redfish_memory_inventory { redfish_document, redfish_collection_page_of }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.languages.json.parse { FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_bool, json_field_string_list }
-import gunbc.firmware_network_boot_standing { BootEntry, boot_entry, FirmwareReadRefusal, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, ReplyShapeUnrecognized }
+import gunbc.firmware_network_boot_standing { boot_order_entry, FirmwareReadRefusal, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, ReplyShapeUnrecognized }
 import gunbc.firmware_network_boot_probe {
   AxisReply, ObservationAxis, BootOrderAxis, BootOptionsAxis, NicsAxis, SecureBootAxis, BiosVersionAxis,
   ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc,
@@ -33,12 +32,9 @@ import gunbc.firmware_network_boot_probe {
 // these axes is in this corpus, so the witness bodies are DMTF-schema-shaped, not observations.
 // The decoder claims the schema; a real capture is a separate receipt in the observing layer.
 //
-// A BOOT ENTRY'S KIND IS THE BMC'S OWN ENUMERATION VALUE, NEVER A GUESS. An entry classifies only
-// when the whole string equals a RedfishBootSourceOverrideTarget wire value; the label is kept as
-// data. Anything else (for instance a BootOptionReference such as Boot0001, whose kind lives in a
-// resource this reader has not fetched) refuses the whole axis with ReplyShapeUnrecognized,
-// since dropping the entry would turn a list we cannot read into a shorter list that reads fine.
-// An empty list is likewise a refusal and never an Observed empty list.
+// NO KIND IS GUESSED. BootOrder entries carry a reference and no kind (standing's ruling); the
+// BootOptions axis, where a kind lives, is refused until a reference-keyed read is modeled. An empty
+// list is likewise a refusal and never an Observed empty list.
 
 type RedfishGet
   = RedfishGetBody { body: String }
@@ -87,74 +83,42 @@ fn refused_axis(axis: ObservationAxis, refusal: FirmwareReadRefusal) -> AxisRepl
   ReplyRefusedByBmc { axis: axis, refusal: refusal }
 }
 
-// The inverse of redfish_boot_target_wire, derived from it so there is one wire table.
-fn boot_target_of_wire(s: String) -> RedfishBootSourceOverrideTarget? {
-  fold(redfish_boot_targets(), init: Absent, f: (acc, t) => match acc {
-    Present { value: _ } => acc
-    Absent => if redfish_boot_target_wire(t: t) == s { Present { value: t } } else { Absent }
-  })
-}
-
-type BootEntriesRead
-  = BootEntriesOk { entries: List<BootEntry> }
-  | BootEntriesBad { cause: String }
-
-fn classify_boot_entries(wires: List<String>, field: String) -> BootEntriesRead {
-  if wires == [] { BootEntriesBad { cause: concat(field, " is empty; an empty list is not read as no boot entries") } }
-  else {
-    let unrecognized = list_flat_map(xs: wires, f: fn(w) {
-      match boot_target_of_wire(s: w) {
-        Present { value: _ } => []
-        Absent => [w]
-      }
-    })
-    if unrecognized == [] {
-      BootEntriesOk { entries: list_flat_map(xs: wires, f: fn(w) {
-        match boot_target_of_wire(s: w) {
-          Present { value: t } => [boot_entry(kind: t, label: w as NonEmptyStr)]
-          Absent => []
-        }
-      }) }
-    } else {
-      BootEntriesBad { cause: concat(field, concat(" holds entries that are not RedfishBootSourceOverrideTarget values: ", string_concat_join(fields: unrecognized, separator: ", "))) }
-    }
-  }
-}
-
-// A string list under the ComputerSystem's `Boot` object, classified.
-fn boot_entries_of(system: JsonValue, key: String) -> BootEntriesRead {
-  match json_field(obj: system, key: "Boot") {
-    FieldAbsent => BootEntriesBad { cause: concat("the ComputerSystem carries no Boot object, so ", concat(key, " is not published")) }
-    FieldMalformed { cause: c } => BootEntriesBad { cause: c }
-    FieldRead { value: boot } =>
-      match json_field_string_list(obj: boot, key: key) {
-        FieldAbsent => BootEntriesBad { cause: concat("Boot carries no ", key) }
-        FieldMalformed { cause: c } => BootEntriesBad { cause: c }
-        FieldRead { value: wires } => classify_boot_entries(wires: wires, field: key)
-      }
-  }
-}
-
+// BootOrder is the ComputerSystem's `Boot.BootOrder`: an ordered list of BootOptionReference strings,
+// and nothing else. A BootOrderEntry therefore carries a reference and a label and NO KIND (the
+// standing module's own ruling), so no classification happens here; the reference is the entry's
+// identity and, with no DisplayName in this resource, also the label (data, never consulted).
+// An empty list, a non-string member or an empty reference refuses the axis.
 fn boot_order_reply(system: RedfishDocRead) -> AxisReply {
   match system {
     RedfishDocRefused { refusal: r } => refused_axis(axis: BootOrderAxis, refusal: r)
     RedfishDocParsed { doc: d } =>
-      match boot_entries_of(system: d, key: "BootOrder") {
-        BootEntriesOk { entries: es } => ReplyBootOrder { devices: es }
-        BootEntriesBad { cause: c } => refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: c))
+      match json_field(obj: d, key: "Boot") {
+        FieldAbsent => refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: "the ComputerSystem carries no Boot object, so BootOrder is not published"))
+        FieldMalformed { cause: c } => refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: c))
+        FieldRead { value: boot } =>
+          match json_field_string_list(obj: boot, key: "BootOrder") {
+            FieldAbsent => refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: "Boot carries no BootOrder"))
+            FieldMalformed { cause: c } => refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: c))
+            FieldRead { value: refs } =>
+              if refs == [] { refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: "BootOrder is empty; an empty list is not read as no boot entries")) }
+              else if list_length(items: list_flat_map(xs: refs, f: fn(r) { if r == "" { [r] } else { [] } })) > 0 { refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: "a BootOrder member is the empty string")) }
+              else { ReplyBootOrder { devices: list_map(xs: refs, f: fn(r) { boot_order_entry(reference: r as NonEmptyStr, label: r as NonEmptyStr) }) } }
+          }
       }
   }
 }
 
-// DMTF publishes the targets a BMC will accept as `BootSourceOverrideTarget@Redfish.AllowableValues`.
+// BootOptions are keyed by BootOptionReference and each carries the kind the firmware reports, but
+// the only Redfish list this reader holds that names kinds is `BootSourceOverrideTarget@Redfish.
+// AllowableValues`, which has no reference. Joining a kind to a reference there would invent the
+// key the standing module says a join may be keyed on, so this axis is a typed refusal until a
+// BootOptions collection read (reference, DisplayName, BootOptionEnabled and a kind source) is
+// modeled; it is never an Observed empty list and never a guessed kind.
 fn boot_options_reply(system: RedfishDocRead) -> AxisReply {
   match system {
     RedfishDocRefused { refusal: r } => refused_axis(axis: BootOptionsAxis, refusal: r)
-    RedfishDocParsed { doc: d } =>
-      match boot_entries_of(system: d, key: "BootSourceOverrideTarget@Redfish.AllowableValues") {
-        BootEntriesOk { entries: es } => ReplyBootOptions { options: es }
-        BootEntriesBad { cause: c } => refused_axis(axis: BootOptionsAxis, refusal: shape_refusal(detail: c))
-      }
+    RedfishDocParsed { doc: _ } =>
+      refused_axis(axis: BootOptionsAxis, refusal: shape_refusal(detail: "the ComputerSystem publishes BootSourceOverrideTarget allowable values without BootOptionReferences, and a BootOption is keyed by reference; the BootOptions collection is not read by this decoder"))
   }
 }
 

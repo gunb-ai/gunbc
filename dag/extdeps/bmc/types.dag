@@ -620,12 +620,6 @@ type RedfishPrivilege =
   | PrivilegeConfigureComponents
   | PrivilegeConfigureSelf
 
-// Every RedfishBootSourceOverrideTarget value, beside the enum and its wire table so a new variant is
-// added in one file; a consumer that needs to invert redfish_boot_target_wire folds this list.
-fn redfish_boot_targets() -> List<RedfishBootSourceOverrideTarget> {
-  [BootTargetNone, BootTargetPxe, BootTargetHdd, BootTargetCd, BootTargetUsb, BootTargetBiosSetup, BootTargetDiags, BootTargetUefiHttp]
-}
-
 fn redfish_boot_target_wire(t: RedfishBootSourceOverrideTarget) -> NonEmptyStr {
   match t {
     BootTargetNone => "None"

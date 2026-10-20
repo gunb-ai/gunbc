@@ -11,7 +11,7 @@ import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissoluti
 // (S0); this module emits it and defines none of it. Nothing outside this block names where these
 // types live.
 import gunbc.firmware_network_boot_standing {
-  FirmwareBootObservation, FirmwareReadRefusal, BootEntry, firmware_boot_observation,
+  FirmwareBootObservation, FirmwareReadRefusal, BootOrderEntry, BootOption, firmware_boot_observation,
   BootOrderObservation, BootOptionsObservation, NicsObservation, SecureBootObservation, BiosVersionObservation,
   BootOrderObserved, BootOrderUnobserved, BootOrderRefused,
   BootOptionsObserved, BootOptionsUnobserved, BootOptionsRefused,
@@ -130,8 +130,8 @@ fn route_for(row: FirmwareBootFamilyRow, request: ProbeRequest) -> RouteVerdict 
 // writes no wire protocol. A reply names its own axis, so there is no axis tag to disagree with
 // the payload.
 type AxisReply
-  = ReplyBootOrder { devices: List<BootEntry> }
-  | ReplyBootOptions { options: List<BootEntry> }
+  = ReplyBootOrder { devices: List<BootOrderEntry> }
+  | ReplyBootOptions { options: List<BootOption> }
   | ReplyNics { nics: List<NonEmptyStr> }
   | ReplySecureBootEnabled
   | ReplySecureBootDisabled
@@ -402,6 +402,6 @@ type AxisReplyInhabitation
 
 data firmware_boot_axis_reply_inhabitation: AxisReplyInhabitation = AxisReplyUninhabited {
   owed_by: firmware_boot_axis_reader_ref(),
-  over: "AxisReply as emitted from a CAPTURED extdeps.bmc reply (the decoder exists and is run on DMTF-schema-shaped bodies only): one reply per answered axis decoded from an extdeps.bmc reply, boot entries classified by RedfishBootSourceOverrideTarget kind, every BMC refusal a FirmwareReadRefusal",
-  falsified_by: "a reader that maps an empty or malformed BMC body to an Observed empty list, guesses a boot-entry kind from a label, or turns a refusal into no reply",
+  over: "AxisReply as emitted from a CAPTURED extdeps.bmc reply (the decoder exists and is run on DMTF-schema-shaped bodies only): one reply per answered axis decoded from an extdeps.bmc reply, BootOrder entries as references, the BootOptions axis refused until a reference-keyed read is modeled, every BMC refusal a FirmwareReadRefusal",
+  falsified_by: "a reader that maps an empty or malformed BMC body to an Observed empty list, guesses a boot kind from a label or invents a BootOptionReference, or turns a refusal into no reply",
 }
