@@ -59,19 +59,22 @@ type GrammarAuthorityStanding
 
 data annotation_admission_seam: DeclarationRef = decl_ref(module_path: "v1.compiler.annotation_bind", decl_name: "bind_annotations")
 
-// THE COMPILER CLI. `gunbc compile` routes its whole-root subject through cli_run compile_emission
-// into the modeled pipeline; front_end_sources is the caller that reaches bind_annotations.
-// parse_revision_declarations_with_environment is not that caller.
-data gunbc_compile_entry: ParseEntryPoint = ParseEntryPoint {
-  invoked_as: "gunbc compile --source-root dag --source-root src/v2" as NonEmptyStr,
+// THE ROUTE THAT REACHES THE SEAM TODAY. Since gunbc P0.2 (v1-interface-cull-audit lane B) the
+// compile route (v1.compiler.compile compile_to_resolved_with_options) no longer reaches
+// bind_annotations, so it is not an entry point of this question. The readers that want bindings
+// bind for themselves; the annotation gap claim is the one recorded here. The measurements above
+// were taken when the compile frontend still bound and remain readings of that revision.
+// parse_revision_declarations_with_environment never reached the seam.
+data annotation_gap_claim_entry: ParseEntryPoint = ParseEntryPoint {
+  invoked_as: "claim v1.tests.claim.annotation_gap_round_trip_test" as NonEmptyStr,
   first_route: RouteInDeclaration {
-    declaration: decl_ref(module_path: "v1.compiler.compile", decl_name: "compile_to_resolved_with_options")
+    declaration: decl_ref(module_path: "v1.tests.claim.annotation_gap_round_trip_test", decl_name: "gap_parse")
   },
   reaches_admission: annotation_admission_seam
 }
 
-// THE FINDING'S ORIGINAL QUESTION, ANSWERED FOR THE COMPILE FRONTEND. That path arrives at one
-// seam. The parse sweep is not a second grammar and is not a second admission: it never binds.
+// THE FINDING'S ORIGINAL QUESTION, ANSWERED FOR THE ROUTES THAT STILL BIND. They arrive at one
+// seam. The compile route and the parse sweep are not second admissions: neither binds.
 data parse_entry_standing: GrammarAuthorityStanding = OneSharedAdmission { admission: annotation_admission_seam }
 
 fn entry_points_share_one_grammar(s: GrammarAuthorityStanding) -> Bool {
