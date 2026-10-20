@@ -234,6 +234,16 @@ pub fn http_not_found() -> i64 {
     404
 }
 
+pub fn http_status_is_success(status: i64) -> bool {
+    match http_status_class_of(status.clone()) {
+        HttpStatusClass::Successful => true,
+        HttpStatusClass::Informational => false,
+        HttpStatusClass::Redirection => false,
+        HttpStatusClass::ClientError => false,
+        HttpStatusClass::ServerError => false,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GET;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
