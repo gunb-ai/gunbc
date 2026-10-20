@@ -1,0 +1,43 @@
+module probe.c
+
+import std.types { List, Map, String, Int }
+import std.algebra { FreeMonoid, FinitelySupportedFunction, map_lookup, map_insert }
+import std.optional { Optional }
+
+fn mget<K, V>(m: Map<K, V>, k: K) -> V { m }
+fn fget<K, V>(m: FinitelySupportedFunction<K, V>, k: K) -> V { m }
+fn want_int(x: Int) -> Int { x }
+
+fn r1_user_map(m: Map<String, String>) -> Int { let o: Int = mget(m: m, k: "a")
+  o }
+fn r2_user_fsf(m: FinitelySupportedFunction<String, String>) -> Int { let o: Int = fget(m: m, k: "a")
+  o }
+fn r3_insert(m: Map<String, String>) -> Int { let n: Int = map_insert(m, "a", "b")
+  n }
+fn r4_lookup(m: Map<String, String>) -> Int {
+  match map_lookup(m, "a") { Present { value: v } => want_int(x: v) Absent => 0 }
+}
+fn c1_user_map(m: Map<String, String>) -> String { let o: String = mget(m: m, k: "a")
+  o }
+fn c2_lookup(m: Map<String, String>) -> String {
+  match map_lookup(m, "a") { Present { value: v } => v Absent => "" }
+}
+
+fn lget<T>(l: List<T>) -> T { l }
+fn r5_list(l: List<String>) -> Int { let o: Int = lget(l: l)
+  o }
+
+type PairBox<A, B> = PairBox { first: A, second: B }
+fn psecond<A, B>(p: PairBox<A, B>) -> B { p.second }
+fn r6_pair(p: PairBox<Int, String>) -> Int { let o: Int = psecond(p: p)
+  o }
+
+type OneBox<A> = OneBox { v: A }
+fn oget<A>(p: OneBox<A>) -> A { p.v }
+fn r7_one(p: OneBox<String>) -> Int { let o: Int = oget(p: p)
+  o }
+fn kget<K, V>(m: Map<K, V>) -> K { mget(m: m, k: kget(m: m)) }
+fn r8_key(m: Map<String, Int>) -> Int { let o: Int = kget(m: m)
+  o }
+fn r9_val(m: Map<Int, String>) -> Int { let o: Int = mget(m: m, k: 1)
+  o }
