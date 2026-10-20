@@ -168,7 +168,7 @@ module gunbc.recurring_failure_mode
 import std.types { String, NonEmptyStr, List, Int }
 import std.decl_ref { DeclarationRef }
 import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_index }
-import gunbc.rung_climb { ClimbBlocker, TriggerAdmission, TriggerAdmitted, trigger_capability_admission }
+import gunbc.rung_climb { ClimbBlocker, CannotClimbFurther, AwaitsOneGrounding, ClimbableButUnbuilt, TriggerAdmission, TriggerAdmitted, trigger_capability_admission }
 
 // WHERE A CLASS STANDS ON THE GUARANTEE LADDER, TYPED (DESIGN section 4b, the ledger rule's rung
 // found at / ceiling / next trigger). The rung and trigger vocabulary is gunbc.guarantee_rung and
@@ -239,12 +239,26 @@ type StandingAdmission
   = StandingAdmitted
   | StandingNotBelowCeiling { subject: String }
   | StandingTriggerRefused { subject: String, admission: TriggerAdmission }
+  | StandingBlockerContradictsCeiling { subject: String }
+
+// THE CEILING IS THE ATTAINABLE ONE (DESIGN section 4b), so a class that is BELOW it can by
+// definition still climb; CannotClimbFurther says the opposite, and a class that cannot climb
+// further stands AT its ceiling. Only the two can-climb cases are consistent with BelowCeiling.
+fn blocker_permits_a_climb(b: ClimbBlocker) -> Bool {
+  match b {
+    CannotClimbFurther { why: _ } => false
+    AwaitsOneGrounding { grounding: _ } => true
+    ClimbableButUnbuilt => true
+  }
+}
 
 fn standing_admission(subject: String, s: RungStanding) -> StandingAdmission {
   match s {
     AtCeiling { rung: _, ceiling_reason: _ } => StandingAdmitted
-    BelowCeiling { current: c, ceiling: k, blocker: _, trigger_capability: t } =>
-      if rung_position_index(p: c) < guarantee_rung_index(r: k) {
+    BelowCeiling { current: c, ceiling: k, blocker: b, trigger_capability: t } =>
+      if !blocker_permits_a_climb(b: b) {
+        StandingBlockerContradictsCeiling { subject: subject }
+      } else if rung_position_index(p: c) < guarantee_rung_index(r: k) {
         let admission = trigger_capability_admission(subject: subject, capability: t)
         match admission {
           TriggerAdmitted => StandingAdmitted

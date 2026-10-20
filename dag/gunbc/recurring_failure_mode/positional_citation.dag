@@ -1,14 +1,12 @@
 module gunbc.recurring_failure_mode.positional_citation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyImpossible }
-import gunbc.rung_climb { CannotClimbFurther }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data positional_citation: RecurringFailureMode = RecurringFailureMode {
   identity: "positional_citation" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "4, structurally impossible -- and the move is NOT a stronger check." }, trigger_capability: "the host probe shape carries item identity with NO path component, resolved against the item-grain population, together with a fixture harness that keeps the refusal authorable." } },
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "positional citation (a `file:line` pointer where a symbol was available — see §3).",

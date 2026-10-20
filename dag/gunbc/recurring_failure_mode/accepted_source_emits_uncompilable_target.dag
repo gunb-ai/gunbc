@@ -1,14 +1,12 @@
 module gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyImpossible }
-import gunbc.rung_climb { CannotClimbFurther }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data accepted_source_emits_uncompilable_target: RecurringFailureMode = RecurringFailureMode {
   identity: "accepted_source_emits_uncompilable_target" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "4, structurally impossible, and the reason is that constructor identity and type identity are two distinct modelled facts whose membership is decidable from the coproduct declaration -- a variant name is reachable from that declaration as a" }, trigger_capability: "a closed constructor roster for the KERNEL SCALAR types, sufficient that a Bool, Int or String column covered only by literals is decided the way a Disj column's declared arms are decided." } },
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**accepted source emits uncompilable target** (INVALID STATE: a .dag construction the front end accepts with zero blocking diagnostics, whose emission is a target program the target compiler refuses.",

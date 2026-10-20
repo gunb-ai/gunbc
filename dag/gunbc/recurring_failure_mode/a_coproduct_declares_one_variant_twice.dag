@@ -1,13 +1,11 @@
 module gunbc.recurring_failure_mode.a_coproduct_declares_one_variant_twice
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyImpossible }
-import gunbc.rung_climb { CannotClimbFurther }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_coproduct_declares_one_variant_twice: RecurringFailureMode = RecurringFailureMode {
   identity: "a_coproduct_declares_one_variant_twice" as NonEmptyStr,
-  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "structurally impossible, and the argument is that the invalid state has no constructor once the declaration fold refuses it." }, trigger_capability: "the declaration fold that constructs a Disj node refuses a declaration whose children do not carry pairwise distinct authored names, with a typed located diagnostic naming the type and the repeated name, executed on a paired probe -- a dupl" } },
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: one coproduct declaration names the same variant twice. One name, two declarations, in a single type -- the section 3 single-authority defect stated at the grain where the substrate can see it, and distinct from two variants sharing a leaf name under DIFFERENT containment, which is a namespace-identity question and not this row.",

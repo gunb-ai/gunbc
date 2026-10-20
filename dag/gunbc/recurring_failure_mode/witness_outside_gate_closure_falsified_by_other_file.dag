@@ -1,14 +1,12 @@
 module gunbc.recurring_failure_mode.witness_outside_gate_closure_falsified_by_other_file
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
-import gunbc.rung_climb { CannotClimbFurther }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data witness_outside_gate_closure_falsified_by_other_file: RecurringFailureMode = RecurringFailureMode {
   identity: "witness_outside_gate_closure_falsified_by_other_file" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: CannotClimbFurther { why: "2, mechanically preventable — in this class the mechanism DETECTS rather than prevents: the false assertion stays writable and is exposed when a dependency changes." }, trigger_capability: "transitive-dependency-based changed-witness selection — execute every witness whose TRANSITIVE DEPENDENCIES (the set of modules the witness's import tree reaches) overlap with the set of changed files in a push, regardless of whether the wi" } },
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a witness outside the gate closure is falsified by a change to a DIFFERENT file and never reds** (THE WITNESS IS DECLARED, COMPILES, AND WOULD DISCRIMINATE CORRECTLY — it is routed to `DeclinedOutsideGateClosure` because its module falls outside the import closure of the required gate prefixes, so the floor never prepares, offers or executes it. A later, unrelated change touches a file other than the witness's own file — a file the witness may even IMPORT — and that change FALSIFIES the property the witness was written to check. The witness never reds, because it never runs; the floor was green because it never looked. The harm is doubly silent: the witness was discovered and its existence is reported as a decline, so the census reads as coverage.)",

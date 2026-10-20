@@ -2,14 +2,12 @@ module gunbc.recurring_failure_mode.green_reported_over_a_population_the_instrum
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
-import gunbc.rung_climb { CannotClimbFurther }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data green_reported_over_a_population_the_instrument_does_not_own: RecurringFailureMode = RecurringFailureMode {
   identity: "green_reported_over_a_population_the_instrument_does_not_own" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: CannotClimbFurther { why: "mechanically preventable." }, trigger_capability: "required-run dispatch and heal-before-push consume an exhaustive adjudicator DERIVED from every arm of gunbc.required_ci_phase_roster DeclaredGeneratedArtifactPopulation, such that adding an arm without an adjudicator is a compile refusal a" } },
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an instrument reports GREEN over a population it does not own, so a fact can be filed in an authority, absent from the projection readers are pointed at, and nothing refuses** (INVALID STATE: two actuators split one generated-artifact population, and the one lanes habitually run denominates only its own half.",

@@ -2,14 +2,12 @@ module gunbc.recurring_failure_mode.emitted_field_carrier_diverges_from_the_dag_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
-import gunbc.rung_climb { CannotClimbFurther }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data emitted_field_carrier_diverges_from_the_dag_type_authored_against: RecurringFailureMode = RecurringFailureMode {
   identity: "emitted_field_carrier_diverges_from_the_dag_type_authored_against" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "structurally impossible, 4, and the reason is that both facts are already modelled and decidable." }, trigger_capability: "emitter templates reference an emitted carrier's field through a producer that renders the access FROM the field's resolved type and the recursive-type set -- the same join `rust_field_carrier_final_type` already performs when it emits the " } },
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**hand-authored target text binds an emitted field whose carrier the .dag declaration does not reveal** INVALID STATE: target-language text authored INSIDE an emitter template reads a field of a carrier type declared in `.dag`, and the field's emitted Rust carrier is decided by a whole-corpus analysis that is not reachable from the declaration the author is reading.",

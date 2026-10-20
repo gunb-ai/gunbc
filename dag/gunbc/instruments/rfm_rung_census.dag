@@ -3,13 +3,13 @@ module gunbc.instruments.rfm_rung_census
 import std.types { Int, List, String, Bool, NonEmptyStr }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { CannotClimbFurther }
+import gunbc.rung_climb { CannotClimbFurther, AwaitsOneGrounding }
 import gunbc.recurring_failure_mode {
   RecurringFailureMode, RungReading, RungUnread, RungRead, RungStanding, AtCeiling, BelowCeiling,
   RungPosition, FoundOnRung, FoundBelowTheLadder, UnreadCause,
   NoRungStated, FoundAtAmbiguous, CeilingNotStated, CeilingAmbiguous, CurrentRungUnstatedAfterClimb,
   CeilingStatedWithoutTrigger, TriggerNamesArtifactNotCapability, BlockerClassUnstated,
-  StandingAdmission, StandingAdmitted, StandingNotBelowCeiling, StandingTriggerRefused, standing_admission,
+  StandingAdmission, StandingAdmitted, StandingNotBelowCeiling, StandingTriggerRefused, StandingBlockerContradictsCeiling, standing_admission,
 }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
 
@@ -19,6 +19,7 @@ import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
 //
 // WHAT IT REFUSES: a row whose typed standing is malformed -- BelowCeiling with current at or above
 // its ceiling, or a trigger with a blank capability or one spelled as a lifecycle-bounded referent.
+// and a BelowCeiling whose blocker is CannotClimbFurther (the ceiling is the attainable one, so a class that cannot climb stands AT it).
 // WHAT IT ONLY COUNTS: RungUnread rows, by cause. An unread row is a counted debt and a different
 // fact from a refused one; no count literal is compared (a count copied from the tree is a change
 // detector, DESIGN section 5), so a green here does not say how many rows are unread.
@@ -62,6 +63,7 @@ fn row_is_admitted(r: RecurringFailureMode) -> Bool {
     StandingAdmitted => true
     StandingNotBelowCeiling { subject: _ } => false
     StandingTriggerRefused { subject: _, admission: _ } => false
+    StandingBlockerContradictsCeiling { subject: _ } => false
   }
 }
 
@@ -108,27 +110,34 @@ fn unread_cause_row(label: String) -> String {
 data control_below_ceiling_with_a_trigger: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: Mitigatable },
   ceiling: StructurallyGuaranteed,
-  blocker: CannotClimbFurther { why: "control why" },
+  blocker: AwaitsOneGrounding { grounding: "control grounding" },
   trigger_capability: "control capability restored",
 }
 
 data control_below_ceiling_blank_capability: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: Mitigatable },
   ceiling: StructurallyGuaranteed,
-  blocker: CannotClimbFurther { why: "control why" },
+  blocker: AwaitsOneGrounding { grounding: "control grounding" },
   trigger_capability: "",
 }
 
 data control_current_at_ceiling_yet_below: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: StructurallyGuaranteed },
   ceiling: StructurallyGuaranteed,
-  blocker: CannotClimbFurther { why: "control why" },
+  blocker: AwaitsOneGrounding { grounding: "control grounding" },
   trigger_capability: "control capability restored",
 }
 
 data control_below_the_ladder_to_a_ceiling: RungStanding = BelowCeiling {
   current: FoundBelowTheLadder,
   ceiling: Mitigatable,
+  blocker: AwaitsOneGrounding { grounding: "control grounding" },
+  trigger_capability: "control capability restored",
+}
+
+data control_cannot_climb_yet_below: RungStanding = BelowCeiling {
+  current: FoundOnRung { rung: Mitigatable },
+  ceiling: StructurallyGuaranteed,
   blocker: CannotClimbFurther { why: "control why" },
   trigger_capability: "control capability restored",
 }
@@ -161,6 +170,7 @@ fn rfm_rung_cases() -> List<RfmRungCase> {
     RfmRungCase { identity: "control_at_ceiling_is_admitted", held: standing_is_admitted(s: control_at_ceiling), observed: "positive control" },
     RfmRungCase { identity: "red_below_ceiling_with_a_blank_capability_is_refused", held: !standing_is_admitted(s: control_below_ceiling_blank_capability), observed: "discriminating red" },
     RfmRungCase { identity: "red_current_at_ceiling_but_declared_below_is_refused", held: !standing_is_admitted(s: control_current_at_ceiling_yet_below), observed: "discriminating red" },
+    RfmRungCase { identity: "red_cannot_climb_further_yet_below_ceiling_is_refused", held: !standing_is_admitted(s: control_cannot_climb_yet_below), observed: "discriminating red" },
     RfmRungCase { identity: "positive_control_below_the_ladder_to_a_ceiling_is_admitted", held: standing_is_admitted(s: control_below_the_ladder_to_a_ceiling), observed: "positive control" },
   ]
 }
@@ -172,6 +182,7 @@ fn rfm_rung_expected_identities() -> List<String> {
     "control_at_ceiling_is_admitted",
     "red_below_ceiling_with_a_blank_capability_is_refused",
     "red_current_at_ceiling_but_declared_below_is_refused",
+    "red_cannot_climb_further_yet_below_ceiling_is_refused",
     "positive_control_below_the_ladder_to_a_ceiling_is_admitted",
   ]
 }

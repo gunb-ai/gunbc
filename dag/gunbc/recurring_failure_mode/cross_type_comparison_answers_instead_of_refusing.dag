@@ -1,14 +1,12 @@
 module gunbc.recurring_failure_mode.cross_type_comparison_answers_instead_of_refusing
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
-import gunbc.rung_climb { CannotClimbFurther }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data cross_type_comparison_answers_instead_of_refusing: RecurringFailureMode = RecurringFailureMode {
   identity: "cross_type_comparison_answers_instead_of_refusing" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyImpossible, blocker: CannotClimbFurther { why: "STRUCTURALLY IMPOSSIBLE, and the reason it is not merely a ratchet is that the property is DECIDABLE -- both operand types are present in the Node tree at the comparison site, with no inference problem and no undecidable predicate." }, trigger_capability: "`==` and the ordering operators requiring their operands to JOINTLY INHABIT the relation, so a mismatched pair is refused at acceptance rather than answered at runtime." } },
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: an equality or ordering whose two operands have DIFFERENT types is accepted and ANSWERS, rather than being refused. The observed instance compares a Measure record against a bare integer literal -- `o == 4104` where o is a ByteSize -- and evaluates FALSE. std.measure declares ByteSize = Measure<Memory, One, Nat> and Measure is a RECORD with a count field, so this is not two numeric types that might plausibly unify: it is a record against a scalar, maximally distinguishable, with both operand types present at the site.",
