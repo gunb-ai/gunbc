@@ -446,7 +446,7 @@ fn release_run(legs: List<Leg>, ns: List<String>) -> BracketRun<List<SlotActuati
 // active). The ledger holds exactly those five legs and the outcome is the activation.
 test fn a_masked_owned_unit_is_activated_with_three_elevated_argv_and_read_back() -> Bool {
   let r = release_run(legs: [show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), step_leg(verb: "unmask"), step_leg(verb: "enable"), step_leg(verb: "start"), show_leg(n: "01", load: "loaded", file: "enabled", active: "active")], ns: ["01"])
-  length(outcomes_of(r: r)) == 1 && activated(o: outcomes_of(r: r)[0] as SlotActuationOutcome) && length(ledger_of(r: r)) == 6
+  length(outcomes_of(r: r)) == 1 && any(outcomes_of(r: r), o => activated(o: o)) && length(ledger_of(r: r)) == 6
     && count_containing(legs: ledger_of(r: r), needle: " unmask ") == 1 && count_containing(legs: ledger_of(r: r), needle: " enable ") == 1 && count_containing(legs: ledger_of(r: r), needle: " start ") == 1
 }
 
@@ -454,7 +454,7 @@ test fn a_masked_owned_unit_is_activated_with_three_elevated_argv_and_read_back(
 // and leaves the host drained.
 test fn an_unmasked_unit_that_is_not_active_is_refused_not_read_as_readmitted() -> Bool {
   let r = release_run(legs: [show_leg(n: "01", load: "loaded", file: "enabled", active: "failed")], ns: ["01"])
-  length(outcomes_of(r: r)) == 1 && refused(o: outcomes_of(r: r)[0] as SlotActuationOutcome) && !all_settled(os: outcomes_of(r: r)) && length(ledger_of(r: r)) == 1
+  length(outcomes_of(r: r)) == 1 && any(outcomes_of(r: r), o => refused(o: o)) && !all_settled(os: outcomes_of(r: r)) && length(ledger_of(r: r)) == 1
     && !admitting(l: host_left_of_readmit(units: [u(n: "01")], outcomes: outcomes_of(r: r)))
 }
 
@@ -465,14 +465,14 @@ test fn an_unmasked_disabled_unit_is_refused() -> Bool {
 // the positive already-admitting no-op: one read, no mutating argv
 test fn an_unmasked_active_enabled_unit_is_a_settled_noop_with_only_the_read() -> Bool {
   let r = release_run(legs: [show_leg(n: "01", load: "loaded", file: "enabled", active: "active")], ns: ["01"])
-  length(outcomes_of(r: r)) == 1 && noop(o: outcomes_of(r: r)[0] as SlotActuationOutcome) && length(ledger_of(r: r)) == 1
+  length(outcomes_of(r: r)) == 1 && any(outcomes_of(r: r), o => noop(o: o)) && length(ledger_of(r: r)) == 1
     && admitting(l: host_left_of_readmit(units: [u(n: "01")], outcomes: outcomes_of(r: r)))
 }
 
 // a failed start AFTER the unmask: the three argv ran, the readback shows failed, the host stays drained
 test fn a_failed_start_after_unmask_leaves_the_host_drained() -> Bool {
   let r = release_run(legs: [show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), step_leg(verb: "unmask"), step_leg(verb: "enable"), step_leg(verb: "start"), show_leg(n: "01", load: "loaded", file: "enabled", active: "failed")], ns: ["01"])
-  length(ledger_of(r: r)) == 6 && refused(o: outcomes_of(r: r)[0] as SlotActuationOutcome)
+  length(ledger_of(r: r)) == 6 && any(outcomes_of(r: r), o => refused(o: o))
     && !admitting(l: host_left_of_readmit(units: [u(n: "01")], outcomes: outcomes_of(r: r)))
 }
 
