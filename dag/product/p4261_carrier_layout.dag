@@ -124,6 +124,8 @@ import product.electrical.bench_session {
   HeldSteady,
   is_at_baseline,
   is_reported_zero,
+  observation_reads_pair,
+  valued_ohms,
   PairRangeStanding,
   ReadingMovesWithRange,
   ReadingHoldsAcrossRanges,
@@ -1713,14 +1715,14 @@ data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHyp
     "energized, the via on Q301's lead b node (by the visible trace and a reported 0.0 ohm, not a baselined reading) reads about 3.8 V with the source at 38 V and about 4.9 V at 54 V, against J20's black lead: it rises with the input, not in proportion. If lead b is Q301's gate, as the candidate BSS138 pinout has it, a few volts there -- above that part's 1.5 V maximum gate threshold (DS30144) -- would switch Q301 on and hold P6 at the return, consistent with pin 7's 0 V if P6 is pin 7's node; and the voltage comes from the input itself, so with J20 energized the stage is held off unless Q300 pulls that node down",
     "energized at 54 V (2026-10-20), against J20's black lead: Q300's lead b 0 V, P6 0 V, and the far end of the resistor beside Q301 54 V -- the input. With the via's 4.9 V at 54 V, Q301's lead b sits near a tenth of the input, fed from it through that resistor, and Q300's lead b at 0 V says nothing drives Q300 on. These are readings at P6 and at the parts' pads, not at pin 7, which read 0 V at 48 V on its own lead",
     "unpowered (2026-10-20): across the resistor beside Q301, 26 kohm -- in circuit a resistor reads at or below its value, so it is at least about 26 kohm and '180' as 18 ohm is excluded; enlarged, its marking reads '18D', 150 kohm by the EIA-96 code, unresolved until the third character is confirmed (e1_q301_resistor). Q300's lead b reads 8 kohm to J20's black lead and 24 kohm to VDD's point; the via reads 0.0 to Q301's lead b. The zeros re-read (ZB2 to ZB6) name no dial position, and the shorted probes read '.005' and '.03 or something at 2k', so none of them joins",
-    "Q300's lead b's trace, followed by eye on the back (bench-session upload 54ded557, drawn by hand), runs the length of the board to beside U51, a two-row package next to U49; no reading joins the trace's end to Q300's lead b. Both read 'LV165A / 2BKG4 / AEC0' (2026-10-20), TI's marking for the SN74LV165A parallel-load shift register: a part that reads eight inputs and shifts them out serially, with two serial outputs. Unpowered on the 20k range (2026-10-20), Q300's lead b reads 2.5 to 6 kohm to each of U51's pins 1 to 8, pin 8 (GND under SCLS402R) the same 2.5 kohm as J20's black lead, and the pin 8 pair moves with the range (about 600 ohm on 2k, 20 kohm on 200k; the first report of '20 ohm' was that 200k reading): a path holding a junction, not a join, so no U51 pin is read as the gate node's (q300_gate_path_reading). On the front, beside U92, the operator reports a point near U55 (sixteen terminals, marked 'ZVK' over '22J': a candidate SN74AVC4T774 level translator, extdeps.electronic_component.ti_sn74avc4t774, whose top edge under that pinout is DIR2, DIR1, VCCA, VCCB and no data port) reading lower to Q300's lead b than the return does; its readings join the record once their points are named. Whether U51 reads Q300's node or could drive it is the role of the exact pin the trace meets (register_pin_direction_text), which is unread: a parallel input reads it, a serial output could drive it, a control or clock pin would be shared with whatever clocks the part",
+    "Q300's lead b's trace, followed by eye on the back (bench-session upload 54ded557, drawn by hand), runs the length of the board to beside U51, a two-row package next to U49; no reading joins the trace's end to Q300's lead b. Both read 'LV165A / 2BKG4 / AEC0' (2026-10-20), TI's marking for the SN74LV165A parallel-load shift register: a part that reads eight inputs and shifts them out serially, with two serial outputs. Unpowered on the 20k range (2026-10-20), Q300's lead b reads 2.5 to 6 kohm to each of U51's pins 1 to 8, pin 8 (GND under SCLS402R) the same 2.5 kohm as J20's black lead, and the pin 8 pair moves with the range (about 600 ohm on 2k, 20 kohm on 200k; the first report of '20 ohm' was that 200k reading): a path holding a junction, not a join, so no U51 pin is read as the gate node's (q300_gate_path_reading). On the front, beside U92, the operator reports a point near U55 (sixteen terminals, marked 'ZVK' over '22J': a candidate SN74AVC4T774 level translator, extdeps.electronic_component.ti_sn74avc4t774, whose top edge under that pinout is DIR2, DIR1, VCCA, VCCB and no data port). Further along the front, a run of points each about 500 ohm from Q300's lead b on the 2k range: the pad beside Y50's upper corner, both ends of a small resistor beside U43, the capacitor at U43's right, and the lower pad of the part above U500, whose trace runs to U500's upper-right contact, itself 500 ohm; U500's other read contacts are 800 ohm (its ground, '0.00' to J20's black lead, no baseline) to 1.5 kohm, and the via beside the chain 800 ohm. So the gate's path to the return reads 800 ohm there, the 500 ohm points are a distinct net nearer the gate, and U500 (eight contacts, marked 'FZ' over 'YY', unresolved, beside the crystal Y50 'T327K / EV13' and the six-lead U43) meets that net at one contact (q300_gate_path_reading). Whether it holds the node is a powered reading at the 500 ohm pad, not yet taken reading lower to Q300's lead b than the return does; its readings join the record once their points are named. Whether U51 reads Q300's node or could drive it is the role of the exact pin the trace meets (register_pin_direction_text), which is unread: a parallel input reads it, a serial output could drive it, a control or clock pin would be shared with whatever clocks the part",
     "TI SNVS950C: the load can be remotely switched off by taking UVLO/EN below its threshold with an open-collector or open-drain device; released, the LM5066I switches on (extdeps.electronic_component.ti_lm5066i vendor statement) -- a mechanism the part admits, not one read on this board",
     "a pasted report, not read against its source: OCP MGX gates a tray's power-on on a management presence and standby handshake (PRSNT, STBY_EN, STBY_RDY). The P4261 is not established as an MGX tray, and no such signal is traced to pin 7",
     "unpowered, the K1's pin 7, read with the probe held on the lead, is reported at 0 ohm to one end of a '200' resistor and not to the ringed via below-right of U1_P5 (hedged: 'seem electrically different'). The K1 is an earlier revision (-100, PCB A01; the E1 -201, PCB B00), so it is a lead about the design, not the E1's network, and it does not separate whether the 2026-10-19 bridge changed the E1's pin 7 network; the bridge was a MOSFET's source to its drain, not on pin 7's network",
     "energized at 48 V, the top end of the part across from pin 21 (reported at 0 ohm to pin 21, read directly, not through the wire, no baseline recorded) read about 4.86 V, hedged ('like 4.86 or something'; first 'it reads 5v'): U1_P5's bias supply reads live at a VDD-like level -- at a point reported at 0 ohm to pin 21, not joined to it by a baseline and not yet separated from pins 20 and 22 -- so on that reading the controller is not off for want of its own supply",
     "the 11-13 mA draw does not establish which circuits are powered, so it neither shows nor excludes other powered logic",
   ],
-  decided_by: "Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the resistor's nearer end to lead b, and the via to lead b); Q300's lead b to the exact U51 pin its trace meets, on that range, then that pin's role under SCLS402R (a parallel input reads the node, a serial output could drive it); the resistor's third character confirmed; and whether pin 7 has a pull-up, pin 7's lead to J20's red lead. U51's and U49's markings read 'LV165A' (SN74LV165A, 2026-10-20), so what clocks them is the next part to name. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Nothing drives Q300's lead b or pin 7 until a reviewed decision. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
+  decided_by: "Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the resistor's nearer end to lead b, and the via to lead b); Q300's lead b to the exact U51 pin its trace meets, on that range, then that pin's role under SCLS402R (a parallel input reads the node, a serial output could drive it); the resistor's third character confirmed; and whether pin 7 has a pull-up, pin 7's lead to J20's red lead. U51's and U49's markings read 'LV165A' (SN74LV165A, 2026-10-20), so what clocks them is the next part to name. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Unpowered on the 2k range, the 500 ohm pad above U500 to J20's black lead with the probes each way, and Q300's lead b to that pad with the probes swapped; a pad-to-return value near 300 ohm, steady and alike both ways, reads as a mainly resistive chain, a directional or drifting one as a junction or charging path. Then energized at 48 V with all four poles toward ON and settled, against J20's black lead and at pads rather than the UQFN contacts: the lower pad of the part above U500 (the 500 ohm point) and the end of U43's capacitor nearer U43, then the same pad with only S2's poles toward ON; the 500 ohm pad at about 0 V while Q300's lead b reads 0 V says U500's contact holds the node, a few volts there says the 500 ohm path is not a wire. U500's marking read sharply and its dot's corner, then the maker's table. Nothing drives Q300's lead b or pin 7 until a reviewed decision. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
 }
 
 // THE LOCAL CONTROLS PUT THE CARRIER THROUGH RECORDED STATES; NONE IS NAMED BY FUNCTION. What S1, S2,
@@ -2712,6 +2714,85 @@ data e1_u55_footprint: ComponentInstanceIdentity = e1_component(local: "bare two
 data e1_u55_pins: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 4", "pin 5", "pin 6", "pin 7", "pin 8", "pin 9", "pin 10", "pin 11", "pin 12", "pin 13", "pin 14", "pin 15", "pin 16"]
 data e1_u55_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads de4b3131, a5fed232, 19a48d02 and 6320a44a: U55 beside U92 and U93 with the FCC mark and MODEL:P4261 below, the triangle at its left, two bare pads under it; the marking 'ZVK' over '22J' legible in the last (not on Drive)")
 
+// THE FRONT-SIDE 500 OHM CHAIN, U43, Y50 AND U500 (2026-10-20, unpowered, 2k range, red on Q300's lead b).
+// Following the gate network on the front, the operator finds a run of points that each read about
+// 500 ohm from Q300's lead b: the pad beside Y50's upper corner, both ends of a small resistor beside
+// U43, the near end of the capacitor at U43's right, and the lower pad of a small two-terminal part
+// directly above U500, from which a trace runs to U500's upper-right contact. U500's eight contacts,
+// counted clockwise from the upper-left as photographed, read 1500, 500, 800, 1400, 1400, unread,
+// unread, 1500 ohm; the 800 ohm contact reads '0.00' to J20's black lead (no baseline, so it joins
+// nothing) and a via beside the chain reads 800 ohm too, so the gate's path to the return reads
+// 800 ohm on this range and the 500 ohm points are a distinct net nearer the gate. U500 therefore
+// meets the gate network at one contact. A 400 ohm reading the operator first reported at that via did
+// not repeat: it is kept, hedged with the withdrawal, beside the 800 ohm that replaced it, and the
+// hypothesis reads the repeated value. Y50 is a four-pad crystal marked 'T327K / EV13'; U43 a six-lead part whose
+// marking is unread; U500's marking reads 'FZ' over 'YY' with a corner dot, unresolved. None of these
+// readings is a join; the powered reads at the 500 ohm pad (p4261_enable_network_hypothesis decided_by)
+// decide whether U500 holds the node.
+data e1_u43: ComponentInstanceIdentity = e1_component(local: "U43")
+data e1_y50: ComponentInstanceIdentity = e1_component(local: "Y50")
+data e1_u500: ComponentInstanceIdentity = e1_component(local: "U500")
+data e1_u43_resistor: ComponentInstanceIdentity = e1_component(local: "small resistor beside U43 (designator unread)")
+data e1_u43_capacitor: ComponentInstanceIdentity = e1_component(local: "capacitor at U43's right (designator unread)")
+data e1_u500_upper_part: ComponentInstanceIdentity = e1_component(local: "small two-terminal part directly above U500 (designator unread)")
+data e1_u43_chain_via: ComponentInstanceIdentity = e1_component(local: "via beside the U43 chain, below the small resistor")
+data e1_u500_contacts: List<NonEmptyStr> = ["upper-left contact", "upper-right contact", "right contact 2", "right contact 3", "lower-right contact", "lower-left contact", "left contact 3", "left contact 2"]
+data e1_u43_leads: List<NonEmptyStr> = ["lead 1", "lead 2", "lead 3", "lead 4", "lead 5", "lead 6"]
+data e1_y50_pads: List<NonEmptyStr> = ["pad 1", "pad 2", "pad 3", "pad 4"]
+data e1_u500_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads be91d8be, the pair 29/30, 2cecb409 and 488510ac: Y50 ('T327K / EV13'), U500 ('FZ' over 'YY', a corner dot, eight contacts), U43 above with its triangle, the small resistor and capacitor beside U43, the two-terminal part above U500 with a trace to U500's upper-right contact; the operator's 500 and 800 marks (not on Drive)")
+data e1_u43_chain_said: NonEmptyStr = "This point is 500 / Sorry - the 400 is the point BELOW the resistor - the one its pointing to in the picture is 800 ground / Sorry - i can't reproduce the 400 consistently - the point i thought it was is now reading 800 / U43, the resistor thing there, is 500 ohms on both sides basicaly"
+data e1_u500_said: NonEmptyStr = "U500: top left, clockwise: 2k range: 1500, 500, 800 (ground), 1400 / 1400, ??, ??, 1500 / 2. 0.00"
+
+fn e1_front_read(b: ElectricalTerminalRef, ohms: Nat, said: NonEmptyStr) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_q300_lead_b, second: b,
+    record: both_points_recorded,
+    conditions: e1_bench, polarity: RedOnFirst, range: RangeFullScale { ohms: 2000 }, display: DisplayValue { ohms: ohms, approximate: true }, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: said }, e1_u500_photo],
+  }
+}
+
+fn e1_u500_contact(n: NonEmptyStr) -> ElectricalTerminalRef {
+  e1_terminal(c: e1_u500, name: n)
+}
+
+data e1_front_chain_resistances: List<ResistanceObservation> = [
+  e1_front_read(b: e1_terminal(c: e1_y50, name: "pad beside the upper corner (which pad, unread)"), ohms: 500, said: e1_u43_chain_said),
+  e1_front_read(b: e1_terminal(c: e1_u43_resistor, name: "upper end"), ohms: 500, said: e1_u43_chain_said),
+  e1_front_read(b: e1_terminal(c: e1_u43_resistor, name: "lower end"), ohms: 500, said: e1_u43_chain_said),
+  e1_front_read(b: e1_terminal(c: e1_u43_capacitor, name: "end nearer U43"), ohms: 500, said: e1_u43_chain_said),
+  e1_front_read(b: e1_terminal(c: e1_u500_upper_part, name: "lower pad"), ohms: 500, said: e1_u43_chain_said),
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_q300_lead_b, second: e1_terminal(c: e1_u43_chain_via, name: "via"),
+    record: both_points_recorded,
+    conditions: e1_bench, polarity: RedOnFirst, range: RangeFullScale { ohms: 2000 }, display: DisplayValue { ohms: 400, approximate: true }, stability: KeptMoving, certainty: StatedHedged { verbatim: "Sorry - i can't reproduce the 400 consistently - the point i thought it was is now reading 800" },
+    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: e1_u43_chain_said }, e1_u500_photo],
+  },
+  e1_front_read(b: e1_terminal(c: e1_u43_chain_via, name: "via"), ohms: 800, said: e1_u43_chain_said),
+  e1_front_read(b: e1_u500_contact(n: "upper-left contact"), ohms: 1500, said: e1_u500_said),
+  e1_front_read(b: e1_u500_contact(n: "upper-right contact"), ohms: 500, said: e1_u500_said),
+  e1_front_read(b: e1_u500_contact(n: "right contact 2"), ohms: 800, said: e1_u500_said),
+  e1_front_read(b: e1_u500_contact(n: "right contact 3"), ohms: 1400, said: e1_u500_said),
+  e1_front_read(b: e1_u500_contact(n: "lower-right contact"), ohms: 1400, said: e1_u500_said),
+  e1_front_read(b: e1_u500_contact(n: "left contact 2"), ohms: 1500, said: e1_u500_said),
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_u500_contact(n: "right contact 2"), second: e1_ground_ref,
+    record: both_points_recorded,
+    conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: 2000 }, display: DisplayZeroWithoutBaseline { reported: "0.00" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: e1_u500_said }, e1_u500_photo],
+  },
+]
+
+// How many of a part's terminals read at or below a ceiling from Q300's lead b, from the record: the
+// count that says whether a part meets the gate network at one contact or sits across it.
+fn terminals_reading_at_most(rs: List<ResistanceObservation>, c: ComponentInstanceIdentity, names: List<NonEmptyStr>, ceiling_ohms: Nat) -> List<NonEmptyStr> {
+  filter(names, n => any(rs, o => observation_reads_pair(o: o, a: e1_q300_lead_b, b: e1_terminal(c: c, name: n)) && match valued_ohms(o: o) { Present { value: v } => v <= ceiling_ohms, Absent => false }))
+}
+
+
 // THE ENABLE CHAIN, ENERGIZED (2026-10-20, the source at 54 V, against J20's black lead). Q300's lead b
 // reads 0 V, P6 0 V, and the far end of the resistor beside Q301 54 V: the input itself. With the via's
 // 4.9 V at 54 V, Q301's lead b sits near a tenth of the input, fed from it through that resistor.
@@ -2990,7 +3071,7 @@ data e1_bench_record: BenchRecord = BenchRecord {
   incidents: [e1_bridge_incident],
   attachments: [e1_pin7_attachment, e1_w2_attachment, e1_w4_attachment],
   voltages: concat(concat(concat(concat(concat(concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)), [e1_pad_volts(source_volts: 48, millivolts: 1800, said: "1.8v"), e1_pad_volts(source_volts: 36, millivolts: 1350, said: "1.35 at 36v")]), map([48, 36, 54], v => e1_wire_volts(source_volts: v))), [e1_vdd_volts]), concat([e1_lead_volts(pin: "pin 8", millivolts: 1800), e1_lead_volts(pin: "pin 7", millivolts: 0)], [e1_via_volts(source_volts: 38, millivolts: 3800, certainty: StatedHedged { verbatim: "~3.8v" }), e1_via_volts(source_volts: 54, millivolts: 4900, certainty: StatedPlainly)])), e1_zv_volts),
-  resistances: concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances), e1_rp1_resistances), e1_w2_resistances), e1_pin7_lead_resistances), e1_w4_resistances), e1_cluster_resistances), e1_q301_resistances), e1_zb_resistances), e1_u51_resistances),
+  resistances: concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances), e1_rp1_resistances), e1_w2_resistances), e1_pin7_lead_resistances), e1_w4_resistances), e1_cluster_resistances), e1_q301_resistances), e1_zb_resistances), e1_u51_resistances), e1_front_chain_resistances),
 }
 
 data e1_measured: MeasuredBoard = MeasuredBoard {
@@ -3110,6 +3191,13 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { component: e1_u51, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { text: "LV165A / 2BKG4 / AEC0", evidence: e1_lv165a_photo } } },
     InstalledComponent { component: e1_u55, terminals: names(ns: e1_u55_pins), identification: MarkingCandidate { row: sn74avc4t774_rsv, marking: MarkingReading { text: "ZVK / 22J (ZVK the device marking; 22J a lot trace line)", evidence: e1_u55_photo }, discriminator: "no TI logo is read on the package and a marking code can be reused by another maker; unpowered against a baseline, pin 8 at the return and pins 13 and 14 each to one end of the two capacitors above the part read the orientation and the two supplies, and powered, VCCA and VCCB within 1.1 V to 3.6 V" } },
     InstalledComponent { component: e1_u55_footprint, terminals: names(ns: ["left pad", "right pad"]), identification: FootprintUnpopulated { evidence: e1_u55_photo } },
+    InstalledComponent { component: e1_u500, terminals: names(ns: e1_u500_contacts), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "FZ / YY (a dot at one corner)", evidence: e1_u500_photo } }, discriminator: "an eight-contact leadless package beside a 32 kHz-class crystal: read the two lines sharply and the dot's corner, then match the code in a maker's table; its ground contact (right contact 2, '0.00' to J20's black lead) and the crystal pads anchor the numbering" } },
+    InstalledComponent { component: e1_y50, terminals: names(ns: e1_y50_pads), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "T327K / EV13", evidence: e1_u500_photo } }, discriminator: "a four-pad crystal whose marking reads as a 32.7 kHz class part; the maker's table for 'T327K'" } },
+    InstalledComponent { component: e1_u43, terminals: names(ns: e1_u43_leads), identification: MarkingUnresolved { marking: Absent, discriminator: "a six-lead part above Y50 with a printed triangle; read its top marking" } },
+    InstalledComponent { component: e1_u43_resistor, terminals: names(ns: ["upper end", "lower end"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; both ends read about 500 ohm from Q300's lead b, so it is in the chain, not across it" } },
+    InstalledComponent { component: e1_u43_capacitor, terminals: names(ns: ["end nearer U43", "end farther from U43"]), identification: MarkingUnresolved { marking: Absent, discriminator: "an unmarked capacitor at U43's right; read it out of circuit or from the board's documentation" } },
+    InstalledComponent { component: e1_u500_upper_part, terminals: names(ns: ["upper pad", "lower pad"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; its lower pad's trace runs to U500's upper-right contact" } },
+    InstalledComponent { component: e1_u43_chain_via, terminals: names(ns: ["via"]), identification: MarkingUnresolved { marking: Absent, discriminator: "a via the operator reads as a ground point (800 ohm from Q300's lead b on the 2k range); joined to the return only by a baselined reading" } },
   ],
   measured: Present { value: e1_measured },
   input: Present { value: e1_input },
@@ -3418,7 +3506,7 @@ fn q300_gate_path_reading(layout: CarrierLayoutObservation) -> String {
       Present { value: b } => join([
         "Q300 lead b to U51 pin 8 ", pair_range_text(s: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_u51_pin(n: "pin 8"))),
         "; Q300 lead b to J20's black lead ", pair_range_text(s: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_ground_ref)),
-        "; no U51 pin is read as Q300 lead b's node. ", translator_pin_text(layout: layout, c: e1_u55, number: 13), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 16), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 12),
+        "; no U51 pin is read as Q300 lead b's node. On the front, ", to_string(count(terminals_reading_at_most(rs: b.bench.resistances, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500))), " of U500's contacts read at or below 500 ohm from Q300 lead b on the 2k range (", join(map(terminals_reading_at_most(rs: b.bench.resistances, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500), n => n as String), ", "), "), against 800 ohm to its ground contact and to the via beside the U43 chain. ", translator_pin_text(layout: layout, c: e1_u55, number: 13), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 16), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 12),
       ], "")
     }
   }

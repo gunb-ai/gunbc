@@ -296,6 +296,13 @@ import product.p4261_carrier_layout {
   e1_u51,
   e1_u55,
   translator_pin_text,
+  e1_u500,
+  e1_u43,
+  e1_y50,
+  e1_u500_contacts,
+  e1_u500_contact,
+  e1_front_chain_resistances,
+  terminals_reading_at_most,
   e1_u51_pin,
   e1_u51_resistances,
   e1_ranged_read,
@@ -2164,4 +2171,32 @@ test fn q300_lead_b_reaches_u51_through_a_junction_not_a_join() -> Bool {
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 2000, range: twenty_k)])) == 1
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 9000, range: RangeUnrecorded)])) == 2
     && range_arm(s: supplied_pin8_standing(rs: [])) == 3
+}
+
+// U500 MEETS THE GATE NETWORK AT ONE CONTACT. Live, fourteen front-side readings (the withdrawn 400 ohm
+// kept hedged and moving beside the 800 ohm that replaced it): exactly one of U500's
+// eight contacts reads at or below 500 ohm from Q300's lead b on the 2k range (the upper-right, where the
+// trace from the 500 ohm pad arrives), three at or below 800 (adding the ground contact and nothing
+// else), six valued in all; the ground contact's '0.00' to J20's black lead is a zero without a baseline
+// and joins nothing in the live netlist; U500, U43 and Y50 are installed with eight, six and four
+// terminals and no identified row; the report carries the count and the contact. Supplied: a copy of the
+// readings with the lower-right contact at 500 ohm counts two.
+test fn u500_meets_the_gate_network_at_one_contact() -> Bool {
+  let live = board_netlist(b: e1_measured)
+  let rs = e1_measured.bench.resistances
+  let low = terminals_reading_at_most(rs: rs, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500)
+  let doubled = map(e1_front_chain_resistances, o => if reads_pair(o: o, a: e1_q300_lead_b, b: e1_u500_contact(n: "lower-right contact")) { ResistanceObservation { asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: o.conditions, polarity: o.polarity, range: o.range, display: DisplayValue { ohms: 500, approximate: true }, stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence } } else { o })
+  count(e1_front_chain_resistances) == 14
+    && count(filter(e1_front_chain_resistances, o => match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 1
+    && low == ["upper-right contact"]
+    && count(terminals_reading_at_most(rs: rs, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 800)) == 2
+    && count(terminals_reading_at_most(rs: rs, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 2000)) == 6
+    && count(terminals_reading_at_most(rs: doubled, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500)) == 2
+    && !one_node(net: live, a: e1_u500_contact(n: "right contact 2"), b: e1_ground_ref)
+    && any(rs, o => reads_pair(o: o, a: e1_u500_contact(n: "right contact 2"), b: e1_ground_ref) && is_reported_zero(o: o))
+    && all(component_of(layout: p4261_e1_layout, c: e1_u500), c => count(c.terminals) == 8 && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
+    && all(component_of(layout: p4261_e1_layout, c: e1_u43), c => count(c.terminals) == 6)
+    && all(component_of(layout: p4261_e1_layout, c: e1_y50), c => count(c.terminals) == 4)
+    && count(component_of(layout: p4261_e1_layout, c: e1_u500)) == 1
+    && carrier_input_reading(layout: p4261_e1_layout).contains("On the front, 1 of U500's contacts read at or below 500 ohm from Q300 lead b on the 2k range (upper-right contact), against 800 ohm to its ground contact")
 }
