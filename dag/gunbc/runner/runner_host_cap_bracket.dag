@@ -518,7 +518,7 @@ fn release_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit:
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: _ } => activate_runner_slot_over(target: target, context: context, unit: unit)
     SlotRead { reading: r } =>
-      if slot_is_masked(r: r) { activate_runner_slot_over(target: target, context: context, unit: unit) }
+      if slot_is_masked(r: r) { SlotActuationNoop { unit: unit, state: "MUTANT: release disconnected" } }
       else if slot_activation_read_back_holds(r: r) {
         SlotActuationNoop { unit: unit, state: "not masked and read back loaded, enabled and active: no argv issued" }
       } else {
