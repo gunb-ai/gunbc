@@ -225,50 +225,62 @@ fn p4_char_of(s: String) -> String {
 // removed before the rejection scan because `::` itself contains a colon, which is otherwise
 // a reject character -- that bug was live in the first draft of this test and rejected every
 // citation, which is the kind of thing a measured roster catches and an assumed one does not.
-fn p4_is_citation_shape(w: String) -> Bool {
-  // exactly one `::`: two non-empty parts. Three or more means a second separator
-  // (`a::b::c`) or an empty side (`a::::b`), and one means no separator at all.
-  let parts = split(s: w, delimiter: "::")
-  let body = if parts.length() == 2 { concat(parts[0], parts[1]) } else { w }
-  parts.length() == 2
-    && parts[0] != ""
-    && parts[1] != ""
-    && !(string_contains(s: body, pattern: "/")
-      || string_contains(s: body, pattern: "(")
-      || string_contains(s: body, pattern: ")")
-      || string_contains(s: body, pattern: "[")
-      || string_contains(s: body, pattern: "]")
-      || string_contains(s: body, pattern: "{")
-      || string_contains(s: body, pattern: "}")
-      || string_contains(s: body, pattern: ",")
-      || string_contains(s: body, pattern: ";")
-      || string_contains(s: body, pattern: "*")
-      || string_contains(s: body, pattern: "?")
-      || string_contains(s: body, pattern: "=")
-      || string_contains(s: body, pattern: "+")
-      || string_contains(s: body, pattern: "<")
-      || string_contains(s: body, pattern: ">")
-      || string_contains(s: body, pattern: "&")
-      || string_contains(s: body, pattern: "!")
-      || string_contains(s: body, pattern: "\"")
-      || string_contains(s: body, pattern: "'")
-      || string_contains(s: body, pattern: "~")
-      || string_contains(s: body, pattern: "^")
-      || string_contains(s: body, pattern: "|")
-      || string_contains(s: body, pattern: "#")
-      || string_contains(s: body, pattern: "\\\\")
-      || p4_char_of(s: body) == "."
-      || substring(s: body, start: 0, end: 1) == ".")
+fn p4_body_is_clean(body: String) -> Bool {
+  !(string_contains(s: body, pattern: "/")
+    || string_contains(s: body, pattern: "(")
+    || string_contains(s: body, pattern: ")")
+    || string_contains(s: body, pattern: "[")
+    || string_contains(s: body, pattern: "]")
+    || string_contains(s: body, pattern: "{")
+    || string_contains(s: body, pattern: "}")
+    || string_contains(s: body, pattern: ",")
+    || string_contains(s: body, pattern: ";")
+    || string_contains(s: body, pattern: "*")
+    || string_contains(s: body, pattern: "?")
+    || string_contains(s: body, pattern: "=")
+    || string_contains(s: body, pattern: "+")
+    || string_contains(s: body, pattern: "<")
+    || string_contains(s: body, pattern: ">")
+    || string_contains(s: body, pattern: "&")
+    || string_contains(s: body, pattern: "!")
+    || string_contains(s: body, pattern: "\"")
+    || string_contains(s: body, pattern: "'")
+    || string_contains(s: body, pattern: "~")
+    || string_contains(s: body, pattern: "^")
+    || string_contains(s: body, pattern: "|")
+    || string_contains(s: body, pattern: "#")
+    || string_contains(s: body, pattern: "\\")
+    || p4_char_of(s: body) == "."
+    || substring(s: body, start: 0, end: 1) == ".")
 }
 
+// The shape is matched STRUCTURALLY rather than counted: `a::b` with nothing after the
+// second part is exactly one separator. Three arms' worth of `length() == 2 && parts[0]
+// != "" ...` was what the first draft did, and indexing is safe-indexing here -- it hands
+// back Optional, which infer caught. Matching Cons/Empty is also how the repo reads a
+// split apart (`extdeps.linux.proc_pid_stat`, `test.claim.runner.runner_qemu_host_standing`).
+// The separator is removed before the rejection scan because `::` itself contains a colon,
+// which is otherwise a reject character -- that bug was live in the first draft and rejected
+// every citation, which is what a measured roster catches and an assumed one does not.
+fn p4_is_citation_shape(w: String) -> Bool {
+  match split(s: w, delimiter: "::") {
+    Cons { head: m, tail: Cons { head: d, tail: Empty } } => m != "" && d != "" && p4_body_is_clean(body: concat(m, d))
+    _ => false
+  }
+}
+
+// Only ever reached on a string that p4_is_citation_shape accepted, so the two-arm
+// reading is total in practice; the `_` arm exists because a match must be total, and it
+// yields the one thing that cannot resolve -- an empty module -- rather than a guess.
 fn p4_parse(w: String) -> P4Citation {
-  let parts = split(s: w, delimiter: "::")
-  let tail = parts[1]
-  let tail_parts = split(s: tail, delimiter: ".")
-  if tail_parts.length() == 2 {
-    P4Citation { module_path: parts[0], decl_name: tail_parts[0], field_name: tail_parts[1], has_field: true }
-  } else {
-    P4Citation { module_path: parts[0], decl_name: tail, field_name: "", has_field: false }
+  match split(s: w, delimiter: "::") {
+    Cons { head: m, tail: Cons { head: rest, tail: Empty } } =>
+      match split(s: rest, delimiter: ".") {
+        Cons { head: d, tail: Cons { head: fld, tail: Empty } } =>
+          P4Citation { module_path: m, decl_name: d, field_name: fld, has_field: true }
+        _ => P4Citation { module_path: m, decl_name: rest, field_name: "", has_field: false }
+      }
+    _ => P4Citation { module_path: "", decl_name: "", field_name: "", has_field: false }
   }
 }
 
