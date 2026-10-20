@@ -90,7 +90,7 @@ import gunbc.runner.runner_slot_retirement {
 data runner_slot_provision_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host.host_effect",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }

@@ -278,7 +278,7 @@ fn actions_runner_registration_decode(raw: String) -> ActionsRunnerRegistrationR
 data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host.host_effect",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }
@@ -346,7 +346,7 @@ fn actions_runner_slot_extract_script(
 data actions_runner_base_dir_ensure_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host.host_effect",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }
