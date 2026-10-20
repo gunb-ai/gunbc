@@ -1096,3 +1096,14 @@ Lane P (P1.2) may start once lane A lands and O2 has been split into parse failu
   - `claim_batch` reads the `.dag` authority directly, so witnesses exercise `.dag` edits before the mirror is regenerated.
   - Fixture witnesses take exactly `--source-root dag --source-root src/v2`. Adding `src` trips `SharedIndexSecondResidentPool`.
   - The `v1_src_dag_parse` sweep has pre-existing STALE and ABSENT rows at baseline. Compare against the baseline, not against zero.
+
+### 5c addendum. Measured negative: D.5 alias-RHS skip (M2, #14528, closed unmerged 2026-10-20)
+
+Measured on srv1: base `6ff6b2f2b81`, head `91bd64bd52c`, `srv1:~/m2-measure/out`, memo off, perf by symbol with the symbol tables diffed for renames.
+- `expand_nominal_alias_rhs_by_name` inclusive: 4.40% → 4.35% of the run. That is noise.
+- Its child `resolve_node_bounded` (renamed `resolve_node_bounded_demand`): 3.85% → 3.76% under `by_name`.
+- Diagnostics and emit tree are byte-identical.
+
+The "decide the brand arm before building `structural`" skip does not reduce demand at corpus scale: the arms that consume the structural value dominate. D.5's ~21 s is the structural resolve itself, not an unread walk. The PR added surface (+41/−2 and a rename) with no time gain, so it fails §5b.3.
+
+Do not retry this skip. A future D.5 lane must first attribute which arms consume `structural`, by call chain under `expand_nominal_alias_rhs_by_name`, and target demand there.
