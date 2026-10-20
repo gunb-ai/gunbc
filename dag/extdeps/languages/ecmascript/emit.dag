@@ -1,0 +1,135 @@
+module extdeps.languages.ecmascript.emit
+
+import std.types { String, Int, List }
+import std.render_repeat_string_bootstrap { repeat_string }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.languages.json.emit { escape_json_string }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "tc39.es/ecma262/"
+  }
+}
+
+// Reading: ECMA-262 owns the expression forms below (StringLiteral, ArrayLiteral, ObjectLiteral,
+// CallExpression, the comma-separated ArgumentList). Only the forms an emitter needs to write data are
+// rows here; a form not listed is not yet modelled, never approximated.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.languages.ecmascript.emit", decl_name: "EsExpr", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type EsMember {
+  key: String
+  value: EsExpr
+}
+
+type EsExpr
+  = EsString { value: String }
+  | EsInt { value: Int }
+  | EsIdentifier { name: String }
+  | EsNull
+  | EsPropertyPath { segments: List<String> }
+  | EsCall { callee: String, arguments: List<EsExpr> }
+  | EsArray { elements: List<EsExpr> }
+  | EsObject { members: List<EsMember> }
+
+// A StringLiteral is a JSON string for every code point an emitter writes: JSON is a subset of ECMAScript
+// string literals since ES2019 (tc39 proposal-json-superset), so the escaping authority stays
+// extdeps.languages.json.emit and is not restated.
+fn es_string_literal(s: String) -> String {
+  join(["\"", escape_json_string(s: s), "\""], "")
+}
+
+fn es_member_text(m: EsMember) -> String {
+  join([m.key, ": ", es_text(e: m.value)], "")
+}
+
+fn es_text(e: EsExpr) -> String {
+  match e {
+    EsString { value: v } => es_string_literal(s: v)
+    EsInt { value: n } => to_string(n)
+    EsIdentifier { name: n } => n
+    EsNull => "null"
+    EsPropertyPath { segments: ss } => join(ss, ".")
+    EsCall { callee: c, arguments: a } => join([c, "(", join(map(a, x => es_text(e: x)), ", "), ")"], "")
+    EsArray { elements: xs } => join(["[", join(map(xs, x => es_text(e: x)), ", "), "]"], "")
+    EsObject { members: ms } => join(["\{ ", join(map(ms, m => es_member_text(m: m)), ", "), " }"], "")
+  }
+}
+
+// Punctuators of the forms above, for text whose members continue on following lines and so cannot be one
+// inline EsExpr. The deck's line layout is whitespace around these; the tokens are the grammar's.
+data es_lbrace: String = "{"
+data es_rbrace: String = "}"
+data es_lbracket: String = "["
+data es_rbracket: String = "]"
+data es_lparen: String = "("
+data es_rparen: String = ")"
+
+fn es_member(key: String, value: EsExpr) -> String {
+  es_member_text(m: EsMember { key: key, value: value })
+}
+
+fn es_member_separated(key: String, value: EsExpr) -> String {
+  concat(es_member(key: key, value: value), ",")
+}
+
+fn es_property_key(key: String) -> String {
+  concat(key, ":")
+}
+
+// An ArgumentList element, ArrayLiteral element or PropertyDefinition followed by its separator.
+fn es_separated(e: EsExpr) -> String {
+  concat(es_text(e: e), ",")
+}
+
+// A CallExpression whose argument list is still open because the next argument is an ArrayLiteral that
+// continues on following lines: `callee(a, b,`. es_call_array_end closes it.
+fn es_call_open(callee: String, leading: List<EsExpr>) -> String {
+  join([callee, "(", join(map(leading, x => es_text(e: x)), ", "), ","], "")
+}
+
+data es_call_array_end: String = "])"
+
+// Column alignment is a property of a table of rows, derived from the cells: a column is as wide as its
+// longest cell and each non-final cell is padded to that width plus the column's gap (the spaces between
+// it and the next cell). The final cell is never padded.
+fn es_text_width(s: String) -> Int {
+  0 + s.length()
+}
+
+fn es_column(table: List<List<String>>, index: Int) -> List<String> {
+  flat_map(table, r => flat_map(enumerate(r), pair => if pair.first == index { [pair.second] } else { [] }))
+}
+
+fn es_column_width(cells: List<String>) -> Int {
+  fold(cells, init: 0, f: (acc, c) => if es_text_width(s: c) > acc { es_text_width(s: c) } else { acc })
+}
+
+fn es_count(xs: List<String>) -> Int {
+  fold(xs, init: 0, f: (acc, _x) => acc + 1)
+}
+
+fn es_gap_at(gaps: List<Int>, index: Int) -> Int {
+  fold(enumerate(gaps), init: 0, f: (acc, g) => if g.first == index { g.second } else { acc })
+}
+
+fn es_aligned_cell(cell: String, column: List<String>, gap: Int) -> String {
+  concat(cell, repeat_string(s: " ", n: es_column_width(cells: column) - es_text_width(s: cell) + gap))
+}
+
+fn es_aligned_row(row: List<String>, table: List<List<String>>, gaps: List<Int>) -> String {
+  let last = es_count(xs: row) - 1
+  join(map(enumerate(row), pair => if pair.first == last {
+    pair.second
+  } else {
+    es_aligned_cell(cell: pair.second, column: es_column(table: table, index: pair.first), gap: es_gap_at(gaps: gaps, index: pair.first))
+  }), "")
+}
