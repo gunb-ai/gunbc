@@ -39,14 +39,20 @@ echo "MEASURED_AT $(git rev-parse HEAD)"
 [ "$(git rev-parse HEAD)" = "$SHA" ] || echo "WARNING requested $SHA"
 
 stamp "build release binary begin"
-timeout 2400 cargo build --release 2>&1 | tail -3
+# Build the BIN, not the whole workspace: `cargo build --release` at the root does not necessarily
+# produce target/release/gunbc, and a previous run of this gate then fell through to `command -v gunbc`
+# and got /usr/local/ctrl-build-shims/gunbc -- a ctrl-build STUB that exits 127 -- while still printing
+# GATE DONE. A gate must never accept whatever `gunbc` happens to be on PATH.
+timeout 2400 cargo build --release -p v1-compiler --bin gunbc 2>&1 | tail -3
 BUILD_RC=$?
 echo "build rc=$BUILD_RC"
 [ "$BUILD_RC" = 0 ] || { echo "VOID: the binary did not build, so no parse verdict means anything"; exit 6; }
-BIN="$D/repo/target/release/gunbc"
-[ -x "$BIN" ] || BIN="$(command -v gunbc || true)"
-echo "binary=$BIN"
-[ -x "$BIN" ] || { echo "VOID: no binary"; exit 6; }
+BIN="$CARGO_TARGET_DIR/release/gunbc"
+echo "binary=$BIN exists=$([ -x "$BIN" ] && echo yes || echo no)"
+if [ ! -x "$BIN" ]; then echo "VOID: the expected binary is absent (not falling back to PATH -- a PATH shim would report a verdict from a stub)"; exit 6; fi
+case "$BIN" in
+  *ctrl-build-shims*) echo "VOID: resolved a ctrl-build shim, not the built compiler"; exit 6 ;;
+esac
 
 # The exact command the failing CI step runs (recovered from the run log at 39381126080):
 #   "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" \
