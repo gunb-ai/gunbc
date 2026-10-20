@@ -83,11 +83,14 @@ if [ "$KIND" = pin ]; then
     grep -q "let $G" "src/v1/tests/src/$MODULE.rs" || { echo "VOID: the pin row lost its $G guard and could pass by finding nothing"; exit 5; }
   done
 elif [ "$KIND" = repair ]; then
+  # The SPAN-KEYED mint tree (probe/pr1-producer-repair). The mint's presence is mint_markers; the
+  # id FORM is what separates repair from mutant, so span markers must be present here.
+  [ "$NK_DAG" -ge 1 ] || { echo "VOID: the .dag carries no mint at all -- this is the pin tree, measure it as pin"; exit 5; }
   [ "$FRESH" -ge 2 ] || { echo "VOID: the regenerated mirror does not carry the repair"; exit 5; }
   [ "$SPAN_DAG" -ge 1 ] || { echo "VOID: the .dag does not mint span-keyed ids"; exit 5; }
-  [ "$NK_DAG" -le 1 ] || { echo "VOID: this is the MUTANT (.dag mints by parameter name), not the repair"; exit 5; }
 else
-  [ "$NK_DAG" -ge 2 ] || { echo "VOID: name-keyed mutation absent at the call site (found $NK_DAG, need 2)"; exit 5; }
+  # The NAME-KEYED mutant (probe/pr1-mut-namekeyed): it mints, but not with a span in the id.
+  [ "$NK_DAG" -ge 1 ] || { echo "VOID: name-keyed mutation absent at the call site (mint_markers=$NK_DAG)"; exit 5; }
   [ "$SPAN_DAG" -eq 0 ] || { echo "VOID: the span-keyed id survived; this is not the mutant"; exit 5; }
   # THE MUTANT MUST ACTUALLY REACH THE MIRROR. Tests import from the checked-in mirror, so a .dag-only
   # mutation would make the row fail for ABSENCE of minting rather than for the sharing -- a red that
