@@ -254,6 +254,14 @@ fn infer_branch_cond_not_bool_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
+fn infer_no_arm_declares_a_type_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_no_arm_declares_a_type,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn infer_branch_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_branch_arm_type_mismatch,
@@ -7249,7 +7257,12 @@ fn infer_resolve_held_arm(branch: Node, cur: InferHoldResolution, held: InferHel
     refused: Absent
   }
   match infer_held_arm_declaring_type(branch: branch, held: held, entries: cur.entries) {
-    Absent => unchanged
+    Absent =>
+      InferHoldResolution {
+        entries: cur.entries,
+        pending: cur.pending,
+        refused: Present { value: diagnostics_singleton(d: infer_no_arm_declares_a_type_diagnostic(node: branch)) }
+      }
     Present { value: declaring } =>
       match lookup_inferred_facts_in_entries(entries: held.settled.entries, key: held.settled.node) {
         Absent => unchanged
