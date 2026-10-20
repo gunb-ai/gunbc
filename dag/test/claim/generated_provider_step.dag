@@ -12,7 +12,7 @@ import std.generated_provider {
   UnavailableDeclarationAbsent, UnavailableDeclarationRefused, AcquisitionMadeNoProgress,
   AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused,
   generated_provider_demand, group_provider_demands, provider_acquisition_step,
-  GeneratedProviderUnavailable, ModuleInClosure, ModuleInPool, ModuleNotInPool,
+  UnavailableProviderDemand, ModuleInClosure, ModuleInPool, ModuleNotInPool,
   observe_provider_demand, generated_provider_unavailable_message
 }
 

@@ -139,7 +139,7 @@ pub enum GeneratedProviderUnavailableCause {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct GeneratedProviderUnavailable {
+pub struct UnavailableProviderDemand {
     pub demand: Rc<GeneratedProviderDemand>,
     pub cause: GeneratedProviderUnavailableCause,
 }
@@ -152,7 +152,7 @@ pub enum ProviderAcquisitionStep {
         modules: Rc<FreeSemigroup<NonEmptyStr>>,
     },
     ProviderAcquisitionRefused {
-        refusals: Rc<FreeSemigroup<Rc<GeneratedProviderUnavailable>>>,
+        refusals: Rc<FreeSemigroup<Rc<UnavailableProviderDemand>>>,
     },
 }
 
@@ -227,10 +227,10 @@ pub fn provider_observation_verdict(
 pub fn observed_unavailable(
     o: Rc<ObservedProviderDemand>,
     closure_modules: Rc<Vec<String>>,
-) -> Rc<Vec<Rc<()>>> {
+) -> Rc<Vec<Rc<UnavailableProviderDemand>>> {
     match (*provider_observation_verdict(o.clone(), closure_modules.clone())).clone() {
         ProviderObservationVerdict::VerdictUnavailable { cause: c, .. } => {
-            Rc::new(vec![Rc::new(GeneratedProviderUnavailable {
+            Rc::new(vec![Rc::new(UnavailableProviderDemand {
                 demand: o.demand.clone(),
                 cause: c.clone(),
             })])
