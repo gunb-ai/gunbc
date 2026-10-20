@@ -31,6 +31,7 @@ import gunbc.live_deploy.spec {
   deployment_tailnet_door_steps,
   deployment_approval_broker_front_door_steps,
   deployment_oidc_config_steps,
+  deployment_agent_door_steps,
   deployment_fabric_storage_serve_endpoint,
   EnsuredPackage,
   TailscalePackage,
@@ -1002,7 +1003,10 @@ fn placement_scoped_paths(spec: DeploymentSpec, instance: HostDashboardInstance)
       deployment_approval_broker_front_door_steps(holding: spec.role_singletons),
       concat(
         deployment_tailnet_door_steps(names: spec.names),
-        deployment_oidc_config_steps(instance: instance),
+        concat(
+          deployment_oidc_config_steps(instance: instance),
+          deployment_agent_door_steps(instance: instance, names: spec.names),
+        ),
       ),
     ),
   ) |> map(s => s.path as String)
@@ -1034,10 +1038,12 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && count(deployment_tailnet_door_steps(names: twin.names)) == 0
     && count(deployment_oidc_config_steps(instance: live_instance)) == 0
     && count(deployment_oidc_config_steps(instance: lab_instance)) > 0
+    && count(deployment_agent_door_steps(instance: live_instance, names: live.names)) == 0
+    && count(deployment_agent_door_steps(instance: lab_instance, names: twin.names)) > 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
-data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. Production's tailnet door is the same: it exists because production's serve route targets a socket. The OIDC config file is the converse: tracker_web_oidc_serve_placement is ServeReady only for the lab instance assigned the realized TEST environment, so the twin carries that member and production none. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
+data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. Production's tailnet door is the same: it exists because production's serve route targets a socket. The OIDC config file is the converse: tracker_web_oidc_serve_placement is ServeReady only for the lab instance assigned the realized TEST environment, so the twin carries that member and production none. The agent door is the same kind of member: it is decided by the deployment's write policy (deployment_admits_agent_peer, read through the instance's deployment), so the twin carries it and production does not. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
 
 data non_degeneracy_without_transcription_note: String = "THE COUNTS ABOVE STOPPED BEING LITERALS (review, 2026-07-30 — the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464). Five was read off the live owned roster, so authoring a correct sixth member reds a claim that has nothing to say about members, and the reviewer's habit becomes editing the number until the day the number is wrong for a real reason. #7478 adds exactly such a member.\\n\\nDeleting the conjunct outright would have been the wrong fix, which is why this is a replacement rather than a removal: `all` over an empty list is vacuously true, so without a non-degeneracy guard a twin whose owned set collapsed to nothing would satisfy the disjointness claim perfectly. The literal was doing real work in a way its shape disguised.\\n\\nWhat replaces it says the same thing without reading the roster's size into the test: the production set is non-empty, and the twin mirrors it one-for-one. Both survive a member being added — the relation is between two live rosters rather than between one roster and a number a human typed — and the second is strictly stronger than the literal pair, since it would also catch a twin that gained or lost a member production did not."
 
