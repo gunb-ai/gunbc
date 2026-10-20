@@ -1,0 +1,404 @@
+module test.claim.runner.runner_slot_cap_observe_base_witness
+
+// THE BASE PAIR of test.claim.runner.runner_slot_cap_observe_route_witness, RUN AGAINST A WORKTREE
+// AT THE BASE COMMIT (750c5a01427), where observe mode answered the cap phase WITHOUT LOOKING: the
+// ObserveOnly arm was `RunnerHostFilesObserveOnly => CapPhaseNotOwed` -- zero ssh legs, no
+// `systemctl show`, no cgroup read. A host whose slots were owed the fleet's caps or had drifted
+// was reported settled by a run that inspected nothing (DESIGN section 5: a two-valued answer
+// hiding "could not look").
+//
+// WHY IT LIVES IN docs/plans/p4-base-red/ AND NOT IN dag/test/claim/: its assertions encode THE
+// DEFECT (half-1: "observe answered not-owed, no legs read"), so it must not join the CI claim fold
+// at HEAD -- there it would red on a fixed tree. Its run is a one-off recorded in the plan:
+// claim_batch at HEAD's binary, --source-root pointing at a base worktree, this file copied in.
+// Half-1 and half-2 are each other's falsifiers ON THE SAME SCRIPTED WORLD:
+//   BASE   : half-1 PASS (observe answers CapPhaseNotOwed, zero read legs)  -- the RED record
+//            half-2 FAIL (observe never reaches the at-desired reading)     -- the pair
+//   HEAD   : half-1 FAIL (observe reads: legs fire, no bare not-owed)       -- falsified
+//            half-2 PASS (AtDesired + both read legs)                       -- the fix, same world
+//
+// BASE-SAFE BY CONSTRUCTION: every name this file imports exists at 750c5a01427 VERIFIED, and the
+// scripted legs are the ones the route will issue at base too -- assembled by the PRODUCTION argv
+// builders (systemctl_show_properties_argv / grep_nonempty_lines_in_tree_argv) over the same
+// property and file lists (slot_cap_show_properties / slot_cap_cgroup_files). The red does not
+// hand-write an expected command string; it scripts what the base code will ask for and reads the
+// dispatcher's OWN ledger. Nothing here names CapPhaseObserved or any standing arm (HEAD-only
+// vocabulary): the discriminators are the ledger (who dispatched what) and runner_host_cap_phase_text
+// (base renders CapPhaseNotOwed as the empty string; the fixed tree renders per-slot readings),
+// both total functions in both trees.
+//
+// THE CONTEXT IS HAND-SEALED HERE, deliberately: this file cannot register itself in the shared
+// fixture's admit_callers at base (that file is base text; the run works on a detached worktree),
+// and re-copying the fixture's body would fork a second path to one fact (DESIGN section 6) at
+// HEAD, where the route witness's registration governs. The base copy of the fixture gains ONE
+// admit_callers line naming red_context, by the run recipe in the plan -- so the base run reads the
+// ONE shared hermetic seal, and HEAD never carries this scaffolding.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.algebra { string_contains }
+import std.measure { Second, second }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.operation_argv { InputTextList }
+import v2.std.operation_realization {
+  OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall,
+  ShellObserved, DispatchRecord, virtual_clock_origin,
+}
+import v2.std.witness_evaluation {
+  WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
+  evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
+}
+import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited, ShellProcessSpawnRefused }
+import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_host_file_converge {
+  RunnerHostFileSubject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused,
+  runner_host_file_subject,
+  RunnerHostPrivilegeStanding, AdministratorPrivilegeAvailable,
+  RunnerSlotPopulation, SlotPopulationObserved, RunnerSlotUnitResult, SlotTeardownEffective,
+  SlotReloadNotPending,
+  RunnerHostCapPhase, CapPhaseWithheld, CapPhaseNotOwed, CapPhaseRan,
+  runner_host_cap_phase_settled, runner_host_cap_phase_text,
+  run_runner_host_cap_phase,
+  RunnerHostFilesObserveOnly, RunnerHostFilesApply, RunnerHostFileConvergeMode,
+}
+import gunbc.runner.runner_slot_cap_converge {
+  slot_cap_show_properties, slot_cap_cgroup_files,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_retirement { retirement_cgroup_unescaped_root }
+import extdeps.systemd.systemctl { systemctl_show_properties_argv }
+import extdeps.tools.grep { grep_nonempty_lines_in_tree_argv }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture {
+  fleet_ssh_execution_context_hermetic_witness_fixture,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The fleet's desired cap, read live from the model -- never retyped. The run asserts the executor
+// is pinned to the sha under GUNBC_BIND_MEMORY_CGROUP_BYTES (22 GiB) BEFORE this run; the desired
+// text below is what the cgroup world must carry for the fixed tree to call AtDesired.
+fn desired_memory_text() -> String { to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)) }
+fn desired_swap_text() -> String { to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)) }
+fn desired_high_text() -> String { to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high)) }
+fn desired_tasks_text() -> String { to_string(gunbc_runner_slot_desired().tasks_max) }
+
+fn red_subject() -> RunnerHostFileSubject? {
+  match runner_host_file_subject(host: "srv1" as HostIdentity) {
+    RunnerHostFileSubjectAdmitted { subject: s } => Present { value: s }
+    RunnerHostFileSubjectRefused { cause: _ } => none
+  }
+}
+
+// The featured slot, from the REAL subject's own desired units -- the same slot the fixed route
+// witness features (desired_units.first()), so both files script one world.
+fn red_featured_unit() -> NonEmptyStr? {
+  match red_subject() {
+    Absent => none
+    Present { value: s } => match first(s.desired_units) { Present { value: u } => Present { value: u } Absent => none }
+  }
+}
+
+fn red_privilege() -> RunnerHostPrivilegeStanding { AdministratorPrivilegeAvailable }
+
+fn red_population() -> RunnerSlotPopulation {
+  match red_featured_unit() {
+    Absent => SlotPopulationObserved { units: [] }
+    Present { value: u } => SlotPopulationObserved {
+      units: [RunnerSlotUnitResult { unit: u, standing: SlotTeardownEffective, reload: SlotReloadNotPending }],
+    }
+  }
+}
+
+// THE SEAL, read from the ONE shared hermetic fixture (same call the route witness makes). The base
+// worktree copy of the fixture file gains one admit_callers line naming red_context, added by the
+// run recipe; nothing at HEAD depends on that line.
+fn red_context() -> FleetSshExecutionContext? {
+  fleet_ssh_execution_context_hermetic_witness_fixture()
+}
+
+// ---------- the scripted world (the SAME at-desired world the route witness scripts) ----------
+
+type ScriptedCommand {
+  remote_command: String
+  answer: ShellExchangeObservation
+}
+
+type RedRun
+  = RedRunReturned { phase: RunnerHostCapPhase, legs: List<String> }
+  | RedRunEnded { cause: String }
+
+fn red_identity() -> NonEmptyStr { "cap-route-base-red-witness" as NonEmptyStr }
+
+fn shell_ok(stdout: String) -> ShellExchangeObservation {
+  ShellProcessExited { exit_code: 0, stdout: stdout, stderr: "" }
+}
+
+// The remote command under answer: the LAST word of the dispatch's client_args -- the quoted remote
+// command the ssh transport assembles. Keying the scenario on the command the route ACTUALLY
+// dispatches is what makes this a run over the real route rather than a call of a chosen function.
+fn remote_command_of(call: OperationCall) -> String {
+  match first(filter(call.invocation.bindings, b => (b.name as String) == "client_args")) {
+    Absent => ""
+    Present { value: b } => match b.value {
+      InputTextList { items: i } => match last(i) { Present { value: w } => w Absent => "" }
+      _ => ""
+    }
+  }
+}
+
+// THE COMMANDS, assembled by the PRODUCTION argv builders over the production property and file
+// lists -- exactly what base's own read path (apply mode) will issue, so the scenario answers the
+// real commands instead of guessed strings.
+fn show_command(unit: NonEmptyStr) -> String {
+  join(systemctl_show_properties_argv(units: [unit], properties: slot_cap_show_properties), " ")
+}
+
+fn grep_command(control_group: String) -> String {
+  join(grep_nonempty_lines_in_tree_argv(file_names: slot_cap_cgroup_files, root: retirement_cgroup_unescaped_root(control_group: control_group) as NonEmptyStr), " ")
+}
+
+// Real-shaped captures: a `systemctl show --value` block with the five properties the reader
+// requires, and grep rows as `grep -r -H -E . <root>` prints them (`<mount><cg>/<file>:<value>`).
+fn show_block(memory_max: String, swap_max: String, high: String, tasks: String, control_group: String) -> String {
+  join([
+    join(["MemoryMax=", memory_max], ""),
+    join(["MemorySwapMax=", swap_max], ""),
+    join(["MemoryHigh=", high], ""),
+    join(["TasksMax=", tasks], ""),
+    join(["ControlGroup=", control_group], ""),
+  ], "\n")
+}
+
+fn grep_rows(control_group: String, memory_max: String, swap_max: String) -> String {
+  let base = join([cgroup_v2_mount_point as String, control_group], "")
+  join([
+    join([base, "/memory.max:", memory_max], ""),
+    join([base, "/memory.swap.max:", swap_max], ""),
+  ], "\n")
+}
+
+// THE AT-DESIRED WORLD, as file text: the unit carries the fleet's caps AND the live cgroup files
+// carry them. The fixed tree reads both and reports the slot AtDesired; base inspects neither.
+fn at_desired_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
+  [
+    ScriptedCommand {
+      remote_command: show_command(unit: unit),
+      answer: shell_ok(stdout: show_block(memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: control_group)),
+    },
+    ScriptedCommand {
+      remote_command: grep_command(control_group: control_group),
+      answer: shell_ok(stdout: grep_rows(control_group: control_group, memory_max: desired_memory_text(), swap_max: desired_swap_text())),
+    },
+  ]
+}
+
+fn cap_cgroup(unit: NonEmptyStr) -> String {
+  join(["/system.slice/", unit as String], "")
+}
+
+// ---------- the frame (the one modeled ssh.Session.ExecPortableWords, key session) ----------
+
+fn red_grant(verb: std.effect_grant.Verb) -> Grant {
+  Grant {
+    verb: verb,
+    root: NamespacePosition { tree: ServiceOpTree { service: "ssh.Session" }, path: [] }
+    binding: ModeledRealization { realization: red_identity() }
+    lifecycle: LifecycleByConstruction
+  }
+}
+
+fn red_realization(legs: List<ScriptedCommand>) -> OperationRealization<Int> {
+  OperationRealization {
+    identity: red_identity(),
+    initial: 0,
+    epoch: virtual_clock_origin(),
+    bindings: [
+      OperationBinding {
+        at: ssh_session_exec_portable_words_operation,
+        handler: fn(state, call) {
+          let cmd = remote_command_of(call: call)
+          match first(filter(legs, l => l.remote_command == cmd)) {
+            Present { value: m } =>
+              OperationObserved {
+                observation: ShellObserved { observation: m.answer },
+                state: state + 1,
+                elapsed: second(count: 1),
+              }
+            Absent => OperationObserved {
+              observation: ShellObserved {
+                observation: ShellProcessSpawnRefused {
+                  program: "ssh" as NonEmptyStr,
+                  cause: "the base-red scenario has no answer for this command" as NonEmptyStr,
+                },
+              },
+              state: state + 1,
+              elapsed: second(count: 1),
+            }
+          }
+        },
+      },
+    ],
+    advance: fn(state, _now) { state },
+  }
+}
+
+fn red_frame(legs: List<ScriptedCommand>) -> WitnessEvaluationFrame<Int> {
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "cap-route-base-red" as NonEmptyStr, kind: SharedStateFrame }
+      grants: [red_grant(verb: Read), red_grant(verb: Write)]
+    }
+    rest_fixtures: []
+    realization: Present { value: red_realization(legs: legs) }
+  }
+}
+
+fn legs_of_route(route: List<DispatchRecord>) -> List<String> {
+  map(route, r => match first(filter(r.invocation.bindings, b => (b.name as String) == "client_args")) {
+    Present { value: b } => match b.value {
+      InputTextList { items: i } => match last(i) { Present { value: w } => w Absent => "" }
+      _ => ""
+    }
+    Absent => ""
+  })
+}
+
+fn red_run(mode: RunnerHostFileConvergeMode, legs: List<ScriptedCommand>) -> RedRun {
+  match red_subject() {
+    Absent => RedRunEnded { cause: "srv1 is not an admitted runner host subject" }
+    Present { value: subject } => match red_context() {
+      Absent => RedRunEnded { cause: "the fleet witness context could not be sealed" }
+      Present { value: context } => match evaluate_in_witness_frame(
+        frame: red_frame(legs: legs),
+        subject: fn(_scope) {
+          run_runner_host_cap_phase(
+            subject: subject,
+            context: context,
+            mode: mode,
+            privilege: red_privilege(),
+            population: red_population(),
+          )
+        },
+      ) {
+        WitnessReturned { value: v, route: route, state: _ } => RedRunReturned { phase: v, legs: legs_of_route(route: route) }
+        WitnessRefused { diagnostic: d, route: _, state: _ } => RedRunEnded { cause: witness_diagnostic_rendered_reason(diagnostic: d) }
+        WitnessInterrupted { at: _, route: _, state: _, now: _ } => RedRunEnded { cause: "the base-red worker was interrupted" }
+      }
+    }
+  }
+}
+
+fn observe(legs: List<ScriptedCommand>) -> RedRun { red_run(mode: RunnerHostFilesObserveOnly, legs: legs) }
+fn apply_mode(legs: List<ScriptedCommand>) -> RedRun { red_run(mode: RunnerHostFilesApply, legs: legs) }
+
+fn phase_of(r: RedRun) -> RunnerHostCapPhase {
+  match r {
+    RedRunReturned { phase: p, legs: _ } => p
+    RedRunEnded { cause: _ } => CapPhaseWithheld { cause: "base-red witness ended without a verdict" }
+  }
+}
+
+fn legs_of(r: RedRun) -> List<String> {
+  match r {
+    RedRunReturned { phase: _, legs: l } => l
+    RedRunEnded { cause: _ } => []
+  }
+}
+
+fn has_leg_containing(legs: List<String>, needle: String) -> Bool {
+  any(legs, c => string_contains(s: c, pattern: needle))
+}
+
+fn every_leg_is_a_read(legs: List<String>) -> Bool {
+  all(legs, c => starts_with(s: c, prefix: "systemctl show ") || starts_with(s: c, prefix: "grep -r -H -E . "))
+}
+
+fn count_show_legs(legs: List<String>) -> Int {
+  len(filter(legs, c => starts_with(s: c, prefix: "systemctl show ")))
+}
+
+fn count_grep_legs(legs: List<String>) -> Int {
+  len(filter(legs, c => starts_with(s: c, prefix: "grep -r -H -E . ")))
+}
+
+// ---------- the two halves ----------
+
+// HALF 1, THE RED RECORD (BASE-TRUE, HEAD-FALSE). Same world the route witness scripts for
+// AtDesired -- the unit AND the cgroup carry the fleet's caps. BASE observe answers the bare
+// two-valued not-owed AND FIRES NOTHING: settled() says pass while zero files were looked at
+// (section 5's hiding of "could not look"). At HEAD this falsifies: observe reads, the ledger is
+// non-empty, and the phase is no longer the bare arm.
+//
+// THE DISCRIMINATOR IS DUAL, on purpose: the LEDGED one (count_grep_legs == 0) is what a red at
+// HEAD should trip -- observe must grep the cgroup files, and a silent regression to "not owed
+// without looking" cannot hide from it. The phase identity (== CapPhaseNotOwed) leans on settled +
+// text rather than a pattern-match on the arm, because CapPhaseObserved cannot be named at base;
+// at base the two-valued arm is the ONLY one observe can produce, so the ledger is the load-bearing
+// half.
+test fn base_observe_answers_not_owed_without_reading_a_single_cgroup_file() -> Bool {
+  match red_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let run = observe(legs: at_desired_legs(unit: unit, control_group: cg))
+      let p = phase_of(r: run)
+      // (a) nothing was dispatched for the featured slot: neither its show nor its cgroup grep.
+      !has_leg_containing(legs: legs_of(r: run), needle: grep_command(control_group: cg))
+        && count_grep_legs(legs: legs_of(r: run)) == 0
+        // (b) yet the verdict is a SETTLED pass that reads as the two-valued not-owed.
+        && runner_host_cap_phase_settled(phase: p)
+        && !string_contains(s: runner_host_cap_phase_text(phase: p), pattern: unit as String)
+    }
+  }
+}
+
+// HALF 2, THE PAIR'S FIX-TRUE (BASE-FALSE, HEAD-TRUE). The SAME world: observe reaches the at-desired
+// reading THROUGH THE ROUTE -- both read legs on the dispatcher's ledger, the receipt names the slot
+// and the desired cap. At base this FAILS on the ledger (no legs, and the phase cannot render the
+// slot's reading): the same scripted bytes with the same assertions give opposite verdicts across
+// the two trees, which is what pins the fix to this one world.
+test fn observe_reaches_at_desired_with_both_read_legs_on_the_ledger() -> Bool {
+  match red_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let run = observe(legs: at_desired_legs(unit: unit, control_group: cg))
+      let legs = legs_of(r: run)
+      has_leg_containing(legs: legs, needle: show_command(unit: unit))
+        && has_leg_containing(legs: legs, needle: grep_command(control_group: cg))
+        && every_leg_is_a_read(legs: legs)
+        && string_contains(s: runner_host_cap_phase_text(phase: phase_of(r: run)), pattern: unit as String)
+        && string_contains(s: runner_host_cap_phase_text(phase: phase_of(r: run)), pattern: desired_memory_text())
+    }
+  }
+}
+
+// APPLY STILL READS AND WRITES (BOTH-TREES-TRUE, kept as the route's control). Apply mode in either
+// tree issues real legs -- so the base half-1's zero-ledger observation is specific to OBSERVE, not
+// an artifact of the scenario or the frame. The write legs at HEAD are absent at base in a different
+// shape (base apply writes files then reads back); what BOTH trees must agree on over this world is
+// that apply is not observe: apply's ledger carries at least the same read legs and the phase is not
+// the settled bare pass. This is the "one route" check: apply and observe travel the same route,
+// and the ONLY difference is what the mode does with it.
+test fn apply_and_observe_travel_one_route_and_differ_by_mode() -> Bool {
+  match red_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let legs_world = at_desired_legs(unit: unit, control_group: cg)
+      let ob = observe(legs: legs_world)
+      let ap = apply_mode(legs: legs_world)
+      // apply read the show for the featured slot (both trees),
+      has_leg_containing(legs: legs_of(r: ap), needle: show_command(unit: unit))
+        // and the two modes did NOT return the same verdict (a mode that ignores its mode argument
+        // is the defect half-1 proves exists at base -- here, in the other direction: apply must
+        // not answer what observe answered).
+        && runner_host_cap_phase_text(phase: phase_of(r: ap)) != runner_host_cap_phase_text(phase: phase_of(r: ob))
+    }
+  }
+}
