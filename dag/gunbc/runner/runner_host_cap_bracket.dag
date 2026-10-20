@@ -337,11 +337,12 @@ fn bracket_start_over(policy: HostCapDrainPolicy, given: Second) -> BracketStart
     BudgetCovers =>
      if !release_fits_cancellation_envelope(policy: policy) {
       BracketStartRefused { refusal: BracketRefusedReleaseOutsideEnvelope { needed: second(count: second_count(s: policy.release_allowance) + second_count(s: policy.release_startup_allowance)), envelope: policy.cancellation_envelope } }
-     } else
+     } else {
       match observer_clock_read() {
         ObserverClockUnreadable { detail: d } => BracketStartRefused { refusal: BracketRefusedClockUnreadable { detail: d } }
         ObserverClockObserved { instant: i } => BracketStartAt { started: observer_instant_millis(instant: i) }
       }
+     }
   }
 }
 
