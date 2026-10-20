@@ -120,6 +120,21 @@ fn cap_featured_unit() -> NonEmptyStr? {
 
 fn cap_privilege() -> RunnerHostPrivilegeStanding { AdministratorPrivilegeAvailable }
 
+// THE WHOLE-HOST AT-DESIRED WORLD. `settled` is a HOST-WIDE predicate (every reading must stand),
+// so a control that asks for a settled pass must script EVERY unit the subject declares -- not just
+// the featured one. Scripting only the featured slot leaves the others to the gap arm (Unread) and
+// the host correctly does not settle; that is the fold refusing to call a half-inspected host done,
+// which is the very defect class this PR kills. One show leg + one grep leg per declared unit.
+fn host_at_desired_legs() -> List<ScriptedCommand> {
+  match cap_subject() {
+    Absent => []
+    Present { value: s } => flat_map(s.desired_units, u => [
+      show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
+      grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+    ])
+  }
+}
+
 // The featured slot loaded, teardown effective, no reload pending -- what the extras filter reads to
 // keep the affected set free of phantom units. The other desired slots stay unscripted and answer the
 // spawn refusal (Unread); the controls assert on the featured slot only.
@@ -430,8 +445,14 @@ test fn observe_mode_receipt_names_the_slot_and_the_desired_cap() -> Bool {
     Absent => false
     Present { value: unit } => {
       let cg = cap_cgroup(unit: unit)
-      let text = runner_host_cap_phase_text(phase: phase_of(r: observe(legs: at_desired_legs(unit: unit, control_group: cg))))
+      // The AtDesired wire names the slot but carries no byte count by design; the number a reader
+      // needs lives in the OWED render ("unit view MemoryMax=<desired>"), which is exactly the
+      // receipt an operator audits to see WHAT cap the slot is being brought to. Assert on that
+      // render: the same text names the slot AND the desired cap it works toward. At base the owed
+      // host answered "" (bare not-owed), so this reds there.
+      let text = runner_host_cap_phase_text(phase: phase_of(r: observe(legs: owed_legs(unit: unit, control_group: cg))))
       string_contains(s: text, pattern: unit as String)
+        && string_contains(s: text, pattern: "OBSERVED-OWED")
         && string_contains(s: text, pattern: desired_memory_text())
     }
   }
@@ -650,7 +671,7 @@ test fn observe_never_answers_the_bare_not_owed_and_withheld_never_settles() -> 
       let cg = cap_cgroup(unit: unit)
       let owed_phase = phase_of(r: observe(legs: owed_legs(unit: unit, control_group: cg)))
       owed_phase != CapPhaseNotOwed
-        && runner_host_cap_phase_settled(phase: phase_of(r: observe(legs: at_desired_legs(unit: unit, control_group: cg))))
+        && runner_host_cap_phase_settled(phase: phase_of(r: observe(legs: host_at_desired_legs())))
         && !runner_host_cap_phase_settled(phase: CapPhaseWithheld { cause: "x" })
     }
   }

@@ -202,6 +202,28 @@ fn grep_rows(control_group: String, memory_max: String, swap_max: String) -> Str
   ], "\n")
 }
 
+// THE OWED WORLD, as file text: the unit carries the fleet's caps while the live cgroup files
+// still carry the pre-fix ones (what a host looks like before the cap bind lands). The fixed tree
+// must answer OBSERVED-OWED and NAME the desired cap it works toward; base answered this same host
+// with the empty string -- the bare not-owed. The AtDesired wire carries no number by design (only
+// the owed/disagree/unread renders do), so this is where "the receipt names the slot and the
+// desired cap" is a claim that base CANNOT pass on any conjunct.
+data red_pre_fix_memory_text: String = "8589934592"
+data red_pre_fix_swap_text: String = "4294967296"
+
+fn owed_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
+  [
+    ScriptedCommand {
+      remote_command: show_command(unit: unit),
+      answer: shell_ok(stdout: show_block(memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: control_group)),
+    },
+    ScriptedCommand {
+      remote_command: grep_command(control_group: control_group),
+      answer: shell_ok(stdout: grep_rows(control_group: control_group, memory_max: red_pre_fix_memory_text, swap_max: red_pre_fix_swap_text)),
+    },
+  ]
+}
+
 // THE AT-DESIRED WORLD, as file text: the unit carries the fleet's caps AND the live cgroup files
 // carry them. The fixed tree reads both and reports the slot AtDesired; base inspects neither.
 fn at_desired_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
@@ -383,22 +405,25 @@ test fn base_observe_answers_not_owed_without_reading_a_single_cgroup_file() -> 
   }
 }
 
-// HALF 2, THE PAIR'S FIX-TRUE (BASE-FALSE, HEAD-TRUE). The SAME world: observe reaches the at-desired
-// reading THROUGH THE ROUTE -- both read legs on the dispatcher's ledger, the receipt names the slot
-// and the desired cap. At base this FAILS on the ledger (no legs, and the phase cannot render the
-// slot's reading): the same scripted bytes with the same assertions give opposite verdicts across
-// the two trees, which is what pins the fix to this one world.
-test fn observe_reaches_at_desired_with_both_read_legs_on_the_ledger() -> Bool {
+// HALF 2, THE PAIR'S FIX-TRUE (BASE-FALSE, HEAD-TRUE). The owed world: observe reaches the
+// owed reading THROUGH THE ROUTE -- both read legs on the dispatcher's ledger, and the receipt
+// names the slot AND the desired cap it works toward (the owed render is the only one that
+// carries a byte count; the AtDesired wire is name-only by design). At base this FAILS on every
+// conjunct at once -- no legs fire and the phase renders "" (the bare not-owed): the same scripted
+// bytes with the same assertions give opposite verdicts across the two trees, which is what pins
+// the fix to this one world.
+test fn observe_reaches_the_owed_reading_with_both_read_legs_on_the_ledger() -> Bool {
   match red_featured_unit() {
     Absent => false
     Present { value: unit } => {
       let cg = cap_cgroup(unit: unit)
-      let run = observe(legs: at_desired_legs(unit: unit, control_group: cg))
+      let run = observe(legs: owed_legs(unit: unit, control_group: cg))
       let legs = legs_of(r: run)
       has_leg_containing(legs: legs, needle: show_command(unit: unit))
         && has_leg_containing(legs: legs, needle: grep_command(control_group: cg))
         && every_leg_is_a_read(legs: legs)
         && string_contains(s: runner_host_cap_phase_text(phase: phase_of(r: run)), pattern: unit as String)
+        && string_contains(s: runner_host_cap_phase_text(phase: phase_of(r: run)), pattern: "OBSERVED-OWED")
         && string_contains(s: runner_host_cap_phase_text(phase: phase_of(r: run)), pattern: desired_memory_text())
     }
   }
