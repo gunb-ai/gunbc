@@ -147,38 +147,64 @@ type ContactAttempt
   | ConnectTimedOut
   | ConnectionRefusedByBmc
 
+// A silent contact has an attempt and no response, so only the attempt receipt is nameable for
+// it; a response receipt wraps the attempt it answers. Splitting the two keeps a response
+// identity from being invented for a BMC that said nothing.
+type ReadAttemptReceipt {
+  observed_at: EpochMs
+  attempt_identity: NonEmptyStr
+  route: ReadRoute
+}
+
+type ReadResponseReceipt {
+  attempt: ReadAttemptReceipt
+  response_identity: NonEmptyStr
+}
+
 type BmcContact
-  = BmcResponded { replies: List<AxisReply> }
-  | BmcSilent { attempt: ContactAttempt }
+  = BmcResponded { receipt: ReadResponseReceipt, replies: List<AxisReply> }
+  | BmcSilent { receipt: ReadAttemptReceipt, attempt: ContactAttempt }
+
+type ReadReceiptStanding
+  = AttemptWithoutResponse { attempt: ReadAttemptReceipt }
+  | AttemptAnswered { response: ReadResponseReceipt }
+
+fn contact_route(contact: BmcContact) -> ReadRoute {
+  match contact {
+    BmcResponded { receipt: rr, replies: _ } => rr.attempt.route
+    BmcSilent { receipt: ar, attempt: _ } => ar.route
+  }
+}
+
+fn contact_standing(contact: BmcContact) -> ReadReceiptStanding {
+  match contact {
+    BmcResponded { receipt: rr, replies: _ } => AttemptAnswered { response: rr }
+    BmcSilent { receipt: ar, attempt: _ } => AttemptWithoutResponse { attempt: ar }
+  }
+}
 
 // The unit under probe is DATA carried through to the result; nothing branches on it.
 type ProbeSubject {
   unit_label: NonEmptyStr
 }
 
-// SUPPLIED INPUT, NOT SEALED EVIDENCE. Row, subject, receipt and replies travel together so a
-// caller hands probe() one value, but nothing here proves they belong together: the constructor is
-// open and the receipt is a claim. The pairing obligation is therefore NOT discharged by this
-// module; it is owed by the reader named in the frontier below, which must produce this input from
-// a real read and may then restrict the construction (admit_callers) to itself. Until then every
+// SUPPLIED INPUT, NOT SEALED EVIDENCE. Row, subject and contact (which carries its receipt)
+// travel together so a caller hands probe() one value, but nothing here proves they belong
+// together: the constructor is open and the receipt is a claim. The pairing obligation is
+// therefore NOT discharged by this module; it is owed by the reader named in the frontier below.
+// Sealing it later cannot be done by admit_callers on this open record; it needs a separate
+// sealed carrier, or sole_constructor plus a restricted mint plus probes. Until then every
 // result is named for what it is, a decode of supplied hypotheses, and no arm is called observed.
 // The receipt names the route the read used, so a read made over one route cannot be decoded under
 // a row that selects another.
-type ReadReceipt {
-  observed_at: EpochMs
-  response_identity: NonEmptyStr
-  route: ReadRoute
-}
-
 type SuppliedProbeInput {
   subject: ProbeSubject
   row: FirmwareBootFamilyRow
-  receipt: ReadReceipt
   contact: BmcContact
 }
 
-fn supplied_probe_input(subject: ProbeSubject, row: FirmwareBootFamilyRow, receipt: ReadReceipt, contact: BmcContact) -> SuppliedProbeInput {
-  SuppliedProbeInput { subject: subject, row: row, receipt: receipt, contact: contact }
+fn supplied_probe_input(subject: ProbeSubject, row: FirmwareBootFamilyRow, contact: BmcContact) -> SuppliedProbeInput {
+  SuppliedProbeInput { subject: subject, row: row, contact: contact }
 }
 
 // The provenance every outcome preserves, silence included, so S0's caller never re-associates
@@ -187,7 +213,7 @@ type ReadProvenance {
   family: FamilyKey
   route: ReadRoute
   authority: CitedFigureStanding
-  receipt: ReadReceipt
+  receipt: ReadReceiptStanding
 }
 
 // NAMED FOR ITS STANDING: every arm is derived from supplied input. An arm called observed would
@@ -352,18 +378,18 @@ fn read_bios_version(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> Bi
 
 // THE ONE ENTRY. A route disagreement between row and receipt decodes nothing.
 fn probe(input: SuppliedProbeInput) -> FirmwareBootProbeOutcome {
-  if input.receipt.route != input.row.route {
-    SuppliedRouteMismatch { subject: input.subject, row_route: input.row.route, receipt_route: input.receipt.route }
+  if contact_route(contact: input.contact) != input.row.route {
+    SuppliedRouteMismatch { subject: input.subject, row_route: input.row.route, receipt_route: contact_route(contact: input.contact) }
   } else {
     let provenance = ReadProvenance {
       family: input.row.family,
       route: input.row.route,
       authority: input.row.authority,
-      receipt: input.receipt,
+      receipt: contact_standing(contact: input.contact),
     }
     match input.contact {
-      BmcSilent { attempt: a } => SuppliedSilence { subject: input.subject, provenance: provenance, attempt: a }
-      BmcResponded { replies: rs } => DecodedFromSuppliedReplies {
+      BmcSilent { receipt: _, attempt: a } => SuppliedSilence { subject: input.subject, provenance: provenance, attempt: a }
+      BmcResponded { receipt: _, replies: rs } => DecodedFromSuppliedReplies {
         subject: input.subject,
         provenance: provenance,
         observation: FirmwareBootObservation {
