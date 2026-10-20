@@ -61,7 +61,8 @@ fn module_container_tree() -> InferredTree {
       algebra_symbol: ^mod_container_algebra_sym,
       descent_symbol: ^mod_container_descent_sym
     )
-  )
+  ),
+    arm_resolutions: constructed_root_arm_resolutions()
 }
 
 test fn module_container_with_a_module_surface_child_is_still_a_record_field_carrier() -> Bool {

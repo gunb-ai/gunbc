@@ -54,7 +54,8 @@ fn unit_ar_pass_tree() -> InferredTree {
       algebra_symbol: ^unit_ar_pass_algebra_sym,
       descent_symbol: ^unit_ar_pass_descent_sym
     )
-  )
+  ),
+    arm_resolutions: constructed_root_arm_resolutions()
 }
 
 test fn modeled_unit_field_admitted_via_always_required_lenses_holds() -> Bool {

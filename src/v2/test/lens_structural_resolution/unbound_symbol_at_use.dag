@@ -78,7 +78,10 @@ fn sr_unbound_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
 fn sr_unbound_claim_tree() -> InferredTree {
   InferredTree {
     root: sr_unbound_decl,
-    facts: sr_unbound_claim_fact_map()
+    facts: sr_unbound_claim_fact
+    root: sr_unbound_decl,
+    facts: sr_unbound_claim_fact_map(),
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

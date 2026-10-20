@@ -143,7 +143,8 @@ fn emit_field_eval_producer_tree() -> Outcome<InferredTree> {
   outcome_accepted(
     value: InferredTree {
       root: dag_field_access_arrow_with_body_fixture,
-      facts: PartialFunction { lookup: emit_field_eval_composed_facts }
+      facts: PartialFunction { lookup: emit_field_eval_composed_facts },
+      arm_resolutions: constructed_root_arm_resolutions()
     }
   )
 }
@@ -152,7 +153,8 @@ fn emit_field_eval_alt_descent_producer_tree() -> Outcome<InferredTree> {
   outcome_accepted(
     value: InferredTree {
       root: dag_field_access_arrow_with_body_fixture,
-      facts: PartialFunction { lookup: emit_field_eval_alt_descent_composed_facts }
+      facts: PartialFunction { lookup: emit_field_eval_alt_descent_composed_facts },
+      arm_resolutions: constructed_root_arm_resolutions()
     }
   )
 }

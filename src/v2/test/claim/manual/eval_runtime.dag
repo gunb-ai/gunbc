@@ -318,8 +318,11 @@ fn eval_inferred_tree() -> InferredTree {
   InferredTree {
     root: eval_add_subgraph(),
     facts: PartialFunction {
+    root: eval_add_subgraph(),
+    facts: PartialFunction {
       lookup: eval_fact_lookup
-    }
+    },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

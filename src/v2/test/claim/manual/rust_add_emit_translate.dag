@@ -320,7 +320,8 @@ data rust_add_inferred_tree: InferredTree = InferredTree {
   root: rust_add_emitted_root,
   facts: PartialFunction {
     lookup: rust_add_facts_lookup
-  }
+  },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn anchor_rust_add_emit_accepts() -> Outcome<Medium<String>> {

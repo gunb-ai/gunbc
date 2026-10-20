@@ -170,7 +170,8 @@ data loop_inferred_tree: InferredTree = InferredTree {
   root: loop_emitted_root,
   facts: PartialFunction {
     lookup: loop_round_trip_facts_lookup
-  }
+  },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn loop_emit_accepts() -> Outcome<Medium<String>> {

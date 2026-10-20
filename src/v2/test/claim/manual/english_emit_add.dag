@@ -158,7 +158,8 @@ data english_emit_add_inferred_tree: InferredTree = InferredTree {
   root: english_emit_add_emitted_root,
   facts: PartialFunction {
     lookup: english_emit_add_facts_lookup
-  }
+  },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn anchor_english_emit_add_accepts() -> Outcome<Medium<String>> {

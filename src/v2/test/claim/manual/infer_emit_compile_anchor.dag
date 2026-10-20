@@ -39,7 +39,8 @@ data anchor_stub_empty_facts_map: PartialFunction<Node, InferredFacts> = Partial
 
 data anchor_stub_inferred_tree: InferredTree = InferredTree {
   root: anchor_stub_empty_conj,
-  facts: anchor_stub_empty_facts_map
+  facts: anchor_stub_empty_facts_map,
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn anchor_infer_rejects() -> Outcome<InferredTree> {

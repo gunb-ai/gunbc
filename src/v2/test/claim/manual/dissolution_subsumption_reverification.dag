@@ -396,8 +396,12 @@ fn subsumption_inferred_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
     facts: PartialFunction {
+      lookup: 
+    root: root,
+    facts: PartialFunction {
       lookup: subsumption_fact_lookup
-    }
+    },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

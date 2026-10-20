@@ -57,7 +57,8 @@ test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
   match emit(
     tree: InferredTree {
       root: orch_retry_emitted_command,
-      facts: PartialFunction { lookup: orch_retry_probe_facts }
+      facts: PartialFunction { lookup: orch_retry_probe_facts },
+      arm_resolutions: constructed_root_arm_resolutions()
     },
     target: orch_retry_target_model(
       occ1: "cmd",
@@ -281,7 +282,8 @@ test fn orch_retry_escalation_final_row_emit_holds() -> Bool {
   match emit(
     tree: InferredTree {
       root: orch_retry_escalation_final_emitted_command,
-      facts: PartialFunction { lookup: orch_retry_probe_facts }
+      facts: PartialFunction { lookup: orch_retry_probe_facts },
+      arm_resolutions: constructed_root_arm_resolutions()
     },
     target: orch_retry_escalation_final_target_model(
       occ: "E3=1 cmd",
@@ -297,7 +299,8 @@ test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
   match emit(
     tree: InferredTree {
       root: orch_retry_escalation_step_emitted_command,
-      facts: PartialFunction { lookup: orch_retry_probe_facts }
+      facts: PartialFunction { lookup: orch_retry_probe_facts },
+      arm_resolutions: constructed_root_arm_resolutions()
     },
     target: orch_retry_escalation_step_target_model(
       occ: "E2=1 cmd",
@@ -316,7 +319,8 @@ test fn orch_retry_1level_row_direct_emit_accepted_holds() -> Bool {
   match emit(
     tree: InferredTree {
       root: orch_retry_1level_emitted_command,
-      facts: PartialFunction { lookup: orch_retry_probe_facts }
+      facts: PartialFunction { lookup: orch_retry_probe_facts },
+      arm_resolutions: constructed_root_arm_resolutions()
     },
     target: orch_retry_1level_target_model(
       occ1: "cmd",

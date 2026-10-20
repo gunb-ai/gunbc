@@ -367,7 +367,10 @@ fn program_facts_lookup(node: Node) -> Optional<InferredFacts> {
 fn program_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: program_facts_lookup }
+    facts: PartialFunction { lookup: progra
+    root: root,
+    facts: PartialFunction { lookup: program_facts_lookup },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 
@@ -427,7 +430,10 @@ fn program_pick_if_arrow_facts_lookup(node: Node) -> Optional<InferredFacts> {
 fn program_pick_if_arrow_tree(callee: Node) -> InferredTree {
   InferredTree {
     root: callee,
-    facts: PartialFunction { lookup: program_pick_if_arrow_facts_lookup }
+    facts: PartialFunction { lookup: prog
+    root: callee,
+    facts: PartialFunction { lookup: program_pick_if_arrow_facts_lookup },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

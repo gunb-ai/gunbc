@@ -64,8 +64,12 @@ fn compile_eval_thesis_inferred(root: Node) -> InferredTree {
   InferredTree {
     root: root,
     facts: PartialFunction {
+      lookup: 
+    root: root,
+    facts: PartialFunction {
       lookup: compile_eval_thesis_facts_lookup
-    }
+    },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

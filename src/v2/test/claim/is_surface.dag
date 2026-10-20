@@ -1,11 +1,17 @@
 module v2.test.claim.is_surface
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.test.claim.type_param_binder_frame { tpb_assemble, tpb_refuses_with }
+import v2.compiler.infer { infer }
+import v2.compiler.arm_resolution { PayloadArmReferenceAwaited, ResolvedArm, UnitArmSameArm }
+import v2.std.diagnostic { diagnostics_fatal, diagnostics_fatal_reason, NodeLocus }
+
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, ComputationNode, Edge, Node, Positional, Symbol, Transform, TypeNode, node_subtree_nodes }
 import std.optional { Absent, Optional, Present }
+import std.types { List }
+import std.algebra { fold }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -41,5 +47,74 @@ test fn is_unit_test_lowers_to_one_is_node() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: root, diagnostics: _ } =>
       fold(node_subtree_nodes(root: root.root), init: 0, f: fn(acc, x) { if is_head_is_kw(n: x) { acc + 1 } else { acc } }) == 1
+  }
+}
+
+fn is_src(decls: String, body: String) -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\n" + decls + "\nfn f(c: Color) -> Bool {\n  " + body + "\n}\n")
+}
+
+fn is_infer_reason(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+      }
+  }
+}
+
+fn is_arm_realizations(o: Outcome<ResolvedTree>) -> List<Bool> {
+  match o {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Rejected { diagnostics: _ } => []
+        Accepted { value: t, diagnostics: _ } =>
+          fold(node_subtree_nodes(root: root.root), init: [], f: fn(acc, x) {
+            match t.arm_resolutions.lookup(x) {
+              Present { value: r } =>
+                match r.realization {
+                  UnitArmSameArm => [true]
+                  PayloadArmReferenceAwaited => [false]
+                }
+              Absent => acc
+            }
+          })
+      }
+  }
+}
+
+// POSITIVE CONTROL: a unit arm of x's own type resolves, and the decided realization is the unit one.
+test fn is_unit_arm_resolves_unit() -> Bool {
+  is_arm_realizations(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red")) == [true]
+}
+
+// A payload arm resolves too and its decided realization is the awaiting cause, never a unit one.
+test fn is_payload_arm_resolves_awaiting() -> Bool {
+  is_arm_realizations(o: is_src(decls: "type Color = Red | Tint { r: Int }\n", body: "c is Tint")) == [false]
+}
+
+// RED: a misspelt arm refuses at infer with the typed cause.
+test fn is_misspelt_arm_refuses() -> Bool {
+  is_infer_reason(o: is_src(decls: "type Color = Red | Green\n", body: "c is Rd"), reason: ^arm_resolution_reason_arm_not_declared_by_owner)
+}
+
+// RED: an arm of ANOTHER type refuses with the same cause: the roster is x's type's.
+test fn is_foreign_arm_refuses() -> Bool {
+  is_infer_reason(o: is_src(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", body: "c is Blue"), reason: ^arm_resolution_reason_arm_not_declared_by_owner)
+}
+
+// RED: an authored attempt to construct the resolved-arm fact. The type has no grammar row and its
+// record literal is confined to its module (sole_constructor), so a program spelling one refuses.
+test fn is_authored_resolved_arm_refuses() -> Bool {
+  match tpb_assemble(src: "module p\n\nfn f(c: Int) -> Int {\n  ResolvedArm { owner_type: c }\n}\n") {
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => true
   }
 }

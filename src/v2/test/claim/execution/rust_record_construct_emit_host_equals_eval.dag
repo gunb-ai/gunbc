@@ -143,7 +143,10 @@ fn rust_rec_nine_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
 fn rust_rec_nine_eval_inferred_tree() -> InferredTree {
   InferredTree {
     root: rust_rec_nine_arrow_node(),
-    facts: PartialFunction { lookup: rust_rec_nine_eval_composed_facts }
+    facts: PartialFun
+    root: rust_rec_nine_arrow_node(),
+    facts: PartialFunction { lookup: rust_rec_nine_eval_composed_facts },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

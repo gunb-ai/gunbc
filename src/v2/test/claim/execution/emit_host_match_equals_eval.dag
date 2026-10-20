@@ -120,7 +120,8 @@ fn emit_match_eval_producer_tree() -> Outcome<InferredTree> {
       outcome_accepted(
         value: InferredTree {
           root: root,
-          facts: PartialFunction { lookup: emit_match_eval_composed_facts }
+          facts: PartialFunction { lookup: emit_match_eval_composed_facts },
+          arm_resolutions: constructed_root_arm_resolutions()
         }
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -133,7 +134,8 @@ fn emit_match_eval_swapped_producer_tree() -> Outcome<InferredTree> {
       outcome_accepted(
         value: InferredTree {
           root: root,
-          facts: PartialFunction { lookup: emit_match_eval_composed_facts }
+          facts: PartialFunction { lookup: emit_match_eval_composed_facts },
+          arm_resolutions: constructed_root_arm_resolutions()
         }
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }

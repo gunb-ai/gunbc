@@ -225,7 +225,10 @@ fn effect_io_eval_fact_lookup(node: Node) -> Optional<InferredFacts> {
 fn effect_io_eval_tree() -> InferredTree {
   InferredTree {
     root: effect_io_eval_roundtrip_node,
-    facts: PartialFunction { lookup: effect_io_eval_fact_lookup }
+    facts: Partial
+    root: effect_io_eval_roundtrip_node,
+    facts: PartialFunction { lookup: effect_io_eval_fact_lookup },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

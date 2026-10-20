@@ -69,7 +69,8 @@ fn bash_build_round_trip_via_emit_matches_golden(
 ) -> Bool {
   let tree = InferredTree {
     root: emitted,
-    facts: PartialFunction { lookup: bash_build_round_trip_facts_lookup }
+    facts: PartialFunction { lookup: bash_build_round_trip_facts_lookup },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
   match emit(tree: tree, target: target) {
     Accepted { value: source, diagnostics: d } =>

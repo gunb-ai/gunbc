@@ -28,7 +28,8 @@ fn enforce_reject_tree() -> InferredTree {
       algebra_symbol: ^enforce_reject_algebra_symbol,
       descent_symbol: ^enforce_reject_descent_symbol,
     )
-  )
+  ),
+    arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn enforce_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {

@@ -48,7 +48,8 @@ fn ownership_claim_facts() -> InferredFacts {
 }
 
 fn ownership_claim_tree() -> InferredTree {
-  claim_inferred_tree(root: ownership_root, facts: ownership_claim_facts())
+  claim_inferred_tree(root: ownership_root, facts: ownership_claim_facts()),
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 type LensOwnershipClaim {

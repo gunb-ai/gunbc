@@ -161,7 +161,8 @@ data bind_inferred_tree: InferredTree = InferredTree {
   root: bind_emitted_root,
   facts: PartialFunction {
     lookup: bind_round_trip_facts_lookup
-  }
+  },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn bind_emit_accepts() -> Outcome<Medium<String>> {

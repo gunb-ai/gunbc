@@ -338,7 +338,8 @@ fn coverage_join_tree() -> InferredTree {
       algebra_symbol: ^required_lens_coverage_join_algebra,
       descent_symbol: ^required_lens_coverage_join_descent,
     )
-  )
+  ),
+    arm_resolutions: constructed_root_arm_resolutions()
 }
 
 // THE OBSERVATIONS THE REAL GATES PRODUCE, JOINED. The controls above hand the join an authored

@@ -151,7 +151,8 @@ data match_bool_inferred_tree: InferredTree = InferredTree {
   root: match_bool_emitted_root,
   facts: PartialFunction {
     lookup: match_bool_facts_lookup
-  }
+  },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn match_bool_emit_accepts() -> Outcome<Medium<String>> {

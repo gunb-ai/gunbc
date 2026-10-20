@@ -66,7 +66,10 @@ fn sr_infer_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
 fn sr_infer_claim_tree() -> InferredTree {
   InferredTree {
     root: sr_infer_decl,
-    facts: sr_infer_claim_fact_map()
+    facts: sr_infer_claim_fact_map
+    root: sr_infer_decl,
+    facts: sr_infer_claim_fact_map(),
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

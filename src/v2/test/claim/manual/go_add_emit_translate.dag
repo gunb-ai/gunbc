@@ -288,7 +288,8 @@ data go_add_inferred_tree: InferredTree = InferredTree {
   root: go_add_emitted_root,
   facts: PartialFunction {
     lookup: go_add_facts_lookup
-  }
+  },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn anchor_go_add_emit_accepts() -> Outcome<Medium<String>> {

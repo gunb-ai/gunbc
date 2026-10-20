@@ -112,7 +112,8 @@ fn tcc_cache_tree_facts_for_reason(reason: Symbol) -> InferredTree {
       algebra_symbol: ^tcc_cache_facts_algebra_sym,
       descent_symbol: ^tcc_cache_facts_descent_sym,
     )
-  )
+  ),
+    arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn tcc_cache_eval_context() -> EvalContext {

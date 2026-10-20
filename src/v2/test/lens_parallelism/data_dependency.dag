@@ -47,7 +47,8 @@ fn parallelism_claim_facts() -> InferredFacts {
 }
 
 fn parallelism_claim_tree() -> InferredTree {
-  claim_inferred_tree(root: parallelism_root, facts: parallelism_claim_facts())
+  claim_inferred_tree(root: parallelism_root, facts: parallelism_claim_facts()),
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 type LensParallelismClaim {

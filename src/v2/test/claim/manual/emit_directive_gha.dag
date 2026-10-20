@@ -62,7 +62,8 @@ fn emit_directive_gha_emit(d: EmitDirective) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
       root: emit_directive_bash_emitted_command,
-      facts: PartialFunction { lookup: emit_directive_facts_lookup }
+      facts: PartialFunction { lookup: emit_directive_facts_lookup },
+      arm_resolutions: constructed_root_arm_resolutions()
     },
     target: emit_directive_gha_target_model(d: d)
   )
@@ -72,7 +73,8 @@ fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
       root: emit_directive_bash_emitted_command,
-      facts: PartialFunction { lookup: emit_directive_facts_lookup }
+      facts: PartialFunction { lookup: emit_directive_facts_lookup },
+      arm_resolutions: constructed_root_arm_resolutions()
     },
     target: emit_directive_bash_target_model(d: d)
   )

@@ -349,7 +349,8 @@ fn bcn_emit_rust(body: Node) -> Outcome<String> {
   match emit(
     tree: InferredTree {
       root: dag_arrow_with_body_node(domain: dag_arrow_domain_conj_node(), return_type_binding: ^dag_binding_type_int, body: body),
-      facts: PartialFunction { lookup: bcn_no_facts }
+      facts: PartialFunction { lookup: bcn_no_facts },
+      arm_resolutions: constructed_root_arm_resolutions()
     },
     target: rust_binop_target_model_staging()
   ) {
@@ -402,7 +403,7 @@ fn bcn_int(lexeme: String) -> Node {
 
 fn bcn_eval(root: Node) -> Outcome<RuntimeValue> {
   eval(
-    tree: InferredTree { root: root, facts: PartialFunction { lookup: bcn_facts_int } },
+    tree: InferredTree { root: root, facts: PartialFunction { lookup: bcn_facts_int }, arm_resolutions: constructed_root_arm_resolutions() },
     interpretation: v2_evaluator_interpretation(),
     inputs: inputs_root_only(root: root)
   )

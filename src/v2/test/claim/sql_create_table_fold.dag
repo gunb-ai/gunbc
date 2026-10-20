@@ -68,7 +68,8 @@ fn sql_fold_fold_serialize(
     Holds { value: emitted } =>
       let tree = InferredTree {
         root: emitted,
-        facts: PartialFunction { lookup: sql_fold_facts_lookup }
+        facts: PartialFunction { lookup: sql_fold_facts_lookup },
+        arm_resolutions: constructed_root_arm_resolutions()
       }
       match emit(tree: tree, target: target) {
         Accepted { value: source, diagnostics: d } =>
