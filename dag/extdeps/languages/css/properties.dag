@@ -29,9 +29,11 @@ type CssPropertyName
   | AnimationDelay
   | AnimationDuration
   | TransformOrigin
+  | WebkitFontSmoothing
   | Background
   | Border
   | BorderBottom
+  | BorderBottomColor
   | BorderCollapse
   | BorderColor
   | BorderLeft
@@ -66,6 +68,7 @@ type CssPropertyName
   | ListStyle
   | Margin
   | MarginBottom
+  | MarginInline
   | MarginLeft
   | MarginRight
   | MarginTop
@@ -76,13 +79,16 @@ type CssPropertyName
   | Outline
   | Overflow
   | Padding
+  | PaddingBlock
   | PaddingLeft
+  | PaddingTop
   | Position
   | Stroke
   | TextAlign
   | TextDecoration
   | TextOverflow
   | TextTransform
+  | TextWrap
   | Transform
   | Transition
   | VerticalAlign
@@ -98,9 +104,11 @@ fn css_property_wire(p: CssPropertyName) -> String {
     AnimationDelay => "animation-delay"
     AnimationDuration => "animation-duration"
     TransformOrigin => "transform-origin"
+    WebkitFontSmoothing => "-webkit-font-smoothing"
     Background => "background"
     Border => "border"
     BorderBottom => "border-bottom"
+    BorderBottomColor => "border-bottom-color"
     BorderCollapse => "border-collapse"
     BorderColor => "border-color"
     BorderLeft => "border-left"
@@ -135,6 +143,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     ListStyle => "list-style"
     Margin => "margin"
     MarginBottom => "margin-bottom"
+    MarginInline => "margin-inline"
     MarginLeft => "margin-left"
     MarginRight => "margin-right"
     MarginTop => "margin-top"
@@ -145,13 +154,16 @@ fn css_property_wire(p: CssPropertyName) -> String {
     Outline => "outline"
     Overflow => "overflow"
     Padding => "padding"
+    PaddingBlock => "padding-block"
     PaddingLeft => "padding-left"
+    PaddingTop => "padding-top"
     Position => "position"
     Stroke => "stroke"
     TextAlign => "text-align"
     TextDecoration => "text-decoration"
     TextOverflow => "text-overflow"
     TextTransform => "text-transform"
+    TextWrap => "text-wrap"
     Transform => "transform"
     Transition => "transition"
     VerticalAlign => "vertical-align"
