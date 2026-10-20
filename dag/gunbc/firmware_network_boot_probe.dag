@@ -8,10 +8,7 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
 import std.decl_ref { DeclarationRef, decl_ref }
 
-import extdeps.bmc.types {
-  FirmwareReadRefusal, SecureBootObservation,
-  SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused,
-}
+import gunbc.secure_boot_observation { FirmwareReadRefusal, SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 // S0 IMPORT, ONE MARKED BLOCK. The observation vocabulary belongs to gunbc.firmware_network_boot_standing
 // (S0); this module emits it and defines none of it. Nothing outside this block names where these
 // types live.

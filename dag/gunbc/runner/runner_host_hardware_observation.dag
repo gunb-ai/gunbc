@@ -1,7 +1,7 @@
 module gunbc.runner.runner_host_hardware_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import extdeps.bmc.types { SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
+import gunbc.secure_boot_observation { SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 import extdeps.pci.identity { PciAddress, PciClassCode, PciDeviceId, PciVendorId }
 
 // WHAT THE UNIT PRESENTED, AT A GRAIN A BUILDER CAN CONSUME. The first version of this module

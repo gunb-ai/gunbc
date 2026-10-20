@@ -34,26 +34,8 @@ import extdeps.provisioning.network_boot {
 // THE TARGET ENUM IS NOT MINE TO REINVENT (review 81711). extdeps.bmc.types already models the
 // Redfish BootSourceOverrideTarget value set that the BMC protocol defines; classifying a boot
 // entry as network-or-not is a question about THAT enum, so it is asked against it.
-import extdeps.bmc.types {
-  FirmwareReadRefusal,
-  VendorCommandRejected, ResourceNotFound, AuthenticationRequired, ReplyShapeUnrecognized,
-  SecureBootObservation,
-  SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused,
-  RedfishBootSourceOverrideTarget,
-  RedfishBootTargetNetworkStanding,
-  NetworkBootTarget,
-  NotNetworkBootTarget,
-  redfish_boot_target_network_standing,
-  redfish_boot_target_wire,
-  BootTargetNone,
-  BootTargetPxe,
-  BootTargetHdd,
-  BootTargetCd,
-  BootTargetUsb,
-  BootTargetBiosSetup,
-  BootTargetDiags,
-  BootTargetUefiHttp,
-}
+import extdeps.bmc.types { RedfishBootSourceOverrideTarget, RedfishBootTargetNetworkStanding, NetworkBootTarget, NotNetworkBootTarget, redfish_boot_target_network_standing, redfish_boot_target_wire, BootTargetNone, BootTargetPxe, BootTargetHdd, BootTargetCd, BootTargetUsb, BootTargetBiosSetup, BootTargetDiags, BootTargetUefiHttp }
+import gunbc.secure_boot_observation { FirmwareReadRefusal, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, ReplyShapeUnrecognized, SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 import gunbc.network_boot_delivery { BootControlReceiptStanding }
 // THE FRONTIER IS DATA, NOT PROSE (review 81734 / DESIGN 3c). A '//' note naming the future probe
 // is unreadable to any tool and is deleted by the next refactor that does not happen to need it;

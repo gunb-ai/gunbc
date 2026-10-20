@@ -1,9 +1,7 @@
 module test.claim.runner.efi_signature_requirement_witness
 
 import std.types { Bool }
-import extdeps.bmc.types {
-  SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused, VendorCommandRejected,
-}
+import gunbc.secure_boot_observation { SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused, VendorCommandRejected }
 import gunbc.runner.runner_host_hardware_observation {
   efi_signature_requirement, UnsignedEfiPermittedWhileSecureBootDisabled, SignedEfiRequired,
 }
