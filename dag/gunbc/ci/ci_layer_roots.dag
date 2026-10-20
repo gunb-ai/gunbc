@@ -410,6 +410,38 @@ data excl_local_repo_wet_host_probe_dissolve: DissolutionCondition = unbound_dis
 
 data excl_local_repo_wet_device_route_store_read_reason: String = "real host-effect execution witness over the App Attest device routes whose one claim is the gate's discriminating control: under a bound realization the read proceeds past device_crypto_gate into the enrolment store's Filesystem.Read (gunbc.auth.approval_device_redemption observe_enrollment over approval_device_store_root), which has no mock_response. The route takes no store as a parameter, so the store cannot be supplied at the claim's interface. The effect is READ-ONLY: nothing is written, no network is reached, and the claim asserts only that the answer is not the realization reason, which holds whether the slot is absent, unreadable or present. So excluded from the discovery corpus and executed by the required floor's local-repo wet lane."
 
+// THE OUTSIDE-DISCOVERY-ROOTS CENSUS's reads. NAMED AS ITS OWN ADMITTED EFFECT rather than folded into a
+// neighbour, which is this corpus's convention (see excl_local_repo_wet_bash_materialized_reason and
+// excl_local_repo_wet_host_probe_reason, both of which spell out why they are not the row above them).
+// The two effects are `shell.Exec.RunArgv` twice, both READ-ONLY over the checkout: `git -C . ls-files
+// '*.dag'` and `git -C . grep -E -l <declaration pattern> -- '*.dag'`, through
+// gunbc.command_runner.run_shell_command_capture. RunArgv carries no mock_response, so hermetic discovery
+// REFUSES rather than skipping -- and neither read can be supplied at the claim's interface without
+// falsifying what is under test: the fact is what the index ACTUALLY tracks under the subject
+// v1_claim_scoped_witness_batch_deleted_note declares, so an injected listing would re-check the census
+// against authored data and the pairing would witness nothing.
+//
+// WHY IT IS NOT ITS NEIGHBOURS: no repository is created (not excl_local_repo_wet_reason), nothing is
+// written anywhere (not excl_local_repo_wet_tempdir_write_reason, ..._browser_ready_label_reason or
+// ..._scm_guarded_save_reason), no script materialises (not ..._bash_materialized_reason), no host tool's
+// presence is probed (not ..._host_probe_reason -- the git binary's absence is a typed ListingRefused, not
+// the verdict), no checksum is taken (not ..._digest_stdin_reason), and no store, profile, device route or
+// fleet path is entered (not ..._device_route_store_read_reason, ..._profile_store_reason,
+// ..._enrolment_code_reason, ..._ntfy_runtime_readback_reason, ..._authorized_key_enroll_reason). What
+// admits it to the same lane is the shared negative half every member states: no network, no cargo, no
+// remote host, no install media, nothing outside the process, nothing written.
+//
+// WHY THE VERDICT IS HOST-INDEPENDENT: both reads answer from the checked-out tree, which is the same tree
+// the claim file itself is read from, and the assertions are containments over tracked paths -- no clock, no
+// locale, no host tool beyond the git that the lane's other git-touching members already require. The red
+// this member CAN produce is route unreachability (no git: both reads answer typed refusals, the census
+// reports ListingUnread and the pairing claim goes red rather than quiet) and drift between the note's
+// declared subject and what the index tracks under it -- which is the finding the census exists to report.
+data excl_local_repo_wet_outside_roots_census_reason: String = "real host-read execution witness over the TRACKED INDEX OF THE CHECKOUT -- two READ-ONLY shell.Exec.RunArgv effects (git -C . ls-files and git -C . grep -E -l of the claim declaration shape, through gunbc.command_runner.run_shell_command_capture), neither of which carries a mock_response, so hermetic discovery refuses them rather than skipping them. Excluded from the discovery corpus and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), every function in test.claim.outside_discovery_roots_census_real_execution on that schedule. NOT THE THROWAWAY-REPOSITORY PROPERTY excl_local_repo_wet_reason NAMES: no repository is created and nothing is written; the reads describe the tree the claim file itself is read from. The listing cannot be supplied at the claim's interface without falsifying the fact under test -- an authored listing would re-check the census against the data that produced it."
+
+data excl_local_repo_wet_outside_roots_census_dissolve: DissolutionCondition = unbound_dissolution(description: "response coverage lands for shell.Exec.RunArgv over the two git reads (ls-files and grep -E -l of the claim declaration shape), so the listing and the marker answer can be asserted against a fixed recorded answer while a separate route still checks them against a real index; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes. Filesystem or git mock coverage that stops short of these two argv responses cannot discharge this trigger.")
+
+
 data excl_local_repo_wet_device_route_store_read_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for Filesystem.Read sufficient for observe_enrollment to be driven under a fixed store, OR the device read routes take their store observation as a supplied value; then the control re-enrolls as an ordinary hermetic discovery row in test.claim.approval_device_routes_witness, drops off local_repo_wet_schedule, and this row deletes")
 
 data excl_local_repo_wet_tempdir_write_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Mktemp.Dir and Filesystem.Write, sufficient for sha256sum_verify_via_shell to be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
@@ -554,6 +586,21 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_tempdir_write_dissolve},
+  // THE OUTSIDE-DISCOVERY-ROOTS CENSUS's pairing claims, and why they are here rather than in the hermetic
+  // corpus: both of the census's inputs are `shell.Exec.RunArgv` effects -- a real `git ls-files` and a real
+  // `git grep -E -l` of the claim declaration shape -- and RunArgv carries no mock_response, so hermetic
+  // discovery REFUSES them rather than skipping them. That refusal is the envelope working, not a defect to
+  // route around: supplying the listing at the claim's interface instead would check the census against the
+  // very data it produced, while the fact at issue is what the index ACTUALLY tracks under the subject
+  // v1_claim_scoped_witness_batch_deleted_note declares. So the claims run on the local-repo wet lane and
+  // stay visible in coverage instead of going dark. Both reads are read-only over the checkout -- no network,
+  // no remote host, no Cargo, nothing written -- and a missing git is a typed refusal that takes the claim
+  // RED (the census reports ListingUnread) rather than letting it pass on an empty population.
+  WitnessExclusionRow {
+    pattern: "outside_discovery_roots_census_real_execution.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_outside_roots_census_reason,
+    dissolution: excl_local_repo_wet_outside_roots_census_dissolve},
   WitnessExclusionRow {
     pattern: "seeded_filler_real_execution.dag",
     classification: LocalRepoWetLane,

@@ -1,0 +1,78 @@
+module v2.test.claim.outside_discovery_roots_census_real_execution
+
+// THE REAL PAIRING for the outside-discovery-roots census: what the index actually lists under the note's
+// subject IS the population the census reports, and every one of them is a finding. The expectation is the
+// note's declared population as the tree measures it; the observation is git's; this file is where they are
+// held together.
+//
+// WHY A SEPARATE FILE, AND WHY THE LOCAL-REPO WET LANE. The two reads this census is built on -- `ls-files`
+// and the claim-marker grep -- are effects: each goes to `shell.Exec.RunArgv` through
+// gunbc.command_runner.run_shell_command_capture, and RunArgv carries no `mock_response`, so hermetic
+// discovery REFUSES the claim rather than skipping it. That refusal is the hermetic envelope doing its job: a
+// mocked index or a mocked grep stdout would re-check the census against authored data, and the fact under
+// test is what the index actually tracks under a declared subject. So the claim runs where the repo puts
+// claims whose subject is a real process's stdout -- the local-repo wet lane, beside
+// the local-repo wet lane, enrolled as its members are: a frontier row in gunbc.ci.ci_layer_roots, a
+// schedule entry in v2.workflow.local_repo_wet_terminal, and expectations in v2.workflow.floor_route_gap --
+// the same triple that enrolls members like
+// test.claim.machine_intake.mtcollins1_census_image_local_wet.
+//
+// WHY src/v2 AND NOT dag/test/claim, where most of that lane's members sit: the file imports
+// v2.workflow.outside_discovery_roots_census, and the modelled import rule
+// (v2.std.cross_tree.resolution tree_fundamentality_order) DENIES dag -> v2 while allowing v2 -> dag. A new
+// module lives where its import edges are admitted, so this one lives in v2 and the schedule row points
+// there. The executor resolves the entry by the row's identity.module_path over the witness layer roots
+// (src/v1/stage0/src/cli_run/required_floor_runner.rs), which include src/v2, so the placement costs the
+// lane nothing.
+//
+// THE EXECUTION IS PURELY LOCAL: two git reads over the checkout (`-C <checkout> ls-files`, `-C <checkout>
+// grep -E -l`), no network, no remote host, no Cargo, nothing written.
+//
+// THE MUTUAL OBLIGATION, stated the way the pairing obligation requires it: deleting either capture from the
+// live entry does not make this claim quiet, it makes it red. The census cannot invent a listing or a marker
+// answer -- both arrive as typed reads, and a missing one is `ListingRefused`/`BearersRefused`, which makes
+// `out.unread` true and empties `out.findings`; the containment below then fails on the first declared path.
+// So the witness cannot survive the deletion of the integration it witnesses, and it cannot be satisfied by
+// the pure file's fixtures either, because those inject listings rather than performing reads.
+
+import std.types { String, Bool, List }
+import std.algebra { is_empty }
+
+import v2.workflow.outside_discovery_roots_census_live {
+  tracked_claim_listing,
+  tracked_claim_bearers,
+  outside_roots_census
+}
+
+// THE EXPECTATION, imported rather than restated: the same list the hermetic witness holds its injected
+// listings against. Two copies of a population, in two files, is the second-implementation defect this repo
+// calls §3's fork; one list, read by both the hermetic and the wet observer, is one fact with two readers.
+import v2.workflow.outside_discovery_roots_census { note_declared_paths }
+
+fn is_in(listing: List<String>, path: String) -> Bool {
+  any(xs: listing, predicate: fn(candidate) { candidate == path })
+}
+
+// THE PAIRING. Note's declared population against the index's answer, containment both ways -- never a count
+// copied from an instrument run (§5/§6: the population is asserted by identity, not by a number).
+test fn the_index_lists_exactly_the_population_the_note_declares_by_real_execution() -> Bool {
+  let out = outside_roots_census(
+    listing: tracked_claim_listing(),
+    bearers: tracked_claim_bearers()
+  )
+  !(out.unread)
+    && all(xs: note_declared_paths, predicate: fn(path) { is_in(listing: out.findings, path: path) })
+    && all(xs: out.findings, predicate: fn(path) { is_in(listing: note_declared_paths, path: path) })
+}
+
+// THE POSITIVE CONTROL, and the reason the claim above is not a tautology that passes when nothing is
+// observed. A census that read nothing reports no findings and `unread`; a census that read the index
+// reports the population and is not unread. If either capture were deleted, `unread` would carry this claim
+// to its red side rather than letting it pass on an empty population.
+test fn the_live_reads_produce_an_observed_population_rather_than_a_refusal_by_real_execution() -> Bool {
+  let out = outside_roots_census(
+    listing: tracked_claim_listing(),
+    bearers: tracked_claim_bearers()
+  )
+  !(out.unread) && !(is_empty(out.findings))
+}

@@ -38,7 +38,10 @@ import v2.workflow.outside_discovery_roots_census {
   path_is_claim_file,
   path_is_under_note_subject,
   v1_claim_note_identity,
-  v1_claim_note_location
+  v1_claim_note_location,
+  note_declared_paths,
+  subject_helpers_declare_nothing,
+  prose_mentioning_paths
 }
 import v2.workflow.outside_discovery_roots_census_live {
   TrackedListing,
@@ -47,8 +50,6 @@ import v2.workflow.outside_discovery_roots_census_live {
   ClaimBearerRead,
   BearersRead,
   BearersRefused,
-  tracked_claim_listing,
-  tracked_claim_bearers,
   listing_from_captured_text,
   bearers_from_captured_text,
   listing_paths,
@@ -59,52 +60,6 @@ import v2.workflow.outside_discovery_roots_census_live {
 import v2.cli.repository_layout { repository_module_file_of_path }
 
 // ---------------------------------------------------------------------------
-// THE DECLARED POPULATION, as an expectation: every tracked `.dag` under the note's subject that DECLARES a
-// claim. Measured at this head with the same read the live entry performs (`git grep -E -l` of the
-// declaration shape, pathspec `src/v1/tests/claim/*.dag`): 13 files, and they are what the census must
-// report. The note itself declares at DIRECTORY grain -- its body names the subject, not files -- so this
-// list is the tree's population under that declared subject, written here as the thing the index is held to.
-//
-// Why 13 and not the 12 this work was scoped with: `carrier_realization_census.dag` declares 4 test fns and
-// was left out of the scoping count. Excluding it would not make the census quieter -- the path is tracked,
-// under no governed tree, and declares claims, so it is reported -- it would only make the claim that pairs
-// note against tree lie. So the expectation follows the tree and the discrepancy is reported upward rather
-// than absorbed. The three `*_census.dag` files in the same directory that declare NOTHING are a different
-// case; they have their own standing, claimed below.
-data note_declared_paths: List<String> = [
-  "src/v1/tests/claim/annotation_gap_round_trip_test.dag",
-  "src/v1/tests/claim/bare_variant_reference_occurrence_control_test.dag",
-  "src/v1/tests/claim/carrier_realization_census.dag",
-  "src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag",
-  "src/v1/tests/claim/escape_json_string_differential.dag",
-  "src/v1/tests/claim/item_kind_dissolves_shape_predicates_control_test.dag",
-  "src/v1/tests/claim/keyword_pattern_binder_refusal_test.dag",
-  "src/v1/tests/claim/parse_source_extent_control_test.dag",
-  "src/v1/tests/claim/production_fed_exposure_discrimination_control_test.dag",
-  "src/v1/tests/claim/reference_derived_disposition_census_witness_test.dag",
-  "src/v1/tests/claim/tco_tail_call_assigns_every_loop_slot_witness_test.dag",
-  "src/v1/tests/claim/transport_roster_closure_witness_test.dag",
-  "src/v1/tests/claim/type_declaration_occurrence_control_test.dag"
-]
-
-// THE FILES THAT ARE NOT CLAIMS. Tracked `.dag` under the same subject that declare no test fn at all --
-// helper inventories the claim files beside them import. An extension-only rule called these findings; that
-// was a fabricated population, and these three paths are the RED for it.
-data subject_helpers_declare_nothing: List<String> = [
-  "src/v1/tests/claim/generic_identity_census.dag",
-  "src/v1/tests/claim/interpolation_hole_census.dag",
-  "src/v1/tests/claim/shared_type_leaf_collision_census.dag"
-]
-
-// ...and the files OUTSIDE the subject whose text merely MENTIONS the phrase `test fn` in prose (measured:
-// four tracked `src/v1/*.dag` do). With the bare phrase as the pattern these became findings too; the
-// declaration shape is what keeps them out. Their paths are handed to the census without the marker answer,
-// which is how the live entry hands them.
-data prose_mentioning_paths: List<String> = [
-  "src/v1/00_core.dag",
-  "src/v1/compile.dag"
-]
-
 // A listing with a governed path in it, so a census that reported governed files as findings would go red
 // on a fixture rather than only on the real tree.
 data governed_listing_rows: List<String> = [
@@ -318,23 +273,6 @@ test fn a_live_function_resolves_and_reports_no_finding_for_an_empty_listing() -
   is_empty(out.findings) && !(out.unread)
 }
 
-// ---------------------------------------------------------------------------
-// THE REAL PAIRING: what the index actually lists under the note's subject IS the note's declared
-// population, and every one of them is a finding. The expectation is the note's list, the observation is
-// git's, and this claim is where they are held together. It executes the capture the live entry performs
-// (the `by_real_execution` convention the corpus already uses).
-// ---------------------------------------------------------------------------
-
-test fn the_index_lists_exactly_the_population_the_note_declares_by_real_execution() -> Bool {
-  let out = outside_roots_census(
-    listing: tracked_claim_listing(),
-    bearers: tracked_claim_bearers()
-  )
-  !(out.unread)
-    && all(xs: note_declared_paths, predicate: fn(path) { is_in(listing: out.findings, path: path) })
-    && all(xs: out.findings, predicate: fn(path) { is_in(listing: note_declared_paths, path: path) })
-}
-
 // The capture's decision on an EMPTY answer, exercised directly: it is a refusal with a cause, never an
 // empty population standing in for success. The decision is a pure function of the captured text precisely
 // so this can be put in its hand -- the capture itself only runs on the real route.
@@ -437,6 +375,29 @@ test fn the_receipt_says_which_findings_the_note_vouches_for_and_which_it_does_n
     string_contains(s: line, pattern: "declared by") && !(string_contains(s: line, pattern: "NOT declared by"))
   })
     && any(xs: not_vouched, predicate: fn(line) { string_contains(s: line, pattern: "NOT declared by") })
+}
+
+// THE GRAIN OF THE MARKER READ IS ON EVERY LINE, in both attributions. `acquisition_test_markers` is the
+// authority on "declares a test fn" and it PARSES; the census was handed a regex over text. A line that
+// named the note and the path while staying silent about which of those two spoke would read as the
+// parser's verdict -- and this pattern already proved twice over that it is not one (prose `test fn` and
+// fixture text both matched it). So the qualification is not a comment, it is printed, and this claim is
+// what keeps it printed.
+test fn every_receipt_line_says_the_marker_answer_is_a_pattern_match_not_the_marker_authority() -> Bool {
+  let vouched = outside_roots_receipt_lines(
+    findings: [head_path(paths: note_declared_paths)],
+    vouched_by_note: true
+  )
+  let not_vouched = outside_roots_receipt_lines(
+    findings: [head_path(paths: prose_mentioning_paths)],
+    vouched_by_note: false
+  )
+  all(xs: vouched, predicate: fn(line) {
+    string_contains(s: line, pattern: "not acquisition_test_markers")
+  })
+    && all(xs: not_vouched, predicate: fn(line) {
+         string_contains(s: line, pattern: "not acquisition_test_markers")
+       })
 }
 
 // THE MARKER PATTERN IS THE DECLARATION SHAPE, not the bare phrase -- claimed on the data the live entry
