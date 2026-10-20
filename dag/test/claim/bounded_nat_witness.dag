@@ -3,6 +3,8 @@ module test.claim.bounded_nat_witness
 import std.logic { Bool }
 import std.types { Int }
 import std.measure { BitWidth, bit_width }
+import std.integer { Signed, Unsigned }
+import std.machine_width_range { machine_width_admits }
 import std.bounded_nat {
   BoundedNat, BoundedNatMint, Minted, OutOfWidth, WidthRefused,
   BoundedNatAdmission, WidthAdmitted, WidthExceedsHostInt,
@@ -56,6 +58,19 @@ test fn a_value_inside_the_width_mints_and_one_outside_it_does_not() -> Bool {
   let above = match bounded_nat(bits: w8(), value: 256) { OutOfWidth { bits: _, value: v } => v == 256 _ => false }
   let below = match bounded_nat(bits: w8(), value: -1) { OutOfWidth { bits: _, value: v } => v == -1 _ => false }
   inside && above && below
+}
+
+// WIDTH ZERO: the mint and the admission agree (range {0}); the range authority is one function, so a
+// signed zero width admits nothing while the unsigned one admits exactly 0.
+test fn width_zero_admits_exactly_zero_at_the_mint_and_the_admission_agrees() -> Bool {
+  let w0 = bit_width(count: 0)
+  let admitted = match bounded_nat_admit(bits: w0) { WidthAdmitted { bits: _ } => true _ => false }
+  let zero = match bounded_nat(bits: w0, value: 0) { Minted { n } => n.value == 0 _ => false }
+  let one = match bounded_nat(bits: w0, value: 1) { OutOfWidth { bits: _, value: v } => v == 1 _ => false }
+  let neg = match bounded_nat(bits: w0, value: -1) { OutOfWidth { bits: _, value: v } => v == -1 _ => false }
+  let range_unsigned = machine_width_admits(signedness: Unsigned, bits: w0, value: 0) && !machine_width_admits(signedness: Unsigned, bits: w0, value: 1)
+  let range_signed = !machine_width_admits(signedness: Signed, bits: w0, value: 0)
+  admitted && zero && one && neg && range_unsigned && range_signed
 }
 
 // A width the host integer cannot hold refuses at admission, and says which of the two refusals it is.

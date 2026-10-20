@@ -1,6 +1,5 @@
 module v2.lens.testgen
 
-import gunbc.non_fold_residue { nfr_dissolve_derived_equality, nfr_reason_structural_eq_mint }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -55,7 +54,6 @@ import v2.std.node {
   Conj,
   Disj,
   Arrow,
-  Occupancy,
   Instantiation,
   Behavior,
   Transform,
@@ -104,7 +102,6 @@ import v2.std.verification {
   ManualNatMulAssociativity,
   ManualNatMulLeftIdentity,
   ManualTcArrowTwoConj,
-  ManualTcOccupancyEmpty,
   ManualTcConjEmpty,
   ManualTcConjEqualsRefl,
   ManualTcDisjEmpty,
@@ -127,7 +124,6 @@ import v2.test.claim.manual.connective_anchors {
   stub_empty_disj,
   stub_empty_transform,
   claim_arrow_two_conj_compiles,
-  claim_occupancy_empty_rejected,
   claim_conj_empty_compiles,
   claim_conj_equals_refl,
   claim_disj_empty_compiles,
@@ -174,8 +170,6 @@ import v2.std.concept_index {
 import v2.std.node_query {
   coproduct_arm_key_list_from_node
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type TypeConstructionSubject
 
@@ -257,7 +251,6 @@ fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
     ManualTcConjEmpty => ^gen_id_tc_conj_empty
     ManualTcDisjEmpty => ^gen_id_tc_disj_empty
     ManualTcArrowTwoConj => ^gen_id_tc_arrow_two_conj
-    ManualTcOccupancyEmpty => ^gen_id_tc_occupancy_empty
     ManualTcInstantiationEmpty => ^gen_id_tc_instantiation_empty
     ManualTcArrowEmpty => ^gen_id_tc_arrow_empty
     ManualTcTransformEmpty => ^gen_id_tc_transform_empty
@@ -534,10 +527,6 @@ fn testgen_emit_refinement_preservation_claim(
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
-    ManualTcOccupancyEmpty =>
-      Rejected {
-        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
-      }
     ManualTcInstantiationEmpty =>
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
@@ -720,10 +709,6 @@ fn testgen_emit_language_behavior_equivalence_claim(
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
     ManualTcArrowTwoConj =>
-      Rejected {
-        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
-      }
-    ManualTcOccupancyEmpty =>
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
@@ -918,16 +903,6 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
         )
       }
     ManualTcArrowTwoConj =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: ^algebra_law_anchor_mismatch,
-            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
-            correction: Unavailable { reason: UserInputBoundary }
-          }
-        )
-      }
-    ManualTcOccupancyEmpty =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
@@ -1659,42 +1634,6 @@ fn nat_algebra_law_schedule_row_from_obligation(
   )
 }
 
-fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
-  match a {
-    ManualNatAddLeftIdentity =>
-      match b {
-        ManualNatAddLeftIdentity => true
-        _ => false
-      }
-    ManualNatAddRightIdentity =>
-      match b {
-        ManualNatAddRightIdentity => true
-        _ => false
-      }
-    ManualNatAddAssociativity =>
-      match b {
-        ManualNatAddAssociativity => true
-        _ => false
-      }
-    ManualNatMulLeftIdentity =>
-      match b {
-        ManualNatMulLeftIdentity => true
-        _ => false
-      }
-    ManualNatMulAnnihilator =>
-      match b {
-        ManualNatMulAnnihilator => true
-        _ => false
-      }
-    ManualNatMulAssociativity =>
-      match b {
-        ManualNatMulAssociativity => true
-        _ => false
-      }
-    _ => false
-  }
-}
-
 fn append_nat_algebra_law_schedule_row_if_anchor_matches(
   found: Outcome<NatAlgebraLawScheduleRow>,
   obligation: NatAlgebraLawObligation,
@@ -1706,7 +1645,7 @@ fn append_nat_algebra_law_schedule_row_if_anchor_matches(
       bind_outcome(
         o: nat_algebra_law_schedule_row_from_obligation(obligation: obligation),
         f: fn(row) {
-          if nat_manual_anchor_key_eq(a: row.anchor, b: anchor) {
+          if row.anchor == anchor {
             Accepted { value: row, diagnostics: None }
           } else {
             found
@@ -2291,7 +2230,6 @@ fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClai
     ManualTcConjEmpty => Accepted { value: claim_conj_empty_compiles, diagnostics: None }
     ManualTcDisjEmpty => Accepted { value: claim_disj_empty_compiles, diagnostics: None }
     ManualTcArrowTwoConj => Accepted { value: claim_arrow_two_conj_compiles, diagnostics: None }
-    ManualTcOccupancyEmpty => Accepted { value: claim_occupancy_empty_rejected, diagnostics: None }
     ManualTcInstantiationEmpty => Accepted { value: claim_instantiation_empty_rejected, diagnostics: None }
     ManualTcArrowEmpty => Accepted { value: claim_arrow_empty_rejected, diagnostics: None }
     ManualTcTransformEmpty => Accepted { value: claim_transform_empty_rejected, diagnostics: None }
@@ -2354,10 +2292,6 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
     ManualClaimAnchor { manual_anchor: ManualTcArrowTwoConj } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Arrow },
-        }, diagnostics: None }
-    ManualClaimAnchor { manual_anchor: ManualTcOccupancyEmpty } =>
-      Accepted { value: TypeConstruction {
-          subject: ConnectiveKernel { connective: Occupancy },
         }, diagnostics: None }
     ManualClaimAnchor { manual_anchor: ManualTcInstantiationEmpty } =>
       Accepted { value: TypeConstruction {
@@ -2487,11 +2421,3 @@ fn bootstrap_claim_generator_for_manual_anchor(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "nat_manual_anchor_key_eq" },
-      reason: nfr_reason_structural_eq_mint,
-      dissolution: nfr_dissolve_derived_equality,
-    },
-]

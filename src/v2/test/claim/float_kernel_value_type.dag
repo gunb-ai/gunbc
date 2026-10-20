@@ -1,0 +1,45 @@
+module v2.test.claim.float_kernel_value_type
+
+import std.types { Bool }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source }
+import v2.test.claim.compiler.primitive_authority_resolve { par_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A Float-DECLARED POSITION JUDGES THE VALUE IT HOLDS ON THE v2 RESOLVE-TO-INFER ROUTE, BY THE DECLARATION'S
+// IDENTITY (operator ruling H5 and the layer rule, 2026-10-18). std.float declares the one language-facing
+// Float, opaque, so another kernel type at that position is a different declaration and refuses; no kernel
+// node, roster row or ambient spelling is involved. With no declaration, a Float-declared obligation was
+// counted and admitted (gunbc.recurring_failure_mode kernel_type_float_has_no_v2_value_type_node). The
+// std.float fixture is the real module's one declaration; the real module through v1 and Rust emission is
+// test.claim.float_home_realization.
+
+data fkv_float: String = "module std.float\n\ntype Float\n"
+
+data fkv_float_artifact: Artifact = Artifact { kind: SourceFile, id: ^fkv_float_artifact, file_path: "src/v2/pilot/fkv_float.dag" }
+
+fn fkv_reason(p_src: String) -> Symbol {
+  par_reason(o: bla_assemble_with_peers(p_src: p_src, peers: [bla_source(src: fkv_float, artifact: fkv_float_artifact, cu: ^fkv_float_cu)]))
+}
+
+data fkv_float_through: String = "module p\n\nimport std.float { Float }\n\nfn f(x: Float) -> Float {\n  x\n}\n"
+
+data fkv_int_returned_as_float: String = "module p\n\nimport std.float { Float }\n\nfn f(x: Int) -> Float {\n  x\n}\n"
+
+data fkv_int_in_a_float_field: String = "module p\n\nimport std.float { Float }\n\ntype R {\n  v: Float\n}\n\nfn f(x: Int) -> R {\n  R { v: x }\n}\n"
+
+test fn a_float_value_inhabits_a_float_declared_position_holds() -> Bool {
+  fkv_reason(p_src: fkv_float_through) == ^accepted
+}
+
+test fn an_int_returned_where_float_is_declared_refuses_holds() -> Bool {
+  fkv_reason(p_src: fkv_int_returned_as_float) == ^arrow_body_does_not_inhabit_declared_return
+}
+
+test fn an_int_in_a_float_declared_record_field_refuses_holds() -> Bool {
+  fkv_reason(p_src: fkv_int_in_a_float_field) == ^record_field_value_does_not_inhabit
+}

@@ -207,12 +207,21 @@ fn elaborate_literal_at(
 // inhabitance are all judged on it -- and no realizer ever builds the unary tower.
 //
 // THE ROW IS THE CARRIER'S ONLY ELABORATION-DISCOVERY AUTHORITY, AND ITS RANGE IS THE DECLARED
-// ADMISSION BOUND. It names the carrier and the kernel values the carrier admits (min and max,
-// below); it names no constructor. Which constructor is zero and which is successor is
-// read from the carrier's own declaration by the consumer (one nullary constructor, and one
-// constructor with exactly one field of the carrier's own type), so a row cannot disagree with
-// the declaration it is about, and a bound declaration that is NOT that shape is a refusal at the
-// consumer rather than a guess. Keyed on the exact DeclarationRef: a user-declared type of the
+// ADMISSION BOUND. It names the carrier, the kernel values the carrier admits (min and max, below), and
+// the VIEW by which its constructors denote kernel values.
+//
+// A PEANO VIEW NAMES NO CONSTRUCTOR. Which constructor is zero and which is successor is read from the
+// carrier's own declaration by the consumer (one nullary constructor, and one constructor with exactly
+// one field of the carrier's own type) -- a shape that determines the two roles -- so a row cannot
+// disagree with the declaration it is about, and a bound declaration that is NOT that shape is a
+// refusal at the consumer rather than a guess.
+//
+// A SIGNED VIEW NAMES BOTH ARMS, because no shape can tell them apart: both carry one natural. The row
+// states which constructor is the non-negative view (value = its payload) and which is the negative view
+// (value = -(payload + 1)), each with its payload field, so the consumer never decides a sign by an arm's
+// position, by its spelling, or by the order it meets them (operator ruling and review, 2026-10-19, the
+// std.integer Int carrier). A declaration whose constructors do not match the named arms refuses at the
+// consumer. Keyed on the exact DeclarationRef: a user-declared type of the
 // same shape, or of the same spelling in another module, has no row and stays structural.
 //
 // A DECLARATION IS NEVER BOTH. A carrier with a KernelGrounding row realizes as the kernel value,
@@ -228,6 +237,134 @@ type KernelGrounding {
   carrier: DeclarationRef
   min: Int?
   max: Int?
+  view: KernelGroundingView
+}
+
+// How a grounded carrier's constructors denote kernel values (above). An arm names a constructor of the
+// carrier declaration and the field that carries its payload; the carrier's own DeclarationRef scopes it.
+type KernelGroundingView
+  = PeanoGroundingView
+  | SignedGroundingView { nonnegative: KernelGroundingArm, negative: KernelGroundingArm }
+
+type KernelGroundingArm {
+  constructor: NonEmptyStr
+  payload: NonEmptyStr
+}
+
+// WHETHER A SIGNED VIEW AGREES WITH THE DECLARATION IT IS ABOUT -- the one check, here beside the view,
+// that every consumer runs before it folds by the view. A consumer reads the declaration into a
+// GroundedDeclaredForm -- for a coproduct, its constructors as GroundedConstructorShape (its names, and for each field whether it is declared at a grounded
+// natural carrier) and asks this; it never decides agreement itself. The view agrees exactly when the
+// declaration has two constructors, the two named arms are distinct constructors of it, and each has the
+// one named field, declared at one and the same grounded natural.
+type GroundedConstructorShape {
+  constructor: String
+  fields: List<GroundedFieldShape>
+}
+
+type GroundedFieldShape {
+  field: String
+  declared_at: GroundedFieldDeclaration
+}
+
+type GroundedFieldDeclaration
+  = FieldAtGroundedNatural { natural: DeclarationRef }
+  | FieldNotAtGroundedNatural
+
+// What the carrier declaration IS, as far as a signed view can ask: a coproduct with these
+// constructors, or anything else (an opaque, alias or product declaration). Only a coproduct can
+// implement two named constructors, so the second refuses -- it is never "nothing to fold".
+type GroundedDeclaredForm
+  = DeclaredCoproduct { constructors: List<GroundedConstructorShape> }
+  | DeclaredNotACoproduct
+
+type SignedViewReading
+  = SignedViewAgrees { natural: DeclarationRef }
+  | SignedViewDisagrees { reason: SignedViewDisagreement }
+
+type SignedViewDisagreement
+  = SignedCarrierNotACoproduct
+  | SignedArity { constructor_count: Int }
+  | SignedArmsCoincide { constructor: String }
+  | SignedArmNotDeclared { constructor: String }
+  | SignedArmPayloadNotSole { constructor: String, payload: String }
+  | SignedPayloadNotNatural { constructor: String, payload: String }
+  | SignedPayloadsDiffer
+
+type SignedArmAgreement
+  = SignedArmAgrees { natural: DeclarationRef }
+  | SignedArmDisagrees { reason: SignedViewDisagreement }
+
+// A grounded NATURAL carrier: a Peano view whose declared range starts at 0.
+fn declaration_is_grounded_natural(rows: List<KernelGrounding>, d: DeclarationRef) -> Bool {
+  rows |> any(r =>
+    declaration_ref_eq(a: r.carrier, b: d)
+      && (match r.view {
+        PeanoGroundingView => true
+        SignedGroundingView { nonnegative: _, negative: _ } => false
+      })
+      && (match r.min {
+        Present { value: m } => m == 0
+        Absent => false
+      }))
+}
+
+fn signed_arm_agreement(arm: KernelGroundingArm, constructors: List<GroundedConstructorShape>) -> SignedArmAgreement {
+  let name = arm.constructor as String
+  let payload = arm.payload as String
+  match constructors |> filter(c => c.constructor == name) |> first {
+    Absent => SignedArmDisagrees { reason: SignedArmNotDeclared { constructor: name } }
+    Present { value: c } =>
+      if (c.fields |> count) != 1 {
+        SignedArmDisagrees { reason: SignedArmPayloadNotSole { constructor: name, payload: payload } }
+      } else {
+        match c.fields |> filter(f => f.field == payload) |> first {
+          Absent => SignedArmDisagrees { reason: SignedArmPayloadNotSole { constructor: name, payload: payload } }
+          Present { value: f } =>
+            match f.declared_at {
+              FieldAtGroundedNatural { natural: n } => SignedArmAgrees { natural: n }
+              FieldNotAtGroundedNatural => SignedArmDisagrees { reason: SignedPayloadNotNatural { constructor: name, payload: payload } }
+            }
+        }
+      }
+  }
+}
+
+fn signed_view_reading(nonnegative: KernelGroundingArm, negative: KernelGroundingArm, declared: GroundedDeclaredForm) -> SignedViewReading {
+  match declared {
+    DeclaredNotACoproduct => SignedViewDisagrees { reason: SignedCarrierNotACoproduct }
+    DeclaredCoproduct { constructors: constructors } => signed_coproduct_reading(nonnegative: nonnegative, negative: negative, constructors: constructors)
+  }
+}
+
+fn signed_coproduct_reading(nonnegative: KernelGroundingArm, negative: KernelGroundingArm, constructors: List<GroundedConstructorShape>) -> SignedViewReading {
+  if (constructors |> count) != 2 {
+    SignedViewDisagrees { reason: SignedArity { constructor_count: constructors |> count } }
+  } else if (nonnegative.constructor as String) == (negative.constructor as String) {
+    SignedViewDisagrees { reason: SignedArmsCoincide { constructor: nonnegative.constructor as String } }
+  } else {
+    match signed_arm_agreement(arm: nonnegative, constructors: constructors) {
+      SignedArmDisagrees { reason: r } => SignedViewDisagrees { reason: r }
+      SignedArmAgrees { natural: nn } =>
+        match signed_arm_agreement(arm: negative, constructors: constructors) {
+          SignedArmDisagrees { reason: r } => SignedViewDisagrees { reason: r }
+          SignedArmAgrees { natural: ng } =>
+            if declaration_ref_eq(a: nn, b: ng) { SignedViewAgrees { natural: nn } } else { SignedViewDisagrees { reason: SignedPayloadsDiffer } }
+        }
+    }
+  }
+}
+
+fn signed_view_disagreement_message(reason: SignedViewDisagreement) -> String {
+  match reason {
+    SignedCarrierNotACoproduct => "its row declares a signed view, which names two constructors, and the declaration is not a coproduct (it is opaque, an alias or a product)"
+    SignedArity { constructor_count: c } => concat("its row declares a signed view, which folds exactly two constructors, and the declaration has ", to_string(value: c))
+    SignedArmsCoincide { constructor: c } => concat("its row names `", c, "` as both the non-negative and the negative constructor")
+    SignedArmNotDeclared { constructor: c } => concat("its row names the constructor `", c, "`, which the declaration does not declare")
+    SignedArmPayloadNotSole { constructor: c, payload: f } => concat("its row names `", f, "` as the payload of `", c, "`, which is not that constructor's one field")
+    SignedPayloadNotNatural { constructor: c, payload: f } => concat("the payload `", f, "` of `", c, "` is not declared at a grounded natural carrier (a Peano view whose range starts at 0)")
+    SignedPayloadsDiffer => "its two signed arms' payloads are declared at different natural carriers"
+  }
 }
 
 // Whether a kernel integer is a value of a grounded carrier: the ONE range authority, std.types range,
