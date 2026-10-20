@@ -59,7 +59,8 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_admitted,
 }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryManaged }
-import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly, declared_directory_mode_octal }
+import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly, declared_directory_mode, declared_directory_mode_octal }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_arguments }
 import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_worker_user, fleet_posix_worker_shared_group_name, fleet_posix_worker_shared_group_gid,
   fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_automation_user, fleet_posix_root_user,
@@ -187,18 +188,35 @@ test fn the_worker_ids_collide_with_no_other_declared_or_observed_account() -> B
 }
 
 // CLAIM 2 (RED on main: the git directories had no declaration). The lab derives objects, refs and logs
-// as gunbc-attempt group-writable setgid, and not .git itself, hooks, config or info; the staged prod arm
-// declares none.
+// as gunbc-attempt group-writable setgid -- objects/ at the STICKY arm (3770) and refs/ and logs/ at the
+// plain one (2770), each derived from the single mode authority rather than pinned to one flat constant --
+// and not .git itself, hooks, config or info; the staged prod arm declares none.
 test fn the_lab_git_carve_outs_are_group_writable_setgid_and_nothing_wider() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let dirs = dashboard_instance_worker_git_directories(instance: lab)
-  let setgid = declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid)
   length(dirs) == 3
-    && all(dirs, d => declared_owner_group(t: d) == (fleet_posix_worker_shared_group_name as String)
-      && declared_mode_octal(t: d) == setgid)
     && length(dashboard_instance_worker_git_directories(instance: srv1_live_dashboard_instance())) == 0
     && any(dirs, d => owned_path_text(t: d) == join([lab.repo_root as String, "/.git/objects"], ""))
     && !any(dirs, d => owned_path_text(t: d) == join([lab.repo_root as String, "/.git"], ""))
+    // EACH CHILD IS CHECKED AGAINST THE AUTHORITY THAT DECIDES ITS MODE: the expectation walks the same
+    // child list the declaration maps over and asks dashboard_git_worker_subtree_granted_directory_mode
+    // what that subtree's top must be. A claim that compared all three against one constant could not
+    // tell the arms apart and would go green over the lab losing the fence on objects/; a claim naming an
+    // octal of its own would be a fourth spelling of the mode. This shape (pair child -> expectation ->
+    // find its declaration) is also why the child's PATH must be the child under .git: a declaration
+    // missing or mispathed fails here, not in a later deploy.
+    && all(dashboard_git_worker_directory_children, c => any(dirs, d =>
+      owned_path_text(t: d) == join([lab.repo_root as String, "/.git/", c as String], "")
+        && declared_owner_group(t: d) == (fleet_posix_worker_shared_group_name as String)
+        && declared_mode_octal(t: d) == file_mode_octal(mode: dashboard_git_worker_subtree_granted_directory_mode(child: c))))
+    // THE TWO ARMS ARE ACTUALLY DIFFERENT, pinned at the renderer so the per-child check above cannot be
+    // satisfied by an authority that collapsed both to one mode: the sticky arm differs by exactly the
+    // sticky bit, and exactly one of the three children asks for it.
+    && declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgidSticky) == "3770"
+    && declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid) == "2770"
+    && dashboard_git_worker_subtree_needs_sticky(child: objects_child)
+    && !any(dashboard_git_worker_directory_children, c => dashboard_git_worker_subtree_needs_sticky(child: c)
+      && (c as String) != (objects_child as String))
 }
 
 fn owned_path_text(t: OwnedDirectoryTarget) -> String {
@@ -476,7 +494,7 @@ data readback_foreign_group: NonEmptyStr = "briansrls"
 // to contain. Each receipt is one line per entry in the shape find_subtree_mode_readback_command prints,
 // `<type-letter> <mode> <path>`, and the set is chosen so the fold is shown to REFUSE the states that are
 // not a grant rather than merely to accept the one that is (DESIGN 5: a discriminating input). THE FIRST
-// REFUSAL IS REVIEW 82165'S FINDING ON THIS PR: a regular file at 02775. A setgid FILE sets the
+// REFUSAL IS REVIEW 82165'S FINDING ON THIS PR: a regular file at 02770. A setgid FILE sets the
 // owner-execute leg, so a fold that classified entries by that bit -- as an earlier cut of this PR did --
 // reported a repository holding a setgid file as granted, while the migration's own comment says setgid
 // on a file is a privilege shape that belongs on directories alone.
@@ -490,7 +508,7 @@ fn readback_grants_the_declared_state(child: NonEmptyStr, top: String) -> Bool {
     group: fleet_posix_worker_shared_group_name,
     receipt: join([
       readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
-      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: "f9"),
       readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
     ], "\n"),
   )
@@ -516,7 +534,7 @@ fn readback_grants_a_readonly_file_only_where_git_replaces_it(
       group: fleet_posix_worker_shared_group_name,
       receipt: join([
         readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
-        readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "refs/heads"),
+        readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: "refs/heads"),
         readback_line(kind: "f", mode: "444", group: readback_granted_group(), path: "refs/heads/main"),
       ], "\n"),
     )
@@ -526,7 +544,7 @@ fn readback_grants_a_readonly_file_only_where_git_replaces_it(
       group: fleet_posix_worker_shared_group_name,
       receipt: join([
         readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
-        readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+        readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: "f9"),
         readback_line(kind: "f", mode: "444", group: readback_granted_group(), path: "f9/obj"),
       ], "\n"),
     )
@@ -553,8 +571,8 @@ fn readback_refuses_the_ungranted_states(
     group: fleet_posix_worker_shared_group_name,
     receipt: join([
       readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
-      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
-      readback_line(kind: "f", mode: "2775", group: readback_granted_group(), path: "f9/obj"),
+      readback_line(kind: "d", mode: "2770", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "f", mode: "2770", group: readback_granted_group(), path: "f9/obj"),
     ], "\n"),
   )
     && !dashboard_git_subtree_readback_is_granted(
@@ -562,7 +580,7 @@ fn readback_refuses_the_ungranted_states(
       group: fleet_posix_worker_shared_group_name,
       receipt: join([
       readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: ""),
-      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: "f9"),
       readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
     ], "\n"),
     )
@@ -598,7 +616,7 @@ fn readback_refuses_the_ungranted_states(
       group: fleet_posix_worker_shared_group_name,
       receipt: join([
         readback_line(kind: "d", mode: top, group: readback_foreign_group as String, path: ""),
-        readback_line(kind: "d", mode: "2775", group: readback_foreign_group as String, path: "f9"),
+        readback_line(kind: "d", mode: "775", group: readback_foreign_group as String, path: "f9"),
         readback_line(kind: "f", mode: "664", group: readback_foreign_group as String, path: "f9/obj"),
       ], "\n"),
     )
@@ -607,7 +625,7 @@ fn readback_refuses_the_ungranted_states(
       group: fleet_posix_worker_shared_group_name,
       receipt: join([
       readback_line(kind: "d", mode: foreign_top, group: readback_granted_group(), path: ""),
-      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: "f9"),
       readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
     ], "\n"),
     )
@@ -779,16 +797,16 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     //     AND THE FOLD ITSELF, over receipts this claim writes: the granted shape is accepted for the
     //     sticky subtree and the plain one alike, and each ungranted shape above REFUSES -- including
     //     a setgid regular file, which an execute-bit classifier would let through.
-    && readback_grants_the_declared_state(child: objects_child, top: "3775")
-    && readback_grants_the_declared_state(child: refs_child, top: "2775")
-    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: objects_child, top: "3775", holds_reflog: false)
-    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: refs_child, top: "2775", holds_reflog: false)
-    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: logs_child, top: "2775", holds_reflog: true)
+    && readback_grants_the_declared_state(child: objects_child, top: "3770")
+    && readback_grants_the_declared_state(child: refs_child, top: "2770")
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: objects_child, top: "3770", holds_reflog: false)
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: refs_child, top: "2770", holds_reflog: false)
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: logs_child, top: "2770", holds_reflog: true)
     && readback_refuses_the_ungranted_states(
-      child: objects_child, top: "3775", foreign_top: "2775",
+      child: objects_child, top: "3770", foreign_top: "2770",
     )
     && readback_refuses_the_ungranted_states(
-      child: refs_child, top: "2775", foreign_top: "3775",
+      child: refs_child, top: "2770", foreign_top: "3770",
     )
     && !dashboard_git_worker_file_mode_is_granted(mode: world_writable_file_mode)
     // a loose object is 0444 (292 = 256+32+4), read-only to everyone including its owner: git does
@@ -806,11 +824,11 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     // actually travels: the TEXT find prints, parsed, equals the mode the model grants. Each leg below is
     // the wet witness's own expected string entering through the one parser, which is also what makes
     // the witness's literals checkable rather than decorative.
-    && match file_mode_of_octal_text(text: "2775") {
+    && match file_mode_of_octal_text(text: "2770") {
       Present { value: m } => dashboard_git_worker_file_modes_are_equal(a: m, b: granted_directory_mode_expected)
       Absent => false
     }
-    && match file_mode_of_octal_text(text: "3775") {
+    && match file_mode_of_octal_text(text: "3770") {
       Present { value: m } => dashboard_git_worker_file_modes_are_equal(a: m, b: granted_shared_directory_mode_expected)
       Absent => false
     }
@@ -825,15 +843,15 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     }
     // AND THE RENDERER IS FOUR DIGITS ALWAYS, which is the fact the legs above exist to route around --
     // pinned so a change to the renderer's width cannot silently break the witness's string matching.
-    && file_mode_octal(mode: granted_directory_mode_expected) == "2775"
-    && file_mode_octal(mode: granted_shared_directory_mode_expected) == "3775"
+    && file_mode_octal(mode: granted_directory_mode_expected) == "2770"
+    && file_mode_octal(mode: granted_shared_directory_mode_expected) == "3770"
     && file_mode_octal(mode: granted_file_mode_expected) == "0664"
     && file_mode_octal(mode: measured_srv1_unmigrated_mode) == "0775"
-    && match file_mode_of_octal_text(text: "2775") {
+    && match file_mode_of_octal_text(text: "2770") {
       Present { value: m } => dashboard_git_worker_directory_mode_is_granted(mode: m)
       Absent => false
     }
-    && match file_mode_of_octal_text(text: "3775") {
+    && match file_mode_of_octal_text(text: "3770") {
       Present { value: m } => dashboard_git_worker_interior_directory_mode_is_accepted(mode: m)
         && !dashboard_git_worker_directory_mode_is_granted(mode: m)
       Absent => false
@@ -1031,8 +1049,26 @@ test fn the_per_attempt_git_entry_is_granted_where_the_attempt_key_lives() -> Bo
     && all(dirs, d => owned_path_text(t: d) == entry
       && declared_owner_group(t: d) == (fleet_posix_worker_shared_group_name as String)
       && declared_mode_octal(t: d) == declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid))
-    && length(steps) == 2
+    // THREE STEPS, AND THE FIRST IS THE ONE ROUND 3 ADDED: install the top, then chgrp the subtree, then
+    // sweep it. The install is not decoration -- `git worktree add` created this directory at ~0755 under
+    // the instance principal, and an ADDITIVE sweep (chgrp + g+w + g+s) can never reach the declared mode
+    // from there; it lands at 2775-family and the readback's EXACT top leg refuses its own route, which is
+    // the second-authority defect (finding (4)) in its other direction. install -d -o -g -m states all
+    // three ownership fields absolutely and is the same admitted word builder the deploy's owned-directory
+    // install uses, so this step and that one cannot drift.
+    && length(steps) == 3
     && all(steps, c => any(c.arguments, a => a == entry))
+    // THE INSTALL STEP IS READ OFF THE SAME WORD BUILDER, not checked token by token: rebuilding the
+    // expected argv with coreutils_install_directory_owned_arguments -- the builder the route itself calls
+    // through install_directory_owned_command -- and comparing whole lists means a change to the -d -m -o -g
+    // spelling moves the route and this claim together, and there is no hand-spelled argv beside the real
+    // one to drift. The mode is rendered from the SAME declared arm the entry's declaration carries above.
+    && any(steps, c => c.arguments == coreutils_install_directory_owned_arguments(
+      mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid),
+      owner: lab.directory_owner.user,
+      group: fleet_posix_worker_shared_group_name,
+      path: entry,
+    ))
     // the parent of the entry is a NAME, never a grant: not among the children the apply asserts, and
     // not among the worker's own writable paths.
     && !any(dashboard_git_worker_directory_children, c => (c as String) == dashboard_git_worktrees_child)
