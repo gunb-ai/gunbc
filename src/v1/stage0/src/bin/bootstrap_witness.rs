@@ -174,7 +174,24 @@ fn run_self_compile_with_extra_source_roots(
         .expect("failed to run self-compile")
 }
 
-fn parse_diagnostic_count(stderr: &str) -> usize {
+/// The compile printed no `compiled: N files emitted, M diagnostics` summary line, so there is no
+/// diagnostic count to read. Carries the compile's own stderr: that text is the cause.
+struct DiagnosticCountAbsent {
+    stderr: String,
+}
+
+impl std::fmt::Display for DiagnosticCountAbsent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the compile printed no `compiled: .. diagnostics` summary line, so there is no \
+             diagnostic count to measure. The compile's own stderr:\n{}",
+            self.stderr
+        )
+    }
+}
+
+fn parse_diagnostic_count(stderr: &str) -> Result<usize, DiagnosticCountAbsent> {
     stderr
         .lines()
         .find(|l| l.contains("compiled:") && l.contains("diagnostics"))
@@ -184,7 +201,9 @@ fn parse_diagnostic_count(stderr: &str) -> usize {
                 .and_then(|prefix| prefix.split(',').next_back())
                 .and_then(|s| s.trim().parse::<usize>().ok())
         })
-        .unwrap_or(usize::MAX)
+        .ok_or_else(|| DiagnosticCountAbsent {
+            stderr: stderr.to_string(),
+        })
 }
 
 fn copy_dir_recursive_bootstrap(source: &std::path::Path, dest: &std::path::Path) {
@@ -354,7 +373,7 @@ fn strict_compile_diagnostic_count() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     eprintln!("stage0 compile stderr:\n{}", stderr);
 
-    let diag_count = parse_diagnostic_count(&stderr);
+    let diag_count = parse_diagnostic_count(&stderr).unwrap_or_else(|absent| panic!("{absent}"));
 
     assert!(
         diag_count <= DIAG_RATCHET,
@@ -826,7 +845,8 @@ fn ci_full_dag() {
 
 fn ci_diagnostic_ratchet() {
     let pass1 = &*CI_PASS1;
-    let diag_count = parse_diagnostic_count(&pass1.stderr);
+    let diag_count =
+        parse_diagnostic_count(&pass1.stderr).unwrap_or_else(|absent| panic!("{absent}"));
     eprintln!(
         "diagnostic count: {} (ratchet: {})",
         diag_count, DIAG_RATCHET
@@ -1185,4 +1205,30 @@ fn main() -> ExitCode {
     };
 
     run_suite(&tests)
+}
+
+#[cfg(test)]
+mod diagnostic_count_tests {
+    use super::parse_diagnostic_count;
+
+    #[test]
+    fn a_real_summary_line_is_read_as_its_count() {
+        let stderr = "resolved 3 sources\ncompiled: 12 files emitted, 358 diagnostics\n";
+        assert_eq!(parse_diagnostic_count(stderr).ok(), Some(358));
+    }
+
+    #[test]
+    fn a_missing_summary_line_refuses_with_the_compiles_own_text() {
+        let stderr =
+            "WholeCorpusCompileRepositoryUndeclared: a whole-root compile of src/v1 is refused";
+        let absent = parse_diagnostic_count(stderr)
+            .err()
+            .expect("no summary line must refuse");
+        let shown = absent.to_string();
+        assert!(
+            shown.contains("WholeCorpusCompileRepositoryUndeclared"),
+            "{shown}"
+        );
+        assert!(shown.contains("no diagnostic count"), "{shown}");
+    }
 }
