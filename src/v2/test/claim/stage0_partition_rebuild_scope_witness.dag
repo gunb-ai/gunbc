@@ -38,7 +38,6 @@ import gunbc.stage0_partition_rebuild_scope {
   regen_convergence_generation_bound,
   stage0_partition_authority_storage_path,
   stage0_partition_move_explained_by_changed_paths,
-  stage0_partition_move_explained_by_affected_inputs,
   stage0_partition_move_explained_by_bound,
   stage0_partition_move_explained_by_affected_inputs
 }
