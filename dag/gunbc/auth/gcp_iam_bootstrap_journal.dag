@@ -144,6 +144,12 @@ fn journal_mark_named(bucket: NonEmptyStr, name: NonEmptyStr, subject: JournalSu
   }
 }
 
+// A STORE ANSWER COUNTS ONLY FOR THE SLOT IT WAS ASKED ABOUT. RED STUB: today every answer is taken as
+// the requested object's.
+fn journal_answer_names_request(requested_bucket: NonEmptyStr, requested_object: NonEmptyStr, answered_bucket: String, answered_object: String) -> Bool {
+  true
+}
+
 // WHAT A MARK WRITE MEANS to a caller: only a committed create-once write is "recorded"; finding the mark
 // already present is "already recorded" (a rerun closing what it closed); anything else refuses.
 type JournalMarkOutcome = JournalMarkRecorded | JournalMarkAlreadyPresent | JournalMarkRefused { cause: NonEmptyStr }

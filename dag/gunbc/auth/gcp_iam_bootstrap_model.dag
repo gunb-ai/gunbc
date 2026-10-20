@@ -266,7 +266,8 @@ fn secret_iam_root_cells() -> List<TrustRootCell> {
 // until it does. Neither identity may delete or overwrite a record: objects.delete and objects.update
 // are in neither role, and create-once is the store's ifGenerationMatch=0.
 data iam_bootstrap_journal_bucket: NonEmptyStr = "gunbai-secrets-bootstrap-journal"
-data iam_bootstrap_journal_bucket_location: NonEmptyStr = "us-central1"
+// The region in the spelling the JSON API answers it (upper-cased), so the readback join is exact.
+data iam_bootstrap_journal_bucket_location: NonEmptyStr = "US-CENTRAL1"
 data iam_bootstrap_journal_bucket_uniform_access: Bool = true
 data iam_bootstrap_journal_bucket_public_access_prevention: NonEmptyStr = "enforced"
 

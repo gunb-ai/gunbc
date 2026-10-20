@@ -161,7 +161,15 @@ data gcs_storage_frontier_rows: List<FrontierRow> = [
 // (a page holds at most 1000 by default). The uploaded bytes are the request body as sent.
 type GcsObjectMetadataWire { name: String, bucket: String, generation: String }
 
-type GcsBucketWire { name: String }
+// THE BUCKET AS THE JSON API ANSWERS IT (buckets resource, Discovery revision 20261013): projectNumber is a
+// uint64 rendered as a string, location is the region (the API answers it upper-cased), and
+// iamConfiguration carries uniformBucketLevelAccess.enabled and publicAccessPrevention ("inherited" or
+// "enforced").
+type GcsUniformBucketLevelAccessWire { enabled: Bool? }
+
+type GcsBucketIamConfigurationWire { uniform_bucket_level_access: GcsUniformBucketLevelAccessWire? from "uniformBucketLevelAccess", public_access_prevention: String? from "publicAccessPrevention" }
+
+type GcsBucketWire { name: String, project_number: String? from "projectNumber", location: String?, iam_configuration: GcsBucketIamConfigurationWire? from "iamConfiguration" }
 
 type GcsObjectListWire { items: List<GcsObjectMetadataWire>?, next_page_token: String? from "nextPageToken" }
 
@@ -173,7 +181,7 @@ service gcp.Storage {
   operation GetBucket {
     requires Network
     input { access_token: Secret, bucket: NonEmptyStr }
-    output { name: String }
+    output { name: String, project_number: String? from "projectNumber", location: String?, iam_configuration: GcsBucketIamConfigurationWire? from "iamConfiguration" }
     readonly
     transport rest { method: GET, path: "/storage/v1/b/\{bucket\}" }
     response {
