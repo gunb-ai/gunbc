@@ -446,12 +446,12 @@ fn span_is_refusal(s: ProseSpan, refused: List<String>) -> Bool {
   }
 }
 
-fn span_has_standing(s: ProseSpan, wanted: SpanStanding) -> Bool {
+fn span_is_stale(s: ProseSpan) -> Bool {
   match s.standing {
-    SpanStale => match wanted { SpanStale => true, _ => false }
-    SpanResolves => match wanted { SpanResolves => true, _ => false }
-    SpanNotASymbol => match wanted { SpanNotASymbol => true, _ => false }
-    SpanUnclassified => match wanted { SpanUnclassified => true, _ => false }
+    SpanStale => true
+    SpanResolves => false
+    SpanNotASymbol => false
+    SpanUnclassified => false
   }
 }
 
@@ -521,7 +521,7 @@ fn resolution_is_refusal(r: DeclarationRefResolution, refused: List<String>) -> 
 
 fn roster_row_matched(d: DeclRefDisposition, c: DeclRefCensus) -> Bool {
   any(xs: c.resolutions, predicate: fn(r) { resolution_is_unresolved(r: r, refused: c.refused_files) && resolution_subject(r: r) == d.subject })
-    || any(xs: c.prose, predicate: fn(s) { span_has_standing(s: s, wanted: SpanStale) && s.span == d.subject })
+    || any(xs: c.prose, predicate: fn(s) { span_is_stale(s: s) && s.span == d.subject })
 }
 
 fn unmatched_roster_rows(c: DeclRefCensus) -> List<DeclRefDisposition> {
@@ -536,8 +536,24 @@ fn count_refused_spans(xs: List<ProseSpan>, refused: List<String>) -> Int {
   fold_list(xs: xs, empty: 0, cons: fn(acc, s) { if span_is_refusal(s: s, refused: refused) { acc + 1 } else { acc } })
 }
 
-fn count_spans_with(xs: List<ProseSpan>, wanted: SpanStanding) -> Int {
-  fold_list(xs: xs, empty: 0, cons: fn(acc, s) { if span_has_standing(s: s, wanted: wanted) { acc + 1 } else { acc } })
+type SpanCounts {
+  resolves: Int
+  stale: Int
+  not_a_symbol: Int
+  unclassified: Int
+}
+
+fn span_counts_add(acc: SpanCounts, standing: SpanStanding) -> SpanCounts {
+  match standing {
+    SpanResolves => SpanCounts { resolves: acc.resolves + 1, stale: acc.stale, not_a_symbol: acc.not_a_symbol, unclassified: acc.unclassified }
+    SpanStale => SpanCounts { resolves: acc.resolves, stale: acc.stale + 1, not_a_symbol: acc.not_a_symbol, unclassified: acc.unclassified }
+    SpanNotASymbol => SpanCounts { resolves: acc.resolves, stale: acc.stale, not_a_symbol: acc.not_a_symbol + 1, unclassified: acc.unclassified }
+    SpanUnclassified => SpanCounts { resolves: acc.resolves, stale: acc.stale, not_a_symbol: acc.not_a_symbol, unclassified: acc.unclassified + 1 }
+  }
+}
+
+fn span_counts(xs: List<ProseSpan>) -> SpanCounts {
+  fold_list(xs: xs, empty: SpanCounts { resolves: 0, stale: 0, not_a_symbol: 0, unclassified: 0 }, cons: fn(acc, s) { span_counts_add(acc: acc, standing: s.standing) })
 }
 
 fn decl_ref_census_exit(c: DeclRefCensus) -> Int {
@@ -572,10 +588,6 @@ fn resolution_arm_name(r: DeclarationRefResolution, refused: List<String>) -> St
   resolution_arm_name_of(a: resolution_arm(r: r, refused: refused))
 }
 
-fn arm_is(a: ResolutionArm, wanted: ResolutionArm) -> Bool {
-  resolution_arm_name_of(a: a) == resolution_arm_name_of(a: wanted)
-}
-
 fn resolution_arm_name_of(a: ResolutionArm) -> String {
   match a {
     ArmResolved => "resolved"
@@ -588,19 +600,34 @@ fn resolution_arm_name_of(a: ResolutionArm) -> String {
   }
 }
 
-// The cited name of a refusal, "module decl"; a resolved resolution is not a refusal and cites nothing.
-fn resolution_cited_name(r: DeclarationRefResolution) -> String {
-  match r {
-    DeclarationRefResolved { declaration_identity: i } => i.qualified_name
-    DeclarationRefModuleAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
-    DeclarationRefDeclarationAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
-    DeclarationRefFieldAbsent { reference: x } => concat(x.module_path as String, " ", x.decl_name as String)
-    DeclarationRefContested { reference: x, claimants: _ } => concat(x.module_path as String, " ", x.decl_name as String)
+// One fold over resolution_arm: each arm increments its own counter, so no equality over arms is needed.
+type ArmCounts {
+  module_absent: Int
+  declaration_absent: Int
+  field_absent: Int
+  contested: Int
+  seed_layer: Int
+  uncheckable: Int
+}
+
+fn arm_counts_add(acc: ArmCounts, arm: ResolutionArm) -> ArmCounts {
+  match arm {
+    ArmResolved => acc
+    ArmModuleAbsent => ArmCounts { module_absent: acc.module_absent + 1, declaration_absent: acc.declaration_absent, field_absent: acc.field_absent, contested: acc.contested, seed_layer: acc.seed_layer, uncheckable: acc.uncheckable }
+    ArmDeclarationAbsent => ArmCounts { module_absent: acc.module_absent, declaration_absent: acc.declaration_absent + 1, field_absent: acc.field_absent, contested: acc.contested, seed_layer: acc.seed_layer, uncheckable: acc.uncheckable }
+    ArmFieldAbsent => ArmCounts { module_absent: acc.module_absent, declaration_absent: acc.declaration_absent, field_absent: acc.field_absent + 1, contested: acc.contested, seed_layer: acc.seed_layer, uncheckable: acc.uncheckable }
+    ArmContested => ArmCounts { module_absent: acc.module_absent, declaration_absent: acc.declaration_absent, field_absent: acc.field_absent, contested: acc.contested + 1, seed_layer: acc.seed_layer, uncheckable: acc.uncheckable }
+    ArmSeedLayer => ArmCounts { module_absent: acc.module_absent, declaration_absent: acc.declaration_absent, field_absent: acc.field_absent, contested: acc.contested, seed_layer: acc.seed_layer + 1, uncheckable: acc.uncheckable }
+    ArmUncheckable => ArmCounts { module_absent: acc.module_absent, declaration_absent: acc.declaration_absent, field_absent: acc.field_absent, contested: acc.contested, seed_layer: acc.seed_layer, uncheckable: acc.uncheckable + 1 }
   }
 }
 
-fn count_resolutions_with_arm(xs: List<DeclarationRefResolution>, arm: ResolutionArm, refused: List<String>) -> Int {
-  fold_list(xs: xs, empty: 0, cons: fn(acc, r) { if arm_is(a: resolution_arm(r: r, refused: refused), wanted: arm) { acc + 1 } else { acc } })
+fn arm_counts(xs: List<DeclarationRefResolution>, refused: List<String>) -> ArmCounts {
+  fold_list(
+    xs: xs,
+    empty: ArmCounts { module_absent: 0, declaration_absent: 0, field_absent: 0, contested: 0, seed_layer: 0, uncheckable: 0 },
+    cons: fn(acc, r) { arm_counts_add(acc: acc, arm: resolution_arm(r: r, refused: refused)) }
+  )
 }
 
 // One located line per refusal: a refused reference by arm and cited name, a stale span by file.
@@ -611,7 +638,7 @@ fn decl_ref_refusal_lines(c: DeclRefCensus) -> List<String> {
       empty: [],
       cons: fn(acc, r) {
         if resolution_is_refusal(r: r, refused: c.refused_files) {
-          list_snoc_item(xs: acc, item: concat("[decl-ref-census] ref ", resolution_arm_name(r: r, refused: c.refused_files), " ", resolution_cited_name(r: r)))
+          list_snoc_item(xs: acc, item: concat("[decl-ref-census] ref ", resolution_arm_name(r: r, refused: c.refused_files), " ", resolution_subject(r: r)))
         } else { acc }
       }
     ),
@@ -635,19 +662,19 @@ fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
     left: [
       concat("[decl-ref-census] disposition_roster=", to_string(n: length(xs: decl_ref_disposition_roster)), " unmatched=", to_string(n: length(xs: unmatched_roster_rows(c: c)))),
       concat("[decl-ref-census] refs=", to_string(n: length(xs: c.cited)), " refused=", to_string(n: count_refused_resolutions(xs: c.resolutions, refused: c.refused_files)),
-        " module_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: ArmModuleAbsent, refused: c.refused_files)),
-        " declaration_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: ArmDeclarationAbsent, refused: c.refused_files)),
-        " field_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: ArmFieldAbsent, refused: c.refused_files)),
-        " contested=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: ArmContested, refused: c.refused_files)),
-        " seed_layer=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: ArmSeedLayer, refused: c.refused_files)),
-        " uncheckable=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: ArmUncheckable, refused: c.refused_files)),
+        " module_absent=", to_string(n: arm_counts(xs: c.resolutions, refused: c.refused_files).module_absent),
+        " declaration_absent=", to_string(n: arm_counts(xs: c.resolutions, refused: c.refused_files).declaration_absent),
+        " field_absent=", to_string(n: arm_counts(xs: c.resolutions, refused: c.refused_files).field_absent),
+        " contested=", to_string(n: arm_counts(xs: c.resolutions, refused: c.refused_files).contested),
+        " seed_layer=", to_string(n: arm_counts(xs: c.resolutions, refused: c.refused_files).seed_layer),
+        " uncheckable=", to_string(n: arm_counts(xs: c.resolutions, refused: c.refused_files).uncheckable),
         " unreadable=", to_string(n: length(xs: c.unreadable))),
       concat("[decl-ref-census] prose spans=", to_string(n: length(xs: c.prose)),
-        " resolves=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanResolves)),
-        " stale=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanStale)),
+        " resolves=", to_string(n: span_counts(xs: c.prose).resolves),
+        " stale=", to_string(n: span_counts(xs: c.prose).stale),
         " refused=", to_string(n: count_refused_spans(xs: c.prose, refused: c.refused_files)),
-        " not_a_symbol=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanNotASymbol)),
-        " unclassified=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanUnclassified)))
+        " not_a_symbol=", to_string(n: span_counts(xs: c.prose).not_a_symbol),
+        " unclassified=", to_string(n: span_counts(xs: c.prose).unclassified))
     ],
     right: list_append(
       left: decl_ref_refusal_lines(c: c),
