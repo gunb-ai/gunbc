@@ -171,20 +171,20 @@ pub fn collision_row_of_leaf(
 ) -> Option<Rc<LeafCollisionRow>> {
     {
         let declarers = Rc::new({
-            let mut __sorted: Vec<_> =
+            let mut __keyed: Vec<_> =
                 crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
                     info.type_decl_items.clone(),
                     leaf.clone(),
                 )
                 .iter()
                 .cloned()
+                .map(|__e: String| {
+                    let __k = (|i: String| i.clone())(__e.clone());
+                    (__k, __e)
+                })
                 .collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|i: String| i.clone())(a.clone());
-                let __kb = (|i: String| i.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         if ((declarers.clone().len() as i64) < 2) {
             std::option::Option::None
@@ -226,18 +226,18 @@ pub fn collisions_of_graph(graph: Rc<ResolvedGraph>) -> Rc<Vec<Rc<LeafCollisionR
             .needs_sharing
             .clone();
         Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(
+            let mut __keyed: Vec<_> = Rc::new(v1_rt::map_keys(
                 &info.type_decl_items.identities_by_leaf.clone(),
             ))
             .iter()
             .cloned()
+            .map(|__e: String| {
+                let __k = (|k: String| k.clone())(__e.clone());
+                (__k, __e)
+            })
             .collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|k: String| k.clone())(a.clone());
-                let __kb = (|k: String| k.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         })
         .iter()
         .cloned()

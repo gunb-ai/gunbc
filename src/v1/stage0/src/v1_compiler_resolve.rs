@@ -234,13 +234,16 @@ pub fn resolve_modules_with_occurrence_transport(
             __result
         });
         let sorted_resolved = Rc::new({
-            let mut __sorted: Vec<_> = acyclic_resolved.iter().cloned().collect();
-            __sorted.sort_by(|a: &Rc<ResolvedModule>, b: &Rc<ResolvedModule>| {
-                let __ka = (|m: Rc<ResolvedModule>| m.dep_order.clone())(a.clone());
-                let __kb = (|m: Rc<ResolvedModule>| m.dep_order.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            let mut __keyed: Vec<_> = acyclic_resolved
+                .iter()
+                .cloned()
+                .map(|__e: Rc<ResolvedModule>| {
+                    let __k = (|m: Rc<ResolvedModule>| m.dep_order.clone())(__e.clone());
+                    (__k, __e)
+                })
+                .collect();
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         Rc::new(ModuleGraph {
             modules: sorted_resolved.clone(),
@@ -1019,7 +1022,7 @@ pub fn topological_sort(
             },
         );
         let initial_queue = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new({
+            let mut __keyed: Vec<_> = Rc::new({
                 let mut __result = Vec::new();
                 for name in module_names.iter().cloned() {
                     if match v1_rt::map_get(&in_degree_map, name.clone()) {
@@ -1033,13 +1036,13 @@ pub fn topological_sort(
             })
             .iter()
             .cloned()
+            .map(|__e: String| {
+                let __k = (|name: String| topo_sort_key(name.clone()))(__e.clone());
+                (__k, __e)
+            })
             .collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|name: String| topo_sort_key(name.clone()))(a.clone());
-                let __kb = (|name: String| topo_sort_key(name.clone()))(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         let module_count = (modules.clone().len() as i64);
         let result = kahn_drain(
@@ -1189,16 +1192,16 @@ pub fn kahn_drain(
             },
         );
         let new_zero = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&new_zero_set))
+            let mut __keyed: Vec<_> = Rc::new(v1_rt::map_keys(&new_zero_set))
                 .iter()
                 .cloned()
+                .map(|__e: String| {
+                    let __k = (|name: String| name.clone())(__e.clone());
+                    (__k, __e)
+                })
                 .collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|name: String| name.clone())(a.clone());
-                let __kb = (|name: String| name.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         {
             let __tco_0 = new_zero.clone();
