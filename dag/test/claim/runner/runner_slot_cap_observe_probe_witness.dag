@@ -13,6 +13,7 @@ module test.claim.runner.runner_slot_cap_observe_probe_witness
 // named probe_* so they are never mistaken for the controls.
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ProcessExit, exit_failure }
 import std.optional { Absent, Present }
 import std.algebra { string_contains }
 import std.measure { Second, byte_size_count, second }
@@ -241,7 +242,15 @@ fn probe_run(legs: List<ProbeScriptedCommand>) -> ProbeRun {
         },
       ) {
         WitnessReturned { value: v, route: route, state: _ } => ProbeRunReturned { phase: v, legs: probe_legs_of_route(route: route) }
-        WitnessRefused { diagnostic: d, route: _, state: _ } => ProbeRunEnded { cause: witness_diagnostic_rendered_reason(diagnostic: d) }
+        WitnessRefused { diagnostic: d, route: route, state: _ } => ProbeRunEnded {
+          // The ledger SURVIVES the refusal: the dispatcher logged what it attempted before
+          // refusing, and an empty ledger is itself the answer (nothing ever reached dispatch).
+          cause: concat(
+            witness_diagnostic_rendered_reason(diagnostic: d),
+            "<LEGENDS>",
+            join(probe_legs_of_route(route: route), " | "),
+          ),
+        }
         WitnessInterrupted { at: _, route: _, state: _, now: _ } => ProbeRunEnded { cause: "worker-interrupted" }
       }
     }
@@ -410,4 +419,23 @@ test fn probe_refusal_is_not_identity_mismatch() -> Bool {
 
 test fn probe_refusal_is_not_operation_not_bound() -> Bool {
   !string_contains(s: probe_end_cause(), pattern: "OperationNotBound")
+}
+
+// THE VERBATIM CHANNEL (house style: gunbc.instruments.emit_host_gate): a claim returning
+// ProcessExit prints its reason in the FAIL line, so the refusal cause reaches the log EXACTLY --
+// no candidate-string guessing. This line is the diagnostic, not a control; it fails by design
+// whenever the frame refused, and its text is the answer.
+test fn probe_dump_end_cause() -> ProcessExit {
+  exit_failure(reason: concat("CAUSE<", probe_end_cause(), ">LEDGER<", concat_legs(legs_of_world()), ">"))
+}
+
+fn legs_of_world() -> List<String> {
+  match probe_world() {
+    ProbeRunReturned { phase: _, legs: l } => l
+    ProbeRunEnded { cause: _ } => []
+  }
+}
+
+fn concat_legs(legs: List<String>) -> String {
+  join(legs, " | ")
 }
