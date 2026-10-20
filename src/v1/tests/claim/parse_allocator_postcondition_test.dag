@@ -3,7 +3,6 @@ module v1.tests.claim.parse_allocator_postcondition_test
 import extdeps.languages.dag.syntax { dag_parse_environment }
 import std.types { String, List, Int, Bool }
 import std.algebra { FreeMonoid, Empty, Cons }
-import std.process { ProcessExit, ExitFailure }
 import v1.compiler.tokenize { tokenize }
 import v1.compiler.parse { parse_with_table, ParseWithTableResult }
 import v1.std.core { build_newline_index, empty_intern_table }
@@ -17,9 +16,16 @@ import v1.std.core { build_newline_index, empty_intern_table }
 // its minted identities re-introduces id COLLISIONS (a later mint reuses an unpublishing
 // child's id), and collision is exactly what a strictly-increasing sorted id list rules out.
 //
-// They import v1.compiler.parse, so no witness under dag/test/claim can call them, and they
-// run on no required path. Direct execution is evidence they HOLD; it is not evidence CI runs
-// them.
+// WHY IT LIVES IN THE v1 TEST TREE AND EXECUTES ON NO REQUIRED RUN, stated rather than left
+// to be discovered (same reading v1.tests.claim.bare_variant_reference_occurrence_control_test
+// records for its own control): these import v1.compiler.parse, so no witness under
+// dag/test/claim can call them, and the required job interprets neither src/v1 nor a
+// ProcessExit host entry from here. They are `test fn`s rather than ProcessExit entry points
+// for the measured reason that precedent records: a ProcessExit entry point (via std.process)
+// entered the regen closure and the fixed point refused -- std_process plus two
+// extdeps.process.* mirrors were missing, and hosting the entry would have grown the frozen
+// v1 seed by emitted files. A test module emits none. Direct execution is evidence they
+// HOLD; it is not evidence CI runs them.
 //
 //   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
 //     --entry src/v1/tests/claim/parse_allocator_postcondition_test.dag \
@@ -42,9 +48,9 @@ fn parsed_ok(parsed: ParseWithTableResult) -> Bool {
   }
 }
 
-// The published occurrence ids, ascending. Published == present in the transport index the
-// result carries: the same rows downstream binding consumes, so the control reads the parser's
-// own answer, never a hand-built one.
+// The published occurrence ids, in transport order. Published == present in the transport
+// index the result carries: the same rows downstream binding consumes, so the control reads
+// the parser's own answer, never a hand-built one.
 fn published_ids(parsed: ParseWithTableResult) -> List<Int> {
   parsed.occurrence_transport.index.entries |> map(e => e.projection.occurrence.value)
 }
@@ -72,8 +78,7 @@ fn postcondition_holds(parsed: ParseWithTableResult) -> Bool {
 
 // 1 + 2 + 3 + ... + terms parses to a left-associated spine of `terms - 1` binary nodes, each
 // built by ONE iteration of parse_expr_loop: the shape whose re-scan the P1.3 walks made
-// quadratic. Terms count is an argument so the cost-shape reading and the postcondition run on
-// the same producer.
+// quadratic. Terms count is an argument so the postcondition runs on every chain shape.
 fn chain_terms(upto: Int) -> List<Int> {
   chain_terms_loop(acc: [], next: 1, upto: upto)
 }
@@ -88,31 +93,6 @@ fn chain_source(terms: Int) -> String {
     chain_terms(upto: terms) |> fold(init: "", f: (s, k) => if s == "" { to_string(k) } else { concat(s, " + ", to_string(k)) }),
     "\n"
   )
-}
-
-// The published ids of each specimen, rendered for the before/after reading (P1.3 asks:
-// occurrence ids and transport identical across the deletion). A ProcessExit is the host's
-// verdict carrier and ExitFailure's reason reaches the operator verbatim through the run's
-// stderr, so the dump rides the channel the verdict already has -- no new output surface.
-// Run with --function chain_dump_ids; exit 42 is the dump's own marker, not a failure of the
-// postcondition claims. The PR diff compares two runs of THIS function: tree at the deletion
-// commit vs tree with the pre-deletion 02_parse.dag restored.
-fn ids_dump(tag: String, parsed: ParseWithTableResult) -> String {
-  let ids = published_ids(parsed: parsed) |> fold(init: "", f: (s, k) => concat(s, to_string(k), "\n"))
-  concat(tag, " allocator_next_id=", to_string(parsed.occurrence_allocator.next_id),
-        " transport_entries=", to_string(parsed.occurrence_transport.index.entries |> fold(init: 0, f: (n, _) => n + 1)),
-        "\n", ids)
-}
-
-fn chain_dump_ids() -> ProcessExit {
-  ExitFailure {
-    code: 42,
-    reason: concat(
-      ids_dump(tag: "CHAIN40", parsed: parse_chain_source(source: chain_source(terms: 40))),
-      ids_dump(tag: "CHAIN200", parsed: parse_chain_source(source: chain_source(terms: 200))),
-      ids_dump(tag: "FOLDS", parsed: parse_chain_source(source: fold_fixture_source)),
-    ),
-  }
 }
 
 test fn long_left_associated_chain_postcondition() -> Bool {
@@ -130,6 +110,66 @@ test fn parameters_arguments_statements_postcondition() -> Bool {
   postcondition_holds(parsed: parse_chain_source(source: fold_fixture_source))
 }
 
-// Control for the deletion itself: the fold parses must agree with the pre-deletion dumps.
-// Identical output of chain_dump_ids(terms: N) before and after the regen (N = 40, 200) is
-// recorded in the PR as the transport-identity specimen.
+// THE DELETION CONTROL (P1.3 done-criterion: occurrence ids and transport identical before
+// and after). These goldens are the parse of each specimen read out of the PRE-deletion tree
+// -- allocator cursor, transport entry count, and the published-id multiset (count, min, max,
+// sum, sum of squares) -- captured before the rescue walks were touched. The post-deletion
+// tree reproduces them exactly, and this test pins them here so any future change to what the
+// parser hands out -- re-adding a walk, dropping a mint, reordering a fold -- goes red on the
+// executing claim instead of quietly shipping. Together with strictly-ascending ids,
+// count/min/max pins each chain's id SET exactly; sum and sum-of-squares pin the FOLDS
+// multiset, whose 33 distinct ids omit exactly two values in 0..34.
+fn sum_of(xs: List<Int>) -> Int { xs |> fold(init: 0, f: (n, k) => n + k) }
+fn sum_of_squares(xs: List<Int>) -> Int { xs |> fold(init: 0, f: (n, k) => n + k * k) }
+fn count_of(xs: List<Int>) -> Int { xs |> fold(init: 0, f: (n, _) => n + 1) }
+fn min_of(xs: List<Int>) -> Int { xs |> fold(init: 4611686018427387904, f: (m, k) => if k < m { k } else { m }) }
+fn max_of(xs: List<Int>) -> Int { xs |> fold(init: -1, f: (m, k) => if k > m { k } else { m }) }
+
+fn transport_matches_golden(
+  parsed: ParseWithTableResult,
+  golden_next_id: Int,
+  golden_entries: Int,
+  golden_count: Int,
+  golden_min: Int,
+  golden_max: Int,
+  golden_sum: Int,
+  golden_sumsq: Int,
+) -> Bool {
+  let ids = published_ids(parsed: parsed)
+  parsed_ok(parsed: parsed)
+    && parsed.occurrence_allocator.next_id == golden_next_id
+    && (parsed.occurrence_transport.index.entries |> fold(init: 0, f: (n, _) => n + 1)) == golden_entries
+    && count_of(ids) == golden_count
+    && min_of(ids) == golden_min
+    && max_of(ids) == golden_max
+    && sum_of(ids) == golden_sum
+    && sum_of_squares(ids) == golden_sumsq
+}
+
+// CHAIN40 pre-deletion capture: next_id 82, 82 transport entries, ids = exactly 0..81.
+test fn chain40_transport_identity_matches_predeletion_golden() -> Bool {
+  transport_matches_golden(
+    parsed: parse_chain_source(source: chain_source(terms: 40)),
+    golden_next_id: 82, golden_entries: 82, golden_count: 82, golden_min: 0, golden_max: 81,
+    golden_sum: 3321, golden_sumsq: 180441,
+  )
+}
+
+// CHAIN200 pre-deletion capture: next_id 402, 402 transport entries, ids = exactly 0..401.
+test fn chain200_transport_identity_matches_predeletion_golden() -> Bool {
+  transport_matches_golden(
+    parsed: parse_chain_source(source: chain_source(terms: 200)),
+    golden_next_id: 402, golden_entries: 402, golden_count: 402, golden_min: 0, golden_max: 401,
+    golden_sum: 80601, golden_sumsq: 21574201,
+  )
+}
+
+// The parameter/argument/statement fold capture: next_id 35, 33 transport entries, 33
+// distinct published ids in 0..34 omitting {7, 15} (pinned by sum 573 and sumsq 13411).
+test fn folds_transport_identity_matches_predeletion_golden() -> Bool {
+  transport_matches_golden(
+    parsed: parse_chain_source(source: fold_fixture_source),
+    golden_next_id: 35, golden_entries: 33, golden_count: 33, golden_min: 0, golden_max: 34,
+    golden_sum: 573, golden_sumsq: 13411,
+  )
+}
