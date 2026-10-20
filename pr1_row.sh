@@ -43,7 +43,19 @@ seed(){ sha256sum "$1" | cut -c1-16; }
 stamp "env: nproc=$(nproc) target=$(du -sh "$CARGO_TARGET_DIR" 2>/dev/null | cut -f1 || echo none) kind=$KIND"
 rm -rf "$D"; mkdir -p "$D"
 stamp "clone begin"
-timeout 600 git clone -q "$URL" "$D/repo" || { echo "FATAL clone"; exit 1; }
+# Retried: a bare `git clone` on the runner failed transiently twice at ~07:33/07:42 UTC, both times
+# while another dispatch was cloning at once. A gate that dies at clone must SAY so with the stderr,
+# not print a bare FATAL -- a reader cannot otherwise tell an infra failure from a real verdict.
+CLONED=0
+for attempt in 1 2 3; do
+  rm -rf "$D/repo"
+  if timeout 900 git clone -q --no-checkout "$URL" "$D/repo" 2> "$D/clone_err.$attempt"; then
+    CLONED=1; stamp "clone ok on attempt $attempt"; break
+  fi
+  stamp "clone attempt $attempt failed: $(tr '\n' ' ' < "$D/clone_err.$attempt" | cut -c1-200)"
+  sleep 20
+done
+[ "$CLONED" = 1 ] || { echo "FATAL clone (3 attempts; stderr echoed above)"; exit 1; }
 cd "$D/repo" || { echo "FATAL cd clone"; exit 1; }
 timeout 300 git fetch -q origin "$SHA" || { echo "FATAL fetch $SHA"; exit 1; }
 timeout 120 git checkout -q "$SHA" || { echo "FATAL checkout $SHA"; exit 1; }

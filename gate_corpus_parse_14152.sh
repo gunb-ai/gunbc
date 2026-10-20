@@ -19,7 +19,19 @@ stamp(){ echo "T=$(date -u +%H:%M:%S) $*"; }
 
 stamp "corpus parse gate begin sha=$SHA label=$LABEL target=$(du -sh "$CARGO_TARGET_DIR" 2>/dev/null | cut -f1 || echo none)"
 rm -rf "$D"; mkdir -p "$D"
-timeout 600 git clone -q "$URL" "$D/repo" || { echo "FATAL clone"; exit 1; }
+# Clone with retries: a bare `git clone` on the runner has failed transiently (twice at 07:33 and
+# 07:42 UTC, both times concurrent with another dispatch's clone), and a gate that dies at clone
+# tells the reader nothing unless it says so -- so each failure is named with the git stderr.
+CLONED=0
+for attempt in 1 2 3; do
+  rm -rf "$D/repo"
+  if timeout 900 git clone -q --no-checkout "$URL" "$D/repo" 2> "$D/clone_err.$attempt"; then
+    CLONED=1; stamp "clone ok on attempt $attempt"; break
+  fi
+  stamp "clone attempt $attempt failed: $(tr '\n' ' ' < "$D/clone_err.$attempt" | cut -c1-200)"
+  sleep 20
+done
+[ "$CLONED" = 1 ] || { echo "FATAL clone (3 attempts, stderr above)"; exit 1; }
 cd "$D/repo" || { echo "FATAL cd"; exit 1; }
 timeout 300 git fetch -q origin "$SHA" || { echo "FATAL fetch $SHA"; exit 1; }
 timeout 120 git checkout -q "$SHA" || { echo "FATAL checkout"; exit 1; }
