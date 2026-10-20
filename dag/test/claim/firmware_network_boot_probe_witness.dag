@@ -47,6 +47,7 @@ fn nics_of(row: FirmwareBootFamilyRow, nics: List<NonEmptyStr>) -> Bool? {
         NicsRefused { refusal: _ } => Absent
       }
     SuppliedSilence { subject: _, provenance: _, attempt: _ } => Absent
+    SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => Absent
   }
 }
 
@@ -86,6 +87,7 @@ test fn outcome_preserves_row_route_authority_and_receipt() -> Bool {
         DecodedFromSuppliedReplies { subject: _, provenance: p, observation: _ } =>
           p.route == r.route && p.family == r.family && p.authority == r.authority && p.receipt.response_identity == "supplied-fixture"
         SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
       }
   }
 }
@@ -172,6 +174,7 @@ test fn silent_bmc_is_not_an_empty_answer() -> Bool {
       let empty_ok = match empty {
         DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } => is_unobserved_boot_order(o: o)
         SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
       }
       off_ok && empty_ok
     }
@@ -188,6 +191,7 @@ test fn cannot_answer_secure_boot_is_unobserved_never_defaulted() -> Bool {
   match probe(input: ev(row: row, contact: BmcResponded { replies: [ReplyBootOrder { devices: [boot_order_entry(reference: "0001", label: "pxe")] }, ReplySecureBootEnabled] })) {
     DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } => is_unobserved_secure_boot(o: o) && is_observed_boot_order(o: o)
     SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+    SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
   }
 }
 
@@ -204,6 +208,7 @@ test fn bmc_refusal_is_preserved_as_refused() -> Bool {
             BootOrderUnobserved { reason: _ } => false
           }
         SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
       }
   }
 }
@@ -218,6 +223,7 @@ test fn another_release_row_probes_without_touching_the_instrument() -> Bool {
   match probe(input: ev(row: sixth, contact: BmcResponded { replies: [ReplyBootOrder { devices: [boot_order_entry(reference: "0001", label: "net")] }] })) {
     DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } => is_observed_boot_order(o: o)
     SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+    SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
   }
 }
 
@@ -247,6 +253,7 @@ test fn conflicting_replies_for_one_axis_are_not_settled_by_order() -> Bool {
       match probe(input: ev(row: r, contact: BmcResponded { replies: [ReplyBootOrder { devices: [boot_order_entry(reference: "0001", label: "net0")] }, ReplyRefusedByBmc { axis: BootOrderAxis, refusal: AuthenticationRequired { detail: "403" } }] })) {
         DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } => is_unobserved_boot_order(o: o)
         SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
       }
   }
 }
