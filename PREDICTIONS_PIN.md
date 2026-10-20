@@ -293,3 +293,21 @@ data-bearing run's output (that run had not completed when these lines were writ
      BEFORE their enrollment is relied on.
   F7 same_arm over two values of the SAME coproduct -> ACCEPTS (if it refuses, the Acc is
      over-strict on constructor comparison generally and subsumes F6's reading).
+
+## PR-2 head's 04_types.dag is FOUR separable changes (read from origin/session/quiet-hawk-507 diff)
+  1. EQUALITY WIDENING (parent's (b) split, PR-2a): type_head_carrier,
+     type_head_is_declared_carrier_alias, type_heads_agree -- carrier-alias heads compare by
+     carrier, else by declaration identity. Must land alone with its own RED.
+  2. RENDERER (prereq (a)): node_type_shape now renders Product(name<fields>), Map(<real args>)
+     instead of "Map(...)", Container(carrier,...), and a NEW UnresolvedDecl(...) arm. This is
+     exactly prereq (a) "render what the comparator compares" -- already present in PR-2, so it
+     must be split out too or PR-2a's RED cannot be attributed.
+  3. ALIAS MACHINERY (prereq (b), CLOSED by parent): peel_alias_rhs_once + imports
+     lookup_binding_by_name/alias_settled/agree. Parent (c): show a run where the Acc refuses
+     without them, or they leave PR-2.
+  4. MERGE ARTIFACT: TextNotAskedForCallableComponentResidue restored. Its own comment says #14287
+     deleted the variant AND its construction; this branch's whole-function rewrite of
+     callable_leaf_substitution auto-merged with no conflict and re-created the construction while
+     the definition stayed dead -> a 30-min remote regen refused to emit ("undefined variable").
+     No discriminating consumer (5 wildcard arms, 0 discriminating). This is the silent-semantic-merge
+     class parent warned about; report it, do not fix it inside PR-2.
