@@ -52,7 +52,7 @@ test fn the_module_real_path_pairing_row_grounds_against_the_real_discovery() ->
   let identity = "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness.rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds"
   match s1_compose_scoped(roots: [real_path_pairing_root]) {
     S1InputsUnread { causes: _ } => false
-    S1Composed { census: census, notes: _ } =>
+    S1Composed { census: census, label_defects: _ } =>
       any(census.universe, candidate => candidate == identity)
         && any(census.stands, standing => match standing {
              GroundedCover { row: row, covers: covers } =>

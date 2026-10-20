@@ -17,26 +17,35 @@ module v2.test.claim.claim_coverage_census_s1_witness
 // show a channel is not muted, it pairs a stale member with a grounded one in the SAME carrier: a channel
 // that printed everything, or nothing, would fail one of the two halves.
 
-import std.types { String, Bool, List }
-import std.algebra { string_contains, empty_map, is_empty }
+import std.types { String, Bool, List, Map }
+import std.algebra { string_contains, empty_map, map_insert, is_empty }
 import std.optional { Absent, Present }
 import v2.workflow.claim_coverage_census_s1 {
   ClaimRow, ClassifierRow, ClassifierRole, CoverRole, EnrollmentRole,
   IdentityMember, DeclaredMember, FileMember,
   ExactMemberMatch, SubstringMemberMatch, classifier_member_text,
   S1Census, ClassifierStanding, GroundedCover, S1Composed, S1InputsUnread,
+  RequiredJobLabelDefect, LabelUnbound, LabelAmbiguous,
   classify_rows, derive_executed, s1_uncovered, s1_census_lines, s1_stamp_head,
   s1_block, S1Standing, S1Held, S1DidNotHold, S1Unread
 }
-import v2.workflow.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
+import v2.workflow.claim_coverage_census_s1_carriers {
+  s1_all_classifier_rows, cover_witness_entry_row
+}
 // THE LIVE MODULE IS IMPORTED DELIBERATELY: a module no claim imports is a module no witness RESOLVES, and
 // that is how its `Cons`-into-a-`List`-field type error survived a green per-file parse sweep (see
 // `a_live_function_resolves_and_names_nothing_for_a_producer_that_names_nothing`). Importing is not
 // READING: the one entry this corpus calls is a pure match over producer variants. The claims that DO read
 // the checkout -- the scoped real-discovery pairing claims -- live in
 // `v2.test.claim.claim_coverage_census_s1_live_pairing`, which states why they cannot live here.
-import v2.workflow.claim_coverage_census_s1_live { producer_named_identities }
-import gunbc.target_binding { TargetProducer, RequiredFloorProducer }
+import v2.workflow.claim_coverage_census_s1_live {
+  producer_named_identities, credited_producer_names
+}
+import gunbc.target_binding {
+  TargetBinding, TargetProducer, RequiredFloorProducer, CliWireProgramProducer
+}
+import extdeps.bazel.label { Label, PackagePath, TargetName }
+import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
 import gunbc.claim_coverage_census {
   ClaimCoverageStanding, ClaimCoverageHeld, ClaimCoverageDidNotHold, UncoveredClaim
 }
@@ -222,7 +231,7 @@ test fn a_fixture_whose_claims_are_all_covered_holds_and_exits_zero() -> Bool {
     ],
     produced: ["m.a"]
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] })
+  let block = s1_block(s1: S1Composed { census: census, label_defects: [] })
   match block.standing { S1Held => true, _ => false }
     && covered(census: census, identity: "m.a")
     && covered(census: census, identity: "m.b")
@@ -248,7 +257,7 @@ test fn removing_a_covered_claim_from_its_drop_makes_the_census_name_it() -> Boo
     ],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] })
+  let block = s1_block(s1: S1Composed { census: census, label_defects: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && (s1_uncovered(census: census) == ["m.b"])
     && line_names(lines: block.lines, needle: "UNCOVERED m.b")
@@ -276,7 +285,7 @@ test fn a_floor_expected_red_row_never_covers_a_claim() -> Bool {
     ],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] })
+  let block = s1_block(s1: S1Composed { census: census, label_defects: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && (s1_uncovered(census: census) == ["m.b"])
     && !line_names(lines: block.lines, needle: "UNCOVERED m.a")
@@ -301,7 +310,7 @@ test fn the_three_prefix_fill_debt_rows_are_stale_enrolled_by_name() -> Bool {
     covers: map(stale, member => cover_identity(carrier: fill_debt_carrier, member: member)),
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] })
+  let block = s1_block(s1: S1Composed { census: census, label_defects: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && all(stale, member => line_names(lines: block.lines, needle: concat("STALE-ENROLLED ", concat(fill_debt_carrier, concat(" ", member)))))
     && all(stale, member => stale_stands(stands: census.stands, member: member))
@@ -329,7 +338,7 @@ test fn the_prefix_row_is_stale_while_its_renamed_successor_is_grounded() -> Boo
     ],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] })
+  let block = s1_block(s1: S1Composed { census: census, label_defects: [] })
   stale_stands(stands: census.stands, member: prefix)
     && line_names(lines: block.lines, needle: concat("STALE-ENROLLED ", concat(fill_debt_carrier, concat(" ", prefix))))
     && !line_names(lines: block.lines, needle: concat("STALE-ENROLLED ", concat(fill_debt_carrier, concat(" ", successor))))
@@ -352,7 +361,7 @@ test fn a_fully_resolving_carrier_prints_no_stale_row_and_holds() -> Bool {
     ],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] })
+  let block = s1_block(s1: S1Composed { census: census, label_defects: [] })
   !line_names(lines: block.lines, needle: "STALE-ENROLLED")
     && match block.standing { S1Held => true, _ => false }
     && all(fixture_universe(), id => grounded_cover(stands: census.stands, member: id))
@@ -402,7 +411,7 @@ test fn a_drop_member_that_is_neither_path_nor_identity_is_an_ungrounded_refusal
     covers: map(ungroundable, member => declared_member(carrier: "gunbc.rung_drop.t.drop", text: member)),
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] })
+  let block = s1_block(s1: S1Composed { census: census, label_defects: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && all(ungroundable, member => line_names(lines: block.lines, needle: concat("UNGROUNDED-DROP-MEMBER gunbc.rung_drop.t.drop ", member)))
     && all(ungroundable, member => ungrounded_stands(stands: census.stands, member: member))
@@ -476,7 +485,7 @@ test fn an_untyped_drop_member_grounds_in_either_population_and_neither_by_spell
     ],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] })
+  let block = s1_block(s1: S1Composed { census: census, label_defects: [] })
   (covers_of(stands: census.stands, member: "other.c") == ["other.c"])
     && (covers_of(stands: census.stands, member: "m.dag") == ["m.a", "m.b"])
     && ungrounded_stands(stands: census.stands, member: "the whole long-lane class is excused")
@@ -495,7 +504,7 @@ test fn an_exact_file_member_selecting_no_discovered_claim_is_refused() -> Bool 
     covers: [cover_file(carrier: "t.drop", member: "renamed_away.dag")],
     produced: []
   )
-  let block = s1_block(s1: S1Composed { census: census, notes: [] })
+  let block = s1_block(s1: S1Composed { census: census, label_defects: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && line_names(lines: block.lines, needle: "UNGROUNDED-DROP-MEMBER t.drop renamed_away.dag")
     && ungrounded_stands(stands: census.stands, member: "renamed_away.dag")
@@ -558,7 +567,7 @@ test fn a_producer_naming_an_undiscovered_claim_executes_nothing() -> Bool {
 test fn a_producer_exposing_no_claim_set_leaves_the_universe_uncovered_and_is_a_finding() -> Bool {
   let rows = fixture_rows()
   let census = census_over(rows: rows, universe: fixture_universe(), covers: [], produced: [])
-  let block = s1_block(s1: S1Composed { census: census, notes: [] })
+  let block = s1_block(s1: S1Composed { census: census, label_defects: [] })
   match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
     && all(fixture_universe(), id => line_names(lines: block.lines, needle: concat("UNCOVERED ", id)))
 }
@@ -584,10 +593,14 @@ test fn an_unread_input_exits_two_and_reports_no_claim_population() -> Bool {
        }
 }
 
-// A NOTE TRAVELS WITH THE RECEIPT. An unbound or doubled required-job label changes what `executed` can
-// mean, so it prints even when the standings are clean: an unattributable label is not coverage and not a
-// silent zero either. It is not a claim finding, so the census still holds with the note on the page.
-test fn an_unattributable_required_job_label_prints_beside_clean_standings() -> Bool {
+// AN UNATTRIBUTABLE REQUIRED-JOB LABEL IS A FINDING, NOT A MARGINALIA (parent ruling on review of
+// #14469). It used to be a note beside a standing that still read `S1Held`, and `executed_of` still summed
+// whatever bindings matched the label -- a label with no single producer behind it both printed a warning
+// and reported the census as clean. A label the census cannot resolve is the census failing to establish
+// what it was built to establish, so it stands with the other findings: the line prints AND the block
+// refuses. Every standing in the census here is clean on purpose -- if a label defect could still hold,
+// this is the claim that would see it.
+test fn an_unbound_required_job_label_refuses_rather_than_printing_beside_held() -> Bool {
   let rows = fixture_rows()
   let census = census_over(
     rows: rows,
@@ -599,10 +612,182 @@ test fn an_unattributable_required_job_label_prints_beside_clean_standings() -> 
     ],
     produced: []
   )
-  let note = "REQUIRED-JOB LABEL UNBOUND //gunbc/instruments:t.thing (no producer binds it: nothing it runs is attributable)"
-  let block = s1_block(s1: S1Composed { census: census, notes: [note] })
-  line_names(lines: block.lines, needle: "REQUIRED-JOB LABEL UNBOUND")
-    && match block.standing { S1Held => true, _ => false }
+  let block = s1_block(
+    s1: S1Composed {
+      census: census,
+      label_defects: [LabelUnbound { label: "//gunbc/instruments:t.thing" }]
+    }
+  )
+  line_names(lines: block.lines, needle: "REQUIRED-JOB LABEL UNBOUND //gunbc/instruments:t.thing")
+    && match block.standing {
+         S1DidNotHold { reason: reason } =>
+           string_contains(s: reason, pattern: "required-job label")
+         _ => false
+       }
+}
+
+// THE DOUBLED LABEL REFUSES TOO, AND SAYS WHICH ONE. Two producers binding one label is the case that
+// silently reported their UNION as executed, so it is refused and located by label rather than summarised.
+test fn an_ambiguous_required_job_label_refuses_and_names_the_label() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [
+      cover_identity(carrier: "t.drop", member: "m.a"),
+      cover_identity(carrier: "t.drop", member: "m.b"),
+      cover_identity(carrier: "t.drop", member: "other.c")
+    ],
+    produced: []
+  )
+  let block = s1_block(
+    s1: S1Composed {
+      census: census,
+      label_defects: [LabelAmbiguous { label: "//gunbc/instruments:t.doubled" }]
+    }
+  )
+  line_names(lines: block.lines, needle: "REQUIRED-JOB LABEL AMBIGUOUS //gunbc/instruments:t.doubled")
+    && match block.standing { S1DidNotHold { reason: _ } => true, _ => false }
+}
+
+// A CLEAN LABEL SET STILL HOLDS, OR THE TWO REFUSALS ABOVE PROVE NOTHING. They assert a refusal; a policy
+// that refused everything would satisfy them. The same census with an empty defect list must read S1Held,
+// so the refusal is shown to be caused by the defect and not by the shape of the claim.
+test fn the_same_census_holds_when_no_required_job_label_is_defective() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [
+      cover_identity(carrier: "t.drop", member: "m.a"),
+      cover_identity(carrier: "t.drop", member: "m.b"),
+      cover_identity(carrier: "t.drop", member: "other.c")
+    ],
+    produced: []
+  )
+  let block = s1_block(s1: S1Composed { census: census, label_defects: [] })
+  match block.standing { S1Held => true, _ => false }
+}
+
+// ---------------------------------------------------------------------------
+// THE WITNESS ENTRY'S GRAIN (the parent's REQUEST_CHANGES at 69453470805, finding (a)).
+// `bin_wet_classifier_rows` and `explicit_admission_classifier_rows` passed the entry's file alone into
+// `cover_file_row` and dropped `ScheduleWitnessEntry.function`, so a lane admitted for ONE test of a file
+// was credited with EVERY claim in it -- 2 admitted tests of 13 in `map_literal.dag` read as 13 covered.
+// The fix is `cover_witness_entry_row` in the carriers module: the entry's own function text decides the
+// grain, and the file row is reached only when that text is empty. These claims run the REAL adapter over
+// the fixture corpus, so the finding is not asserted by prose: an admission naming `a` must ground to
+// exactly `m.a` and leave its SIBLING `m.b` in the census's uncovered report.
+// ---------------------------------------------------------------------------
+
+// The two witnesses the fixtures use: same carrier, same entry file, one named function each. A witness
+// entry whose function text is EMPTY declares only the file -- that is the grain the carrier declares,
+// asserted by the third claim.
+data grain_witness_named_a: ScheduleWitnessEntry = ScheduleWitnessEntry {
+  entry: "m.dag", function: "a", kind: CorpusWitnessKind
+}
+data grain_witness_empty_function: ScheduleWitnessEntry = ScheduleWitnessEntry {
+  entry: "m.dag", function: "", kind: CorpusWitnessKind
+}
+
+// THE ADAPTER ITSELF, AT IDENTITY GRAIN. A named function must become a file+function member -- not the
+// file member the widened fold used to build. This is the RED: revert `cover_witness_entry_row` to
+// `cover_file_row(carrier:, path: witness.entry)` and BOTH members below collapse to the file text.
+test fn a_witness_entry_naming_one_function_becomes_a_file_and_function_member() -> Bool {
+  let row = cover_witness_entry_row(carrier: "t.lane", witness: grain_witness_named_a)
+  classifier_member_text(row: row) == "m.dag#a"
+    && match row.role { CoverRole => true, EnrollmentRole => false }
+}
+
+// A WITNESS THAT DECLARES NO FUNCTION DECLARES THE FILE, and the member says so with no `#` at all. The
+// empty text is a declaration made by the carrier, not a value this census invented, and the widening is
+// only legitimate where the carrier made it.
+test fn a_witness_entry_with_no_function_declares_the_whole_file_and_nothing_more() -> Bool {
+  let row = cover_witness_entry_row(carrier: "t.lane", witness: grain_witness_empty_function)
+  classifier_member_text(row: row) == "m.dag"
+}
+
+// THE SIBLING IS STILL UNCOVERED -- the finding, run through the census rather than through the row.
+// One admission for `m.a`, over the fixture universe of `m.a` AND `m.b`: exactly `m.b` (and the other
+// module's `other.c`) may be in the uncovered report, and `m.a` may never be. Under the dropped-field
+// fold the cover expanded to the whole file and `m.b` was grounded by a lane that names one test:
+// this claim is where that widening goes red.
+test fn admitting_one_function_grounds_that_claim_and_leaves_its_sibling_uncovered() -> Bool {
+  let rows = fixture_rows()
+  let census = census_over(
+    rows: rows,
+    universe: fixture_universe(),
+    covers: [cover_witness_entry_row(carrier: "t.lane", witness: grain_witness_named_a)],
+    produced: []
+  )
+  let uncovered = s1_uncovered(census: census)
+  any(uncovered, id => id == "m.b")
+    && any(uncovered, id => id == "other.c")
+    && !any(uncovered, id => id == "m.a")
+}
+
+// ---------------------------------------------------------------------------
+// THE UNIQUE BINDING (the parent's REQUEST_CHANGES at 69453470805, finding (b), second half). A required
+// job's label can reach the fold with no binding, or with two. A single list fold returned the UNION of
+// everything any matching binding credits, so a label with two producers executed the sum of both, and the
+// UNBOUND arm's findings went to notes the block did not read -- a census reporting S1Held beside an
+// unbound label. `executed_of` now adds `credited_producer_names`, which credits through exactly one
+// binding and nothing for every other shape. The unbound/ambiguous refusal itself is claimed in the
+// s1_block claims above; this is the credit rule, asserted at the one site that decides who executed.
+// ---------------------------------------------------------------------------
+
+// The fixtures' label: one package path, named targets, the same shape `gunbc.target_bindings` carries.
+fn grain_label(target: String) -> Label {
+  Label {
+    package: PackagePath { segments: ["gunbc"] },
+    target: TargetName { name: target }
+  }
+}
+
+fn binding_for(target: String, entry: String, function: String) -> TargetBinding {
+  TargetBinding {
+    target: grain_label(target: target),
+    producer: CliWireProgramProducer { entry: entry, function: function }
+  }
+}
+
+fn grain_index() -> Map<String, String> {
+  let labeled: Map<String, String> = empty_map()
+  map_insert(m: labeled, key: "m.dag", value: "m")
+}
+
+// ONE BINDING CREDITS THE IDENTITY IT NAMES -- the arm that must stay alive while the two below refuse.
+test fn a_unique_binding_credits_the_identity_its_producer_names() -> Bool {
+  credited_producer_names(bindings: [binding_for(target: "t", entry: "m.dag", function: "a")], index: grain_index())
+    == ["m.a"]
+}
+
+// TWO BINDINGS CREDIT NOTHING. This is `executed_of`'s own fold step: what a doubled label contributes to
+// the executed set. The union it used to contribute is exactly the fabrication the parent refused -- an
+// identity executed by nobody in particular. The sibling arms make the refusal mean "not unique" and not
+// "empty list", so all three cases are pinned together.
+test fn a_label_with_two_bindings_credits_nothing_but_a_unique_one_does() -> Bool {
+  credited_producer_names(
+    bindings: [
+      binding_for(target: "t", entry: "m.dag", function: "a"),
+      binding_for(target: "t", entry: "m.dag", function: "b")
+    ],
+    index: grain_index()
+  ) |> is_empty()
+    && credited_producer_names(bindings: [], index: grain_index()) |> is_empty()
+}
+
+// A PRODUCER NAMES NOTHING UNBOUND -- the unspellable pair: an entry the index does not hold, or a producer
+// variant that carries no entry at all. Contributes nothing to the executed set in both cases (the rule
+// `a_live_function_resolves_and_names_nothing_for_a_producer_that_names_nothing` states for one variant,
+// asserted here across the list shape as well).
+test fn a_binding_whose_entry_the_index_does_not_hold_credits_nothing() -> Bool {
+  credited_producer_names(bindings: [binding_for(target: "t", entry: "gone.dag", function: "a")], index: grain_index())
+    |> is_empty()
+    && credited_producer_names(bindings: [TargetBinding {
+        target: grain_label(target: "t"),
+        producer: RequiredFloorProducer
+      }], index: grain_index()) |> is_empty()
 }
 
 // THE PAIRING OBLIGATION ON THE REAL PRODUCER (DESIGN 3, required by nimble-badger-800's verification

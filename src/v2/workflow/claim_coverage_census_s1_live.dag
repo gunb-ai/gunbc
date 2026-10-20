@@ -53,7 +53,7 @@ module v2.workflow.claim_coverage_census_s1_live
 // beside the receipt: a missing binding must never read as coverage, and never as a silent zero.
 
 import std.types { String, List, Map, NonEmptyStr }
-import std.algebra { Cons, empty_map, map_insert, map_lookup, is_empty, trim, fold_list }
+import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup, is_empty, trim, fold_list }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import extdeps.bazel.label { render_label }
 import extdeps.exec.command { LocalExec }
@@ -84,6 +84,7 @@ import v2.workflow.floor_discovery_source_authority {
 }
 import v2.workflow.claim_coverage_census_s1 {
   ClaimRow, S1Census, S1Block, S1Composition, S1Composed, S1InputsUnread,
+  RequiredJobLabelDefect, LabelUnbound, LabelAmbiguous,
   classify_rows, derive_executed, s1_block, s1_stale_rows, s1_ungrounded_rows, s1_uncovered
 }
 import v2.workflow.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
@@ -339,38 +340,53 @@ fn labelled_bindings(label: String) -> List<TargetBinding> {
   filter(instrument_bindings(), b => render_label(l: b.target) == label)
 }
 
-// The labels whose binding is missing or doubled, as located findings beside the receipt. A label that
-// binds to nothing says the required job runs something with no bound producer; a doubled binding says
-// two producers claim one label. Neither may read as coverage and neither may read as a silent zero.
-// Prepended and reversed once, for the reason in `marked_over_files`.
-fn unbound_label_findings() -> List<String> {
+// THE LABEL DEFECTS, AS TYPED CASES (see `RequiredJobLabelDefect` in the pure policy). The producer's
+// labels are enumerated once here and the binding count decides the case: zero producers is `LabelUnbound`,
+// more than one is `LabelAmbiguous`, exactly one contributes no defect. Prepended and reversed once, for
+// the reason in `marked_over_files`.
+fn required_job_label_defects() -> List<RequiredJobLabelDefect> {
   let findings = fold(
     emitted_subject_build_rows(),
     init: [],
     f: fn(acc, row) {
       let label = emitted_subject_build_label_text(row: row)
-      let bound = labelled_bindings(label: label)
-      if bound |> count == 1 {
+      let bound = count(labelled_bindings(label: label))
+      if bound == 1 {
         acc
-      } else if bound |> count == 0 {
-        concat(
-          [concat("REQUIRED-JOB LABEL UNBOUND ", concat(label, " (no producer binds it: nothing it runs is attributable)"))],
-          acc
-        )
+      } else if bound == 0 {
+        concat([LabelUnbound { label: label }], acc)
       } else {
-        concat(
-          [concat("REQUIRED-JOB LABEL AMBIGUOUS ", concat(label, " (more than one producer binds it)"))],
-          acc
-        )
+        concat([LabelAmbiguous { label: label }], acc)
       }
     }
   )
   findings |> reverse()
 }
 
+// THE CREDIT RULE, IN ONE PLACE: what a label's bindings contribute to the executed-by set. Exactly one
+// binding credits the identities its producer names; zero or many credit NOTHING. This is the whole of the
+// parent's ruling on review of #14469, and it is a function of the binding list alone so it can be shown
+// wrong against authored bindings (see `a_label_with_two_bindings_credits_nothing_but_a_unique_one_does`)
+// rather than only observed through the fold. `executed_of` and `required_job_label_defects` both read the
+// same binding list, which is what makes the printed defect and the withheld credit two views of one fact
+// instead of two policies that can drift.
+fn credited_producer_names(bindings: List<TargetBinding>, index: Map<String, String>) -> List<String> {
+  match bindings {
+    Cons { head: binding, tail: Empty {} } =>
+      producer_named_identities(producer: binding.producer, index: index)
+    Empty {} => []
+    Cons { head: _, tail: _ } => []
+  }
+}
+
 // THE EXECUTED-BY SET: the claim identities the required job's bound producers name, kept only where
 // discovery enrolled them -- the authority's `derive_executed` drops anything outside the universe, so a
 // binding can never manufacture an executed claim for a file that holds no test.
+//
+// CREDITED ONLY THROUGH A UNIQUE BINDING, by `credited_producer_names` above. A label that binds to no
+// producer, or to two, has no single answer to "what does this job run", and summing the candidates anyway
+// reported their UNION as executed -- a doubled binding silently laundered an unrelated producer's claims
+// into the executed-by set. The defect is named in standing by `required_job_label_defects`.
 fn executed_of(rows: List<ClaimRow>, index: Map<String, String>) -> List<String> {
   derive_executed(
     rows: rows,
@@ -379,13 +395,7 @@ fn executed_of(rows: List<ClaimRow>, index: Map<String, String>) -> List<String>
       init: [],
       f: fn(names, row) {
         let label = emitted_subject_build_label_text(row: row)
-        fold(
-          labelled_bindings(label: label),
-          init: names,
-          f: fn(inner, binding) {
-            concat(inner, producer_named_identities(producer: binding.producer, index: index))
-          }
-        )
+        concat(names, credited_producer_names(bindings: labelled_bindings(label: label), index: index))
       }
     )
   )
@@ -436,7 +446,7 @@ fn s1_over_sources(roots: List<String>, sources: List<FloorDiscoverySource>) -> 
                         classifier_rows: s1_all_classifier_rows()
                       )
                     },
-                    notes: unbound_label_findings()
+                    label_defects: required_job_label_defects()
                   }
                 }
               }

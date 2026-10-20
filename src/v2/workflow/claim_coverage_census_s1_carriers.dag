@@ -2,6 +2,7 @@ module v2.workflow.claim_coverage_census_s1_carriers
 
 import std.types { String, Bool, List }
 import std.algebra { map_lookup }
+import std.realization_schedule { ScheduleWitnessEntry }
 import std.optional { Optional, Absent, Present }
 import v2.workflow.claim_coverage_census_s1 { ClassifierRow, ClassifierRole, CoverRole, EnrollmentRole, IdentityMember, DeclaredMember, FileMember, ExactMemberMatch, SubstringMemberMatch }
 import gunbc.ci.ci_layer_roots { bin_witness_wet_entries, witness_exclusion_frontier }
@@ -83,6 +84,19 @@ fn cover_file_fn_row(carrier: String, path: String, function: String) -> Classif
   }
 }
 
+// A cover over a ScheduleWitnessEntry, AT THE GRAIN THAT ENTRY DECLARES. The entry carries a function
+// beside its entry file, and the census may not decide to forget it: a named function narrows the cover to
+// that one claim, while an entry whose function text is empty declares only the file. Dropping the field
+// instead would credit a lane with every claim in the entry's file -- the defect the parent caught on review
+// of #14469, where 2 admitted tests of 13 in `map_literal.dag` read as 13 covered.
+fn cover_witness_entry_row(carrier: String, witness: ScheduleWitnessEntry) -> ClassifierRow {
+  if witness.function == "" {
+    cover_file_row(carrier: carrier, path: witness.entry)
+  } else {
+    cover_file_fn_row(carrier: carrier, path: witness.entry, function: witness.function)
+  }
+}
+
 // The frontier's own form: a pattern selected by CONTAINMENT, the only carrier permitted that relation
 // because the frontier is what declares patterns.
 fn cover_frontier_row(carrier: String, pattern: String) -> ClassifierRow {
@@ -139,13 +153,18 @@ fn floor_expected_red_classifier_rows() -> List<ClassifierRow> {
 // identities of that file through the one expansion. The function list is deliberately not
 // flattened into identity rows here: an entry-level schedule row schedules the file's pool, and
 // inventing per-function cover rows from it would claim a finer authority than the carrier has.
+// THE GRAIN IS THE CARRIER'S, NOT THE CENSUS'S CHOICE (parent ruling on review of #14469). A
+// ScheduleWitnessEntry declares a function beside its entry; a row that dropped it would credit the lane
+// with EVERY claim of the file the entry happens to sit in — 2 admitted tests of 13 would read as 13
+// covered. Empty function text means the carrier's authority stopped at the file (file cover); a named
+// function narrows through `narrows_to` to that one claim and NOTHING else.
 fn bin_wet_classifier_rows() -> List<ClassifierRow> {
   map(
     bin_witness_wet_entries,
-    entry => cover_file_row(
+    entry => cover_witness_entry_row(
       carrier: "gunbc.ci.ci_layer_roots.bin_witness_wet_entries",
-      path: entry.entry
-      )
+      witness: entry
+    )
   )
 }
 
@@ -181,16 +200,19 @@ fn frozen_deferral_classifier_rows() -> List<ClassifierRow> {
 }
 
 // Explicit witness admissions: carriers whose witness is a ScheduleWitnessEntry — a claimed file
-// whose functions ride beside it. The member the carrier itself resolves to an identity is the
-// entry+function pair, but the entry alone is what the file grain names, so File-exact cover: the
-// admission admits the entry's scheduled pool, and the fold grounds it against discovery.
+// whose functions ride beside it. THE GRAIN RIDES WITH THE CARRIER (same ruling as
+// `bin_wet_classifier_rows` above): the admission's own accessor resolves its member to the
+// entry+function pair, so the census classifies it at that pair, and a named function narrows the
+// cover to the one claim the admission actually admits. An entry with empty function text declares
+// only the file, and the cover stops there. Taking the entry alone would credit the consumer with
+// every claim in the file.
 fn explicit_admission_classifier_rows() -> List<ClassifierRow> {
   map(
     explicit_witness_admissions,
-    admission => cover_file_row(
+    admission => cover_witness_entry_row(
       carrier: "gunbc.explicit_witness_admission.explicit_witness_admissions",
-      path: admission.witness.entry
-      )
+      witness: admission.witness
+    )
   )
 }
 

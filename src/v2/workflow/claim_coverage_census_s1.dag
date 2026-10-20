@@ -344,14 +344,43 @@ fn s1_stamp_head(lines: List<String>, head: String) -> List<String> {
   concat(["S1-CENSUS head:" + head], lines)
 }
 
+// A REQUIRED-JOB LABEL WHOSE BINDING CANNOT CARRY THE WORD "EXECUTED", as a located defect rather than a
+// note. An unbound label means the required job runs something no producer binds; a doubled binding means
+// two producers claim one label. Neither is a claim finding — no claim is being named — but both make the
+// executed-by set a lie if it is still credited, and the earlier shape let exactly that happen: the defect
+// travelled in `notes: List<String>`, which the policy never counted, so `s1_block` returned `S1Held` and
+// `executed_of` summed the identities of EVERY binding that matched the label. A label with two producers
+// therefore reported the union of two unrelated producers' claims as executed by the job. This is a standing
+// defect now, and `executed_of` credits identities only through a label with exactly one binding.
+type RequiredJobLabelDefect
+  = LabelUnbound { label: String }
+  | LabelAmbiguous { label: String }
+
 // THE COMPOSITION'S ANSWER IN TWO CHANNELS: the census (with the located findings that are not
 // standings), or the causes of an input nobody could read. The channels are disjoint by construction --
 // nothing downstream of a missing input is ever reported as a clean census, which is what keeps the
 // exit-2 arm from reading as a green run. The type lives with the pure policy so a witness can construct
 // both arms without touching the fold's filesystem, acquisition or roster dependencies.
+//
+// The label defects are a TYPED LIST, not prose: `notes: List<String>` let a caller pass a string that
+// named no defect at all, and the policy had nothing to match on. Each defect is one of two named causes
+// carrying the located label, so the receipt text is DERIVED from the case (`required_job_label_line`) and a
+// consumer that cares which of the two it is can match instead of grepping its own output.
 type S1Composition
-  = S1Composed { census: S1Census, notes: List<String> }
+  = S1Composed { census: S1Census, label_defects: List<RequiredJobLabelDefect> }
   | S1InputsUnread { causes: List<String> }
+
+// THE RECEIPT LINE A LABEL DEFECT PRINTS, derived from the case rather than passed in beside it. The
+// wording is the one the witnesses and the instrument already print, so no evidence trail is broken by the
+// typing; what changed is that the wording can no longer be supplied independently of the defect.
+fn required_job_label_line(defect: RequiredJobLabelDefect) -> String {
+  match defect {
+    LabelUnbound { label: label } =>
+      concat("REQUIRED-JOB LABEL UNBOUND ", concat(label, " (no producer binds it: nothing it runs is attributable)"))
+    LabelAmbiguous { label: label } =>
+      concat("REQUIRED-JOB LABEL AMBIGUOUS ", concat(label, " (more than one producer binds it: the executed-by set would be their union)"))
+  }
+}
 
 // THE BLOCK THE LIVE ENTRY PRINTS AND THE EXIT IT ANSWERS, computed as PURE DATA over an injected
 // composition (warm-wolf-570: exit 1 lists one typed, located row per claim that is neither run nor
@@ -398,18 +427,22 @@ fn s1_block(s1: S1Composition) -> S1Block {
         reason: "claim-coverage-census: the discovered universe could not be read (causes listed above); no claim population was decided"
       }
     }
-    S1Composed { census: census, notes: notes } => {
-      let lines = concat(notes, s1_census_lines(census: census))
+    S1Composed { census: census, label_defects: label_defects } => {
+      let lines = concat(
+        map(label_defects, defect => required_job_label_line(defect: defect)),
+        s1_census_lines(census: census)
+      )
       let findings = count(s1_stale_rows(census: census))
         + count(s1_ungrounded_rows(census: census))
         + count(s1_uncovered(census: census))
+        + count(label_defects)
       if findings == 0 {
         S1Block { lines: lines, standing: S1Held }
       } else {
         S1Block {
           lines: lines,
           standing: S1DidNotHold {
-            reason: "claim-coverage-census: the discovered universe did not hold -- a discovered test claim is executed by no required job and covered by no drop, or a carrier enrolled an identity discovery does not hold, or a drop population member grounds in no path and no identity (each is listed above, located)"
+            reason: "claim-coverage-census: the discovered universe did not hold -- a discovered test claim is executed by no required job and covered by no drop, or a carrier enrolled an identity discovery does not hold, or a drop population member grounds in no path and no identity, or a required-job label reaches the census with no single binding behind it (each is listed above, located)"
           }
         }
       }
