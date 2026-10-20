@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       wave_shard:
-        description: "For //gunbc/instruments:namespace-wave-binding-diff only: the run's shape -- base (once per main revision), i/K (one head shard), merge/K (the join that mints the verdict). none = not a wave run; a wave label dispatched with none refuses as malformed (2)."
+        description: "Wave gate only: base | i/K | merge/K. none = not a wave run; a wave label with none refuses malformed (2)."
         required: false
         default: none
         options: [none, base, 0/4, 1/4, 2/4, 3/4, merge/4]
