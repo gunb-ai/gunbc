@@ -2,7 +2,7 @@ module v2.compiler.arm_resolution
 
 import std.optional { Absent, Optional, Present, optional_present }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.algebra { fold, is_empty }
+import std.algebra { is_empty }
 import v2.std.node { Authored, Node, Positional, StructuralLabel, Symbol, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string }
