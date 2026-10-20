@@ -25,6 +25,7 @@ use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
+use crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration;
 pub use crate::v1_std_core::{
     authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
     make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
@@ -275,7 +276,8 @@ pub fn inferred_to_outputs(
 
 pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
-        let kind = if ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+        let kind = if ((item.module_item_kind.clone()
+            == ParsedModuleItemKind::ModuleItemTypeDeclaration)
             && (item.transport.clone() == std::option::Option::None))
         {
             ItemKind::TypeItem
