@@ -68,7 +68,7 @@ fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
 // THE CONTROL: names the sealed records and the sealed mints, calls nothing, writes no literal. If
 // THIS reads a violation, everything the probe reports would be about importing the module rather
 // than about forging.
-data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, RemovalBoundaryStandingObservation, ObservedInstant, read_observed_instant, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, observe_removal_boundary_standing, admit_reviewer_removal }\nimport gunbc.auth.deployment_gate_operator_steps { AdmittedReviewerRemovalAct, ReviewerRemovalStepDecision, ReviewerRemovalReady, RemovalAdmitted, RemovalRefused, build_reviewer_removal_act }\nimport gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }\nimport test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }\nfn label() -> String { \"control names the sealed records, imports the sealed mints and the witness proxies, calls none of them, and forges nothing.\" }\n"
+data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, RemovalBoundaryStandingObservation, ObservedInstant, read_observed_instant, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, observe_removal_boundary_standing, standing_from_join, admit_reviewer_removal }\nimport gunbc.auth.deployment_gate_operator_steps { AdmittedReviewerRemovalAct, ReviewerRemovalStepDecision, ReviewerRemovalReady, RemovalAdmitted, RemovalRefused, build_reviewer_removal_act }\nimport gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }\nimport test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }\nfn label() -> String { \"control names the sealed records, imports the sealed mints and the witness proxies, calls none of them, and forges nothing.\" }\n"
 
 test fn a_source_that_only_names_the_gate_types_forges_no_evidence() -> Bool {
   refusals(c: control_census(), class: "SoleConstructorViolation", subject: "AcceptedRuleReviewReceipt") == 0
@@ -194,6 +194,29 @@ test fn a_foreign_call_to_the_standing_mint_is_refused() -> Bool {
     class: "ConstructorCallAdmissionRefused",
     subject: "observe_removal_boundary_standing",
   ) >= 1
+}
+
+// (k) THE OPEN PROXY BESIDE THE CONFINED MINT (round-6 blocker 2). For four rounds the census attacked
+// observe_removal_boundary_standing and never once looked at standing_from_join, which consumed the join and
+// STAMPED THE STANDING. An open proxy beside a confined mint is a confined mint with the confine painted on
+// the wall: a foreign module holding a valid ProtectionOwnershipJoin could reach the helper and obtain a
+// standing, walking past both the mint and the clock door. RED today because the helper is unconfined and the
+// call is therefore ADMITTED -- which is what "the proxy was open" means in census terms.
+test fn a_foreign_call_to_the_standing_helper_is_refused_at_the_callee() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "standing_from_join",
+  ) >= 1
+}
+
+// ITS CONTROL: naming the helper and calling nothing is not a refusal, so the red above is about the CALL.
+test fn the_control_reports_no_admission_refusal_for_the_standing_helper() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "standing_from_join",
+  ) == 0
 }
 
 // (i) THE CLOCK'S DOOR, FROM OUTSIDE (the ruling's clock seal, one half). The door has an admitted
