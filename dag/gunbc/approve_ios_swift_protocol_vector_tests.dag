@@ -500,7 +500,7 @@ data approve_ios_tests_header: List<String> = [
 // The test bundle's resource name is DERIVED, never re-spelled (DESIGN §5: the fact lives in exactly
 // one .dag declaration). Bundle(for:).url(forResource:withExtension:) takes the stem and extension
 // apart, and the only authority for the file's name is gunbc.generated_artifact's location row for
-// ApprovalDeviceVectorsArtifact (generated_artifact.dag:161, name: "vectors.json") — so the stem and
+// ApprovalDeviceVectorsArtifact — artifact_location(ApprovalDeviceVectorsArtifact).name — so the stem and
 // extension below are that row's `name` split on its dot. A hand-typed "vectors"/"json" was a second
 // authority: renaming the emitted fixture left load() looking for a file that no longer existed, and
 // nothing but the MacBook-only XCTest noticed.
@@ -508,8 +508,8 @@ fn approve_ios_vectors_artifact_name() -> String {
   artifact_location(a: ApprovalDeviceVectorsArtifact).name
 }
 
-// The name load() asks Bundle for is THIS row's, not a hand-typed pair: artifact_location(ApprovalDeviceVectorsArtifact)
-// (generated_artifact.dag:161, name: "vectors.json"). Splitting is done once, as a total match that
+// The name load() asks Bundle for is THIS row's, not a hand-typed pair:
+// artifact_location(ApprovalDeviceVectorsArtifact) from gunbc.generated_artifact. Splitting is done once, as a total match that
 // yields a ResourceParts or nothing at all, and the boundary below refuses when it yields nothing — so
 // the emitted Swift cannot be built from a half-name. There is no "" sentinel and no scan of the
 // rendered text: a malformed artifact row produces a typed refusal with a located reason (DESIGN §5,
