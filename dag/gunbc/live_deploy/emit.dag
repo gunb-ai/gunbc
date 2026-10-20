@@ -316,6 +316,9 @@ import gunbc.live_deploy.operations {
   deploy_cap_stage_dir_var,
   deploy_stage_dirs_exit_trap_command,
   deploy_stage_write_command,
+  deploy_observed_digest_var,
+  deploy_observed_sha256_admitted_command,
+  deploy_stage_write_observed_sha256_env_command,
   deploy_stage_write_expansion_command,
   deploy_stage_install_command,
   deploy_stage_install_owned_command,
@@ -995,21 +998,53 @@ fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRe
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision)))
 }
 
+// THE RUNTIME-VALUED STAGED WRITE (the orchestration-to-shell bash-emit route that took a runtime value). The value
+// is the sha256sum tool's observed file digest (extdeps.tools.sha256sum DigestFile / Sha256FileDigest), whose validity
+// is std.content_hash Sha256DigestHex: Let binds the observation (a failing sha256sum fails the line under set -e),
+// If-Not-ExitZero refuses with Exit before anything is staged unless the line is admitted by
+// operations.deploy_observed_sha256_admitted_command, and only then the staged write and the owned install run.
+fn deploy_observed_sha256_env_steps(
+  observed_path: String,
+  env_name: String,
+  stage_name: String,
+  owner: NonEmptyStr,
+  dest: String,
+) -> List<PipelineStep> {
+  [
+    Let { name: deploy_observed_digest_var, value: ExprCmdSubst { callee: sha256sum_program().invocation as String, args: [observed_path] } },
+    If {
+      cond: Not { inner: ExitZero { run: Run {
+        command: deploy_observed_sha256_admitted_command(),
+        env: Empty,
+        redirect: Present { value: DiscardAll },
+        capture: Absent
+      } } },
+      then_: Pipeline { steps: [Exit { status: "1" }], on_failure: FailFast },
+      else_: Absent
+    },
+    deploy_raw(command: deploy_stage_write_observed_sha256_env_command(stage_name: stage_name, env_name: env_name)),
+    deploy_raw(command: deploy_stage_install_owned_command(
+      stage_name: stage_name,
+      mode: install_file_shared_mode,
+      owner: owner,
+      group: owner,
+      dest: dest,
+    )),
+  ]
+}
+
 // THE DEPLOYED DIGEST IS READ OFF THE INSTALLED BYTES, never off the packed artifact or a constant: the env file the
 // broker loads is written from sha256sum of the sidecar binary AS INSTALLED in the locus, so the broker's expectation
 // is the digest of exactly what the sidecar unit executes. The sidecar's own receipt names sha256 of /proc/self/exe;
 // the broker joins the two (gunbc.auth.approval_device_crypto_realization device_crypto_echo_join) and refuses a
 // disagreement.
-// FAIL-CLOSED: the digest is taken by assignment (a sha256sum failure fails the && chain, no pipe to mask it) and must be
-// exactly 64 characters before anything is written, so an empty NAME= can never reach the env file. The shell transport
-// is a scaffold dissolved when the typed observe_executable digest (as device_crypto_sidecar_readback_exit uses) has a
-// staged-write route that takes a runtime value, i.e. the orchestration-to-shell bash-emit capability; until then this
-// step is the only runtime-valued write. SCAFFOLD operator-approved on gunbc#14570 (relayed by wise-bat-528).
+// FAIL-CLOSED: see deploy_observed_sha256_env_steps -- the write is refused before any byte is staged unless the
+// observed line opens with a valid Sha256DigestHex, so an empty NAME= can never reach the env file.
 fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let svc = spec.approval_broker
   let owner = svc.service_user
   let installed = device_crypto_sidecar_binary_path(spec: spec, revision: revision)
-  [
+  concat([
     deploy_raw(command: install_file_owned_command(
       mode: install_executable_shared_mode,
       owner: owner,
@@ -1017,13 +1052,13 @@ fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRe
       source: join(["target/release/", approval_device_crypto_serve_release_bin_name], ""),
       dest: installed,
     )),
-    deploy_raw(command: join([
-      "d=$(", sha256sum_program().invocation as String, " ", installed, ") && d=$\{d%% *} && test $\{#d} -eq 64 && ",
-      printf_program().invocation as String, " '", approval_device_crypto_deployed_digest_env_name as String, "=%s\\n' \"$d\" | ",
-      join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
-        device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision)]), " "),
-    ], "")),
-  ]
+  ], deploy_observed_sha256_env_steps(
+    observed_path: installed,
+    env_name: approval_device_crypto_deployed_digest_env_name as String,
+    stage_name: device_crypto_deployed_digest_env_file_name,
+    owner: owner,
+    dest: device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision),
+  ))
 }
 
 fn device_crypto_sidecar_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
@@ -1282,7 +1317,7 @@ fn apply_attempt_unit_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
     )),
     deploy_raw(command: deploy_stage_install_owned_command(
       stage_name: join(["gunbc-attempt-unit-spool-drain-lock-", spec.instance_id as String], ""),
-      mode: "0644" as NonEmptyStr,
+      mode: install_file_shared_mode,
       owner: root_principal,
       group: root_principal,
       dest: attempt_unit_spool_drain_lock_path(instance_root: instance_root),
@@ -1343,7 +1378,7 @@ fn attempt_system_unit_grant_steps_for_sudoers(
           )),
           deploy_raw(command: deploy_stage_install_owned_command(
             stage_name: rev_stage,
-            mode: "0644" as NonEmptyStr,
+            mode: install_file_shared_mode,
             owner: approval_broker_helper_root_principal,
             group: approval_broker_helper_root_principal,
             dest: attempt_system_unit_launcher_revision_receipt_path(instance: instance),
