@@ -5339,7 +5339,7 @@ fn target_value_expression_list_introduction_element_tokens(
   elements: List<TargetValueExpression>,
   separator: Symbol,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: fold_list_right(
