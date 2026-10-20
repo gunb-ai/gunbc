@@ -911,50 +911,100 @@ fn binding_diff_sharded(base_stdout: String, head_stdout: String, base_status: I
         }
       }
     ShardMerge { count: k } =>
-      let listing = Filesystem.List(path: dir)
-      let entries = if listing.success && (listing.entries != "") { split(s: listing.entries, delimiter: "\n") } else { [] }
-      let base_text = read_text(path: base_path)
-      if !listing.success {
-        shard_refusal(why: "the receipt directory " + dir + " could not be listed")
-      } else {
-        match base_selection_refusal(key: key, listing: entries) {
-          Present { value: why } => shard_refusal(why: why)
-          Absent =>
-          match base_receipt_refusal(key: key, text: base_text) {
-            Present { value: why } => shard_refusal(why: why)
-            Absent =>
-              let run = ShardRun { head_sha: head_sha, base_id: base_receipt_id(text: base_text), wave: wave_name(rewritten: rewritten), rewritten: rewritten, count: k }
-              let texts = indices_below(n: k) |> map(i => read_text(path: dir + "/" + shard_receipt_file(wave: run.wave, index: i, shards: k)))
-              match merge_head_rows(run: run, base_name: base_receipt_file(key: key), texts: texts, listing: entries) {
-                HeadMergeRefused { why: why } => shard_refusal(why: why)
-                HeadMerged { head_stdout: merged_head, head_status: merged_status } =>
-                  let base_rows = base_receipt_rows(text: base_text)
-                  let base_code = base_receipt_status(text: base_text)
-                  let uncovered = uncovered_by_base(owned: names, base_rows: base_rows)
-                  if count(uncovered) != 0 {
-                    shard_refusal(why: "the base receipt has no row for rewritten module(s) " + join(uncovered, separator: ",") + " (absent at base is not read as unchanged)")
-                  } else {
-                    match sides_unobserved(base_stdout: base_rows, head_stdout: merged_head, base_status: base_code, head_status: merged_status) {
-                      Present { value: r } => r
-                      Absent =>
-                        let evidence = evidence_modules(base_stdout: base_rows, head_stdout: merged_head)
-                        match merge_results(run: run, rewritten: names, evidence: evidence, texts: texts) {
-                          MergeRefused { why: why } => shard_refusal(why: why)
-                          Merged { results: proved } =>
-                            let diff = binding_diff(base_stdout: base_rows, head_stdout: merged_head, rows: ambient_name_homes())
-                            let verdict = verdict_from_results(base_stdout: base_rows, head_stdout: merged_head, base_status: base_code, head_status: merged_status, diff: diff,
-                              results: proved + join_modules(base_stdout: base_rows, head_stdout: merged_head, proof: read_proof(modules: [], base_root: base_root, head_root: head_root, prepared: prepared, lex: lex),
-                                modules: diff.unobserved_both_sides |> filter(m => count(evidence |> filter(e => e == m)) == 0)))
-                            let code = verdict_code(r: verdict)
-                            let written = Filesystem.Write(path: dir + "/" + verdict_file(wave: run.wave), content: verdict_text(run: run, texts: texts, exit_code: code))
-                            if written.success { verdict } else { shard_refusal(why: "the verdict could not be written under " + dir) }
-                        }
-                    }
-                  }
-              }
+      match merge_receipts_read(head_root: head_root, head_sha: head_sha, base_sha: base_sha, instr_rev: instr_rev, rewritten_text: rewritten_text, shards: k) {
+        MergeReceiptsRefused { why: why } => shard_refusal(why: why)
+        MergeReceiptsRead { run: run, texts: texts, base_text: base_text, merged_head: merged_head, merged_status: merged_status } =>
+          let base_rows = base_receipt_rows(text: base_text)
+          let base_code = base_receipt_status(text: base_text)
+          let uncovered = uncovered_by_base(owned: names, base_rows: base_rows)
+          if count(uncovered) != 0 {
+            shard_refusal(why: "the base receipt has no row for rewritten module(s) " + join(uncovered, separator: ",") + " (absent at base is not read as unchanged)")
+          } else {
+            match sides_unobserved(base_stdout: base_rows, head_stdout: merged_head, base_status: base_code, head_status: merged_status) {
+              Present { value: r } => r
+              Absent =>
+                let evidence = evidence_modules(base_stdout: base_rows, head_stdout: merged_head)
+                match merge_results(run: run, rewritten: names, evidence: evidence, texts: texts) {
+                  MergeRefused { why: why } => shard_refusal(why: why)
+                  Merged { results: proved } =>
+                    let diff = binding_diff(base_stdout: base_rows, head_stdout: merged_head, rows: ambient_name_homes())
+                    let verdict = verdict_from_results(base_stdout: base_rows, head_stdout: merged_head, base_status: base_code, head_status: merged_status, diff: diff,
+                      results: proved + join_modules(base_stdout: base_rows, head_stdout: merged_head, proof: read_proof(modules: [], base_root: base_root, head_root: head_root, prepared: prepared, lex: lex),
+                        modules: diff.unobserved_both_sides |> filter(m => count(evidence |> filter(e => e == m)) == 0)))
+                    let code = verdict_code(r: verdict)
+                    let written = Filesystem.Write(path: dir + "/" + verdict_file(wave: run.wave), content: verdict_text(run: run, texts: texts, exit_code: code))
+                    if written.success { verdict } else { shard_refusal(why: "the verdict could not be written under " + dir) }
+                }
+            }
           }
-        }
       }
+  }
+}
+
+type MergeReceipts
+  = MergeReceiptsRefused { why: String }
+  | MergeReceiptsRead { run: ShardRun, texts: List<String>, base_text: String, merged_head: String, merged_status: Int }
+
+// THE RECEIPT SET, READ AND JUDGED BEFORE ANY CENSUS OR FOLD: the directory listing, the one base receipt this run's key
+// names, and the K shard receipts (count, identity, base id, duplicates, strays). It touches no module text and runs no
+// compiler, so a merge with no receipts refuses 2 in the time it takes to list a directory. The sharded fold above and
+// `binding_diff_merge_preflight` both read it here: one decision, two call sites.
+fn merge_receipts_read(head_root: String, head_sha: String, base_sha: String, instr_rev: String, rewritten_text: String, shards: Int) -> MergeReceipts {
+  let names = rewritten_names(text: rewritten_text)
+  let rewritten = evidence_identity(evidence: names)
+  let key = BaseKey { base_rev: base_sha, instr_rev: instr_rev }
+  let dir = shard_dir(head_root: head_root)
+  let base_path = dir + "/" + base_receipt_file(key: key)
+  let listing = Filesystem.List(path: dir)
+  let entries = if listing.success && (listing.entries != "") { split(s: listing.entries, delimiter: "\n") } else { [] }
+  let base_text = read_text(path: base_path)
+  if !listing.success {
+    MergeReceiptsRefused { why: "the receipt directory " + dir + " could not be listed" }
+  } else {
+    match base_selection_refusal(key: key, listing: entries) {
+      Present { value: why } => MergeReceiptsRefused { why: why }
+      Absent =>
+        match base_receipt_refusal(key: key, text: base_text) {
+          Present { value: why } => MergeReceiptsRefused { why: why }
+          Absent =>
+            let run = ShardRun { head_sha: head_sha, base_id: base_receipt_id(text: base_text), wave: wave_name(rewritten: rewritten), rewritten: rewritten, count: shards }
+            let texts = indices_below(n: shards) |> map(i => read_text(path: dir + "/" + shard_receipt_file(wave: run.wave, index: i, shards: shards)))
+            match merge_head_rows(run: run, base_name: base_receipt_file(key: key), texts: texts, listing: entries) {
+              HeadMergeRefused { why: why } => MergeReceiptsRefused { why: why }
+              HeadMerged { head_stdout: merged_head, head_status: merged_status } =>
+                MergeReceiptsRead { run: run, texts: texts, base_text: base_text, merged_head: merged_head, merged_status: merged_status }
+            }
+        }
+    }
+  }
+}
+
+// THE MERGE'S FIRST QUESTION, asked by the host before it runs anything: the receipt set is whole, or the run refuses 2 now.
+fn merge_preflight_refusal(head_root: String, head_sha: String, base_sha: String, instr_rev: String, rewritten_text: String, shard_mode: String) -> Optional<CliWireResponse> {
+  match parse_shard_mode(text: shard_mode) {
+    ShardMerge { count: k } =>
+      match merge_receipts_read(head_root: head_root, head_sha: head_sha, base_sha: base_sha, instr_rev: instr_rev, rewritten_text: rewritten_text, shards: k) {
+        MergeReceiptsRefused { why: why } => optional_present(value: shard_refusal(why: why))
+        MergeReceiptsRead { run: _, texts: _, base_text: _, merged_head: _, merged_status: _ } => optional_absent()
+      }
+    ShardFull => optional_absent()
+    ShardBase => optional_absent()
+    ShardOf { index: _, count: _ } => optional_absent()
+    ShardMalformed { why: why } => optional_present(value: shard_refusal(why: why))
+  }
+}
+
+fn binding_diff_merge_preflight_refused(head_root: String, head_sha: String, base_sha: String, instr_rev: String, rewritten: String, shard_mode: String) -> Bool {
+  match merge_preflight_refusal(head_root: head_root, head_sha: head_sha, base_sha: base_sha, instr_rev: instr_rev, rewritten_text: rewritten, shard_mode: shard_mode) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn binding_diff_merge_preflight(head_root: String, head_sha: String, base_sha: String, instr_rev: String, rewritten: String, shard_mode: String) -> CliWireResponse {
+  match merge_preflight_refusal(head_root: head_root, head_sha: head_sha, base_sha: base_sha, instr_rev: instr_rev, rewritten_text: rewritten, shard_mode: shard_mode) {
+    Present { value: r } => r
+    Absent => shard_refusal(why: "binding_diff_merge_preflight was asked for a refusal that does not exist")
   }
 }
 

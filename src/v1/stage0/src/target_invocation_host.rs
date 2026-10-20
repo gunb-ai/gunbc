@@ -2041,6 +2041,69 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         Ok(rev) => rev,
         Err(cause) => return unreached(format!("instrument revision: {cause}")),
     };
+    // The merge reads the receipt set first: a merge whose receipts are not whole refuses 2 here, before any worktree,
+    // census or control runs. The reader decides (`binding_diff_merge_preflight`); the host only carries it out.
+    let preflight_args = [
+        (
+            Some("head_root".to_string()),
+            crate::v1_interpreter::Value::Str(
+                cli_run::workspace_root()
+                    .to_string_lossy()
+                    .to_string()
+                    .into(),
+            ),
+        ),
+        (
+            Some("head_sha".to_string()),
+            crate::v1_interpreter::Value::Str(head.clone().into()),
+        ),
+        (
+            Some("base_sha".to_string()),
+            crate::v1_interpreter::Value::Str(merge_base.clone().into()),
+        ),
+        (
+            Some("instr_rev".to_string()),
+            crate::v1_interpreter::Value::Str(instr_rev.clone().into()),
+        ),
+        (
+            Some("rewritten".to_string()),
+            crate::v1_interpreter::Value::Str(rewritten_text.clone().into()),
+        ),
+        (
+            Some("shard_mode".to_string()),
+            crate::v1_interpreter::Value::Str(shard_mode.clone().into()),
+        ),
+    ];
+    match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "binding_diff_merge_preflight_refused",
+        &preflight_args,
+        true,
+    ) {
+        Ok(crate::v1_interpreter::Value::Bool(false)) => {}
+        Ok(crate::v1_interpreter::Value::Bool(true)) => {
+            return match crate::v1_interpreter::run_in_context_with_args(
+                &ctx,
+                "binding_diff_merge_preflight",
+                &preflight_args,
+                true,
+            ) {
+                Ok(value) => reader_standing_outcome(
+                    &ctx,
+                    &value,
+                    label_name,
+                    "binding_diff_merge_preflight",
+                ),
+                Err(cause) => unreached(format!("the merge preflight failed: {cause}")),
+            };
+        }
+        Ok(_) => {
+            return unreached(
+                "binding_diff_merge_preflight_refused did not return a Bool".to_string(),
+            )
+        }
+        Err(cause) => return unreached(format!("the merge preflight failed: {cause}")),
+    }
     // The base receipt covers the roster plus every module of the MERGE-BASE tree that spells a name the wave rows move;
     // it is chosen from git at the merge base alone, never from the head (so one base serves every wave on that revision).
     let population = if shard_mode == "base" {
