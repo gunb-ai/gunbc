@@ -8,17 +8,20 @@ import std.render_repeat_string_bootstrap { repeat_string }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.site.markup { page_render_refusal_prefix }
 import extdeps.languages.css.values {
-  CssLengthUnit, Px, Rem, Ch, CssDecimalLength, css_decimal_length_wire, css_hsl_wire,
+  CssLengthUnit, Px, Rem, Ch, Em, Vw, Percent, CssDecimalLength, css_decimal_length_wire, css_hsl_wire,
   CssFontStack, CssFontFamily, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif,
   GenericMonospace, css_font_stack_wire, DoubleQuote, CssVarRef,
 }
-import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_property_wire, BoxSizing, Background, Color, FontFamily, FontSize, LineHeight, WebkitFontSmoothing, ColorScheme, Margin }
+import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_property_wire, BoxSizing, Background, Color, FontFamily, FontSize, LineHeight, WebkitFontSmoothing, ColorScheme, Margin,
+  AlignItems, BorderBottom, BorderBottomColor, Display, Flex, FlexWrap, FontWeight, Gap, GridTemplateColumns, Height, LetterSpacing,
+  MarginBottom, MarginInline, MarginLeft, MarginTop, MaxWidth, Opacity, PaddingBlock, PaddingTop, TextDecoration, TextTransform, TextWrap, Transition, Width }
 import extdeps.languages.css.complex_selector {
-  SelectorList, ComplexSelector, CompoundSelector, TypeSelector, SimpleSelector, UniversalType, ElementType, PseudoClassPart, PseudoElementPart,
-  selector_list_wire, element_compound,
+  SelectorList, ComplexSelector, CompoundSelector, TypeSelector, SimpleSelector, UniversalType, ElementType, ClassPart, PseudoClassPart, PseudoElementPart,
+  selector_list_wire, element_compound, class_compound,
 }
 import extdeps.languages.css.expression {
-  CssValue, ValIdent, ValNumber, ValLength, ValVar, css_value_wire,
+  CssValue, ValIdent, ValNumber, ValLength, ValTime, ValVar, ValCall, ValOperator, ValSpaceList, ValCommaList, ValFlex,
+  FnClamp, FnMin, FnCalc, FnMinmax, OpSub, Seconds, css_value_wire,
 }
 import gunbc.design.gunb_ai_live_scale {
   LiveMeasure, live_measure_page, live_measure_wide, live_measure_prose, live_measure_title,
@@ -72,6 +75,7 @@ type DeclAlignment = ColumnAligned | Compact
 type SheetItem
   = ItemComment { lines: List<String> }
   | ItemDecls { decls: List<SheetDecl>, alignment: DeclAlignment }
+  | ItemDeclLine { decls: List<SheetDecl> }
   | ItemBlank
 
 // A rule is written either one declaration per line between braces or whole on one line.
@@ -234,7 +238,215 @@ data html_items: List<SheetItem> = [
   ], alignment: Compact },
 ]
 
-data sheet_entries: List<SheetEntry> = [
+fn sheet_len(milli: Int, unit: CssLengthUnit) -> CssValue {
+  ValLength { length: CssDecimalLength { milli: milli, unit: unit } }
+}
+
+fn sheet_rem(milli: Int) -> CssValue {
+  sheet_len(milli: milli, unit: Rem)
+}
+
+fn sheet_space(items: List<CssValue>) -> CssValue {
+  ValSpaceList { items: items }
+}
+
+fn classes_compound(names: List<String>) -> CompoundSelector {
+  CompoundSelector { type_selector: Absent, parts: map(names, n => ClassPart { name: n }) }
+}
+
+fn class_list(name: String) -> SelectorList {
+  single_compound_selector(c: class_compound(name: name))
+}
+
+fn descendant_list(ancestor: CompoundSelector, descendant: CompoundSelector) -> SelectorList {
+  SelectorList { selectors: [ComplexSelector { compounds: [ancestor, descendant] }] }
+}
+
+fn block_rule(selector: SelectorList, items: List<SheetItem>) -> SheetEntry {
+  EntryRule { selector: selector, layout: RuleBlock, items: items }
+}
+
+fn compact_decls(decls: List<SheetDecl>) -> SheetItem {
+  ItemDecls { decls: decls, alignment: Compact }
+}
+
+data font_mono_decl: SheetDecl = sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono"))
+
+data layout_banner: List<String> = ["╔══ LAYOUT ════════════════════════════════════════════════════════"]
+data masthead_banner: List<String> = ["╔══ MASTHEAD ══════════════════════════════════════════════════════"]
+data text_roles_banner: List<String> = ["╔══ TEXT ROLES ════════════════════════════════════════════════════"]
+data masthead_nav_comment: List<String> = ["Top-right nav in the masthead — same mono treatment as the footer"]
+data hero_banner: List<String> = ["╔══ HERO — field-note split (left identity, right prose + install) ═"]
+
+data layout_entries: List<SheetEntry> = [
+  EntryComment { lines: layout_banner },
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "page"), items: [compact_decls(decls: [
+    sheet_expr(property: Width, value: ValCall { function: FnMin, args: [
+      ValCall { function: FnCalc, args: [sheet_space(items: [sheet_len(milli: 100000, unit: Percent), ValOperator { operator: OpSub }, sheet_rem(milli: 2000)])] },
+      sheet_var(name: "measure-page"),
+    ] }),
+    sheet_expr(property: MarginInline, value: ValIdent { ident: "auto" }),
+    sheet_expr(property: PaddingBlock, value: ValCall { function: FnClamp, args: [sheet_rem(milli: 2000), sheet_len(milli: 5000, unit: Vw), sheet_rem(milli: 4000)] }),
+  ])]),
+]
+
+data masthead_entries: List<SheetEntry> = [
+  EntryComment { lines: masthead_banner },
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "masthead"), items: [
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: AlignItems, ident: "center"),
+      sheet_expr(property: Gap, value: sheet_var(name: "gap-sm")),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: MarginBottom, value: sheet_rem(milli: 3500)),
+      sheet_ident(property: FlexWrap, ident: "wrap"),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "mark"), items: [
+    ItemDeclLine { decls: [
+      sheet_expr(property: Width, value: sheet_len(milli: 64000, unit: Px)),
+      sheet_expr(property: Height, value: sheet_len(milli: 64000, unit: Px)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "stone")),
+      sheet_expr(property: Flex, value: sheet_space(items: [ValNumber { milli: 0 }, ValNumber { milli: 0 }, ValIdent { ident: "auto" }])),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "wordmark"), items: [
+    ItemDeclLine { decls: [font_mono_decl, sheet_expr(property: FontSize, value: sheet_rem(milli: 1500))] },
+    compact_decls(decls: [
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 40, unit: Em)),
+      sheet_expr(property: Color, value: sheet_var(name: "warm-white")),
+    ]),
+  ]),
+]
+
+data text_roles_entries: List<SheetEntry> = [
+  EntryComment { lines: text_roles_banner },
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "eyebrow"), items: [
+    ItemDeclLine { decls: [font_mono_decl, sheet_expr(property: FontSize, value: sheet_rem(milli: 620))] },
+    ItemDeclLine { decls: [
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 180, unit: Em)),
+      sheet_ident(property: TextTransform, ident: "uppercase"),
+    ] },
+    compact_decls(decls: [sheet_expr(property: Color, value: sheet_var(name: "stone-faint"))]),
+  ]),
+  inline_rule(selector: single_compound_selector(c: classes_compound(names: ["eyebrow", "right"])), decls: [sheet_ident(property: MarginLeft, ident: "auto")]),
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: masthead_nav_comment },
+  block_rule(selector: class_list(name: "masthead-nav"), items: [
+    compact_decls(decls: [sheet_ident(property: MarginLeft, ident: "auto")]),
+    ItemDeclLine { decls: [font_mono_decl, sheet_expr(property: FontSize, value: sheet_rem(milli: 720))] },
+    compact_decls(decls: [
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 40, unit: Em)),
+      sheet_expr(property: Color, value: sheet_var(name: "stone-faint")),
+    ]),
+  ]),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "masthead-nav"), descendant: element_compound(tag: "a")), items: [compact_decls(decls: [
+    sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
+    sheet_ident(property: TextDecoration, ident: "none"),
+    sheet_expr(property: BorderBottom, value: sheet_space(items: [sheet_len(milli: 1000, unit: Px), ValIdent { ident: "solid" }, ValIdent { ident: "transparent" }])),
+    sheet_expr(property: Transition, value: ValCommaList { items: [
+      sheet_space(items: [ValIdent { ident: "border-color" }, ValTime { milli: 150, unit: Seconds }]),
+      sheet_space(items: [ValIdent { ident: "color" }, ValTime { milli: 150, unit: Seconds }]),
+    ] }),
+  ])]),
+  inline_rule(
+    selector: descendant_list(ancestor: class_compound(name: "masthead-nav"), descendant: CompoundSelector { type_selector: Present { value: ElementType { tag: "a" } }, parts: [PseudoClassPart { name: "hover" }] }),
+    decls: [sheet_expr(property: Color, value: sheet_var(name: "moss")), sheet_ident(property: BorderBottomColor, ident: "currentColor")],
+  ),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "masthead-nav"), descendant: class_compound(name: "sep")), items: [compact_decls(decls: [
+    sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_rem(milli: 550)])),
+    sheet_expr(property: Color, value: sheet_var(name: "stone-faint")),
+    sheet_expr(property: Opacity, value: ValNumber { milli: 550 }),
+  ])]),
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "section-label"), items: [
+    compact_decls(decls: [sheet_ident(property: Display, ident: "block")]),
+    ItemDeclLine { decls: [font_mono_decl, sheet_expr(property: FontSize, value: sheet_rem(milli: 600))] },
+    ItemDeclLine { decls: [
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 180, unit: Em)),
+      sheet_ident(property: TextTransform, ident: "uppercase"),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "stone-faint")),
+      sheet_expr(property: MarginBottom, value: sheet_rem(milli: 650)),
+    ]),
+  ]),
+]
+
+data hero_entries: List<SheetEntry> = [
+  EntryComment { lines: hero_banner },
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "hero-spine"), items: [compact_decls(decls: [
+    sheet_ident(property: Display, ident: "grid"),
+    sheet_expr(property: GridTemplateColumns, value: sheet_space(items: [
+      ValCall { function: FnMinmax, args: [sheet_rem(milli: 21000), ValFlex { milli: 900 }] },
+      ValCall { function: FnMinmax, args: [sheet_rem(milli: 25000), ValFlex { milli: 1000 }] },
+    ])),
+    sheet_expr(property: Gap, value: ValCall { function: FnClamp, args: [sheet_rem(milli: 2000), sheet_len(milli: 5000, unit: Vw), sheet_rem(milli: 4000)] }),
+    sheet_ident(property: AlignItems, ident: "start"),
+    sheet_expr(property: MarginBottom, value: sheet_rem(milli: 2750)),
+  ])]),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "hero-left"), descendant: element_compound(tag: "h1")), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, ValNumber { milli: 0 }, sheet_rem(milli: 850)])),
+      sheet_expr(property: MaxWidth, value: sheet_len(milli: 16500, unit: Ch)),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-sans")),
+      sheet_expr(property: FontWeight, value: ValNumber { milli: 600000 }),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: FontSize, value: ValCall { function: FnClamp, args: [sheet_rem(milli: 2200), sheet_len(milli: 4800, unit: Vw), sheet_rem(milli: 3450)] }),
+      sheet_expr(property: LineHeight, value: ValNumber { milli: 1040 }),
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: -40, unit: Em)),
+      sheet_expr(property: Color, value: sheet_var(name: "warm-white")),
+      sheet_ident(property: TextWrap, ident: "balance"),
+    ]),
+  ]),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "hero-left"), descendant: class_compound(name: "tagline")), items: [
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-sans")),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 1020)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: LineHeight, value: ValNumber { milli: 1450 }),
+      sheet_expr(property: Color, value: sheet_var(name: "stone")),
+      sheet_expr(property: Margin, value: ValNumber { milli: 0 }),
+      sheet_expr(property: MaxWidth, value: sheet_len(milli: 24000, unit: Em)),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "hero-right"), items: [compact_decls(decls: [
+    sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-prose")),
+    sheet_expr(property: PaddingTop, value: sheet_rem(milli: 350)),
+    sheet_ident(property: Display, ident: "grid"),
+    sheet_expr(property: Gap, value: sheet_rem(milli: 1150)),
+  ])]),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "hero-right"), descendant: element_compound(tag: "p")), items: [compact_decls(decls: [
+    sheet_expr(property: Margin, value: ValNumber { milli: 0 }),
+    sheet_expr(property: LineHeight, value: ValNumber { milli: 1700 }),
+    sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
+  ])]),
+  inline_rule(
+    selector: descendant_list(ancestor: class_compound(name: "hero-right"), descendant: element_compound(tag: "strong")),
+    decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })],
+  ),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "hero-right"), descendant: element_compound(tag: "code")), items: [
+    ItemDeclLine { decls: [font_mono_decl, sheet_expr(property: FontSize, value: sheet_len(milli: 880, unit: Em))] },
+    compact_decls(decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white"))]),
+  ]),
+  inline_rule(
+    selector: descendant_list(ancestor: class_compound(name: "hero-right"), descendant: class_compound(name: "install")),
+    decls: [sheet_expr(property: MarginTop, value: sheet_rem(milli: 350))],
+  ),
+]
+
+data reset_base_entries: List<SheetEntry> = [
   EntryComment { lines: header_comment },
   EntryGap { blank_lines: 2 },
   EntryComment { lines: tokens_banner },
@@ -248,7 +460,10 @@ data sheet_entries: List<SheetEntry> = [
   EntryRule { selector: single_compound_selector(c: element_compound(tag: "html")), layout: RuleBlock, items: html_items },
   inline_rule(selector: single_compound_selector(c: element_compound(tag: "body")), decls: [sheet_expr(property: Margin, value: ValNumber { milli: 0 })]),
   inline_rule(selector: single_compound_selector(c: element_compound(tag: "a")), decls: [sheet_ident(property: Color, ident: "inherit")]),
+  EntryGap { blank_lines: 2 },
 ]
+
+data sheet_entries: List<SheetEntry> = concat(concat(reset_base_entries, concat(layout_entries, [EntryGap { blank_lines: 2 }])), concat(concat(masthead_entries, [EntryGap { blank_lines: 2 }]), concat(concat(text_roles_entries, [EntryGap { blank_lines: 2 }]), hero_entries)))
 
 fn value_wire(v: SheetValue) -> String {
   match v {
@@ -319,6 +534,7 @@ fn item_wire(item: SheetItem) -> String {
     ItemBlank => ""
     ItemComment { lines: ls } => comment_wire(lines: ls, indent: 2)
     ItemDecls { decls: ds, alignment: a } => join(map(ds, d => decl_line(d: d, name_column: longest_name(decls: ds), alignment: a, indent: 2)), "\n")
+    ItemDeclLine { decls: ds } => concat(repeat_string(s: " ", n: 2), join(map(ds, d => decl_text(d: d, name_column: 0, alignment: Compact)), " "))
   }
 }
 
@@ -327,6 +543,7 @@ fn inline_item_wire(item: SheetItem) -> String {
     ItemBlank => ""
     ItemComment { lines: ls } => comment_wire(lines: ls, indent: 0)
     ItemDecls { decls: ds, alignment: a } => join(map(ds, d => decl_text(d: d, name_column: longest_name(decls: ds), alignment: a)), " ")
+    ItemDeclLine { decls: ds } => join(map(ds, d => decl_text(d: d, name_column: 0, alignment: Compact)), " ")
   }
 }
 
