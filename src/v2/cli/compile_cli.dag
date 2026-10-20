@@ -26,6 +26,10 @@ import v2.cli.population_verbs { PopulationReport, check_layout, parse_populatio
 import v2.cli.parse_verdict_reuse { parse_verdict_base_read }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population }
+import v2.cli.parse_verdict_invocation {
+  cli_option_compiler, cli_option_reuse_from, cli_option_write_identity, cli_option_receipts,
+  cli_option_source_root
+}
 import v2.cli.repository_layout { repository_storage_layout }
 import gunbc.source_layout_namespaces { layout_namespaces }
 import v2.cli.source_root_bindings {
@@ -316,15 +320,12 @@ type CliParseState
     }
   | CliParseFailed { reason: Symbol, detail: String }
 
-data cli_option_source_root: String = "--source-root"
-
-data cli_option_compiler: String = "--compiler"
-
-data cli_option_write_identity: String = "--write-identity"
-
-data cli_option_receipts: String = "--receipts"
-data cli_option_reuse_from: String = "--reuse-from"
-
+// THE OPTION SPELLINGS MOVED to v2.cli.parse_verdict_invocation, joining the verb spellings that already
+// moved to v2.cli.population_verb_names for the same reason: while they lived here, every consumer that
+// needed a spelling either imported this whole closure or minted a copy -- and one of those copies was
+// the content hash that CERTIFIES the invocation, so a rename here could leave the emitted command and
+// the certifying stamp agreeing with each other and both wrong. This module PARSES them; it no longer
+// owns how they are spelled elsewhere. The parser is a consumer of the declaration, not its authority.
 data cli_option_entry: String = "--entry"
 
 data cli_option_target: String = "--target"

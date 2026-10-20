@@ -9,7 +9,7 @@ import v2.extdeps.languages.dag {
   dag_int_type_binding
 }
 import v2.extdeps.languages.swift { swift_target_model }
-import v2.std.compilers.target_model { ProducedDeclUnwired, PrimitiveRealizationsUnwired, TargetModel }
+import v2.std.compilers.target_model { ProducedDeclUnwired, TargetModel }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_list_has_reason }
 import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -53,7 +53,7 @@ fn swift_produced_decl_node() -> Outcome<Node> {
 
 fn swift_produced_decl_unwired_target() -> TargetModel {
   TargetModel {
-    primitive_realizations: PrimitiveRealizationsUnwired,
+    primitive_realizations: swift_target_model().primitive_realizations,
     produced_decl_support: ProducedDeclUnwired,
     bundle: swift_target_model().bundle,
     lex: swift_target_model().lex,
