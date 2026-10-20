@@ -1275,7 +1275,7 @@ fn rust_coerce_operator_realization_row() -> Node {
   )
 }
 
-// Rust's spelling of std.primitives contracts. Mirrors the frozen v1 `rt_function_registry` (callee = bridge_name,
+// Rust's spelling of std.primitives contracts. The string_length row mirrors the frozen v1 `rt_function_registry` (callee = bridge_name,
 // shared-reference prefix = passes_by_ref, handle wrap = wraps_result). Retirement is the declared frontier
 // rust_primitive_realization_seed_spelling_dissolve_on, enforced meanwhile by the differential witness.
 fn rust_primitive_by_shared_reference_row(head: Symbol) -> TargetPrimitiveRealization {
@@ -1307,8 +1307,12 @@ fn rust_primitive_unlabeled_argument(passing: TargetPrimitiveArgumentPassing) ->
   TargetPrimitiveArgument { label: PrimitiveArgumentUnlabeled, passing: passing }
 }
 
-// The primitives the Swift Protocol closure reaches. to_string and map are spelled in frozen seed Rust outside
-// rt_function_registry and rust_simple_method_specs, so the differential witness covers string_length and join only.
+// The primitives the Swift Protocol closure reaches. string_length and join mirror rt_function_registry and
+// rust_simple_method_specs and are backed by the differential witness. to_string and map do NOT: they are
+// transcribed from the control flow of v1.compiler.emit_rust (the free-call to_string arm and
+// emit_rust_map_method_call), which no table exposes, so the differential witness cannot cover them. Their backing is
+// the emitted-text claims in v2.test.claim.emit.rust_primitive_realization_emit plus the rustc receipt recorded in
+// that file. The map row's `(recv).map(f)` compiles for an Option or iterator receiver and does not for a Vec.
 fn rust_primitive_realization_rows() -> List<TargetPrimitiveRealization> {
   [
     rust_primitive_by_shared_reference_row(head: ^string_length),
@@ -1324,7 +1328,7 @@ fn rust_primitive_realization_rows() -> List<TargetPrimitiveRealization> {
   ]
 }
 
-data rust_primitive_realization_seed_spelling_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the frozen v1 seed no longer reads rt_function_registry and rust_simple_method_specs (extdeps.languages.rust.emit) and no longer special-cases to_string and map in v1_compiler_emit_rust; those rows then dissolve into rust_primitive_realization_rows, and the differential witness v2.test.claim.emit.rust_primitive_seed_differential is deleted with them")
+data rust_primitive_realization_seed_spelling_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the frozen v1 seed no longer reads rt_function_registry and rust_simple_method_specs (extdeps.languages.rust.emit) and no longer carries the control flow in v1.compiler.emit_rust (free-call to_string arm, emit_rust_map_method_call) from which the to_string and map rows were transcribed; those rows then dissolve into rust_primitive_realization_rows, and the differential witness v2.test.claim.emit.rust_primitive_seed_differential is deleted with them")
 
 fn rust_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(rows: [
