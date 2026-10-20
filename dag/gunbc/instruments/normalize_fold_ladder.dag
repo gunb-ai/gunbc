@@ -11,7 +11,12 @@ module gunbc.instruments.normalize_fold_ladder
 // parse_module_prepared) -> normalize (v2.compiler.normalize normalize), and the digest is
 // content_hash of the normalized tree's root (the
 // substrate's structural identity: v2.std.node content_hash, every edge label and atom Symbol folded
-// through content_hash_atom, so two byte-different trees cannot agree on it). THE CORPUS IS BUILT IN
+// through content_hash_atom -- a matching digest is a MATCHING NORMALIZED-ROOT STRUCTURE, not
+// byte-identity: the fold canonicalizes occurrence identity away
+// (canonicalize_node_for_content_hash stamps every node OccurrenceSynthetic) and the probe
+// compares tree.root only, while NormalizedTree carries import_bindings, test_markers,
+// type_declaration_kinds/modifiers, imported_modules and member_declarations beside it.
+// THE CORPUS IS BUILT IN
 // DAG, not read from a committed file, for the ladder's reason (json_parse_ladder.dag): a committed
 // fixture re-differs wherever a byte drifted; a builder re-derives the same bytes on every clone.
 // WHAT THE RUNGS OWE: every rung refuses loudly -- a refused tokenize, parse or normalize returns a
@@ -243,10 +248,14 @@ fn measure_normalize_fold_1x() -> ProcessExit { rung_digest(tag: "measure_1x", t
 fn measure_normalize_fold_2x() -> ProcessExit { rung_digest(tag: "measure_2x", text: nfl_2x_text()) }
 fn measure_normalize_fold_4x() -> ProcessExit { rung_digest(tag: "measure_4x", text: nfl_4x_text()) }
 
-// THE BYTE-IDENTITY CARRIER (wet): the three rungs' structural digests land on disk, one line each.
-// Two binaries over the same instrument owe the same file; a line that differs is normalize
-// producing a different tree, not a rendering that drifted -- content_hash folds every edge label
-// and atom through content_hash_atom (v2.std.node), so no two byte-different trees share a digest.
+// THE STRUCTURAL-DIGEST CARRIER (wet): the three rungs' normalized-root digests land on disk, one
+// line each. Two binaries over the same instrument owe the same file; a line that differs is
+// normalize producing a structurally different root. What a MATCHING digest witnesses is a
+// matching normalized-root STRUCTURE -- node kinds, edge labels, child hashes -- NOT
+// byte-identical normalize output: content_hash folds occurrence identity away (v2.std.node
+// canonicalize_node_for_content_hash -> OccurrenceSynthetic) and this probe reads tree.root
+// only, while NormalizedTree carries import_bindings, test_markers,
+// type_declaration_kinds/modifiers, imported_modules and member_declarations beside it.
 fn ladder_emit_digests() -> ProcessExit {
   let lines = join([
     "1x ", nfl_normalize_digest(text: nfl_1x_text()), "\n",
