@@ -1615,31 +1615,6 @@ fn interpreter_blocking_diagnostic_messages_with_source_indices(
 // kind of citation: the fleet counts what is declared, and a cite to a row nobody declared counts
 // nothing. The debt is the ordinary kind a two-step landing leaves behind -- one exported name with
 // no host caller yet -- and its witness is this branch's own claim rows, which go green only when
-// the cutover commit lands. The gap-intolerant reason: the regenerator's own
-// verify compiles the emitted candidate together with the hand-maintained files copied from the
-// working tree (`copy_hand_maintained_support`), so an exported surface change and its hand-written
-// callers cannot land in one step -- measured REGEN-EXIT=1 when tried, five mirrors reverted.
-// The cutover is the NEXT commit on this branch, after the heal job's mirror commit: the five
-// printing sites and the blocking tally move to the located name, and this name is deleted, leaving
-// one exported renderer. A second heal round then removes this definition from the mirror.
-fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> List<String> {
-  diagnostics
-    |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
-    |> map(d => {
-      let span = diagnostic_to_span(d: d.diagnostic)
-      concat(
-        diagnostic_to_message(d: d.diagnostic),
-        " (",
-        span.file,
-        ":",
-        to_string(value: span.start),
-        "-",
-        to_string(value: span.end),
-        ")"
-      )
-    })
-}
-
 // The SUBJECT is the caller's fact, never this function's. Both arms once hardcoded
 // "v2 self-compile" while the generic compile path reached them, so a user compiling
 // their own fixture was told a compile they never ran had failed -- a false subject

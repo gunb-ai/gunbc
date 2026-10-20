@@ -2767,19 +2767,40 @@ fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
 // self-compile refusal (`compile.dag` `stage0_self_compile_refusal_message`, via
 // `interpreter_blocking_diagnostic_messages_with_source_indices`).
 //
-// SURVIVING LEAVES, with trigger and follow-up -- DESIGN 6b's "it should be, but not now". Four HOST
-// Rust sites still format `{file}:{line}:{col}` themselves (`module_path_index/index.rs`
-// `ModuleBindingRefusal::rendered`, `cli_run.rs` `run_dag_parse_sweep`, `declaration_index.rs`
-// `render_finding`), and five printing call sites (`cli_run/emit_host.rs` x3,
-// `target_invocation_host.rs` x2) still call the lane's 1-arg `interpreter_blocking_diagnostic_messages`,
-// which prints `{file}:{start}-{end}` exactly as it did before this PR. TRIGGER: a host call to
-// `crate::v1_std_core::render_span_location` only compiles once the stage0 MIRROR emitted from this
-// seed carries that function, and mirrors are written by the regenerator, never by hand -- so a host
-// cutover committed before the mirror commit does not build. FOLLOW-UP: the cutover commit lands
-// immediately after the heal job publishes this PR's mirror, moving all nine sites to the emitted
-// function and deleting the 1-arg lane name with it (its last caller is a count-only site). Until
-// then this block is the authority for the SEED's positions and the host sites are exactly as main
-// left them: no site in this PR prints a worse location than it did before.
+// HOST RUST CALLS THIS, IT DOES NOT REIMPLEMENT IT. The breadth census, enumerated rather than
+// summarised: SEVEN host formatters used to compose `{file}:{line}:{col}` in Rust --
+// `module_path_index/index.rs` `ModuleBindingRefusal::rendered`, `cli_run.rs` `run_dag_parse_sweep`,
+// `declaration_index.rs` `render_finding`, `cli_run.rs` `format_error_loc` (the most-used one, 4
+// call sites), `cli_run/entry_resolve.rs`'s qualified-projection census line and its `parse-failed
+// at …` line, and `cli_run/test_marker.rs` `located_parse_refusal`. All seven now call the function
+// emitted from here: four call `render_span_location`, and `run_dag_parse_sweep` /
+// `render_finding` call `render_span_location_in_stream` in the tokeniser, because the caller that
+// holds the file's text can hold the stream -- and the stream is the only thing that can answer
+// 'this file produced no lexeme'. SIX lane calls went through the 1-arg name, which printed raw
+// offsets: five printing sites (`cli_run/emit_host.rs` x3, `target_invocation_host.rs` x2) and one
+// count-only site; all six now pass the `source_indices` they already held to
+// `interpreter_blocking_diagnostic_messages_with_source_indices`, and the 1-arg name is DELETED.
+// What the hand-written formats could not express is the point of the change, not a side effect: a
+// span with no index used to come back as the BARE PATH, which reads as a location with the position
+// missing, and now comes back as the typed `<file>: (no position: <cause>)` naming the file.
+//
+// NOT CONVERTED, named so the census is complete rather than convenient: `bin/diagnostics_witness.rs`
+// `diag_line_col` and `cli_run/required_floor_runner.rs`'s line scan read coordinates in order to
+// COMPARE them against asserted numbers -- they render nothing for a reader, so routing them through
+// a renderer would be the wrong dependency. `main.rs` `render_one_diagnostic` still shows a
+// `byte_to_line_col` + `format!` in the committed copy: `main.rs` is a declared member of
+// `EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES` (`src/v1/05_emit_rust.dag`
+// `emit_main_rs`/`emit_main_diagnostic_fns`, note `emitter_produced_divergent_note`), the regenerator
+// rejects a hand edit to it, and the EMITTER already renders through `render_span_location`;
+// reconciling the committed copy with its emitter is the byte-equality leaf, not this change.
+//
+// WHY THIS COULD NOT LAND IN ONE COMMIT (stated because the ordering is not obvious, and a future
+// reader will otherwise "simplify" it). A host call to `crate::v1_std_core::render_span_location`
+// only compiles once the stage0 MIRROR emitted from this seed carries that function, and mirrors are
+// written by the regenerator, never by hand (DESIGN 5). So the seed edit and its hand-written
+// callers cannot be one commit: tried and measured, the regenerator's own verify fails (REGEN-EXIT=1)
+// because it compiles the emitted candidate against the hand-written files copied from the working
+// tree. The seed lands first, the heal job publishes the mirror, and this commit cuts the host over.
 //
 // The deletion test is
 // dag/test/claim/diagnostic_span_location_rendering_witness.dag: one row reads the lane line and
