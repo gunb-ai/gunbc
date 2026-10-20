@@ -257,8 +257,8 @@ data wire_strict_reader_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "v2.std.node_query", decl_name: "field_default_reading"),
-    reason: "FieldDefault (literal vs source-text vs malformed) is read only by test.claim.decl_facts_field_binder_witness; no production reader distinguishes a literal default from a source-text default yet",
-    dissolution: unbound_dissolution(description: "feature:wire-swift-generator-switch -- the Wire.swift generator emits a field's default from the declared field list, which needs a literal default as a value and refuses a source-text default; that generator is the first production reader of field_default_reading"),
+    reason: "FieldDefault (literal vs malformed) is read only by test.claim.decl_facts_field_binder_witness; no production reader distinguishes a literal default from a malformed one yet",
+    dissolution: unbound_dissolution(description: "feature:wire-swift-generator-switch -- the Wire.swift generator emits a field's default from the declared field list, which needs a literal default as a value and refuses a malformed one; that generator is the first production reader of field_default_reading"),
   ),
 ]
 // B3/B4 POLICY ROWS (rulings B3 admitted arms, B4 admitted values). A row names a wire subject, the
