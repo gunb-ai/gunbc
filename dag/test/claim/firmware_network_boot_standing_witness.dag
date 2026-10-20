@@ -2725,7 +2725,38 @@ test fn an_all_disk_boot_order_with_network_shaped_labels_is_not_ready() -> Bool
         && match b {
              NetworkBootOptionNotSelected =>
                match r {
-                 PointUefiBootNext { service_root: _, boot_option: _, authority: _ } => true
+                 // WHICH OPTION, NOT MERELY WHICH MECHANISM (MEASURED, M6). This arm used to answer
+                 // `true` for any PointUefiBootNext, so dropping the head's KIND gate -- making a disk
+                 // head its own redirect target -- left this test GREEN: the module was telling the
+                 // operator to point BootNext at "0100", an NVMe DISK, and calling it network boot.
+                 // A route name is not the safety property; the bound reference is. So the payload is
+                 // bound and compared, with no catch-all arm.
+                 PointUefiBootNext { service_root: _, boot_option: bo, authority: _ } =>
+                   match bo {
+                     MechanismNameBound {
+                       value: v,
+                       grounded_by: GroundedByBootOptionEnumeration,
+                     } =>
+                       // THE FOLD'S ANSWER ON THIS UNIT, read off the fixture rather than guessed. The
+                       // head is an enumerated, ENABLED DISK, so the classifier excludes it and the
+                       // redirect falls back to the first AVAILABLE network option; this test's
+                       // available list is [HTTP, PXE, DISK] and the fallback preserves that order (the
+                       // same order-dependence the fallback is tested for elsewhere), so it is the HTTP
+                       // reference -- not the disk head, which is what the mutation produces.
+                       v == ref_http()
+                          // THE POINT OF THE CLAIM. Under the mutation that drops the head's KIND gate
+                          // (M6), `redirect_for_head` returns the head as its own target, so this unit
+                          // binds "0100" -- its NVMe disk, per the fixture above -- while still calling
+                          // the route a network-boot redirect. `v == ref_http()` already rejects that,
+                          // and the explicit negation states the hazard in the terms the hazard has: the
+                          // network-boot route must never point BootNext at the disk that is the head.
+                          && v != "0100"
+                     MechanismNameUnbound { owed_read: _ } => false
+                     MechanismNameBound {
+                       value: _,
+                       grounded_by: GroundedByBiosAttributeRead { bios_version: _ },
+                     } => false
+                   }
                  RedfishOneShotOverride { service_root: _, authority: _ } => true
                  IpmiOneShotOverride { channel: _, authority: _ } => true
                  // The persistent authoring route reaching this unit is the defect this whole split
