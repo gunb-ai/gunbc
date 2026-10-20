@@ -1116,6 +1116,7 @@ data deck_entries: List<SheetEntry> = [
   inline_rule(selector: class_list(name: "graph-dot"), decls: [sheet_expr(property: Fill, value: sheet_var(name: "moss")), sheet_ident(property: Stroke, ident: "none")]),
 ]
 
+data footer_comment_0: List<String> = ["╔══ FOOTER ════════════════════════════════════════════════════════"]
 data footer_entries: List<SheetEntry> = [
   EntryComment { lines: footer_comment_0 },
   EntryGap { blank_lines: 1 },
@@ -1150,10 +1151,11 @@ data footer_entries: List<SheetEntry> = [
   ]),
 ]
 
+data media_comment_1: List<String> = ["╔══ MEDIA QUERIES ═════════════════════════════════════════════════"]
 data media_entries: List<SheetEntry> = [
   EntryComment { lines: media_comment_0 },
   EntryGap { blank_lines: 1 },
-  max_width_media(px: 760, rules: [
+  max_width_media(max: CssLength { n: 760, unit: Px }, rules: [
     block_sheet_rule(selector: class_list(name: "hero-spine"), items: [
     compact_decls(decls: [
       sheet_expr(property: GridTemplateColumns, value: ValFlex { milli: 1000 }),
@@ -1163,7 +1165,7 @@ data media_entries: List<SheetEntry> = [
     inline_sheet_rule(selector: descendant_list(ancestor: class_compound(name: "hero-left"), descendant: element_compound(tag: "h1")), decls: [sheet_expr(property: MaxWidth, value: sheet_len(milli: 18000, unit: Ch))]),
   ]),
   EntryGap { blank_lines: 1 },
-  max_width_media(px: 700, rules: [
+  max_width_media(max: CssLength { n: 700, unit: Px }, rules: [
     inline_sheet_rule(selector: class_list(name: "specimen-body"), decls: [sheet_expr(property: GridTemplateColumns, value: ValFlex { milli: 1000 })]),
     block_sheet_rule(selector: class_list(name: "story-ledger"), items: [
     compact_decls(decls: [
@@ -1183,7 +1185,7 @@ data media_entries: List<SheetEntry> = [
   ]),
   ]),
   EntryGap { blank_lines: 1 },
-  max_width_media(px: 480, rules: [
+  max_width_media(max: CssLength { n: 480, unit: Px }, rules: [
     inline_sheet_rule(selector: class_list(name: "masthead"), decls: [sheet_expr(property: MarginBottom, value: sheet_rem(milli: 2500))]),
     inline_sheet_rule(selector: descendant_list(ancestor: class_compound(name: "masthead"), descendant: class_compound(name: "eyebrow")), decls: [sheet_expr(property: MarginLeft, value: ValNumber { milli: 0 }), sheet_expr(property: FlexBasis, value: sheet_len(milli: 100000, unit: Percent))]),
     inline_sheet_rule(selector: class_list(name: "carved-rule"), decls: [sheet_expr(property: Margin, value: sheet_space(items: [sheet_rem(milli: 2000), ValNumber { milli: 0 }]))]),
