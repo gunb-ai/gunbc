@@ -1246,12 +1246,6 @@ fn kernel_ident(name: String) -> AuthoredIdent {
   AuthoredIdent { span: kernel_span(name: name), text: name }
 }
 
-// THE SOURCE AUTHORITY IS THE ARGUMENT. `index` is the tokenized source the span indexes, so there is
-// no lookup that can miss and no fallback to substitute: the slice is total.
-fn authored_text_in(index: NewlineIndex, span: SourceSpan) -> String {
-  source_text_at(index: index, span: span)
-}
-
 fn authored_ident_in(index: NewlineIndex, span: SourceSpan) -> AuthoredIdent {
   AuthoredIdent { span: span, text: source_text_at(index: index, span: span) }
 }
@@ -1290,10 +1284,6 @@ fn authored_ident_refusal_span(refusal: AuthoredIdentRefusal) -> SourceSpan {
 // synthetic spelling of its own structural name.
 fn node_ident(n: Node) -> AuthoredIdent {
   match n.ident_span { Present { value: i } => i  Absent => authored_ident(span: n.span, text: n.name) }
-}
-
-fn optional_string_or_empty(s: String?) -> String {
-  match s { Present { value: v } => v  Absent => "" }
 }
 
 // A named node carries its identity; an unnamed one (empty structural name) has none.
