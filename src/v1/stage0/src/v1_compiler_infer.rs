@@ -17398,10 +17398,21 @@ pub fn sole_constructor_construction_diags(
 pub fn zero_field_variant_tag_reference_frontier_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the seam is deleted and the sites migrate to the carrier.".to_string()
+            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. NARROWED AGAIN 2026-10-20: the waiver is dead for a fieldless arm (no field is owed) and a payload arm written `X {}` is a hollow value, so it is now granted only at the enumerated wire-form functions of v2.std.compilers.target_model (discriminant_payload_arm_wire_site; gunbc.rung_drop discriminant_payload_arm_wire_sites). DISSOLVE-ON: an arm-name capability from a resolved arm, at which point the waiver and that list delete together.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn discriminant_payload_arm_wire_site(module_name: String, caller_decl_name: String) -> bool {
+    ((module_name.clone() == "v2.std.compilers.target_model".to_string())
+        && (((((caller_decl_name.clone()
+            == "target_model_canonical_operation_wire_node".to_string())
+            || (caller_decl_name.clone()
+                == "target_model_canonical_operation_wire_predicate_type".to_string()))
+            || (caller_decl_name.clone() == "canonical_operation_from_wire_node".to_string()))
+            || (caller_decl_name.clone() == "target_model_operator_shape_wire_node".to_string()))
+            || (caller_decl_name.clone() == "target_operator_shape_from_wire_node".to_string())))
 }
 
 pub fn variant_tag_reference_argument_results(
@@ -17410,8 +17421,12 @@ pub fn variant_tag_reference_argument_results(
     results: Rc<Vec<Rc<ArgInferResult>>>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ArgInferResult>>> {
-    if (((func_name.clone() != "discriminant".to_string()) || callee_is_body_binding.clone())
+    if ((((func_name.clone() != "discriminant".to_string()) || callee_is_body_binding.clone())
         || ((results.clone().len() as i64) != 1))
+        || !discriminant_payload_arm_wire_site(
+            scope.module_name.clone(),
+            scope.caller_decl_name.clone(),
+        ))
     {
         results.clone()
     } else {
