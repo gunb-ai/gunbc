@@ -358,6 +358,7 @@ pub struct SymbolIndex {
     pub transparent_alias_rep: Rc<HashMap<String, String>>,
     pub type_head_exposures: Rc<HashMap<String, Rc<TypeHeadExposure>>>,
     pub file_modules: Rc<HashMap<String, String>>,
+    pub generic_declarations_by_file: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     pub module_named_imports: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
 }
 
@@ -374,6 +375,7 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
         transparent_alias_rep: v1_rt::rc_empty_map::<String, String>(),
         type_head_exposures: v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
         file_modules: v1_rt::rc_empty_map::<String, String>(),
+        generic_declarations_by_file: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<Node>>>>(),
         module_named_imports: v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
     })
 }
@@ -715,7 +717,8 @@ pub fn symbol_index_insert(
         let __rb_3_0 = index.transparent_alias_rep.clone();
         let __rb_4_0 = index.type_head_exposures.clone();
         let __rb_5_0 = index.file_modules.clone();
-        let __rb_6_0 = index.module_named_imports.clone();
+        let __rb_6_0 = index.generic_declarations_by_file.clone();
+        let __rb_7_0 = index.module_named_imports.clone();
         let mut __rb_h = index;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -725,7 +728,8 @@ pub fn symbol_index_insert(
                 __rb_r.transparent_alias_rep = __rb_3_0;
                 __rb_r.type_head_exposures = __rb_4_0;
                 __rb_r.file_modules = __rb_5_0;
-                __rb_r.module_named_imports = __rb_6_0;
+                __rb_r.generic_declarations_by_file = __rb_6_0;
+                __rb_r.module_named_imports = __rb_7_0;
             }
             None => {
                 __rb_h = Rc::new(SymbolIndex {
@@ -735,7 +739,8 @@ pub fn symbol_index_insert(
                     transparent_alias_rep: __rb_3_0,
                     type_head_exposures: __rb_4_0,
                     file_modules: __rb_5_0,
-                    module_named_imports: __rb_6_0,
+                    generic_declarations_by_file: __rb_6_0,
+                    module_named_imports: __rb_7_0,
                 });
             }
         }
@@ -766,7 +771,8 @@ pub fn symbol_index_insert_decl(
         let __rb_3_0 = index.transparent_alias_rep.clone();
         let __rb_4_0 = index.type_head_exposures.clone();
         let __rb_5_0 = index.file_modules.clone();
-        let __rb_6_0 = index.module_named_imports.clone();
+        let __rb_6_0 = index.generic_declarations_by_file.clone();
+        let __rb_7_0 = index.module_named_imports.clone();
         let mut __rb_h = index;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -776,7 +782,8 @@ pub fn symbol_index_insert_decl(
                 __rb_r.transparent_alias_rep = __rb_3_0;
                 __rb_r.type_head_exposures = __rb_4_0;
                 __rb_r.file_modules = __rb_5_0;
-                __rb_r.module_named_imports = __rb_6_0;
+                __rb_r.generic_declarations_by_file = __rb_6_0;
+                __rb_r.module_named_imports = __rb_7_0;
             }
             None => {
                 __rb_h = Rc::new(SymbolIndex {
@@ -786,7 +793,8 @@ pub fn symbol_index_insert_decl(
                     transparent_alias_rep: __rb_3_0,
                     type_head_exposures: __rb_4_0,
                     file_modules: __rb_5_0,
-                    module_named_imports: __rb_6_0,
+                    generic_declarations_by_file: __rb_6_0,
+                    module_named_imports: __rb_7_0,
                 });
             }
         }
@@ -814,7 +822,8 @@ pub fn symbol_index_insert_service(
         let __rb_3_0 = index.transparent_alias_rep.clone();
         let __rb_4_0 = index.type_head_exposures.clone();
         let __rb_5_0 = index.file_modules.clone();
-        let __rb_6_0 = index.module_named_imports.clone();
+        let __rb_6_0 = index.generic_declarations_by_file.clone();
+        let __rb_7_0 = index.module_named_imports.clone();
         let mut __rb_h = index;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -824,7 +833,8 @@ pub fn symbol_index_insert_service(
                 __rb_r.transparent_alias_rep = __rb_3_0;
                 __rb_r.type_head_exposures = __rb_4_0;
                 __rb_r.file_modules = __rb_5_0;
-                __rb_r.module_named_imports = __rb_6_0;
+                __rb_r.generic_declarations_by_file = __rb_6_0;
+                __rb_r.module_named_imports = __rb_7_0;
             }
             None => {
                 __rb_h = Rc::new(SymbolIndex {
@@ -834,7 +844,8 @@ pub fn symbol_index_insert_service(
                     transparent_alias_rep: __rb_3_0,
                     type_head_exposures: __rb_4_0,
                     file_modules: __rb_5_0,
-                    module_named_imports: __rb_6_0,
+                    generic_declarations_by_file: __rb_6_0,
+                    module_named_imports: __rb_7_0,
                 });
             }
         }
@@ -3115,6 +3126,7 @@ pub fn type_reference_declaration_reading(
                     } => kernel_or_unidentified(
                         r.clone(),
                         source_indices.clone(),
+                        env.clone(),
                         authored_cause.clone(),
                         Some(resolved_cause.clone()),
                     ),
@@ -3123,6 +3135,7 @@ pub fn type_reference_declaration_reading(
             _ => kernel_or_unidentified(
                 n.clone(),
                 source_indices.clone(),
+                env.clone(),
                 authored_cause.clone(),
                 std::option::Option::None,
             ),
@@ -3137,9 +3150,62 @@ pub fn is_type_variable_name(name: String) -> bool {
         || (name.clone() == "FoldAccumulator".to_string()))
 }
 
+pub fn declaration_encloses_type_parameter(
+    d: Rc<Node>,
+    n: Rc<Node>,
+    parameter: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((((d.span.file.clone() == n.span.file.clone())
+        && (d.span.start.clone() <= n.span.start.clone()))
+        && (n.span.end.clone() <= d.span.end.clone()))
+        && {
+            let mut __found = false;
+            for p in d.params.clone().iter().cloned() {
+                if (crate::v1_std_core::authored_name_at(source_indices.clone(), p.clone())
+                    == parameter.clone())
+                {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        })
+}
+
+pub fn is_declared_type_parameter_of_enclosing_declaration(
+    n: Rc<Node>,
+    parameter: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    match v1_rt::map_get(
+        &env.symbol_index.generic_declarations_by_file.clone(),
+        n.span.file.clone(),
+    ) {
+        Some(declarations) => {
+            let mut __found = false;
+            for d in declarations.iter().cloned() {
+                if declaration_encloses_type_parameter(
+                    d.clone(),
+                    n.clone(),
+                    parameter.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+        std::option::Option::None => false,
+    }
+}
+
 pub fn kernel_or_unidentified(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
     authored: Rc<TypeNodeUnidentifiedCause>,
     resolved: Option<Rc<TypeNodeUnidentifiedCause>>,
 ) -> Rc<TypeReferenceDeclarationReading> {
@@ -3155,8 +3221,12 @@ pub fn kernel_or_unidentified(
                         name: nm.clone(),
                     })
                 } else {
-                    if (is_type_variable_name(nm.clone()) || is_type_variable_name(n.name.clone()))
-                    {
+                    if is_declared_type_parameter_of_enclosing_declaration(
+                        n.clone(),
+                        nm.clone(),
+                        source_indices.clone(),
+                        env.clone(),
+                    ) {
                         Rc::new(TypeReferenceDeclarationReading::TypeReferenceUninstantiatedTypeParameter {
     name: nm.clone(),
 })
