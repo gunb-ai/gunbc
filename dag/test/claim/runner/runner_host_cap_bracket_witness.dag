@@ -17,7 +17,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import std.measure { second, second_count }
 import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
-import gunbc.runner.runner_slot_actuation { SlotActuationNoop, slot_actuation_settled, SlotRead, SlotReadRefused, slot_activation_plan, ActivationSteps, ActivationRefused, ActivationAlreadyActive, SlotActuationOutcome, SlotActivated, SlotActuationRefused, slot_read_outcome_of, slot_activity_of_listing }
+import gunbc.runner.runner_slot_actuation { SlotActuationNoop, slot_actuation_settled, SlotRead, SlotReadRefused, slot_activation_plan, ActivationSteps, ActivationRefused, ActivationAlreadyActive, SlotActuationOutcome, SlotActivated, SlotActuationRefused, slot_actuation_reading_of, SlotReadingTyped, SlotReadingUnknownWord, SlotReadOutcome, slot_activity_of_listing }
 import gunbc.runner.runner_host_cap_bracket {
   AdmissionMaskOnly,
   SlotDrainReading,
@@ -162,6 +162,17 @@ test fn no_readmit_reading_is_not_admitting() -> Bool {
 fn show_masked_with(active: String) -> String { concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\nActiveState=", active, "\n") }
 fn listing_worker() -> String { concat(u(n: "01") as String, " Runner.Worker\n") }
 fn listing_listener_only() -> String { concat(u(n: "01") as String, " Runner.Listener\n") }
+
+fn slot_read_outcome_of(unit: NonEmptyStr, show_stdout: String) -> SlotReadOutcome {
+  match slot_actuation_reading_of(unit: unit, show_stdout: show_stdout) {
+    Absent => SlotReadRefused { reason: "no complete block" }
+    Present { value: res } =>
+      match res {
+        SlotReadingUnknownWord { property: _, raw: _ } => SlotReadRefused { reason: "unknown word" }
+        SlotReadingTyped { reading: rd } => SlotRead { reading: rd }
+      }
+  }
+}
 
 fn projected(active: String, listing: String) -> SlotDrainReading {
   let read = slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: active))
