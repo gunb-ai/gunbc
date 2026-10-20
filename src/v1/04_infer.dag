@@ -14787,10 +14787,28 @@ fn generic_leaf_replacement(n: Node, subst: Map<String, Node>, source_indices: M
 // arguments gone. So a generic bound to such a type, replacing a slot, is put back inside a slot, the
 // construction resolve writes. A bare argument position takes the type itself.
 fn generic_slot_holding(slot: Node, ty: Node) -> Node {
+  let held = generic_type_held(ty: ty)
+  match held.inferred {
+    Absent => held
+    Present { value: _ } => generic_slot_around(slot: slot, held: held)
+  }
+}
+
+// THE SLOT KEEPS ITS OWN IDENTITY: a slot whose payload is substituted is the same position (a field
+// declaration's name, a parameter's), so it is rebuilt around the new payload even when that payload
+// carries no inferred; replacing the position by the bare type would drop the name the position is read by.
+fn generic_slot_around(slot: Node, held: Node) -> Node {
+      Node { occurrence_identity: slot.occurrence_identity, name: slot.name, span: slot.span, ident_span: slot.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: held } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+}
+
+// THE TYPE A SLOT HOLDS IS INSTALLED UNDER EXACTLY ONE SLOT BOUNDARY. A bound type that is itself a slot
+// (childless, inferred Resolved) is read through child_type_node, the projection every consumer of a
+// child position applies, so the slot built around it holds the type and not another slot. An application
+// (it has arguments) is installed as itself: child_type_node would project it to its expansion and drop them.
+fn generic_type_held(ty: Node) -> Node {
   match ty.inferred {
-    Absent => ty
-    Present { value: _ } =>
-      Node { occurrence_identity: slot.occurrence_identity, name: slot.name, span: slot.span, ident_span: slot.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: ty } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+    Present { value: Resolved { node: _ } } => if generic_node_is_bare(n: ty) { child_type_node(ch: ty) } else { ty }
+    _ => ty
   }
 }
 
@@ -14798,10 +14816,9 @@ fn generic_node_is_bare(n: Node) -> Bool {
   n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
 }
 
-// A SLOT IS A CONTAINER AT A CHILD POSITION: when its own parameter is not the generic bound, the
-// application it holds (Box<A>) is substituted and the slot boundary is kept. A bare payload (a type
-// variable or a name) is not walked: replacing it by a bound type that is itself a slot would nest a slot
-// in a slot, which child_type_node reads as the inner slot's name.
+// A SLOT IS A CONTAINER AT A CHILD POSITION: when its own parameter is not the generic bound, the type it
+// holds, whatever its shape (an application Box<A>, a forwarded type variable A), is substituted and
+// re-installed under the one slot boundary.
 fn substitute_generics_child(c: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
   match generic_leaf_replacement(n: c, subst: subst, source_indices: source_indices) {
     Present { value: ty } =>
@@ -14812,10 +14829,10 @@ fn substitute_generics_child(c: Node, subst: Map<String, Node>, source_indices: 
     Absent =>
       match c.inferred {
         Present { value: Resolved { node: rt } } =>
-          if generic_node_is_bare(n: c) && !generic_node_is_bare(n: rt) {
+          if generic_node_is_bare(n: c) {
             let new_rt = substitute_generics_apply(n: rt, subst: subst, source_indices: source_indices)
             if rc_ptr_eq(new_rt, rt) { c }
-            else { Node { occurrence_identity: c.occurrence_identity, name: c.name, span: c.span, ident_span: c.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: new_rt } }, return_cardinality: c.return_cardinality, uses: c.uses, body: c.body, transport: c.transport, properties: c.properties, type_annotation: c.type_annotation, is_self_recursive: c.is_self_recursive, has_non_tail_self_call: c.has_non_tail_self_call, match_pattern: c.match_pattern, module_item_kind: c.module_item_kind, declaration_marker: c.declaration_marker, declaration: c.declaration, expr_data: c.expr_data } }
+            else { generic_slot_around(slot: c, held: generic_type_held(ty: new_rt)) }
           } else { substitute_generics_apply(n: c, subst: subst, source_indices: source_indices) }
         _ => substitute_generics_apply(n: c, subst: subst, source_indices: source_indices)
       }

@@ -50,3 +50,21 @@ data list_slot_source: String = "module probe_list_slot\nimport std.types { Int,
 test fn w_list_slot_takes_the_later_binding() -> Bool {
   refusal_count(source: list_slot_source) == 0
 }
+
+data forwarded_variable_source: String = "module probe_forwarded_variable\nimport std.types { Int, Bool }\nimport std.algebra { empty_map, map_insert }\nfn wrap<A>(a: A) -> Map<String, A> { map_insert(empty_map(), \"k\", a) }\nfn outer<B>(b: B) -> Map<String, B> { wrap(a: b) }\nfn take(m: Map<String, Int>) -> Int { 0 }\nfn p() -> Int { take(m: outer(b: 1)) }\n"
+
+test fn w_forwarded_type_variable_in_a_slot_takes_the_later_binding() -> Bool {
+  refusal_count(source: forwarded_variable_source) == 0
+}
+
+data forwarded_variable_mismatch_source: String = "module probe_forwarded_variable_bad\nimport std.types { Int, Bool }\nimport std.algebra { empty_map, map_insert }\nfn wrap<A>(a: A) -> Map<String, A> { map_insert(empty_map(), \"k\", a) }\nfn outer<B>(b: B) -> Map<String, B> { wrap(a: b) }\nfn take(m: Map<String, Bool>) -> Int { 0 }\nfn p() -> Int { take(m: outer(b: 1)) }\n"
+
+test fn w_forwarded_type_variable_keeps_its_binding_and_refuses_a_mismatch() -> Bool {
+  refusal_count(source: forwarded_variable_mismatch_source) >= 1
+}
+
+data slot_replacement_single_boundary_source: String = "module probe_slot_single_boundary\nimport std.types { Int, Bool }\ntype R { label: Int }\nfn head<T>(xs: List<T>) -> Optional<T> { xs |> first }\nfn lab(xs: List<R>) -> Int {\n  match head(xs: xs) {\n    Present { value: e } => e.label\n    Absent => 0\n  }\n}\n"
+
+test fn w_a_slot_shaped_replacement_is_not_double_wrapped() -> Bool {
+  refusal_count(source: slot_replacement_single_boundary_source) == 0
+}

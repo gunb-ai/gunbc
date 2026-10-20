@@ -25327,32 +25327,52 @@ pub fn generic_leaf_replacement(
 }
 
 pub fn generic_slot_holding(slot: Rc<Node>, ty: Rc<Node>) -> Rc<Node> {
-    match ty.inferred.clone() {
-        std::option::Option::None => ty.clone(),
-        Some(_) => Rc::new(Node {
-            occurrence_identity: slot.occurrence_identity.clone(),
-            name: slot.name.clone(),
-            span: slot.span.clone(),
-            ident_span: slot.ident_span.clone(),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved { node: ty.clone() })),
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        }),
+    {
+        let held = generic_type_held(ty.clone());
+        match held.inferred.clone() {
+            std::option::Option::None => held.clone(),
+            Some(_) => generic_slot_around(slot.clone(), held.clone()),
+        }
+    }
+}
+
+pub fn generic_slot_around(slot: Rc<Node>, held: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: slot.occurrence_identity.clone(),
+        name: slot.name.clone(),
+        span: slot.span.clone(),
+        ident_span: slot.ident_span.clone(),
+        children: Rc::new(vec![]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::Resolved { node: held.clone() })),
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
+        properties: Rc::new(vec![]),
+        type_annotation: std::option::Option::None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
+        expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
+    })
+}
+
+pub fn generic_type_held(ty: Rc<Node>) -> Rc<Node> {
+    match ty.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: _, .. }) => {
+            if generic_node_is_bare(ty.clone()) {
+                crate::v1_compiler_infer_types::child_type_node(ty.clone())
+            } else {
+                ty.clone()
+            }
+        }
+        _ => ty.clone(),
     }
 }
 
@@ -25376,7 +25396,7 @@ pub fn substitute_generics_child(
         },
         std::option::Option::None => match c.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
-                if (generic_node_is_bare(c.clone()) && !generic_node_is_bare(rt.clone())) {
+                if generic_node_is_bare(c.clone()) {
                     {
                         let new_rt = substitute_generics_apply(
                             rt.clone(),
@@ -25386,32 +25406,7 @@ pub fn substitute_generics_child(
                         if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
                             c.clone()
                         } else {
-                            Rc::new(Node {
-                                occurrence_identity: c.occurrence_identity.clone(),
-                                name: c.name.clone(),
-                                span: c.span.clone(),
-                                ident_span: c.ident_span.clone(),
-                                children: Rc::new(vec![]),
-                                connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
-                                inferred: Some(Rc::new(InferredNode::Resolved {
-                                    node: new_rt.clone(),
-                                })),
-                                return_cardinality: c.return_cardinality.clone(),
-                                uses: c.uses.clone(),
-                                body: c.body.clone(),
-                                transport: c.transport.clone(),
-                                properties: c.properties.clone(),
-                                type_annotation: c.type_annotation.clone(),
-                                is_self_recursive: c.is_self_recursive.clone(),
-                                has_non_tail_self_call: c.has_non_tail_self_call.clone(),
-                                match_pattern: c.match_pattern.clone(),
-                                module_item_kind: c.module_item_kind.clone(),
-                                declaration_marker: c.declaration_marker.clone(),
-                                declaration: c.declaration.clone(),
-                                expr_data: c.expr_data.clone(),
-                                ident: None,
-                            })
+                            generic_slot_around(c.clone(), generic_type_held(new_rt.clone()))
                         }
                     }
                 } else {
