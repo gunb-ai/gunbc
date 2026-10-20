@@ -67,3 +67,15 @@ fn opi_report() -> CliWireResponse {
     exit: ExitSuccess
   }
 }
+
+fn opi_alias_report() -> CliWireResponse {
+  CliWirePrintable {
+    bytes: "alias_nominal=" + opi_probe(body: "type Maybe = Optional<Int>\n\nfn f(x: Int?) -> Maybe {\n  x\n}\n")
+      + " | alias_sugar=" + opi_probe(body: "type Maybe = Int?\n\nfn f(x: Int?) -> Maybe {\n  x\n}\n")
+      + " | alias_hole=" + opi_probe(body: "type Maybe = Optional<Int>\n\nfn f() -> Maybe {\n  Present { value: \"s\" }\n}\n")
+      + " | alias_control=" + opi_probe(body: "type Maybe = Optional<Int>\n\nfn f() -> Maybe {\n  Present { value: 1 }\n}\n")
+      + " | planted=" + opi_probe(body: "fn f() -> Int {\n  true\n}\n")
+      + " | END",
+    exit: ExitSuccess
+  }
+}

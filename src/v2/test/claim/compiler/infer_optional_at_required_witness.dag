@@ -56,8 +56,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // to be required.
 //
 // TWO GRAINS, ONE RELATION. The relation-level claims hand declared_type_inhabitance an obligation
-// and read its verdict: the refusal, and beside it every case that must NOT refuse -- the lift
-// (`T` at `T?`), optional at optional, and an optional at a declared type the relation cannot know
+// and read its verdict: the refusal, the implicit lift (`T` at `T?`, also refused), and beside them
+// every case that must NOT refuse -- optional at optional, and an optional at a declared type the relation cannot know
 // to be required (a declaration reference, which may name an alias of an optional). The route
 // claims run source text through the production front end into infer and read the same verdict
 // where a program reaches it: a declared return and a record field.
@@ -192,16 +192,22 @@ test fn oar_an_optional_at_a_required_kernel_type_is_refused_holds() -> Bool {
   oar_refused_optional_at_required(declared: integer_int_type_node(), produced: oar_optional_int(), type_variables: [])
 }
 
-// THE CONTROLS THAT MUST NOT REFUSE. The lift `Int` at `Int?` keeps the counted optional-carrier
-// verdict it had: whether a value inhabits an optional carrier is not decided by the relation.
-test fn oar_the_lift_stays_counted_holds() -> Bool {
-  oar_counted_optional_carrier(declared: oar_optional_int(), produced: integer_int_type_node(), type_variables: [])
+// THE IMPLICIT LIFT IS REFUSED. `Int` at `Int?` does not inhabit: Present { value: x } is the authoring
+// policy (gunbc.design_ruling explicit_present_is_the_authoring_policy), so the relation judges the
+// produced `Int` against the declared payload and still answers no candidate. It was once counted
+// (UndecidableOptionalCarrier), which admitted `String` at `Int?` the same way.
+test fn oar_the_implicit_lift_is_refused_holds() -> Bool {
+  match declared_type_inhabitance(obligation: oar_obligation(declared: oar_optional_int(), produced: integer_int_type_node(), type_variables: [])) {
+    Inhabits { homomorphism: _ } => false
+    InhabitanceRefused { find_witness_reason: r } => r == ^find_witness_reason_no_candidate
+    InhabitanceUndecidable { reason: _ } => false
+  }
 }
 
 // `Int?` at `Int?` is DECIDED, no longer counted: v2.compiler.infer infer_match_generic_formal peels
 // matching Occupancy layers (gunbc#13696, optional depth one std.nat Nat), so equal depth inhabits. The
 // claim formerly asserted the counted frontier here; it is flipped to the decided verdict and keeps a
-// discriminating half, the lift above, which must stay counted.
+// discriminating half, the implicit lift above, which must refuse.
 test fn oar_optional_at_optional_is_decided_by_peeling_holds() -> Bool {
   match declared_type_inhabitance(obligation: oar_obligation(declared: oar_optional_int(), produced: oar_optional_int(), type_variables: [])) {
     Inhabits { homomorphism: _ } => true
@@ -233,13 +239,9 @@ test fn oar_an_optional_at_a_required_record_field_refuses_holds() -> Bool {
   rcf_refuses_with(resolved: oar_resolved_field_bad(), reason: ^inhabitance_optional_produced_at_required_declared)
 }
 
-// THE ROUTE CONTROL: the lift `fn oar_f(x: Int) -> Int? { x }` is still accepted.
-test fn oar_the_lift_is_still_accepted_on_the_route_holds() -> Bool {
-  match rcf_verdict(resolved: oar_resolved_lift()) {
-    RcfInferAccepted { diagnostics: _ } => true
-    RcfInferRefused { diagnostics: _ } => false
-    RcfResolveRefused => false
-  }
+// THE ROUTE RED, IMPLICIT LIFT: `fn oar_f(x: Int) -> Int? { x }` refuses at the declared return.
+test fn oar_the_implicit_lift_is_refused_on_the_route_holds() -> Bool {
+  rcf_refuses_with(resolved: oar_resolved_lift(), reason: ^arrow_body_does_not_inhabit_declared_return)
 }
 
 // SECOND SHAPE, a Bool parameter at an Int field refuses (not an optional: a plain kind mismatch).
