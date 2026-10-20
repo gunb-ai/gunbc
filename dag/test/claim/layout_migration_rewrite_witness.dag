@@ -155,7 +155,7 @@ test fn rewrite_maps_a_wholly_moved_namespace_to_its_successor() -> Bool {
 // note is emitted for the namespace reference, never a guess; the longer run beside it is no
 // namespace and emits nothing. The census stops on an undecided note.
 test fn rewrite_notes_a_namespace_whose_modules_scatter() -> Bool {
-  let unsettled = []
+  let unsettled = [] as List<RunDisposition>
   text_with(dispositions: unsettled, text: "m.n and m.n.zzz") == "m.n and m.n.zzz" && notes_with(dispositions: unsettled, text: "m.n and m.n.zzz") == [note_namespace_unmapped(subject: "m.n")]
 }
 
@@ -177,7 +177,7 @@ test fn rewrite_applies_a_to_disposition_to_a_scattered_directory() -> Bool {
 // The same directory with no disposition is left as written and blocks: a disposition is the only
 // thing that turns the note into a decision.
 test fn rewrite_leaves_an_undisposed_scattered_directory_and_blocks() -> Bool {
-  let unsettled = []
+  let unsettled = [] as List<RunDisposition>
   text_with(dispositions: unsettled, text: "dir dag/m/n/ end") == "dir dag/m/n/ end" && notes_with(dispositions: unsettled, text: "dir dag/m/n/ end") == [note_directory_apart(subject: "dag/m/n")]
 }
 

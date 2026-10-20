@@ -271,7 +271,7 @@ fn stall_cause_boot_progress_probe(boot_progress_none: Bool) -> StallTransitionC
 }
 
 fn stall_causes_from_probe(probe: StallTransitionProbe) -> List<StallTransitionCause> {
-  let causes = []
+  let causes = [] as List<StallTransitionCause>
   let causes = match stall_cause_boot_mode_legacy_probe(mode: probe.boot_override_mode) {
     Present { value: c } => concat(causes, [c])
     Absent => causes

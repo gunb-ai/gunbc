@@ -484,7 +484,8 @@ fn inhabitance_signature_holds_arrow(domain_types: List<Node>, codomain: Node) -
 // applied to one payload. The relation therefore peels the optional layer on the declared side by
 // declaration identity and judges the payload at the payload: an optional produced at an optional
 // compares payloads (`Optional<String>` at `Int?` refuses on String against Int), and a value that is
-// not an optional is the lift, judged against the declared payload. A produced optional layer
+// not an optional is NOT lifted: the authoring policy is explicit Present (gunbc.design_ruling
+// explicit_present_is_the_authoring_policy), so it is judged structurally against the optional and refuses. A produced optional layer
 // against a declared payload that is not an optional is the optional-at-required refusal; a declared
 // payload that is an optional against a produced payload that is not one is a depth mismatch
 // (only the lift from a non-optional spans several layers). This replaces the former
@@ -533,8 +534,7 @@ fn declared_type_inhabitance_optional(obligation: DeclaredTypeObligation) -> Inh
             Absent =>
               declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: produced_payload, carrier: Absent))
           }
-        Absent =>
-          declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: obligation.produced, carrier: obligation.produced_declared_carrier))
+        Absent => declared_type_inhabitance_structural(obligation: obligation)
       }
   }
 }

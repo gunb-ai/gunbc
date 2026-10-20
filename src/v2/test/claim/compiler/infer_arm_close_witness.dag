@@ -60,7 +60,7 @@ fn ers_h() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn h
 fn ers_let_annotated() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn a() -> Int? {\n  let x: Int? = id2(Absent, Absent)\n  x\n}\n")) }
 fn ers_g() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn g() -> Int? {\n  let x = id2(Absent, Absent)\n  x\n}\n")) }
 fn ers_k() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_row(), concat(ers_id2(), "fn keep<T>(a: T, b: T?) -> T? { b }\n\nfn k(c: Cell) -> Row? { keep(c, Absent) }\n"))) }
-fn ers_plain() -> Outcome<ResolvedTree> { ers_assemble(body: "fn plain() -> Int? { 1 }\n") }
+fn ers_plain() -> Outcome<ResolvedTree> { ers_assemble(body: "fn plain() -> Int? { Present { value: 1 } }\n") }
 fn ers_planted() -> Outcome<ResolvedTree> { ers_assemble(body: "fn bad() -> Bool { 1 }\n") }
 
 fn ers_infer_accepted(o: Outcome<ResolvedTree>) -> Bool {

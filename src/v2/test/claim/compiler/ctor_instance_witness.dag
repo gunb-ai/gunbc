@@ -93,7 +93,7 @@ fn ers_error_count(o: Outcome<ResolvedTree>) -> Int {
 }
 
 
-fn ci_plain() -> Outcome<ResolvedTree> { ers_assemble(body: "fn plain() -> Int? { 1 }\n") }
+fn ci_plain() -> Outcome<ResolvedTree> { ers_assemble(body: "fn plain() -> Int? { Present { value: 1 } }\n") }
 fn ci_bare() -> Outcome<ResolvedTree> { ers_assemble(body: "fn a() -> Int? { Absent }\n") }
 fn ci_rigid() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f<T>() -> T? { Absent }\n") }
 fn ci_present() -> Outcome<ResolvedTree> { ers_assemble(body: "fn s() -> Int? { Present { value: \"s\" } }\n") }
