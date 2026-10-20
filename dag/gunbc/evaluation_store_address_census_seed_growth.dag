@@ -15,7 +15,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // fail-closed token-scan over admitted src/v2 so a future host caller cannot hide outside the
 // dag exact arm. Observation of ResolvedCallee edges and of call-form tokens is observation of
 // the seed's compile and tokenize pipeline. There is no substrate representation of
-// resolve_entry_graph_shared, interpreter_blocking_diagnostic_messages, or dag_parse_environment
+// resolve_entry_graph_shared, interpreter_blocking_diagnostic_messages_with_source_indices, or dag_parse_environment
 // tokenize, so a .dag-only re-derivation would be a SECOND detector beside the compiler -- the
 // fork DESIGN section 3 refuses. The instruments therefore call those seed functions.
 //
