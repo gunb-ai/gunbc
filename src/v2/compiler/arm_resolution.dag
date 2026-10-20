@@ -40,6 +40,14 @@ fn arm_resolution_not_declared_diagnostic(arm: Node) -> Diagnostic {
   }
 }
 
+fn arm_resolution_owner_unreadable_diagnostic(arm: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^arm_resolution_reason_owner_path_unreadable,
+    at: node_locus(node: arm),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn arm_resolution_unreadable_diagnostic(arm: Node) -> Diagnostic {
   Diagnostic {
     reason: ^arm_resolution_reason_arm_spelling_unreadable,
@@ -60,7 +68,7 @@ fn resolve_is_arm(owner_path: QualifiedName, owner_type: Node, variants: Node, a
         Absent => outcome_rejected(arm_resolution_not_declared_diagnostic(arm: arm))
         Present { value: payload } =>
           match qualified_name_last_segment(qn: owner_path) {
-            Absent => outcome_rejected(arm_resolution_unreadable_diagnostic(arm: arm))
+            Absent => outcome_rejected(arm_resolution_owner_unreadable_diagnostic(arm: arm))
             Present { value: owner_name } =>
               outcome_accepted(value: ResolvedArm {
                 owner_decl: decl_ref(
