@@ -630,9 +630,17 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
                 function: "claim_coverage_census_exit",
             },
         ),
-        // Registry row for the known-red derivation instrument (mirror of gunbc.instrument_targets
-        // known_red_derivation_binding). This table is hand-maintained -- `heal` never regenerates it --
-        // so a label without a row here exits 2 'no such target' no matter what the .dag registry says.
+        // Second home for a binding `gunbc.instrument_targets` `known_red_derivation_binding` already
+        // owns: this table is hand-maintained -- `heal` never regenerates it -- so a rostered label with
+        // no row here exits 2 'no such target' whatever the .dag registry says. Adding the row is the
+        // only way to make the instrument's label reachable, and it follows the table's existing shape
+        // (the `claim-coverage-census` row is built the same way).
+        // RECEIPT / DEFERRAL for the duplicated mapping: generating this table from
+        // `gunbc.instrument_targets` is the repair, and it is a seed lane rather than this instrument's
+        // lane because it touches every instrument's binding at once. The hand-maintained table is
+        // already under a seed census, so the duplication is tracked rather than invisible: the
+        // `DeclarationRef { decl_name: "instrument_registry" }` row inside
+        // `gunbc.target_invocation_seed_growth` `target_invocation_seed_growth_justification`.
         (
             instrument_label("known-red-derivation"),
             TargetProducer::CliWireProgram {
