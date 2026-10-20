@@ -1,8 +1,8 @@
-module test.claim.claim_coverage_census_s1_live_pairing
+module v2.test.claim.claim_coverage_census_s1_live_pairing
 
 // THE PAIRING CLAIM THAT RUNS THE REAL DISCOVERY (Charter 4 exit census, sunny-ibex-149; warm-wolf-570's GO).
 //
-// WHY IT IS NOT IN `dag/test/claim/claim_coverage_census_s1_witness.dag`: that corpus is pure in a specific
+// WHY IT IS NOT IN `src/v2/test/claim/claim_coverage_census_s1_witness.dag`: that corpus is pure in a specific
 // sense — it injects fixtures, so the fold's LOGIC is decided on data the claim itself supplies. DESIGN 3's
 // pairing obligation needs the opposite here. The carrier row this claim checks is hand-authored `.dag`
 // data, so deleting a claim's fn cannot change the ROW — the only thing that can change is DISCOVERY. A
@@ -27,8 +27,8 @@ module test.claim.claim_coverage_census_s1_live_pairing
 // full-corpus cost is the instrument's own business, measured and reported there.
 
 import std.types { String, Bool }
-import gunbc.claim_coverage_census_s1 { GroundedCover, S1Composed, S1InputsUnread, classifier_member_text }
-import gunbc.claim_coverage_census_s1_live { s1_compose_scoped }
+import v2.workflow.claim_coverage_census_s1 { GroundedCover, S1Composed, S1InputsUnread, classifier_member_text }
+import v2.workflow.claim_coverage_census_s1_live { s1_compose_scoped }
 
 // THE GOVERNED DIRECTORY HOLDING THE PAIRING CLAIM'S FILE, AS A ROOT. The producer's walk takes a file root as one module file (its
 // rule: a listing that fails on something that stats as a file IS a module file), so scoping to this path

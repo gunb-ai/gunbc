@@ -1,9 +1,9 @@
-module gunbc.claim_coverage_census_s1_carriers
+module v2.workflow.claim_coverage_census_s1_carriers
 
 import std.types { String, Bool, List }
 import std.algebra { map_lookup }
 import std.optional { Optional, Absent, Present }
-import gunbc.claim_coverage_census_s1 { ClassifierRow, ClassifierRole, CoverRole, EnrollmentRole, IdentityMember, DeclaredMember, FileMember, ExactMemberMatch, SubstringMemberMatch }
+import v2.workflow.claim_coverage_census_s1 { ClassifierRow, ClassifierRole, CoverRole, EnrollmentRole, IdentityMember, DeclaredMember, FileMember, ExactMemberMatch, SubstringMemberMatch }
 import gunbc.ci.ci_layer_roots { bin_witness_wet_entries, witness_exclusion_frontier }
 import gunbc.witness.witness_deferral_freeze { frozen_path_deferrals }
 import gunbc.explicit_witness_admission { explicit_witness_admissions }

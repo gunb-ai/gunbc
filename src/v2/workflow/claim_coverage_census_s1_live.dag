@@ -1,4 +1,4 @@
-module gunbc.claim_coverage_census_s1_live
+module v2.workflow.claim_coverage_census_s1_live
 
 // THE LIVE COMPOSITION OF THE DISCOVERED UNIVERSE (Charter 4 exit census, sunny-ibex-149).
 //
@@ -82,11 +82,11 @@ import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryAccepted, FloorDiscoveryRefused, FloorDiscoveryWalkState,
   floor_discovery_finalize_source_outcomes, floor_discovery_walk_state_zero
 }
-import gunbc.claim_coverage_census_s1 {
+import v2.workflow.claim_coverage_census_s1 {
   ClaimRow, S1Census, S1Block, S1Composition, S1Composed, S1InputsUnread,
   classify_rows, derive_executed, s1_block, s1_stale_rows, s1_ungrounded_rows, s1_uncovered
 }
-import gunbc.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
+import v2.workflow.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
 
 // The marker channel's accumulator, built by PREPENDING (see `marked_over_files`): `marked` holds the
 // facts it could supply and `unread` the files it could not read with their causes. Both are reported in
@@ -536,7 +536,7 @@ fn s1_head_receipt_line() -> String {
   }
 }
 
-// THE LIVE ENTRY'S BLOCK: the one pure exit policy (`gunbc.claim_coverage_census_s1 s1_block`) applied to
+// THE LIVE ENTRY'S BLOCK: the one pure exit policy (`v2.workflow.claim_coverage_census_s1 s1_block`) applied to
 // what this checkout actually says. Composed here so the fold's unread channel and the standings both pass
 // through the single policy function -- the live entry never decides an exit itself, and a witness never has
 // to read this module to assert one. It takes NO head: the census is a pure function of the tree, and the

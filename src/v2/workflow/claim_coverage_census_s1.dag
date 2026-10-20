@@ -1,4 +1,4 @@
-module gunbc.claim_coverage_census_s1
+module v2.workflow.claim_coverage_census_s1
 
 import std.types { String, Bool, List, Int, Set }
 import std.optional { Optional, Absent, Present }

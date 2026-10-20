@@ -1,11 +1,11 @@
-module test.claim.claim_coverage_census_s1_witness
+module v2.test.claim.claim_coverage_census_s1_witness
 
 // THE DISCOVERED-UNIVERSE CENSUS, WITNESSED (Charter 4 exit census, sunny-ibex-149).
 //
 // The live census (`gunbc.claim_coverage_census_live claim_coverage_census_exit`) reads the checkout and
-// cannot be answered by a test. Its POLICY is pure and injected: `gunbc.claim_coverage_census_s1
+// cannot be answered by a test. Its POLICY is pure and injected: `v2.workflow.claim_coverage_census_s1
 // classify_rows`/`derive_executed` decide standings and executed-by from an injected universe, claim rows,
-// classifier rows and produced identities, and `gunbc.claim_coverage_census_s1_live s1_block` turns a
+// classifier rows and produced identities, and `v2.workflow.claim_coverage_census_s1_live s1_block` turns a
 // composition into printed lines plus an exit. So every arm below -- including all three exits -- is
 // checked over fixtures decided by the same functions the live instrument runs.
 //
@@ -20,7 +20,7 @@ module test.claim.claim_coverage_census_s1_witness
 import std.types { String, Bool, List }
 import std.algebra { string_contains, empty_map, is_empty }
 import std.optional { Absent, Present }
-import gunbc.claim_coverage_census_s1 {
+import v2.workflow.claim_coverage_census_s1 {
   ClaimRow, ClassifierRow, ClassifierRole, CoverRole, EnrollmentRole,
   IdentityMember, DeclaredMember, FileMember,
   ExactMemberMatch, SubstringMemberMatch, classifier_member_text,
@@ -28,14 +28,14 @@ import gunbc.claim_coverage_census_s1 {
   classify_rows, derive_executed, s1_uncovered, s1_census_lines, s1_stamp_head,
   s1_block, S1Standing, S1Held, S1DidNotHold, S1Unread
 }
-import gunbc.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
+import v2.workflow.claim_coverage_census_s1_carriers { s1_all_classifier_rows }
 // THE LIVE MODULE IS IMPORTED DELIBERATELY: a module no claim imports is a module no witness RESOLVES, and
 // that is how its `Cons`-into-a-`List`-field type error survived a green per-file parse sweep (see
 // `a_live_function_resolves_and_names_nothing_for_a_producer_that_names_nothing`). Importing is not
 // READING: the one entry this corpus calls is a pure match over producer variants. The claims that DO read
 // the checkout -- the scoped real-discovery pairing claims -- live in
-// `test.claim.claim_coverage_census_s1_live_pairing_wet_witness`, which states why they cannot live here.
-import gunbc.claim_coverage_census_s1_live { producer_named_identities }
+// `v2.test.claim.claim_coverage_census_s1_live_pairing`, which states why they cannot live here.
+import v2.workflow.claim_coverage_census_s1_live { producer_named_identities }
 import gunbc.target_binding { TargetProducer, RequiredFloorProducer }
 
 // The fixture corpus: two claims of module `m` over `m.dag` and one of module `other` over `other.dag`.
@@ -639,7 +639,7 @@ test fn a_real_rung_drop_member_arrives_under_its_own_drop_carrier() -> Bool {
 
 // THE LIVE MODULE MUST RESOLVE INSIDE THE WITNESS CORPUS, OR IT IS NOT EVIDENCED AT ALL
 // (blocker from bold-badger-676, warm-wolf-570's dispatch). Every claim above injects its own fixture
-// universe, so none of them ever imported `gunbc.claim_coverage_census_s1_live` — and a per-file
+// universe, so none of them ever imported `v2.workflow.claim_coverage_census_s1_live` — and a per-file
 // `v1_src_dag_parse` sweep resolves imports, not bodies, so the module's `if` arms returning a `List` on
 // one branch and a `Cons` (FreeMonoid) on the others were invisible until a real consumer tried to
 // resolve it on BuildBuddy. This claim's ASSERTION is trivial by design; its VALUE is that resolving this

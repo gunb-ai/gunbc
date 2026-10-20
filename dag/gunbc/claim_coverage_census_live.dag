@@ -15,8 +15,8 @@ import gunbc.claim_coverage_census {
   ClaimCoverageHeld, ClaimCoverageDidNotHold,
   claim_coverage, claim_coverage_standing, claim_coverage_receipt_lines,
 }
-import gunbc.claim_coverage_census_s1_live { s1_live_block, s1_head_receipt_line }
-import gunbc.claim_coverage_census_s1 { S1Standing, S1Held, S1DidNotHold, S1Unread, s1_process_exit_code }
+import v2.workflow.claim_coverage_census_s1_live { s1_live_block, s1_head_receipt_line }
+import v2.workflow.claim_coverage_census_s1 { S1Standing, S1Held, S1DidNotHold, S1Unread, s1_process_exit_code }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -61,7 +61,7 @@ fn claim_executors() -> List<ClaimExecutorRow> {
 // over it. The exits compose by taking the worse, and the unread channel outranks a did-not-hold: a census
 // that could not read is not a census that failed, it is a census that cannot answer, and reporting the
 // failure would hide which. The policy is one pure function over an injected composition
-// (`gunbc.claim_coverage_census_s1_live s1_block`), so a witness can assert all three arms over a fixture
+// (`v2.workflow.claim_coverage_census_s1_live s1_block`), so a witness can assert all three arms over a fixture
 // instead of only over whatever the checkout happens to look like.
 // THE WET REASON, from the wet census's own sum. A did-not-hold that lists nothing is not a thing this
 // census can print, so the wording is a property of the arm rather than a string chosen at the call site.
@@ -81,7 +81,7 @@ fn claim_coverage_wet_reason(uncovered: List<UncoveredClaim>) -> String {
 // both censuses complain, both reasons print, since either alone would send the reader to the wrong file.
 //
 // PURE AND INJECTED, which is the other half of why it is a function: the witness asserts all three exits
-// over fixtures (`dag/test/claim/claim_coverage_census_s1_witness.dag`) and, by importing this module,
+// over fixtures (`src/v2/test/claim/claim_coverage_census_s1_witness.dag`) and, by importing this module,
 // resolves every body in it -- the reason an unresolvable module can no longer hide behind a green
 // per-file parse sweep.
 fn claim_coverage_composed_exit(

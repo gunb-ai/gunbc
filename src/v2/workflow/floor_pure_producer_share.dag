@@ -1749,7 +1749,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   // Trigger: `acquisition_test_markers` gains a host-native implementation, so a scoped discovery costs file
   // reads rather than interpreted parses -- SUFFICIENT FOR this claim to fall inside the new-witness budget.
   SingleClaimFillDebtModule {
-    module: "test.claim.claim_coverage_census_s1_live_pairing",
+    module: "v2.test.claim.claim_coverage_census_s1_live_pairing",
     claims: [
       SingleClaimFillDebtClaim { claim: "the_module_real_path_pairing_row_grounds_against_the_real_discovery", standing: ActiveFillDebt }
     ]
