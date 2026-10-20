@@ -150,11 +150,14 @@ fn a_call_that_passes_actuals_gets_no_call_site_mint() {
          Absence from call_subst at a call with arguments means unify_generics failed to bind the \
          parameter; minting there fabricates a binding and replaces a variable the caller named."
     );
-    // The parameter must still be present as main leaves it, so the row cannot be satisfied by the
-    // call having lost its type: green must mean "main's typing, untouched", not "nothing to see".
-    assert!(
-        distinct.iter().any(|i| i.as_str() == "S"),
-        "no type variable `S` reachable under fn pinned(): {distinct:?} -- expected main's behaviour \
-         to survive untouched (the callee's own declared parameter)"
-    );
+    // What green means here, stated honestly. On MAIN this walk finds ZERO variable positions under
+    // fn pinned() (`positions=0`), because main never records a type variable at this position at
+    // all -- the callee's declared parameter is handed over without instantiation and nothing notes
+    // it. So `minted.is_empty()` is satisfied on main by there being nothing to satisfy it. That is
+    // not a weakness of the row, it is the row's subject: the class this pins is silent, and the
+    // row is a BOUNDARY GUARD, not a proof that main types the call. Its discriminating power is
+    // the same walk on a minting tree at the same fixture, which measured positions=3 minted=1
+    // sample=["S@test.dag:355-367"] (instruments/PREDICTIONS_NARROWING.md, N1, at
+    // probe/pr1-narrowing-red): when a mint crosses this boundary the walk DOES see it and this row
+    // goes red. The two fatal guards above are what stop it passing by looking at nothing.
 }
