@@ -5435,6 +5435,21 @@ pub fn equality_admission_refusal_diag(
     }
 }
 
+pub fn equality_operands_never_inhabit_together(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    if product_versus_coproduct_head_mismatch(left.clone(), right.clone(), scope.clone()) {
+        true
+    } else {
+        match nominal_product_inhabitance_refusal(left.clone(), right.clone(), scope.clone()) {
+            Some(_) => true,
+            std::option::Option::None => false,
+        }
+    }
+}
+
 pub fn equality_admission_diags(
     op: BinOp,
     left_typed: Rc<Node>,
@@ -5515,18 +5530,26 @@ pub fn equality_admission_diags(
                             )])
                         }
                     } else {
-                        match equality_operand_admission(
+                        if equality_operands_never_inhabit_together(
                             lt.clone(),
+                            rt.clone(),
                             scope.clone(),
-                            v1_rt::rc_empty_map::<String, bool>(),
-                            0,
                         ) {
-                            Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                                equality_admission_refusal_diag(r.clone(), span.clone()),
+                            Rc::new(vec![type_mismatch_error(
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    lt.clone(),
+                                    source_indices.clone(),
+                                ),
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    rt.clone(),
+                                    source_indices.clone(),
+                                ),
+                                span.clone(),
                                 scope.module_name.clone(),
-                            )]),
-                            std::option::Option::None => match equality_operand_admission(
-                                rt.clone(),
+                            )])
+                        } else {
+                            match equality_operand_admission(
+                                lt.clone(),
                                 scope.clone(),
                                 v1_rt::rc_empty_map::<String, bool>(),
                                 0,
@@ -5535,8 +5558,19 @@ pub fn equality_admission_diags(
                                     equality_admission_refusal_diag(r.clone(), span.clone()),
                                     scope.module_name.clone(),
                                 )]),
-                                std::option::Option::None => Rc::new(vec![]),
-                            },
+                                std::option::Option::None => match equality_operand_admission(
+                                    rt.clone(),
+                                    scope.clone(),
+                                    v1_rt::rc_empty_map::<String, bool>(),
+                                    0,
+                                ) {
+                                    Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                        equality_admission_refusal_diag(r.clone(), span.clone()),
+                                        scope.module_name.clone(),
+                                    )]),
+                                    std::option::Option::None => Rc::new(vec![]),
+                                },
+                            }
                         }
                     }
                 }
@@ -13941,7 +13975,7 @@ Rc::new(InferResult {
                                 }
                             }
                         };
-                        let arg_infer_results = payload_arm_tag_reference_waiver_results(
+                        let arg_infer_results = variant_tag_reference_argument_results(
                             func_name.clone(),
                             crate::v1_compiler_infer_sigs::call_target_is_locally_bound(
                                 call_target.clone(),
@@ -17517,22 +17551,13 @@ pub fn sole_constructor_construction_diags(
 pub fn zero_field_variant_tag_reference_frontier_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15; REPLACED 2026-10-20): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its tag without materializing a value. The corpus-wide seam that sanctioned it was measured dead for zero-field arms (the field wall never fires on them) and live only for payload arms, where the literal is a HOLLOW value. It is now the enumerated waiver payload_arm_tag_reference_waiver_results over payload_arm_tag_reference_waiver_sites (gunbc.rung_drop payload_arm_tag_reference_hollow_value); a hollow payload-arm literal at `discriminant` in any other module refuses with one MissingField per owed field. DISSOLVE-ON: an arm-name capability from a resolved arm, at which point the function, the list and the row are deleted together.".to_string()
+            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the seam is deleted and the sites migrate to the carrier.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn payload_arm_tag_reference_waiver_sites() -> Rc<Vec<String>> {
-    thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["v2.std.compilers.target_model.AlgebraPrimitive".to_string(), "v2.std.compilers.target_model.AlgebraInverseCompose".to_string(), "v2.std.compilers.target_model.OrderingComparison".to_string(), "v2.std.compilers.target_model.EqualityComparison".to_string(), "v2.std.compilers.target_model.CoercionCrossing".to_string(), "v2.std.compilers.target_model.InfixToken".to_string(), "v2.std.compilers.target_model.PrefixToken".to_string(), "v2.std.compilers.target_model.CallIdent".to_string(), "v2.std.compilers.target_model.MethodIdent".to_string(), "probe_floor_tag_ref_seam.Fielded".to_string(), "vtag.Fielded".to_string()])
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
-}
-
-pub fn payload_arm_tag_reference_waiver_results(
+pub fn variant_tag_reference_argument_results(
     func_name: String,
     callee_is_body_binding: bool,
     results: Rc<Vec<Rc<ArgInferResult>>>,
@@ -17558,29 +17583,8 @@ pub fn payload_arm_tag_reference_waiver_results(
                                     scope.type_env.source_indices.clone(),
                                 ) {
                                     Some(tn) => {
-                                        if ((variant_owner_node(scope.clone(), tn.clone())
+                                        if (variant_owner_node(scope.clone(), tn.clone())
                                             != std::option::Option::None)
-                                            && {
-                                                let mut __found = false;
-                                                for w in payload_arm_tag_reference_waiver_sites()
-                                                    .iter()
-                                                    .cloned()
-                                                {
-                                                    if (w.clone()
-                                                        == v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                scope.module_name.clone(),
-                                                                ".".to_string(),
-                                                            ),
-                                                            tn.clone(),
-                                                        ))
-                                                    {
-                                                        __found = true;
-                                                        break;
-                                                    }
-                                                }
-                                                __found
-                                            })
                                         {
                                             Rc::new(ArgInferResult {
                                                 typed_arg: air.typed_arg.clone(),
@@ -25465,242 +25469,120 @@ pub fn substitute_generics(
     }
 }
 
-pub fn generic_leaf_replacement(
-    n: Rc<Node>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
-            match v1_rt::map_get(&subst, tv_id.clone()) {
-                Some(c) => {
-                    if (type_node_label(c.clone(), source_indices.clone()) == tv_id.clone()) {
-                        std::option::Option::None
-                    } else {
-                        Some(crate::v1_std_core::preserve_outer_optional_cardinality(
-                            n.clone(),
-                            c.clone(),
-                        ))
-                    }
-                }
-                std::option::Option::None => std::option::Option::None,
-            }
-        }
-        _ => {
-            if ((((n.children.clone().len() as i64) == 0)
-                && (n.connective.clone() == Connective::NoConnective))
-                && ((n.params.clone().len() as i64) == 0))
-            {
-                match v1_rt::map_get(&subst, type_node_label(n.clone(), source_indices.clone())) {
-                    Some(c) => Some(crate::v1_std_core::preserve_outer_optional_cardinality(
-                        n.clone(),
-                        c.clone(),
-                    )),
-                    std::option::Option::None => std::option::Option::None,
-                }
-            } else {
-                std::option::Option::None
-            }
-        }
-    }
-}
-
-pub fn generic_slot_holding(slot: Rc<Node>, ty: Rc<Node>) -> Rc<Node> {
-    {
-        let held = generic_type_held(ty.clone());
-        match held.inferred.clone() {
-            std::option::Option::None => held.clone(),
-            Some(_) => generic_slot_around(slot.clone(), held.clone()),
-        }
-    }
-}
-
-pub fn generic_slot_around(slot: Rc<Node>, held: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: slot.occurrence_identity.clone(),
-        name: slot.name.clone(),
-        span: slot.span.clone(),
-        ident_span: slot.ident_span.clone(),
-        children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::Resolved { node: held.clone() })),
-        return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
-        body: std::option::Option::None,
-        transport: std::option::Option::None,
-        properties: Rc::new(vec![]),
-        type_annotation: std::option::Option::None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-        declaration_marker: DeclarationMarker::Unmarked,
-        declaration: std::option::Option::None,
-        expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
-    })
-}
-
-pub fn generic_type_held(ty: Rc<Node>) -> Rc<Node> {
-    match ty.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: _, .. }) => {
-            if generic_node_is_bare(ty.clone()) {
-                crate::v1_compiler_infer_types::child_type_node(ty.clone())
-            } else {
-                ty.clone()
-            }
-        }
-        _ => ty.clone(),
-    }
-}
-
-pub fn generic_node_is_bare(n: Rc<Node>) -> bool {
-    ((((n.children.clone().len() as i64) == 0)
-        && (n.connective.clone() == Connective::NoConnective))
-        && ((n.params.clone().len() as i64) == 0))
-}
-
-pub fn substitute_generics_child(
-    c: Rc<Node>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    match generic_leaf_replacement(c.clone(), subst.clone(), source_indices.clone()) {
-        Some(ty) => match c.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: _, .. }) => {
-                generic_slot_holding(c.clone(), ty.clone())
-            }
-            _ => ty.clone(),
-        },
-        std::option::Option::None => match c.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => {
-                if generic_node_is_bare(c.clone()) {
-                    {
-                        let new_rt = substitute_generics_apply(
-                            rt.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        );
-                        if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
-                            c.clone()
-                        } else {
-                            generic_slot_around(c.clone(), generic_type_held(new_rt.clone()))
-                        }
-                    }
-                } else {
-                    substitute_generics_apply(c.clone(), subst.clone(), source_indices.clone())
-                }
-            }
-            _ => substitute_generics_apply(c.clone(), subst.clone(), source_indices.clone()),
-        },
-    }
-}
-
 pub fn substitute_generics_apply(
     n: Rc<Node>,
     subst: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    match generic_leaf_replacement(n.clone(), subst.clone(), source_indices.clone()) {
-        Some(ty) => ty.clone(),
-        std::option::Option::None => {
-            if generic_node_is_bare(n.clone()) {
-                n.clone()
-            } else {
-                substitute_generics_walk(n.clone(), subst.clone(), source_indices.clone())
-            }
-        }
-    }
-}
-
-pub fn substitute_generics_walk(
-    n: Rc<Node>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    {
-        let is_type_variable_node = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: _, .. }) => true,
-            _ => false,
-        };
-        if is_type_variable_node.clone() {
-            n.clone()
-        } else {
-            {
-                let new_children = Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.children.clone().iter().cloned() {
-                        __result.push(substitute_generics_child(
-                            c.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        ));
-                    }
-                    __result
-                });
-                let new_params = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in n.params.clone().iter().cloned() {
-                        __result.push(substitute_generics_apply(
-                            p.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        ));
-                    }
-                    __result
-                });
-                let new_inferred = match n.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: rt, .. }) => {
-                        let new_rt = substitute_generics_apply(
-                            rt.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        );
-                        if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
-                            n.inferred.clone()
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
+                match v1_rt::map_get(&subst, tv_id.clone()) {
+                    Some(c) => {
+                        if (type_node_label(c.clone(), source_indices.clone()) == tv_id.clone()) {
+                            n.clone()
                         } else {
-                            Some(Rc::new(InferredNode::Resolved {
-                                node: new_rt.clone(),
-                            }))
+                            crate::v1_std_core::preserve_outer_optional_cardinality(
+                                n.clone(),
+                                c.clone(),
+                            )
                         }
                     }
-                    _ => n.inferred.clone(),
-                };
-                if ((v1_rt::rc_vec_ptr_eq(new_children.clone(), n.children.clone())
-                    && v1_rt::rc_vec_ptr_eq(new_params.clone(), n.params.clone()))
-                    && (new_inferred.clone() == n.inferred.clone()))
-                {
-                    n.clone()
+                    std::option::Option::None => n.clone(),
+                }
+            }
+            _ => {
+                let nm = type_node_label(n.clone(), source_indices.clone());
+                let is_bare = ((((n.children.clone().len() as i64) == 0)
+                    && (n.connective.clone() == Connective::NoConnective))
+                    && ((n.params.clone().len() as i64) == 0));
+                if is_bare.clone() {
+                    match v1_rt::map_get(&subst, nm.clone()) {
+                        Some(c) => crate::v1_std_core::preserve_outer_optional_cardinality(
+                            n.clone(),
+                            c.clone(),
+                        ),
+                        std::option::Option::None => n.clone(),
+                    }
                 } else {
-                    Rc::new(Node {
-                        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                        name: n.name.clone(),
-                        span: n.span.clone(),
-                        ident_span: n.ident_span.clone(),
-                        children: new_children.clone(),
-                        connective: n.connective.clone(),
-                        params: new_params.clone(),
-                        inferred: new_inferred.clone(),
-                        return_cardinality: n.return_cardinality.clone(),
-                        uses: n.uses.clone(),
-                        body: n.body.clone(),
-                        transport: n.transport.clone(),
-                        properties: n.properties.clone(),
-                        type_annotation: n.type_annotation.clone(),
-                        is_self_recursive: n.is_self_recursive.clone(),
-                        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                        match_pattern: n.match_pattern.clone(),
-                        module_item_kind: n.module_item_kind.clone(),
-                        declaration_marker: n.declaration_marker.clone(),
-                        declaration: n.declaration.clone(),
-                        expr_data: n.expr_data.clone(),
-                        ident: None,
-                    })
+                    {
+                        let new_children = Rc::new({
+                            let mut __result = Vec::new();
+                            for c in n.children.clone().iter().cloned() {
+                                __result.push(substitute_generics_apply(
+                                    c.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        });
+                        let new_params = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in n.params.clone().iter().cloned() {
+                                __result.push(substitute_generics_apply(
+                                    p.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        });
+                        let new_inferred = match n.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: rt, .. }) => {
+                                let new_rt = substitute_generics_apply(
+                                    rt.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                );
+                                if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
+                                    n.inferred.clone()
+                                } else {
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: new_rt.clone(),
+                                    }))
+                                }
+                            }
+                            _ => n.inferred.clone(),
+                        };
+                        if ((v1_rt::rc_vec_ptr_eq(new_children.clone(), n.children.clone())
+                            && v1_rt::rc_vec_ptr_eq(new_params.clone(), n.params.clone()))
+                            && (new_inferred.clone() == n.inferred.clone()))
+                        {
+                            n.clone()
+                        } else {
+                            Rc::new(Node {
+                                occurrence_identity: Rc::new(
+                                    NodeOccurrenceIdentity::OccurrenceSynthetic,
+                                ),
+                                name: n.name.clone(),
+                                span: n.span.clone(),
+                                ident_span: n.ident_span.clone(),
+                                children: new_children.clone(),
+                                connective: n.connective.clone(),
+                                params: new_params.clone(),
+                                inferred: new_inferred.clone(),
+                                return_cardinality: n.return_cardinality.clone(),
+                                uses: n.uses.clone(),
+                                body: n.body.clone(),
+                                transport: n.transport.clone(),
+                                properties: n.properties.clone(),
+                                type_annotation: n.type_annotation.clone(),
+                                is_self_recursive: n.is_self_recursive.clone(),
+                                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                                match_pattern: n.match_pattern.clone(),
+                                module_item_kind: n.module_item_kind.clone(),
+                                declaration_marker: n.declaration_marker.clone(),
+                                declaration: n.declaration.clone(),
+                                expr_data: n.expr_data.clone(),
+                                ident: None,
+                            })
+                        }
+                    }
                 }
             }
         }
-    }
+    })
 }
 
 pub fn kernel_span(name: String) -> Rc<SourceSpan> {

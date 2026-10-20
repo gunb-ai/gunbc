@@ -68,6 +68,7 @@ import gunbc.guarantee_stall.algebra_application_owner_resolution_stall { algebr
 import gunbc.guarantee_stall.algebra_expansion_positional_argument_stall { algebra_expansion_positional_argument_stall }
 import gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall { generic_lambda_parameter_receiver_evidence_stall }
 import gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall { argument_shape_undecided_at_a_declared_position_stall }
+import gunbc.guarantee_stall.infer_checking_mode_expected_red_pair_stall { infer_checking_mode_expected_red_pair_stall }
 import gunbc.guarantee_stall.information_retrieval_transport_cannot_report_status_stall { information_retrieval_transport_cannot_report_status_stall }
 import gunbc.guarantee_stall.module_cited_only_in_annotation_prose_stall { module_cited_only_in_annotation_prose_stall }
 import gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall { joint_claim_join_private_corpus_unindexed_stall }
@@ -257,6 +258,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   authored_record_field_list_standing_for_type_population_stall,
   native_step_trip_awaits_fleet_job_cgroup_stall,
   compute_cold_reserve_durable_commit_stall,
+  infer_checking_mode_expected_red_pair_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
