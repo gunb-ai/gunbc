@@ -34,7 +34,14 @@ import gunbc.ensure { EnsureObserveOnly }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerGroupWritableSetgid, srv1_dashboard_service_principal }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name }
-import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, owned_directory_path }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget,
+  OwnedDirectoryDeclared,
+  OwnedDirectoryGroupAdoption,
+  ForeignOwnershipRefuses,
+  SameUserRegroupToDeclaredGroup,
+  owned_directory_path,
+}
 import gunbc.deployment_risk {
   DeploymentId,
   DeploymentRiskClass,
@@ -1739,6 +1746,22 @@ fn dashboard_instance_worker_writable_mode(instance: HostDashboardInstance, stag
   }
 }
 
+// THE GROUP-REGROUP POSTURE FOR A DIRECTORY THE WORKER WRITES, declared beside the owner just above so
+// the fact that creates the mismatch and the posture that repairs it are read together. The SAME
+// `instance.worker` discriminator that groups these directories to the shared attempt group (which is
+// exactly why a pre-existing briansrls:briansrls directory fails the historical both-match test) is the
+// one that authorizes re-grouping it back: for a dedicated worker a directory the service user already
+// owns may be re-grouped to the target's declared group, and for the staged arm (prod, WorkerIsServiceUser)
+// the posture is ForeignOwnershipRefuses -- the historical "ownership is never adopted", so prod is
+// untouched (WorkerIsServiceUser). The group it may move to is always the target's OWN declared group
+// (owned_directory_owner(t).group, named by the install), never an observed one.
+fn dashboard_instance_worker_writable_group_adoption(instance: HostDashboardInstance) -> OwnedDirectoryGroupAdoption {
+  match instance.worker {
+    WorkerIsServiceUser => ForeignOwnershipRefuses
+    WorkerDedicatedAccount => SameUserRegroupToDeclaredGroup
+  }
+}
+
 data dashboard_attempt_state_member: NonEmptyStr = "attempt-state-root" as NonEmptyStr
 
 fn dashboard_instance_dispatch_worktree_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
@@ -1751,6 +1774,7 @@ fn dashboard_instance_dispatch_worktree_directory(instance: HostDashboardInstanc
     },
     owner: dashboard_instance_worker_writable_owner(instance: instance),
     mode: dashboard_instance_worker_writable_mode(instance: instance, staged: DirectoryOwnerAllEveryoneTraverse),
+    group_adoption: dashboard_instance_worker_writable_group_adoption(instance: instance),
   }
 }
 
@@ -1769,6 +1793,7 @@ fn dashboard_instance_private_directory(instance: HostDashboardInstance, member:
     path: dashboard_instance_child(root: instance.instance_root, child: child),
     owner: instance.directory_owner,
     mode: DirectoryOwnerOnly,
+    group_adoption: ForeignOwnershipRefuses,
   }
 }
 
@@ -1780,6 +1805,7 @@ fn dashboard_instance_shared_directory(instance: HostDashboardInstance, member: 
     path: dashboard_instance_child(root: instance.instance_root, child: child),
     owner: instance.directory_owner,
     mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
   }
 }
 
@@ -1795,6 +1821,7 @@ fn dashboard_instance_dispatch_attempt_state_directory(instance: HostDashboardIn
     },
     owner: dashboard_instance_worker_writable_owner(instance: instance),
     mode: dashboard_instance_worker_writable_mode(instance: instance, staged: DirectoryOwnerOnly),
+    group_adoption: dashboard_instance_worker_writable_group_adoption(instance: instance),
   }
 }
 
@@ -1816,6 +1843,7 @@ fn dashboard_instance_provider_state_directory(instance: HostDashboardInstance) 
     path: dashboard_instance_provider_state_root(instance: instance),
     owner: dashboard_instance_worker_writable_owner(instance: instance),
     mode: dashboard_instance_worker_writable_mode(instance: instance, staged: DirectoryOwnerAllEveryoneTraverse),
+    group_adoption: dashboard_instance_worker_writable_group_adoption(instance: instance),
   }
 }
 
@@ -1862,6 +1890,7 @@ fn dashboard_instance_worker_git_directories(instance: HostDashboardInstance) ->
       path: dashboard_instance_child(root: instance.repo_root, child: child as String),
       owner: dashboard_instance_worker_writable_owner(instance: instance),
       mode: DirectoryOwnerGroupWritableSetgid,
+      group_adoption: dashboard_instance_worker_writable_group_adoption(instance: instance),
     })
   }
 }
@@ -2621,6 +2650,7 @@ fn dashboard_instance_inbox_directories(instance: HostDashboardInstance) -> List
         path: dashboard_inbox_under(root: instance.instance_root),
         owner: instance.directory_owner,
         mode: DirectoryOwnerAllEveryoneTraverse,
+        group_adoption: ForeignOwnershipRefuses,
       },
     ]
   }

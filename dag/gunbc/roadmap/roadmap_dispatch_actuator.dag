@@ -3150,6 +3150,7 @@ fn dispatch_attempt_worker_git_entry_directories(instance: HostDashboardInstance
         path: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree) as String as FilePath,
         owner: dashboard_instance_worker_writable_owner(instance: instance),
         mode: DirectoryOwnerGroupWritableSetgid,
+        group_adoption: dashboard_instance_worker_writable_group_adoption(instance: instance),
       },
     ]
   }

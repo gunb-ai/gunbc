@@ -2337,7 +2337,7 @@ fn owned_directory_target_fragments(t: OwnedDirectoryTarget) -> List<HostScriptF
       host_script_member_refused(member: member, cause: reason, command: concat(owned_directory_unplannable_poison, reason))
     EnsurePlanAvailable { plan } =>
       match t {
-        OwnedDirectoryDeclared { member: _, path: _, owner: _, mode: _ } =>
+        OwnedDirectoryDeclared { member: _, path: _, owner: _, mode: _, group_adoption: _ } =>
           host_script_member_proceed(
             member: member,
             mutate_steps: [deploy_raw(command: shell_privileged_command_text_of_argv(argv: owned_directory_install_argv(plan: plan)))],

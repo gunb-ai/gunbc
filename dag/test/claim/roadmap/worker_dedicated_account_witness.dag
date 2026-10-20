@@ -20,7 +20,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_worker_user,
   HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
   dashboard_instance_dispatch_worktree_directory, dashboard_instance_dispatch_attempt_state_directory,
-  dashboard_instance_provider_state_directory, dashboard_instance_worker_git_directories,
+  dashboard_instance_provider_state_directory, dashboard_instance_provider_state_root, dashboard_instance_worker_git_directories,
   dashboard_git_worker_unwritable_children, dashboard_git_worker_local_config_keys,
   dashboard_git_worker_directory_children, dashboard_git_worktrees_child,
   dashboard_instance_worker_git_subtree_migration,
@@ -47,7 +47,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_worker_git_entry_directories, dispatch_attempt_worker_git_entry_migration,
   dispatch_repository_shared_posture_commands, dispatch_attempt_private_git_dir,
   dispatch_worker_unit_properties, dispatch_attempt_state_path_for_instance,
-  dispatch_attempt_worker_log_path_for_instance,
+  dispatch_attempt_worker_log_path_for_instance, dispatch_codex_home,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
@@ -101,14 +101,14 @@ fn admits_user(instance: HostDashboardInstance, user: NonEmptyStr) -> Bool {
 
 fn declared_owner_group(t: OwnedDirectoryTarget) -> String {
   match t {
-    OwnedDirectoryDeclared { member: _, path: _, owner, mode: _ } => owner.group as String
+    OwnedDirectoryDeclared { member: _, path: _, owner, mode: _, group_adoption: _} => owner.group as String
     OwnedDirectoryManaged { directory: _ } => ""
   }
 }
 
 fn declared_mode_octal(t: OwnedDirectoryTarget) -> String {
   match t {
-    OwnedDirectoryDeclared { member: _, path: _, owner: _, mode } => declared_directory_mode_octal(m: mode)
+    OwnedDirectoryDeclared { member: _, path: _, owner: _, mode, group_adoption: _} => declared_directory_mode_octal(m: mode)
     OwnedDirectoryManaged { directory: _ } => ""
   }
 }
@@ -149,6 +149,23 @@ test fn the_lab_attempt_directories_are_shared_with_the_worker() -> Bool {
     && declared_mode_octal(t: dashboard_instance_dispatch_attempt_state_directory(instance: lab)) == declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid)
 }
 
+// THE PROVIDER-CREDENTIAL DIRECTORY IS THE ATTEMPT'S HOME, AND ITS MODE KEEPS OTHERS OUT (the security
+// reading bright-moth-475 asked me to confirm FROM THE MODEL): a dedicated-worker attempt runs the
+// provider with HOME = the provider-state directory -- dispatch_codex_home is the same authority the
+// instance's provider-state root resolves to -- so the worker must be able to read it (it is the
+// provider's own auth/config/session state), and grouping it to the shared attempt group is required,
+// not incidental. The declared mode is DirectoryOwnerGroupWritableSetgid (02770): owner rwx, group rwx,
+// NO other bits -- so the regroup hands the attempt group access and nothing to any other account.
+test fn the_provider_credential_directory_is_the_attempt_home_and_admits_only_the_group() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let provider_dir = dashboard_instance_provider_state_directory(instance: lab)
+  (owned_path_text(t: provider_dir) == (dashboard_instance_provider_state_root(instance: lab) as String))
+    && (owned_path_text(t: provider_dir) == dispatch_codex_home)
+    && declared_owner_group(t: provider_dir) == (fleet_posix_worker_shared_group_name as String)
+    && declared_mode_octal(t: provider_dir) == declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid)
+    && declared_mode_octal(t: provider_dir) == "2770"
+}
+
 test fn the_live_attempt_directories_keep_their_staged_owner_and_mode() -> Bool {
   let live = srv1_live_dashboard_instance()
   declared_owner_group(t: dashboard_instance_dispatch_attempt_state_directory(instance: live)) == (live.directory_owner.group as String)
@@ -186,7 +203,7 @@ test fn the_lab_git_carve_outs_are_group_writable_setgid_and_nothing_wider() -> 
 
 fn owned_path_text(t: OwnedDirectoryTarget) -> String {
   match t {
-    OwnedDirectoryDeclared { member: _, path, owner: _, mode: _ } => path as String
+    OwnedDirectoryDeclared { member: _, path, owner: _, mode: _, group_adoption: _} => path as String
     OwnedDirectoryManaged { directory: _ } => ""
   }
 }

@@ -1,12 +1,13 @@
 module test.claim.live_deploy.owned_directory_route_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath, List }
-import gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization }
+import std.types { Bool, String, NonEmptyStr, FilePath, List, Int }
+import gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization, selected_deployment_spec, srv1_lab_desired_deployment }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
 import gunbc.live_deploy.emit { owned_directory_apply_steps }
 import gunbc.live_deploy.member_identity {
   DirectoryRoot, converged_member_eq, converged_effect_plan, derive_member_plan, RootAt, DirectoryRootIdentity, RootConverged,
-  directory_root_standing_wire, ObservedMember, MemberObserved, MemberUnobservable, EffectsDerived, EffectsRefused, plan_mutation_count,
+  directory_root_standing_wire, ObservedMember, MemberObserved, MemberUnobservable, MemberRefusedOnHost, EffectsDerived, EffectsRefused, plan_mutation_count, ReleaseEffectPlan,
+  ConvergedMember, MemberIdentity, EffectDerivation,
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster, owned_directory_member_of_decision }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory_demands }
@@ -20,7 +21,11 @@ import gunbc.owned_directory {
   OwnedDirectoryTarget, owned_directory_path, owned_directory_mode, owned_directory_owner, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused,
   owned_directory_observe, owned_directory_parent, owned_directory_basename, ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited,
 }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
+  dashboard_instance_dispatch_worktree_directory, dashboard_instance_dispatch_attempt_state_directory,
+  dashboard_instance_provider_state_directory, dashboard_instance_worker_git_directories,
+}
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
 import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance, login_transaction_store_directory }
@@ -219,6 +224,140 @@ test fn an_unprivileged_read_of_a_protected_child_refuses_the_derivation() -> Bo
       }
     }
   }
+}
+
+// THE LAB'S PRE-EXISTING STATE, AS bright-moth-475 READ IT ON srv1 2026-10-17: every worker-writable
+// directory the instance demands is already present, owned by the SERVICE USER AND ITS OWN PRIMARY
+// GROUP (briansrls:briansrls, 775) from the pre-dedicated-worker era -- the demanded user matches, only
+// the demanded group (the shared attempt group) differs. The stat line is printed in the exact format
+// the observer parses (owned_directory_stat_format), with the TARGET'S OWN declared mode: only the
+// group differs from what the target demands.
+
+fn worker_dir_host_mode_text(t: OwnedDirectoryTarget) -> String {
+  match owned_directory_mode(t: t) {
+    OwnedDirectoryModeResolved { mode } => file_mode_octal(mode: mode) as String
+    OwnedDirectoryModeRefused { reason: _ } => ""
+  }
+}
+
+// THE REAL DERIVATION'S OBSERVED-MEMBER PROJECTION, over a SUPPLIED host observation: the directory is
+// present, listed by its parent, and owned by exactly the supplied principal. This is the same
+// projection the deploy's plan derivation (derive_member_plan, and behind it release_member_plan /
+// deployment_effect_plan -- the fold that produced srv1's refusal string) runs; only the host's answer
+// is supplied rather than a live read, which is what makes the host state testable without a host.
+
+fn worker_dir_as_host_holds_it(t: OwnedDirectoryTarget, host_user: NonEmptyStr, host_group: NonEmptyStr) -> ObservedMember {
+  let path = owned_directory_path(t: t) as String as NonEmptyStr
+  let listing = owned_directory_basename(path: owned_directory_path(t: t)) as String
+  let stat_line = join(["directory|", host_user as String, "|", host_group as String, "|", worker_dir_host_mode_text(t: t)], "")
+  owned_directory_member_of_decision(
+    member: DirectoryRoot { path: path },
+    path: path,
+    target: t,
+    observation: owned_directory_observe(
+      path: owned_directory_path(t: t),
+      list: d => ObserverReadOut { stdout: listing },
+      stat: p => ObserverReadOut { stdout: stat_line },
+    ),
+  )
+}
+
+fn worker_dirs_converged_desired(m: ConvergedMember) -> MemberIdentity? {
+  Present { value: match m { DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } }  _ => RootAt { root: DirectoryRootIdentity { path: "/" as NonEmptyStr, standing: RootConverged } } } }
+}
+
+fn worker_dirs_derivation(dirs: List<OwnedDirectoryTarget>, host_user: NonEmptyStr, host_group: NonEmptyStr) -> EffectDerivation {
+  derive_member_plan(
+    roster: map(dirs, t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }),
+    desired: m => worker_dirs_converged_desired(m: m),
+    observed: m => match first(filter(xs: dirs, predicate: t => converged_member_eq(a: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }, b: m))) {
+      Present { value: t } => worker_dir_as_host_holds_it(t: t, host_user: host_user, host_group: host_group)
+      Absent => MemberUnobservable { member: m, cause: "not a demanded directory" }
+    },
+    target: deploy_witness_release_target(spec: deployment_spec_srv1()),
+  )
+}
+
+// THE LAB EXISTING-HOST DERIVATION (the ARM 2 defect, and the claim the #14270 handoff demanded): the
+// deploy's REAL plan derivation -- derive_member_plan, the fold whose every member refusal is exactly
+// the "directory-root: ... refused" line that aborted srv1's lab deploy -- over a SUPPLIED host
+// observation of an EXISTING briansrls:briansrls subtree must PRODUCE THE PLAN (the regroup), never a
+// refusal, for every directory inside the declared worker set. Each planned step is the provider's own
+// install, and it names the TARGET'S DECLARED group (the shared attempt group) -- never the group found
+// on the host, which is the difference between a regroup and an adoption. The two controls keep the
+// guard honest: a directory OUTSIDE the declared set, observed the same way (same user, foreign group),
+// must still refuse ("ownership is never adopted"), and a directory INSIDE the set observed under a
+// DIFFERENT USER must still refuse too -- the posture relaxes the group only, never the user. RED on
+// main: there the same-user-different-group reading is the both-match conflation, so the six refuse.
+
+// THE REGROUP THE PROVIDER PLANS NAMES THE TARGET'S DECLARED GROUP, never the group found on the host
+// (which is what makes it a regroup and not an adoption). Each planned step comes from the provider's
+// own install of this target.
+// THE REGROUP THE PROVIDER PLANS NAMES THE TARGET'S DECLARED GROUP, never the group found on the host
+// (which is what makes it a regroup and not an adoption). The expected step is the provider's OWN
+// install command (gunbc.live_deploy.operations install_directory_owned_command -- the single renderer,
+// the same one the emitter uses), built twice from the SAME target at the SAME mode, path and owner
+// USER, differing only in the group token: the declared group must APPEAR and the group read off the
+// host must NOT. Both strings come from the one serializer, so this is exact, not a hand-spelled argv.
+fn worker_dir_install_names_declared_group(mode: FileMode, lab_spec: DeploymentSpec, t: OwnedDirectoryTarget, plan: ReleaseEffectPlan, host_group: NonEmptyStr) -> Bool {
+  let owner = owned_directory_owner(t: t)
+  let path = owned_directory_path(t: t) as String
+  let steps = pipeline_steps_text(steps: owned_directory_apply_steps(
+    spec: deploy_witness_spec_with_only_directory(spec: lab_spec, path: path),
+    plan: plan,
+  ))
+  string_contains(s: steps, pattern: install_directory_owned_command(mode: mode, owner: owner.user, group: owner.group, path: path))
+    && !string_contains(s: steps, pattern: install_directory_owned_command(mode: mode, owner: owner.user, group: host_group, path: path))
+}
+
+fn worker_dir_step_regroups_to_declared_group(lab_spec: DeploymentSpec, t: OwnedDirectoryTarget, plan: ReleaseEffectPlan, host_group: NonEmptyStr) -> Bool {
+  match owned_directory_mode(t: t) {
+    OwnedDirectoryModeRefused { reason: _ } => false
+    OwnedDirectoryModeResolved { mode } => worker_dir_install_names_declared_group(mode: mode, lab_spec: lab_spec, t: t, plan: plan, host_group: host_group)
+  }
+}
+
+fn existing_subtree_derives_the_regroup(lab_spec: DeploymentSpec, dirs: List<OwnedDirectoryTarget>, host_user: NonEmptyStr, host_group: NonEmptyStr) -> Bool {
+  match worker_dirs_derivation(dirs: dirs, host_user: host_user, host_group: host_group) {
+    EffectsRefused { refusals: _ } => false
+    EffectsDerived { plan } =>
+      count(dirs) == 6
+        && plan_mutation_count(plan: plan) == count(dirs)
+        && all(dirs, t => worker_dir_step_regroups_to_declared_group(lab_spec: lab_spec, t: t, plan: plan, host_group: host_group))
+  }
+}
+
+fn refuses_all(dirs: List<OwnedDirectoryTarget>, host_user: NonEmptyStr, host_group: NonEmptyStr, expected: Int) -> Bool {
+  match worker_dirs_derivation(dirs: dirs, host_user: host_user, host_group: host_group) {
+    EffectsRefused { refusals } => count(refusals) == expected
+    EffectsDerived { plan: _ } => false
+  }
+}
+
+// THE LAB EXISTING-HOST DERIVATION (the ARM 2 defect, and the claim the #14270 handoff demanded): the
+// deploy's REAL plan derivation -- derive_member_plan, the fold whose every member refusal is exactly
+// the "directory-root: ... refused" line that aborted srv1's lab deploy -- over a SUPPLIED host
+// observation of an EXISTING briansrls:briansrls subtree must PRODUCE THE PLAN (the regroup), never a
+// refusal, for every directory inside the declared worker set. The two controls keep the guard honest:
+// a directory OUTSIDE the declared set, observed the same way (same user, a foreign group), must still
+// refuse ("ownership is never adopted"), and a directory INSIDE the set observed under a DIFFERENT USER
+// must still refuse too -- the posture relaxes the group only, never the user. RED on main: there the
+// same-user-different-group reading is the both-match conflation, so all six refuse.
+
+test fn the_existing_lab_subtree_is_planned_by_the_provider_and_nothing_outside_it_is_adopted() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let lab_spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let host = lab.directory_owner
+  let worker_dirs = concat([
+    dashboard_instance_dispatch_worktree_directory(instance: lab),
+    dashboard_instance_dispatch_attempt_state_directory(instance: lab),
+    dashboard_instance_provider_state_directory(instance: lab),
+  ], dashboard_instance_worker_git_directories(instance: lab))
+  let out_of_set = credential_acquisition_slots_directory(instance: lab)
+  let intruder_user = "someone-else" as NonEmptyStr
+  existing_subtree_derives_the_regroup(lab_spec: lab_spec, dirs: worker_dirs, host_user: host.user, host_group: host.group)
+    && refuses_all(dirs: [out_of_set], host_user: host.user, host_group: intruder_user, expected: 1)
+    && refuses_all(dirs: worker_dirs, host_user: intruder_user, host_group: host.group, expected: 6)
 }
 
 // THE PRINCIPAL HOLDS EXACTLY THE READS THE PLAN SPENDS: srv1's runner-host sudoers grants the job
