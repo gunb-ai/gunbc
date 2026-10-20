@@ -149,24 +149,20 @@ fn live_quarantine_probe_facts() -> QuarantineProbeHoldingFacts {
 // representation that drifts silently. Unmeasured and zero are different states, and this guard
 // exists to refuse exactly that conflation, so it does not commit it in its own witness.
 //
-// THE ALL-HOLD CLAIM, now with a reason. Its name and entry are unchanged (the
-// `gunbc_claim_execution_contract` row in `gunbc.roadmap.roadmap_authority` names this function, and
-// the harness maps `ExitSuccess` to a pass), so converting the return type adds the localization
-// without moving the obligation. As a Bool this printed `FAIL <fn>` and NOTHING else: the fold gave a
-// single bit, so an owner could not tell which probe was unheld, whether it was held by nothing or by
-// two carriers, or how many were affected. The reason now names the count, the population size, and
-// the first offending identity with its entry file. It is also no longer ANDed with anything: the
-// population check that used to sit in a second claim repeated this exact fold as one conjunct among
-// five, so a population going empty and a probe going unheld printed the same one-word verdict.
+// THE ALL-HOLD CLAIM. Its name and entry are unchanged (the `gunbc_claim_execution_contract` row in
+// `gunbc.roadmap.roadmap_authority` names this function, and the harness maps `ExitSuccess` to a pass),
+// so the `ProcessExit` return adds a reason channel without moving the obligation. A Bool here prints
+// `FAIL <fn>` and nothing else: one bit for the whole fold, so an owner could not tell which probe was
+// mis-held, whether a probe was held by nothing or by two carriers, or how many were affected. The
+// reason names the offender count, the population size, and the first offender as `arm: identity @
+// entry` -- the arm is in the message because the two refusal arms describe opposite states
+// (`QuarantineProbeNowPassing` = an admission NO carrier holds; `QuarantineProbeHeldByMoreThanOne` = an
+// admission TWO carriers hold), and a count alone cannot say which one the tree is in.
 //
-// ONE CLAIM, NOT TWO. This is also the "every admitted row has a holder" claim: it reads
-// `live_dispositions()`, which IS the admission ledger filtered by `quarantine_probe_admissions`, and it
-// refuses exactly when some disposition fails to hold. An earlier revision of this PR added a SECOND
-// claim over the same fold; review 83065 caught it as a re-invention whose message was also wrong (it
-// said "NO holder" while its filter caught `QuarantineProbeHeldByMoreThanOne` too, so a double-held
-// probe would have been reported as unheld). Deleting it is the fix -- one predicate, one verdict, one
-// meaning (DESIGN section 3) -- and the arm tag below is the discrimination that extra claim was meant
-// to add, at no cost.
+// PREDICATE: some disposition fails to hold, on EITHER refusal arm. `every_admitted_probe_row_has_at_least_one_holder`
+// below reads the same ledger through the same filter and selects ONE arm; it is not this claim restated,
+// and neither is pacified by the other -- the all-hold claim stays green while a double-held row exists
+// that the zero-holder claim ignores, and vice versa.
 test fn every_quarantine_probe_derives_exactly_one_disposition() -> ProcessExit {
   let ds = live_dispositions()
   let unheld = unheld_admitted_rows(ds: ds)
@@ -210,24 +206,22 @@ fn some_disposition_holds_by(ds: List<QuarantineProbeDisposition>, kind: fn(Quar
   fold_list(xs: ds, empty: false, cons: fn(acc, d) { acc || disposition_holds_by(d: d, kind: kind) })
 }
 
-// WHY THIS IS FIVE CLAIMS AND NOT ONE. The single Bool above folded five assertions together: "all
-// dispositions hold" AND "population A has a member" AND ... AND "population D has a member". A FAIL
-// line from claim_batch carries the function name and, for a Bool, nothing else (claim_batch prints
-// `FAIL <fn>` with no reason channel for a false return), so an owner got no localization — the same
-// failure mode the group-C wet reds have, and the same root cause: a Bool claim with no reason. Split
-// one claim per population, each returning ProcessExit so the harness prints the typed reason
-// (claim_batch.rs `ClaimOutcome::ExitFailure` prints `FAIL <fn> (returned ProcessExit::ExitFailure,
-// code N: <reason>)` — the carrier the emit_host_gate forensics made the single narration surface).
+// WHY ONE CLAIM PER POPULATION. These four assertions used to be ANDed into a single Bool alongside the
+// all-hold fold above, so one `FAIL <fn>` line covered five possible causes and carried no way to tell
+// them apart -- a population going empty and a probe going unheld printed the same one-word verdict. Each
+// population is now its own claim returning `ProcessExit`, which is the only reason channel the harness
+// prints (`ClaimOutcome::ExitFailure` renders `FAIL <fn> (returned ProcessExit::ExitFailure, code N:
+// <reason>)`), so a verdict names WHICH population and shows its first member.
 //
-// WHY THIS IS NOT THE REFUSED MUTATION FORM AGAIN. The comment above this block records that the
-// earlier mutation shape paid the live join FIVE TIMES INSIDE ONE CLAIM and was refused at 808,294
-// eval steps (CI run 36656467027). That is a different cost shape from this one: the witness eval
-// budget is armed PER CLAIM (cli_run `set_witness_eval_budget`, claim_batch `--eval-budget-ms`), and
-// claim_batch resolves an entry ONCE for the whole batch (its own log line: "resolving <entry> once
-// (N witness(es))"), so five claims here re-pay the resolve once and each stays under its own eval
-// budget. This is the shape the probes that found the defect used — two ProcessExit claims in one
-// batch, resolved once — so the split's affordability is measured, not argued. DESIGN 6: the defect is
-// re-paying one entry's resolve across chunked children; it is not "two claims read the same thing".
+// WHY THIS IS AFFORDABLE WHERE THE REFUSED MUTATION FORM WAS NOT. The comment above `live_dispositions`
+// records a mutation shape that paid the live join once per population inside one claim and was refused;
+// the difference is per-claim budgeting, not the number of reads: the witness eval budget is armed per
+// claim (`set_witness_eval_budget`, and `claim_batch`'s `--eval-budget-ms`), and `claim_batch` resolves an
+// entry once for the whole batch, so four claims here re-pay one resolve and each stays under its own
+// budget -- the same shape the probes that located this defect used (two ProcessExit claims over one
+// entry in one batch), which is why the split's affordability is a measured property and not an argument.
+// DESIGN section 6's defect is re-paying one entry's resolve across chunked children; it is not "two
+// claims read the same thing".
 fn population_member_count(
   ds: List<QuarantineProbeDisposition>,
   is_kind: fn(QuarantineProbeHolder) -> Bool
@@ -287,24 +281,28 @@ test fn the_outside_gate_population_is_load_bearing() -> ProcessExit {
 // THE STRUCTURAL CLAIM: every admitted probe row has at least one holder. WHY IT IS A CLAIM AND NOT A
 // RESTATEMENT OF THE ONE ABOVE. The ledger claim refuses on EITHER refusal arm; this one refuses on
 // exactly one -- `QuarantineProbeNowPassing`, the arm an admitted probe reaches when NO carrier holds it.
-// Different predicate, different verdict, one meaning each (review 83065: an earlier revision filtered
-// with the all-hold predicate while claiming "no holder", which would have reported a double-held probe
-// as unheld). Restricting it to its own arm is also what makes the name true.
+// Different predicate, different verdict, one meaning each. The filter selects on the ARM, not on
+// `quarantine_probe_disposition_holds`: the all-hold predicate also selects double-held rows, so reusing
+// it here would copy the ledger claim's verdict and make this claim's own message false ("no carrier"
+// printed for a probe two carriers hold). Selecting the one arm its name names is what keeps both the
+// claim and the sentence true.
 //
-// WHY IT STILL MATTERS, AND WHAT IT DOES NOT DO. These rows were invisible to every census: the fold
-// reports an unheld admission as an alarm arm, but nothing asserted that no row may REACH that arm. And
-// nothing outside this file runs these claims either -- measured, not assumed: both live claims here
-// FAIL at plain main (see the file header and the PR evidence) while main's required checks are green,
-// so no required job executes them; `local_repo_wet_schedule` has no row for this file, and no file in
-// `.github/workflows/` names it. This claim is therefore a LOCAL check an owner runs
-// at the place the rows are authored, not a gate -- and it is honest about that, because the alternative
-// was worse than useless: enrolling it in the wet schedule would only list it in
-// `gunbc.claim_coverage_census` as enrolled-and-executed-by-nothing (the census's own header: "a roster
-// that names a claim is not an executor of it"), and pointing a new instrument label at it would mint a
-// second consumer of the ledger. Restoring execution for this population is the `local_repo_wet_schedule`
-// / claim-coverage owner's call, and routing that is recorded on this PR. What this claim does buy is
-// that the state cannot be re-introduced by the next author who reads this file: the check now exists,
-// is named, and its own fixture claim proves it can fail.
+// WHY IT EXISTS, AND WHO CONSUMES IT. The fold reports an unheld admission as an alarm arm, but nothing
+// asserted that no row may REACH that arm -- that state was reachable, unowned, silent, which is the
+// degradation this repo refuses. CONSUMER AND ROUTE, stated because a claim no job runs must be
+// classified rather than left ambiguous (DESIGN section 3c): the consumer is whoever edits
+// `gunbc.explicit_witness_admission`, running this file where the rows are authored; the route that
+// executes it is NO REQUIRED JOB, and that is declared, not an omission -- `dag/test/claim` is a discovery
+// root, and `gunbc.rung_drop.v1_required_lanes_withdrawn` records that the witness lane's
+// `claim_executor --required-ci --required-lane witnesses` "is run by no job", "executed by no required
+// job"; its restoration trigger is the capability that "on every landing revision, a binary built from an
+// emission of v2 ... judges this population on the required path with a discriminating red".
+// This claim is therefore a local check at the place the obligation lives, not a gate, and it is written
+// to be honest about that: the alternative was worse than useless. Enrolling it in
+// `local_repo_wet_schedule` would assert a host effect it does not have and would only register it in
+// `gunbc.claim_coverage_census` as enrolled-and-executed-by-nothing (that census's own header: "a roster
+// that names a claim is not an executor of it"); a new instrument label would mint a second consumer of
+// the ledger. Both were considered and rejected, not overlooked.
 //
 // It reads the ADMISSION LEDGER as the single authority (through `quarantine_probe_admissions`, the same
 // filter `live_quarantine_probe_subjects()` uses), so it cannot be pacified by deleting a row -- deleting
@@ -391,11 +389,12 @@ fn unheld_disposition_arm(disposition: QuarantineProbeDisposition) -> String {
 test fn a_fixture_admission_with_no_holder_is_named_by_the_ledger_claim() -> ProcessExit {
   let one = Cons { head: fixture_disposition(facts: probe_fixture_no_facts()), tail: Empty {} }
   let expected = concat(probe_fixture_identity(), concat(" @ ", probe_fixture_entry))
-  // THE DISCRIMINATION review 83065 asked for, checked in the fixture direction too: a probe held by
-  // TWO carriers is an offender for the ledger claim and NOT for the zero-holder claim. The two folds
-  // are otherwise only distinguishable from their green states, and a future edit that routed the
-  // structural claim back through the all-hold predicate -- the exact bug the review caught, a
-  // double-held probe reported as held by none -- would keep every claim in this file green.
+  // THE DISCRIMINATION THAT MAKES THE TWO PROJECTIONS OBSERVABLY DIFFERENT, checked in the fixture
+  // direction: a probe held by TWO carriers is an offender for the ledger claim and NOT for the
+  // zero-holder claim. The two folds are otherwise only distinguishable from their green states, and an
+  // edit that routed this projection back through the all-hold predicate -- reporting a double-held probe
+  // as held by none -- would keep every claim in this file green, because the live population contains no
+  // double-held row. That is why this arm is a fixture and not a live reading.
   let two = Cons { head: fixture_disposition(facts: facts_with_two_holders()), tail: Empty {} }
   match zero_holder_rows(ds: two) {
     Empty {} =>
