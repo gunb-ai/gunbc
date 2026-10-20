@@ -60,12 +60,14 @@ data build_cache_misconfigured_marker: String = "observe=misconfigured"
 // this PR together with the classifier arm that was its only producer: it existed to be handed to
 // `DaemonUnresponsive` when `--show-stats` exited zero, which the arm no longer does. Deleting it rather
 // than leaving it unreferenced is what keeps the two refusal texts distinguishable at the level the fleet
-// reads — there is now exactly ONE producer of the operator-visible `the build-cache ensure exited ` prefix
-// (build_cache_refusal_capture_detail, reachable only when an ensure outcome exists), so a refusal can no
-// longer say "never confirmed to answer" about a host whose ensure ran (verified at this head: the only
-// remaining producer of that prefix in the repo is build_cache_exit_detail, and its caller is reachable
-// only with a recorded host run). The claim that used to enforce the distinction by banning the dead
-// string now asserts that construction instead.
+// reads — there is now exactly ONE producer of the operator-visible `the build-cache ensure exited `
+// prefix, the fn build_cache_exit_detail, so a refusal can no longer say "never confirmed to answer" about
+// a host whose ensure ran. Verified at this head rather than assumed: grep finds that literal in one fn
+// only, and its two callers (build_cache_read_back_observation's non-zero-exit arm, and
+// build_cache_failure_detail, called only from EnsureFailed) each receive a recorded
+// BuildCacheHostRunObserved, which the caller only has when BOTH the ensure and the read-back were run.
+// The claim that used to enforce the distinction by banning the dead string now asserts that construction
+// instead. (An earlier draft named build_cache_refusal_capture_detail here; no such fn exists.)
 
 // THE CAPTURE OF ONE HOST COMMAND. `stdout` and `stderr` are the bytes the host produced, kept separate
 // where they are produced and joined only where a scan needs the merge (the script merged them with
