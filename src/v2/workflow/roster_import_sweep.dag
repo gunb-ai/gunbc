@@ -1420,10 +1420,36 @@ fn roster_control_label_method_spelling(prepared: PreparedGrammar, lex: Prepared
 //   called parameter: fn u(chars: fn(String) -> Int, x: String) { chars(s: x) } -> refuses home-name-locally-bound (neither
 //     the import nor the relabel of the parameter's call is written).
 // The free-call positive is roster_control_home_converges.
+// THE #14338 CELLS, PINNED TO THE FIX: a module whose only mention of a row's name is a call of a name its own scope
+// binds must sweep CLEAN -- no import, no label edit. Both fixtures below predate the position axis and demanded the
+// interim refusal home-name-locally-bound instead; that premise was the DEFECT, not the invariant. Measured, the refusal
+// is now unreachable for them because the sweep never wants a row for them at all: their `chars` mentions are the LABEL
+// spelling in a signature row plus a call head read value/frame (executed on #14435:
+// "| type/unbound | return/unbound | return/unbound | label/unbound | label/unbound | value/unbound | value/frame |
+// ... OUTCOME=Clean"). With the position issuer switched off (the fix-off arm) the signature spelling reads a value
+// position, the import comes back, and these two go red -- the revert arm for the collector's own fix. The interim guard
+// itself stays exercised by roster_control_guard_still_refuses / ..._let_bound, which still refuse by name.
+// THE GUARD-EXERCISING CELLS, still demanding the refusal BY NAME (an unexercised guard is a decoration): the module
+// makes a GENUINE free call of a row name in one function while another function BINDS that name locally, so a row is
+// wanted on its own merits and the interim guard must answer home-name-locally-bound.
 fn roster_control_refuses_locally_bound(name: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   match roster_sweep_text(path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex) {
-    RosterRefused { reason: r } => if roster_refusal_text(reason: r) == "home-name-locally-bound" { "" } else { "CONTROL-FAIL " + name + ": refused for " + roster_refusal_text(reason: r) + "\n" }
-    _ => "CONTROL-FAIL " + name + ": a module that binds chars locally was swept instead of refused home-name-locally-bound\n"
+    RosterRefused { reason: r } =>
+      if roster_refusal_text(reason: r) == "home-name-locally-bound" { "" } else { "CONTROL-FAIL " + name + ": refused for " + roster_refusal_text(reason: r) + " instead of home-name-locally-bound\n" }
+    RosterClean => "CONTROL-FAIL " + name + ": a module with a genuine free call AND a local binding of the row name swept Clean -- the interim guard stopped refusing\n"
+    RosterEdit { start: _, end: _, text: t, own_line: _ } => "CONTROL-FAIL " + name + ": import proposed for a locally bound name: " + t + "\n"
+    RosterLabelEdits { edits: _ } => "CONTROL-FAIL " + name + ": label edit proposed for a locally bound name\n"
+    RosterEditWithLabels { start: _, end: _, text: t, own_line: _, labels: _ } => "CONTROL-FAIL " + name + ": import and label edits proposed for a locally bound name: " + t + "\n"
+  }
+}
+
+fn roster_control_sweeps_clean_locally_bound(name: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_sweep_text(path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex) {
+    RosterClean => ""
+    RosterRefused { reason: r } => "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "; a module whose row-name mention is a locally bound call must sweep clean\n"
+    RosterEdit { start: _, end: _, text: t, own_line: _ } => "CONTROL-FAIL " + name + ": import proposed for a locally bound name: " + t + "\n"
+    RosterLabelEdits { edits: edits } => "CONTROL-FAIL " + name + ": " + int_to_decimal_string(value: length(xs: edits)) + " label edits proposed for a locally bound name\n"
+    RosterEditWithLabels { start: _, end: _, text: t, own_line: _, labels: labels } => "CONTROL-FAIL " + name + ": import and " + int_to_decimal_string(value: length(xs: labels)) + " label edits proposed for a locally bound name: " + t + "\n"
   }
 }
 
@@ -1514,11 +1540,11 @@ fn roster_control_label_bound_occurrence(prepared: PreparedGrammar, lex: Prepare
 }
 
 fn roster_control_specimen(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  roster_control_refuses_locally_bound(name: "specimen", text: "module c.spec\n\nimport std.algebra { Cons, collection_join_shape }\n\nfn v(s: String, chars: List<String>) -> String {\n  join(chars, \"\")\n}\n\nfn w(s: String) -> String {\n  v(s: s, chars: [])\n}\n", prepared: prepared, lex: lex)
+  roster_control_sweeps_clean_locally_bound(name: "specimen", text: "module c.spec\n\nimport std.algebra { Cons, collection_join_shape }\n\nfn v(s: String, chars: List<String>) -> String {\n  join(chars, \"\")\n}\n\nfn w(s: String) -> String {\n  v(s: s, chars: [])\n}\n", prepared: prepared, lex: lex)
 }
 
 fn roster_control_called_parameter(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  roster_control_refuses_locally_bound(name: "called-parameter", text: "module c.called\n\nimport std.algebra { Cons }\n\nfn u(chars: fn(String) -> Int, x: String) -> Int {\n  chars(s: x)\n}\n", prepared: prepared, lex: lex)
+  roster_control_sweeps_clean_locally_bound(name: "called-parameter", text: "module c.called\n\nimport std.algebra { Cons }\n\nfn u(chars: fn(String) -> Int, x: String) -> Int {\n  chars(s: x)\n}\n", prepared: prepared, lex: lex)
 }
 
 // A NESTED CALL'S LABEL IS NOT THE OUTER CALL'S: chars(s: g(s: x)) relabels only chars's own direct argument; the inner g's
@@ -1537,8 +1563,12 @@ fn roster_control_nested_call_label(prepared: PreparedGrammar, lex: PreparedLexR
 // primary-expression head, so the two counts disagree and the label plan must refuse exactly label-sites-ambiguous.
 fn roster_control_label_sites_disagree(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   match roster_sweep_text(path: "control/disagree.dag", text: "module c.disagree\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String, y: chars) -> Int {\n  count(xs: chars(s: x))\n}\n", prepared: prepared, lex: lex) {
-    RosterRefused { reason: r } => if roster_refusal_text(reason: r) == "label-sites-ambiguous" { "" } else { "CONTROL-FAIL label-sites-disagree: refused for " + roster_refusal_text(reason: r) + "\n" }
-    _ => "CONTROL-FAIL label-sites-disagree: a count disagreement between free sites and call heads did not refuse label-sites-ambiguous\n"
+    RosterEditWithLabels { start: _, end: _, text: t, own_line: _, labels: labels } =>
+      if t == "import std.host_text { chars }" && length(xs: labels) == 1 { "" } else { "CONTROL-FAIL label-sites-disagree: import [" + t + "] with " + int_to_decimal_string(value: length(xs: labels)) + " label edits, expected the chars import with exactly 1\n" }
+    RosterClean => "CONTROL-FAIL label-sites-disagree: the free call head of chars no longer wants its import -- the free-name reading moved\n"
+    RosterEdit { start: _, end: _, text: t, own_line: _ } => "CONTROL-FAIL label-sites-disagree: import [" + t + "] with no label edit\n"
+    RosterLabelEdits { edits: edits } => "CONTROL-FAIL label-sites-disagree: " + int_to_decimal_string(value: length(xs: edits)) + " label edits with no import\n"
+    RosterRefused { reason: r } => "CONTROL-FAIL label-sites-disagree: refused " + roster_refusal_text(reason: r) + "; the type-position annotation `y: chars` must not be counted as a free site\n"
   }
 }
 
@@ -1711,27 +1741,76 @@ fn roster_control_ancestor() -> String {
   }
 }
 
-// THE FOUR POSITION-TO-HOME-KIND CONTROLS (tidy-ant-251's roster correction, msg_66a5409b), run by
-// roster_controls_report. Each parses + normalizes its specimen through the SAME front end the sweep runs and asks the
-// ONE classifier (roster_site_is_free, which delegates the position/kind compatibility to
-// v2.workflow.roster_home_kind position_matches_home_kind) how many of the recorded sites want the row's import. The
-// home's KIND comes from the corpus, never from a planted row or a spelling: dag/std/types.dag declares
-// `type List<element>` and dag/std/host_text.dag declares `fn chars(text: HostText)`, read by v2.std.decl_index's keyed
-// census under v2.lens.enforcement.standing_intent whole_corpus_scope's roots -- which is what lets a value home in a
-// type position be told apart from a type home in a value position at all.
-//   type-home-in-type-position   fn f(xs: List<Int>) -> List<Int> { xs }, row List @ std.types  -> every List site wants it
-//   value-home-in-value-position fn u(chars: fn(String) -> Int, x: String) { chars(s: x) }, row chars @ std.host_text
-//                                -> exactly the body's call head wants it (Wave 1's shape, unchanged by the correction)
-//   value-home-in-type-position  fn f(y: chars) -> Int { 0 }, row chars @ std.host_text -> NOTHING wants it: this is the
-//                                fixture the pre-correction sweep emitted `import std.host_text { chars }` for
-//   type-home-in-value-position  fn f(xs: List<Int>) -> Int { List(xs) }, row List @ std.types -> the call head must NOT
-//                                match, so a value use of a type home never imports
+// THE POSITION-TO-HOME-KIND CONTROLS (tidy-ant-251's roster correction, msg_66a5409b), run by roster_controls_report.
+// Each parses + normalizes its specimen through the SAME front end the sweep runs and asks the ONE classifier
+// (roster_site_is_free, which delegates the position/kind compatibility to v2.workflow.roster_home_kind
+// position_matches_home_kind) how many sites of the row's name want that row's import.
+//
+// THE HOMES ARE DECLARATIONS THE CENSUS ACTUALLY CLASSIFIES -- measured, not assumed. An early revision of these
+// controls used `List` @ std.types as the type home; the premise control below then reported that v2.std.decl_index
+// keys `std.types.List` at all but with kind OtherItem, the census's own cannot-classify answer (dag/std/types.dag:119
+// declares it as an ALIAS, `type List<element> = FreeMonoid<element>`, and the host's item_kind at
+// v1_compiler_infer_items.rs:274 gives an alias no type-declaration kind -- reported, see
+// roster_control_wave_two_alias_gap). A control on a home the census cannot classify would have measured the census's
+// silence instead of the rule. So the two homes here are ones the census classifies both ways:
+//   TYPE home  std.algebra.FreeMonoid   -- dag/std/algebra.dag:34 `type FreeMonoid<a>` -> census kind TypeItem
+//   VALUE home std.host_text.chars      -- dag/std/host_text.dag:30 `fn chars(text: HostText)` -> census kind FnItem
+// and each specimen spells the name its row claims.
+//   type-home-in-type-position   `fn f(xs: FreeMonoid<Int>) -> FreeMonoid<Int> { xs }` -> the binder annotation and the
+//                                two recorded return sites DO want the import (the shape Wave 2 needs).
+//   value-home-in-value-position `fn f(x: String) -> Int { chars(s: x) }` -> exactly the body's call head wants it: 1,
+//                                not 2, because the signature row's mention of a parameter is a LABEL spelling, which
+//                                matches no declaration kind.
+//   value-home-in-type-position  `fn f(y: chars) -> Int { 0 }` -> NOTHING wants it; this is the fixture whose row the
+//                                pre-correction sweep emitted (`import std.host_text { chars }` for a module that needs
+//                                no such import).
+//   type-home-in-value-position  `fn f(xs: Slot) -> Int { FreeMonoid(xs) }` -> the value-position call head must NOT
+//                                match, so a value use of a type home never imports.
 fn roster_kind_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   roster_control_census_knows_the_homes()
-    +   roster_kind_control(name: "type-home-in-type-position", text: roster_kind_specimen_type_annotation(), row: roster_kind_row(call: "List", import_name: "List", home: "std.types"), expected: 3, prepared: prepared, lex: lex)
-    + roster_kind_control(name: "value-home-in-value-position", text: roster_kind_specimen_value_call(), row: roster_kind_row(call: "chars", import_name: "chars", home: "std.host_text"), expected: 1, prepared: prepared, lex: lex)
-    + roster_kind_control(name: "value-home-in-type-position", text: roster_kind_specimen_value_home_in_type(), row: roster_kind_row(call: "chars", import_name: "chars", home: "std.host_text"), expected: 0, prepared: prepared, lex: lex)
-    + roster_kind_control(name: "type-home-in-value-position", text: roster_kind_specimen_type_home_as_value(), row: roster_kind_row(call: "List", import_name: "List", home: "std.types"), expected: 0, prepared: prepared, lex: lex)
+    + roster_control_wave_two_alias_gap()
+    + roster_kind_control(name: "type-home-in-type-position", text: roster_kind_specimen_type_annotation(), row: roster_kind_type_row(), expected: 3, prepared: prepared, lex: lex)
+    + roster_kind_control(name: "value-home-in-value-position", text: roster_kind_specimen_value_call(), row: roster_kind_value_row(), expected: 1, prepared: prepared, lex: lex)
+    + roster_kind_control(name: "value-home-in-type-position", text: roster_kind_specimen_value_home_in_type(), row: roster_kind_value_row(), expected: 0, prepared: prepared, lex: lex)
+    + roster_kind_control(name: "type-home-in-value-position", text: roster_kind_specimen_type_home_as_value(), row: roster_kind_type_row(), expected: 0, prepared: prepared, lex: lex)
+    + roster_kind_control(name: "called-parameter-head-is-not-free", text: roster_kind_specimen_called_parameter(), row: roster_kind_value_row(), expected: 0, prepared: prepared, lex: lex)
+}
+
+// THE #14338 SPECIMEN ITSELF, as a position control: `fn u(chars: fn(String) -> Int, x: String) -> Int { chars(s: x) }`.
+// The call head is INSIDE the scope that binds `chars`, so v2.compiler.lexical_scope answers value/frame and the row
+// wants NOTHING -- this is the defect gone at its root, measured rather than asserted. Before the fix the same site
+// read value/unbound and the sweep emitted `import std.host_text { chars }` for a module that declares the parameter.
+fn roster_kind_specimen_called_parameter() -> String {
+  "module c.kind.calledparam\n\nfn u(chars: fn(String) -> Int, x: String) -> Int {\n  chars(s: x)\n}\n"
+}
+
+// THE TWO ROWS THE CONTROLS USE, defined once so the premise control and the specimens cannot drift onto different
+// declarations. Built at the same boundary the real rows are: the dotted home is read into a QualifiedName.
+fn roster_kind_type_row() -> RosterHeadRow {
+  RosterHeadRow { call: "FreeMonoid", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [] }
+}
+
+fn roster_kind_value_row() -> RosterHeadRow {
+  RosterHeadRow { call: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.host_text"), labels: [] }
+}
+
+// THE SPECIMEN'S RECORDED SITES, through the same three front-end steps roster_sweep_text_scoped runs (tokenize, parse,
+// normalize), so the position a site carries is the position the sweep would have decided from. No import is supplied:
+// the import decision reads sites in the pre-import phase, and that is the phase these controls pin.
+fn roster_kind_sites(text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> Optional<FreeMonoid<ScopedReferenceSite>> {
+  match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: "control/kind.dag"), prepared: lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module_prepared(tokens: stream, prepared: prepared) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: scoped, diagnostics: _ } =>
+              Present { value: collect_scoped_module_reference_sites(root: scoped.tree.root, imported: []).sites }
+          }
+      }
+  }
 }
 
 fn roster_kind_control(name: String, text: String, row: RosterHeadRow, expected: Int, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
@@ -1748,15 +1827,16 @@ fn roster_kind_control(name: String, text: String, row: RosterHeadRow, expected:
   }
 }
 
-// THE SPECIMENS, as authored source: each goes through tokenize, parse and normalize exactly as roster_sweep_text_scoped
+// THE SPECIMENS, as authored source. Each goes through tokenize, parse and normalize exactly as roster_sweep_text_scoped
 // does, so the position a site carries is the position the sweep would have decided from. No import is supplied: the
-// import decision reads sites in the pre-import phase, and that is the phase these controls pin.
+// import decision reads sites in the pre-import phase, and that is the phase these controls pin. No module path segment
+// is a grammar keyword -- `module c.kind.type` does not parse (measured: "the specimen did not normalize").
 fn roster_kind_specimen_type_annotation() -> String {
-  "module c.kind.type\n\nfn f(xs: List<Int>) -> List<Int> {\n  xs\n}\n"
+  "module c.kind.typemention\n\nfn f(xs: FreeMonoid<Int>) -> FreeMonoid<Int> {\n  xs\n}\n"
 }
 
 fn roster_kind_specimen_value_call() -> String {
-  "module c.kind.value\n\nfn u(chars: fn(String) -> Int, x: String) -> Int {\n  chars(s: x)\n}\n"
+  "module c.kind.valuecall\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n"
 }
 
 fn roster_kind_specimen_value_home_in_type() -> String {
@@ -1764,27 +1844,50 @@ fn roster_kind_specimen_value_home_in_type() -> String {
 }
 
 fn roster_kind_specimen_type_home_as_value() -> String {
-  "module c.kind.typehome\n\nfn f(xs: Slot) -> Int {\n  List(xs)\n}\n"
+  "module c.kind.typehome\n\nfn f(xs: Slot) -> Int {\n  FreeMonoid(xs)\n}\n"
 }
 
-// A row for a control, built at the same boundary the real rows are (the dotted home is read into a QualifiedName once).
-fn roster_kind_row(call: String, import_name: String, home: String) -> RosterHeadRow {
-  RosterHeadRow { call: call, import_name: import_name, home: qualified_name_from_dotted_string(dotted: home), labels: [] }
+// THE PREMISE OF THE FOUR CONTROLS ABOVE: the census must classify BOTH homes, as OPPOSITE kinds. Without it the four
+// could pass because the census reads NOTHING anywhere -- position_matches_home_kind answers false in both directions
+// when a home is unknown, which is exactly the decoration reading this control exists to forbid. It earned that role:
+// the first revision of the four controls named homes the census does not classify, and this control is what reported
+// it. The roots it read under are printed on failure, because a home missing under one root list is a different fact
+// from a home missing under all of them.
+fn roster_control_census_knows_the_homes() -> String {
+  let type_row = roster_kind_type_row()
+  let value_row = roster_kind_value_row()
+  let wrong = (if roster_home_declaration_is_type(home: roster_qn_text(qn: type_row.home), import_name: type_row.import_name) { "" } else { type_row.import_name + " @ " + roster_qn_text(qn: type_row.home) + " reads no type/data declaration" })
+    + (if roster_home_declaration_is_value(home: roster_qn_text(qn: value_row.home), import_name: value_row.import_name) { "" } else { "; " + value_row.import_name + " @ " + roster_qn_text(qn: value_row.home) + " reads no value declaration" })
+    + (if !roster_home_declaration_is_type(home: roster_qn_text(qn: value_row.home), import_name: value_row.import_name) { "" } else { "; " + value_row.import_name + " @ " + roster_qn_text(qn: value_row.home) + " ALSO reads a TYPE declaration" })
+    + (if !roster_home_declaration_is_value(home: roster_qn_text(qn: type_row.home), import_name: type_row.import_name) { "" } else { "; " + type_row.import_name + " @ " + roster_qn_text(qn: type_row.home) + " ALSO reads a VALUE declaration" })
+  if wrong == "" { "" } else { "CONTROL-FAIL census-homes: " + wrong + " (v2.std.decl_index decl_facts_at over " + roster_corpus_pool_roots_text() + ")\n" }
 }
 
-fn roster_kind_sites(text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> Optional<FreeMonoid<ScopedReferenceSite>> {
-  match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: "control/kind.dag"), prepared: lex) {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: stream, diagnostics: _ } =>
-      match parse_module_prepared(tokens: stream, prepared: prepared) {
-        Rejected { diagnostics: _ } => Absent
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
-            Rejected { diagnostics: _ } => Absent
-            Accepted { value: scoped, diagnostics: _ } =>
-              Present { value: collect_scoped_module_reference_sites(root: scoped.tree.root, imported: []).sites }
-          }
-      }
+// THE MEASURED GAP, PINNED SO IT CANNOT BE ABSORBED. Wave 2's homes are std.types List/Map/Set, and the census cannot
+// classify them: they are ALIASED type declarations (`type List<element> = FreeMonoid<element>`, dag/std/types.dag:119,
+// and Set/Map at :157/:158), the host's item_kind (v1_compiler_infer_items.rs:274) assigns a type-declaration kind from
+// a connective an alias does not have, and the census's answer is OtherItem -- which v2.workflow.roster_home_kind
+// matches as NEITHER a type nor a value (a located non-match, not a silent default), because nothing downstream can
+// recover the shape (the host marshals an OtherItem fact's node to a unit node, coproduct_reflection.rs:1794, and the
+// type-declarer seam filters on TypeItem, coproduct_reflection.rs:2012). So under the ruled rule these three homes
+// import NOTHING, and this control pins that fact rather than letting the rule guess a kind for them. It goes red the
+// day the census starts classifying an aliased type declaration as a type -- which is the fix, and belongs to
+// v2.std.decl_index's census, not to this PR.
+fn roster_control_wave_two_alias_gap() -> String {
+  let names = ["List", "Map", "Set"]
+  let unclassified = fold_list(xs: names, empty: "", cons: fn(acc, n) {
+    if roster_home_declaration_is_type(home: "std.types", import_name: n) || roster_home_declaration_is_value(home: "std.types", import_name: n) {
+      acc + " " + n + " IS classified"
+    } else {
+      acc
+    }
+  })
+  if unclassified == "" {
+    ""
+  } else {
+    "CONTROL-FAIL wave-two-alias-gap: the census now classifies aliased type declarations (std.types" + unclassified
+      + ") -- v2.workflow.roster_home_kind now reads their real kind, so Wave 2's List/Map/Set rows import again and this"
+      + " pinned gap, and the roster rule's Wave 2 limitation, must be retired with it.\n"
   }
 }
 

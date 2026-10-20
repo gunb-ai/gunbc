@@ -10,7 +10,7 @@ import std.occurrence_identity {
   TypeAnnotationPosition,
   ValuePosition
 }
-import v2.std.decl_index { DataItem, DeclFact, FnItem, ItemKind, OtherItem, ServiceItem, TypeItem, decl_facts_at }
+import v2.std.decl_index { DataItem, DeclFact, FnItem, ItemKind, OtherItem, ServiceItem, TypeItem, decl_facts_at, type_declarer_qualified_names }
 import v2.compiler.reference_site_collector {
   HeadBoundAtRootValue,
   HeadBoundInFrame,
@@ -105,6 +105,27 @@ fn roster_corpus_pool_roots() -> List<String> {
   whole_corpus_scope.roots
 }
 
+// The roots the census was read under, for a failure message: a home missing under one root list is a different fact
+// from a home missing under all of them, and the reader must be able to tell which.
+fn roster_corpus_pool_roots_text() -> String {
+  fold_list(xs: roster_corpus_pool_roots(), empty: "", cons: fn(acc, r) { acc + r + " " })
+}
+
+// THE KIND READING, and the honest one. TypeItem and DataItem are the census's two type-declaration answers (the host
+// assigns them from a type declaration's connective, v1_compiler_infer_items.rs item_kind:274); FnItem and ServiceItem
+// are its two value answers. OtherItem matches NEITHER, in either direction, and is not a silent default: it is the
+// census's own "I cannot classify this declaration" answer, measured on the corpus (std.types.List -- declared
+// `type List<element> = FreeMonoid<element>` at dag/std/types.dag:119 -- keys a row whose kind is OtherItem, while the
+// opaque `type FreeMonoid<a>` at dag/std/algebra.dag:34 keys TypeItem). Nothing downstream of it can repair that: the
+// host marshals an OtherItem fact's node as a unit node (coproduct_reflection.rs marshal_decl_fact_node:1794, the `_ =>
+// unit_type_node(ctx)` arm), so v2.std.type_binder type_decl_view has no shape to read, and v2.std.decl_index
+// type_declarer_qualified_names -- the seam v2.std.node_reflection resolve_type_node goes through -- filters on
+// `kind == TypeItem` (coproduct_reflection.rs:2012), so it does not count an aliased type either. Reading OtherItem as
+// type, or as value, would be me deciding what the census could not; reading it as neither makes the position rule
+// import nothing for such a home and leaves the gap VISIBLE. The gap is reported, not absorbed: a home whose declaration
+// the census cannot classify is a census-kind defect (the aliased-type case is the measured one), and until
+// item_kind issues a type-declaration kind for an aliased type declaration, a Wave-2 row whose home is an alias emits
+// no import.
 fn kind_is_type_declaration(kind: ItemKind) -> Bool {
   match kind {
     TypeItem => true
@@ -119,9 +140,9 @@ fn kind_is_value_declaration(kind: ItemKind) -> Bool {
   match kind {
     FnItem => true
     ServiceItem => true
-    OtherItem => true
     TypeItem => false
     DataItem => false
+    OtherItem => false
   }
 }
 
@@ -151,22 +172,4 @@ fn roster_home_kind_head_text(head: SiteHeadBinding) -> String {
     HeadBoundAtRootValue => "root"
     HeadBoundInFrame => "frame"
   }
-}
-
-// THE PREMISE OF THE FOUR SPECIMEN CONTROLS, checked before they run: v2.std.decl_index must actually know the two
-// homes, and must know them as OPPOSITE kinds. Without this the four specimen controls could pass because the census
-// reads NOTHING anywhere (both directions of the rule answer false), which is the decoration reading. The homes are
-// the corpus's own: dag/std/types.dag `type List<element>` and dag/std/host_text.dag `fn chars(text: HostText)`.
-fn roster_control_census_knows_the_homes() -> String {
-  let wrong = (if roster_home_declaration_is_type(home: "std.types", import_name: "List") { "" } else { "type-home std.types.List reads no type declaration" })
-    + (if roster_home_declaration_is_value(home: "std.host_text", import_name: "chars") { "" } else { "; value-home std.host_text.chars reads no value declaration" })
-    + (if !roster_home_declaration_is_type(home: "std.host_text", import_name: "chars") { "" } else { "; std.host_text.chars reads a TYPE declaration" })
-    + (if !roster_home_declaration_is_value(home: "std.types", import_name: "List") { "" } else { "; std.types.List reads a VALUE declaration" })
-  if wrong == "" { "" } else { "CONTROL-FAIL census-homes: " + wrong + " (v2.std.decl_index decl_facts_at over " + roster_corpus_pool_roots_text() + ")\n" }
-}
-
-// The roots the census was read under, in the failure message only: a home missing under one root list is a different
-// fact from a home missing under all of them, and the reader must be able to tell which.
-fn roster_corpus_pool_roots_text() -> String {
-  fold_list(xs: roster_corpus_pool_roots(), empty: "", cons: fn(acc, r) { acc + r + " " })
 }
