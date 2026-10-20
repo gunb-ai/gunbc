@@ -17,6 +17,11 @@ data namespace_wave_binding_diff_seed_growth_justification: SeedGrowthJustificat
       field: WholeDeclaration
     },
     DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "run_v2_select_spelled_modules",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
       module_path: "v1_compiler.target_invocation_host",
       decl_name: "BaseTreeGuard",
       field: WholeDeclaration
@@ -29,5 +34,5 @@ data namespace_wave_binding_diff_seed_growth_justification: SeedGrowthJustificat
 
   trigger: "Delete these declarations when gunbc test's producer dispatch is emitted rather than hand-mirrored (the capability gunbc.target_invocation_seed_growth names for target_invocation_host as a whole) AND an emitted driver can list a git tree, materialize a base worktree and run a built census in it, handing its rows to a .dag fold, AND the base population is selected by the census or resolution reader rather than by spelling, SUFFICIENT FOR //gunbc/instruments:namespace-wave-binding-diff to run with no hand-authored producer body.",
 
-  current_boundary: "src/v1/stage0/src/target_invocation_host.rs run_namespace_wave_binding_diff and run_base_ambient_name_census, behind gunbc test //gunbc/instruments:namespace-wave-binding-diff"
+  current_boundary: "src/v1/stage0/src/target_invocation_host.rs run_namespace_wave_binding_diff and run_base_ambient_name_census, and src/v1/stage0/src/cli_run/native_lane_runner.rs run_v2_select_spelled_modules, behind gunbc test //gunbc/instruments:namespace-wave-binding-diff"
 }
