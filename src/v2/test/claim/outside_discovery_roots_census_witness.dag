@@ -18,8 +18,8 @@ module v2.test.claim.outside_discovery_roots_census_witness
 
 import std.types { String, Bool, List, Int }
 import std.optional { Optional, Absent, Present }
-import std.algebra { Cons, Empty, is_empty, trim, list_map, fold }
-import std.text { concat, string_contains }
+import std.algebra { Cons, Empty, is_empty, trim, list_map, fold, string_contains }
+
 import v2.workflow.outside_discovery_roots_census {
   OutsideRootsStanding,
   InsideGovernedTree,
@@ -106,7 +106,7 @@ test fn a_claim_file_under_no_governed_tree_is_the_finding_with_a_cause() -> Boo
   match outside_roots_row(path: "src/v1/tests/claim/annotation_gap_round_trip_test.dag") {
     OutsideDiscoveryRoots { path: reported, cause: cause } =>
       reported == "src/v1/tests/claim/annotation_gap_round_trip_test.dag"
-        && string_contains(s: cause, substring: "v2.cli.repository_layout")
+        && string_contains(s: cause, pattern: "v2.cli.repository_layout")
     InsideGovernedTree { path: _, tree_directory: _ } => false
     NotAClaimFile { path: _ } => false
     ListingUnread { cause: _ } => false
@@ -213,9 +213,9 @@ test fn findings_the_note_declares_and_findings_it_does_not_are_kept_apart() -> 
 test fn the_receipt_names_the_note_at_identity_rather_than_a_count() -> Bool {
   let lines = outside_roots_receipt_lines(findings: [note_declared_paths |> head_path])
   any(xs: lines, predicate: fn(line) {
-    string_contains(s: line, substring: v1_claim_note_identity)
-      && string_contains(s: line, substring: v1_claim_note_location)
-      && string_contains(s: line, substring: "OUTSIDE-DISCOVERY-ROOTS")
+    string_contains(s: line, pattern: v1_claim_note_identity)
+      && string_contains(s: line, pattern: v1_claim_note_location)
+      && string_contains(s: line, pattern: "OUTSIDE-DISCOVERY-ROOTS")
   })
 }
 
@@ -229,8 +229,8 @@ fn head_path(paths: List<String>) -> String {
 // The header cites the layout authority, so the standing's reason is locatable from the receipt alone.
 test fn the_header_cites_the_layout_authority() -> Bool {
   let lines = outside_roots_header_lines()
-  any(xs: lines, predicate: fn(line) { string_contains(s: line, substring: "repository_module_file_of_path") })
-    && any(xs: lines, predicate: fn(line) { string_contains(s: line, substring: v1_claim_note_identity) })
+  any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: "repository_module_file_of_path") })
+    && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: v1_claim_note_identity) })
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +242,7 @@ test fn an_unreadable_listing_is_not_an_empty_census() -> Bool {
   let refused = outside_roots_census(listing: ListingRefused { cause: "the index could not be asked" })
   refused.unread
     && is_empty(refused.findings)
-    && any(xs: refused.lines, predicate: fn(line) { string_contains(s: line, substring: "UNREAD") })
+    && any(xs: refused.lines, predicate: fn(line) { string_contains(s: line, pattern: "UNREAD") })
 }
 
 test fn a_read_listing_of_nothing_is_a_clean_census_not_a_refusal() -> Bool {
@@ -263,7 +263,7 @@ test fn the_unread_standing_outranks_a_populated_census() -> Bool {
 
 test fn the_head_is_stamped_beside_the_output_and_never_invented() -> Bool {
   head_stamp_line(revision: "") == "OUTSIDE-DISCOVERY-ROOTS head: no revision supplied"
-    && string_contains(s: head_stamp_line(revision: "abc1234"), substring: "abc1234")
+    && string_contains(s: head_stamp_line(revision: "abc1234"), pattern: "abc1234")
 }
 
 // ---------------------------------------------------------------------------
@@ -296,7 +296,7 @@ test fn the_index_lists_exactly_the_population_the_note_declares_by_real_executi
 // so this can be put in its hand -- the capture itself only runs on the real route.
 test fn an_empty_answer_from_the_index_is_a_typed_refusal_not_an_empty_population() -> Bool {
   match listing_from_captured_text(text: "   \n ") {
-    ListingRefused { cause: cause } => string_contains(s: cause, substring: "no listing")
+    ListingRefused { cause: cause } => string_contains(s: cause, pattern: "no listing")
     ListingRead { paths: paths } => false
   }
 }

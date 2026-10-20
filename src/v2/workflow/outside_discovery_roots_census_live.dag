@@ -23,11 +23,12 @@ module v2.workflow.outside_discovery_roots_census_live
 
 import std.types { String, Bool, List, Int }
 import std.optional { Optional, Absent, Present }
-import std.algebra { Cons, Empty, is_empty, trim, reverse }
+import std.algebra { Cons, Empty, is_empty, trim }
 import v2.std.text { Char, string_split }
-import gunbc.command_runner { run_shell_command_capture, CommandTransport }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.exec.command { LocalExec }
 import extdeps.git { git_ls_files_command }
+import gunbc.command_runner { run_shell_command_capture }
 import v2.workflow.outside_discovery_roots_census {
   OutsideRootsStanding,
   InsideGovernedTree,
@@ -101,7 +102,7 @@ fn listing_paths(text: String) -> List<String> {
       }
     }
   )
-  reverse(kept)
+  kept |> reverse()
 }
 
 // The census, composed: rows, findings, refusal, receipt. Pure over the listing the capture handed back.
