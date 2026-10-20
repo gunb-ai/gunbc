@@ -70,12 +70,14 @@ fn shape_refusal(detail: String) -> FirmwareReadRefusal {
   ReplyShapeUnrecognized { detail: detail as NonEmptyStr }
 }
 
-// RedfishDocNoResponse means the transport observed no response at all: that is not a BMC answer, so no reply is minted.
+// RedfishDocNoResponse means no document was read: the transport observed no response, or a success response whose body could not be read.
+// Neither is a BMC answer about the resource, so no reply is minted and the exchange is reported unread (unread_of).
+// A non-success status with an unreadable body is still the BMC's answer by status.
 fn read_doc(get: RestExchangeObservation) -> RedfishDocRead {
   match get {
     RestExchangeRefused { cause: _ } => RedfishDocNoResponse
     RestResponseObserved { status: s, body: RestBodyReadRefused { cause: c } } =>
-      if http_status_is_success(status: s) { RedfishDocRefused { refusal: ReplyShapeUnrecognized { detail: c } } }
+      if http_status_is_success(status: s) { RedfishDocNoResponse }
       else { RedfishDocRefused { refusal: redfish_status_refusal(status: s, detail: c) } }
     RestResponseObserved { status: s, body: RestBodyRead { body: b } } =>
       if http_status_is_success(status: s) {
@@ -180,7 +182,9 @@ type RedfishDecodeOutcome
 fn unread_of(exchange: RedfishExchange, get: RestExchangeObservation) -> List<RedfishUnread> {
   match get {
     RestExchangeRefused { cause: c } => [RedfishUnread { exchange: exchange, cause: c }]
-    RestResponseObserved { status: _, body: _ } => []
+    RestResponseObserved { status: s, body: RestBodyReadRefused { cause: c } } =>
+      if http_status_is_success(status: s) { [RedfishUnread { exchange: exchange, cause: c }] } else { [] }
+    RestResponseObserved { status: _, body: RestBodyRead { body: _ } } => []
   }
 }
 
