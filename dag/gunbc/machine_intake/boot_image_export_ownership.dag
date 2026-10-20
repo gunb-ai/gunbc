@@ -20,6 +20,7 @@ import gunbc.fleet.fleet_posix_accounts {
   FleetAccountInferenceService,
   FleetAccountOperator,
   FleetAccountPublicationHelper,
+  FleetAccountDeployJob,
   FleetAccountRoot,
   FleetPosixAccountKey,
 }
@@ -125,6 +126,7 @@ fn fleet_account_key_label(key: FleetPosixAccountKey) -> String {
     FleetAccountInferenceService => "inference-service"
     FleetAccountPublicationHelper => "publication-helper"
     FleetAccountNotificationService => "notification-service"
+    FleetAccountDeployJob => "deploy-job"
   }
 }
 

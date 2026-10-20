@@ -1,0 +1,108 @@
+module extdeps.languages.css.expression
+
+import std.types { String, Int, List, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.css.values {
+  CssVarRef, CssHsl, CssDecimalLength, css_decimal_length_wire, css_number_wire, css_var_ref_wire, css_hsl_wire,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/css-values-4/"
+  }
+}
+
+// Cited upstream: W3C CSS Values and Units Level 4. The generic component-value grammar the stylesheet
+// right-hand sides are written in: a <dimension> (number + unit), a <number>, a keyword <ident>, a
+// var() reference (css-variables-1), a function call over component values, and the two list forms,
+// whitespace-separated and comma-separated. Shapes measured in the served gunb.ai sheet: var(),
+// lengths in px/rem/em/ch/vw/%, times in s, one angle in deg, clamp/min/calc/minmax/rotate/
+// cubic-bezier calls, and one empty <string>. No hex colours, !important or var() fallbacks occur, so
+// none are modeled (a value outside this grammar is unwritable here, not a raw string).
+
+// Lengths are values.dag CssDecimalLength (one unit authority); the non-length dimensions of CSS Values 4
+// section 5 that the sheet uses are one single-unit type each.
+type CssTimeUnit = Seconds | Milliseconds
+
+type CssAngleUnit = Degrees | Radians | Gradians | Turns
+
+fn css_time_unit_token(u: CssTimeUnit) -> String {
+  match u {
+    Seconds => "s"
+    Milliseconds => "ms"
+  }
+}
+
+fn css_angle_unit_token(u: CssAngleUnit) -> String {
+  match u {
+    Degrees => "deg"
+    Radians => "rad"
+    Gradians => "grad"
+    Turns => "turn"
+  }
+}
+
+type CssFunctionName
+  = FnClamp
+  | FnMin
+  | FnCalc
+  | FnMinmax
+  | FnRotate
+  | FnCubicBezier
+
+fn css_function_name_token(f: CssFunctionName) -> String {
+  match f {
+    FnClamp => "clamp"
+    FnMin => "min"
+    FnCalc => "calc"
+    FnMinmax => "minmax"
+    FnRotate => "rotate"
+    FnCubicBezier => "cubic-bezier"
+  }
+}
+
+type CssOperator
+  = OpSub
+  | OpAdd
+
+type CssValue
+  = ValIdent { ident: String }
+  | ValString { text: String }
+  | ValNumber { milli: Int }
+  | ValLength { length: CssDecimalLength }
+  | ValTime { milli: Int, unit: CssTimeUnit }
+  | ValAngle { milli: Int, unit: CssAngleUnit }
+  | ValFlex { milli: Int }
+  | ValVar { reference: CssVarRef }
+  | ValHsl { color: CssHsl }
+  | ValCall { function: CssFunctionName, args: List<CssValue> }
+  | ValOperator { operator: CssOperator }
+  | ValSpaceList { items: List<CssValue> }
+  | ValCommaList { items: List<CssValue> }
+
+fn css_operator_token(o: CssOperator) -> String {
+  match o {
+    OpSub => "-"
+    OpAdd => "+"
+  }
+}
+
+fn css_value_wire(v: CssValue) -> String {
+  match v {
+    ValIdent { ident: i } => i
+    ValString { text: t } => join(["\"", t, "\""], "")
+    ValNumber { milli: m } => css_number_wire(milli: m)
+    ValLength { length: l } => css_decimal_length_wire(l: l)
+    ValTime { milli: m, unit: u } => join([css_number_wire(milli: m), css_time_unit_token(u: u)], "")
+    ValAngle { milli: m, unit: u } => join([css_number_wire(milli: m), css_angle_unit_token(u: u)], "")
+    ValFlex { milli: m } => join([css_number_wire(milli: m), "fr"], "")
+    ValVar { reference: r } => css_var_ref_wire(v: r)
+    ValHsl { color: c } => css_hsl_wire(c: c)
+    ValCall { function: f, args: a } => join([css_function_name_token(f: f), "(", join(map(a, x => css_value_wire(v: x)), ", "), ")"], "")
+    ValOperator { operator: o } => css_operator_token(o: o)
+    ValSpaceList { items: xs } => join(map(xs, x => css_value_wire(v: x)), " ")
+    ValCommaList { items: xs } => join(map(xs, x => css_value_wire(v: x)), ", ")
+  }
+}

@@ -106,8 +106,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_matching_rules,
   lex_rule_token_class_optional,
   lex_rule_set_token_class_map,
-  lex_rule_set_keyword_class_member,
-  lex_rule_set_token_class_member,
+  lex_rule_set_keyword_class_map,
 }
 import v2.std.node {
   host_text_type_node,
@@ -4220,18 +4219,35 @@ fn dag_language_model_surface_empty_prelude() -> LanguageModel {
   }
 }
 
+// THE TOKEN-CLASS AND KEYWORD-CLASS MEMBERSHIP OF THE DAG LEX RULE SET, as data (DESIGN.md §2
+// question 1: the repetition was authored duplication, so it is repaired by carrying the first
+// value, not by caching a later request). A data declaration's initializer
+// evaluates once per interpretation (the v1 interpreter caches the data_cache at its declaration
+// node; the Rust emitter realizes a non-Copy data as a thread_local! once cell — so it initializes
+// ONCE PER ACCESSING THREAD, not process-wide (each thread that reads it builds its own copy the
+// first time that thread touches it); the same shape as equality_extensional_container_rows
+// (src/v1/04_infer.dag), emitted as its thread-local cell at
+// src/v1/stage0/src/v1_compiler_infer.rs:4893. Either way a query reads the map built by ONE fold
+// over the rules instead of rebuilding dag_lex_rules() — the brace/hole-mode sets, dag_literal_lex_rule and
+// its unicode_scalar_unfold over every literal row — and scanning it linearly per query. The
+// readers below answer by key; the maps are keyed on the rule set's own token classes, so the
+// answer is the same rule set read, not a second authority over it.
+data dag_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: dag_lex_rules())
+
+data dag_lex_keyword_class_membership: Map<Symbol, Bool> = lex_rule_set_keyword_class_map(rules: dag_lex_rules())
+
 fn dag_lex_token_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_token_class_member(
-    rules: dag_lex_rules(),
-    token_class: sym
-  )
+  match map_lookup(m: dag_lex_token_class_membership, key: sym) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn dag_lex_keyword_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_keyword_class_member(
-    rules: dag_lex_rules(),
-    token_class: sym
-  )
+  match map_lookup(m: dag_lex_keyword_class_membership, key: sym) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn dag_sync_tokens() -> List<Symbol> {
