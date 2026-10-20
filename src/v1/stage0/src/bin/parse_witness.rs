@@ -421,6 +421,11 @@ fn carried_text_matches_source(
     n: &CoreNode,
 ) -> bool {
     let ident = n.ident_span.as_ref().expect("node carries an ident");
+    // A kernel or synthetic identity has no source span (the empty <synthetic> span): its contract
+    // is the node's own structural name, not a source slice.
+    if ident.span.file == "<synthetic>" {
+        return ident.text == n.name;
+    }
     ident.text == source_slice(source, &ident.span)
         && ident.text == v1_compiler::v1_std_core::authored_name_at(indices.clone(), n.clone())
 }
@@ -483,6 +488,8 @@ fn carried_ident_text_equals_authored_name_at() {
 fn carried_text_differential_reaches_every_node_bearing_field() {
     let source = "module test\n\
 type Color = Red | Green\n\
+type Shape = Circle { r: Int } | Dot\n\
+fn radius(s: Shape) -> Int {\n  match s {\n    Circle { r } => r\n    Dot => 0\n  }\n}\n\
 type Row { stdout: String from \"std\\tout\\n\" }\n\
 fn is_red(c: Color) -> Bool {\n  match c {\n    Red => true\n    Green => false\n  }\n}\n\
 service cron.Tab {\n  operation List {\n    requires none\n    input {}\n    output { entries: String from \"stdout\" }\n    readonly\n    transport shell { argv: [\"crontab\", \"-l\"] }\n  }\n}\n";
