@@ -3754,7 +3754,14 @@ fn shared_layer_of_type_expr(shared_types: Set<String>, type_expr: Node, type_de
   // renderers keep it at the value layer (type Second = Measure<..>), so the field position may not
   // answer shared for it. Only an alias whose right-hand side is a container hands its layer on.
   let judged_leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: judged)
-  let alias_to_non_container = judged_leaf != spelled && !is_container_type(name: judged_leaf)
+  // A reference the index resolves to a NOMINAL declaration (Witness<Node>: Holds | Violates) keeps that
+  // declaration's layer: its instantiation hop is not an alias hop, so the hop target's missing leaf is
+  // not "an alias to a non-container" (run 160: the signature rendered Witness bare beside an Rc::new body).
+  let names_nominal_declaration = !is_where_refinement_type(ty: type_expr) && match resolve_type_decl_routed(index: type_decl_items, type_expr: type_expr, source_indices: source_indices).resolution {
+    TypeDeclResolved { identity: _, decl: d } => !is_type_alias_item(item: d, source_indices: source_indices)
+    _ => false
+  }
+  let alias_to_non_container = judged_leaf != spelled && !is_container_type(name: judged_leaf) && !names_nominal_declaration
   let routed = resolve_type_decl_routed(index: type_decl_items, type_expr: judged, source_indices: source_indices)
   // A kernel-minted type (Hash in v1.std.core hash_type) has no declaration to wrap, share or copy.
   // The provenance is the RESOLVED declaration's when the index resolved one: an unstamped field-type node
