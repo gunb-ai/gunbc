@@ -800,7 +800,7 @@ pub fn declarations_by_name_build(
     {
         let fold_result = declarations.iter().cloned().fold(
             Rc::new(DeclarationsByNameFold::DeclarationsByNameFoldReady {
-                by_name: v1_rt::rc_empty_map::<_, _>(),
+                by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<DeclarationOccurrence>>>>(),
             }),
             |acc: Rc<DeclarationsByNameFold>, declaration: Rc<DeclarationOccurrence>| match (*acc
                 .clone())

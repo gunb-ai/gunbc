@@ -476,7 +476,10 @@ pub fn typed_item_rows(
                 )
             }
         };
-        let param_rows_t = if (item.body.clone() == std::option::Option::None) {
+        let param_rows_t = if match item.body.clone() {
+            std::option::Option::None => true,
+            Some(_) => false,
+        } {
             no_typed_rows()
         } else {
             crate::v1_compiler_emit_rust::function_value_params(item.params.clone())
@@ -497,9 +500,12 @@ pub fn typed_item_rows(
                     )
                 })
         };
-        let return_rows = if ((item.body.clone() == std::option::Option::None)
-            || crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()))
-        {
+        let return_rows = if (match item.body.clone() {
+            std::option::Option::None => true,
+            Some(_) => false,
+        } || crate::v1_compiler_emit_core_support::is_type_def_item(
+            item.clone(),
+        )) {
             no_typed_rows()
         } else {
             typed_occurrence_rows(

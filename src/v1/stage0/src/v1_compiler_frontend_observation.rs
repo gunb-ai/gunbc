@@ -37,7 +37,10 @@ pub fn frontend_phase_receipt(frontend: Rc<FrontendResult>) -> FrontendPhaseRece
         occurrence_count: (frontend.occurrence_transport.index.entries.clone().len() as i64),
         declaration_count: (frontend.occurrence_transport.declarations.clone().len() as i64),
         reference_count: (frontend.occurrence_transport.references.clone().len() as i64),
-        graph_present: (frontend.graph.clone() != std::option::Option::None),
+        graph_present: match frontend.graph.clone() {
+            Some(_) => true,
+            std::option::Option::None => false,
+        },
     }
 }
 
