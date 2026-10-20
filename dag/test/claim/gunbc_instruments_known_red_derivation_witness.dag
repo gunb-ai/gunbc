@@ -2,6 +2,7 @@ module test.claim.gunbc_instruments_known_red_derivation_witness
 
 import std.types { Bool, Int, List, String }
 import std.algebra { string_contains }
+import std.execution_mode { Hermetic, Record, Wet }
 import std.optional { Absent, Present }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity }
 import v2.workflow.wet_evidence { WetScheduledClaim }
@@ -26,7 +27,8 @@ import gunbc.instruments.known_red_derivation {
   known_red_exit_code_of, known_red_exit_code_of_all, KnownRedDerivationRefusal,
   known_red_refusal_name, known_red_stale_enrolments, known_red_unaccounted_reds,
   known_red_subjects, known_red_subject_qualified, known_red_report,
-  known_red_dedup, known_red_same_identity, known_red_row_line
+  known_red_dedup, known_red_same_identity, known_red_row_line,
+  known_red_subject_population_execution_mode
 }
 
 // THE ARMS THIS FILE GIVES THE INSTRUMENT. Each one supplies the two things a run supplies — the
@@ -970,8 +972,24 @@ test fn a_child_plan_carries_its_subjects_lane_and_the_route_follows_it() -> Boo
     origin: RequiredFloor
   }
   let plans = known_red_chunks(placed: known_red_dispatchable(subjects: [wet, floor]))
-  let wet_argvs = claim_batch_claims_argv_route(source_roots: ["dag"], claims: [claim_run(function: "the_wet_route_claim")], wet: true)
-  let hermetic_argvs = claim_batch_claims_argv_route(source_roots: ["dag"], claims: [claim_run(function: "the_hermetic_route_claim")], wet: false)
+  // the route comes from the POPULATION'S OWN mapping, not a flag this test picks: the claim is about
+  // what the instrument does, not about what a caller can type
+  let wet_argvs = claim_batch_claims_argv_route(
+    source_roots: ["dag"],
+    claims: [claim_run(function: "the_wet_route_claim")],
+    mode: known_red_subject_population_execution_mode(p: WetLane)
+  )
+  let hermetic_argvs = claim_batch_claims_argv_route(
+    source_roots: ["dag"],
+    claims: [claim_run(function: "the_hermetic_route_claim")],
+    mode: known_red_subject_population_execution_mode(p: RequiredFloor)
+  )
+  // the axis's third variant is mapped, not collapsed: the harness's own --record flag stays reachable
+  let record_argvs = claim_batch_claims_argv_route(
+    source_roots: ["dag"],
+    claims: [claim_run(function: "the_record_route_claim")],
+    mode: Record
+  )
   // the two lanes never share a child...
   (length(xs: plans) == 2)
     && all(xs: plans, predicate: fn(p) {
@@ -988,6 +1006,12 @@ test fn a_child_plan_carries_its_subjects_lane_and_the_route_follows_it() -> Boo
     && any(xs: plans, predicate: fn(p) { p.lane == RequiredFloor })
     && string_contains(s: known_red_join(argvs: wet_argvs), pattern: "--wet")
     && !string_contains(s: known_red_join(argvs: hermetic_argvs), pattern: "--wet")
+    // both routes still RUN -- a route flag is not allowed to eat the execution flag
+    && string_contains(s: known_red_join(argvs: wet_argvs), pattern: "--claim-run")
+    && string_contains(s: known_red_join(argvs: hermetic_argvs), pattern: "--claim-run")
+    // the Record arm carries the harness's own record flag instead of vanishing into Hermetic
+    && string_contains(s: known_red_join(argvs: record_argvs), pattern: "--record")
+    && !string_contains(s: known_red_join(argvs: record_argvs), pattern: "--wet")
 }
 
 fn known_red_join(argvs: List<String>) -> String {

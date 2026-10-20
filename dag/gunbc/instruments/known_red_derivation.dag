@@ -13,6 +13,7 @@ import std.algebra { Cons, Empty, contains, list_snoc_item, length, trim }
 // enrolled AND scheduled was dispatched twice. `list_member` runs `xs.any`, which does honour its
 // predicate, so the comparison below is the one actually executed.
 import std.list { list_member }
+import std.execution_mode { ExecutionMode, Hermetic, Wet }
 import std.measure { byte_size, ByteSize }
 import std.shell_stream_capture { BoundedTail }
 import std.integer { int_to_decimal_string }
@@ -202,6 +203,20 @@ fn known_red_subject_population_name(p: KnownRedSubjectPopulation) -> String {
   match p {
     WetLane => "WetLane"
     RequiredFloor => "RequiredFloor"
+  }
+}
+
+// THE ROUTE A POPULATION'S EXPECTATION GOVERNS. A population is not merely a label printed on a receipt;
+// it determines the one route on which its claims may be asked, because an expectation stated for one
+// route is not an answer on another. The value is `std.execution_mode`'s own -- the axis the harness
+// parses -- rather than a boolean this module invents, so the mapping cannot silently collapse the axis's
+// third variant. `WetLane` is executed by this instrument on the live-host route; `RequiredFloor` is the
+// roster's own coverage gap, which is stated hermetically (its expectation is that the claim does NOT
+// pass when nothing host-shaped is standing behind it).
+fn known_red_subject_population_execution_mode(p: KnownRedSubjectPopulation) -> ExecutionMode {
+  match p {
+    WetLane => Wet
+    RequiredFloor => Hermetic
   }
 }
 
@@ -665,7 +680,7 @@ fn known_red_run_child(root: String, plan: KnownRedChildPlan) -> KnownRedChildRu
     args: claim_batch_claims_argv_route(
       source_roots: witness_layer_roots(),
       claims: plan.claims,
-      wet: plan.lane == WetLane
+      mode: known_red_subject_population_execution_mode(p: plan.lane)
     ),
     stderr_capture: BoundedTail { bytes: known_red_stderr_tail }
   )
