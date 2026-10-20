@@ -121,3 +121,32 @@ data gcp_oauth2_error_example: GcpOAuth2ErrorShape = {
   error: "invalid_grant",
   error_description: "Token has been expired or revoked"
 }
+
+// ── AUTHORIZATION BEFORE EXISTENCE (google.aip.dev/211, read 2026-10-18) ─────────────────────
+// "If a request can not pass the authorization check for any reason, the service must error with
+// PERMISSION_DENIED", with the suggested message "(or it might not exist)", which "avoids leaking
+// resource existence"; a service returns NOT_FOUND only after checking that the caller may read the
+// children of the parent. So the status a caller sees for an absent resource depends on what the
+// caller holds on its PARENT, not on the resource: a caller bound only on the resource itself answers
+// PERMISSION_DENIED both when the resource is absent and when it exists without that caller's binding.
+data gcp_authorization_before_existence_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "google.aip.dev/211" }
+}
+
+// WHAT THE CALLER HOLDS ON THE PARENT, the one input the answer depends on.
+type GcpParentReadStanding
+  = GcpCallerReadsParentChildren
+  | GcpCallerCannotReadParent
+
+// THE ANSWER AN ABSENT RESOURCE GIVES THIS CALLER. Where it is PERMISSION_DENIED, a PERMISSION_DENIED
+// cannot separate "absent" from "present, unbound"; where it is NOT_FOUND, it can.
+type GcpAbsentResourceAnswer
+  = GcpAbsentAnswersPermissionDenied
+  | GcpAbsentAnswersNotFound
+
+fn gcp_absent_resource_answer(parent: GcpParentReadStanding) -> GcpAbsentResourceAnswer {
+  match parent {
+    GcpCallerReadsParentChildren => GcpAbsentAnswersNotFound
+    GcpCallerCannotReadParent => GcpAbsentAnswersPermissionDenied
+  }
+}

@@ -12204,51 +12204,12 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
-// A PARAMETRIC DECLARATION NAMED WITHOUT ITS ARGUMENTS IS NOT A RENDERABLE TURBOFISH ARGUMENT. child_type_node
-// projects an alias reference to its resolved declaration node, and the env-resolved alias binding's
-// resolved_type drops the RHS type argument, so `Map<Symbol, QualifiedName>` (QualifiedName = FreeMonoid<Symbol>)
-// reached the renderer as the childless head `FreeMonoid` and emitted `rc_empty_map::<Symbol, Rc<FreeMonoid>>()`,
-// rustc E0107 (v2.compiler.resolve type_param_value_binders, #14084). The fact asked is the declaration's own
-// parameter count from the env binding, not a name: a node whose binding declares parameters but renders as its bare
-// head has lost its application, so the position defers to the target's inference exactly as an erased argument does.
-// The children of a Disj node are its ARMS, not type arguments: lookup_type_for resolves an arm's name to the
-// owning parametric declaration, so an arm such as std.list FirstDuplicateNotFound read as the declaration named
-// without its arguments, the fold lambda's accumulator widened to `_` beside the `_` seed, and rustc E0282 had
-// nothing to infer from. A bare head is a type REFERENCE (a Map argument, a field), never an arm; the arms'
-// own children are still searched. Dissolution: adhoc-65526d74-43f, with the rest of this compensation.
-fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
-  n.children |> any(c =>
-    let t = child_type_node(ch: c)
-    (n.connective != Disj && rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
-      || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
-}
-
-// The declaration's parameter count is read from the env binding; the render is bare when it is the head name
-// alone, with or without the shared wrap, whatever children the projected node still carries.
-fn rust_type_renders_bare_parametric_head(t: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
-  if !type_node_declares_parameters(n: t, env: emit_info.fn_type_env) {
-    false
-  } else {
-    let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: t))
-    let rendered = render_rust_type(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-    rendered == head || rendered == concat("Rc<", head, ">")
-  }
-}
-
-fn type_node_declares_parameters(n: Node, env: TypeEnv) -> Bool {
-  match lookup_type_for(env: env, node: n) {
-    Present { value: binding } => (binding.params |> count) > 0
-    Absent => false
-  }
-}
-
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
   } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
     || type_node_carries_erased_type_argument(n: map_type)
-    || type_node_carries_applicationless_parametric_head(n: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     || map_type.children |> any(c => type_node_child_is_type_variable(c: c)) {
     "v1_rt::rc_empty_map::<_, _>()"
   } else {
@@ -14083,8 +14044,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic || acc_carries_bare_parametric_head { "_" } else { acc_type_str }
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic { "_" } else { acc_type_str }
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
@@ -19659,6 +19619,15 @@ fn native_serve_declares_startup(modules: List<TypedModule>, pipeline_module: St
   count(native_effect_decl_sites(modules: modules, kind: ModuleItemFunction, name: native_serve_startup_function)
     |> filter(site => site.module_name == pipeline_module)) > 0
 }
+// A startup entry MAY also declare `native_serve_startup_bound` (a Second): the bound on its own startup readiness, which the
+// rendered main reads for its readiness wait in place of gunbc.native_serve native_serve_startup_deadline. It is the driver's
+// declared data, as the handler and the startup fold are, and a driver that declares none keeps the default bound.
+data native_serve_startup_bound_name: String = "native_serve_startup_bound"
+
+fn native_serve_declares_startup_bound(modules: List<TypedModule>, pipeline_module: String) -> Bool {
+  count(native_effect_decl_sites(modules: modules, kind: ModuleItemDataValue, name: native_serve_startup_bound_name)
+    |> filter(site => site.module_name == pipeline_module)) > 0
+}
 data native_cli_entry_function: String = "v2_cli_main"
 data native_claim_entry_function: String = "native_claim_report"
 
@@ -19817,7 +19786,7 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
-      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module))
+      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module), startup_bound: native_serve_declares_startup_bound(modules: modules, pipeline_module: pipeline_module))
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -20142,7 +20111,7 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // transport error): at startup the main refuses before announcing, so /livez is never answered by a
 // process that cannot serve; a failed replacement ends the process with
 // native_serve_worker_replacement_exit_code once the request in hand is answered.
-fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, startup: Bool) -> TextFile {
+fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, startup: Bool, startup_bound: Bool) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let effectful = (bindings |> count) > 0
   let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
@@ -20152,22 +20121,28 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
     concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup;", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};", "\n")
   } else { "" }
-  let startup_run = if startup {
+  let bound_import = if startup_bound { concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup_bound;", "\n") } else { "" }
+  let startup_second = if startup_bound { "native_serve_startup_bound()" } else { "contract.startup_deadline.clone()" }
+  let worker_startup = if startup {
     concat(
-      "    // The startup fold runs before any bind: it judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
-      "    match std::fs::read(\"/proc/self/exe\") \{", "\n",
-      "        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
-      "            NativeServeStartup::NativeServeStartupPassed \{ note \} => println!(\"\{\}\", native_serve_startup_passed_line(note.clone())),", "\n",
-      "            NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
-      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
+      "        // It judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
+      "        let startup_value = match std::fs::read(\"/proc/self/exe\") \{", "\n",
+      "            Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
+      "                NativeServeStartup::NativeServeStartupPassed \{ line, value \} => \{", "\n",
+      "                    if !STARTUP_ANNOUNCED.swap(true, std::sync::atomic::Ordering::SeqCst) \{ println!(\"\{\}\", native_serve_startup_passed_line(line.clone())); \}", "\n",
+      "                    value.clone()", "\n",
+      "                \}", "\n",
+      "                NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
+      "                    eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
+      "                    std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "                \}", "\n",
+      "            \},", "\n",
+      "            Err(cause) => \{", "\n",
+      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
       "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
       "            \}", "\n",
-      "        \},", "\n",
-      "        Err(cause) => \{", "\n",
-      "            eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
-      "            std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
-      "        \}", "\n",
-      "    \}", "\n")
+      "        \};", "\n",
+      "        let _ = started_tx.send(());", "\n")
   } else { "" }
   let worker_realize = if effectful {
     concat(
@@ -20177,15 +20152,65 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "        \};", "\n",
       binding_lines)
   } else { "" }
+  let started_decl = if startup { "    let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();\n" } else { "" }
+  let startup_wait = if startup {
+    concat(
+      "    if started_rx.recv_timeout(ready_within).is_err() \{", "\n",
+      "        eprintln!(\"\{\}\", native_serve_startup_refusal_line(\"the startup did not complete within its bound\".to_string()));", "\n",
+      "        std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "    \}", "\n")
+  } else { "" }
+  let timeout_arm = if startup {
+    "        Err(_) => Err(\"the worker ended before it reported ready\".to_string()),\n"
+  } else {
+    "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),\n"
+  }
+  let ready_within = if startup {
+    concat("std::time::Duration::from_secs(second_count(", startup_second, ") as u64)")
+  } else {
+    "std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64)"
+  }
+  let ready_name = if startup { "ready_within" } else { "deadline" }
+  let ready_let = if startup { concat("    let ready_within = ", ready_within, ";", "\n") } else { "" }
+  let startup_arg = if startup { ", startup_value.clone()" } else { "" }
+  let startup_static = if startup { "// Whether the startup line has been printed: every worker generation judges the image, only the first announces.\nstatic STARTUP_ANNOUNCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\n" } else { "" }
   let worker_call = if effectful {
     concat(
-      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", handler_effect_args, ")) \{", "\n",
+      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
       "                Ok(response) => response,", "\n",
       "                Err(cause) => native_serve_effect_failed(cause.to_string()),", "\n",
       "            \};", "\n")
   } else {
-    "            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision);\n"
+    concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, ");\n")
   }
+  // Order of the serve main: a startup entry realizes its first worker (which runs the startup fold) BEFORE the bind, so a
+  // refusing self-check never becomes reachable; a driver with no startup keeps the original bind-then-realize order.
+  let realize_block = concat(
+      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
+      ready_let,
+      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
+      "    let mut generation = match realize_generation(&stuck, ", ready_name, ") \{", "\n",
+      "        Ok(generation) => generation,", "\n",
+      "        Err(cause) => \{", "\n",
+      "            eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \};", "\n"
+  )
+  let bind_block = concat(
+      "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
+      "        Ok(listener) => listener,", "\n",
+      "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      "    let bound = match listener.local_addr() \{", "\n",
+      "        Ok(addr) => addr,", "\n",
+      "        Err(cause) => \{ eprintln!(\"REFUSED: bound but could not read the bound address: \{\}\", cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      "    let bound_host = bound.ip().to_string();", "\n",
+      "    let bound_port = bound.port() as i64;", "\n"
+  )
+  let first_block = if startup { realize_block } else { bind_block }
+  let second_block = if startup { bind_block } else { realize_block }
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
@@ -20197,7 +20222,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "use std::rc::Rc;", "\n",
       "\n",
       "use ", crate_name, "::extdeps_http_server::ServeWireResponse;", "\n",
-      "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count\};", "\n",
+      "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count", if startup { ", second_count" } else { "" }, "\};", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{", "\n",
       "    native_serve_announcement,", effect_failed_import, " native_serve_frame, native_serve_handler_name, native_serve_read_refused,", "\n",
       "    native_serve_admission, native_serve_deadline_refused, native_serve_handler_failed, native_serve_outgoing, native_serve_route,", "\n",
@@ -20207,6 +20232,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::native_serve_handle;", "\n",
       startup_import,
+      bound_import,
       "\n",
       "// What a worker hands back across the thread boundary: owned plain values, because the compiled", "\n",
       "// handler's values are reference-counted and stay on the worker's thread.", "\n",
@@ -20271,6 +20297,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    \}", "\n",
       "\}", "\n",
       "\n",
+      startup_static,
       "struct HandlerCall \{", "\n",
       "    method: String,", "\n",
       "    path: String,", "\n",
@@ -20293,8 +20320,10 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    let state = std::sync::Arc::new(std::sync::Mutex::new(WORKER_WAITING));", "\n",
       "    let guard = WorkerGuard \{ state: state.clone(), stuck: stuck.clone() \};", "\n",
       "    let worker_state = state.clone();", "\n",
+      started_decl,
       "    std::thread::spawn(move || \{", "\n",
       "        let _guard = guard;", "\n",
+      worker_startup,
       worker_realize,
       "        let _ = ready.send(Ok(()));", "\n",
       "        while let Ok((call, reply)) = inbox.recv() \{", "\n",
@@ -20305,10 +20334,11 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            \}", "\n",
       "        \}", "\n",
       "    \});", "\n",
+      startup_wait,
       "    match readiness.recv_timeout(ready_within) \{", "\n",
       "        Ok(Ok(())) => Ok(Generation \{ calls, state \}),", "\n",
       "        Ok(Err(cause)) => Err(cause),", "\n",
-      "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),", "\n",
+      timeout_arm,
       "    \}", "\n",
       "\}", "\n",
       "", "\n",
@@ -20385,26 +20415,8 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \};", "\n",
-      startup_run,
-      "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
-      "        Ok(listener) => listener,", "\n",
-      "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",
-      "    \};", "\n",
-      "    let bound = match listener.local_addr() \{", "\n",
-      "        Ok(addr) => addr,", "\n",
-      "        Err(cause) => \{ eprintln!(\"REFUSED: bound but could not read the bound address: \{\}\", cause); std::process::exit(2); \}", "\n",
-      "    \};", "\n",
-      "    let bound_host = bound.ip().to_string();", "\n",
-      "    let bound_port = bound.port() as i64;", "\n",
-      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
-      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
-      "    let mut generation = match realize_generation(&stuck, deadline) \{", "\n",
-      "        Ok(generation) => generation,", "\n",
-      "        Err(cause) => \{", "\n",
-      "            eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
-      "            std::process::exit(2);", "\n",
-      "        \}", "\n",
-      "    \};", "\n",
+      first_block,
+      second_block,
       "    eprintln!(\"\{\}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));", "\n",
       "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);", "\n",
       "    for accepted in listener.incoming() \{", "\n",
@@ -20455,7 +20467,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "                            \}", "\n",
       "                        \};", "\n",
       "                        if replace \{", "\n",
-      "                            generation = match realize_generation(&stuck, deadline) \{", "\n",
+      "                            generation = match realize_generation(&stuck, ", ready_name, ") \{", "\n",
       "                                Ok(generation) => generation,", "\n",
       "                                Err(cause) => \{", "\n",
       "                                    eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
