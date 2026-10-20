@@ -30,6 +30,7 @@ type CssPropertyName
   | AnimationDuration
   | TransformOrigin
   | WebkitFontSmoothing
+  | WebkitOverflowScrolling
   | Background
   | Border
   | BorderBottom
@@ -51,6 +52,7 @@ type CssPropertyName
   | Fill
   | FillOpacity
   | Flex
+  | FlexBasis
   | FlexDirection
   | FlexWrap
   | FontFamily
@@ -83,6 +85,9 @@ type CssPropertyName
   | OutlineOffset
   | Overflow
   | OverflowX
+  | ScrollSnapAlign
+  | ScrollSnapType
+  | ScrollbarWidth
   | Padding
   | PaddingBlock
   | PaddingBottom
@@ -117,6 +122,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     AnimationDuration => "animation-duration"
     TransformOrigin => "transform-origin"
     WebkitFontSmoothing => "-webkit-font-smoothing"
+    WebkitOverflowScrolling => "-webkit-overflow-scrolling"
     Background => "background"
     Border => "border"
     BorderBottom => "border-bottom"
@@ -138,6 +144,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     Fill => "fill"
     FillOpacity => "fill-opacity"
     Flex => "flex"
+    FlexBasis => "flex-basis"
     FlexDirection => "flex-direction"
     FlexWrap => "flex-wrap"
     FontFamily => "font-family"
@@ -170,6 +177,9 @@ fn css_property_wire(p: CssPropertyName) -> String {
     OutlineOffset => "outline-offset"
     Overflow => "overflow"
     OverflowX => "overflow-x"
+    ScrollSnapAlign => "scroll-snap-align"
+    ScrollSnapType => "scroll-snap-type"
+    ScrollbarWidth => "scrollbar-width"
     Padding => "padding"
     PaddingBlock => "padding-block"
     PaddingBottom => "padding-bottom"
