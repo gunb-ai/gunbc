@@ -1,0 +1,83 @@
+module test.claim.integer_signed_grounding_adapter_witness
+
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SIGNED GROUNDING ADAPTER, DRIVEN THROUGH COMPILATION (review of #14490). The production row in
+// gunbc.structural_realization_bindings declares a SIGNED view for std.integer Int. The seed's adapter
+// (v1.compiler.infer signed_grounded_carrier_state) reads the carrier declaration into its form and
+// asks std.literal_elaboration signed_view_reading. A declaration that is not a coproduct must REFUSE
+// there: "no constructors to fold" is not an answer to "does this implement the two constructors the
+// view names". The instrument is hermetic (gunbc.instruments.multi_module_compile_fixture: the supplied
+// manifest is the whole source vector), so a fixture std.integer stands in for the corpus one while the
+// compiled-in signed row still applies to it -- the real adapter, on the real compile seam.
+//
+// Positive control first: the canonical coproduct compiles clean, so a refusal below is the shape's
+// and not the harness's. Restoring a no-constructors bypass in the adapter turns the two refusal arms
+// green-to-red: the product and the opaque declaration would compile clean.
+
+fn fixture_nat() -> String {
+  "module std.nat\n\ntype Nat = Zero | Succ { prev: Nat }\n"
+}
+
+fn compile_integer(integer_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("std/nat.dag", fixture_nat()),
+      fixture_source("std/integer.dag", integer_source),
+    ],
+    entry: "std/integer.dag",
+  })
+}
+
+fn compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(fixture_blocking_rows(rows: rows)) == 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+// The grounding refusal is the seed's `kernel grounding:` diagnostic, an InternalError row; the only
+// difference between the positive control and each refusal arm is the shape of `Int`.
+fn refused_by_grounding(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows: fixture_blocking_rows(rows: rows), wanted: "InternalError")
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows: fixture_blocking_rows(rows: rows), wanted: "InternalError")
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn the_canonical_signed_coproduct_compiles_clean() -> Bool {
+  compiles_clean(o: compile_integer(integer_source: "module std.integer\n\nimport std.nat { Nat }\n\ntype Int = NonNegative { n: Nat } | Negative { pred: Nat }\n"))
+}
+
+test fn a_product_carrier_under_the_signed_row_refuses() -> Bool {
+  refused_by_grounding(o: compile_integer(integer_source: "module std.integer\n\nimport std.nat { Nat }\n\ntype Int {\n  n: Nat\n}\n"))
+}
+
+test fn an_opaque_carrier_under_the_signed_row_refuses() -> Bool {
+  refused_by_grounding(o: compile_integer(integer_source: "module std.integer\n\ntype Int\n"))
+}
+
+// Arms named by the row but declared in the other order still compile clean: the adapter finds each
+// arm by the constructor the row names.
+test fn the_coproduct_declared_in_the_other_order_compiles_clean() -> Bool {
+  compiles_clean(o: compile_integer(integer_source: "module std.integer\n\nimport std.nat { Nat }\n\ntype Int = Negative { pred: Nat } | NonNegative { n: Nat }\n"))
+}

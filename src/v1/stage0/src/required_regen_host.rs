@@ -6414,6 +6414,7 @@ pub fn run_regen_round_cost(
         current_seed_digest = stage.output_seed_digest.clone();
         stages.push(stage);
         generation_ordinal += 1;
+        v1_rt::trace_mark("round.built_seed_regen.begin".to_string());
         let next = run_built_seed_regen(
             &workspace,
             candidate_dir_rel,
@@ -6422,6 +6423,7 @@ pub fn run_regen_round_cost(
             affected_scope,
             &current_seed_digest,
         );
+        v1_rt::trace_mark("round.built_seed_regen.done".to_string());
         match next {
             Ok(next) => {
                 // APPLIED comes from the stage RECEIPT, never from the plan: a surface the loop

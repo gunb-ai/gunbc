@@ -34,7 +34,14 @@ import gunbc.ensure { EnsureObserveOnly }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerGroupWritableSetgid, srv1_dashboard_service_principal }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name }
-import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, owned_directory_path }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget,
+  OwnedDirectoryDeclared,
+  OwnedDirectoryGroupAdoption,
+  ForeignOwnershipRefuses,
+  SameUserRegroupToDeclaredGroup,
+  owned_directory_path,
+}
 import gunbc.deployment_risk {
   DeploymentId,
   DeploymentRiskClass,
@@ -1775,6 +1782,22 @@ fn dashboard_instance_worker_writable_mode(instance: HostDashboardInstance, stag
   }
 }
 
+// THE GROUP-REGROUP POSTURE FOR A DIRECTORY THE WORKER WRITES, declared beside the owner just above so
+// the fact that creates the mismatch and the posture that repairs it are read together. The SAME
+// `instance.worker` discriminator that groups these directories to the shared attempt group (which is
+// exactly why a pre-existing briansrls:briansrls directory fails the historical both-match test) is the
+// one that authorizes re-grouping it back: for a dedicated worker a directory the service user already
+// owns may be re-grouped to the target's declared group, and for the staged arm (prod, WorkerIsServiceUser)
+// the posture is ForeignOwnershipRefuses -- the historical "ownership is never adopted", so prod is
+// untouched (WorkerIsServiceUser). The group it may move to is always the target's OWN declared group
+// (owned_directory_owner(t).group, named by the install), never an observed one.
+fn dashboard_instance_worker_writable_group_adoption(instance: HostDashboardInstance) -> OwnedDirectoryGroupAdoption {
+  match instance.worker {
+    WorkerIsServiceUser => ForeignOwnershipRefuses
+    WorkerDedicatedAccount => SameUserRegroupToDeclaredGroup
+  }
+}
+
 data dashboard_attempt_state_member: NonEmptyStr = "attempt-state-root" as NonEmptyStr
 
 fn dashboard_instance_dispatch_worktree_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
@@ -1787,6 +1810,7 @@ fn dashboard_instance_dispatch_worktree_directory(instance: HostDashboardInstanc
     },
     owner: dashboard_instance_worker_writable_owner(instance: instance),
     mode: dashboard_instance_worker_writable_mode(instance: instance, staged: DirectoryOwnerAllEveryoneTraverse),
+    group_adoption: dashboard_instance_worker_writable_group_adoption(instance: instance),
   }
 }
 
@@ -1805,6 +1829,7 @@ fn dashboard_instance_private_directory(instance: HostDashboardInstance, member:
     path: dashboard_instance_child(root: instance.instance_root, child: child),
     owner: instance.directory_owner,
     mode: DirectoryOwnerOnly,
+    group_adoption: ForeignOwnershipRefuses,
   }
 }
 
@@ -1816,6 +1841,7 @@ fn dashboard_instance_shared_directory(instance: HostDashboardInstance, member: 
     path: dashboard_instance_child(root: instance.instance_root, child: child),
     owner: instance.directory_owner,
     mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
   }
 }
 
@@ -1831,6 +1857,7 @@ fn dashboard_instance_dispatch_attempt_state_directory(instance: HostDashboardIn
     },
     owner: dashboard_instance_worker_writable_owner(instance: instance),
     mode: dashboard_instance_worker_writable_mode(instance: instance, staged: DirectoryOwnerOnly),
+    group_adoption: dashboard_instance_worker_writable_group_adoption(instance: instance),
   }
 }
 
@@ -1852,6 +1879,7 @@ fn dashboard_instance_provider_state_directory(instance: HostDashboardInstance) 
     path: dashboard_instance_provider_state_root(instance: instance),
     owner: dashboard_instance_worker_writable_owner(instance: instance),
     mode: dashboard_instance_worker_writable_mode(instance: instance, staged: DirectoryOwnerAllEveryoneTraverse),
+    group_adoption: dashboard_instance_worker_writable_group_adoption(instance: instance),
   }
 }
 
@@ -1898,6 +1926,7 @@ fn dashboard_instance_worker_git_directories(instance: HostDashboardInstance) ->
       path: dashboard_instance_child(root: instance.repo_root, child: child as String),
       owner: dashboard_instance_worker_writable_owner(instance: instance),
       mode: DirectoryOwnerGroupWritableSetgid,
+      group_adoption: dashboard_instance_worker_writable_group_adoption(instance: instance),
     })
   }
 }
@@ -1924,8 +1953,9 @@ fn dashboard_instance_worker_git_directories(instance: HostDashboardInstance) ->
 //                      all -- measured with it 0555, 25 consecutive commits.
 //   packed-refs        never, for this write-set. A new branch is written LOOSE and a loose ref
 //                      shadows the packed one; git rewrites packed-refs only for `pack-refs`, a
-//                      branch delete, or the auto-GC/maintenance sweep. Those belong to the owner's
-//                      worker's own commit must not, and the confined path list below says so.
+//                      branch delete, or the auto-GC/maintenance sweep. Those belong to the maintenance
+//                      unit's principal -- dashboard_git_maintenance_principal, the instance's directory
+//                      owner -- and the worker's own commit must not; the confined path list below says so.
 //   config, HEAD, description, index (repo-level), hooks/, info/, branches/, objects/pack/,
 //   objects/info/, .git/COMMIT_EDITMSG's parent grant -- all stay as #13942 left them.
 data dashboard_git_worker_commit_write_set: List<NonEmptyStr> = [
@@ -2048,8 +2078,9 @@ fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr
 // forbidden to remove -- every ref and reflog there is created by an attempt, and attempts all run
 // as the ONE account gunbc-worker, so there is no foreign-owned entry to protect and +t would buy
 // nothing while adding a bit to read back. The per-attempt worktree entry is excluded for a
-// different, harder reason: root's `git worktree add` checks the entry out, so its index and HEAD
-// are root-owned entries that the worker's first `git add` renames OVER (index.lock -> index);
+// different, harder reason: the instance principal's `git worktree add` checks the entry out, so
+// its index and HEAD are entries owned by that principal, which the worker renames OVER on its
+// first `git add` (index.lock -> index);
 // +t there would make the very commit this PR enables fail with EPERM.
 data dashboard_git_worker_sticky_children: List<NonEmptyStr> = [dashboard_git_worker_objects_child] as List<NonEmptyStr>
 
@@ -2159,9 +2190,10 @@ fn dashboard_instance_worker_git_subtree_migration(
 // than left as prose:
 //
 //   WHAT        `git -C <repo> gc --quiet`, then `git -C <repo> pack-refs --all`. Both rewrite
-//               packed-refs and both write under .git/objects/pack -- the exact paths #13942 confines
-//               to root, which is why no attempt can run them and why deferring to a root job is the
-//               only shape that closes the noise rather than granting a confined write.
+//               packed-refs and both write under .git/objects/pack -- the exact paths #13942 keeps
+//               out of the worker's reach, which is why no attempt can run them and why deferring to
+//               the instance's own maintenance principal is the only shape that closes the noise
+//               rather than granting a confined write.
 //   AS WHOM     THE INSTANCE'S OWN PRINCIPAL -- instance.directory_owner.user, the same account the
 //               serve runs as, the same account the enrolled SSH user is, and the owner of every entry
 //               in the repository. NOT root and NOT the worker. Measured on srv1 (bright-moth-475,
@@ -2189,8 +2221,8 @@ fn dashboard_instance_worker_git_subtree_migration(
 // repository accumulates loose objects at the rate attempts commit, which is the cost the timer
 // bounds. The claim (test.claim.roadmap.worker_dedicated_account_witness
 // the_worker_never_rewrites_packed_refs_and_the_repack_has_one_named_owner) pins the pair: the number of deferred keys equals the
-// number of keys the maintenance job's own argv re-enables, and a unit whose principal is not root is
-// refused.
+// number of keys the maintenance job's own argv re-enables, and a unit whose principal is not the
+// instance's own directory owner -- nor the confined worker account -- is refused rather than assumed.
 data dashboard_git_maintenance_unit_stem: NonEmptyStr = "git-maintenance"
 data dashboard_git_maintenance_service_suffix: String = ".service"
 data dashboard_git_maintenance_timer_suffix: String = ".timer"
@@ -2319,8 +2351,8 @@ fn dashboard_git_worker_file_modes_are_equal(a: FileMode, b: FileMode) -> Bool {
   file_mode_octal(mode: a) == file_mode_octal(mode: b)
 }
 
-// THE GRANTED DIRECTORY MODE FOR ONE SUBTREE: 03775 where a root-owned entry lives beneath it, 02775
-// where none does. PER SUBTREE, not one global answer -- a single "is it 02775" predicate would make
+// THE GRANTED DIRECTORY MODE FOR ONE SUBTREE: 03775 where entries owned by someone other than the
+// worker live beneath it, 02775 where none does. PER SUBTREE, not one global answer -- a single "is it 02775" predicate would make
 // the sticky fix invisible to the model, because the readback would refuse the tree that is actually
 // correct.
 fn dashboard_git_worker_subtree_granted_directory_mode(child: NonEmptyStr) -> FileMode {
@@ -2332,9 +2364,9 @@ fn dashboard_git_worker_subtree_granted_directory_mode(child: NonEmptyStr) -> Fi
 }
 
 // THE PLAIN GRANT, 02775, and it REFUSES 03775 -- deliberately, and a claim leg pins it: the sticky
-// shape is only correct for the one subtree that holds a root-owned entry, so a predicate that
+// shape is only correct for the one subtree that holds foreign-owned entries, so a predicate that
 // accepted both would let refs/ or logs/ drift to 03775 unnoticed (where +t would EPERM the worker's
-// own first `git add` against root's index/HEAD). Ask the per-subtree question when the subtree is
+// own first `git add` against the entry's own index/HEAD). Ask the per-subtree question when the subtree is
 // known; ask this one when the question is "is this the plain grant".
 fn dashboard_git_worker_directory_mode_is_granted(mode: FileMode) -> Bool {
   dashboard_git_worker_file_modes_are_equal(a: mode, b: dashboard_git_worker_granted_directory_mode)
@@ -2654,6 +2686,7 @@ fn dashboard_instance_inbox_directories(instance: HostDashboardInstance) -> List
         path: dashboard_inbox_under(root: instance.instance_root),
         owner: instance.directory_owner,
         mode: DirectoryOwnerAllEveryoneTraverse,
+        group_adoption: ForeignOwnershipRefuses,
       },
     ]
   }
@@ -2833,9 +2866,9 @@ type DashboardInstanceProvisionOp
   // CLAIM: it runs after the repository exists and BEFORE any attempt's `git worktree add`, because
   // core.sharedRepository governs the modes git gives the private entry's files WHEN IT IS CREATED --
   // set afterwards and the entry arrives 0644/0755 and the group write dies on the worker's first
-  // index.lock. Three root-owned `git config --local --replace-all` writes (extdeps/git), the only
-  // writes this roadmap ever makes to a managed .git/config; the file itself stays read-only to the
-  // worker. Empty on the staged arm, so prod gets no op.
+  // index.lock. Three `git config --local --replace-all` writes made by the instance's own principal
+  // (extdeps/git), the only writes this roadmap ever makes to a managed .git/config; the file itself
+  // stays read-only to the worker. Empty on the staged arm, so prod gets no op.
   | DashboardEnsureGitSharedRepositoryPosture {
       repo: FilePath,
     }
