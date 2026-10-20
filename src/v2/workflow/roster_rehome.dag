@@ -7,7 +7,7 @@ import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.lexical_scope { ModuleRootBinding, module_root_bindings }
 import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
 import v2.std.compilers.lexing { Token }
-import v2.extdeps.languages.dag { dag_node_is_float_literal_atom, dag_node_is_int_literal_atom, dag_node_is_string_literal_atom, parse_production_captured_child_optional, parse_qualified_name_segments_from_capture, qualified_name_from_module_node }
+import v2.extdeps.languages.dag { dag_surface_kw_then_ident_from_captured, dag_node_is_float_literal_atom, dag_node_is_int_literal_atom, dag_node_is_string_literal_atom, parse_production_captured_child_optional, parse_qualified_name_segments_from_capture, qualified_name_from_module_node }
 import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
 import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
 import v2.std.decl_index { DeclFact, ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem, decl_facts_at }
@@ -870,6 +870,30 @@ type RehomeAliasExtent
   | RehomeNotAlias
   | RehomeAliasUnread { cause: String }
 
+// The type declarations named `name`, read off the parse by the reader normalize uses for a type declaration's own name
+// (parse_production_captured_child_optional, then dag_surface_kw_then_ident_from_captured). The parse shell carries the
+// declaration's source extent; a lowered alias need not.
+fn rehome_type_decl_shells(parse_root: Node, name: String) -> List<Node> {
+  fold_list(xs: node_subtree_nodes(root: parse_root), empty: [], cons: fn(acc, n) {
+    match parse_production_emitted_identity_optional(node: n) {
+      Present { value: id } =>
+        if id == ^dag_surface_type_decl {
+          match parse_production_captured_child_optional(node: n) {
+            Present { value: cap } =>
+              match dag_surface_kw_then_ident_from_captured(captured: cap) {
+                Present { value: sym } => if symbol_lexeme(sym: sym) == name { list_snoc_item(xs: acc, item: n) } else { acc }
+                Absent => acc
+              }
+            Absent => acc
+          }
+        } else {
+          acc
+        }
+      Absent => acc
+    }
+  })
+}
+
 // The extent of the type-alias right-hand side of the root declaration `name`, read off the parse: the type_alias_rhs
 // production inside the declaration's extent. A declaration with none is not an alias.
 fn rehome_alias_rhs_extent(text: String, path: String, name: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RehomeAliasExtent {
@@ -881,13 +905,14 @@ fn rehome_alias_rhs_extent(text: String, path: String, name: String, prepared: P
         Accepted { value: artifact, diagnostics: _ } =>
           match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
             Rejected { diagnostics: _ } => RehomeAliasUnread { cause: "representation-unobserved normalize " + path }
-            Accepted { value: scoped, diagnostics: _ } =>
-              match rehome_root_bindings_named(bindings: module_root_bindings(root: scoped.tree.root), name: name) {
-                Cons { head: decl, tail: Empty } =>
-                  match roster_node_byte_range(node: decl.declaration, spans: artifact.span_index) {
+            Accepted { value: _, diagnostics: _ } =>
+              match rehome_type_decl_shells(parse_root: artifact.tree, name: name) {
+                Cons { head: shell, tail: Empty } =>
+                  match roster_node_byte_range(node: shell, spans: artifact.span_index) {
                     Absent => RehomeAliasUnread { cause: "representation-unobserved declaration-unlocated " + path }
                     Present { value: d } => rehome_rhs_within(parse_root: artifact.tree, spans: artifact.span_index, start: d.start, end: d.end)
                   }
+                Empty => RehomeNotAlias
                 _ => RehomeAliasUnread { cause: "representation-unobserved declaration-not-unique " + path + " " + name }
               }
           }
