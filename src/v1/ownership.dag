@@ -17,7 +17,7 @@ import v1.std.core {
   method_receiver, method_arg_nodes,
   foreach_collection, foreach_body,
   param_node_type_expr,
-  expr_var_name_at, expr_call_func_at, expr_method_name_at, field_access_field_at, authored_name_at,
+  expr_var_name_at, expr_call_func_at, expr_method_name_at, field_access_field_at, node_authored_text,
   NewlineIndex
 }
 
@@ -177,7 +177,7 @@ fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAcc
 fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, NewlineIndex>) -> UsageAccum {
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
-      let n = expr_var_name_at(texpr: texpr, source_indices: si)
+      let n = expr_var_name_at(texpr: texpr)
       if in_tail {
         record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk, span_start: texpr.span.start)
       } else {
@@ -191,28 +191,28 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let base_node = field_access_base(texpr: texpr)
       match base_node.expr_data {
         ExprVar { binding_kind: bk } =>
-          let vn = expr_var_name_at(texpr: base_node, source_indices: si)
-          let f = field_access_field_at(texpr: texpr, source_indices: si)
+          let vn = expr_var_name_at(texpr: base_node)
+          let f = field_access_field_at(texpr: texpr)
           record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk, span_start: texpr.span.start)
         _ => walk_expr(accum: accum, texpr: base_node, in_tail: false, si: si)
       }
 
     ExprCall =>
-      let fname = expr_call_func_at(texpr: texpr, source_indices: si)
+      let fname = expr_call_func_at(texpr: texpr)
       if fname == "fold" {
-        let init_arg = texpr.children |> filter(a => authored_name_at(source_indices: si, node: a) == "init") |> first
+        let init_arg = texpr.children |> filter(a => node_authored_text(node: a) == "init") |> first
         let threaded_accum = match init_arg {
           Present { value: ia } =>
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
-                let vn = expr_var_name_at(texpr: ia_val, source_indices: si)
+                let vn = expr_var_name_at(texpr: ia_val)
                 record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
               _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false, si: si)
             }
           Absent => accum
         }
-        let non_init = texpr.children |> filter(a => authored_name_at(source_indices: si, node: a) != "init")
+        let non_init = texpr.children |> filter(a => node_authored_text(node: a) != "init")
         non_init |> fold(init: threaded_accum, f: (acc, a) =>
           walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
         )
@@ -225,22 +225,22 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
     ExprMethodCall =>
       let recv = method_receiver(texpr: texpr)
       let mc_args = method_arg_nodes(texpr: texpr)
-      let mname = expr_method_name_at(texpr: texpr, source_indices: si)
+      let mname = expr_method_name_at(texpr: texpr)
       if mname == "fold" {
         let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
-        let init_arg = mc_args |> filter(a => authored_name_at(source_indices: si, node: a) == "init") |> first
+        let init_arg = mc_args |> filter(a => node_authored_text(node: a) == "init") |> first
         let threaded_accum = match init_arg {
           Present { value: ia } =>
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
-                let vn = expr_var_name_at(texpr: ia_val, source_indices: si)
+                let vn = expr_var_name_at(texpr: ia_val)
                 record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
               _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false, si: si)
             }
           Absent => recv_accum
         }
-        let non_init = mc_args |> filter(a => authored_name_at(source_indices: si, node: a) != "init")
+        let non_init = mc_args |> filter(a => node_authored_text(node: a) != "init")
         let walked = non_init |> fold(init: threaded_accum, f: (acc, a) =>
           walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
         )
@@ -387,7 +387,7 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
     ExprVar { binding_kind: bk } =>
       match bk {
         Present { value: FunctionValueBinding } =>
-          let n = expr_var_name_at(texpr: texpr, source_indices: si)
+          let n = expr_var_name_at(texpr: texpr)
           set_insert(empty_set(), n)
         _ => empty_set()
       }
@@ -474,7 +474,7 @@ fn merge_fold_acc_use_summaries(left: FoldAccUseSummary, right: FoldAccUseSummar
 fn summarize_fold_acc_uses(node: Node, acc_name: String, si: Map<String, NewlineIndex>, inside_nested: Bool) -> FoldAccUseSummary {
   match node.expr_data {
     ExprVar { binding_kind: _ } =>
-      if expr_var_name_at(texpr: node, source_indices: si) == acc_name {
+      if expr_var_name_at(texpr: node) == acc_name {
         if inside_nested {
           FoldAccUseSummary { whole_acc_uses: 0, field_moves: [], nested_acc_refs: true }
         } else {
@@ -487,7 +487,7 @@ fn summarize_fold_acc_uses(node: Node, acc_name: String, si: Map<String, Newline
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: node)
       let is_direct = match base.expr_data {
-        ExprVar { binding_kind: _ } => expr_var_name_at(texpr: base, source_indices: si) == acc_name
+        ExprVar { binding_kind: _ } => expr_var_name_at(texpr: base) == acc_name
         _ => false
       }
       if is_direct {
@@ -496,7 +496,7 @@ fn summarize_fold_acc_uses(node: Node, acc_name: String, si: Map<String, Newline
         } else {
           FoldAccUseSummary {
             whole_acc_uses: 0,
-            field_moves: [field_access_field_at(texpr: node, source_indices: si)],
+            field_moves: [field_access_field_at(texpr: node)],
             nested_acc_refs: false
           }
         }
@@ -544,7 +544,7 @@ fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String, si:
       let body = lambda_body(texpr: lambda_node)
       let terminal = fold_terminal_expr(body: body)
       match terminal.expr_data {
-        ExprRecordLit { parent_enum: _ } => authored_name_at(source_indices: si, node: terminal) == acc_type_name
+        ExprRecordLit { parent_enum: _ } => node_authored_text(node: terminal) == acc_type_name
         _ => false
       }
     _ => false
@@ -607,14 +607,14 @@ fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> Fold
     Absent => method_call
   }
   let acc_param_name = match fold_lambda_node.expr_data {
-    ExprLambda => match lambda_param_names_at(texpr: fold_lambda_node, source_indices: si) |> first {
+    ExprLambda => match lambda_param_names_at(texpr: fold_lambda_node) |> first {
       Present { value: n } => n
       Absent => ""
     }
     _ => ""
   }
   let acc_type_name = match init_arg_node.inferred {
-    Present { value: Resolved { node: type_node } } => authored_name_at(source_indices: si, node: type_node)
+    Present { value: Resolved { node: type_node } } => node_authored_text(node: type_node)
     _ => ""
   }
   let cond_required = match init_arg_node.inferred {
@@ -680,13 +680,13 @@ fn analyze_dying_base_sites(params: List<Node>, body: Node, si: Map<String, Newl
     empty_map()
   } else {
     params |> fold(init: empty_map(), f: (found, p) =>
-      let pname = authored_name_at(source_indices: si, node: p)
-      let ptype = authored_name_at(source_indices: si, node: param_node_type_expr(n: p))
+      let pname = node_authored_text(node: p)
+      let ptype = node_authored_text(node: param_node_type_expr(n: p))
       let summary = summarize_fold_acc_uses(node: body, acc_name: pname, si: si, inside_nested: false)
       if ptype == "" || summary.whole_acc_uses > 0 || summary.nested_acc_refs {
         found
       } else {
-        literals |> filter(lit => authored_name_at(source_indices: si, node: lit) == ptype)
+        literals |> filter(lit => node_authored_text(node: lit) == ptype)
           |> fold(init: found, f: (acc, lit) => map_insert(acc, to_string(value: lit.span.start), pname))
       }
     )
@@ -695,7 +695,7 @@ fn analyze_dying_base_sites(params: List<Node>, body: Node, si: Map<String, Newl
 
 fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<String, NewlineIndex>) -> OwnershipProof {
   let initial = params |> fold(init: empty_usage_accum(), f: (acc, p) =>
-    let p_name = authored_name_at(source_indices: si, node: p)
+    let p_name = node_authored_text(node: p)
     UsageAccum {
       bindings: map_insert(acc.bindings, p_name, BindingUsage { name: p_name, binding_kind: none, consumers: [] }),
       fold_call_nodes: acc.fold_call_nodes,

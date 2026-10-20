@@ -318,11 +318,11 @@ fn add(x: Int, y: Int) -> Int { x + y }
     assert_parses(source, "brace-bodied fn (legacy)");
 }
 
-// DIFFERENTIAL (H2): the text a parsed node CARRIES in ident_span equals what authored_name_at
+// DIFFERENTIAL (H2): the text a parsed node CARRIES in ident_span equals what authored_text_at
 // slices from the source at that span, for every reachable node. The source puts a non-BMP
 // scalar before the identifiers, because spans index Unicode scalars and a UTF-16 or byte
 // offset would shift the slice. The RED control rewrites one carried text and must be seen.
-fn carried_ident_text_equals_authored_name_at() {
+fn carried_ident_text_equals_span_slice() {
     let source = "module test\n// \u{1F600}\ntype Widget = String\nfn \u{1F600}_pad() -> Int { 1 }\nfn make_widget(w: Widget) -> Widget {\n  w\n}\nservice weather.api {\n}";
     let result = parse_source(source);
     assert!(result.error.is_none(), "parse error");
@@ -346,7 +346,11 @@ fn carried_ident_text_equals_authored_name_at() {
     let mut checked = 0;
     for n in &nodes {
         if let Some(ident) = n.ident_span.as_ref() {
-            let sliced = v1_compiler::v1_std_core::authored_name_at(indices.clone(), n.clone());
+            let sliced = v1_compiler::v1_std_core::authored_text_at(
+                indices.clone(),
+                ident.span.clone(),
+                n.name.clone(),
+            );
             assert_eq!(
                 ident.text, sliced,
                 "carried text differs at node {}",
@@ -1048,8 +1052,8 @@ fn floor_suite() -> Vec<WitnessCase> {
             parse_fn_brace_body_still_accepted,
         ),
         (
-            "carried_ident_text_equals_authored_name_at",
-            carried_ident_text_equals_authored_name_at,
+            "carried_ident_text_equals_span_slice",
+            carried_ident_text_equals_span_slice,
         ),
         (
             "item_ident_spans_point_at_identifiers_not_keywords",

@@ -2,7 +2,7 @@ module v1.compiler.infer_env
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.std.core { kernel_ident, resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { kernel_ident, resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, node_authored_text, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type, is_container_type }
@@ -84,14 +84,14 @@ fn variant_lookup_structural(ty: Node) -> Node {
   } else { ty }
 }
 
-fn binding_unit_variant_contributions(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> Map<String, UnitVariantContribution> {
+fn binding_unit_variant_contributions(binding: TypeBinding) -> Map<String, UnitVariantContribution> {
   let ty = variant_lookup_structural(ty: binding.resolved)
   match ty.connective {
     Disj =>
       let seed: Map<String, UnitVariantContribution> = empty_map()
       fold(ty.children, init: seed, f: (acc, v) =>
         if is_unit_variant_node(variant: v) {
-          let vname = authored_name_at(source_indices: source_indices, node: v)
+          let vname = node_authored_text(node: v)
           match map_get(acc, vname) {
             Present { value: prev } => map_insert(acc, vname, UnitVariantContribution { count: prev.count + 1, variant: prev.variant })
             Absent => map_insert(acc, vname, UnitVariantContribution { count: 1, variant: v })
@@ -116,10 +116,9 @@ fn contributions_without_key(contribs: Map<String, UnitVariantContribution>, key
 
 fn unit_variant_index_remove_binding(
   index: Map<String, Map<String, UnitVariantContribution>>,
-  binding: TypeBinding,
-  source_indices: Map<String, NewlineIndex>
+  binding: TypeBinding
 ) -> Map<String, Map<String, UnitVariantContribution>> {
-  fold(binding_unit_variant_contributions(binding: binding, source_indices: source_indices) |> map_keys, init: index, f: (acc, vname) =>
+  fold(binding_unit_variant_contributions(binding: binding) |> map_keys, init: index, f: (acc, vname) =>
     match map_get(acc, vname) {
       Present { value: contribs } => map_insert(acc, vname, contributions_without_key(contribs: contribs, key: binding.name))
       Absent => acc
@@ -129,10 +128,9 @@ fn unit_variant_index_remove_binding(
 
 fn unit_variant_index_add_binding(
   index: Map<String, Map<String, UnitVariantContribution>>,
-  binding: TypeBinding,
-  source_indices: Map<String, NewlineIndex>
+  binding: TypeBinding
 ) -> Map<String, Map<String, UnitVariantContribution>> {
-  let contributions = binding_unit_variant_contributions(binding: binding, source_indices: source_indices)
+  let contributions = binding_unit_variant_contributions(binding: binding)
   fold(contributions |> map_keys, init: index, f: (acc, vname) =>
     match map_get(contributions, vname) {
       Present { value: contribution } =>
@@ -164,20 +162,19 @@ fn effective_visible_binding(str_bindings: Map<String, TypeBinding>, parents: Li
 fn unit_variant_index_shadow_insert(
   unit_variant_index: Map<String, Map<String, UnitVariantContribution>>,
   shadowed: TypeBinding?,
-  binding: TypeBinding,
-  source_indices: Map<String, NewlineIndex>
+  binding: TypeBinding
 ) -> Map<String, Map<String, UnitVariantContribution>> {
   let cleared = match shadowed {
-    Present { value: old } => unit_variant_index_remove_binding(index: unit_variant_index, binding: old, source_indices: source_indices)
+    Present { value: old } => unit_variant_index_remove_binding(index: unit_variant_index, binding: old)
     Absent => unit_variant_index
   }
-  unit_variant_index_add_binding(index: cleared, binding: binding, source_indices: source_indices)
+  unit_variant_index_add_binding(index: cleared, binding: binding)
 }
 
-fn build_unit_variant_index(str_bindings: Map<String, TypeBinding>, parents: List<TypeEnv>, source_indices: Map<String, NewlineIndex>) -> Map<String, Map<String, UnitVariantContribution>> {
+fn build_unit_variant_index(str_bindings: Map<String, TypeBinding>, parents: List<TypeEnv>) -> Map<String, Map<String, UnitVariantContribution>> {
   let visible = fold(parents, init: str_bindings, f: (acc, parent) => map_merge(parent.str_bindings, acc))
   fold(visible |> map_values, init: empty_map(), f: (acc, binding) =>
-    unit_variant_index_add_binding(index: acc, binding: binding, source_indices: source_indices)
+    unit_variant_index_add_binding(index: acc, binding: binding)
   )
 }
 
@@ -955,14 +952,14 @@ fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: SourceSpan) -> Co
 fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: String) -> String? {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-      match binding_declares_name(binding: b, name: name, source_indices: env.source_indices) {
+      match binding_declares_name(binding: b, name: name) {
         true => Present { value: mp }
         false => Absent
       }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       match global_bare_policy_candidate(env_module_path: owner_module_path, candidates: cands) {
         Present { value: cand } =>
-          match binding_declares_name(binding: cand.binding, name: name, source_indices: env.source_indices) {
+          match binding_declares_name(binding: cand.binding, name: name) {
             true => Present { value: cand.module_path }
             false => Absent
           }
@@ -972,15 +969,15 @@ fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: Strin
   }
 }
 
-fn binding_declares_name(binding: TypeBinding, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  authored_name_at(source_indices: source_indices, node: binding.resolved) == name
+fn binding_declares_name(binding: TypeBinding, name: String) -> Bool {
+  node_authored_text(node: binding.resolved) == name
 }
 
-fn borrowed_generic_param_names(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+fn borrowed_generic_param_names(params: List<Node>) -> Map<String, Bool> {
   fold(params, init: empty_map(), f: (acc, p) =>
     let pt = param_node_type_expr(n: p)
-    let pname = param_node_name_at(n: p, source_indices: source_indices)
-    let tname = authored_name_at(source_indices: source_indices, node: pt)
+    let pname = param_node_name_at(n: p)
+    let tname = node_authored_text(node: pt)
     if (pt.children |> count) == 0 && pt.connective == NoConnective && pname != "" && (pname == tname || pname == pt.name) {
       map_insert(acc, pname, true)
     } else { acc }
@@ -1009,7 +1006,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
   } else {
     n.children |> map(c => qualify_decl_reference_positions(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
   }
-  let name = authored_name_at(source_indices: env.source_indices, node: n)
+  let name = node_authored_text(node: n)
   let is_type_var = match n.inferred {
     Present { value: TypeVariable { id: _ } } => true
     _ => false
@@ -1209,7 +1206,7 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   match lookup_binding_by_name(env: env, name: name) {
     Present { value: binding } =>
-      match binding_declares_name(binding: binding, name: name, source_indices: env.source_indices) {
+      match binding_declares_name(binding: binding, name: name) {
         true => Present { value: binding.resolved }
         false =>
           match variant_arm_type_projection(env: env, owner: binding.resolved, name: name) {
@@ -1235,7 +1232,7 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
 fn declaration_substitution_basis(n: Node, env: TypeEnv, generic_names: List<String>) -> Node {
   let children = n.children |> map(ch => declaration_substitution_basis(n: ch, env: env, generic_names: generic_names))
   let with_children = node_with_children(n: n, children: children)
-  let name = authored_name_at(source_indices: env.source_indices, node: n)
+  let name = node_authored_text(node: n)
   let generic_leaf = n.connective == NoConnective
     && (n.children |> count) == 0
     && name != ""
@@ -1308,7 +1305,7 @@ fn width_resolution_qualified_name() -> String { "std.machine_constraints.WidthR
 fn width_resolution_declaration(env: TypeEnv) -> Node? {
   match symbol_index_lookup(index: env.symbol_index, qualified_name: width_resolution_qualified_name()) {
     Present { value: decl } =>
-      if decl.children |> any(v => is_unit_variant_node(variant: v) && authored_name_at(source_indices: env.source_indices, node: v) == static_width_index_arm_name()) {
+      if decl.children |> any(v => is_unit_variant_node(variant: v) && node_authored_text(node: v) == static_width_index_arm_name()) {
         Present { value: decl }
       } else { none }
     Absent => none
@@ -1385,7 +1382,7 @@ fn type_ref_measure_binding_authority(env: TypeEnv, name: String) -> Bool {
 fn variant_arm_type_projection(env: TypeEnv, owner: Node, name: String) -> Node? {
   match owner.connective {
     Disj =>
-      match find_child_named(n: owner, name: name, source_indices: env.source_indices) {
+      match find_child_named(n: owner, name: name) {
         Present { value: arm } =>
           match (arm.children |> count) == 0 {
             true => Present { value: arm }
@@ -1398,7 +1395,7 @@ fn variant_arm_type_projection(env: TypeEnv, owner: Node, name: String) -> Node?
 }
 
 fn authored_name(env: TypeEnv, node: Node) -> String {
-  authored_name_at(source_indices: env.source_indices, node: node)
+  node_authored_text(node: node)
 }
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
@@ -1407,7 +1404,7 @@ fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
       match lookup_type(env: env, ident: id) {
         Present { value: resolved } =>
           let name = authored_name(env: env, node: node)
-          match resolved.connective == Disj && authored_name_at(source_indices: env.source_indices, node: resolved) != name {
+          match resolved.connective == Disj && node_authored_text(node: resolved) != name {
             true =>
               match variant_arm_type_projection(env: env, owner: resolved, name: name) {
                 Present { value: arm } => Present { value: arm }
@@ -1548,7 +1545,7 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
       provenance: SubValueUnknown, alias_rhs: none
     }
     let shadowed = effective_visible_binding(str_bindings: e.str_bindings, parents: e.parents, name: tp_name)
-    let updated_index = unit_variant_index_shadow_insert(unit_variant_index: e.unit_variant_index, shadowed: shadowed, binding: tp_binding, source_indices: e.source_indices)
+    let updated_index = unit_variant_index_shadow_insert(unit_variant_index: e.unit_variant_index, shadowed: shadowed, binding: tp_binding)
     TypeEnv { module_path: e.module_path,
       bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, tp_binding),
       str_bindings: map_insert(e.str_bindings, tp_name, tp_binding),
@@ -1619,7 +1616,7 @@ fn binding_declares_span(binding: TypeBinding, sp: SourceSpan) -> Bool {
 // returned std.nat.Nat for a module that imported v2.std.nat.Nat, and the span match then confirmed
 // that homonym exactly. The reading is therefore done once, at inference, and carried on the typed
 // tree (std.operator_realization OperandDeclaration on ExprBinOp) for emission to consume.
-fn type_reference_declaration(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> OperandDeclaration? {
+fn type_reference_declaration(n: Node, env: TypeEnv) -> OperandDeclaration? {
   let rt = match n.inferred {
     Present { value: Resolved { node: r } } => r
     _ =>
@@ -1628,7 +1625,7 @@ fn type_reference_declaration(n: Node, source_indices: Map<String, NewlineIndex>
         Absent => n
       }
   }
-  let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt))
+  let decl_name = qualified_last_segment(name: node_authored_text(node: rt))
   if decl_name == "" { return none }
   match rt.ident_span {
     Absent => none
@@ -1723,12 +1720,12 @@ type TypeNodeUnidentifiedCause
   | TypeNodeCarriesNoSpan { name: String }
   | TypeNodeQualifierMatchesNoDeclarer { qualified: String }
 
-fn declaration_reading_of_type_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> TypeNodeDeclarationReading {
-  let authored = authored_name_at(source_indices: source_indices, node: rt)
+fn declaration_reading_of_type_node(rt: Node, env: TypeEnv) -> TypeNodeDeclarationReading {
+  let authored = node_authored_text(node: rt)
   let decl_name = qualified_last_segment(name: authored)
   if decl_name == "" { return TypeNodeUnidentified { cause: TypeNodeAuthoredNameEmpty } }
   let entry = map_get(env.symbol_index.global_bare, decl_name)
-  let by_span = declaration_ref_of_declaration_node(decl: rt, source_indices: source_indices, env: env)
+  let by_span = declaration_ref_of_declaration_node(decl: rt, env: env)
   match by_span {
     Present { value: d } => TypeNodeNamesDeclaration { declaration: d }
     Absent =>
@@ -1749,8 +1746,8 @@ fn declaration_reading_of_type_node(rt: Node, source_indices: Map<String, Newlin
 // reading of a spelling. It answers none for a node whose span declares nothing, as any reference
 // does. The one writer of Node.declaration (v1.compiler.infer_resolve field_inferred_with_declaration)
 // mints through this and through nothing else: not the qualified-name arm, not a by-name lookup.
-fn declaration_ref_of_declaration_node(decl: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: decl))
+fn declaration_ref_of_declaration_node(decl: Node, env: TypeEnv) -> DeclarationRef? {
+  let decl_name = qualified_last_segment(name: node_authored_text(node: decl))
   if decl_name == "" { return none }
   let minted = if resolved_node_is_kernel_identity_for_name(node: decl, name: decl_name) {
     match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: decl_name) {
@@ -1775,8 +1772,8 @@ fn declaration_ref_of_declaration_node(decl: Node, source_indices: Map<String, N
   }
 }
 
-fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  match declaration_reading_of_type_node(rt: rt, source_indices: source_indices, env: env) {
+fn declaration_ref_of_type_node(rt: Node, env: TypeEnv) -> DeclarationRef? {
+  match declaration_reading_of_type_node(rt: rt, env: env) {
     TypeNodeNamesDeclaration { declaration: d } => Present { value: d }
     TypeNodeUnidentified { cause: _ } => none
   }
@@ -1795,25 +1792,25 @@ type TypeReferenceDeclarationReading
   | TypeReferenceIsTypeVariable { id: String }
   | TypeReferenceUnidentified { authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause? }
 
-fn type_reference_declaration_reading(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> TypeReferenceDeclarationReading {
-  match declaration_reading_of_type_node(rt: n, source_indices: source_indices, env: env) {
+fn type_reference_declaration_reading(n: Node, env: TypeEnv) -> TypeReferenceDeclarationReading {
+  match declaration_reading_of_type_node(rt: n, env: env) {
     TypeNodeNamesDeclaration { declaration: d } => TypeReferenceNamesDeclaration { declaration: d }
     TypeNodeUnidentified { cause: authored_cause } =>
       match n.inferred {
         Present { value: TypeVariable { id: v } } => TypeReferenceIsTypeVariable { id: v }
         Present { value: Resolved { node: r } } =>
-          match declaration_reading_of_type_node(rt: r, source_indices: source_indices, env: env) {
+          match declaration_reading_of_type_node(rt: r, env: env) {
             TypeNodeNamesDeclaration { declaration: d } => TypeReferenceNamesDeclaration { declaration: d }
             TypeNodeUnidentified { cause: resolved_cause } =>
-              kernel_or_unidentified(n: r, source_indices: source_indices, authored: authored_cause, resolved: Present { value: resolved_cause })
+              kernel_or_unidentified(n: r, authored: authored_cause, resolved: Present { value: resolved_cause })
           }
-        _ => kernel_or_unidentified(n: n, source_indices: source_indices, authored: authored_cause, resolved: none)
+        _ => kernel_or_unidentified(n: n, authored: authored_cause, resolved: none)
       }
   }
 }
 
-fn kernel_or_unidentified(n: Node, source_indices: Map<String, NewlineIndex>, authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause?) -> TypeReferenceDeclarationReading {
-  let nm = authored_name_at(source_indices: source_indices, node: n)
+fn kernel_or_unidentified(n: Node, authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause?) -> TypeReferenceDeclarationReading {
+  let nm = node_authored_text(node: n)
   match n.inferred {
     Present { value: TypeVariable { id: v } } => TypeReferenceIsTypeVariable { id: v }
     _ =>
@@ -1936,7 +1933,7 @@ fn text_element_is_char(n: Node, env: TypeEnv) -> TextRepresentation {
     Absent => TextRepresentationUnidentified
     Present { value: ch } =>
       let el = match ch.inferred { Present { value: Resolved { node: r } } => r  _ => ch }
-      match type_reference_declaration_reading(n: el, source_indices: env.source_indices, env: env) {
+      match type_reference_declaration_reading(n: el, env: env) {
         TypeReferenceNamesDeclaration { declaration: e } => if declaration_ref_eq(a: e, b: text_identity_std_types_char()) { CodePointSequence } else { NotText }
         TypeReferenceIsKernelType { name: _ } => NotText
         TypeReferenceIsTypeVariable { id: _ } => NotText
@@ -1978,7 +1975,7 @@ fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, vis
     }
   }
   else {
-    match type_reference_declaration_reading(n: n, source_indices: env.source_indices, env: env) {
+    match type_reference_declaration_reading(n: n, env: env) {
       TypeReferenceUnidentified { authored: _, resolved: _ } => if kernel_other { NotText } else { TextRepresentationUnidentified }
       TypeReferenceIsKernelType { name: k } => if k == "String" { HostText } else { NotText }
       TypeReferenceIsTypeVariable { id: _ } => NotText
@@ -2001,7 +1998,7 @@ fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, vis
                 else {
                   match decl.inferred {
                     Present { value: Resolved { node: target } } =>
-                      let target_is_itself = match type_reference_declaration_reading(n: target, source_indices: env.source_indices, env: env) {
+                      let target_is_itself = match type_reference_declaration_reading(n: target, env: env) {
                         TypeReferenceNamesDeclaration { declaration: t } => declaration_ref_eq(a: t, b: d)
                         _ => false
                       }
@@ -2066,7 +2063,7 @@ fn host_text_into_structural_sequence(formal: Node, actual: Node, unpeeled_actua
   } else {
     match text_representation_by_identity(n: actual, env: env) {
       HostText =>
-        match type_reference_declaration_reading(n: formal, source_indices: env.source_indices, env: env) {
+        match type_reference_declaration_reading(n: formal, env: env) {
           TypeReferenceNamesDeclaration { declaration: d } => declaration_ref_eq(a: d, b: text_identity_std_algebra_free_monoid())
           _ => false
         }
@@ -2104,10 +2101,10 @@ type SettledType {
   args: List<Node>
 }
 
-fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
+fn settled_type(n: Node, env: TypeEnv, fuel: Int) -> SettledType? {
   let read = match n.declaration {
     Present { value: dn } => TypeReferenceNamesDeclaration { declaration: dn }
-    Absent => type_reference_declaration_reading(n: n, source_indices: source_indices, env: env)
+    Absent => type_reference_declaration_reading(n: n, env: env)
   }
   // A reference read through another module's declaration (a record field typed by an alias this module never imported) carries no
   // identity here; its spelling is then resolved in the module of the file that authored it, which names the declaration exactly or answers none.
@@ -2115,7 +2112,7 @@ fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv
     TypeReferenceUnidentified { authored: _, resolved: _ } =>
       match map_get(env.symbol_index.file_modules, n.span.file) {
         Present { value: authoring } =>
-          match declaration_named_in_module(name: authored_name_at(source_indices: source_indices, node: n), module_path: authoring, env: env) {
+          match declaration_named_in_module(name: node_authored_text(node: n), module_path: authoring, env: env) {
             Present { value: d } => TypeReferenceNamesDeclaration { declaration: d }
             Absent => read
           }
@@ -2127,17 +2124,17 @@ fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv
     TypeReferenceNamesDeclaration { declaration: d } =>
       match alias_rhs_of_declaration(item_ref: d, env: env) {
         Absent => Present { value: SettledType { head: d, args: n.children } }
-        Present { value: rhs } => settled_alias_rhs(rhs: rhs, source_indices: source_indices, env: env, fuel: fuel)
+        Present { value: rhs } => settled_alias_rhs(rhs: rhs, env: env, fuel: fuel)
       }
     _ => none
   }
 }
 
-fn settled_alias_rhs(rhs: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
+fn settled_alias_rhs(rhs: Node, env: TypeEnv, fuel: Int) -> SettledType? {
   if fuel <= 0 { none }
   else {
     match rhs.declaration {
-      Present { value: rhs_head } => settled_rhs(rhs: rhs, head: rhs_head, source_indices: source_indices, env: env, fuel: fuel - 1)
+      Present { value: rhs_head } => settled_rhs(rhs: rhs, head: rhs_head, env: env, fuel: fuel - 1)
       Absent => none
     }
   }
@@ -2145,21 +2142,21 @@ fn settled_alias_rhs(rhs: Node, source_indices: Map<String, NewlineIndex>, env: 
 
 // A declaration named without a node (a name-only seam that resolved its spelling to a DeclarationRef) settles through the same
 // chase as a node does; a non-alias declaration exposes no arguments of its own.
-fn settled_type_of_declaration(d: DeclarationRef, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
+fn settled_type_of_declaration(d: DeclarationRef, env: TypeEnv, fuel: Int) -> SettledType? {
   match alias_rhs_of_declaration(item_ref: d, env: env) {
     Absent => Present { value: SettledType { head: d, args: [] } }
-    Present { value: rhs } => settled_alias_rhs(rhs: rhs, source_indices: source_indices, env: env, fuel: fuel)
+    Present { value: rhs } => settled_alias_rhs(rhs: rhs, env: env, fuel: fuel)
   }
 }
 
-fn settled_rhs(rhs: Node, head: DeclarationRef, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
+fn settled_rhs(rhs: Node, head: DeclarationRef, env: TypeEnv, fuel: Int) -> SettledType? {
   match alias_rhs_of_declaration(item_ref: head, env: env) {
     Absent => Present { value: SettledType { head: head, args: rhs.children } }
     Present { value: next } =>
       match next.declaration {
         Present { value: next_head } =>
           if fuel <= 0 { none }
-          else { settled_rhs(rhs: next, head: next_head, source_indices: source_indices, env: env, fuel: fuel - 1) }
+          else { settled_rhs(rhs: next, head: next_head, env: env, fuel: fuel - 1) }
         Absent => none
       }
   }
@@ -2221,7 +2218,7 @@ fn alias_rhs_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> Node? {
 // spelling names IN THE ALIAS'S OWN MODULE: the module its named import comes from, else the module itself when that module
 // declares the name. The scope is the alias's, never the asking module's; a spelling neither imported nor declared there answers none.
 fn alias_rhs_with_index_identity(rhs: Node, owner_module: String, env: TypeEnv) -> Node? {
-  let spelled = authored_name_at(source_indices: env.source_indices, node: rhs)
+  let spelled = node_authored_text(node: rhs)
   match declaration_named_in_module(name: spelled, module_path: owner_module, env: env) {
     Absent => none
     Present { value: d } =>
@@ -2281,10 +2278,10 @@ fn settled_arity_agrees(head: DeclarationRef, l: SettledType, r: SettledType, en
 // An alias whose chain ends at a KERNEL type (`type ParseTree = Node` where Node is a primitive) has no declaration to settle to:
 // its identity is the kernel type's name, which is the kernel's own identity and not a user-declared spelling. The chain is
 // followed by declaration; the reading names either the kernel type directly or the alias's terminal right-hand side.
-fn kernel_settled_name(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> String? {
+fn kernel_settled_name(n: Node, env: TypeEnv, fuel: Int) -> String? {
   let reading = match n.declaration {
     Present { value: dn } => TypeReferenceNamesDeclaration { declaration: dn }
-    Absent => type_reference_declaration_reading(n: n, source_indices: source_indices, env: env)
+    Absent => type_reference_declaration_reading(n: n, env: env)
   }
   match reading {
     TypeReferenceIsKernelType { name: kernel } => Present { value: kernel }
@@ -2294,19 +2291,19 @@ fn kernel_settled_name(n: Node, source_indices: Map<String, NewlineIndex>, env: 
         match alias_rhs_of_declaration(item_ref: d, env: env) {
           Absent => none
           Present { value: rhs } =>
-            kernel_settled_name(n: rhs, source_indices: source_indices, env: env, fuel: fuel - 1)
+            kernel_settled_name(n: rhs, env: env, fuel: fuel - 1)
         }
       }
     _ => none
   }
 }
 
-fn alias_settled_agree(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, agree: fn(Node, Node) -> Bool) -> Bool {
-  match settled_type(n: left, source_indices: source_indices, env: env, fuel: 16) {
-    Absent => kernel_settled_agree(left: left, right: right, source_indices: source_indices, env: env)
+fn alias_settled_agree(left: Node, right: Node, env: TypeEnv, agree: fn(Node, Node) -> Bool) -> Bool {
+  match settled_type(n: left, env: env, fuel: 16) {
+    Absent => kernel_settled_agree(left: left, right: right, env: env)
     Present { value: l } =>
-      match settled_type(n: right, source_indices: source_indices, env: env, fuel: 16) {
-        Absent => kernel_settled_agree(left: left, right: right, source_indices: source_indices, env: env)
+      match settled_type(n: right, env: env, fuel: 16) {
+        Absent => kernel_settled_agree(left: left, right: right, env: env)
         Present { value: r } => settled_types_agree(l: l, r: r, env: env, agree: agree)
       }
   }
@@ -2318,17 +2315,17 @@ fn settled_types_agree(l: SettledType, r: SettledType, env: TypeEnv, agree: fn(N
 
 // The name-only entry of the one relation: each spelling is read as the declaration it names (declaration_named_by_type_name), then
 // the two declarations settle and agree exactly as two nodes do. An undeclared or ambiguous spelling does not settle.
-fn alias_names_settled_agree(left: String, right: String, source_indices: Map<String, NewlineIndex>, env: TypeEnv, agree: fn(Node, Node) -> Bool) -> Bool {
+fn alias_names_settled_agree(left: String, right: String, env: TypeEnv, agree: fn(Node, Node) -> Bool) -> Bool {
   match declaration_named_by_type_name(name: left, env: env) {
     Absent => false
     Present { value: ld } =>
       match declaration_named_by_type_name(name: right, env: env) {
         Absent => false
         Present { value: rd } =>
-          match settled_type_of_declaration(d: ld, source_indices: source_indices, env: env, fuel: 16) {
+          match settled_type_of_declaration(d: ld, env: env, fuel: 16) {
             Absent => false
             Present { value: l } =>
-              match settled_type_of_declaration(d: rd, source_indices: source_indices, env: env, fuel: 16) {
+              match settled_type_of_declaration(d: rd, env: env, fuel: 16) {
                 Absent => false
                 Present { value: r } => settled_types_agree(l: l, r: r, env: env, agree: agree)
               }
@@ -2337,33 +2334,33 @@ fn alias_names_settled_agree(left: String, right: String, source_indices: Map<St
   }
 }
 
-fn kernel_settled_agree(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
-  match kernel_settled_name(n: left, source_indices: source_indices, env: env, fuel: 16) {
+fn kernel_settled_agree(left: Node, right: Node, env: TypeEnv) -> Bool {
+  match kernel_settled_name(n: left, env: env, fuel: 16) {
     Absent => false
     Present { value: l } =>
-      match kernel_settled_name(n: right, source_indices: source_indices, env: env, fuel: 16) {
+      match kernel_settled_name(n: right, env: env, fuel: 16) {
         Absent => false
         Present { value: r } => l == r
       }
   }
 }
 
-fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  let from_authored = declaration_ref_of_type_node(rt: n, source_indices: source_indices, env: env)
+fn type_reference_declaration_ref(n: Node, env: TypeEnv) -> DeclarationRef? {
+  let from_authored = declaration_ref_of_type_node(rt: n, env: env)
   if from_authored != none { return from_authored }
   let from_resolved = match n.inferred {
-    Present { value: Resolved { node: r } } => declaration_ref_of_type_node(rt: r, source_indices: source_indices, env: env)
+    Present { value: Resolved { node: r } } => declaration_ref_of_type_node(rt: r, env: env)
     _ => none
   }
   match from_resolved {
     Present { value: d } => Present { value: d }
     Absent =>
       match lookup_type_for(env: env, node: n) {
-        Present { value: bound } => declaration_ref_of_type_node(rt: bound, source_indices: source_indices, env: env)
+        Present { value: bound } => declaration_ref_of_type_node(rt: bound, env: env)
         Absent =>
-          match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
-            Present { value: bound } => declaration_ref_of_type_node(rt: bound, source_indices: source_indices, env: env)
-            Absent => declaration_ref_of_type_node(rt: n, source_indices: source_indices, env: env)
+          match lookup_type_by_name(env: env, name: node_authored_text(node: n)) {
+            Present { value: bound } => declaration_ref_of_type_node(rt: bound, env: env)
+            Absent => declaration_ref_of_type_node(rt: n, env: env)
           }
       }
   }
@@ -2374,7 +2371,7 @@ fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIn
 // bare: the unique global binding); an ambiguous or undeclared name is Absent and the seam refuses.
 fn declaration_named_by_type_name(name: String, env: TypeEnv) -> DeclarationRef? {
   let scoped = match lookup_type_by_name(env: env, name: name) {
-    Present { value: decl } => declaration_ref_of_declaration_node(decl: decl, source_indices: env.source_indices, env: env)
+    Present { value: decl } => declaration_ref_of_declaration_node(decl: decl, env: env)
     Absent => none
   }
   if scoped != none { return scoped }

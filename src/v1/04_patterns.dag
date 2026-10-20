@@ -11,7 +11,7 @@ import std.syntax { LiteralValue }
 import v1.std.core { kernel_ident, Unmarked,
   match_pattern_is_irrefutable,
   Node,
-  find_child_named, NewlineIndex, authored_name_at, generic_param_name_at,
+  find_child_named, NewlineIndex, node_authored_text, generic_param_name_at,
   ExprData, NoExprData,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   Cardinality, Required,
@@ -48,7 +48,7 @@ import v1.compiler.infer_resolve {
 fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node> {
   let decl = resolve_generic_use_decl(env: env, n: scrut_node)
   fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
-    let slot = generic_param_name_at(n: pair.second, source_indices: env.source_indices)
+    let slot = generic_param_name_at(n: pair.second)
     match scrut_node.children |> skip(pair.first) |> first {
       Present { value: arg } => map_insert(acc, slot, arg)
       Absent => acc
@@ -65,8 +65,7 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
       substitute_type_slots_scoped(
         n: decl,
         slot_bindings: subst,
-        decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
-        source_indices: env.source_indices,
+        decl_name: node_authored_text(node: decl),
         bind_type_variables: true
       )
     } else { decl }
@@ -78,7 +77,6 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
           n: target,
           slot_bindings: subst,
           decl_name: name,
-          source_indices: env.source_indices,
         bind_type_variables: true
         )
         expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
@@ -90,8 +88,7 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
       substitute_type_slots_scoped(
         n: decl,
         slot_bindings: subst,
-        decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
-        source_indices: env.source_indices,
+        decl_name: node_authored_text(node: decl),
         bind_type_variables: true
       )
     } else {
@@ -101,7 +98,7 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
 }
 
 fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
-  let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
+  let name = node_authored_text(node: scrut_node)
   let is_generic_use = scrut_node.connective == NoConnective && scrut_node.children |> count > 0
     && is_user_generic_use_site(n: scrut_node, env: env)
   match lookup_type_by_name(env: env, name: name) {
@@ -126,7 +123,6 @@ fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
                   n: target,
                   slot_bindings: subst,
                   decl_name: name,
-                  source_indices: env.source_indices,
         bind_type_variables: true
                 )
                 expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
@@ -142,7 +138,7 @@ fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
 }
 
 fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node {
-  let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
+  let name = node_authored_text(node: scrut_node)
   let is_disj = scrut_node.connective == Disj
   let is_witness = is_witness_type_name(name: name)
   let is_optional = scrut_node.return_cardinality == CardOptional
@@ -261,9 +257,9 @@ fn pattern_binding_type(subject: PatternSubject) -> Node {
   }
 }
 
-fn variant_not_found_result(scrut: Node, variant_name: String, site: SourceSpan, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
+fn variant_not_found_result(scrut: Node, variant_name: String, site: SourceSpan, module_name: String) -> NodeLookupResult {
   node_lookup_failed(
-    diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: authored_name_at(source_indices: source_indices, node: scrut), span: site }, module_name: module_name)]
+    diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: node_authored_text(node: scrut), span: site }, module_name: module_name)]
   )
 }
 
@@ -293,20 +289,20 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: Sou
         match symbol_index_lookup(index: env.symbol_index, qualified_name: variant_name) {
           Present { value: resolved } =>
             if (resolved.connective == Disj) {
-              match find_variant_child_keyed(n: resolved, variant_name: variant_name, source_indices: source_indices) {
+              match find_variant_child_keyed(n: resolved, variant_name: variant_name) {
                 Present { value: variant_child } =>
-                  match find_variant_child_keyed(n: expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env), variant_name: variant_name, source_indices: source_indices) {
+                  match find_variant_child_keyed(n: expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env), variant_name: variant_name) {
                     Present { value: scrut_child } => node_lookup_resolved(node: scrut_child)
                     Absent => node_lookup_resolved(node: variant_child)
                   }
                 Absent =>
-                  variant_not_found_result(scrut: scrut_node, variant_name: variant_name, site: site, module_name: module_name, source_indices: source_indices)
+                  variant_not_found_result(scrut: scrut_node, variant_name: variant_name, site: site, module_name: module_name)
               }
             } else {
               node_lookup_resolved(node: resolved)
             }
           Absent =>
-            variant_not_found_result(scrut: scrut_node, variant_name: variant_name, site: site, module_name: module_name, source_indices: source_indices)
+            variant_not_found_result(scrut: scrut_node, variant_name: variant_name, site: site, module_name: module_name)
         }
       } else {
       let scrut_node = expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env)
@@ -314,8 +310,8 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: Sou
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
         node_lookup_failed(diagnostics: [])
       } else {
-        let optional_cardinality_subject = scrut_opt && authored_name_at(source_indices: source_indices, node: scrut_node) != "Optional"
-        let witness_subject = is_witness_type_name(name: authored_name_at(source_indices: source_indices, node: scrut_node)) && scrut_node.children |> count == 1
+        let optional_cardinality_subject = scrut_opt && node_authored_text(node: scrut_node) != "Optional"
+        let witness_subject = is_witness_type_name(name: node_authored_text(node: scrut_node)) && scrut_node.children |> count == 1
         if optional_cardinality_subject && variant_name == "Present" {
           node_lookup_resolved(node: synthesize_optional_present_variant(scrut: scrut_node))
         } else if optional_cardinality_subject && variant_name == "Absent" {
@@ -325,11 +321,11 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: Sou
         } else if witness_subject && variant_name == "Violates" {
           node_lookup_resolved(node: synthesize_witness_violates_variant(scrut: scrut_node))
         } else {
-          let scrut_name = authored_name_at(source_indices: source_indices, node: scrut_node)
+          let scrut_name = node_authored_text(node: scrut_node)
 
           let optional_coproduct_subject = scrut_name == "Optional"
             && (variant_name == "Present" || variant_name == "Absent")
-          let direct_match = find_variant_child_keyed(n: scrut_node, variant_name: variant_name, source_indices: source_indices)
+          let direct_match = find_variant_child_keyed(n: scrut_node, variant_name: variant_name)
 
           let record_destructure = field_binding_count > 0
             && scrut_node.connective == Conj
@@ -341,7 +337,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: Sou
           } else if optional_coproduct_subject && variant_name == "Absent" {
             node_lookup_resolved(node: none_type)
           } else {
-            variant_not_found_result(scrut: scrut_node, variant_name: variant_name, site: site, module_name: module_name, source_indices: source_indices)
+            variant_not_found_result(scrut: scrut_node, variant_name: variant_name, site: site, module_name: module_name)
           }
           match direct_match {
             Present { value: v } => node_lookup_resolved(node: v)
@@ -353,18 +349,18 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: Sou
   }
 }
 
-fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
+fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_name: String) -> NodeLookupResult {
   match variant {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
     PatternDynamic { span: dynamic_span } =>
       node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
     PatternResolved { node: variant_node } =>
-      match find_child_named(n: variant_node, name: field_name, source_indices: source_indices) {
+      match find_child_named(n: variant_node, name: field_name) {
         Present { value: field_child } =>
           let resolved = child_type_node(ch: field_child)
           node_lookup_resolved(node: resolved)
-        Absent => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: authored_name_at(source_indices: source_indices, node: variant_node), span: variant_node.span }, module_name: module_name)])
+        Absent => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: node_authored_text(node: variant_node), span: variant_node.span }, module_name: module_name)])
       }
   }
 }
@@ -408,9 +404,9 @@ fn variant_pattern_coverage_key(name: String) -> String {
 // variant_not_found_result -- a typed, located refusal in the existing vocabulary. No ambiguity
 // diagnostic is minted here: the frontier is the missing scope-carrying identity, and inventing a
 // spelling for it would be modeling the gap instead of refusing over it.
-fn find_variant_child_keyed(n: Node, variant_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn find_variant_child_keyed(n: Node, variant_name: String) -> Node? {
   let key = variant_pattern_coverage_key(name: variant_name)
-  let matches = n.children |> filter(c => variant_pattern_coverage_key(name: authored_name_at(source_indices: source_indices, node: c)) == key)
+  let matches = n.children |> filter(c => variant_pattern_coverage_key(name: node_authored_text(node: c)) == key)
   if matches |> count > 1 {
     none
   } else {
@@ -540,13 +536,13 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
   let resolved = resolve_scrutinee_type(type_node: type_node, env: env)
   let is_coproduct = resolved.connective == Disj
   let resolved_is_optional = resolved.return_cardinality == CardOptional
-  let resolved_is_witness = is_witness_type_name(name: authored_name_at(source_indices: env.source_indices, node: resolved)) && resolved.children |> count == 1
+  let resolved_is_witness = is_witness_type_name(name: node_authored_text(node: resolved)) && resolved.children |> count == 1
   if resolved_is_optional {
     ConstructorsClosed { names: ["Present", "Absent"] }
   } else if resolved_is_witness {
     ConstructorsClosed { names: ["Holds", "Violates"] }
   } else if is_coproduct {
-    ConstructorsClosed { names: resolved.children |> map(c => authored_name_at(source_indices: env.source_indices, node: c)) }
+    ConstructorsClosed { names: resolved.children |> map(c => node_authored_text(node: c)) }
   } else if is_uninhabited_sum(resolved: resolved, env: env) {
     ConstructorsClosed { names: [] }
   } else {
@@ -586,10 +582,10 @@ fn candidate_joins_never_identity(n: Node, identity: Node) -> Bool {
 }
 
 fn node_names_never_declaration(n: Node, env: TypeEnv) -> Bool {
-  match declaration_ref_of_type_node(rt: n, source_indices: env.source_indices, env: env) {
+  match declaration_ref_of_type_node(rt: n, env: env) {
     Present { value: d } => declaration_ref_eq(a: d, b: never_type_declaration)
     Absent =>
-      match declaration_ref_of_declaration_node(decl: n, source_indices: env.source_indices, env: env) {
+      match declaration_ref_of_declaration_node(decl: n, env: env) {
         Present { value: d } => declaration_ref_eq(a: d, b: never_type_declaration)
         Absent => false
       }
@@ -632,7 +628,7 @@ fn constructor_fields(type_node: Node, ctor: String, env: TypeEnv, module_name: 
     LookupFailed => []
     LookupResolved { node: variant_node } =>
       variant_node.children |> map(ch => ConstructorField {
-        name: authored_name_at(source_indices: env.source_indices, node: ch),
+        name: node_authored_text(node: ch),
         type_node: child_type_node(ch: ch)
       })
   }
@@ -669,14 +665,14 @@ fn pattern_matches_constructor(p: MatchPattern, ctor: String) -> Bool {
 // `A { }` both mean. A binding whose name matches no declared field -- the positional `"0"`
 // spelling -- contributes nothing, so the column stays a wildcard and the arm keeps the
 // coverage it has today rather than acquiring a refusal this change did not measure.
-fn field_binding_pattern_for(bindings: List<Node>, field_name: String, source_indices: Map<String, NewlineIndex>) -> MatchPattern {
-  match bindings |> filter(b => field_binding_name_at(n: b, source_indices: source_indices) == field_name) |> first {
+fn field_binding_pattern_for(bindings: List<Node>, field_name: String) -> MatchPattern {
+  match bindings |> filter(b => field_binding_name_at(n: b) == field_name) |> first {
     Present { value: b } => field_binding_pattern(n: b)
     Absent => Wildcard
   }
 }
 
-fn specialize_pattern_row(row: List<MatchPattern>, ctor: String, fields: List<ConstructorField>, source_indices: Map<String, NewlineIndex>) -> List<List<MatchPattern>> {
+fn specialize_pattern_row(row: List<MatchPattern>, ctor: String, fields: List<ConstructorField>) -> List<List<MatchPattern>> {
   let head = pattern_row_head(row: row)
   let rest = row |> skip(1)
   if match_pattern_is_irrefutable(pattern: head) {
@@ -684,7 +680,7 @@ fn specialize_pattern_row(row: List<MatchPattern>, ctor: String, fields: List<Co
   } else if pattern_matches_constructor(p: head, ctor: ctor) {
     match head {
       VariantPattern { name: _, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
-        [concat(fields |> map(f => field_binding_pattern_for(bindings: fbs, field_name: f.name, source_indices: source_indices)), rest)]
+        [concat(fields |> map(f => field_binding_pattern_for(bindings: fbs, field_name: f.name)), rest)]
       _ => [concat(fields |> map(f => Wildcard), rest)]
     }
   } else {
@@ -744,7 +740,7 @@ fn exhaustiveness_witnesses(rows: List<List<MatchPattern>>, columns: List<Node>,
               let fields = constructor_fields(type_node: head_type, ctor: c, env: env, module_name: module_name)
               let field_count = fields |> count
               let sub = exhaustiveness_witnesses(
-                rows: rows |> flat_map(r => specialize_pattern_row(row: r, ctor: c, fields: fields, source_indices: env.source_indices)),
+                rows: rows |> flat_map(r => specialize_pattern_row(row: r, ctor: c, fields: fields)),
                 columns: concat(fields |> map(f => f.type_node), rest_columns),
                 env: env, module_name: module_name
               )

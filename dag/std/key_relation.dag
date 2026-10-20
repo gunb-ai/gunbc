@@ -36,7 +36,7 @@ data key_relation_identity_wall_next_rung_trigger: DissolutionCondition = unboun
 // re-derive is debt, not evidence, so the CONSUMER is named and the COUNTS are
 // not. When an entry point re-derives them, it is cited here by symbol and the
 // figures become legitimate unchanged.
-data key_relation_identity_wall_first_consumer: DeclarationRef = decl_ref(module_path: "v1.std.core", decl_name: "authored_name_at")
+data key_relation_identity_wall_first_consumer: DeclarationRef = decl_ref(module_path: "v1.std.core", decl_name: "node_authored_text")
 
 // The identity key at this site is the AUTHORED SOURCE TEXT AT A SPAN, which is a content-derived
 // key in exactly the sense key_relation_identity_wall_next_rung_trigger forbids: two declarations

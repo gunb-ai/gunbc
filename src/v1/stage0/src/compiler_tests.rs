@@ -6791,10 +6791,7 @@ mod compiler_tests {
                     }
 
                     let typed = tc_result.typed.clone();
-                    let typed_path = crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        typed.module.clone(),
-                    );
+                    let typed_path = crate::v1_std_core::node_authored_text(typed.module.clone());
                     variant_surfaces = crate::v1_rt::rc_map_insert(
                         variant_surfaces.clone(),
                         typed_path,

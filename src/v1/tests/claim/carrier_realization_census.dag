@@ -15,7 +15,7 @@ import v1.compiler.infer_env {
 }
 import v1.compiler.infer { declared_return_type_node, build_emit_graph_info }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
-import v1.std.core { ModuleItemTypeDeclaration, Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file, type_reference_identity }
+import v1.std.core { ModuleItemTypeDeclaration, Node, NewlineIndex, node_authored_text, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file, type_reference_identity }
 import std.coercion {
   TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, DeclarationIdentityAbsent,
   TypeReferenceIdentity, ReferenceResolvedToDeclaration, ReferenceIsTheDeclaration, ReferenceIsTypeVariableBinder, ReferenceIdentityUnavailable,
@@ -149,7 +149,7 @@ fn identity_query_provenance(o: DeclarationIdentityObservation) -> TypeDeclarati
 }
 
 fn legacy_claims_text(n: Node, si: Map<String, NewlineIndex>) -> Bool {
-  is_host_text_carrier_type(n: n, source_indices: si)
+  is_host_text_carrier_type(n: n)
 }
 
 fn authority_realizes(name: String, provenance: TypeDeclarationProvenance) -> Bool {
@@ -161,7 +161,7 @@ fn authority_realizes(name: String, provenance: TypeDeclarationProvenance) -> Bo
 }
 
 fn legacy_base_label(n: Node, si: Map<String, NewlineIndex>) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: si) { "String" } else { "<not-short-circuited>" }
+  if is_host_text_carrier_type(n: n) { "String" } else { "<not-short-circuited>" }
 }
 
 fn authority_base_of(name: String, provenance: TypeDeclarationProvenance) -> String {
@@ -204,7 +204,7 @@ fn typed_decision_row(
   let identity = identity_observation(inferred: inferred, environment: environment)
   let query_provenance = identity_query_provenance(o: identity)
   let query_file = provenance_reported_file(p: query_provenance)
-  let name = authored_name_at(source_indices: si, node: n)
+  let name = node_authored_text(node: n)
   let claims_text = legacy_claims_text(n: n, si: si)
   TypedCarrierRow {
     module_file: module_file,
@@ -218,7 +218,7 @@ fn typed_decision_row(
     legacy_base: legacy_base_label(n: n, si: si),
     authority_base: authority_base_of(name: name, provenance: query_provenance),
     recorded_declaration: n.declaration,
-    emitter_decl_route: type_decl_routed_resolution_label(routed: resolve_type_decl_routed(index: type_decls, type_expr: n, source_indices: si)),
+    emitter_decl_route: type_decl_routed_resolution_label(routed: resolve_type_decl_routed(index: type_decls, type_expr: n)),
     outcome: outcome_of(claims_text: claims_text, realizes: authority_realizes(name: name, provenance: query_provenance), query_file: query_file)
   }
 }
@@ -293,7 +293,7 @@ fn typed_occurrence_rows(
     concat(param_rows, return_rows)
   } else {
     let is_declaration = match n.module_item_kind { ModuleItemTypeDeclaration => true  _ => false }
-    let decl_identity = type_reference_declaration_reading(n: n, source_indices: si, env: env)
+    let decl_identity = type_reference_declaration_reading(n: n, env: env)
     let is_kernel_mint = match decl_identity { TypeReferenceIsKernelType { name: _ } => true  _ => false }
     let arg_children = if is_declaration || is_kernel_mint { [] } else { n.children }
     let arg_rows = arg_children |> fold(init: no_typed_rows(), f: (acc, a) => concat(acc, typed_occurrence_rows(
@@ -312,7 +312,7 @@ fn typed_field_rows(
 }
 
 fn typed_item_rows(module_file: String, item: Node, env: TypeEnv, type_decls: TypeDeclIndex, si: Map<String, NewlineIndex>) -> List<TypedCarrierRow> {
-  let enclosing = authored_name_at(source_indices: si, node: item)
+  let enclosing = node_authored_text(node: item)
   let decl_rows = if !is_type_def_item(item: item) {
     no_typed_rows()
   } else if is_coproduct_type(n: item) {
@@ -338,7 +338,7 @@ fn typed_item_rows(module_file: String, item: Node, env: TypeEnv, type_decls: Ty
 }
 
 fn typed_module_rows(m: TypedModule, type_decls: TypeDeclIndex, si: Map<String, NewlineIndex>) -> List<TypedCarrierRow> {
-  let module_file = authored_name_at(source_indices: si, node: m.module)
+  let module_file = node_authored_text(node: m.module)
   m.items |> fold(init: no_typed_rows(), f: (acc, item) =>
     concat(acc, typed_item_rows(module_file: module_file, item: item, env: m.type_env, type_decls: type_decls, si: si)))
 }
