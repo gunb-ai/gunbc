@@ -324,3 +324,18 @@ on the Acc head for a 6-line module. If confirmed, that is substantive evidence 
 family question: (ii) Acc/producer defect -- a true source disagreement would refuse, not diverge.
 CI's 76-diagnostic run did not hang, so the divergence may need the single-module census path
 (compiling std per call) rather than the corpus path; naming that difference is part of the verdict.
+
+## CAPTURE BUG #5 (mine, jd52f0d3b): `--exact` with an unqualified name filtered everything out
+All seven per-test invocations printed "test result: ok. 0 passed; 101 filtered out" rc=0 -- a
+green report from a run that executed NOTHING. libtest --exact compares against the MODULE-QUALIFIED
+path (map_family_disposition_test::fam_f5_...), so a bare fn name matches no test. The fix in the
+dispatch (jc7841d74): substring filter, a `$BIN --list | grep -c fam_` presence assertion BEFORE
+any run, and an explicit VOID_NO_MATCH when a run reports 0 passed. Rule extracted: a test command
+must prove it selected the test it claims to run; "ok, 0 passed" is never a result.
+
+UNEXPLAINED, and I will not paper over it: jbad8b8df ran `cargo test ... fam_ -- --nocapture
+--test-threads=1` (substring, so it matched), printed "Running unittests", then consumed ~40 min and
+TEST_RC=124 with FAM_LINES=0 -- yet MEASURED_AT=2790ba4bd6c which contains `println!("FAM ... BEGIN")`
+BEFORE the census call. Either the print never reached the redirected stdout, or the first test never
+started. If jc7841d74 (direct binary, per-test timeout) also shows no BEGIN, the fallback is
+eprintln! (stderr is unbuffered in Rust) -- a measurement that cannot be observed is not a measurement.
