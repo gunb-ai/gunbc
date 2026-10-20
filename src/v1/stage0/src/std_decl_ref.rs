@@ -87,6 +87,16 @@ pub fn decl_type_parameter_ref(
     })
 }
 
+pub fn decl_type_parameter_name(ref_: Rc<DeclarationRef>) -> Option<String> {
+    match (*ref_.field.clone()).clone() {
+        DeclField::TypeParameter {
+            name: parameter, ..
+        } => Some(parameter.clone()),
+        DeclField::WholeDeclaration => std::option::Option::None,
+        DeclField::NamedField { field_name: _, .. } => std::option::Option::None,
+    }
+}
+
 pub fn decl_field_eq(a: Rc<DeclField>, b: Rc<DeclField>) -> bool {
     match (*a.clone()).clone() {
         DeclField::WholeDeclaration => match (*b.clone()).clone() {

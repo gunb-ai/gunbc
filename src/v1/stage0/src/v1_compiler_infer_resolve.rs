@@ -4,7 +4,8 @@
 use self::AliasKind::*;
 use self::KindInhabitance::*;
 pub use crate::std_decl_ref::{
-    decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter, DeclarationRef,
+    decl_ref, decl_type_parameter_name, decl_type_parameter_ref, declaration_ref_is_type_parameter,
+    DeclarationRef,
 };
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
@@ -47,7 +48,9 @@ use crate::v1_std_core::ExprData::{
 use crate::v1_std_core::ExprErrorKind::SemanticExprError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::Wildcard;
-use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemFunction, ModuleItemTypeDeclaration};
+use crate::v1_std_core::ParsedModuleItemKind::{
+    ModuleItemFunction, ModuleItemTypeDeclaration, NotAModuleItem,
+};
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
@@ -117,6 +120,41 @@ match type_arg_kind_inhabitance(arg.clone(), kind_node.clone(), env.clone(), mod
     supplied: v1_rt::concat(v1_rt::concat("(kind declaration '".to_string(), kind_name.clone()), "' did not resolve, so inhabitance could not be established)".to_string()),
     span: arg.span.clone(),
 }), module_name.clone())]),
+    KindInhabitance::ForwardedParameterUnidentified => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    type_name: type_name.clone(),
+    param_name: param_name.clone(),
+    kind_name: kind_name.clone(),
+    supplied: v1_rt::concat(v1_rt::concat("(forwarded argument '".to_string(), type_arg_display_spelling(arg.clone(), env.clone())), "' carries no type-parameter declaration, so its kind is unknown and nothing is admitted)".to_string()),
+    span: arg.span.clone(),
+}), module_name.clone())]),
+    KindInhabitance::ForwardedParameterOwnerUnresolved => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    type_name: type_name.clone(),
+    param_name: param_name.clone(),
+    kind_name: kind_name.clone(),
+    supplied: v1_rt::concat(v1_rt::concat("(the declaration said to own the forwarded parameter '".to_string(), type_arg_display_spelling(arg.clone(), env.clone())), "' did not resolve to one declaring module, so its kind could not be read)".to_string()),
+    span: arg.span.clone(),
+}), module_name.clone())]),
+    KindInhabitance::ForwardedParameterNotDeclaredByOwner => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    type_name: type_name.clone(),
+    param_name: param_name.clone(),
+    kind_name: kind_name.clone(),
+    supplied: v1_rt::concat(v1_rt::concat("('".to_string(), type_arg_display_spelling(arg.clone(), env.clone())), "' is not a parameter of the declaration its binder names, so no kind was declared for it)".to_string()),
+    span: arg.span.clone(),
+}), module_name.clone())]),
+    KindInhabitance::ForwardedParameterUnkinded => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    type_name: type_name.clone(),
+    param_name: param_name.clone(),
+    kind_name: kind_name.clone(),
+    supplied: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("(the forwarded parameter '".to_string(), type_arg_display_spelling(arg.clone(), env.clone())), "' declares no kind, so it cannot be shown to inhabit '".to_string()), kind_name.clone()), "')".to_string()),
+    span: arg.span.clone(),
+}), module_name.clone())]),
+    KindInhabitance::ForwardedParameterKindUnresolved => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    type_name: type_name.clone(),
+    param_name: param_name.clone(),
+    kind_name: kind_name.clone(),
+    supplied: v1_rt::concat(v1_rt::concat("(a kind on the forwarded parameter '".to_string(), type_arg_display_spelling(arg.clone(), env.clone())), "' did not resolve to a single declaring position, so the two kinds could not be compared)".to_string()),
+    span: arg.span.clone(),
+}), module_name.clone())]),
 }
 },
 },
@@ -143,6 +181,11 @@ pub enum KindInhabitance {
     KindInhabited,
     KindNotInhabited,
     KindDeclarationUnresolved,
+    ForwardedParameterUnidentified,
+    ForwardedParameterOwnerUnresolved,
+    ForwardedParameterNotDeclaredByOwner,
+    ForwardedParameterUnkinded,
+    ForwardedParameterKindUnresolved,
 }
 
 pub fn type_arg_kind_inhabitance(
@@ -156,54 +199,58 @@ pub fn type_arg_kind_inhabitance(
             Some(inf) => is_type_variable(inf.clone()),
             std::option::Option::None => false,
         };
-        if arg_is_type_var.clone() {
-            KindInhabitance::KindInhabited
+        if node_is_type_parameter_reference(arg.clone()) {
+            forwarded_parameter_kind_matches(
+                arg.clone(),
+                kind_node.clone(),
+                env.clone(),
+                module_name.clone(),
+            )
         } else {
-            if (crate::v1_std_core::expr_literal_int_optional(arg.clone())
-                != std::option::Option::None)
-            {
-                KindInhabitance::KindInhabited
+            if arg_is_type_var.clone() {
+                KindInhabitance::ForwardedParameterUnidentified
             } else {
-                match crate::v1_compiler_infer_env::lookup_type_by_name(
-                    env.clone(),
-                    crate::v1_compiler_infer_env::authored_name(env.clone(), kind_node.clone()),
-                ) {
-                    std::option::Option::None => KindInhabitance::KindDeclarationUnresolved,
-                    Some(kind_decl) => {
-                        let arg_name =
-                            crate::v1_compiler_infer_env::authored_name(env.clone(), arg.clone());
-                        if {
-                            let mut __found = false;
-                            for c in kind_decl.children.clone().iter().cloned() {
-                                if (node_authored_or_own_name(c.clone(), env.clone())
-                                    == arg_name.clone())
-                                {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        } {
-                            KindInhabitance::KindInhabited
-                        } else {
-                            if kind_names_admissible_inhabitant(
-                                kind_decl.clone(),
-                                arg_name.clone(),
+                if (crate::v1_std_core::expr_literal_int_optional(arg.clone())
+                    != std::option::Option::None)
+                {
+                    KindInhabitance::KindInhabited
+                } else {
+                    match crate::v1_compiler_infer_env::lookup_type_by_name(
+                        env.clone(),
+                        crate::v1_compiler_infer_env::authored_name(env.clone(), kind_node.clone()),
+                    ) {
+                        std::option::Option::None => KindInhabitance::KindDeclarationUnresolved,
+                        Some(kind_decl) => {
+                            let arg_name = crate::v1_compiler_infer_env::authored_name(
                                 env.clone(),
-                            ) {
+                                arg.clone(),
+                            );
+                            if {
+                                let mut __found = false;
+                                for c in kind_decl.children.clone().iter().cloned() {
+                                    if (node_authored_or_own_name(c.clone(), env.clone())
+                                        == arg_name.clone())
+                                    {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            } {
                                 KindInhabitance::KindInhabited
                             } else {
-                                if kind_inhabitant_matches_resolved(
-                                    kind_node.clone(),
-                                    arg.clone(),
+                                if kind_names_admissible_inhabitant(
+                                    kind_decl.clone(),
+                                    arg_name.clone(),
                                     env.clone(),
-                                    module_name.clone(),
                                 ) {
                                     KindInhabitance::KindInhabited
                                 } else {
-                                    if type_arg_name_is_bound_generic_parameter(
-                                        arg_name.clone(),
+                                    if kind_inhabitant_matches_resolved(
+                                        kind_node.clone(),
+                                        arg.clone(),
                                         env.clone(),
+                                        module_name.clone(),
                                     ) {
                                         KindInhabitance::KindInhabited
                                     } else {
@@ -311,12 +358,90 @@ pub fn node_authored_or_own_name(n: Rc<Node>, env: Rc<TypeEnv>) -> String {
     }
 }
 
-pub fn type_arg_name_is_bound_generic_parameter(name: String, env: Rc<TypeEnv>) -> bool {
-    match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
-        std::option::Option::None => false,
-        Some(bound) => match bound.inferred.clone() {
-            Some(inf) => is_type_variable(inf.clone()),
-            std::option::Option::None => false,
+pub fn forwarded_parameter_kind_matches(
+    arg: Rc<Node>,
+    slot_kind_node: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> KindInhabitance {
+    match arg.declaration.clone() {
+        std::option::Option::None => KindInhabitance::ForwardedParameterUnidentified,
+        Some(carrier) => {
+            if !crate::std_decl_ref::declaration_ref_is_type_parameter(carrier.clone()) {
+                KindInhabitance::ForwardedParameterUnidentified
+            } else {
+                match crate::std_decl_ref::decl_type_parameter_name(carrier.clone()) {
+                    std::option::Option::None => KindInhabitance::ForwardedParameterUnidentified,
+                    Some(parameter_name) => {
+                        let owner_qualified = v1_rt::concat(
+                            v1_rt::concat(carrier.module_path.clone(), ".".to_string()),
+                            carrier.decl_name.clone(),
+                        );
+                        match crate::v1_compiler_infer_env::symbol_index_lookup(
+                            env.symbol_index.clone(),
+                            owner_qualified.clone(),
+                        ) {
+                            std::option::Option::None => {
+                                KindInhabitance::ForwardedParameterOwnerUnresolved
+                            }
+                            Some(owner_decl) => match v1_rt::map_get(
+                                &env.symbol_index.file_modules.clone(),
+                                owner_decl.span.file.clone(),
+                            ) {
+                                std::option::Option::None => {
+                                    KindInhabitance::ForwardedParameterOwnerUnresolved
+                                }
+                                Some(owner_module) => {
+                                    if (owner_module.clone() != carrier.module_path.clone()) {
+                                        KindInhabitance::ForwardedParameterOwnerUnresolved
+                                    } else {
+                                        match Rc::new({ let mut __result = Vec::new(); for param in owner_decl.params.clone().iter().cloned() { if (crate::v1_std_core::authored_name_at(env.source_indices.clone(), param.clone()) == parameter_name.clone()) { __result.push(param); } } __result }).first().cloned() {
+    std::option::Option::None => KindInhabitance::ForwardedParameterNotDeclaredByOwner,
+    Some(binder) => match crate::v1_std_core::find_property(binder.properties.clone(), crate::v1_std_core::type_param_kind_property_name(), env.source_indices.clone()) {
+    std::option::Option::None => KindInhabitance::ForwardedParameterUnkinded,
+    Some(binder_kind_node) => match kind_declaring_position(binder_kind_node.clone(), owner_module.clone(), env.clone()) {
+    std::option::Option::None => KindInhabitance::ForwardedParameterKindUnresolved,
+    Some(binder_kind_decl) => match kind_declaring_position(slot_kind_node.clone(), module_name.clone(), env.clone()) {
+    std::option::Option::None => KindInhabitance::ForwardedParameterKindUnresolved,
+    Some(slot_kind_decl) => if (((slot_kind_decl.span.file.clone() == binder_kind_decl.span.file.clone()) && (slot_kind_decl.span.start.clone() == binder_kind_decl.span.start.clone())) && (slot_kind_decl.span.end.clone() == binder_kind_decl.span.end.clone())) {
+                    KindInhabitance::KindInhabited
+                } else {
+                    KindInhabitance::KindNotInhabited
+                },
+},
+},
+},
+}
+                                    }
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn kind_declaring_position(
+    kind_node: Rc<Node>,
+    declaring_module: String,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    match crate::v1_compiler_infer_env::symbol_index_lookup(
+        env.symbol_index.clone(),
+        v1_rt::concat(
+            v1_rt::concat(declaring_module.clone(), ".".to_string()),
+            crate::v1_compiler_infer_env::authored_name(env.clone(), kind_node.clone()),
+        ),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(kind_decl) => match v1_rt::map_get(
+            &env.symbol_index.file_modules.clone(),
+            kind_decl.span.file.clone(),
+        ) {
+            std::option::Option::None => std::option::Option::None,
+            Some(_) => Some(kind_decl.clone()),
         },
     }
 }
@@ -4353,6 +4478,141 @@ pub fn binder_marked_member(
     })
 }
 
+pub fn binder_marked_item(
+    item: Rc<Node>,
+    owner: Rc<DeclarationRef>,
+    binders: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    {
+        let marked_params = Rc::new({
+            let mut __result = Vec::new();
+            for p in item.params.clone().iter().cloned() {
+                __result.push(binder_marked_param(
+                    p.clone(),
+                    owner.clone(),
+                    binders.clone(),
+                    env.clone(),
+                ));
+            }
+            __result
+        });
+        let marked_children = if (((item.connective.clone() == Connective::Conj)
+            || (item.connective.clone() == Connective::Disj))
+            && (item.transport.clone() == std::option::Option::None))
+        {
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in item.children.clone().iter().cloned() {
+                    __result.push(binder_marked_member(
+                        c.clone(),
+                        owner.clone(),
+                        binders.clone(),
+                        env.clone(),
+                    ));
+                }
+                __result
+            })
+        } else {
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in item.children.clone().iter().cloned() {
+                    __result.push(binder_marked_body_expr(
+                        c.clone(),
+                        owner.clone(),
+                        binders.clone(),
+                        env.clone(),
+                    ));
+                }
+                __result
+            })
+        };
+        let marked_body = match item.body.clone() {
+            Some(body) => Some(binder_marked_body_expr(
+                body.clone(),
+                owner.clone(),
+                binders.clone(),
+                env.clone(),
+            )),
+            std::option::Option::None => std::option::Option::None,
+        };
+        let marked_anno = match item.type_annotation.clone() {
+            Some(anno) => Some(binder_marked_type(
+                anno.clone(),
+                owner.clone(),
+                binders.clone(),
+                env.clone(),
+            )),
+            std::option::Option::None => std::option::Option::None,
+        };
+        Rc::new(Node {
+            occurrence_identity: item.occurrence_identity.clone(),
+            name: item.name.clone(),
+            span: item.span.clone(),
+            ident_span: item.ident_span.clone(),
+            children: marked_children.clone(),
+            connective: item.connective.clone(),
+            params: marked_params.clone(),
+            inferred: binder_marked_inferred(
+                item.inferred.clone(),
+                owner.clone(),
+                binders.clone(),
+                env.clone(),
+            ),
+            return_cardinality: item.return_cardinality.clone(),
+            uses: item.uses.clone(),
+            body: marked_body.clone(),
+            transport: item.transport.clone(),
+            properties: item.properties.clone(),
+            type_annotation: marked_anno.clone(),
+            is_self_recursive: item.is_self_recursive.clone(),
+            has_non_tail_self_call: item.has_non_tail_self_call.clone(),
+            match_pattern: item.match_pattern.clone(),
+            module_item_kind: item.module_item_kind.clone(),
+            declaration_marker: item.declaration_marker.clone(),
+            declaration: item.declaration.clone(),
+            expr_data: item.expr_data.clone(),
+            ident: None,
+        })
+    }
+}
+
+pub fn binder_marked_body_expr(
+    n: Rc<Node>,
+    owner: Rc<DeclarationRef>,
+    binders: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (n.module_item_kind.clone() != ParsedModuleItemKind::NotAModuleItem) {
+            n.clone()
+        } else {
+            node_with_children_params_inferred(
+                n.clone(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.children.clone().iter().cloned() {
+                        __result.push(binder_marked_body_expr(
+                            c.clone(),
+                            owner.clone(),
+                            binders.clone(),
+                            env.clone(),
+                        ));
+                    }
+                    __result
+                }),
+                n.params.clone(),
+                binder_marked_inferred(
+                    n.inferred.clone(),
+                    owner.clone(),
+                    binders.clone(),
+                    env.clone(),
+                ),
+            )
+        }
+    })
+}
+
 pub fn node_with_children_params_inferred(
     n: Rc<Node>,
     children: Rc<Vec<Rc<Node>>>,
@@ -4407,6 +4667,12 @@ pub fn resolve_item_types(
         } else {
             fn_type_param_names(item.clone(), env.source_indices.clone())
         };
+        let owner = crate::std_decl_ref::decl_ref(
+            module_name.clone(),
+            crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
+        );
+        let item_marked =
+            binder_marked_item(item.clone(), owner.clone(), tp_names.clone(), env.clone());
         let collision_diags = match first_duplicate_type_param_name(tp_names.clone()) {
     Some(dup) => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: v1_rt::concat(v1_rt::concat(v1_rt::concat("the name '".to_string(), dup.clone()), v1_rt::concat("' is bound twice in the header of '".to_string(), crate::v1_std_core::authored_name_at(env.source_indices.clone(), item.clone()))), "': either a type parameter is repeated (`type Pair<T, T>`), or a value parameter shares a type parameter's name (`fn f<T>(T: T)`). A type parameter's identity is (owner, name), so one header may bind a name once. Rename one of them.".to_string()),
@@ -4420,7 +4686,7 @@ pub fn resolve_item_types(
         );
         let param_results = Rc::new({
             let mut __result = Vec::new();
-            for p in item.params.clone().iter().cloned() {
+            for p in item_marked.params.clone().iter().cloned() {
                 __result.push(resolve_param(p.clone(), env.clone(), module_name.clone()));
             }
             __result
@@ -4440,7 +4706,7 @@ pub fn resolve_item_types(
             __result
         });
         let ret_result = if is_parametric_type_alias_decl(item.clone()) {
-            match item.inferred.clone().as_deref().cloned() {
+            match item_marked.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved {
                     node: authored_rhs, ..
                 }) => resolve_nominal_alias_rhs(
@@ -4448,14 +4714,22 @@ pub fn resolve_item_types(
                     env.clone(),
                     module_name.clone(),
                 ),
-                _ => resolve_optional_node(item.inferred.clone(), env.clone(), module_name.clone()),
+                _ => resolve_optional_node(
+                    item_marked.inferred.clone(),
+                    env.clone(),
+                    module_name.clone(),
+                ),
             }
         } else {
-            resolve_optional_node(item.inferred.clone(), env.clone(), module_name.clone())
+            resolve_optional_node(
+                item_marked.inferred.clone(),
+                env.clone(),
+                module_name.clone(),
+            )
         };
         let ret_resolved = ret_result.resolved.clone();
         let ret_diags = ret_result.diagnostics.clone();
-        let resolved_ret = if (item.inferred.clone() == std::option::Option::None) {
+        let resolved_ret = if (item_marked.inferred.clone() == std::option::Option::None) {
             std::option::Option::None
         } else {
             Some(Rc::new(InferredNode::Resolved {
@@ -4487,14 +4761,14 @@ pub fn resolve_item_types(
             }
             __result
         });
-        let body_resolved = if (item.body.clone() == std::option::Option::None) {
+        let body_resolved = if (item_marked.body.clone() == std::option::Option::None) {
             Rc::new(ExprResolveResult {
-                expr: item.clone(),
+                expr: item_marked.clone(),
                 diagnostics: Rc::new(vec![]),
             })
         } else {
             resolve_expr_types(
-                item.body.clone().clone().unwrap(),
+                item_marked.body.clone().clone().unwrap(),
                 env.clone(),
                 module_name.clone(),
             )
@@ -4509,19 +4783,19 @@ pub fn resolve_item_types(
         } else {
             body_resolved.diagnostics.clone()
         };
-        let anno_resolved = if (item.type_annotation.clone() == std::option::Option::None) {
+        let anno_resolved = if (item_marked.type_annotation.clone() == std::option::Option::None) {
             Rc::new(NodeResolveResult {
                 resolved: unit_type(),
                 diagnostics: Rc::new(vec![]),
             })
         } else {
             resolve_node(
-                item.type_annotation.clone().clone().unwrap(),
+                item_marked.type_annotation.clone().clone().unwrap(),
                 env.clone(),
                 module_name.clone(),
             )
         };
-        let resolved_anno = if (item.type_annotation.clone() == std::option::Option::None) {
+        let resolved_anno = if (item_marked.type_annotation.clone() == std::option::Option::None) {
             std::option::Option::None
         } else {
             Some(anno_resolved.resolved.clone())
@@ -4578,7 +4852,7 @@ pub fn resolve_item_types(
         {
             Rc::new({
                 let mut __result = Vec::new();
-                for child in item.children.clone().iter().cloned() {
+                for child in item_marked.children.clone().iter().cloned() {
                     __result.push({
                         let authored_type = crate::v1_std_core::field_node_type_expr(child.clone());
                         let tr =
@@ -4754,7 +5028,7 @@ pub fn resolve_item_types(
             } else {
                 Rc::new({
                     let mut __result = Vec::new();
-                    for child in item.children.clone().iter().cloned() {
+                    for child in item_marked.children.clone().iter().cloned() {
                         __result.push(resolve_item_types(
                             child.clone(),
                             env.clone(),
@@ -4772,35 +5046,13 @@ pub fn resolve_item_types(
             }
             __result
         });
-        let owner = crate::std_decl_ref::decl_ref(
-            module_name.clone(),
-            crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
-        );
-        let resolved_children = if (((item.connective.clone() == Connective::Conj)
-            || (item.connective.clone() == Connective::Disj))
-            && (item.transport.clone() == std::option::Option::None))
-        {
-            Rc::new({
-                let mut __result = Vec::new();
-                for cr in child_results.iter().cloned() {
-                    __result.push(binder_marked_member(
-                        cr.item.clone(),
-                        owner.clone(),
-                        tp_names.clone(),
-                        env.clone(),
-                    ));
-                }
-                __result
-            })
-        } else {
-            Rc::new({
-                let mut __result = Vec::new();
-                for cr in child_results.iter().cloned() {
-                    __result.push(cr.item.clone());
-                }
-                __result
-            })
-        };
+        let resolved_children = Rc::new({
+            let mut __result = Vec::new();
+            for cr in child_results.iter().cloned() {
+                __result.push(cr.item.clone());
+            }
+            __result
+        });
         let is_function_item = match item.module_item_kind.clone() {
             ParsedModuleItemKind::ModuleItemFunction => true,
             _ => false,
@@ -4825,24 +5077,6 @@ pub fn resolve_item_types(
         } else {
             resolved_ret.clone()
         };
-        let marked_params = Rc::new({
-            let mut __result = Vec::new();
-            for p in stamped_params.iter().cloned() {
-                __result.push(binder_marked_param(
-                    p.clone(),
-                    owner.clone(),
-                    tp_names.clone(),
-                    env.clone(),
-                ));
-            }
-            __result
-        });
-        let marked_ret = binder_marked_inferred(
-            stamped_ret.clone(),
-            owner.clone(),
-            tp_names.clone(),
-            env.clone(),
-        );
         Rc::new(ItemResolveResult {
             item: Rc::new(Node {
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -4850,8 +5084,8 @@ pub fn resolve_item_types(
                 span: item.span.clone(),
                 ident_span: item.ident_span.clone(),
                 children: resolved_children.clone(),
-                params: marked_params.clone(),
-                inferred: marked_ret.clone(),
+                params: stamped_params.clone(),
+                inferred: stamped_ret.clone(),
                 return_cardinality: item.return_cardinality.clone(),
                 uses: resolved_uses.clone(),
                 body: resolved_body.clone(),
@@ -4900,6 +5134,16 @@ pub struct KindInhabited;
 pub struct KindNotInhabited;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KindDeclarationUnresolved;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ForwardedParameterUnidentified;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ForwardedParameterOwnerUnresolved;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ForwardedParameterNotDeclaredByOwner;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ForwardedParameterUnkinded;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ForwardedParameterKindUnresolved;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AliasParameterized;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
