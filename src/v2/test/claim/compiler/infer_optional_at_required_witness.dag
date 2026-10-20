@@ -85,7 +85,7 @@ data oar_lift_source: String = "module v2.test.oar_lift\n\nfn oar_f(x: Int) -> I
 
 data oar_alias_ok_source: String = "module v2.test.oar_alias_ok\n\nimport std.optional { Optional }\n\ntype OarMaybe = Optional<Int>\n\nfn oar_f(x: Optional<Int>) -> OarMaybe { x }\n"
 
-data oar_alias_bad_source: String = "module v2.test.oar_alias_bad\n\nimport std.optional { Optional }\n\ntype OarMaybe = Optional<Int>\n\nfn oar_f() -> OarMaybe { Present { value: \"s\" } }\n"
+data oar_alias_bad_source: String = "module v2.test.oar_alias_bad\n\nimport std.optional { Optional, Present }\n\ntype OarMaybe = Optional<Int>\n\nfn oar_f() -> OarMaybe { Present { value: \"s\" } }\n"
 
 data oar_field_bad_source: String = "module v2.test.oar_field_bad\n\ntype OarR {\n  n: Int\n}\n\nfn oar_mk(x: Int?) -> OarR { OarR { n: x } }\n"
 
@@ -234,7 +234,7 @@ test fn oar_an_optional_value_at_an_optional_alias_is_accepted_holds() -> Bool {
 }
 
 test fn oar_a_string_present_at_an_optional_int_alias_refuses_at_the_payload_holds() -> Bool {
-  rcf_refuses_with(resolved: oar_resolved_alias_bad(), reason: ^record_field_value_does_not_inhabit)
+  rcf_refuses_with(resolved: oar_resolved_alias_bad(), reason: ^arrow_body_does_not_inhabit_declared_return)
 }
 
 // A type variable instantiable at an optional is not refused at the relation (the generic formal it is).
