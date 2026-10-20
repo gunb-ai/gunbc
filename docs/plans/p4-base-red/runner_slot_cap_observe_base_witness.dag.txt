@@ -50,7 +50,7 @@ import v2.std.witness_evaluation {
   WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
-import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited, ShellProcessSpawnRefused }
+import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
 import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import product.host_identity { HostIdentity }
@@ -141,11 +141,31 @@ fn shell_ok(stdout: String) -> ShellExchangeObservation {
 // The remote command under answer: the LAST word of the dispatch's client_args -- the quoted remote
 // command the ssh transport assembles. Keying the scenario on the command the route ACTUALLY
 // dispatches is what makes this a run over the real route rather than a call of a chosen function.
+
+// The remote command is everything the ssh transport put AFTER the `--` separator: the portable
+// words enter client_args as INDIVIDUAL argv items (fleet_known_hosts_anchor's shaper appends
+// destination, "--", then the words), so the joined remote side reproduces the production argv
+// exactly. Keying on the last item alone saw only the unit name and matched nothing.
+fn remote_side_of(items: List<String>) -> String {
+  let tail = skip_past(items: items, marker: "--")
+  match any(tail, t => true) {
+    true => join(tail, " ")
+    false => join(items, " ")
+  }
+}
+
+fn skip_past(items: List<String>, marker: String) -> List<String> {
+  match list_head(xs: items) {
+    Absent => []
+    Present { value: h } => if h == marker { skip(xs: items, n: 1) } else { skip_past(items: skip(xs: items, n: 1), marker: marker) }
+  }
+}
+
 fn remote_command_of(call: OperationCall) -> String {
   match first(filter(call.invocation.bindings, b => (b.name as String) == "client_args")) {
     Absent => ""
     Present { value: b } => match b.value {
-      InputTextList { items: i } => match last(i) { Present { value: w } => w Absent => "" }
+      InputTextList { items: i } => remote_side_of(items: i)
       _ => ""
     }
   }
@@ -231,9 +251,14 @@ fn red_realization(legs: List<ScriptedCommand>) -> OperationRealization<Int> {
               }
             Absent => OperationObserved {
               observation: ShellObserved {
-                observation: ShellProcessSpawnRefused {
-                  program: "ssh" as NonEmptyStr,
-                  cause: "the base-red scenario has no answer for this command" as NonEmptyStr,
+                // An unplanned command answers as ssh(1)'s documented CLIENT-ERROR status (session.dag:
+                // ssh_client_error_exit_status = 255), not a spawn refusal: the operation declares
+                // exit_code/success/stdout/stderr outputs and a ShellSpawnRefused observation has no field to
+                // project into. The gap phrase rides in stderr so the reader's refusal cause names it.
+                observation: ShellProcessExited {
+                  exit_code: 255,
+                  stdout: "",
+                  stderr: "the base-red scenario has no answer for this command",
                 },
               },
               state: state + 1,
@@ -261,7 +286,7 @@ fn red_frame(legs: List<ScriptedCommand>) -> WitnessEvaluationFrame<Int> {
 fn legs_of_route(route: List<DispatchRecord>) -> List<String> {
   map(route, r => match first(filter(r.invocation.bindings, b => (b.name as String) == "client_args")) {
     Present { value: b } => match b.value {
-      InputTextList { items: i } => match last(i) { Present { value: w } => w Absent => "" }
+      InputTextList { items: i } => remote_side_of(items: i)
       _ => ""
     }
     Absent => ""
