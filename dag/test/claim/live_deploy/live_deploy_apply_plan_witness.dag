@@ -11,6 +11,7 @@ import std.algebra { Cons, Empty }
 import std.optional { Optional, Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
 import std.content_hash { content_hash_atom }
+import std.measure { second }
 import gunbc.host.host_effect { HostEffectIntent, HostOs, SshShell, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, LiveDeployRetract, host_effect_identity_evidence }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect_realize { realize_live_deploy_apply_on_host, deploy_apply_ports_on_host, deploy_apply_run_legs, DeployApplyPorts, ApplyRunOk, ApplyRunFailed }
@@ -39,8 +40,11 @@ fn lab_spec() -> DeploymentSpec {
   selected_deployment_spec(row: srv1_lab_desired_deployment())
 }
 
+// THE OBSERVER CLOCK IS A SUPPLIED READING here: the lab twin owes an OIDC config whose rendering reads
+// the clock, and these claims are about the plan given a readable clock. The unreadable clock is its
+// own claim (lab_apply_oidc_refuses_without_an_observer_clock).
 fn plan_for(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
-  deploy_apply_plan_legs(spec: spec, plan: plan, authorization: CapConvergeWithheld { cause: "witness" }, source_root: "/src", oidc_now: Absent)
+  deploy_apply_plan_legs(spec: spec, plan: plan, authorization: CapConvergeWithheld { cause: "witness" }, source_root: "/src", oidc_now: Present { value: second(count: 1760000000) })
 }
 
 fn legs_of(p: DeployApplyPlan) -> List<DeployApplyLeg> {
