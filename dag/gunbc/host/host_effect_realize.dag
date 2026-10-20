@@ -277,7 +277,7 @@ import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanSe
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
   ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
-  ApplyLegRootHelperGrant, ApplyLegBrokerTree,
+  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency,
 }
 import gunbc.systemctl_show_read { systemctl_show_load_state_read, SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
@@ -289,9 +289,9 @@ import extdeps.systemd.systemctl {
   systemctl_start_command,
 }
 import gunbc.live_deploy.emit {
-  live_deploy_apply_script_for_wet,
   deployment_serve_route_command,
 }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_deploy_now_epoch }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -5298,17 +5298,24 @@ fn realize_live_deploy_apply_on_host(
             )
         }
     }
-    realize_shell_on_host(
-      script: retained_srvn(
-        body: live_deploy_apply_script_for_wet(
-          spec: spec,
-          plan: plan,
-          access: access,
-          cap_authorization: cap_authorization,
-        ),
-        reason: "live_deploy apply (unit install + start)",
+    // THE APPLY, AS TYPED LEGS, through the same pure orchestration a control drives with supplied
+    // outcomes: the plan decides every refusal before the preamble runs, then each leg in the deployment's
+    // order, the first failure naming its step. The checkout this process runs in is the source root the
+    // object-source leg observes and every install reads from.
+    let source_root = git.Inspect.Toplevel().path as String
+    live_deploy_apply_orchestrate(
+      locus_refusal: none,
+      plan: deploy_apply_plan_legs(
+        spec: spec,
+        plan: plan,
+        authorization: cap_authorization,
+        source_root: source_root,
+        oidc_now: tracker_web_oidc_deploy_now_epoch(),
       ),
-      transport: transport,
+      principal: spec.names.publication_principal,
+      preamble: fn(principal) { live_deploy_apply_preamble_on_host(access: access, principal: principal) },
+      ports: deploy_apply_ports_on_host(spec: spec, principal: access.principal, source_root: source_root, transport: transport, intent: intent),
+      host: spec.target.host.identity,
       intent: intent,
     )
   }
@@ -5553,10 +5560,12 @@ type DeployApplyPorts {
   helper_grant: fn(ReleaseRevisionBinding) -> Optional<String>
   root_helper_grant: fn(HelperGrantSite, HelperRevisionReceipt, ReleaseRevisionBinding) -> Optional<String>
   broker_tree: fn(ReleaseRevisionBinding) -> Optional<String>
+  dependency: fn(DeploymentDependencyStep) -> Optional<String>
+  retract: DeployRetractPorts
   object_source: fn() -> ObjectSourceServeAdmission
 }
 
-fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> DeployApplyPorts {
+fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport, intent: HostEffectIntent) -> DeployApplyPorts {
   DeployApplyPorts {
     command: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) },
     stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
@@ -5564,6 +5573,8 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
     helper_grant: fn(r) { live_deploy_apply_helper_grant_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
     root_helper_grant: fn(site, receipt, r) { live_deploy_apply_root_helper_grant_on_host(site: site, receipt: receipt, revision: r, principal: principal, source_root: source_root, transport: transport) },
     broker_tree: fn(r) { live_deploy_apply_broker_tree_on_host(spec: spec, revision: r, source_root: source_root, transport: transport) },
+    dependency: fn(d) { live_deploy_apply_dependency_on_host(dep: d, transport: transport, intent: intent) },
+    retract: deploy_retract_ports_on_host(transport: transport),
     object_source: fn() { observe_object_source_serve(source: source_root) },
   }
 }
@@ -5626,6 +5637,23 @@ fn live_deploy_apply_root_helper_grant_on_host(site: HelperGrantSite, receipt: H
   match dark_helper_site_install(site: site, receipt: Present { value: receipt }, revision: revision, principal: principal, source_root: source_root, transport: transport) {
     DarkOk => Absent
     DarkFailed { step: s, reason: r } => Present { value: join(["root helper grant at ", site.locus.base, " refused at step ", dark_install_step_name(step: s), ": ", r], "") }
+  }
+}
+
+// AN ENSURED DEPENDENCY, through the typed ensure-dependency route the deploy's own dependency effect
+// runs (probe, then install only on the probe's verdict).
+fn live_deploy_apply_dependency_on_host(dep: DeploymentDependencyStep, transport: HostEffectTransport, intent: HostEffectIntent) -> Optional<String> {
+  match realize_live_deploy_ensure_dependency_on_host(dep: dep, transport: transport, intent: intent) {
+    Converged { evidence: _, applied: _ } => Absent
+    NotConverged { reason: r, applied: _ } => Present { value: r }
+  }
+}
+
+// ONE RETRACT LEG ON APPLY (a leftover timer's retirement), through the retract runner itself.
+fn deploy_apply_retract_leg_failure(leg: DeployRetractLeg, ports: DeployRetractPorts) -> Optional<String> {
+  match live_deploy_retract_run_legs(legs: [leg], ports: ports) {
+    RetractRunOk { legs_run: _ } => Absent
+    RetractRunFailed { step: s, reason: r, legs_run: _ } => Present { value: join(["retract leg ", s, ": ", r], "") }
   }
 }
 
@@ -5708,6 +5736,8 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
     ApplyLegHelperGrant { revision: r } => ports.helper_grant(r)
     ApplyLegRootHelperGrant { site: g, receipt: rc, revision: r } => ports.root_helper_grant(g, rc, r)
     ApplyLegBrokerTree { revision: r } => ports.broker_tree(r)
+    ApplyLegRetract { step: _, leg: l } => deploy_apply_retract_leg_failure(leg: l, ports: ports.retract)
+    ApplyLegDependency { dep: d } => ports.dependency(d)
     ApplyLegObjectSource => {
       let observe = ports.object_source
       match observe() {
@@ -5730,6 +5760,8 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegHelperGrant { revision: _ } => []
     ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => []
     ApplyLegBrokerTree { revision: _ } => []
+    ApplyLegRetract { step: _, leg: _ } => []
+    ApplyLegDependency { dep: _ } => []
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
     ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => []

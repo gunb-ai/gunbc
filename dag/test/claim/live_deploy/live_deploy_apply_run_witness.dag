@@ -19,14 +19,18 @@ import gunbc.host.host_effect_realize {
   DeployApplyPorts, DeployApplyRun, ApplyRunOk, ApplyRunFailed,
   deploy_apply_run_legs, live_deploy_apply_verdict, live_deploy_apply_orchestrate,
   LiveDeployPreambleVerdict, PreambleConverged, PreambleRefused, ScratchAcquire,
+  DeployRetractPorts, RemovedNoOp,
 }
+import gunbc.systemctl_show_read { SystemdPropertyCaptured }
+import extdeps.systemd { systemd_unit_load_state_not_found_wire }
+import gunbc.live_deploy.spec { PublicationHelperPathUnit, deployment_publication_path_unit_path }
 import gunbc.owned_directory { OwnedDirectoryEnsureOutcome, OwnedDirectoryEnsureRefused }
 import gunbc.host.host_axis_caps { CapMember, CapConvergeAuthorized, CapConvergeWithheld }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
   ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   deploy_apply_memory_cap_plan, deploy_apply_leg_step, deploy_apply_tree_plan, deploy_apply_executable_plan,
-  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, deploy_apply_unit_plan,
+  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, ApplyLegRetract, ApplyLegDependency, deploy_apply_unit_plan, deploy_apply_upsert_plan,
 }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe }
@@ -68,6 +72,16 @@ fn ports_serving(command_code: Int, stdin_code: Int, source: ObjectSourceServeAd
     helper_grant: fn(r) { grant_boom() },
     root_helper_grant: fn(g, rc, r) { Present { value: "root-grant-boom" } },
     broker_tree: fn(r) { Present { value: "broker-tree-boom" } },
+    dependency: fn(d) { Present { value: "dependency-boom" } },
+    retract: retract_ports(),
+  }
+}
+
+fn retract_ports() -> DeployRetractPorts {
+  DeployRetractPorts {
+    command: fn(c) { observed(code: 0, err: "") },
+    remove: fn(t) { Converged { evidence: RemovedNoOp { path: "/x" as NonEmptyStr }, applied: t } },
+    load: fn(u) { SystemdPropertyCaptured { value: systemd_unit_load_state_not_found_wire as String } },
   }
 }
 
@@ -120,6 +134,8 @@ test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
         ApplyLegObjectSource => false
         ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => false
         ApplyLegBrokerTree { revision: _ } => false
+        ApplyLegRetract { step: _, leg: _ } => false
+        ApplyLegDependency { dep: _ } => false
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => false
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
       }
@@ -297,6 +313,8 @@ fn ports_command_out(out: RunArgvTransportOutcome) -> DeployApplyPorts {
     helper_grant: fn(r) { grant_boom() },
     root_helper_grant: fn(g, rc, r) { Present { value: "root-grant-boom" } },
     broker_tree: fn(r) { Present { value: "broker-tree-boom" } },
+    dependency: fn(d) { Present { value: "dependency-boom" } },
+    retract: retract_ports(),
   }
 }
 
@@ -383,6 +401,8 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
         ApplyLegObjectSource => false
         ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => false
         ApplyLegBrokerTree { revision: _ } => false
+        ApplyLegRetract { step: _, leg: _ } => false
+        ApplyLegDependency { dep: _ } => false
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
       }
     ApplyPlanReady { legs: Empty } => false
@@ -438,5 +458,48 @@ test fn a_refused_launcher_grant_stops_the_run_before_the_serve_unit() -> Bool {
         ApplyRunOk { legs_run: _, reports: _ } => false
       }
     ApplyPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// THE MEMBERSHIP-EFFECT UPSERTS. The publication helper retires the leftover timer through the retract
+// fold's own legs before it enables and restarts the path unit.
+fn publication_legs() -> List<DeployApplyLeg> {
+  let spec = deployment_spec_srv1()
+  match deploy_apply_upsert_plan(kind: PublicationHelperPathUnit, path: deployment_publication_path_unit_path(names: spec.names), spec: spec, plan: deploy_witness_full_install_plan(spec: spec), source_root: "/src") {
+    ApplyPlanReady { legs: ls } => ls
+    ApplyPlanRefused { step: _, reason: _ } => []
+  }
+}
+
+test fn the_publication_upsert_retires_the_timer_before_restarting_the_path_unit() -> Bool {
+  let legs = publication_legs()
+  let retire = step_index(legs: legs, step: "publication-timer-retire")
+  retire > step_index(legs: legs, step: "publication-path-unit")
+    && retire < step_index(legs: legs, step: "publication-path-restart")
+    && deploy_apply_leg_step(leg: last_leg(legs: legs)) == "publication-path-restart"
+}
+
+// The retirement runs through the retract runner: with every port succeeding the whole upsert runs;
+// with the argv port failing it stops at the first leg, which dispatches nothing after it.
+test fn the_publication_upsert_runs_whole_and_stops_at_a_failing_leg() -> Bool {
+  let legs = publication_legs()
+  let ok_ports = DeployApplyPorts {
+    object_source: fn() { ObjectSourceCanServe { source: "/src" } },
+    command: fn(c) { observed(code: 0, err: "") },
+    stdin: fn(c, p) { observed(code: 0, err: "") },
+    ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
+    helper_grant: fn(r) { grant_boom() },
+    root_helper_grant: fn(g, rc, r) { Present { value: "root-grant-boom" } },
+    broker_tree: fn(r) { Present { value: "broker-tree-boom" } },
+    dependency: fn(d) { Present { value: "dependency-boom" } },
+    retract: retract_ports(),
+  }
+  match deploy_apply_run_legs(legs: legs, ports: ok_ports) {
+    ApplyRunOk { legs_run: n, reports: _ } =>
+      n == count(legs) && match deploy_apply_run_legs(legs: legs, ports: ports(command_code: 1, stdin_code: 0)) {
+        ApplyRunFailed { step: s, reason: _, legs_run: k } => s == "publication-spool-root" && k == 0
+        ApplyRunOk { legs_run: _, reports: _ } => false
+      }
+    ApplyRunFailed { step: _, reason: _, legs_run: _ } => false
   }
 }

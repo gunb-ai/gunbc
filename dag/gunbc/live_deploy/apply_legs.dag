@@ -76,6 +76,57 @@ import gunbc.live_deploy.spec {
   gunbc_approval_broker_slice_unit_path, gunbc_approval_broker_unit_path, gunbc_approval_broker_unit_name,
 }
 import extdeps.systemd.systemctl { systemctl_enable_argv }
+import gunbc.live_deploy.member_identity { plan_writes_oidc_config }
+import gunbc.live_deploy.emit { install_file_owner_only_mode }
+import gunbc.auth.tracker_web_oauth_client {
+  tracker_web_oidc_serve_standing, tracker_web_oidc_serve_placement, tracker_web_oidc_config_document,
+  TrackerWebOidcServeConfigured, TrackerWebOidcInstanceUnassigned, TrackerWebOidcEnvironmentUnbound,
+  TrackerWebOidcRealizationMissing, TrackerWebOidcConsoleReadbackUnsatisfied,
+  TrackerWebOidcServeReady, TrackerWebOidcPlacementUnassigned, TrackerWebOidcPlacementUnbound,
+  TrackerWebOidcPlacementMissingRealization,
+}
+import gunbc.live_deploy.spec {
+  DeploymentStep, ArtifactStep, Dependency, ComposeOwned, UpsertOwned,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping,
+  DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping,
+  ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+}
+import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove }
+import gunbc.live_deploy.retract_legs { DeployRetractLeg, retract_leftover_timer_legs }
+import gunbc.live_deploy.spec {
+  DeploymentDependencyStep, deployment_tailnet_door_socket, deployment_approval_broker_front_door_endpoints,
+  deployment_belt_service_unit_name, deployment_belt_service_unit_path, deployment_tree_remote_unit_name,
+  deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name,
+  deployment_belt_discovery_service_unit_name, deployment_belt_credential_recovery_unit_path,
+  deployment_belt_credential_recovery_timer_unit_name, deployment_belt_credential_recovery_timer_unit_path,
+  deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
+  deployment_publication_service_unit_path, deployment_publication_path_unit_name,
+  deployment_publication_timer_unit_name, deployment_publication_timer_unit_path,
+  deployment_retired_belt_timer_unit_name, deployment_retired_belt_timer_unit_path,
+}
+import gunbc.live_deploy.emit {
+  deployment_step_key, deployment_step_key_eq, member_effect_step,
+  emit_publication_service_unit_doc, emit_publication_path_unit_doc, emit_belt_service_unit_doc, emit_tree_remote_unit_doc,
+  live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file,
+  live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file,
+  live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file,
+  publication_spool_answer_mode,
+}
+import gunbc.host.host_layout {
+  publication_spool_root, publication_request_dir, publication_answer_dir, publication_refused_dir, publication_bare_mirror_path,
+  attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
+}
+import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_program, tailscale_serve_enable_argv }
+import extdeps.systemd.unit_file { SystemdUnitFile }
+import gunbc.live_deploy.emit {
+  spec_has_artifact_kind, live_deploy_fabric_storage_unit_file,
+  live_deploy_tailnet_door_unit_file, LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
+}
+import gunbc.live_deploy.spec {
+  deployment_fabric_storage_door_socket, deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path,
+  deployment_fabric_storage_serve_endpoint, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path,
+}
+import gunbc.live_deploy.spec { UpsertArtifactKind }
 
 
 // THE APPLY FOLD'S LEGS AS DATA, replacing the apply bash script the way gunbc.live_deploy.retract_legs
@@ -98,6 +149,8 @@ type DeployApplyLeg
   | ApplyLegDiagnosedCommand { step: String, command: ArgvCommand, diagnosis: ArgvCommand }
   | ApplyLegRootHelperGrant { site: HelperGrantSite, receipt: HelperRevisionReceipt, revision: ReleaseRevisionBinding }
   | ApplyLegBrokerTree { revision: ReleaseRevisionBinding }
+  | ApplyLegRetract { step: String, leg: DeployRetractLeg }
+  | ApplyLegDependency { dep: DeploymentDependencyStep }
 
 type DeployApplyPlan
   = ApplyPlanReady { legs: List<DeployApplyLeg> }
@@ -116,6 +169,8 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => st
     ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => "attempt-launcher-grant"
     ApplyLegBrokerTree { revision: _ } => "approval-broker-tree"
+    ApplyLegRetract { step: st, leg: _ } => st
+    ApplyLegDependency { dep: _ } => "dependency"
   }
 }
 
@@ -390,9 +445,12 @@ fn deploy_apply_executable_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, s
 // serve unit; then the reload, and the enable and restart of the serve unit and the owned broker. A serve
 // unit whose OIDC readback was refused refuses the plan: the script emitted nothing for that member and
 // the run converged without a unit, which read an unknown as nothing to do.
+fn apply_install_directory_leg(step: String, mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> DeployApplyLeg {
+  apply_root_leg(step: step, argv: coreutils_install_directory_owned_argv(mode: mode, owner: owner, group: group, path: path))
+}
+
 fn apply_root_directory_leg(step: String, mode: FileMode, group: NonEmptyStr, path: String) -> DeployApplyLeg {
-  apply_root_leg(step: step, argv: coreutils_install_directory_owned_argv(
-    mode: mode, owner: approval_broker_helper_root_principal, group: group, path: path))
+  apply_install_directory_leg(step: step, mode: mode, owner: approval_broker_helper_root_principal, group: group, path: path)
 }
 
 fn deploy_apply_attempt_spool_legs(spec: DeploymentSpec) -> List<DeployApplyLeg> {
@@ -521,17 +579,287 @@ fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
   }
 }
 
-fn deploy_apply_release_members_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
-  deploy_apply_chain(
-    first: deploy_apply_tree_plan(spec: spec, plan: plan, source_root: source_root),
-    rest: deploy_apply_chain(
-      first: deploy_apply_executable_plan(spec: spec, plan: plan, source_root: source_root),
-      rest: deploy_apply_unit_plan(spec: spec, plan: plan, oidc_now: oidc_now),
+// ── THE OIDC CONFIG FILE ─────────────────────────────────────────────────────────────────────────
+//
+// An instance the OIDC placement does not assign, or whose environment is unbound, owes no file. A missing
+// realization, an unread observer clock, and an unsatisfied console readback each refuse the plan.
+fn deploy_apply_oidc_refused(cause: String) -> DeployApplyPlan {
+  ApplyPlanRefused { step: "oidc-config", reason: join(["live-deploy apply refused: the tracker-web OIDC readback was refused (", cause, ") (DESIGN 5: refuse, never widen)"], "") }
+}
+
+fn deploy_apply_oidc_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?) -> DeployApplyPlan {
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => ApplyPlanReady { legs: [] }
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => ApplyPlanReady { legs: [] }
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => deploy_apply_oidc_refused(cause: "tracker-web OIDC realization missing")
+    TrackerWebOidcServeReady { config: _ } =>
+      match oidc_now {
+        Absent => deploy_apply_oidc_refused(cause: "observer clock unreadable")
+        Present { value: now } =>
+          match tracker_web_oidc_serve_standing(instance_id: spec.instance_id, now_epoch: now) {
+            TrackerWebOidcInstanceUnassigned { instance_id: _ } => ApplyPlanReady { legs: [] }
+            TrackerWebOidcEnvironmentUnbound { instance_id: _, reason: _ } => ApplyPlanReady { legs: [] }
+            TrackerWebOidcRealizationMissing { instance_id: _, environment: _ } => deploy_apply_oidc_refused(cause: "tracker-web OIDC realization missing")
+            TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause: c } => deploy_apply_oidc_refused(cause: c as String)
+            TrackerWebOidcServeConfigured { config: cfg } =>
+              if !plan_writes_oidc_config(plan: plan) {
+                ApplyPlanReady { legs: [] }
+              } else {
+                ApplyPlanReady { legs: [
+                  apply_root_leg(step: "oidc-config-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: cfg.config_path as String))),
+                  ApplyLegInstallFile {
+                    step: "oidc-config",
+                    command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+                      mode: install_file_owner_only_mode,
+                      owner: spec.service.service_user, group: spec.service.service_user,
+                      source: "/dev/stdin", dest: cfg.config_path as String)),
+                    payload: tracker_web_oidc_config_document(cfg: cfg),
+                  },
+                ] }
+              }
+          }
+      }
+  }
+}
+
+// ── THE DEPLOYMENT'S STEPS, IN THE DEPLOYMENT'S ORDER ────────────────────────────────────────────
+//
+// Each step of spec.steps (gunbc.live_deploy.spec deployment_steps_apply_order, the one ordering
+// authority) is planned in turn: an identity member's step by its family, every other step by the
+// membership effects the reconcile derived for its key. The fold adds no order of its own.
+// ── THE OWNED UPSERTS THE MEMBERSHIP EFFECTS DRIVE ───────────────────────────────────────────────
+//
+// A step that is no identity member is applied by the effects the reconcile derived for its key: an Add
+// runs its kind's legs; a Replace and a Remove are unreachable on apply (retract owns removal) and refuse.
+// A leftover timer is retired through the retract fold's own legs, run by the retract runner.
+fn apply_serve_route_leg(step: String, endpoint: TailscaleServeEndpoint) -> DeployApplyLeg {
+  apply_root_leg(step: step, argv: concat([tailscale_program().invocation as String], tailscale_serve_enable_argv(endpoint: endpoint)))
+}
+
+fn apply_leftover_timer_legs(step: String, unit: NonEmptyStr, path: NonEmptyStr) -> List<DeployApplyLeg> {
+  map(retract_leftover_timer_legs(unit: unit, path: path), l => ApplyLegRetract { step: step, leg: l })
+}
+
+fn apply_enable_restart_legs(step: String, unit: NonEmptyStr) -> List<DeployApplyLeg> {
+  [
+    apply_root_leg(step: join([step, "-enable"], ""), argv: systemctl_enable_argv(unit: unit)),
+    apply_root_leg(step: join([step, "-restart"], ""), argv: systemctl_restart_argv(unit: unit)),
+  ]
+}
+
+fn deploy_apply_publication_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<DeployApplyLeg> {
+  let pub = spec.names.publication_principal
+  let instance_root = spec.service.instance_root as String
+  concat(
+    [
+      apply_install_directory_leg(step: "publication-spool-root", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_spool_root(instance_root: instance_root)),
+      apply_install_directory_leg(step: "publication-spool-request", mode: publication_spool_request_mode, owner: pub, group: spec.service.service_user, path: publication_request_dir(instance_root: instance_root)),
+      apply_install_directory_leg(step: "publication-spool-answer", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_answer_dir(instance_root: instance_root)),
+      apply_install_directory_leg(step: "publication-spool-refused", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_refused_dir(instance_root: instance_root)),
+      apply_install_directory_leg(step: "publication-bare-mirror", mode: declared_directory_mode(m: DirectoryOwnerOnly), owner: pub, group: pub, path: publication_bare_mirror_path(instance_root: instance_root) as String),
+      apply_staged_leg(step: "publication-service-unit", dest: deployment_publication_service_unit_path(names: spec.names) as String, payload: render(doc: emit_publication_service_unit_doc(spec: spec), proto: live_deploy_protocol)),
+      apply_staged_leg(step: "publication-path-unit", dest: path as String, payload: render(doc: emit_publication_path_unit_doc(spec: spec), proto: live_deploy_protocol)),
+    ],
+    concat(
+      apply_leftover_timer_legs(step: "publication-timer-retire", unit: deployment_publication_timer_unit_name(names: spec.names), path: deployment_publication_timer_unit_path(names: spec.names)),
+      apply_enable_restart_legs(step: "publication-path", unit: deployment_publication_path_unit_name(names: spec.names)),
     ),
   )
 }
 
-fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
+fn apply_belt_unit_leg(step: String, dest: NonEmptyStr, file: SystemdUnitFile) -> DeployApplyLeg {
+  apply_staged_leg(step: step, dest: dest as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: file)))
+}
+
+fn deploy_apply_belt_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<DeployApplyLeg> {
+  let instance_root = spec.service.instance_root as String
+  let n = spec.names
+  concat(
+    [
+      apply_owned_directory_leg(spec: spec, step: "instance-receipts-dir", path: instance_receipts_dir(instance_root: instance_root)),
+      apply_owned_directory_leg(spec: spec, step: "attempt-exit-spool", path: attempt_exit_spool_root(instance_root: instance_root)),
+      apply_owned_directory_leg(spec: spec, step: "attempt-exit-inbox", path: attempt_exit_inbox_dir(instance_root: instance_root)),
+      apply_owned_directory_leg(spec: spec, step: "attempt-exit-queued", path: attempt_exit_queued_dir(instance_root: instance_root)),
+      apply_owned_directory_leg(spec: spec, step: "attempt-exit-running", path: attempt_exit_running_dir(instance_root: instance_root)),
+      apply_owned_directory_leg(spec: spec, step: "attempt-exit-done", path: attempt_exit_done_dir(instance_root: instance_root)),
+      apply_owned_directory_leg(spec: spec, step: "attempt-exit-refused", path: attempt_exit_refused_dir(instance_root: instance_root)),
+      apply_staged_leg(step: "belt-service-unit", dest: deployment_belt_service_unit_path(names: n) as String, payload: render(doc: emit_belt_service_unit_doc(spec: spec), proto: live_deploy_protocol)),
+      apply_belt_unit_leg(step: "belt-exit-drain-unit", dest: deployment_belt_exit_drain_service_unit_path(names: n), file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)),
+      apply_belt_unit_leg(step: "belt-discovery-unit", dest: deployment_belt_discovery_service_unit_path(names: n), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
+      apply_belt_unit_leg(step: "belt-credential-recovery-unit", dest: deployment_belt_credential_recovery_unit_path(names: n), file: live_deploy_belt_credential_recovery_unit_file(spec: spec)),
+      apply_belt_unit_leg(step: "belt-credential-recovery-timer", dest: deployment_belt_credential_recovery_timer_unit_path(names: n), file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec)),
+      apply_belt_unit_leg(step: "belt-answer-path-unit", dest: deployment_belt_answer_path_unit_path(names: n), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
+      apply_belt_unit_leg(step: "belt-exit-path-unit", dest: path, file: live_deploy_belt_exit_path_unit_file(spec: spec)),
+      apply_root_leg(step: "belt-daemon-reload", argv: systemctl_daemon_reload_argv()),
+      apply_root_leg(step: "belt-exit-drain-enable", argv: systemctl_enable_argv(unit: deployment_belt_exit_drain_service_unit_name(names: n))),
+    ],
+    concat(
+      concat(
+        apply_enable_restart_legs(step: "belt-exit-path", unit: deployment_belt_exit_path_unit_name(names: n)),
+        concat(
+          apply_enable_restart_legs(step: "belt-answer-path", unit: deployment_belt_answer_path_unit_name(names: n)),
+          apply_enable_restart_legs(step: "belt-credential-recovery-timer", unit: deployment_belt_credential_recovery_timer_unit_name(names: n)),
+        ),
+      ),
+      apply_leftover_timer_legs(step: "belt-retired-timer-retire", unit: deployment_retired_belt_timer_unit_name(names: n), path: deployment_retired_belt_timer_unit_path(names: n)),
+    ),
+  )
+}
+
+fn deploy_apply_tree_remote_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<DeployApplyLeg> {
+  [
+    apply_staged_leg(step: "tree-remote-unit", dest: path as String, payload: render(doc: emit_tree_remote_unit_doc(spec: spec), proto: live_deploy_protocol)),
+    apply_root_leg(step: "tree-remote-reload", argv: systemctl_daemon_reload_argv()),
+    apply_root_leg(step: "tree-remote-restart", argv: systemctl_restart_argv(unit: deployment_tree_remote_unit_name(names: spec.names))),
+  ]
+}
+
+fn deploy_apply_upsert_plan(kind: UpsertArtifactKind, path: NonEmptyStr, spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
+  match kind {
+    GunbcSourceTree => deploy_apply_tree_plan(spec: spec, plan: plan, source_root: source_root)
+    ServeBinary => deploy_apply_executable_plan(spec: spec, plan: plan, source_root: source_root)
+    PublicationHelperPathUnit => ApplyPlanReady { legs: deploy_apply_publication_legs(spec: spec, path: path) }
+    BeltEventPathUnit => ApplyPlanReady { legs: deploy_apply_belt_legs(spec: spec, path: path) }
+    DeployedTreeRemoteUnit => ApplyPlanReady { legs: deploy_apply_tree_remote_legs(spec: spec, path: path) }
+    TailscaleServeMapping =>
+      match deployment_tailnet_door_socket(names: spec.names) {
+        Present { value: _ } => ApplyPlanReady { legs: [] }
+        Absent => ApplyPlanReady { legs: [apply_serve_route_leg(step: "tailscale-serve-mapping", endpoint: spec.names.tailscale_serve_endpoint)] }
+      }
+    ApprovalBrokerFrontDoor =>
+      ApplyPlanReady { legs: map(deployment_approval_broker_front_door_endpoints(), e => apply_serve_route_leg(step: "approval-broker-front-door", endpoint: e)) }
+  }
+}
+
+fn deploy_apply_effect_plan(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
+  match effect {
+    EffectAdd { to: step } =>
+      match step {
+        Dependency { step: dep } => ApplyPlanReady { legs: [ApplyLegDependency { dep: dep }] }
+        ArtifactStep { step: art } =>
+          match art.kind {
+            UpsertOwned { kind: uk } => deploy_apply_upsert_plan(kind: uk, path: art.path, spec: spec, plan: plan, source_root: source_root)
+            ComposeOwned { kind: _ } =>
+              ApplyPlanRefused { step: "spec-step", reason: join(["live-deploy apply refused: a composed step reached the membership effects (", deployment_step_key(step: step) as String, "); composed steps are planned by their kind"], "") }
+          }
+      }
+    EffectReplace { from: _, to: step } =>
+      ApplyPlanRefused { step: "replace", reason: join(["live-deploy apply refused: a Replace effect is unreachable on apply: ", deployment_step_key(step: step) as String], "") }
+    EffectRemove { from: step } =>
+      ApplyPlanRefused { step: "remove", reason: join(["live-deploy apply refused: a Remove effect is realized by the retract fold, never by apply: ", deployment_step_key(step: step) as String], "") }
+  }
+}
+
+fn deploy_apply_effects_plan(effects: List<MemberEffect<DeploymentStep>>, spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
+  match effects {
+    Empty => ApplyPlanReady { legs: [] }
+    Cons { head: e, tail: rest } =>
+      deploy_apply_chain(
+        first: deploy_apply_effect_plan(effect: e, spec: spec, plan: plan, source_root: source_root),
+        rest: deploy_apply_effects_plan(effects: rest, spec: spec, plan: plan, source_root: source_root),
+      )
+  }
+}
+
+// ── THE COMPOSED UNITS ───────────────────────────────────────────────────────────────────────────
+//
+// Fabric storage is one unit and one serve route, planned once whichever of its two steps the spec
+// carries; a spec holding no prod role has no door socket and refuses. The tailnet door is a unit whose
+// OIDC readback can refuse. The fleet-converge timer is retired from deployment membership: a spec that
+// still names it refuses.
+fn deploy_apply_unit_lifecycle_legs(step: String, unit: NonEmptyStr, dest: NonEmptyStr, file: SystemdUnitFile) -> List<DeployApplyLeg> {
+  concat(
+    [
+      apply_staged_leg(step: join([step, "-unit"], ""), dest: dest as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: file))),
+      apply_root_leg(step: join([step, "-reload"], ""), argv: systemctl_daemon_reload_argv()),
+    ],
+    apply_enable_restart_legs(step: step, unit: unit),
+  )
+}
+
+fn deploy_apply_fabric_storage_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+  match deployment_fabric_storage_door_socket(spec: spec) {
+    Absent =>
+      ApplyPlanRefused { step: "fabric-storage", reason: join(["live-deploy apply refused: the fabric storage step was reached with a deployment that holds no prod role, so it has no door socket. instance=", spec.instance_id as String], "") }
+    Present { value: door } =>
+      ApplyPlanReady { legs: concat(
+        deploy_apply_unit_lifecycle_legs(
+          step: "fabric-storage",
+          unit: deployment_fabric_storage_unit_name(names: spec.names),
+          dest: deployment_fabric_storage_unit_path(names: spec.names),
+          file: live_deploy_fabric_storage_unit_file(spec: spec, revision: revision, door_socket: door)),
+        [apply_serve_route_leg(step: "fabric-storage-serve", endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door))],
+      ) }
+  }
+}
+
+fn deploy_apply_tailnet_door_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> DeployApplyPlan {
+  match live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
+    LiveDeployTailnetDoorUnitNotDeployed => ApplyPlanReady { legs: [] }
+    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: c } =>
+      ApplyPlanRefused { step: "tailnet-door", reason: join(["live-deploy apply refused: the tailnet door unit's OIDC readback was refused (", c as String, ") (DESIGN 5: refuse, never widen)"], "") }
+    LiveDeployTailnetDoorUnitEmitted { file: f } =>
+      ApplyPlanReady { legs: deploy_apply_unit_lifecycle_legs(
+        step: "tailnet-door",
+        unit: deployment_tailnet_door_unit_name(names: spec.names),
+        dest: deployment_tailnet_door_unit_path(names: spec.names),
+        file: f) }
+  }
+}
+
+fn deploy_apply_step_effects_plan(step: DeploymentStep, effects: List<MemberEffect<DeploymentStep>>, spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
+  deploy_apply_effects_plan(
+    effects: filter(effects, e => deployment_step_key_eq(a: deployment_step_key(step: member_effect_step(e: e)), b: deployment_step_key(step: step))),
+    spec: spec, plan: plan, source_root: source_root,
+  )
+}
+
+fn deploy_apply_step_plan(step: DeploymentStep, effects: List<MemberEffect<DeploymentStep>>, spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
+  match step {
+    Dependency { step: _ } => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
+    ArtifactStep { step: art } =>
+      match art.kind {
+        ComposeOwned { kind: ck } =>
+          match ck {
+            OidcConfigArtifact => deploy_apply_oidc_plan(spec: spec, plan: plan, oidc_now: oidc_now)
+            SystemdUnit => deploy_apply_unit_plan(spec: spec, plan: plan, oidc_now: oidc_now)
+            FabricStorageServeUnit => deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
+            FabricStorageServeMapping =>
+              if spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeUnit }) {
+                ApplyPlanReady { legs: [] }
+              } else {
+                deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
+              }
+            TailnetDoorServeUnit => deploy_apply_tailnet_door_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now)
+            FleetConvergeTimerUnit =>
+              ApplyPlanRefused { step: "fleet-converge-timer", reason: "live-deploy apply refused: FleetConvergeTimerUnit is retired from deployment membership; timer cadence is on-demand via fleet-converge plan/apply, not live_deploy apply" }
+          }
+        UpsertOwned { kind: uk } =>
+          match uk {
+            GunbcSourceTree => deploy_apply_tree_plan(spec: spec, plan: plan, source_root: source_root)
+            ServeBinary => deploy_apply_executable_plan(spec: spec, plan: plan, source_root: source_root)
+            BeltEventPathUnit => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
+            TailscaleServeMapping => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
+            DeployedTreeRemoteUnit => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
+            PublicationHelperPathUnit => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
+            ApprovalBrokerFrontDoor => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
+          }
+      }
+  }
+}
+
+fn deploy_apply_steps_plan(steps: List<DeploymentStep>, effects: List<MemberEffect<DeploymentStep>>, spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
+  match steps {
+    Empty => ApplyPlanReady { legs: [] }
+    Cons { head: st, tail: rest } =>
+      deploy_apply_chain(
+        first: deploy_apply_step_plan(step: st, effects: effects, spec: spec, plan: plan, source_root: source_root, oidc_now: oidc_now),
+        rest: deploy_apply_steps_plan(steps: rest, effects: effects, spec: spec, plan: plan, source_root: source_root, oidc_now: oidc_now),
+      )
+  }
+}
+
+fn deploy_apply_family_plans(spec: DeploymentSpec, effects: List<MemberEffect<DeploymentStep>>, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
   deploy_apply_chain(
     first: deploy_apply_object_source_plan(),
     rest: deploy_apply_chain(
@@ -542,7 +870,7 @@ fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, auth
         first: deploy_apply_slice_control_plan(spec: spec),
         rest: deploy_apply_chain(
           first: deploy_apply_helper_grant_plan(spec: spec, plan: plan),
-          rest: deploy_apply_release_members_plan(spec: spec, plan: plan, source_root: source_root, oidc_now: oidc_now),
+          rest: deploy_apply_steps_plan(steps: spec.steps, effects: effects, spec: spec, plan: plan, source_root: source_root, oidc_now: oidc_now),
         ),
       ),
     ),
@@ -577,6 +905,6 @@ fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, a
         step: "wholesale",
         reason: join(["live-deploy apply refused WHOLESALE: the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown); the entire fold is refused rather than partially applied. refused-member-count=", to_string(count(rs))], ""),
       }
-    EffectsReady { effects: _ } => deploy_apply_family_plans(spec: spec, plan: plan, authorization: authorization, source_root: source_root, oidc_now: oidc_now)
+    EffectsReady { effects: es } => deploy_apply_family_plans(spec: spec, effects: es, plan: plan, authorization: authorization, source_root: source_root, oidc_now: oidc_now)
   }
 }
