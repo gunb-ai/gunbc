@@ -200,3 +200,40 @@ General lesson for this repo, where an exit code routinely says nothing about wh
 produced: a measurement is only as trustworthy as its capture, and the capture must be able to distinguish
 "no diagnostics" from "no data". Two of these three would have been caught by asserting the log is non-empty
 before grepping it.
+
+## Alias-seam A/B via the repo's own witness runner — expectations written after dispatch, before reading
+
+Dispatch j23134f2f (gate_alias_witness_14152.sh, ONE build of v1-compiler-tests, both trees). This is
+NOT a clean pre-registration: the run was dispatched first. It is written before any result was read, and
+the three outcomes are named now so I cannot retrofit to whichever appears.
+
+Trees differ in exactly the params>0 term of transparent_alias_rhs (control ab0ec96c7b0: term live in both
+src/v1/04_env.dag and the compiled mirror; mutant 88a531a2ed: term constant-false in BOTH). Four programs
+come from dag/test/claim/algebra_receiver_alias_witness.dag (the authority CI runs), evaluated by its own
+helpers total_blocking_count_for / blocking_subject_count_for, whose not-runnable arms return -1.
+
+CONTROL expectation (must hold or the whole run is VOID -- it would mean the runner is not reproducing
+what CI asserts):
+  nominal_return_is_an_acceptance_fixture        total = 0
+  alias_return_is_a_refusal_fixture              blocking subject Coproduct(FreeMonoid) class MethodNotFound = 1
+  alias_field_is_a_refusal_fixture               same class + subject = 1
+  explicit_initializer_is_an_acceptance_fixture  total = 0
+  CONTROL-RING (the -1 probe)                    total = 0, class_probe = -1, subject_probe = -1
+If the two refusal rows read 0 in CONTROL, my runner is measuring nothing and no conclusion is drawn.
+
+MUTANT -- three named outcomes:
+ (i)   both refusal rows go total = 0  => transparent_alias_rhs IS the boundary; prereq (b) stands as
+       TypeBinding-gains-declared-parameters plus substitution at that guard.
+ (ii)  both still report MethodNotFound / Coproduct(FreeMonoid) = 1  => the guard is NOT the boundary;
+       prereq (b) re-scopes to the owner-identity carry at variant_reference_inferred_node
+       (src/v1/04_infer.dag:741), which the search found already owned by
+       gunbc.guarantee_stall.algebra_application_owner_resolution_stall.
+ (iii) a DIFFERENT class appears, e.g. a complaint naming the alias's own parameter `element`, because
+       substituting a parameterised RHS hands the caller FreeMonoid<element> with `element` unbound  =>
+       the guard participates but is insufficient; (ii)'s re-scope holds, WITH the added finding that naive
+       substitution manufactures a second defect. This is my leaning, because the RHS of List<element> is
+       FreeMonoid<element> and nothing at the use site binds `element`.
+NULL RESULT, also named: if CONTROL and MUTANT print byte-identical output for ALL rows, that is not
+evidence the guard is irrelevant -- it may mean the mutated .rs/.dag pair is not what the built binary
+used. The guard-state lines printed from the built tree are what distinguishes these two readings, so a
+null result is only interpretable if those lines differ.
