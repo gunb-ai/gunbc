@@ -72,7 +72,13 @@ grep -q "fn $ROW" "src/v1/tests/src/$MODULE.rs" \
   || { echo "VOID: the row is not in src/v1/tests/src/$MODULE.rs"; exit 5; }
 grep -q "^mod $MODULE;" src/v1/tests/src/lib.rs \
   || { echo "VOID: the module is not registered in lib.rs -- the row would never run"; exit 5; }
-if [ "$KIND" = pin ]; then
+if [ "$KIND" = probe ]; then
+  # A PROBE tree (probe/* refs only, never shipped): it carries its own extra module and no mint. Keep
+  # the guards that stop a no-op measurement (row must exist, module must be registered, it must print
+  # an inventory) but skip the mint-shape guards, which are about the shipped pin tree.
+  grep -qE "println!|print!" "src/v1/tests/src/$MODULE.rs" \
+    || { echo "VOID: the probe prints nothing, so it produces no measurement"; exit 5; }
+elif [ "$KIND" = pin ]; then
   # THE SHIPPED PR-1 TREE: no mint at all, only the boundary pin. Guards must fail if a mint is
   # secretly present (then this is not the tree the PR carries) or if the pin row is a no-op.
   [ "$FRESH" -eq 0 ] || { echo "VOID: the mirror still mints (fresh_call_variables=$FRESH); this is not the shipped pin tree"; exit 5; }
