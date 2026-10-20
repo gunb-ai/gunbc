@@ -62,8 +62,32 @@ data layout_authority_identity: String = "v2.cli.repository_layout.repository_mo
 // subject of the note it cites -- not a list of the files found under it.
 data note_declared_prefix: String = "src/v1/tests/claim/"
 
-fn path_is_claim_file(path: String) -> Bool {
-  path.ends_with(suffix: ".dag")
+// TWO TESTS, AND THE SECOND IS DOING THE REAL WORK.
+//
+// The marker test is not decoration. Three files under the note's subject -- generic_identity_census,
+// interpolation_hole_census, shared_type_leaf_collision_census -- are tracked `.dag` that declare no `test fn`
+// at all: they are helper inventories the claim files beside them import. An extension-only test reported
+// them as uncovered claims, which is a fabricated finding: the census named paths whose claim population is
+// zero. So the marker answer is SUPPLIED, not read here -- this module is pure, and the live entry asks
+// `git grep -l`, the same rule the interpreter applies to a claim file's text.
+//
+// And a `.dag` under a fixtures directory is a parser INPUT even when its text carries the marker: the
+// fixture corpora deliberately contain claim-shaped text for parse tests. Without this test the listing's
+// 223 fixture files would be reported as uncovered claims. `fixtures` is a declared input medium
+// (gunbc.floor.incremental_floor_authority FloorInputMedium::Fixtures), not a governed tree, so no layout
+// authority answers for it and the prefix is stated here, once, beside the predicate that uses it.
+data fixture_path_prefix: String = "fixtures/"
+
+data claim_file_suffix: String = ".dag"
+
+fn path_is_claim_file(path: String, declares_claims: Bool) -> Bool {
+  if !declares_claims {
+    false
+  } else if path.starts_with(prefix: fixture_path_prefix) {
+    false
+  } else {
+    path.ends_with(suffix: claim_file_suffix)
+  }
 }
 
 fn path_is_under_note_subject(path: String) -> Bool {
@@ -74,12 +98,16 @@ fn path_is_under_note_subject(path: String) -> Bool {
 // the tree list (§6b -- a second local implementation of one rule is the trigger). If a governed tree is
 // ever bound over the note's population, this call starts answering Present and the standing moves on its
 // own, which is the correct behaviour and the reason the standing is computed rather than written down.
-fn outside_roots_row(path: String) -> OutsideRootsStanding {
+//
+// `claim_bearers` is the marker answer handed in -- the exact tracked paths `git grep -l` reported for the
+// claim marker. Membership is an identity join on the whole path, the same grain both sides carry; no
+// substring of a path is compared to a name.
+fn outside_roots_row(path: String, claim_bearers: List<String>) -> OutsideRootsStanding {
   match repository_module_file_of_path(path: path) {
     Present { value: file } =>
       InsideGovernedTree { path: path, tree_directory: repository_tree_directory(tree: file.tree) }
     Absent =>
-      if path_is_claim_file(path: path) {
+      if path_is_claim_file(path: path, declares_claims: declares_claim(path: path, claim_bearers: claim_bearers)) {
         OutsideDiscoveryRoots { path: path, cause: outside_roots_cause }
       } else {
         NotAClaimFile { path: path }
@@ -87,10 +115,15 @@ fn outside_roots_row(path: String) -> OutsideRootsStanding {
   }
 }
 
+// THE JOIN. Exact path equality against the marker answer -- a bearer is the path `git grep` itself printed.
+fn declares_claim(path: String, claim_bearers: List<String>) -> Bool {
+  any(xs: claim_bearers, predicate: fn(bearer) { bearer == path })
+}
+
 // THE CENSUS: rows in, standings out. Nothing is skipped and nothing is invented -- a path handed in
 // appears exactly once in the output, in whatever state the layout puts it in.
-fn census_rows(listing: List<String>) -> List<OutsideRootsStanding> {
-  list_map(xs: listing, f: fn(path) { outside_roots_row(path: path) })
+fn census_rows(listing: List<String>, claim_bearers: List<String>) -> List<OutsideRootsStanding> {
+  list_map(xs: listing, f: fn(path) { outside_roots_row(path: path, claim_bearers: claim_bearers) })
 }
 
 // THE FINDINGS. Only OutsideDiscoveryRoots rows are findings; the other states are the census's answers
@@ -150,15 +183,27 @@ fn listing_is_unread(rows: List<OutsideRootsStanding>) -> Bool {
 
 // THE RECEIPT. One line per finding, at the grain the note names. No count is transcribed: the line count
 // IS the population, produced by the fold over the listing handed in.
-fn outside_roots_receipt_lines(findings: List<String>) -> List<String> {
+//
+// The vouching is said per line, not once in the header. The note declares its subject at DIRECTORY grain
+// -- its body names the subject and the standing, and no file -- so a line may only claim the note declared
+// IT if its path is under that declared subject. Attaching "declared by" to every finding, including a path
+// outside the subject, would be the fabricated sentence this census exists to avoid: the census's own first
+// run produced exactly that, four `src/v1/*.dag` lines each printed as declared by a note that never named
+// them. So the caller separates the two populations and each line says which it is.
+fn outside_roots_receipt_line(path: String, vouched_by_note: Bool) -> String {
+  let head = concat("OUTSIDE-DISCOVERY-ROOTS ", path)
+  let attribution = concat(v1_claim_note_location, concat(":", v1_claim_note_identity))
+  if vouched_by_note {
+    concat(head, concat(" | declared by ", attribution))
+  } else {
+    concat(head, concat(" | NOT declared by ", attribution))
+  }
+}
+
+fn outside_roots_receipt_lines(findings: List<String>, vouched_by_note: Bool) -> List<String> {
   list_map(
     xs: findings,
-    f: fn(path) {
-      concat(
-        concat("OUTSIDE-DISCOVERY-ROOTS ", path),
-        concat(" | declared by ", concat(v1_claim_note_location, concat(":", v1_claim_note_identity)))
-      )
-    }
+    f: fn(path) { outside_roots_receipt_line(path: path, vouched_by_note: vouched_by_note) }
   )
 }
 
