@@ -664,6 +664,34 @@ fn stage0_partition_move_explained_by_changed_paths(changed_paths: List<String>)
   }
 }
 
+// THE EXPLANATION OF A PARTITION MOVE FROM THE CHANGE'S INPUTS. The authority path above is ONE input
+// of the two partition-generation mirrors: v1_compiler_stage0_crates.rs is rendered by
+// v1.compiler.stage0_crates, whose import closure (emit_rust, runtime_rust, extdeps.rust.*, ...) moves its
+// bytes while the rows stay put. Which mirrors an edit can move is already declared once, by
+// gunbc.regen_affected_set, over the same regen dependency graph the mirrors are emitted from; the
+// host hands that bound's arm and members here and this decides, so no second path list exists.
+//   WholePopulation      the edit is under a declared generation-input prefix (v1.compiler.*): every
+//                        mirror's producer moved, so the move is explained. This is the bound's own
+//                        width, not narrowed here.
+//   AffectedMirrors      explained iff a partition-generation mirror is a member, or the authority
+//                        path is among the changed paths. A move with neither is drift.
+//   any other arm        (EditedSetUnlocatable, an arm this does not know) REFUSES and does not fall
+//                        through to the authority path: an edit that could not be read explains nothing.
+fn stage0_partition_move_explained_by_affected_inputs(
+  changed_paths: List<String>,
+  affected_arm: String,
+  affected_members: List<String>
+) -> Bool {
+  if affected_arm == "WholePopulation" {
+    true
+  } else if affected_arm == "AffectedMirrors" {
+    count(rebuild_scope_changed_in_roster(changed_mirrors: affected_members, roster: rebuild_scope_partition_generation_mirrors)) > 0
+      || stage0_partition_move_explained_by_changed_paths(changed_paths: changed_paths)
+  } else {
+    false
+  }
+}
+
 // A STAGE THAT CARRIES BOUNDARY FILES MOVES THE PARTITION CRATES. The boundary files the built
 // producer emitted install in the same install as the pending mirrors (one rebuild covers both),
 // so the stage is partition-moving by what it installs, whatever its mirrors say: the partitioned

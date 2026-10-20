@@ -4553,9 +4553,10 @@ fn partition_rebuild_actuation(
 
 /// A partition move is ADMITTED only when it is DERIVED, never asserted (no flag, no input, no
 /// allow-list). Two conjuncts, both read from the tree and the change, neither from the mirror:
-///   1. the partition authority the rows are decoded from is among THIS change's typed changed
-///      paths (the decision is `stage0_partition_move_explained_by_changed_paths`), so the mirror
-///      moved because its authority moved and not because something drifted;
+///   1. a changed input of the partition-generation mirrors is among THIS change's edits: the
+///      decision is `stage0_partition_move_explained_by_affected_inputs`, over the arm and members
+///      of the `gunbc.regen_affected_set` bound for the diff (plus the authority path), so the
+///      mirror moved because an input moved and not because something drifted;
 ///   2. the boundary files the move needs are RENDERED FROM THE CANDIDATE TREE'S ROWS, not the
 ///      predecessor's compiled-in ones.
 /// The converse equality (the built seed's own compiled-in rows project to these same bytes) is
@@ -4572,26 +4573,55 @@ fn admit_derived_partition_move(
                  could not be read, so the move cannot be derived from it: {e}"
             )
         })?;
+    let diff_text = super::required_floor_runner::floor_git_diff_range().map_err(|e| {
+        format!(
+            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the change's diff \
+             could not be read, so the move cannot be derived from it: {e}"
+        )
+    })?;
+    let population = edited_population_from_diff(workspace, &diff_text);
+    let bound = affected_set_bound_for(
+        workspace,
+        source_roots,
+        &population.edited_modules,
+        &population.unlocatable,
+    )
+    .map_err(|e| {
+        format!(
+            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the affected-set \
+             bound could not be derived, so the move cannot be explained: {e}"
+        )
+    })?;
     let explained = match rebuild_scope_decision(
         source_roots,
-        "stage0_partition_move_explained_by_changed_paths",
-        vec![(
-            Some("changed_paths".to_string()),
-            model_string_list(&changed),
-        )],
+        "stage0_partition_move_explained_by_affected_inputs",
+        vec![
+            (
+                Some("changed_paths".to_string()),
+                model_string_list(&changed),
+            ),
+            (
+                Some("affected_arm".to_string()),
+                crate::v1_interpreter::str_value(&bound.arm),
+            ),
+            (
+                Some("affected_members".to_string()),
+                model_string_list(&bound.members),
+            ),
+        ],
     )? {
         ModelValue::Bool(value) => value,
         other => {
             return Err(format!(
-            "refusal: stage0_partition_move_explained_by_changed_paths returned {} instead of Bool",
-            other.type_label_public()
-        ))
+                "refusal: stage0_partition_move_explained_by_affected_inputs returned {} instead of Bool",
+                other.type_label_public()
+            ))
         }
     };
     if !explained {
         return Err(
             "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the partition mirror \
-             moved but its authority is not among this change's changed paths"
+             moved but no changed input of it (gunbc.regen_affected_set) explains it"
                 .to_string(),
         );
     }

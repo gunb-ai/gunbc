@@ -36,7 +36,8 @@ import gunbc.stage0_partition_rebuild_scope {
   stage0_stage_rebuild_is_whole_compiler,
   regen_convergence_generation_bound,
   stage0_partition_authority_storage_path,
-  stage0_partition_move_explained_by_changed_paths
+  stage0_partition_move_explained_by_changed_paths,
+  stage0_partition_move_explained_by_affected_inputs
 }
 
 // THE DISCRIMINATING REDS THIS FILE HOLDS OPEN, each one a state the selector must not enter.
@@ -536,6 +537,41 @@ test fn witness_partition_move_explained_by_authority_path_holds() -> Bool {
 test fn witness_partition_move_unexplained_without_authority_path_holds() -> Bool {
   !stage0_partition_move_explained_by_changed_paths(changed_paths: ["dag/gunbc/stage0/stage0_crate_layout_generated.dag", "src/v1/stage0/src/gunbc_stage0_stage0_crate_partition_generated.rs"])
     && !stage0_partition_move_explained_by_changed_paths(changed_paths: [])
+}
+
+// THE PARTITION MOVE IS EXPLAINED BY A CHANGED INPUT OF ITS MIRRORS (the bound is supplied; the
+// real producer of the bound is gunbc.regen_affected_set, which has its own witnesses).
+// Member arm: a v1 .dag edit below the generation prefix reaches the renderer's mirror by reverse
+// closure. WholePopulation arm: a v1.compiler.* edit is under the declared generation-input prefix.
+test fn witness_v1_dag_only_change_explains_partition_move_holds() -> Bool {
+  stage0_partition_move_explained_by_affected_inputs(changed_paths: ["src/v1/stage0_crates.dag"], affected_arm: "AffectedMirrors", affected_members: ["v1_compiler_stage0_crates.rs"])
+}
+
+test fn witness_generation_input_edit_explains_through_whole_population_holds() -> Bool {
+  stage0_partition_move_explained_by_affected_inputs(changed_paths: ["src/v1/emit_rust.dag"], affected_arm: "WholePopulation", affected_members: [])
+}
+
+// Real drift: a bound that names neither partition-generation mirror and no authority edit.
+test fn witness_mirror_only_drift_stays_unexplained_holds() -> Bool {
+  !stage0_partition_move_explained_by_affected_inputs(changed_paths: [], affected_arm: "AffectedMirrors", affected_members: [])
+    && !stage0_partition_move_explained_by_affected_inputs(changed_paths: ["README.md"], affected_arm: "AffectedMirrors", affected_members: ["std_effects.rs"])
+}
+
+test fn witness_authority_edit_still_explains_holds() -> Bool {
+  match stage0_partition_authority_storage_path() {
+    Absent => false
+    Present { value: path } => stage0_partition_move_explained_by_affected_inputs(changed_paths: [path], affected_arm: "AffectedMirrors", affected_members: [])
+  }
+}
+
+// FAIL CLOSED: a bound that refuses does not fall through to the authority path, and an unknown arm
+// explains nothing.
+test fn witness_refusing_bound_does_not_fall_through_to_authority_path_holds() -> Bool {
+  match stage0_partition_authority_storage_path() {
+    Absent => false
+    Present { value: path } => !stage0_partition_move_explained_by_affected_inputs(changed_paths: [path], affected_arm: "EditedSetUnlocatable", affected_members: ["v1_compiler_stage0_crates.rs"])
+      && !stage0_partition_move_explained_by_affected_inputs(changed_paths: [path], affected_arm: "SomeFutureArm", affected_members: ["v1_compiler_stage0_crates.rs"])
+  }
 }
 
 test fn witness_authority_storage_path_is_derived_holds() -> Bool {
