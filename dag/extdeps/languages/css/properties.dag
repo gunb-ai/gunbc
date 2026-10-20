@@ -44,6 +44,7 @@ type CssPropertyName
   | BoxSizing
   | ClipPath
   | Color
+  | Content
   | ColorScheme
   | Cursor
   | Display
@@ -78,6 +79,7 @@ type CssPropertyName
   | Opacity
   | Outline
   | Overflow
+  | OverflowX
   | Padding
   | PaddingBlock
   | PaddingLeft
@@ -91,6 +93,7 @@ type CssPropertyName
   | TextWrap
   | Transform
   | Transition
+  | UserSelect
   | VerticalAlign
   | WhiteSpace
   | Width
@@ -119,6 +122,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     BoxSizing => "box-sizing"
     ClipPath => "clip-path"
     Color => "color"
+    Content => "content"
     ColorScheme => "color-scheme"
     Cursor => "cursor"
     Display => "display"
@@ -153,6 +157,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     Opacity => "opacity"
     Outline => "outline"
     Overflow => "overflow"
+    OverflowX => "overflow-x"
     Padding => "padding"
     PaddingBlock => "padding-block"
     PaddingLeft => "padding-left"
@@ -166,6 +171,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     TextWrap => "text-wrap"
     Transform => "transform"
     Transition => "transition"
+    UserSelect => "user-select"
     VerticalAlign => "vertical-align"
     WhiteSpace => "white-space"
     Width => "width"

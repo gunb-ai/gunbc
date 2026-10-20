@@ -14,14 +14,14 @@ import extdeps.languages.css.values {
 }
 import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_property_wire, BoxSizing, Background, Color, FontFamily, FontSize, LineHeight, WebkitFontSmoothing, ColorScheme, Margin,
   AlignItems, BorderBottom, BorderBottomColor, Display, Flex, FlexWrap, FontWeight, Gap, GridTemplateColumns, Height, LetterSpacing,
-  MarginBottom, MarginInline, MarginLeft, MarginTop, MaxWidth, Opacity, PaddingBlock, PaddingTop, TextDecoration, TextTransform, TextWrap, Transition, Width }
+  BorderLeft, BorderRadius, BorderTop, Content, OverflowX, Padding, Transform, UserSelect, WhiteSpace, MarginBottom, MarginInline, MarginLeft, MarginTop, MaxWidth, Opacity, PaddingBlock, PaddingTop, TextDecoration, TextTransform, TextWrap, Transition, Width }
 import extdeps.languages.css.complex_selector {
   SelectorList, ComplexSelector, CompoundSelector, TypeSelector, SimpleSelector, UniversalType, ElementType, ClassPart, PseudoClassPart, PseudoElementPart,
   selector_list_wire, element_compound, class_compound,
 }
 import extdeps.languages.css.expression {
   CssValue, ValIdent, ValNumber, ValLength, ValTime, ValVar, ValCall, ValOperator, ValSpaceList, ValCommaList, ValFlex,
-  FnClamp, FnMin, FnCalc, FnMinmax, OpSub, Seconds, css_value_wire,
+  FnClamp, FnMin, FnCalc, FnMinmax, FnRotate, OpSub, Seconds, ValString, ValAngle, Degrees, css_value_wire,
 }
 import gunbc.design.gunb_ai_live_scale {
   LiveMeasure, live_measure_page, live_measure_wide, live_measure_prose, live_measure_title,
@@ -81,9 +81,16 @@ type SheetItem
 // A rule is written either one declaration per line between braces or whole on one line.
 type RuleLayout = RuleBlock | RuleInline
 
+// An inline rule whose selector is padded so a run of them aligns its braces (`.map-stable     {`).
+type InlineRule {
+  selector: SelectorList
+  decls: List<SheetDecl>
+}
+
 type SheetEntry
   = EntryComment { lines: List<String> }
   | EntryRule { selector: SelectorList, layout: RuleLayout, items: List<SheetItem> }
+  | EntryInlineGroup { rules: List<InlineRule> }
   | EntryGap { blank_lines: Int }
 
 fn sheet_hue(hue: HueDegrees) -> SheetDecl {
@@ -463,7 +470,165 @@ data reset_base_entries: List<SheetEntry> = [
   EntryGap { blank_lines: 2 },
 ]
 
-data sheet_entries: List<SheetEntry> = concat(concat(reset_base_entries, concat(layout_entries, [EntryGap { blank_lines: 2 }])), concat(concat(masthead_entries, [EntryGap { blank_lines: 2 }]), concat(concat(text_roles_entries, [EntryGap { blank_lines: 2 }]), hero_entries)))
+fn pseudo_compound(name: String, pseudo: String) -> CompoundSelector {
+  CompoundSelector { type_selector: Absent, parts: [ClassPart { name: name }, PseudoClassPart { name: pseudo }] }
+}
+
+fn sheet_px(n: Int) -> CssValue {
+  sheet_len(milli: n * 1000, unit: Px)
+}
+
+fn prose_descendant(tag: String) -> SelectorList {
+  descendant_list(ancestor: class_compound(name: "prose"), descendant: element_compound(tag: tag))
+}
+
+fn inline_member(name: String, property: CssPropertyName, value: CssValue) -> InlineRule {
+  InlineRule { selector: class_list(name: name), decls: [sheet_expr(property: property, value: value)] }
+}
+
+fn role_token(name: String, color: String) -> InlineRule {
+  inline_member(name: name, property: Color, value: sheet_var(name: color))
+}
+
+fn bordered_panel_tail() -> List<SheetDecl> {
+  [sheet_ident(property: WhiteSpace, ident: "pre"), sheet_ident(property: OverflowX, ident: "auto")]
+}
+
+data prose_banner: List<String> = ["╔══ PROSE — generic body paragraphs ══════════════════════════════"]
+data measure_banner: List<String> = ["╔══ MEASURE WRAPPERS ═════════════════════════════════════════════", "Width is controlled by section CONTAINERS, not individual components.", "Wrap a section in one of these to clamp its children."]
+data carved_banner: List<String> = ["╔══ CARVED RULE — section break with moss diamond notch ═════════", "No max-width: inherits from its container (the section's measure", "wrapper or .page). That keeps it aligned with whatever sits beside", "or below it."]
+data command_banner: List<String> = ["╔══ COMMAND PANEL ═════════════════════════════════════════════════"]
+data invariant_banner: List<String> = ["╔══ INVARIANT PANEL — clay only here ═════════════════════════════"]
+data role_banner: List<String> = ["╔══ ROLE TOKENS — shared between code spans and graph elements ═", "The visual-correspondence rule: every colored code token has a", "same-colored graph object, and vice versa.", "", "Taxonomy (one color per structural meaning):", "  stable      ordinary structure                    warm-white", "  focus       the source fact this card pivots on   brass", "  derived     directly downstream / 1-2 hops        moss", "  transitive  multi-hop downstream (distant kin)    moss-dim", "  artifact    terminal generated slot               warm-white", "  removed     diff removal                          clay", "  boundary    violation / no artifact emitted       clay", "  context     ambient text without a role           stone", "", "stable and artifact share warm-white intentionally: they are the", "bookends of the system (source root and target slot). The cut-", "corner pentagon shape carries the artifact distinction."]
+
+fn hero_like_code(ancestor: String) -> SheetEntry {
+  block_rule(selector: descendant_list(ancestor: class_compound(name: ancestor), descendant: element_compound(tag: "code")), items: [
+    ItemDeclLine { decls: [font_mono_decl, sheet_expr(property: FontSize, value: sheet_len(milli: 880, unit: Em))] },
+    compact_decls(decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white"))]),
+  ])
+}
+
+data prose_entries: List<SheetEntry> = [
+  EntryComment { lines: prose_banner },
+  EntryGap { blank_lines: 1 },
+  inline_rule(selector: class_list(name: "prose"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-prose")), sheet_expr(property: Margin, value: ValNumber { milli: 0 })]),
+  block_rule(selector: prose_descendant(tag: "p"), items: [compact_decls(decls: [
+    sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, ValNumber { milli: 0 }, sheet_rem(milli: 1050)])),
+    sheet_expr(property: LineHeight, value: ValNumber { milli: 1700 }),
+    sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
+  ])]),
+  inline_rule(
+    selector: descendant_list(ancestor: class_compound(name: "prose"), descendant: CompoundSelector { type_selector: Present { value: ElementType { tag: "p" } }, parts: [PseudoClassPart { name: "last-child" }] }),
+    decls: [sheet_expr(property: MarginBottom, value: ValNumber { milli: 0 })],
+  ),
+  inline_rule(selector: prose_descendant(tag: "strong"), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })]),
+  hero_like_code(ancestor: "prose"),
+]
+
+data measure_entries: List<SheetEntry> = [
+  EntryComment { lines: measure_banner },
+  EntryGap { blank_lines: 1 },
+  EntryInlineGroup { rules: [
+    inline_member(name: "measure-prose", property: MaxWidth, value: sheet_var(name: "measure-prose")),
+    inline_member(name: "measure-page", property: MaxWidth, value: sheet_var(name: "measure-page")),
+    inline_member(name: "measure-wide", property: MaxWidth, value: sheet_var(name: "measure-wide")),
+  ] },
+]
+
+data carved_entries: List<SheetEntry> = [
+  EntryComment { lines: carved_banner },
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "carved-rule"), items: [
+    ItemDeclLine { decls: [sheet_ident(property: Display, ident: "flex"), sheet_ident(property: AlignItems, ident: "center"), sheet_expr(property: Gap, value: sheet_rem(milli: 700))] },
+    compact_decls(decls: [
+      sheet_expr(property: Width, value: sheet_len(milli: 100000, unit: Percent)),
+      sheet_expr(property: Margin, value: sheet_space(items: [sheet_rem(milli: 2750), ValNumber { milli: 0 }])),
+    ]),
+  ]),
+  block_rule(
+    selector: SelectorList { selectors: [
+      ComplexSelector { compounds: [CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "carved-rule" }, PseudoElementPart { name: "before" }] }] },
+      ComplexSelector { compounds: [CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "carved-rule" }, PseudoElementPart { name: "after" }] }] },
+    ] },
+    items: [
+      ItemDeclLine { decls: [
+        sheet_expr(property: Content, value: ValString { text: "" }),
+        sheet_expr(property: Flex, value: ValNumber { milli: 1000 }),
+        sheet_expr(property: Height, value: ValNumber { milli: 0 }),
+      ] },
+      compact_decls(decls: [sheet_expr(property: BorderTop, value: sheet_space(items: [sheet_px(n: 1), ValIdent { ident: "solid" }, sheet_var(name: "border-dark-strong")]))]),
+    ],
+  ),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "carved-rule"), descendant: class_compound(name: "notch")), items: [
+    ItemDeclLine { decls: [sheet_expr(property: Width, value: sheet_px(n: 6)), sheet_expr(property: Height, value: sheet_px(n: 6))] },
+    compact_decls(decls: [
+      sheet_expr(property: Background, value: sheet_var(name: "moss-dim")),
+      sheet_expr(property: Transform, value: ValCall { function: FnRotate, args: [ValAngle { milli: 45000, unit: Degrees }] }),
+    ]),
+  ]),
+]
+
+fn panel_rule(selector: SelectorList, border: List<SheetDecl>, padding: CssValue, line_height: Int) -> SheetEntry {
+  block_rule(selector: selector, items: [
+    compact_decls(decls: [sheet_expr(property: Background, value: sheet_var(name: "void-up"))]),
+    compact_decls(decls: concat([sheet_expr(property: Border, value: sheet_space(items: [sheet_px(n: 1), ValIdent { ident: "solid" }, sheet_var(name: "border-dark")]))], border)),
+    compact_decls(decls: [sheet_expr(property: Padding, value: padding)]),
+    ItemDeclLine { decls: [font_mono_decl, sheet_expr(property: FontSize, value: sheet_rem(milli: 820))] },
+    compact_decls(decls: concat([
+      sheet_expr(property: LineHeight, value: ValNumber { milli: line_height }),
+      sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
+      sheet_expr(property: Margin, value: ValNumber { milli: 0 }),
+    ], bordered_panel_tail())),
+  ])
+}
+
+data command_entries: List<SheetEntry> = [
+  EntryComment { lines: command_banner },
+  EntryGap { blank_lines: 1 },
+  panel_rule(
+    selector: class_list(name: "command"),
+    border: [sheet_expr(property: BorderRadius, value: sheet_px(n: 3))],
+    padding: sheet_space(items: [sheet_rem(milli: 950), sheet_rem(milli: 1200)]),
+    line_height: 1850,
+  ),
+  inline_rule(selector: descendant_list(ancestor: class_compound(name: "command"), descendant: class_compound(name: "prompt")), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss")), sheet_ident(property: UserSelect, ident: "none")]),
+]
+
+data invariant_entries: List<SheetEntry> = [
+  EntryComment { lines: invariant_banner },
+  EntryGap { blank_lines: 1 },
+  panel_rule(
+    selector: class_list(name: "invariant"),
+    border: [
+      sheet_expr(property: BorderLeft, value: sheet_space(items: [sheet_px(n: 2), ValIdent { ident: "solid" }, sheet_var(name: "clay")])),
+      sheet_expr(property: BorderRadius, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_px(n: 3), sheet_px(n: 3), ValNumber { milli: 0 }])),
+    ],
+    padding: sheet_space(items: [sheet_rem(milli: 1000), sheet_rem(milli: 1250)]),
+    line_height: 1750,
+  ),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "invariant"), descendant: class_compound(name: "title")), items: [compact_decls(decls: [
+    sheet_expr(property: Color, value: sheet_var(name: "clay")),
+    sheet_expr(property: FontWeight, value: ValNumber { milli: 600000 }),
+    sheet_expr(property: LetterSpacing, value: sheet_len(milli: 40, unit: Em)),
+  ])]),
+]
+
+data role_entries: List<SheetEntry> = [
+  EntryComment { lines: role_banner },
+  EntryGap { blank_lines: 1 },
+  EntryInlineGroup { rules: [
+    role_token(name: "map-stable", color: "warm-white"),
+    role_token(name: "map-focus", color: "brass"),
+    role_token(name: "map-derived", color: "moss"),
+    role_token(name: "map-transitive", color: "warm-white-dim"),
+    role_token(name: "map-artifact", color: "warm-white"),
+    role_token(name: "map-removed", color: "clay"),
+    role_token(name: "map-boundary", color: "clay"),
+    role_token(name: "map-context", color: "stone-dim"),
+  ] },
+]
+
+data sheet_entries: List<SheetEntry> = concat(concat(concat(reset_base_entries, concat(layout_entries, [EntryGap { blank_lines: 2 }])), concat(concat(masthead_entries, [EntryGap { blank_lines: 2 }]), concat(concat(text_roles_entries, [EntryGap { blank_lines: 2 }]), hero_entries))), concat([EntryGap { blank_lines: 2 }], concat(prose_entries, concat([EntryGap { blank_lines: 2 }], concat(measure_entries, concat([EntryGap { blank_lines: 2 }], concat(carved_entries, concat([EntryGap { blank_lines: 2 }], concat(command_entries, concat([EntryGap { blank_lines: 2 }], concat(invariant_entries, concat([EntryGap { blank_lines: 2 }], role_entries))))))))))))
 
 fn value_wire(v: SheetValue) -> String {
   match v {
@@ -554,8 +719,22 @@ fn rule_wire(selector: SelectorList, layout: RuleLayout, items: List<SheetItem>)
   }
 }
 
+fn inline_rule_width(r: InlineRule) -> Int {
+  0 + selector_list_wire(l: r.selector).length()
+}
+
+fn longest_selector(rules: List<InlineRule>) -> Int {
+  fold(rules, init: 0, f: (acc, r) => if inline_rule_width(r: r) > acc { inline_rule_width(r: r) } else { acc })
+}
+
+fn inline_group_wire(rules: List<InlineRule>) -> String {
+  let column = longest_selector(rules: rules)
+  join(map(rules, r => join([selector_list_wire(l: r.selector), repeat_string(s: " ", n: column - inline_rule_width(r: r)), " { ", inline_item_wire(item: compact_decls(decls: r.decls)), " }\n"], "")), "")
+}
+
 fn entry_wire(e: SheetEntry) -> String {
   match e {
+    EntryInlineGroup { rules: rs } => inline_group_wire(rules: rs)
     EntryComment { lines: ls } => concat(comment_wire(lines: ls, indent: 0), "\n")
     EntryRule { selector: s, layout: l, items: is } => rule_wire(selector: s, layout: l, items: is)
     EntryGap { blank_lines: n } => repeat_string(s: "\n", n: n)
