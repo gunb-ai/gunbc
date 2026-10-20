@@ -7528,8 +7528,28 @@ pub fn shared_layer_of_type_expr(
             }
         };
         let judged_leaf = rust_fn_sig_leaf_name(source_indices.clone(), judged.clone());
-        let alias_to_non_container = ((judged_leaf.clone() != spelled.clone())
-            && !crate::std_types::is_container_type(judged_leaf.clone()));
+        let names_nominal_declaration =
+            (!crate::v1_compiler_infer::is_where_refinement_type(type_expr.clone())
+                && match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
+                    type_decl_items.clone(),
+                    type_expr.clone(),
+                    source_indices.clone(),
+                )
+                .resolution
+                .clone())
+                .clone()
+                {
+                    TypeDeclResolution::TypeDeclResolved { decl: d, .. } => {
+                        !crate::v1_compiler_emit_core_support::is_type_alias_item(
+                            d.clone(),
+                            source_indices.clone(),
+                        )
+                    }
+                    _ => false,
+                });
+        let alias_to_non_container = (((judged_leaf.clone() != spelled.clone())
+            && !crate::std_types::is_container_type(judged_leaf.clone()))
+            && !names_nominal_declaration.clone());
         let routed = crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
             type_decl_items.clone(),
             judged.clone(),
