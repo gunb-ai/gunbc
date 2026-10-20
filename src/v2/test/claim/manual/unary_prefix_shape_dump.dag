@@ -1,0 +1,97 @@
+module v2.test.claim.manual.unary_prefix_shape_dump
+
+// SCRATCH (lane adhoc-9102e2d6-92f, never lands): raw structural dump of the v2 tree for the
+// agreement arms, so the canon rules are written against measured reality. Prints per node:
+// kind tag, child count, edge label, and atom lexeme when present.
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure, ExitSuccess }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node { ComputationNode, Edge, Symbol, symbol_lexeme }
+import v2.std.node_query { find_arrow_body_child }
+
+data dump_bodies: List<String> = [
+  "-1 - 2",
+  "-(1 - 2)",
+  "-3",
+  "-a.b"
+]
+
+fn dump_v2_source(body: String) -> String {
+  concat("module probe.dump.v2\n\nfn probe_case(a: Int, b: Int) -> Int {\n  ", body, "\n}\n")
+}
+
+fn dump_pad(depth: Int) -> String {
+  if depth <= 0 { "" } else { concat(" ", dump_pad(depth: depth - 1)) }
+}
+
+fn label_tag(e: Edge) -> String {
+  match e.label {
+    Positional => "pos"
+    Authored { name: sym } => concat("auth:", symbol_lexeme(sym: sym))
+    StructuralLabel { label: _ } => "struct"
+  }
+}
+
+fn dump_v2(node: Node, depth: Int) -> String {
+  let pad = dump_pad(depth: depth)
+  let kind_tag = match node.kind {
+    ComputationNode { behavior: _ } => "comp"
+    _ => "leaf?"
+  }
+  let atom = match node_atom_identity_optional(node: node) {
+    Absent => ""
+    Present { value: sym } => concat(" atom=", symbol_lexeme(sym: sym))
+  }
+  let kids = node.children |> map(e => concat("\n", pad, "  [", label_tag(e: e), "]\n", dump_v2(node: e.target, depth: depth + 2))) |> join(separator: "")
+  concat(pad, kind_tag, " kids=", to_string(value: node.children |> length), atom, kids)
+}
+
+fn dump_arrow_body(root: Node) -> Optional<Node> {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: body, diagnostics: _ } => Present { value: body }
+    Rejected { diagnostics: _ } =>
+      fold(root.children, init: Absent, f: fn(found, e) {
+        match found {
+          Present { value: _ } => found
+          Absent => dump_arrow_body(root: e.target)
+        }
+      })
+  }
+}
+
+fn v2_dump(body: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "<grammar-refused>"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: dump_v2_source(body: body), file: ^probe_dump, prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => "<lex-refused>"
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => "<parse-refused>"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: _ } => "<norm-refused>"
+                Accepted { value: normalized, diagnostics: _ } =>
+                  match dump_arrow_body(root: normalized.root) {
+                    Absent => "<no-body>"
+                    Present { value: lowered } => dump_v2(node: lowered, depth: 0)
+                  }
+              }
+          }
+      }
+  }
+}
+
+test fn unary_prefix_shape_dump_reports() -> ProcessExit {
+  let lines = dump_bodies |> map(b =>
+    concat("BODY[", b, "]\nV2:\n", v2_dump(body: b))
+  ) |> join(separator: "\n===\n")
+  exit_failure(reason: concat("shape dump:\n", lines))
+}

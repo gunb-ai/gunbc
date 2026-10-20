@@ -78,7 +78,7 @@ fn canon_shape_v2(node: Node) -> String {
       } else {
         "?"
       }
-    _ => if node.children |> length == 0 { "l" } else { node.children |> map(e => canon_shape_v2(node: e.target)) |> join(separator: ",") }
+    _ => "l"
   }
 }
 
