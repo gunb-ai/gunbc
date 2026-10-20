@@ -1605,27 +1605,39 @@ fn interpreter_blocking_diagnostic_messages_with_source_indices(
     })
 }
 
-// THE SAME ONE RENDERER, FOR A CALLER THAT HAS NO INDEX TO OFFER -- A STAGED SHAPE, NOT A SECOND
-// ENTRY POINT (DESIGN 6b, admitted at a gap-intolerant boundary). It delegates with an empty index,
-// so every line it returns carries a TYPED unlocated cause and none carries a byte offset dressed
-// as a position. WHY THE BOUNDARY IS gap-intolerant: the regenerator's own verify compiles the
-// emitted candidate together with the hand-maintained files copied from the working tree
-// (`copy_hand_maintained_support`), so an exported arity change cannot land atomically -- the round
-// that emits the 2-arg mirror fails its step-1 or verify build on the hand-written callers, and
-// reverts. Measured: REGEN-EXIT=1 with the arity changed, five reverted files.
+// THE PRE-EXISTING EXPORTED NAME, BODY UNCHANGED FROM origin/main -- byte-for-byte, so this commit
+// degrades NOTHING for its current callers. It is the offset-formatting renderer the five PRINTING
+// host sites still call today (cli_run/emit_host.rs three sites, target_invocation_host.rs two
+// sites): their lines look exactly as they did before this PR. THE TRUTH OF THAT CLAIM IS THIS
+// PARAGRAPH, not a promise: the located name below has no host caller at this commit.
 //
-// DISSOLUTION (this name is deleted, not kept): when the committed mirror carries
-// `interpreter_blocking_diagnostic_messages_with_source_indices` AND its only remaining caller, the
-// blocking COUNT at `src/v1/stage0/src/cli_run.rs` `run_dag_parse_sweep`'s tally, has moved to that
-// name. Then this function is removed and the located name is the only exported one. No PRINTING
-// caller uses this name today: the five printing call sites (`cli_run/emit_host.rs` x3,
-// `target_invocation_host.rs` x2) and the seed's own `stage0_self_compile_refusal_message` all pass
-// their real index to the located name; the only caller here counts lines and prints none.
+// NO RUNG-DROP ROW IS CITED HERE, BECAUSE NO SUCH ROW EXISTS, and inventing one would be the worst
+// kind of citation: the fleet counts what is declared, and a cite to a row nobody declared counts
+// nothing. The debt is the ordinary kind a two-step landing leaves behind -- one exported name with
+// no host caller yet -- and its witness is this branch's own claim rows, which go green only when
+// the cutover commit lands. The gap-intolerant reason: the regenerator's own
+// verify compiles the emitted candidate together with the hand-maintained files copied from the
+// working tree (`copy_hand_maintained_support`), so an exported surface change and its hand-written
+// callers cannot land in one step -- measured REGEN-EXIT=1 when tried, five mirrors reverted.
+// The cutover is the NEXT commit on this branch, after the heal job's mirror commit: the five
+// printing sites and the blocking tally move to the located name, and this name is deleted, leaving
+// one exported renderer. A second heal round then removes this definition from the mirror.
 fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> List<String> {
-  interpreter_blocking_diagnostic_messages_with_source_indices(
-    diagnostics: diagnostics,
-    source_indices: empty_map()
-  )
+  diagnostics
+    |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
+    |> map(d => {
+      let span = diagnostic_to_span(d: d.diagnostic)
+      concat(
+        diagnostic_to_message(d: d.diagnostic),
+        " (",
+        span.file,
+        ":",
+        to_string(value: span.start),
+        "-",
+        to_string(value: span.end),
+        ")"
+      )
+    })
 }
 
 // The SUBJECT is the caller's fact, never this function's. Both arms once hardcoded
