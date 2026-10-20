@@ -1019,7 +1019,7 @@ fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRe
   let svc = spec.approval_broker
   let owner = svc.service_user
   let installed = device_crypto_sidecar_binary_path(spec: spec, revision: revision)
-  concat([
+  [
     deploy_raw(command: install_file_owned_command(
       mode: install_executable_shared_mode,
       owner: owner,
