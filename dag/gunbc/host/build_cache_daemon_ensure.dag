@@ -551,11 +551,24 @@ fn build_cache_matched_stats_fragment(capture: String) -> Optional<String> {
 // treating it as an answer about the daemon: build_cache_ensure_is_needed returned false on it (skipping the
 // ensure before it started), and build_cache_daemon_ensure_observation mapped it straight to
 // DaemonUnresponsive without consulting the ensure or the read-back (so an ensure that DID run was still
-// reported unresponsive). BOTH are repaired here, and each half is falsified on its own: restoring ONLY the
-// skip predicate leaves the claim red (measured as mutation F1_observe_arm at head 9772aa09931 — contract
-// 26 held / 1 did not hold, identical to the at-rest control), and restoring ONLY the classifier arm leaves
-// it red the other way, because the claim carries the SAME observe value through the decision AND the
-// post-ensure classification (review 81885 / stern-bat-401 (1)). The observe phase must not end the ensure,
+// reported unresponsive). BOTH are repaired here, and each half is falsified on its own by a mutation on
+// THIS code, not on the old code: `FU_F1a_restore_stats_short_circuit` puts back ONLY the `=> false` skip
+// predicate, and `FU_F1b_restore_second_short_circuit` puts back ONLY the classifier's
+// `=> DaemonUnresponsive` arm, each at this PR's own head, where the clean tree reads the contract module
+// with NO claim red. So each RED has a control it can actually move: the claim is green at rest and red
+// under the mutation, which is the only comparison that shows an arm is load-bearing. (An earlier draft of
+// this comment cited mutation `F1_observe_arm` at head 9772aa09931 as falsifying the skip half. It does
+// not, and its own row in the #14155 evidence says so: at that head the claim is red AT REST and the arm
+// still carried the defect, so that mutation's result was byte-identical to the at-rest control — it
+// established only that a one-sided repair leaves the contract unsatisfied, never that the repaired arm
+// matters. Citing it here as falsification repeated the very error that row warned about, so the paired
+// falsifiers on the FIXED code — which that row promised would ship with this PR — are named instead. The
+// aggregates those two mutations must produce are not repeated here: they live in the evidence comment on
+// the PR, generated from the runner logs, and the generator refuses to publish a leg that reads any other
+// way. A number transcribed into a comment is a number that can silently go stale when the head moves.)
+// That the claim threads BOTH decisions is why two mutations are needed: it carries the same observe value
+// through the decision AND the post-ensure classification (review 81885 / stern-bat-401 (1)).
+// The observe phase must not end the ensure,
 // and ownership comes from the endpoint SURVEY, not from `--show-stats` — the same conclusion the receipt's
 // own server_placement paragraph already reached.
 fn build_cache_ensure_is_needed(observe: BuildCacheObserve) -> Bool {
