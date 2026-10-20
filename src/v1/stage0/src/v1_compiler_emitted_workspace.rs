@@ -139,7 +139,7 @@ pub fn emitted_file_placement(file: Rc<TextFile>) -> Rc<EmittedFilePlacement> {
                         crate::v1_compiler_emit_rust::rust_source_ext(),
                     )
                     .as_deref()
-                        != std::option::Option::None.as_deref()))
+                        != std::option::Option::<&str>::None))
                 {
                     Rc::new(EmittedFilePlacement::PlacedTest { file: file.clone() })
                 } else {
@@ -151,7 +151,7 @@ pub fn emitted_file_placement(file: Rc<TextFile>) -> Rc<EmittedFilePlacement> {
                         crate::v1_compiler_emit_rust::rust_source_ext(),
                     )
                     .as_deref()
-                        != std::option::Option::None.as_deref()))
+                        != std::option::Option::<&str>::None))
                         && !v1_rt::string_contains(
                             &crate::v1_compiler_emit_rust::rust_emitted_module_basename(
                                 path.clone(),

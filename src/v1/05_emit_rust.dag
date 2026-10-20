@@ -16407,14 +16407,28 @@ fn emit_rust_structural_comparison(l_str: String, r_str: String, binding: Struct
   }
 }
 
+// THE ABSENT CONSTRUCTOR AS A COMPARISON OPERAND: `Option::None.as_deref()` has no inferable payload, so the
+// operand of an optional-String comparison that is the Absent constructor is spelled at the comparison's own
+// `Option<&str>` payload instead.
+fn is_absent_constructor_expr(e: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match e.expr_data {
+    ExprVar { binding_kind: _ } => {
+      let n = expr_var_name_at(texpr: e, source_indices: source_indices)
+      n == "Absent" || n == "none"
+    }
+    ExprLiteral { value: v } => match v { LitNull => true, _ => false }
+    _ => false
+  }
+}
+
 fn emit_rust_host_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, right: Node, l_str: String, r_str: String, scope: InferScope) -> String {
     let op_str = emit_bin_op_symbol(op: op, target: Rust, algebra_field: algebra_field)
     if is_string_comparison(op: op, left: left, right: right, source_indices: scope.type_env.source_indices) {
       let l_optional = is_optional_typed_expr(e: left)
       let r_optional = is_optional_typed_expr(e: right)
       if l_optional || r_optional {
-        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str), ").as_deref()") }
-        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str), ").as_deref()") }
+        let l_cmp = if is_absent_constructor_expr(e: left, source_indices: scope.type_env.source_indices) { "std::option::Option::<&str>::None" } else if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str), ").as_deref()") }
+        let r_cmp = if is_absent_constructor_expr(e: right, source_indices: scope.type_env.source_indices) { "std::option::Option::<&str>::None" } else if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str), ").as_deref()") }
         concat("(", l_cmp, " ", op_str, " ", r_cmp, ")")
       } else {
         concat("(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str), " ", op_str, " ", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str), ")")

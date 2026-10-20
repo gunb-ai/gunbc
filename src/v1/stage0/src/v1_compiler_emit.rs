@@ -728,7 +728,7 @@ pub fn order_typed_call_args(
                     scope.type_env.source_indices.clone(),
                 )
                 .as_deref()
-                    == std::option::Option::None.as_deref())
+                    == std::option::Option::<&str>::None)
                 {
                     __found = true;
                     break;
@@ -749,7 +749,7 @@ pub fn order_typed_call_args(
                                 arg.clone(),
                                 scope.type_env.source_indices.clone(),
                             );
-                            if (n.clone().as_deref() != std::option::Option::None.as_deref()) {
+                            if (n.clone().as_deref() != std::option::Option::<&str>::None) {
                                 v1_rt::rc_map_insert(acc.clone(), n.clone().unwrap(), arg.clone())
                             } else {
                                 acc.clone()
@@ -823,7 +823,7 @@ pub fn order_typed_call_args(
                                     arg.clone(),
                                     scope.type_env.source_indices.clone(),
                                 );
-                                if (n.clone().as_deref() == std::option::Option::None.as_deref()) {
+                                if (n.clone().as_deref() == std::option::Option::<&str>::None) {
                                     true
                                 } else {
                                     (crate::v1_compiler_infer_types::emit_map_has(

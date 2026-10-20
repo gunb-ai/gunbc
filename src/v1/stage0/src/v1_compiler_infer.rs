@@ -1391,7 +1391,7 @@ pub fn name_binds_a_lexical_value(name: String, scope: Rc<InferScope>) -> bool {
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(_) => {
             (lookup_variant_parent_enum(scope.clone(), name.clone()).as_deref()
-                == std::option::Option::None.as_deref())
+                == std::option::Option::<&str>::None)
         }
         std::option::Option::None => false,
     }
@@ -6145,7 +6145,7 @@ pub fn refinement_chain_link_identities(
                     .iter()
                     .cloned()
                     {
-                        if (site.clone().as_deref() != std::option::Option::None.as_deref()) {
+                        if (site.clone().as_deref() != std::option::Option::<&str>::None) {
                             __result.push(site);
                         }
                     }
@@ -9558,7 +9558,7 @@ pub fn direct_call_shape_diags(
             let mut __result = Vec::new();
             for ta in typed_args.iter().cloned() {
                 if (crate::v1_std_core::arg_name_at(ta.clone(), source_indices.clone()).as_deref()
-                    == std::option::Option::None.as_deref())
+                    == std::option::Option::<&str>::None)
                 {
                     __result.push(ta);
                 }
@@ -11144,7 +11144,7 @@ pub fn present_arms_over_unresolved_scrutinee(
                     } => {
                         if ((crate::v1_std_core::qualified_last_segment(n.clone())
                             == "Present".to_string())
-                            && (pe.clone().as_deref() == std::option::Option::None.as_deref()))
+                            && (pe.clone().as_deref() == std::option::Option::<&str>::None))
                         {
                             Rc::new(vec![crate::v1_std_core::make_error_node(
                                 Rc::new(CompilerDiagnostic::PresentArmScrutineeTypeUnresolved {
@@ -11633,7 +11633,7 @@ pub fn fold_accumulator_is_unapplied_generic(n: Rc<Node>) -> bool {
 }
 
 pub fn method_name_is(opt: Option<String>, expected: String) -> bool {
-    if (opt.clone().as_deref() == std::option::Option::None.as_deref()) {
+    if (opt.clone().as_deref() == std::option::Option::<&str>::None) {
         false
     } else {
         (opt.clone().unwrap() == expected.clone())
@@ -11647,7 +11647,7 @@ pub fn arg_has_name(
 ) -> bool {
     {
         let n = crate::v1_std_core::arg_name_at(arg.clone(), source_indices.clone());
-        if (n.clone().as_deref() == std::option::Option::None.as_deref()) {
+        if (n.clone().as_deref() == std::option::Option::<&str>::None) {
             false
         } else {
             (n.clone().unwrap() == name.clone())
@@ -11796,7 +11796,7 @@ pub fn infer_method_args_with_fold(
                 __result.push({
             let a = idx_pair.1.clone();
 let idx = idx_pair.0.clone();
-let is_init_arg = (arg_has_name(a.clone(), "init".to_string(), scope.type_env.source_indices.clone()) || ((crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()).as_deref() == std::option::Option::None.as_deref()) && (idx.clone() == 0)));
+let is_init_arg = (arg_has_name(a.clone(), "init".to_string(), scope.type_env.source_indices.clone()) || ((crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()).as_deref() == std::option::Option::<&str>::None) && (idx.clone() == 0)));
 if ((is_fold.clone() && (fold_info.clone() != std::option::Option::None)) && is_init_arg.clone()) {
                 match fold_info.clone() {
     Some(fi) => fi.clone(),
@@ -19141,7 +19141,7 @@ Rc::new(FieldInferResult {
                 scope.module_name.clone(),
             ),
         );
-        if (type_name.clone().as_deref() == std::option::Option::None.as_deref()) {
+        if (type_name.clone().as_deref() == std::option::Option::<&str>::None) {
             {
                 let child_nodes = Rc::new({
                     let mut __result = Vec::new();
@@ -20613,13 +20613,47 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
             };
             match type_based.clone() {
                 Some(_) => type_based.clone(),
-                std::option::Option::None => {
-                    match (*val.expr_data.clone()).clone() {
-                        ExprData::ExprBinOp { op: op, .. } => {
-                            let left = crate::v1_std_core::binop_left(val.clone());
-                            let right = crate::v1_std_core::binop_right(val.clone());
-                            match op.clone() {
-                                BinOp::Sub => match (*left.expr_data.clone()).clone() {
+                std::option::Option::None => match (*val.expr_data.clone()).clone() {
+                    ExprData::ExprBinOp { op: op, .. } => {
+                        let left = crate::v1_std_core::binop_left(val.clone());
+                        let right = crate::v1_std_core::binop_right(val.clone());
+                        match op.clone() {
+                            BinOp::Sub => match (*left.expr_data.clone()).clone() {
+                                ExprData::ExprVar {
+                                    binding_kind: _, ..
+                                } => {
+                                    let lname = crate::v1_std_core::expr_var_name_at(
+                                        left.clone(),
+                                        ctx.type_env.source_indices.clone(),
+                                    );
+                                    if ((v1_rt::map_get(&ctx.param_names.clone(), lname.clone())
+                                        .as_deref()
+                                        != std::option::Option::<&str>::None)
+                                        || (v1_rt::map_get(
+                                            &ctx.sub_value_vars.clone(),
+                                            lname.clone(),
+                                        ) != std::option::Option::None))
+                                    {
+                                        match crate::v1_std_core::expr_literal_int_optional(right.clone()) {
+    Some(k) => match crate::std_termination::positive_descent_amount_from_positive_int(k.clone()) {
+    Some(steps) => Some(Rc::new(SubValueRelation::ArithmeticDescent {
+    param: lname.clone(),
+    factor: Rc::new(ShrinkFactor::ConstantShrink {
+    steps: steps.clone(),
+}),
+})),
+    std::option::Option::None => std::option::Option::None,
+},
+    std::option::Option::None => std::option::Option::None,
+}
+                                    } else {
+                                        std::option::Option::None
+                                    }
+                                }
+                                _ => std::option::Option::None,
+                            },
+                            BinOp::Div => {
+                                let left_name = match (*left.expr_data.clone()).clone() {
                                     ExprData::ExprVar {
                                         binding_kind: _, ..
                                     } => {
@@ -20632,90 +20666,51 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
                                             lname.clone(),
                                         )
                                         .as_deref()
-                                            != std::option::Option::None.as_deref())
+                                            != std::option::Option::<&str>::None)
                                             || (v1_rt::map_get(
                                                 &ctx.sub_value_vars.clone(),
                                                 lname.clone(),
                                             ) != std::option::Option::None))
                                         {
-                                            match crate::v1_std_core::expr_literal_int_optional(right.clone()) {
-    Some(k) => match crate::std_termination::positive_descent_amount_from_positive_int(k.clone()) {
-    Some(steps) => Some(Rc::new(SubValueRelation::ArithmeticDescent {
-    param: lname.clone(),
-    factor: Rc::new(ShrinkFactor::ConstantShrink {
-    steps: steps.clone(),
-}),
-})),
-    std::option::Option::None => std::option::Option::None,
-},
-    std::option::Option::None => std::option::Option::None,
-}
+                                            lname.clone()
                                         } else {
-                                            std::option::Option::None
+                                            "".to_string()
                                         }
                                     }
-                                    _ => std::option::Option::None,
-                                },
-                                BinOp::Div => {
-                                    let left_name = match (*left.expr_data.clone()).clone() {
-                                        ExprData::ExprVar {
-                                            binding_kind: _, ..
-                                        } => {
-                                            let lname = crate::v1_std_core::expr_var_name_at(
-                                                left.clone(),
-                                                ctx.type_env.source_indices.clone(),
-                                            );
-                                            if ((v1_rt::map_get(
-                                                &ctx.param_names.clone(),
-                                                lname.clone(),
-                                            )
-                                            .as_deref()
-                                                != std::option::Option::None.as_deref())
-                                                || (v1_rt::map_get(
-                                                    &ctx.sub_value_vars.clone(),
+                                    ExprData::ExprBinOp { op: BinOp::Sub, .. } => {
+                                        let inner_left =
+                                            crate::v1_std_core::binop_left(left.clone());
+                                        match (*inner_left.expr_data.clone()).clone() {
+                                            ExprData::ExprVar {
+                                                binding_kind: _, ..
+                                            } => {
+                                                let lname = crate::v1_std_core::expr_var_name_at(
+                                                    inner_left.clone(),
+                                                    ctx.type_env.source_indices.clone(),
+                                                );
+                                                if ((v1_rt::map_get(
+                                                    &ctx.param_names.clone(),
                                                     lname.clone(),
-                                                ) != std::option::Option::None))
-                                            {
-                                                lname.clone()
-                                            } else {
-                                                "".to_string()
-                                            }
-                                        }
-                                        ExprData::ExprBinOp { op: BinOp::Sub, .. } => {
-                                            let inner_left =
-                                                crate::v1_std_core::binop_left(left.clone());
-                                            match (*inner_left.expr_data.clone()).clone() {
-                                                ExprData::ExprVar {
-                                                    binding_kind: _, ..
-                                                } => {
-                                                    let lname =
-                                                        crate::v1_std_core::expr_var_name_at(
-                                                            inner_left.clone(),
-                                                            ctx.type_env.source_indices.clone(),
-                                                        );
-                                                    if ((v1_rt::map_get(
-                                                        &ctx.param_names.clone(),
+                                                )
+                                                .as_deref()
+                                                    != std::option::Option::<&str>::None)
+                                                    || (v1_rt::map_get(
+                                                        &ctx.sub_value_vars.clone(),
                                                         lname.clone(),
-                                                    )
-                                                    .as_deref()
-                                                        != std::option::Option::None.as_deref())
-                                                        || (v1_rt::map_get(
-                                                            &ctx.sub_value_vars.clone(),
-                                                            lname.clone(),
-                                                        ) != std::option::Option::None))
-                                                    {
-                                                        lname.clone()
-                                                    } else {
-                                                        "".to_string()
-                                                    }
+                                                    ) != std::option::Option::None))
+                                                {
+                                                    lname.clone()
+                                                } else {
+                                                    "".to_string()
                                                 }
-                                                _ => "".to_string(),
                                             }
+                                            _ => "".to_string(),
                                         }
-                                        _ => "".to_string(),
-                                    };
-                                    if (left_name.clone() != "".to_string()) {
-                                        match crate::v1_std_core::expr_literal_int_optional(right.clone()) {
+                                    }
+                                    _ => "".to_string(),
+                                };
+                                if (left_name.clone() != "".to_string()) {
+                                    match crate::v1_std_core::expr_literal_int_optional(right.clone()) {
     Some(k) => match crate::std_termination::proportional_divisor_from_int_at_least_two(k.clone()) {
     Some(div_w) => Some(Rc::new(SubValueRelation::ArithmeticDescent {
     param: left_name.clone(),
@@ -20727,48 +20722,48 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
 },
     std::option::Option::None => std::option::Option::None,
 }
-                                    } else {
-                                        std::option::Option::None
-                                    }
+                                } else {
+                                    std::option::Option::None
                                 }
-                                BinOp::Add => std::option::Option::None,
-                                _ => std::option::Option::None,
                             }
+                            BinOp::Add => std::option::Option::None,
+                            _ => std::option::Option::None,
                         }
-                        ExprData::ExprMethodCall {
-                            method_semantics: _,
-                            ..
-                        } => {
-                            let mname = crate::v1_std_core::expr_method_name_at(
-                                val.clone(),
-                                ctx.type_env.source_indices.clone(),
-                            );
-                            let is_collection_preserving = (((((mname.clone()
-                                == "skip".to_string())
-                                || (mname.clone() == "filter".to_string()))
-                                || (mname.clone() == "take".to_string()))
-                                || (mname.clone() == "enumerate".to_string()))
-                                || (mname.clone() == "reverse".to_string()));
-                            if is_collection_preserving.clone() {
-                                {
-                                    let receiver = crate::v1_std_core::method_receiver(val.clone());
-                                    let coll_field =
-                                        resolve_collection_field(receiver.clone(), ctx.clone());
-                                    match coll_field.clone() {
-                                        Some(ind_field) => {
-                                            Some(Rc::new(SubValueRelation::StrictSubValue {
-                                                field: ind_field.clone(),
-                                                factor: Rc::new(ShrinkFactor::UnitShrink),
-                                            }))
-                                        }
-                                        std::option::Option::None => {
-                                            if (mname.clone() == "skip".to_string()) {
-                                                {
-                                                    let skip_args =
-                                                        crate::v1_std_core::method_arg_nodes(
-                                                            val.clone(),
-                                                        );
-                                                    let skip_amount = match skip_args.clone().first().cloned() {
+                    }
+                    ExprData::ExprMethodCall {
+                        method_semantics: _,
+                        ..
+                    } => {
+                        let mname = crate::v1_std_core::expr_method_name_at(
+                            val.clone(),
+                            ctx.type_env.source_indices.clone(),
+                        );
+                        let is_collection_preserving = (((((mname.clone()
+                            == "skip".to_string())
+                            || (mname.clone() == "filter".to_string()))
+                            || (mname.clone() == "take".to_string()))
+                            || (mname.clone() == "enumerate".to_string()))
+                            || (mname.clone() == "reverse".to_string()));
+                        if is_collection_preserving.clone() {
+                            {
+                                let receiver = crate::v1_std_core::method_receiver(val.clone());
+                                let coll_field =
+                                    resolve_collection_field(receiver.clone(), ctx.clone());
+                                match coll_field.clone() {
+                                    Some(ind_field) => {
+                                        Some(Rc::new(SubValueRelation::StrictSubValue {
+                                            field: ind_field.clone(),
+                                            factor: Rc::new(ShrinkFactor::UnitShrink),
+                                        }))
+                                    }
+                                    std::option::Option::None => {
+                                        if (mname.clone() == "skip".to_string()) {
+                                            {
+                                                let skip_args =
+                                                    crate::v1_std_core::method_arg_nodes(
+                                                        val.clone(),
+                                                    );
+                                                let skip_amount = match skip_args.clone().first().cloned() {
     Some(a) => match crate::v1_std_core::expr_literal_int_optional(crate::v1_std_core::arg_value(a.clone())) {
     Some(k) => if (k.clone() > 0) {
                                 k.clone()
@@ -20779,15 +20774,14 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
 },
     std::option::Option::None => 0,
 };
-                                                    if (skip_amount.clone() > 0) {
-                                                        match (*receiver.expr_data.clone()).clone()
-                                                        {
-                                                            ExprData::ExprVar {
-                                                                binding_kind: _,
-                                                                ..
-                                                            } => {
-                                                                let rname = crate::v1_std_core::expr_var_name_at(receiver.clone(), ctx.type_env.source_indices.clone());
-                                                                if ((v1_rt::map_get(&ctx.param_names.clone(), rname.clone()).as_deref() != std::option::Option::None.as_deref()) || (v1_rt::map_get(&ctx.sub_value_vars.clone(), rname.clone()) != std::option::Option::None)) {
+                                                if (skip_amount.clone() > 0) {
+                                                    match (*receiver.expr_data.clone()).clone() {
+                                                        ExprData::ExprVar {
+                                                            binding_kind: _,
+                                                            ..
+                                                        } => {
+                                                            let rname = crate::v1_std_core::expr_var_name_at(receiver.clone(), ctx.type_env.source_indices.clone());
+                                                            if ((v1_rt::map_get(&ctx.param_names.clone(), rname.clone()).as_deref() != std::option::Option::<&str>::None) || (v1_rt::map_get(&ctx.sub_value_vars.clone(), rname.clone()) != std::option::Option::None)) {
                                         match crate::std_termination::positive_descent_amount_from_positive_int(skip_amount.clone()) {
     Some(steps) => {
                                             let synth_field = Rc::new(InductiveField {
@@ -20809,26 +20803,25 @@ Some(Rc::new(SubValueRelation::StrictSubValue {
                                     } else {
                                         std::option::Option::None
                                     }
-                                                            }
-                                                            _ => std::option::Option::None,
                                                         }
-                                                    } else {
-                                                        std::option::Option::None
+                                                        _ => std::option::Option::None,
                                                     }
+                                                } else {
+                                                    std::option::Option::None
                                                 }
-                                            } else {
-                                                std::option::Option::None
                                             }
+                                        } else {
+                                            std::option::Option::None
                                         }
                                     }
                                 }
-                            } else {
-                                std::option::Option::None
                             }
+                        } else {
+                            std::option::Option::None
                         }
-                        _ => std::option::Option::None,
                     }
-                }
+                    _ => std::option::Option::None,
+                },
             }
         }
     }
@@ -20902,7 +20895,7 @@ pub fn classify_call_arg_provenance(
                 ctx.type_env.source_indices.clone(),
             );
             if (v1_rt::map_get(&ctx.param_names.clone(), name.clone()).as_deref()
-                != std::option::Option::None.as_deref())
+                != std::option::Option::<&str>::None)
             {
                 Some(Rc::new(SubValueRelation::PreservedValue))
             } else {
@@ -21437,7 +21430,7 @@ pub fn build_call_evidence(
                         ctx.type_env.source_indices.clone(),
                     )
                     .as_deref()
-                        == std::option::Option::None.as_deref())
+                        == std::option::Option::<&str>::None)
                     {
                         __result.push(arg_node);
                     }
@@ -25115,7 +25108,7 @@ pub fn call_target_for_direct_call(
         func_name.clone(),
     )
     .as_deref()
-        != std::option::Option::None.as_deref())
+        != std::option::Option::<&str>::None)
     {
         match (*crate::v1_compiler_infer_lookup::func_env_declared_func_sig(
             scope.func_env.clone(),
