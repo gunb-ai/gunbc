@@ -63,6 +63,7 @@ data edited_bin_witness_wet_rows_not_executed_by_ci_population: List<String> = [
   "http_client_get_real_execution.dag",
   "roadmap_belt_actuate_witness.dag",
   "roadmap_closing_contract_execution_witness.dag",
+  "claim_batch_parse_gate_witness.dag",
   "host_build_cache_provision_real_execution_witness.dag",
   "materialized_ssh_key_file_real_execution_witness.dag",
   "proc_self_cgroup_real_execution_witness.dag",
