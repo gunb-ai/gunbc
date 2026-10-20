@@ -46,8 +46,6 @@ fn rust_match_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
 fn rust_match_emit_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: rust_m
-    root: root,
     facts: PartialFunction { lookup: rust_match_emit_facts_miss },
     arm_resolutions: constructed_root_arm_resolutions()
   }

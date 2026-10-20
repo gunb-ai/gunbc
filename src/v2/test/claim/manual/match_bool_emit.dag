@@ -59,8 +59,6 @@ fn match_bool_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn match_bool_emit_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: match_
-    root: root,
     facts: PartialFunction { lookup: match_bool_emit_facts_lookup },
     arm_resolutions: constructed_root_arm_resolutions()
   }

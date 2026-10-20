@@ -66,8 +66,6 @@ fn sr_lookup_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
 fn sr_lookup_claim_tree() -> InferredTree {
   InferredTree {
     root: sr_lookup_decl,
-    facts: sr_lookup_claim_fact_m
-    root: sr_lookup_decl,
     facts: sr_lookup_claim_fact_map(),
     arm_resolutions: constructed_root_arm_resolutions()
   }

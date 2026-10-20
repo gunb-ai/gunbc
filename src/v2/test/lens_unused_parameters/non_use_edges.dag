@@ -65,8 +65,7 @@ fn unused_parameters_non_use_facts() -> InferredFacts {
 }
 
 fn unused_parameters_non_use_tree() -> InferredTree {
-  claim_inferred_tree(root: unused_parameters_non_use_root, facts: unused_parameters_non_use_facts()),
-  arm_resolutions: constructed_root_arm_resolutions()
+  claim_inferred_tree(root: unused_parameters_non_use_root, facts: unused_parameters_non_use_facts())
 }
 
 type LensUseClassificationPartitionClaim {

@@ -214,8 +214,6 @@ fn emit_call_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
 fn emit_call_eval_producer_tree() -> InferredTree {
   InferredTree {
     root: rust_call_helper_arrow(),
-    facts: PartialFunct
-    root: rust_call_helper_arrow(),
     facts: PartialFunction { lookup: emit_call_eval_composed_facts },
     arm_resolutions: constructed_root_arm_resolutions()
   }

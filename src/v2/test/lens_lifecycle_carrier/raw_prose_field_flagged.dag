@@ -157,8 +157,7 @@ fn arrow_param_tree() -> InferredTree {
       algebra_symbol: ^arrow_param_algebra_sym,
       descent_symbol: ^arrow_param_descent_sym
     )
-  ),
-    arm_resolutions: constructed_root_arm_resolutions()
+  )
 }
 
 test fn arrow_parameter_dissolve_on_string_is_rejected_on_the_domain() -> Bool {

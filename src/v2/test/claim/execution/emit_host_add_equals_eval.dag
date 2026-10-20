@@ -218,8 +218,6 @@ fn emit_eval_composed_facts(node: Node) -> Optional<InferredFacts> {
 fn emit_eval_subject_tree() -> InferredTree {
   InferredTree {
     root: rust_fixture_emitted_add_fn,
-    facts: PartialFu
-    root: rust_fixture_emitted_add_fn,
     facts: PartialFunction { lookup: emit_eval_composed_facts },
     arm_resolutions: constructed_root_arm_resolutions()
   }

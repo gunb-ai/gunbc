@@ -47,8 +47,7 @@ fn unused_parameters_claim_facts() -> InferredFacts {
 }
 
 fn unused_parameters_claim_tree() -> InferredTree {
-  claim_inferred_tree(root: unused_parameters_root, facts: unused_parameters_claim_facts()),
-  arm_resolutions: constructed_root_arm_resolutions()
+  claim_inferred_tree(root: unused_parameters_root, facts: unused_parameters_claim_facts())
 }
 
 type LensUseClassificationClaim {

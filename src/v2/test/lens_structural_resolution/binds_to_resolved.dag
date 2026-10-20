@@ -50,8 +50,6 @@ fn sr_claim_tree() -> InferredTree {
   let facts = sr_claim_facts()
   InferredTree {
     root: sr_decl,
-    facts: sr_claim_fact_map(facts: fact
-    root: sr_decl,
     facts: sr_claim_fact_map(facts: facts),
     arm_resolutions: constructed_root_arm_resolutions()
   }

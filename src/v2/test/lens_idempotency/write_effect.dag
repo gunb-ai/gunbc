@@ -48,8 +48,7 @@ fn idempotency_claim_facts() -> InferredFacts {
 }
 
 fn idempotency_claim_tree() -> InferredTree {
-  claim_inferred_tree(root: idempotency_root, facts: idempotency_claim_facts()),
-  arm_resolutions: constructed_root_arm_resolutions()
+  claim_inferred_tree(root: idempotency_root, facts: idempotency_claim_facts())
 }
 
 type LensIdempotencyClaim {

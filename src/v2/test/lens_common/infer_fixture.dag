@@ -131,8 +131,6 @@ fn claim_inferred_facts_map(facts: InferredFacts) -> PartialFunction<Node, Infer
 fn claim_inferred_tree(root: Node, facts: InferredFacts) -> InferredTree {
   InferredTree {
     root: root,
-    facts: claim_inferred_facts_map(facts: 
-    root: root,
     facts: claim_inferred_facts_map(facts: facts),
     arm_resolutions: constructed_root_arm_resolutions()
   }

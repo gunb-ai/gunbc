@@ -43,8 +43,7 @@ fn rollup_facts() -> InferredFacts {
 }
 
 fn rollup_tree() -> InferredTree {
-  claim_inferred_tree(root: rollup_function, facts: rollup_facts()),
-  arm_resolutions: constructed_root_arm_resolutions()
+  claim_inferred_tree(root: rollup_function, facts: rollup_facts())
 }
 
 type LensRollupUnusedClaim {

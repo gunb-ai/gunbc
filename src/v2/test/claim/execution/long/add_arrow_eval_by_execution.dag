@@ -407,9 +407,6 @@ fn add_arrow_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
     facts: PartialFunction {
-      lookup: 
-    root: root,
-    facts: PartialFunction {
       lookup: add_arrow_eval_facts_lookup
     },
     arm_resolutions: constructed_root_arm_resolutions()
@@ -851,9 +848,6 @@ fn add_arrow_eval_lazy_arm_loop_node() -> Node {
 
 fn add_arrow_eval_loop_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
-    root: root,
-    facts: PartialFunction {
-      lookup: 
     root: root,
     facts: PartialFunction {
       lookup: fn(key) {

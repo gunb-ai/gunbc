@@ -84,8 +84,7 @@ fn effect_claim_facts() -> InferredFacts {
 }
 
 fn effect_claim_tree() -> InferredTree {
-  claim_inferred_tree(root: effect_root, facts: effect_claim_facts()),
-  arm_resolutions: constructed_root_arm_resolutions()
+  claim_inferred_tree(root: effect_root, facts: effect_claim_facts())
 }
 
 type LensEffectClaim {

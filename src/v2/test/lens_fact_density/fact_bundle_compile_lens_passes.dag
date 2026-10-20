@@ -43,8 +43,7 @@ fn fact_bundle_cl_tree() -> InferredTree {
       algebra_symbol: ^fact_bundle_cl_algebra_sym,
       descent_symbol: ^fact_bundle_cl_descent_sym
     )
-  ),
-    arm_resolutions: constructed_root_arm_resolutions()
+  )
 }
 
 test fn fact_bundle_compile_lens_passes_holds() -> Bool {

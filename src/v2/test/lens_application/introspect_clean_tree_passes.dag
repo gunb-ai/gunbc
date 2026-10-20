@@ -27,8 +27,7 @@ fn introspect_tree() -> InferredTree {
       algebra_symbol: ^introspect_algebra_symbol,
       descent_symbol: ^introspect_descent_symbol,
     )
-  ),
-    arm_resolutions: constructed_root_arm_resolutions()
+  )
 }
 
 fn introspect_passing_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {

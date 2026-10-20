@@ -32,8 +32,7 @@ fn hollow_alias_cl_tree() -> InferredTree {
       algebra_symbol: ^hollow_alias_cl_algebra_sym,
       descent_symbol: ^hollow_alias_cl_descent_sym
     )
-  ),
-    arm_resolutions: constructed_root_arm_resolutions()
+  )
 }
 
 test fn hollow_alias_compile_lens_rejects_holds() -> Bool {

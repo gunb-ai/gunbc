@@ -48,8 +48,6 @@ fn meet_join_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
 fn meet_join_emit_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: meet_j
-    root: root,
     facts: PartialFunction { lookup: meet_join_emit_facts_miss },
     arm_resolutions: constructed_root_arm_resolutions()
   }
