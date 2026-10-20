@@ -255,7 +255,10 @@ import v1.compiler.infer_access {
   check_index_access_node, check_slice_access_node
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
-import std.generated_provider { GeneratedProviderDemand, group_provider_demands }
+import std.generated_provider {
+  GeneratedProviderDemand, group_provider_demands, ProviderAcquisitionStep, ProviderModuleFact,
+  ModuleInClosure, ModuleInPool, ModuleNotInPool, observe_provider_demand, provider_acquisition_step
+}
 
 fn is_witness_type_name(name: String) -> Bool {
   name == "Witness" || name == "witness"
@@ -18602,6 +18605,37 @@ type RealizeState {
   item_registry: Map<String, ItemInfo>
   diags_by_name: Map<String, List<ErrorNode>>
   demands_by_name: Map<String, List<GeneratedProviderDemand>>
+}
+
+// THE SEED'S ACQUISITION BOUNDARY, read from the checked closure. Whether a demanded module is in the
+// closure, and which declarations it has there, is a fact of the typed modules; whether the pool
+// holds a module outside the closure is the one fact a closure builder supplies (pool_modules: the
+// demanded module paths its pool answers for). The decision itself is std.generated_provider's.
+// Declarations are the module's own items by authored name; a refused declaration surfaces as its
+// own blocking diagnostic, so this boundary reports none as refused.
+fn closure_provider_module_fact(module_path: String, modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, pool_modules: List<String>) -> ProviderModuleFact {
+  match modules |> filter(m => authored_name_at(source_indices: source_indices, node: m.module) == module_path) |> first {
+    Present { value: m } =>
+      ModuleInClosure {
+        declarations: m.items
+          |> map(i => authored_name_at(source_indices: source_indices, node: i))
+          |> filter(n => n != "")
+          |> map(n => n as NonEmptyStr),
+        refused: []
+      }
+    Absent =>
+      if pool_modules |> any(p => p == module_path) { ModuleInPool } else { ModuleNotInPool }
+  }
+}
+
+fn closure_provider_acquisition_step(demands: List<GeneratedProviderDemand>, modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, pool_modules: List<String>) -> ProviderAcquisitionStep {
+  provider_acquisition_step(
+    observed: demands |> map(d => observe_provider_demand(demand: d, fact: closure_provider_module_fact(module_path: d.declaration.module_path, modules: modules, source_indices: source_indices, pool_modules: pool_modules))),
+    closure_modules: modules
+      |> map(m => authored_name_at(source_indices: source_indices, node: m.module))
+      |> filter(n => n != "")
+      |> map(n => n as NonEmptyStr)
+  )
 }
 
 // THE PASS OUTPUT: the typed program and, beside it rather than inside it, the provider demands its
