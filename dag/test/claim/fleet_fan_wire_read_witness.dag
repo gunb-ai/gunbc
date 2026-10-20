@@ -177,3 +177,19 @@ test fn witness_real_capture_frontier_is_pending_not_discharged() -> Bool {
     DissolutionUnbound => false
   }
 }
+
+// A receipt names bytes the reading rests on: in automatic mode (and on a refused wire) get_fan_info is
+// never consulted, so it carries no receipt even when supplied; in manual mode it does.
+test fn witness_fan_info_is_receipted_only_where_the_reading_reads_it() -> Bool {
+  receipts_of(m: auto_body, f: uniform_25, manager: true, fan_info: false)
+    && receipts_of(m: "{\"manager_disabled\":2}", f: uniform_25, manager: true, fan_info: false)
+    && receipts_of(m: manual_body, f: uniform_25, manager: true, fan_info: true)
+}
+
+fn receipts_of(m: String, f: String, manager: Bool, fan_info: Bool) -> Bool {
+  match megarac_fan_decode(family: AmiMegaRac, manager_response: Present { value: m }, fan_info_response: Present { value: f }) {
+    MegaRacFanDecoded { manager_receipt: mr, fan_info_receipt: fr, reading: _ } =>
+      has_receipt(h: mr) == manager && has_receipt(h: fr) == fan_info
+    MegaRacFanWrongFamily { family: _ } => false
+  }
+}
