@@ -1922,15 +1922,18 @@ fn known_red_exit_code_of(r: KnownRedDerivationRefusal) -> Int {
   }
 }
 
-// One run, one exit code, and the WEAKEST observation decides it. If any part of the run failed to
-// be evidence, the run as a whole observed nothing: it must not report the milder "did not hold"
-// while part of it never ran. So a single no-observation refusal out-ranks any number of observed
-// defects, and any refusal at all out-ranks a held observation.
+// One run, one exit code, and a DEFINITE FINDING decides it. Precedence is 1 > 2 > 0 (parent ruling,
+// Kleene: false AND unknown = false). If any subject's verdict was read and contradicts the roster of
+// record -- a paid debt still enrolled, or a red with no enrolment -- the run OBSERVED that the list is
+// wrong, and it must say so with exit 1 EVEN IF some other subject could not be observed this run.
+// Reporting that definite finding as the milder 2 would bury a real finding under an accounting gap.
+// Exit 2 is reserved for the run that found NOTHING definite and had something it could not observe:
+// "the run failing to be evidence", nothing more. Any refusal at all still out-ranks a held observation.
 fn known_red_exit_code_of_all(refusals: List<KnownRedDerivationRefusal>) -> Int {
-  if length(xs: filter(xs: refusals, predicate: fn(r) { known_red_exit_code_of(r: r) == 2 })) > 0 {
-    2
-  } else if length(xs: refusals) > 0 {
+  if length(xs: filter(xs: refusals, predicate: fn(r) { known_red_exit_code_of(r: r) == 1 })) > 0 {
     1
+  } else if length(xs: refusals) > 0 {
+    2
   } else {
     0
   }

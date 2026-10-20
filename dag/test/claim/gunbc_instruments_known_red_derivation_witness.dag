@@ -832,33 +832,50 @@ test fn nothing_observed_exits_2_where_an_observed_defect_exits_1() -> Bool {
     && known_red_exit_code_of_all(refusals: []) == 0
 }
 
-// THE WEAKER OBSERVATION DECIDES THE RUN. A run that found one genuine defect AND had part of itself never
-// execute cannot report itself as merely "did not hold" -- half of it saw nothing. Removing the silent child
-// turns the run into a pure observed defect (1); putting it back must move the code to 2 while the 1-finding
-// is still present. An implementation that reports the FIRST refusal, or the MOST NUMEROUS class, gets this
-// wrong: one no-observation refusal has to out-rank any number of observed ones.
-test fn one_part_of_a_run_failing_to_observe_out_ranks_every_observed_finding() -> Bool {
+// A DEFINITE FINDING OUT-RANKS AN ACCOUNTING GAP (parent ruling; precedence 1 > 2 > 0, Kleene's
+// false AND unknown = false). Half a run failing to execute must not downgrade a real finding to the
+// milder "no observation": if a verdict WAS read and contradicts the roster, the run observed that the
+// list is wrong, and it says 1. The three folds below share the SAME unobserved subject (a child that
+// printed no verdict, leaving its row a plan with no terminal); the only difference is whether a real
+// finding was read:
+//   - finding + unobserved   -> 1  (the finding is still there; the gap does not bury it)
+//   - finding alone          -> 1  (same finding, gap removed -- the code must not move)
+//   - unobserved alone       -> 2  (nothing definite was found and something could not be observed)
+// The middle line is the control that makes the first one mean something: without it, an arm that
+// answered 1 to everything would pass. Without the last, an arm that answered 1 to everything would
+// also pass. The unobserved subject must be genuinely unobserved in the first fold too, or the first
+// line proves nothing about precedence.
+test fn a_definite_finding_exits_1_even_when_another_subject_was_never_observed() -> Bool {
   let e = enrolled_fixture()
   let ghost = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_claim_whose_child_stayed_silent")
-  let both = known_red_fold(
+  let silent = silent_child(claims: [claim_run(function: "the_claim_whose_child_stayed_silent")])
+  let finding_and_unobserved = known_red_fold(
     head: "0000000000000000000000000000000000000010",
     subjects: [e, ghost],
-    children: [
-      child(claims: [claim_of(subject: e)], stdout: pass_verdict(subject: e)),
-      silent_child(claims: [claim_run(function: "the_claim_whose_child_stayed_silent")])
-    ]
+    children: [child(claims: [claim_of(subject: e)], stdout: pass_verdict(subject: e)), silent]
   )
-  let only_the_finding = known_red_fold(
+  let finding_alone = known_red_fold(
     head: "0000000000000000000000000000000000000010",
     subjects: [e],
     children: [child(claims: [claim_of(subject: e)], stdout: pass_verdict(subject: e))]
   )
-  // the stale enrolment is present in BOTH runs, so the only thing that changed is that part of the run
-  // stopped being evidence
-  known_red_stale_enrolments(rows: both.rows) == known_red_stale_enrolments(rows: only_the_finding.rows)
-    && (known_red_stale_enrolments(rows: both.rows) |> length) == 1
-    && known_red_exit_code_of_all(refusals: only_the_finding.refusals) == 1
-    && known_red_exit_code_of_all(refusals: both.refusals) == 2
+  let unobserved_alone = known_red_fold(
+    head: "0000000000000000000000000000000000000010",
+    subjects: [ghost],
+    children: [silent]
+  )
+  // the finding is present, identical, in BOTH the mixed and the clean run...
+  known_red_stale_enrolments(rows: finding_and_unobserved.rows) == known_red_stale_enrolments(rows: finding_alone.rows)
+    && (known_red_stale_enrolments(rows: finding_and_unobserved.rows) |> length) == 1
+    // ...the gap is REAL in the mixed run (that subject has a plan and no terminal), or the first
+    // precedence line below would be vacuous...
+    && (finding_and_unobserved.reconciliation.planned_without_terminal |> length) == 1
+    && known_red_exit_code_of_all(refusals: finding_and_unobserved.refusals) == 1
+    // ...removing the gap cannot move the code, because the finding decided it either way
+    && known_red_exit_code_of_all(refusals: finding_alone.refusals) == 1
+    // ...and with no finding at all, the same unobservable subject is the whole story: 2, not 1
+    && (known_red_stale_enrolments(rows: unobserved_alone.rows) |> length) == 0
+    && known_red_exit_code_of_all(refusals: unobserved_alone.refusals) == 2
 }
 
 // THE CLASSIFICATION IS EXHAUSTIVE AND IT IS NOT A DEFAULT. Every arm of `KnownRedDerivationRefusal` is
