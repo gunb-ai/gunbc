@@ -199,3 +199,16 @@ test fn osd_the_conforming_declaration_is_not_refused() -> Bool {
     && osd_accepted(o: osd_with_std_text(std_text: osd_std_optional(), body: "type U = Optional<Int>\n"))
 }
 
+
+// A CLOSURE WITHOUT std.optional REFUSES THE SUGAR AT THE MARKED GENERATED REFERENCE, never defaulting to a declaration:
+// the control that the lowered `T?` is bound by identity, not by a fallback.
+fn osd_refused_generated_reference_absent(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_generated_reference_declaration_absent
+  }
+}
+
+test fn osd_sugar_without_std_optional_in_the_closure_refuses() -> Bool {
+  osd_refused_generated_reference_absent(o: osd_assemble(sources: [osd_witness(src: "module p\n\ntype U = Int?\n", artifact: osd_artifact)]))
+}
