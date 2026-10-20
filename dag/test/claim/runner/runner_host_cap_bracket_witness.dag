@@ -227,7 +227,7 @@ fn held_text() -> String { bracket_obligation_text(o: BracketObligation { key: o
 
 test fn a_held_obligation_with_this_key_owes_exactly_its_units() -> Bool {
   match release_decision_of(reading: obligation_reading_of_text(text: held_text(), expected_key: okey())) {
-    ReleaseOwes { units: us } => length(us) == 1 && (us[0] as String) == (u(n: "01") as String)
+    ReleaseOwes { units: us } => us == [u(n: "01")]
     _ => false
   }
 }
@@ -312,7 +312,7 @@ test fn an_interrupted_bracket_releases_exactly_its_owned_units_with_an_argv_eac
 // RED: a release whose activation is refused leaves the host DRAINED and names that unit, not the others
 test fn a_failed_release_leaves_the_host_drained_and_names_the_unit() -> Bool {
   match host_left_of_readmit(units: units(), outcomes: [SlotActivated { unit: u(n: "01") }, SlotActuationRefused { unit: u(n: "02"), step: "start", reason: "start refused" }]) {
-    HostLeftDrained { units: us } => length(us) == 1 && (us[0] as String) == (u(n: "02") as String)
+    HostLeftDrained { units: us } => us == [u(n: "02")]
     HostAdmitting => false
   }
 }
