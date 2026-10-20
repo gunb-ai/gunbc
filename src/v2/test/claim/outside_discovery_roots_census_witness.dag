@@ -211,7 +211,7 @@ test fn findings_the_note_declares_and_findings_it_does_not_are_kept_apart() -> 
 
 // The receipt names the note at identity, so a reader is sent to the authority instead of to a number.
 test fn the_receipt_names_the_note_at_identity_rather_than_a_count() -> Bool {
-  let lines = outside_roots_receipt_lines(findings: [note_declared_paths |> head_path])
+  let lines = outside_roots_receipt_lines(findings: [head_path(paths: note_declared_paths)])
   any(xs: lines, predicate: fn(line) {
     string_contains(s: line, pattern: v1_claim_note_identity)
       && string_contains(s: line, pattern: v1_claim_note_location)
