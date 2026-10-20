@@ -1,10 +1,11 @@
 module gunbc.recurring_failure_mode.a_hand_built_fixture_shape_hides_the_shape_the_lowering_produces
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, CeilingNotStated }
 
 data a_hand_built_fixture_shape_hides_the_shape_the_lowering_produces: RecurringFailureMode = RecurringFailureMode {
   identity: "a_hand_built_fixture_shape_hides_the_shape_the_lowering_produces" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "a hand-built fixture shape hides the shape the lowering produces: a witness constructs the producer's output by hand in a shape the producer never emits, so the consumer is exercised only on the fixture and a defect on the real shape stays green. The invalid state is a consumer that answers one shape and is never run on the other.",

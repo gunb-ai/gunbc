@@ -2,10 +2,11 @@ module gunbc.recurring_failure_mode.green_required_head_while_heal_holds_an_unap
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
 
 data green_required_head_while_heal_holds_an_unapplied_repair: RecurringFailureMode = RecurringFailureMode {
   identity: "green_required_head_while_heal_holds_an_unapplied_repair" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a pull request head is green on the required `witnesses` context while a stage0 mirror is stale against its .dag authority, because heal (non-required) holds the repair as an unapplied candidate until the publisher pushes it. HARM: the seed is built from the stale mirror and the required job reports the old behavior as green; a landing in the window takes it.",

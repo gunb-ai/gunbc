@@ -1,10 +1,11 @@
 module gunbc.recurring_failure_mode.a_store_root_nothing_creates
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
 
 data a_store_root_nothing_creates: RecurringFailureMode = RecurringFailureMode {
   identity: "a_store_root_nothing_creates" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a durable slot store is read under a root that no deployment route creates** (the CAS slot store, gunbc.durable_cas_file_store, refuses a root it cannot list rather than reading it as an empty slot, so the first read of a never-created root stops its consumer: absence is not established, and the refusal is correct).",

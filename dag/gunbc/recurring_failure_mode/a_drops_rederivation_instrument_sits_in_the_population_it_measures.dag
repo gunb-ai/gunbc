@@ -1,10 +1,11 @@
 module gunbc.recurring_failure_mode.a_drops_rederivation_instrument_sits_in_the_population_it_measures
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
 
 data a_drops_rederivation_instrument_sits_in_the_population_it_measures: RecurringFailureMode = RecurringFailureMode {
   identity: "a_drops_rederivation_instrument_sits_in_the_population_it_measures" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a declared drop is bounded by a census, and the census is itself a module of the population the drop covers, so the population can break the instrument that would count it and nothing goes red.** INVALID STATE: gunbc.rung_drop v1_required_lanes_withdrawn names its population as what gunbc test //gunbc/instruments:required-lane-resolution-census enumerates, and that instrument's entry (gunbc.required_lane_resolution_census_live) imports modules that are outside the two emitted closures, so a refusal in any of them stops the instrument at resolve before it prints a single module. The drop's re-derivation then answers nothing, while the drop still reads as bounded.",

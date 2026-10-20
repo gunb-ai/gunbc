@@ -1,7 +1,7 @@
 module gunbc.recurring_failure_mode.type_parameter_kind_deferral_never_collected
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, CeilingAmbiguous }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // A DEFERRED JUDGMENT THAT WAS NEVER COLLECTED, AND SHIPPED AS IF IT WERE A VERDICT. v2's kinded-slot
@@ -14,6 +14,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // forwarded parameter in the corpus while the wall's own name and type said otherwise.
 data type_parameter_kind_deferral_never_collected: RecurringFailureMode = RecurringFailureMode {
   identity: "type_parameter_kind_deferral_never_collected" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "RUNG FOUND AT: admitted silently, at the front end -- the worst rung on the ladder, an error class that never surfaces. Before this PR an argument that was a bound type parameter answered ArgumentTypeParameterUnjudged and the fold mapped that arm to acc, i.e. no judgment at all, so a parameter of any kind or of none passed every kinded slot in the corpus. CEILING: structurally reachable by declaration identity, which is where it now sits: both kinds are resolved to their declaring paths and compared as declarations, and every unresolved, contested or unkinded link refuses. NEXT-RUNG TRIGGER, at capability grain: not needed for this class -- the arm is deleted, so no future producer can restore the admit without a compile error, and the witness file holds the three named decisions. What remains open is the v1 counterpart, recorded separately as gunbc.recurring_failure_mode kind_wall_receives_a_de_identified_type_argument."
