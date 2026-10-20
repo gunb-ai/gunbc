@@ -28,6 +28,8 @@ import gunbc.runner.runner_slot_actuation {
   slot_state_stopping,
 }
 import gunbc.runner.runner_slot_actuation { slot_is_masked }
+import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonBool, JsonArray, serialize_json, json_object, json_kv, json_string, json_bool, json_array }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound }
 import extdeps.systemd.systemctl { systemctl_mask_argv }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
@@ -150,15 +152,50 @@ fn host_cap_drain_ticks(policy: HostCapDrainPolicy) -> Int {
   second_count(s: policy.wait_bound) / second_count(s: policy.poll_interval)
 }
 
-// ONE SLOT, AS READ AFTER ADMISSION WAS CLOSED. `masked` and `listener_running` come from the unit
-// reading, `activity` from the unit's own process listing.
+// ONE SLOT, AS READ AFTER ADMISSION WAS CLOSED: two independent facts, each a declared sum, so no
+// combination the unit cannot be in is writable (a unit is not both stopping and a running listener).
+// `admission` comes from the unit reading, `run` from the unit's state and its own process listing.
+type SlotAdmissionState
+  = AdmissionClosedByMask
+  | AdmissionOpen
+
+type SlotRunState
+  = RunStopped
+  | RunStopping
+  | RunListenerIdle
+  | RunWorkerLive
+  | RunUnobserved { cause: NonEmptyStr }
+
 type SlotDrainReading {
   unit: NonEmptyStr
-  masked: Bool
-  listener_running: Bool
-  stopping: Bool
-  activity: SlotActivityObservation
+  admission: SlotAdmissionState
+  run: SlotRunState
 }
+
+// THE ONE FOLD of a reading into what the bracket decides on. A running idle listener is the one the mask
+// did not close; a stopping unit is unproven until it is stopped (its cgroup may still hold a listener);
+// an unobserved run is never idle.
+type SlotDrainClass
+  = ClassDrained
+  | ClassBusy
+  | ClassIdleListenerOpen
+  | ClassAdmissionOpen
+  | ClassUnproven { cause: String }
+
+fn slot_drain_class(r: SlotDrainReading) -> SlotDrainClass {
+  match r.run {
+    RunUnobserved { cause: c } => ClassUnproven { cause: c as String }
+    RunListenerIdle => ClassIdleListenerOpen
+    RunWorkerLive => match r.admission { AdmissionClosedByMask => ClassBusy AdmissionOpen => ClassAdmissionOpen }
+    RunStopping => match r.admission { AdmissionClosedByMask => ClassUnproven { cause: "the unit is stopping" } AdmissionOpen => ClassAdmissionOpen }
+    RunStopped => match r.admission { AdmissionClosedByMask => ClassDrained AdmissionOpen => ClassAdmissionOpen }
+  }
+}
+
+fn drain_class_is_idle_listener(c: SlotDrainClass) -> Bool { match c { ClassIdleListenerOpen => true _ => false } }
+fn drain_class_is_drained(c: SlotDrainClass) -> Bool { match c { ClassDrained => true _ => false } }
+fn drain_class_is_busy(c: SlotDrainClass) -> Bool { match c { ClassBusy => true _ => false } }
+fn drain_class_is_unproven(c: SlotDrainClass) -> Bool { match c { ClassAdmissionOpen => true ClassUnproven { cause: _ } => true _ => false } }
 
 type BracketWaitStep
   = BracketDrained
@@ -166,36 +203,16 @@ type BracketWaitStep
   | BracketAdmissionNotClosed { listeners: List<NonEmptyStr> }
   | BracketBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr> }
 
-fn drain_reading_busy(r: SlotDrainReading) -> Bool {
-  r.masked && match r.activity { SlotHasLiveWorker => true SlotIdle => false SlotActivityUnobserved { cause: _ } => false }
-}
-
-// A RUNNING LISTENER WITH NO LIVE WORKER IS THE IDLE LISTENER THE MASK DID NOT CLOSE.
-fn drain_reading_idle_listener(r: SlotDrainReading) -> Bool {
-  r.listener_running && match r.activity { SlotIdle => true SlotHasLiveWorker => false SlotActivityUnobserved { cause: _ } => false }
-}
-
-// UNPROVEN: not masked (admission is open for it), still stopping (a deactivating unit's cgroup may
-// still hold a listener whatever the worker reading says, so it stays pending until the unit is
-// stopped), or its activity could not be read.
-fn drain_reading_unproven(r: SlotDrainReading) -> Bool {
-  !r.masked || r.stopping || match r.activity { SlotActivityUnobserved { cause: _ } => true SlotHasLiveWorker => false SlotIdle => false }
-}
-
-fn drain_reading_drained(r: SlotDrainReading) -> Bool {
-  r.masked && !r.listener_running && !r.stopping && match r.activity { SlotIdle => true SlotHasLiveWorker => false SlotActivityUnobserved { cause: _ } => false }
-}
-
 fn bracket_wait_step(closure: AdmissionClosure, readings: List<SlotDrainReading>, ticks_left: Int, time_up: Bool) -> BracketWaitStep {
-  let idle_listeners = map(filter(readings, r => drain_reading_idle_listener(r: r)), r => r.unit)
+  let idle_listeners = map(filter(readings, r => drain_class_is_idle_listener(c: slot_drain_class(r: r))), r => r.unit)
   if length(idle_listeners) > 0 {
     match closure { AdmissionMaskOnly => BracketAdmissionNotClosed { listeners: idle_listeners } }
-  } else if all(readings, r => drain_reading_drained(r: r)) {
+  } else if all(readings, r => drain_class_is_drained(c: slot_drain_class(r: r))) {
     BracketDrained
   } else if ticks_left <= 0 || time_up {
     BracketBoundExceeded {
-      busy: map(filter(readings, r => drain_reading_busy(r: r)), r => r.unit),
-      unproven: map(filter(readings, r => drain_reading_unproven(r: r)), r => r.unit),
+      busy: map(filter(readings, r => drain_class_is_busy(c: slot_drain_class(r: r))), r => r.unit),
+      unproven: map(filter(readings, r => drain_class_is_unproven(c: slot_drain_class(r: r))), r => r.unit),
     }
   } else {
     BracketWaiting { ticks_left: ticks_left - 1 }
@@ -264,15 +281,23 @@ fn slot_drain_needs_worker(read: SlotReadOutcome) -> Bool {
 
 fn slot_drain_reading_of(unit: NonEmptyStr, read: SlotReadOutcome, worker: SlotActivityObservation) -> SlotDrainReading {
   match read {
-    SlotReadRefused { reason: why } => SlotDrainReading { unit: unit, masked: false, listener_running: false, stopping: false, activity: SlotActivityUnobserved { cause: why as NonEmptyStr } }
+    SlotReadRefused { reason: why } => SlotDrainReading { unit: unit, admission: AdmissionOpen, run: RunUnobserved { cause: why as NonEmptyStr } }
     SlotRead { reading: r } =>
       SlotDrainReading {
         unit: unit,
-        masked: slot_is_masked(r: r),
-        listener_running: slot_state_active(active: r.active),
-        stopping: slot_state_stopping(active: r.active),
-        activity: if slot_state_stopped(active: r.active) { SlotIdle } else { worker },
+        admission: if slot_is_masked(r: r) { AdmissionClosedByMask } else { AdmissionOpen },
+        run: slot_run_state_of(stopped: slot_state_stopped(active: r.active), stopping: slot_state_stopping(active: r.active), worker: worker),
       }
+  }
+}
+
+fn slot_run_state_of(stopped: Bool, stopping: Bool, worker: SlotActivityObservation) -> SlotRunState {
+  if stopped { RunStopped } else {
+    match worker {
+      SlotHasLiveWorker => RunWorkerLive
+      SlotActivityUnobserved { cause: c } => RunUnobserved { cause: c }
+      SlotIdle => if stopping { RunStopping } else { RunListenerIdle }
+    }
   }
 }
 
@@ -383,8 +408,11 @@ fn bracket_obligation_key(run_id: String, attempt: String, host: String) -> Stri
   join(["run=", run_id, " attempt=", attempt, " host=", host], "")
 }
 
+// ONE CODEC: the obligation file is a JSON object with exactly the members key, discharged and units. The
+// writer and the reader are the two directions of this one declaration (extdeps.languages.json), and the
+// reader refuses a document that is not exactly this shape.
 fn bracket_obligation_text(o: BracketObligation, discharged: Bool) -> String {
-  join([if discharged { "DISCHARGED\n" } else { "" }, "key ", o.key, "\n", join(map(o.units, u => concat("unit ", concat(u as String, "\n"))), "")], "")
+  serialize_json(v: json_object(members: [json_kv(key: "key", value: json_string(s: o.key)), json_kv(key: "discharged", value: json_bool(b: discharged)), json_kv(key: "units", value: json_array(elements: map(o.units, u => json_string(s: u as String))))]))
 }
 
 type ObligationReading
@@ -395,31 +423,45 @@ type ObligationReading
   | ObligationUnreadable { cause: String }
 
 fn obligation_reading_of_text(text: String, expected_key: String) -> ObligationReading {
-  let lines = filter(split(s: text, delimiter: "\n"), l => l != "")
-  let discharged = length(filter(lines, l => l == "DISCHARGED")) > 0
-  let body = filter(lines, l => l != "DISCHARGED")
-  let key_lines = filter(body, l => starts_with(s: l, prefix: "key "))
-  let unit_lines = filter(body, l => starts_with(s: l, prefix: "unit "))
-  let unit_names = map(unit_lines, l => skip_prefix_text(s: l, prefix: "unit "))
-  if length(key_lines) != 1 {
-    ObligationUnreadable { cause: "the obligation file does not carry exactly one key line" }
-  } else if length(key_lines) + length(unit_lines) != length(body) {
-    ObligationUnreadable { cause: "the obligation file carries a line that is neither a key line nor a unit line" }
-  } else if length(filter(unit_names, n => n == "")) > 0 {
-    ObligationUnreadable { cause: "the obligation file carries a unit line with an empty unit name" }
-  } else if length(filter(key_lines, l => l == concat("key ", expected_key))) != 1 {
-    ObligationStale { found: join(key_lines, "") }
-  } else if discharged {
-    ObligationDischarged
-  } else if length(unit_names) == 0 {
-    ObligationUnreadable { cause: "the held obligation file lists no unit" }
-  } else {
-    ObligationHeld { units: map(unit_names, n => n as NonEmptyStr) }
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => ObligationUnreadable { cause: concat("the obligation file is not a JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: doc } =>
+      match doc {
+        JsonObject { members: ms } =>
+          if length(ms) != 3 {
+            ObligationUnreadable { cause: "the obligation file does not carry exactly the members key, discharged and units" }
+          } else {
+            match json_object_unique_member(v: doc, key: "key") {
+              JsonMemberFound { value: JsonString { value: k } } =>
+                match json_object_unique_member(v: doc, key: "discharged") {
+                  JsonMemberFound { value: JsonBool { value: d } } =>
+                    match json_object_unique_member(v: doc, key: "units") {
+                      JsonMemberFound { value: JsonArray { elements: es } } => obligation_reading_of_members(key: k, discharged: d, elements: es, expected_key: expected_key)
+                      _ => ObligationUnreadable { cause: "the obligation file's units member is missing, duplicated or not an array" }
+                    }
+                  _ => ObligationUnreadable { cause: "the obligation file's discharged member is missing, duplicated or not a boolean" }
+                }
+              _ => ObligationUnreadable { cause: "the obligation file's key member is missing, duplicated or not a string" }
+            }
+          }
+        _ => ObligationUnreadable { cause: "the obligation file is not a JSON object" }
+      }
   }
 }
 
-fn skip_prefix_text(s: String, prefix: String) -> String {
-  join(skip(xs: split(s: s, delimiter: prefix), n: 1), prefix)
+fn obligation_reading_of_members(key: String, discharged: Bool, elements: List<JsonValue>, expected_key: String) -> ObligationReading {
+  let names = map(elements, e => match e { JsonString { value: n } => n _ => "" })
+  if key != expected_key {
+    ObligationStale { found: key }
+  } else if length(filter(names, n => n == "")) > 0 {
+    ObligationUnreadable { cause: "the obligation file lists a unit that is not a non-empty string" }
+  } else if discharged {
+    ObligationDischarged
+  } else if length(names) == 0 {
+    ObligationUnreadable { cause: "the held obligation file lists no unit" }
+  } else {
+    ObligationHeld { units: map(names, n => n as NonEmptyStr) }
+  }
 }
 
 fn obligation_reading_of(observation: FilesystemFileObservation, expected_key: String) -> ObligationReading {
@@ -456,10 +498,13 @@ type OwnedSetVerdict
   = OwnedSet { units: List<NonEmptyStr> }
   | OwnedSetUnproven { units: List<NonEmptyStr> }
 
+fn slot_admission_is_open(r: SlotDrainReading) -> Bool { match r.admission { AdmissionOpen => true AdmissionClosedByMask => false } }
+fn slot_run_is_unobserved(r: SlotDrainReading) -> Bool { match r.run { RunUnobserved { cause: _ } => true _ => false } }
+
 fn owned_set_of(readings: List<SlotDrainReading>) -> OwnedSetVerdict {
-  let unread = filter(readings, r => !r.masked && match r.activity { SlotActivityUnobserved { cause: _ } => true SlotHasLiveWorker => false SlotIdle => false })
+  let unread = filter(readings, r => slot_admission_is_open(r: r) && slot_run_is_unobserved(r: r))
   if length(unread) > 0 { OwnedSetUnproven { units: map(unread, r => r.unit) } } else {
-    OwnedSet { units: map(filter(readings, r => !r.masked), r => r.unit) }
+    OwnedSet { units: map(filter(readings, r => slot_admission_is_open(r: r)), r => r.unit) }
   }
 }
 

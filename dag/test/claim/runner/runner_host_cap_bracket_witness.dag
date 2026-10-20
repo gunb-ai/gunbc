@@ -10,6 +10,12 @@ import gunbc.runner.runner_slot_actuation { SlotRead, SlotReadRefused, slot_acti
 import gunbc.runner.runner_host_cap_bracket {
   AdmissionMaskOnly,
   SlotDrainReading,
+  AdmissionClosedByMask,
+  AdmissionOpen,
+  RunStopped,
+  RunListenerIdle,
+  RunWorkerLive,
+  RunUnobserved,
   BracketWaitStep,
   BracketDrained,
   BracketWaiting,
@@ -59,11 +65,11 @@ import gunbc.runner.runner_host_cap_bracket {
 // discriminate at). The wet driver's route is the remote run against a fleet host.
 
 fn u(n: String) -> NonEmptyStr { concat("actions-runner@srv3-", n, ".service") as NonEmptyStr }
-fn drained(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: false, stopping: false, activity: SlotIdle } }
-fn finishing(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, stopping: false, activity: SlotHasLiveWorker } }
-fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, stopping: false, activity: SlotIdle } }
-fn unreadable(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: true, listener_running: true, stopping: false, activity: SlotActivityUnobserved { cause: "ps exit=1" as NonEmptyStr } } }
-fn unmasked(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), masked: false, listener_running: false, stopping: false, activity: SlotIdle } }
+fn drained(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunStopped } }
+fn finishing(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunWorkerLive } }
+fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunListenerIdle } }
+fn unreadable(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunUnobserved { cause: "ps exit=1" as NonEmptyStr } } }
+fn unmasked(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionOpen, run: RunStopped } }
 
 fn is_drained(s: BracketWaitStep) -> Bool { match s { BracketDrained => true BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
 fn is_waiting(s: BracketWaitStep) -> Bool { match s { BracketWaiting { ticks_left: _ } => true BracketDrained => false BracketAdmissionNotClosed { listeners: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
@@ -248,7 +254,7 @@ test fn no_obligation_file_owes_nothing_and_a_garbled_one_is_untrusted() -> Bool
 // a unit masked by someone else is not owned; an unread unit leaves ownership unproven
 test fn the_owned_set_is_the_unmasked_units_and_an_unread_one_refuses() -> Bool {
   (match owned_set_of(readings: [unmasked(n: "01"), drained(n: "02")]) { OwnedSet { units: us } => length(us) == 1 OwnedSetUnproven { units: _ } => false })
-    && (match owned_set_of(readings: [SlotDrainReading { unit: u(n: "03"), masked: false, listener_running: true, stopping: false, activity: SlotActivityUnobserved { cause: "x" as NonEmptyStr } }]) { OwnedSetUnproven { units: us } => length(us) == 1 OwnedSet { units: _ } => false })
+    && (match owned_set_of(readings: [SlotDrainReading { unit: u(n: "03"), admission: AdmissionOpen, run: RunUnobserved { cause: "x" as NonEmptyStr } }]) { OwnedSetUnproven { units: us } => length(us) == 1 OwnedSet { units: _ } => false })
 }
 
 test fn a_never_masked_unit_is_issued_no_activation() -> Bool {
@@ -265,9 +271,18 @@ test fn the_declared_release_is_a_typed_residual_against_the_cancellation_envelo
     && (match release_envelope_standing(policy: HostCapDrainPolicy { wait_bound: runner_host_cap_drain_policy.wait_bound, poll_interval: runner_host_cap_drain_policy.poll_interval, operations_allowance: runner_host_cap_drain_policy.operations_allowance, release_allowance: second(count: 100), cancellation_envelope: runner_host_cap_drain_policy.cancellation_envelope, release_startup_allowance: second(count: 60) }) { ReleaseFitsEnvelope => true ReleaseMayOutliveCancellation { needed: _, envelope: _ } => false })
 }
 
-test fn an_unrecognized_line_or_an_empty_unit_name_is_untrusted_not_a_shrunken_release() -> Bool {
-  (match release_decision_of(reading: obligation_reading_of_text(text: concat(held_text(), "uint 02\n"), expected_key: okey())) { ReleaseObligationUntrusted { cause: _ } => true _ => false })
-    && (match release_decision_of(reading: obligation_reading_of_text(text: concat(held_text(), "unit \n"), expected_key: okey())) { ReleaseObligationUntrusted { cause: _ } => true _ => false })
+fn untrusted_text(t: String) -> Bool { match release_decision_of(reading: obligation_reading_of_text(text: t, expected_key: okey())) { ReleaseObligationUntrusted { cause: _ } => true _ => false } }
+
+// ONE CODEC: what the writer emits the reader reads back as exactly the owned units, and any other shape
+// (trailing text, an extra member, an empty unit name, a missing member, a non-object) is untrusted
+test fn the_obligation_codec_round_trips_and_refuses_every_other_shape() -> Bool {
+  (match release_decision_of(reading: obligation_reading_of_text(text: held_text(), expected_key: okey())) { ReleaseOwes { units: us } => length(us) == 1 _ => false })
+    && untrusted_text(t: concat(held_text(), "garbage"))
+    && untrusted_text(t: concat("{\"key\":\"", okey(), "\",\"discharged\":false,\"units\":[\"\"]}"))
+    && untrusted_text(t: concat("{\"key\":\"", okey(), "\",\"discharged\":false,\"units\":[\"x\"],\"extra\":1}"))
+    && untrusted_text(t: concat("{\"key\":\"", okey(), "\",\"discharged\":false}"))
+    && untrusted_text(t: concat("{\"key\":\"", okey(), "\",\"discharged\":false,\"units\":[]}"))
+    && untrusted_text(t: "[]")
 }
 
 // THE COMPOSITION: acquisition records the owned units, the job is interrupted after the first mask, the
@@ -305,6 +320,6 @@ test fn a_failed_release_leaves_the_host_drained_and_names_the_unit() -> Bool {
 // COUNTEREXAMPLE: a preflight that refuses (a slot unread, so ownership unproven) mints no owned set, so no
 // obligation text exists to write; the release then reads Absent, owes nothing and is issued no argv.
 test fn a_refused_preflight_leaves_no_obligation_and_the_release_issues_no_argv() -> Bool {
-  (match owned_set_of(readings: [unmasked(n: "01"), SlotDrainReading { unit: u(n: "02"), masked: false, listener_running: true, stopping: false, activity: SlotActivityUnobserved { cause: "ps exit=1" as NonEmptyStr } }]) { OwnedSetUnproven { units: _ } => true OwnedSet { units: _ } => false })
+  (match owned_set_of(readings: [unmasked(n: "01"), SlotDrainReading { unit: u(n: "02"), admission: AdmissionOpen, run: RunUnobserved { cause: "ps exit=1" as NonEmptyStr } }]) { OwnedSetUnproven { units: _ } => true OwnedSet { units: _ } => false })
     && (match release_decision_of(reading: ObligationAbsent) { ReleaseNothingOwed => true _ => false })
 }
