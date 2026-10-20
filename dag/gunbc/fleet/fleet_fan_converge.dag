@@ -3,6 +3,7 @@ module gunbc.fleet.fleet_fan_converge
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.content_hash { ContentHash }
 import std.optional { Absent, Present }
+import std.decl_ref { decl_ref }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
 import extdeps.bmc.megarac_fan_policy { MegaRacFanPwmAllAdmitted, MegaRacFanPwmAllRefused, megarac_fan_pwm_all_of }
 import product.host_identity { HostIdentity, host_identity_eq }
@@ -32,10 +33,10 @@ import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPo
 // gunbc.machine_intake.fan_observe FanObserveHost (host identity, controller endpoint, observed firmware
 // family, account) plus a read receipt (attempt ordinal and the raw response hash). The family comes off
 // the subject, never a separate argument. A decision is sealed and carries its subject, desired control
-// and deciding receipt; the standing CONSUMES the decision, so no separately authored deciding id
-// exists. Every standing arm names its host. Remaining frontier: the adapter that mints the receipt
-// from a wire read (its mint is the one place a receipt is created); until it lands the observation
-// mint is the only constructor and takes the receipt as the producer's input.
+// and outcome, and Noop alone carries the deciding receipt; the standing CONSUMES the decision, so no
+// separately authored deciding id exists. Every standing arm names its host. Remaining frontier: the adapter that mints the receipt
+// from a wire read; until it lands the observation mint is sealed to named terminal fixtures (see
+// fleet_fan_observed), so standings here are over SUPPLIED evidence.
 
 type FleetFanReadReceipt {
   attempt: Int
@@ -52,23 +53,48 @@ type FleetFanObserved sole_constructor {
   reading: FleetFanReading
 }
 
-fn fleet_fan_observed(subject: FanObserveHost, receipt: FleetFanReadReceipt, reading: FleetFanReading) -> FleetFanObserved {
+// THE ONLY MINT OF AN OBSERVATION. It is sealed to NAMED callers and the production list is EMPTY:
+// no wire-read adapter exists yet, so a successful FleetFanObserved is uninhabited outside the named
+// terminal fixtures, and every standing below is a standing over SUPPLIED evidence, not over a
+// parsed fan read. When the adapter lands it is added here, and it must derive the reading from the
+// same raw response it hashes into the receipt (carrying both fields is not that pairing).
+fn fleet_fan_observed(subject: FanObserveHost, receipt: FleetFanReadReceipt, reading: FleetFanReading) -> FleetFanObserved
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "read"),
+  ]
+{
   FleetFanObserved { subject: subject, receipt: receipt, reading: reading }
 }
 
+// THE DECIDING RECEIPT EXISTS ONLY ON NOOP, which is minted only for an observation of the SAME
+// subject, so a foreign or refused observation's receipt can never be a decision's deciding read.
 type FleetFanOutcome
-  = FleetFanNoop
+  = FleetFanNoop { deciding: FleetFanReadReceipt }
   | FleetFanRefuse { cause: NonEmptyStr }
 
 type FleetFanDecision sole_constructor {
   subject: FanObserveHost
   desired: FleetFanControl
-  deciding: FleetFanReadReceipt
   outcome: FleetFanOutcome
 }
 
+// THE SUCCESSFUL ARM IS SEALED: Converged carries evidence minted only by fleet_fan_standing.
+type FleetFanConvergedEvidence sole_constructor {
+  host: HostIdentity
+  control: FleetFanControl
+  readback: FleetFanReadReceipt
+}
+
+fn fleet_fan_converged_evidence(host: HostIdentity, control: FleetFanControl, readback: FleetFanReadReceipt) -> FleetFanConvergedEvidence
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.fleet_fan_converge", decl_name: "fleet_fan_standing"),
+  ]
+{
+  FleetFanConvergedEvidence { host: host, control: control, readback: readback }
+}
+
 type FleetFanConvergenceStanding
-  = FleetFanConverged { host: HostIdentity, control: FleetFanControl, readback: FleetFanReadReceipt }
+  = FleetFanConverged { evidence: FleetFanConvergedEvidence }
   | FleetFanDiverged { host: HostIdentity, observed: FleetFanControl }
   | FleetFanUnobservable { host: HostIdentity, cause: NonEmptyStr }
   | FleetFanRefused { host: HostIdentity, cause: NonEmptyStr }
@@ -118,7 +144,7 @@ fn fleet_fan_outcome(policy: FleetFanPolicy, subject: FanObserveHost, observed: 
           FleetFanControlUnobservable { cause: c } => FleetFanRefuse { cause: c }
           FleetFanControlObserved { control: seen } =>
             if seen == policy.control {
-              FleetFanNoop
+              FleetFanNoop { deciding: observed.receipt }
             } else {
               FleetFanRefuse { cause: fleet_fan_no_projection() }
             }
@@ -131,7 +157,6 @@ fn fleet_fan_decide(policy: FleetFanPolicy, subject: FanObserveHost, observed: F
   FleetFanDecision {
     subject: subject,
     desired: policy.control,
-    deciding: observed.receipt,
     outcome: fleet_fan_outcome(policy: policy, subject: subject, observed: observed),
   }
 }
@@ -140,24 +165,29 @@ fn fleet_fan_refusal_standing(decision: FleetFanDecision, cause: NonEmptyStr) ->
   FleetFanRefused { host: decision.subject.host, cause: cause }
 }
 
-// THE STANDING CONSUMES THE DECISION AND A READBACK. There is no parameter an apply result could be
-// passed in, and no separately authored deciding id: independence is the readback's attempt ordinal
-// strictly after the decision's own receipt, for the same subject.
+// THE STANDING IS DECISION-GATED AND CONSUMES THE DECISION AND A READBACK. A Refuse decision can
+// never become Converged: it is a Refused standing carrying the decision's own cause. Only a Noop
+// decision (same subject, its own deciding receipt) lets a readback be judged, and independence is
+// that readback's attempt ordinal strictly after the deciding receipt, for the same subject. There
+// is no parameter an apply result could be passed in. This is CONTROL-STATE standing: it speaks of
+// FleetFanControl, not of the whole FleetFanPolicy revision (guard, unreadable_sensor_trips), so a
+// consumer re-reads the current policy authority afresh and does not take this as proof that a
+// policy revision was admitted.
 fn fleet_fan_standing(decision: FleetFanDecision, readback: FleetFanObserved) -> FleetFanConvergenceStanding {
-  match fleet_fan_family_refusal(family: fleet_fan_family_of(subject: decision.subject), control: decision.desired) {
-    Present { value: why } => fleet_fan_refusal_standing(decision: decision, cause: why)
-    Absent =>
+  match decision.outcome {
+    FleetFanRefuse { cause: why } => fleet_fan_refusal_standing(decision: decision, cause: why)
+    FleetFanNoop { deciding: deciding } =>
       if !fleet_fan_same_subject(a: decision.subject, b: readback.subject) {
         fleet_fan_refusal_standing(decision: decision, cause: "readback is for a different host, controller or family than the decision" as NonEmptyStr)
       } else {
-        if readback.receipt.attempt <= decision.deciding.attempt {
+        if readback.receipt.attempt <= deciding.attempt {
           fleet_fan_refusal_standing(decision: decision, cause: "readback is not a later read than the deciding observation" as NonEmptyStr)
         } else {
           match readback.reading {
             FleetFanControlUnobservable { cause: c } => FleetFanUnobservable { host: decision.subject.host, cause: c }
             FleetFanControlObserved { control: seen } =>
               if seen == decision.desired {
-                FleetFanConverged { host: decision.subject.host, control: decision.desired, readback: readback.receipt }
+                FleetFanConverged { evidence: fleet_fan_converged_evidence(host: decision.subject.host, control: decision.desired, readback: readback.receipt) }
               } else {
                 FleetFanDiverged { host: decision.subject.host, observed: seen }
               }

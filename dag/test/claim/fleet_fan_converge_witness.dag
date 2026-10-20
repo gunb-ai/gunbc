@@ -93,7 +93,7 @@ fn read(s: FanObserveHost, n: Int, r: FleetFanReading) -> FleetFanObserved {
 
 fn decided_noop(d: FleetFanDecision) -> Bool {
   match d.outcome {
-    FleetFanNoop => true
+    FleetFanNoop { deciding: _ } => true
     FleetFanRefuse { cause: _ } => false
   }
 }
@@ -121,7 +121,7 @@ fn refused_with(d: FleetFanDecision, why: NonEmptyStr?) -> Bool {
       Present { value: w } => (c as String) == (w as String)
       Absent => false
     }
-    FleetFanNoop => false
+    FleetFanNoop { deciding: _ } => false
   }
 }
 
@@ -151,13 +151,13 @@ test fn witness_unobservable_refuses_and_is_never_converged() -> Bool {
     Present { value: s } => {
       let u = FleetFanControlUnobservable { cause: "bmc unreachable" as NonEmptyStr }
       let d = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: u))
-      let st = match fleet_fan_standing(decision: d, readback: read(s: s, n: 2, r: u)) {
+      let gated = standing_refused(d: d, r: read(s: s, n: 2, r: u))
+      let noop = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: saw(c: FirmwareAutomatic)))
+      let unreadable_readback = match fleet_fan_standing(decision: noop, readback: read(s: s, n: 2, r: u)) {
         FleetFanUnobservable { host: _, cause: _ } => true
-        FleetFanConverged { host: _, control: _, readback: _ } => false
-        FleetFanDiverged { host: _, observed: _ } => false
-        FleetFanRefused { host: _, cause: _ } => false
+        _ => false
       }
-      decided_refused(d: d) && st
+      decided_refused(d: d) && gated && decided_noop(d: noop) && unreadable_readback
     }
   }
 }
@@ -168,7 +168,7 @@ test fn witness_standing_reads_only_the_readback() -> Bool {
     Present { value: s } => {
       let d = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: saw(c: FirmwareAutomatic)))
       let ok = match fleet_fan_standing(decision: d, readback: read(s: s, n: 2, r: saw(c: FirmwareAutomatic))) {
-        FleetFanConverged { host: h, control: _, readback: _ } => host_identity_eq(a: h, b: s.host)
+        FleetFanConverged { evidence: e } => host_identity_eq(a: e.host, b: s.host)
         _ => false
       }
       let bad = match fleet_fan_standing(decision: d, readback: read(s: s, n: 2, r: saw(c: seen_held(20)))) {
@@ -187,6 +187,15 @@ fn standing_refused(d: FleetFanDecision, r: FleetFanObserved) -> Bool {
   }
 }
 
+// A REFUSED DECISION NEVER CONVERGES: the deciding observation belongs to another host (refused), then
+// a healthy same-host readback at a later attempt arrives. The standing must be Refused, not Converged.
+fn refused_decision_never_converges(s: FanObserveHost, other_host: FanObserveHost) -> Bool {
+  let foreign = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: other_host, n: 1, r: saw(c: FirmwareAutomatic)))
+  let unreadable = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: FleetFanControlUnobservable { cause: "bmc unreachable" as NonEmptyStr }))
+  standing_refused(d: foreign, r: read(s: s, n: 2, r: saw(c: FirmwareAutomatic)))
+    && standing_refused(d: unreadable, r: read(s: s, n: 2, r: saw(c: FirmwareAutomatic)))
+}
+
 // SUBJECT IDENTITY, PRODUCER-BOUND: a readback or observation for another host, or another observed
 // family, refuses; a readback that is not a LATER read than the decision's own receipt (the same read
 // relabelled, or a lower ordinal) refuses; and one host's Converged names its own host so it cannot
@@ -203,7 +212,7 @@ test fn witness_subject_identity_is_checked() -> Bool {
         Present { value: other_family } => {
           let d = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: saw(c: FirmwareAutomatic)))
           let converged_names_its_host = match fleet_fan_standing(decision: d, readback: read(s: s, n: 2, r: saw(c: FirmwareAutomatic))) {
-            FleetFanConverged { host: h, control: _, readback: _ } => host_identity_eq(a: h, b: s.host) && !host_identity_eq(a: h, b: other_host.host)
+            FleetFanConverged { evidence: e } => host_identity_eq(a: e.host, b: s.host) && !host_identity_eq(a: e.host, b: other_host.host)
             _ => false
           }
           standing_refused(d: d, r: read(s: other_host, n: 2, r: saw(c: FirmwareAutomatic)))
@@ -213,6 +222,7 @@ test fn witness_subject_identity_is_checked() -> Bool {
             && decided_refused(d: fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: other_host, n: 1, r: saw(c: FirmwareAutomatic))))
             && decided_refused(d: fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: other_family, n: 1, r: saw(c: FirmwareAutomatic))))
             && converged_names_its_host
+            && refused_decision_never_converges(s: s, other_host: other_host)
         }
       }
     }

@@ -4,7 +4,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { Celsius, celsius, celsius_count, percent }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
-import extdeps.cpu.types { ProcessorThermalLimits }
+import extdeps.cpu.types { CpuModelCatalogRow, ProcessorThermalLimits }
+import extdeps.vendor.cisco { cisco }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog, ampere_altra_max_m12830_thermal_limits, ampere_altra_thermal_limits_for_catalog }
 import std.measure { celsius_delta_count }
 import product.fleet_fan_policy {
@@ -162,6 +163,30 @@ test fn witness_megarac_guard_reads_the_fleet_policy() -> Bool {
     && sensor_trips(sensor: "Outlet_1_Temp", c: 70, l: m128)
     && !sensor_trips(sensor: "Not_A_Guard_Sensor", c: 120, l: m128)
     && !is_present_limits(ampere_altra_thermal_limits_for_catalog(row: altra_q8030_catalog))
+    && !is_present_limits(ampere_altra_thermal_limits_for_catalog(row: foreign_vendor_m128()))
+}
+
+// SAME MODEL NUMBER, FOREIGN VENDOR: the lookup identifies the catalog row by vendor and model, so a
+// row merely named M128-30 borrows no Ampere limits.
+fn foreign_vendor_m128() -> CpuModelCatalogRow {
+  CpuModelCatalogRow {
+    model_number: altra_max_m12830_catalog.model_number,
+    oem_listing_id: altra_max_m12830_catalog.oem_listing_id,
+    vendor: cisco,
+    architecture: altra_max_m12830_catalog.architecture,
+    cores: altra_max_m12830_catalog.cores,
+    threads: altra_max_m12830_catalog.threads,
+    nominal_sustained_per_thread_hz: altra_max_m12830_catalog.nominal_sustained_per_thread_hz,
+    socket: altra_max_m12830_catalog.socket,
+    socket_citations: altra_max_m12830_catalog.socket_citations,
+    tdp_watts: altra_max_m12830_catalog.tdp_watts,
+    l1_cache: altra_max_m12830_catalog.l1_cache,
+    l1_cache_citations: altra_max_m12830_catalog.l1_cache_citations,
+    l2_cache: altra_max_m12830_catalog.l2_cache,
+    l2_cache_citations: altra_max_m12830_catalog.l2_cache_citations,
+    l3_cache: altra_max_m12830_catalog.l3_cache,
+    l3_cache_citations: altra_max_m12830_catalog.l3_cache_citations,
+  }
 }
 
 fn soc_readings(soc: Int) -> List<MegaRacTempReading> {
