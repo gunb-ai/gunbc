@@ -208,15 +208,15 @@ fn census_int_text(n: Int) -> String {
 // run for the sum to mean anything, so a refusal on EITHER is a refusal of the claim, naming itself --
 // not a smaller number.
 fn census_sum_verdict(first: CompileDiagnosticCensus, second: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> ProcessExit {
-  let first_refusal = not_runnable_cause(census: first)
-  let second_refusal = not_runnable_cause(census: second)
-  match first_refusal {
-    Present { value: cause } => refusal_verdict(cause: cause)
-    Absent =>
-      match second_refusal {
-        Present { value: cause } => refusal_verdict(cause: cause)
-        Absent => {
-          let observed = census_add(a: census_unwrap_count(census: first), b: census_unwrap_count(census: second))
+  match first {
+    CensusNotRunnable { cause: cause } => refusal_verdict(cause: cause)
+    CensusObserved { rows: first_rows } =>
+      match second {
+        CensusNotRunnable { cause: cause } => refusal_verdict(cause: cause)
+        CensusObserved { rows: second_rows } => {
+          // Both arms OBSERVED, so the counts here are counts; there is no sentinel to guard against,
+          // which is the whole point of matching the union instead of subtracting Ints.
+          let observed = census_add(a: census_total_count(rows: first_rows), b: census_total_count(rows: second_rows))
           if holds(observed) {
             ExitSuccess
           } else {
@@ -233,15 +233,13 @@ fn census_sum_verdict(first: CompileDiagnosticCensus, second: CompileDiagnosticC
 // happened in only one of the two compiles. Both must have run; a refusal on either refuses the
 // claim with its own cause, so the pair is judged as a pair.
 fn census_delta_verdict(red: CompileDiagnosticCensus, control: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> ProcessExit {
-  let red_refusal = not_runnable_cause(census: red)
-  let control_refusal = not_runnable_cause(census: control)
-  match red_refusal {
-    Present { value: cause } => refusal_verdict(cause: cause)
-    Absent =>
-      match control_refusal {
-        Present { value: cause } => refusal_verdict(cause: cause)
-        Absent => {
-          let observed = census_subtract(a: census_unwrap_count(census: red), b: census_unwrap_count(census: control))
+  match red {
+    CensusNotRunnable { cause: cause } => refusal_verdict(cause: cause)
+    CensusObserved { rows: red_rows } =>
+      match control {
+        CensusNotRunnable { cause: cause } => refusal_verdict(cause: cause)
+        CensusObserved { rows: control_rows } => {
+          let observed = census_subtract(a: census_total_count(rows: red_rows), b: census_total_count(rows: control_rows))
           if holds(observed) {
             ExitSuccess
           } else {
@@ -264,12 +262,6 @@ fn refusal_verdict(cause: String) -> ProcessExit {
   ExitFailure { code: 2, reason: concat("not evaluated: census not runnable: ", cause) }
 }
 
-fn census_unwrap_count(census: CompileDiagnosticCensus) -> Int {
-  match census_count(census: census) {
-    Present { value: n } => n
-    Absent => 0 - 9999
-  }
-}
 
 fn census_add(a: Int, b: Int) -> Int {
   a + b
