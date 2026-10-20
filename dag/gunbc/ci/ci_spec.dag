@@ -91,8 +91,9 @@ import gunbc.live_deploy.apply_receipt {
 }
 
 import gunbc.ci.ci_release_bins {
-  ci_floor_required_artifact_names
+  ci_floor_required_artifact_names, EmittedReleaseBin, ci_emitted_release_bins
 }
+import gunbc.repo.repo_self_emitted_build { repo_self_emitted_crate_build_command }
 
 import gunbc.ci.ci_gate {
   Gate,
@@ -576,6 +577,35 @@ fn ci_release_build_line() -> String {
   )
 }
 
+// THE BUILD OF ONE EMITTED RELEASE BIN (gunbc.ci.ci_release_bins EmittedReleaseBin), run after the
+// cargo bins exist because it needs the gunbc this job just built: emit the entry's Rust closure,
+// build the emitted crate under gunbc.repo.repo_self_emitted_build (the flag set the seed's probe
+// build also runs), and install the one executable at target/release/<name>. The executable's name
+// is read from the emitted crate's own manifest, never assumed to be the probe's package name.
+// The line is a shell-transport spelling, like ci_release_build_line beside it: it dissolves onto extdeps.rust.cargo_build
+// (and a typed read of cargo's own executable record in place of the sed over its JSON stream) when the ci emit seam can
+// bind a typed cargo operation instead of a hand-spelled argv line. Failure is loud on both uses: the job script runs each
+// bin as its own statement under the workflow's `set -e`, and an unreadable executable path leaves cp with an empty source.
+// ci_release_pack_build_line joins the lines with " ; " only as the TEXT the pack key names; it is never executed.
+fn ci_emitted_release_build_line(bin: EmittedReleaseBin) -> String {
+  let dir = join(["\"$ROOT/target/emitted/", bin.name, "\""], "")
+  let stream = join(["\"$ROOT/target/emitted/", bin.name, ".cargo.json\""], "")
+  join([
+    "rm -rf ", dir, " && \"$ROOT/target/release/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
+    " --output-dir ", dir, " --target rust && ( cd ", dir, " && ", repo_self_emitted_crate_build_command(cargo: "\"$CARGO_BIN\""), " ) > ", stream,
+    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"$ROOT/target/release/", bin.name, "\"",
+  ], "")
+}
+
+// The whole build the fleet pack's key names: the cargo bins, then each emitted release bin.
+fn ci_release_pack_build_line() -> String {
+  fold(
+    ci_emitted_release_bins(),
+    init: ci_release_build_line(),
+    f: (acc, bin) => join([acc, " ; ", ci_emitted_release_build_line(bin: bin)], "")
+  )
+}
+
 data ci_fmt_gate_note: String = "cargo fmt --all --check, RE-ENROLLED in CI 2026-07-15 (operator ruling, this PR) as a standalone build-job step — NOT a RustMonolithGate re-enrollment, which gunbc.commit_workflow.commit_gate_rust_suite_removed_disposition rejects and this row does not touch. That ruling (2026-07-11) removed the fmt+nextest bundle for reasons that are all facts about NEXTEST — ~37 GiB, red on main, non-required, a permanent tolerated red (DESIGN 5) — and fmt was collateral damage of a DESIGN 3 fusion: gunbc.instruments.rust_gates_ci.run_gates welds two separable facts (fmt: 4.3s measured, parse-only, no build, green; nextest: 37 GiB compile+run, red) into one ProcessExit, so killing the bundle killed the cheap green half too. The ruling's declared replacement coverage — the pre-push hook (CommitCargoFmtCheck on GitPrePushHook) — is an escape hatch (DESIGN 5: opt-in per clone via a manual core.hooksPath config, bypassable with --no-verify, absent in container worktrees) and is PROVEN ineffective: #6658 landed an unformatted .rs on main 2026-07-15 and nothing caught it; the falsifier lane found it only by running fmt by hand. Placement: FIRST step of the build job, before the ~33min release build, so a 4-second violation fails in 4 seconds rather than after the build; build is not protection-required itself but ci needs:[build], so a red here blocks the required job by construction. Cost: 4.3s measured whole-workspace, on a toolchain that already installs the rustfmt component in ci_prelude_steps. 🟡 dissolve-on: the fmt spelling here is a shell-transport realization of extdeps.rust.cargo_build cargo.Build.Fmt (the same operation gunbc.instruments.rust_gates_ci calls through the effect model); it collapses onto that single authority when the ci.yml emit seam can bind a typed cargo operation instead of a hand-spelled argv line — the same de-fork ci_release_build_line awaits. Retires WITH the v1 seed at DESIGN 7 terminal collapse, when no .rs remains to format."
 
 fn ci_fmt_gate_line() -> String {
@@ -1040,6 +1070,16 @@ data gunbc_ci_gcp_iam_converge_request_target: GunbcRunStepTarget = GunbcRunStep
 data gunbc_ci_gcp_iam_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
   function: "gcp_iam_converge_apply_wet",
+}
+
+data gunbc_ci_gcp_iam_bootstrap_delta_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/gcp_iam_bootstrap_delta_run.dag",
+  function: "gcp_iam_bootstrap_delta_request_wet",
+}
+
+data gunbc_ci_gcp_iam_bootstrap_delta_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/gcp_iam_bootstrap_delta_run.dag",
+  function: "gcp_iam_bootstrap_delta_apply_wet",
 }
 
 data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1966,11 +2006,17 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
 // Manager read (gunbc_ci_sm_connect_timeout / gunbc_ci_sm_max_time) and the shared payload decode --
 // into its own 0600 file under RUNNER_TEMP, with the EXIT trap armed before the credential touches
 // disk; the run line is v2.workflow.gunbc_invoke_step_emit gunbc_run_command, the modeled invocation.
-fn gunbc_ci_mtcollins1_probe_rendered(stmts: List<Node>, set_e: Bool) -> String {
+// ONE RENDERING OF bash_build STATEMENTS INTO A STEP'S SCRIPT TEXT, for every runner authored as nodes;
+// a rejected emission renders the refusal poison, never partial text.
+fn gunbc_ci_bash_rendered(stmts: List<Node>, set_e: Bool) -> String {
   match bash_emit_stmts(statements: stmts, set_e: set_e) {
     Accepted { value: text, diagnostics: _ } => text
     Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
   }
+}
+
+fn gunbc_ci_mtcollins1_probe_rendered(stmts: List<Node>, set_e: Bool) -> String {
+  gunbc_ci_bash_rendered(stmts: stmts, set_e: set_e)
 }
 
 fn gunbc_ci_mtcollins1_probe_root_statement() -> Node {
@@ -3527,10 +3573,7 @@ fn gunbc_ci_mtcollins1_boot_watcher_record_statements() -> List<Node> {
 }
 
 fn gunbc_ci_mtcollins1_boot_rendered(stmts: List<Node>, set_e: Bool) -> String {
-  match bash_emit_stmts(statements: stmts, set_e: set_e) {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
-  }
+  gunbc_ci_bash_rendered(stmts: stmts, set_e: set_e)
 }
 
 // THE [C5 background-hold] LINE, the step's only hand-spelled shell: the watcher's `gunbc run`
@@ -3567,40 +3610,74 @@ fn gunbc_ci_approval_device_enrolment_code_issue_invoke() -> String {
 // THE SUBMISSION-KEY PRELUDE IS ONE FOLD OVER A FILE STEM: the D0 door and the GCP IAM converge
 // both sign a filing (and the converge a mint request) with the one pinned submission MAC version,
 // fetched the same way into the same 0600 shape; only the file names differ.
-fn gunbc_ci_submission_key_prelude(stem: String) -> List<PipelineStep> {
+// THE SUBMISSION-KEY RUNNER, AUTHORED AS bash_build NODES (review 82277: the string-built prelude this
+// replaces carried a marker saying this route was available, and widening it to a second consumer was
+// the scaffold §5 refuses). It runs in the FOREIGN EXECUTOR (GitHub Actions `run:`) before gunbc does:
+// the workflow's WIF token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over
+// curl into a 0600 file under RUNNER_TEMP, with the trap armed BEFORE the bearer header or the key
+// touches disk. A fetch that fails leaves no key file and exports nothing: a run that must file refuses
+// there, and a held lifecycle resumes without it. Every consumer of the approval filing route shares it.
+fn gunbc_ci_submission_key_trap_body() -> List<Node> {
+  [bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "SUB_FILE")])]
+}
+
+fn gunbc_ci_submission_key_statements(stem: String) -> List<Node> {
+  let fetch = bcmd(words: [
+    bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
+    bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
+    bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: approval_submission_mac_access_url()),
+  ])
+  let decode = bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")]), path: bv(name: "SUB_FILE"))
   [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: join(["HDR_FILE=\"$RUNNER_TEMP/", stem, "-auth-header\""], "")) },
-    Do { run: ci_retry_body_run(command: join(["RESP_FILE=\"$RUNNER_TEMP/", stem, "-sm.json\""], "")) },
-    Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
-    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$SUB_FILE\"' EXIT") },
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: join([
-      "if DEST_FILE=\"$SUB_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()),
-      "; then chmod 600 \"$SUB_FILE\"; export ", approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\"; else rm -f \"$SUB_FILE\"; echo 'submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it'; fi",
-    ], "")) },
+    bcmdl(lits: ["set", "-euo", "pipefail"]),
+    bcmdl(lits: ["umask", "077"]),
+    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
+    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
+    bash_build_assign(name: "SUB_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/approval-submission-mac-key")])),
+    bcmd(words: [bl(text: "trap"), bl(text: gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_trap_body(), set_e: false)), bl(text: "EXIT")]),
+    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
+    bif_else(
+      cond: bash_build_and_then(left: fetch, right: decode),
+      then_stmts: [
+        bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "SUB_FILE")]),
+        bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(approval_submission_mac_key_path_env as String, "=")), bv(name: "SUB_FILE")])]),
+      ],
+      else_stmts: [
+        bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "SUB_FILE")]),
+        becho(parts: [bl(text: "submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it")]),
+      ],
+    ),
+    gunbc_ci_mtcollins1_probe_root_statement(),
   ]
 }
 
-data gunbc_ci_gcp_iam_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_gcp_iam_converge_request_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner sharing gunbc_ci_submission_key_prelude with the D0 door: WIF access token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
+fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> String {
+  join([
+    gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_statements(stem: stem), set_e: false), "\n",
+    gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
+  ], "")
+}
 
 fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_gcp_iam_converge_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude(
-      prelude: gunbc_ci_submission_key_prelude(stem: "gcp-iam-converge"),
-      source_roots: witness_layer_roots,
-      entry: gunbc_ci_gcp_iam_converge_request_target.entry,
-      function: gunbc_ci_gcp_iam_converge_request_target.function,
-      claim_run: false,
-      receipt_rel: none
-    )
-  )
+  gunbc_ci_submission_key_invoke(stem: "gcp-iam-converge", target: gunbc_ci_gcp_iam_converge_request_target)
+}
+
+fn gunbc_ci_gcp_iam_bootstrap_delta_request_invoke() -> String {
+  gunbc_ci_submission_key_invoke(stem: "gcp-iam-bootstrap-delta", target: gunbc_ci_gcp_iam_bootstrap_delta_request_target)
 }
 
 // THE APPLY STEP READS NO SECRET: both tokens arrive by the workflow's auth-step variables, and the
 // recorded approval is read over the approval client's loopback status route.
+fn gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_gcp_iam_bootstrap_delta_apply_target.entry,
+    function: gunbc_ci_gcp_iam_bootstrap_delta_apply_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 fn gunbc_ci_gcp_iam_converge_apply_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
