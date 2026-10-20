@@ -1,0 +1,12 @@
+module probe.use
+
+import std.types { Int, Bool }
+import std.algebra { FreeMonoid, list_at_optional }
+
+type N { label: Int, children: FreeMonoid<N> }
+fn lab(n: N) -> Int {
+  match list_at_optional(xs: n.children, index: 0) {
+    Present { value: e } => e.label
+    Absent => 0
+  }
+}
