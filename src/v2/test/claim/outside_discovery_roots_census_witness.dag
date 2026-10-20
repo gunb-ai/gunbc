@@ -18,7 +18,7 @@ module v2.test.claim.outside_discovery_roots_census_witness
 
 import std.types { String, Bool, List, Int }
 import std.optional { Optional, Absent, Present }
-import std.algebra { Cons, Empty, is_empty, trim, list_map, fold, string_contains }
+import std.algebra { Cons, Empty, is_empty }
 
 import v2.workflow.outside_discovery_roots_census {
   OutsideRootsStanding,

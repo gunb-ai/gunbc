@@ -23,7 +23,7 @@ module v2.workflow.outside_discovery_roots_census_live
 
 import std.types { String, Bool, List, Int }
 import std.optional { Optional, Absent, Present }
-import std.algebra { Cons, Empty, is_empty, trim }
+import std.algebra { Cons, Empty, trim }
 import v2.std.text { Char, string_split }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.exec.command { LocalExec }

@@ -34,7 +34,7 @@ module v2.workflow.outside_discovery_roots_census
 
 import std.types { String, Bool, List }
 import std.optional { Optional, Absent, Present }
-import std.algebra { is_empty, list_map }
+import std.algebra { Cons, Empty, is_empty, list_map }
 import v2.cli.repository_layout { repository_module_file_of_path, repository_tree_directory }
 
 // THE STANDING. Four states, each a decision the census can actually make from its inputs:
