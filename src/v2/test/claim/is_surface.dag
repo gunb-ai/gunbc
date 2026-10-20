@@ -117,3 +117,22 @@ test fn is_authored_resolved_arm_refuses() -> Bool {
     Rejected { diagnostics: _ } => true
   }
 }
+
+test fn dbg_asm_misspelt() -> Bool {
+  match is_src(decls: "type Color = Red | Green\n", body: "c is Rd") { Accepted { value: _, diagnostics: _ } => true Rejected { diagnostics: _ } => false }
+}
+test fn dbg_asm_payload() -> Bool {
+  match is_src(decls: "type Color = Red | Tint { r: Int }\n", body: "c is Tint") { Accepted { value: _, diagnostics: _ } => true Rejected { diagnostics: _ } => false }
+}
+test fn dbg_infer_misspelt_rejects() -> Bool {
+  match is_src(decls: "type Color = Red | Green\n", body: "c is Rd") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } => match infer(tree: root) { Accepted { value: _, diagnostics: _ } => false Rejected { diagnostics: _ } => true }
+  }
+}
+test fn dbg_infer_unit_accepts() -> Bool {
+  match is_src(decls: "type Color = Red | Green\n", body: "c is Red") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } => match infer(tree: root) { Accepted { value: _, diagnostics: _ } => true Rejected { diagnostics: _ } => false }
+  }
+}
