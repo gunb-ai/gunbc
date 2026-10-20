@@ -206,11 +206,18 @@ fn type_arg_kind_inhabitance(arg: Node, kind_node: Node, env: TypeEnv, module_na
     Present { value: inf } => is_type_variable(inferred: inf)
     Absent => false
   }
-  // ARM 1, SPLIT. A type variable used to be admitted here on being a type variable, which let a
-  // parameter declared Quantity satisfy a Scale slot. It is now judged on the kind its own declaration
-  // gives it. A variable with no parameter carrier answers ForwardedParameterUnidentified: being an
-  // inference unknown is not evidence of inhabiting anything, and this arm admits nobody.
-  if arg_is_type_var { forwarded_parameter_kind_matches(arg: arg, slot_kind_node: kind_node, env: env, module_name: module_name) }
+  // ARM 1, CARRIER-FIRST. Two steps, and the ORDER of the two tests is the whole finding. A type
+  // variable used to be admitted here on being a type variable, which let a parameter declared
+  // Quantity satisfy a Scale slot; it is now judged on the kind its own declaration gives it. And the
+  // test that ROUTES here asks what the node CARRIES before it asks what its INFERENCE says, because
+  // measured on the real corpus the forwarded parameters arrive with `inferred=absent` -- all four
+  // refusals fell through to the inhabitants arm and were refused as spellings ("'S [decl='Scale'
+  // inferred=absent resolved_target='' children=23]' is not one of its inhabitants"), which is the
+  // name-keyed reading this arm exists to replace. The carrier is the fact; inference is a hint.
+  // A variable that carries nothing answers ForwardedParameterUnidentified: being an inference unknown
+  // is not evidence of inhabiting anything, and this arm admits nobody.
+  if node_is_type_parameter_reference(n: arg) { forwarded_parameter_kind_matches(arg: arg, slot_kind_node: kind_node, env: env, module_name: module_name) }
+  else if arg_is_type_var { ForwardedParameterUnidentified }
   else if expr_literal_int_optional(expr: arg) != none { KindInhabited }
   else {
     match lookup_type_by_name(env: env, name: authored_name(env: env, node: kind_node)) {
@@ -1643,6 +1650,59 @@ fn binder_marked_member(member: Node, owner: DeclarationRef, binders: List<Strin
   }
 }
 
+// THE ONE MARKING PASS, run by resolve_item_types BEFORE it resolves anything, over the positions
+// that item's OWN header owns: its parameters, its return, its members, its body, its type
+// annotation. Every item kind that declares binders is covered by this single walk -- fn, record,
+// alias, coproduct -- so no per-kind copy of the stamping exists anywhere (the pass it replaces
+// reached fn params/return and Conj/Disj members only, which is why an alias-style declaration was
+// never stamped at all). It is SHALLOW on purpose: a nested item keeps its own positions to itself,
+// because resolve_item_types is called on it separately and marks its own binders. binder_marked_type
+// never re-marks a node that already carries an identity, so the NEAREST enclosing header wins.
+fn binder_marked_item(item: Node, owner: DeclarationRef, binders: List<String>, env: TypeEnv) -> Node {
+  let marked_params = map(item.params, p => binder_marked_param(param: p, owner: owner, binders: binders, env: env))
+  let marked_children = if (item.connective == Conj || item.connective == Disj) && item.transport == none {
+    map(item.children, c => binder_marked_member(member: c, owner: owner, binders: binders, env: env))
+  } else {
+    map(item.children, c => binder_marked_body_expr(n: c, owner: owner, binders: binders, env: env))
+  }
+  let marked_body = match item.body {
+    Present { value: body } => Present { value: binder_marked_body_expr(n: body, owner: owner, binders: binders, env: env) }
+    Absent => none
+  }
+  let marked_anno = match item.type_annotation {
+    Present { value: anno } => Present { value: binder_marked_type(n: anno, owner: owner, binders: binders, env: env) }
+    Absent => none
+  }
+  Node {
+    occurrence_identity: item.occurrence_identity, name: item.name, span: item.span,
+    ident_span: item.ident_span,
+    children: marked_children, connective: item.connective, params: marked_params,
+    inferred: binder_marked_inferred(inferred: item.inferred, owner: owner, binders: binders, env: env),
+    return_cardinality: item.return_cardinality, uses: item.uses, body: marked_body,
+    transport: item.transport, properties: item.properties, type_annotation: marked_anno,
+    is_self_recursive: item.is_self_recursive, has_non_tail_self_call: item.has_non_tail_self_call,
+    match_pattern: item.match_pattern, module_item_kind: item.module_item_kind,
+    declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: item.expr_data
+  }
+}
+
+// The expression-level descent of binder_marked_item. A node that IS a declaration (module_item_kind
+// is set) is returned untouched -- its own resolve_item_types pass marks its binders, which is what
+// stops an inner `fn f<T>` from borrowing the enclosing item's T. Everything else is a type-bearing
+// position, so its `inferred` is stamped through binder_marked_type.
+fn binder_marked_body_expr(n: Node, owner: DeclarationRef, binders: List<String>, env: TypeEnv) -> Node {
+  if n.module_item_kind != none {
+    n
+  } else {
+    node_with_children_params_inferred(
+      n: n,
+      children: map(n.children, c => binder_marked_body_expr(n: c, owner: owner, binders: binders, env: env)),
+      params: n.params,
+      inferred: binder_marked_inferred(inferred: n.inferred, owner: owner, binders: binders, env: env)
+    )
+  }
+}
+
 fn node_with_children_params_inferred(n: Node, children: List<Node>, params: List<Node>, inferred: InferredNode?) -> Node {
   Node { occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: children, connective: n.connective, params: params, inferred: inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
 }
@@ -1653,6 +1713,15 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   } else {
     fn_type_param_names(item: item, source_indices: env.source_indices)
   }
+  let owner = decl_ref(module_path: module_name, decl_name: authored_name(env: env, node: item))
+  // ONE MARKING PASS, FIRST, FOR EVERY ITEM KIND THAT DECLARES BINDERS. Measured on the real corpus,
+  // the old stamping ran AFTER the nested resolves below (params, inferred, uses, body, annotation,
+  // transport, properties, children) and the kind wall fires INSIDE those resolves, so it judged
+  // nodes that carried no identity yet: 2264/2264 wall arguments had arg_decl=None, and an alias-style
+  // `type Measure<Q, S, M> = ...` produced ZERO stamps at all, because the pass covered only fn
+  // params/return (is_function_item) and Conj/Disj members. ORDER plus COVERAGE, one defect. So the
+  // identity goes on the authored occurrence before anything is resolved, from this item's own header.
+  let item_marked = binder_marked_item(item: item, owner: owner, binders: tp_names, env: env)
   let collision_diags = match first_duplicate_type_param_name(names: tp_names) {
     Present { value: dup } =>
       [make_error_node(diagnostic: InternalError { message: concat(concat(concat("the name '", dup), concat("' is bound twice in the header of '", authored_name_at(source_indices: env.source_indices, node: item))), "': either a type parameter is repeated (`type Pair<T, T>`), or a value parameter shares a type parameter's name (`fn f<T>(T: T)`). A type parameter's identity is (owner, name), so one header may bind a name once. Rename one of them."), span: item.span }, module_name: module_name)]
@@ -1664,40 +1733,40 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   // instead. Passing Absent therefore keeps that binder identity-free rather than minting a reference
   // from a name that does not own it; the owner-named route is census_declaration_type_env.
   let env = env_with_type_variable_bindings(env: env, tp_names: tp_names)
-  let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
+  let param_results = map(item_marked.params, p => resolve_param(param: p, env: env, module_name: module_name))
   let resolved_params = map(param_results, pr => pr.param)
   let param_diags = flat_map(param_results, pr => pr.diagnostics)
 
   let ret_result = if is_parametric_type_alias_decl(item: item) {
-    match item.inferred {
+    match item_marked.inferred {
       Present { value: Resolved { node: authored_rhs } } => resolve_nominal_alias_rhs(n: authored_rhs, env: env, module_name: module_name)
-      _ => resolve_optional_node(n: item.inferred, env: env, module_name: module_name)
+      _ => resolve_optional_node(n: item_marked.inferred, env: env, module_name: module_name)
     }
   } else {
-    resolve_optional_node(n: item.inferred, env: env, module_name: module_name)
+    resolve_optional_node(n: item_marked.inferred, env: env, module_name: module_name)
   }
   let ret_resolved = ret_result.resolved
   let ret_diags = ret_result.diagnostics
-  let resolved_ret = if item.inferred == none { none } else { Present { value: Resolved { node: ret_resolved } } }
+  let resolved_ret = if item_marked.inferred == none { none } else { Present { value: Resolved { node: ret_resolved } } }
 
   let use_results = map(item.uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
   let resolved_uses = map(use_results, ur => ur.resource_use)
   let use_diags = flat_map(use_results, ur => ur.diagnostics)
 
-  let body_resolved = if item.body == none {
-    ExprResolveResult { expr: item, diagnostics: [] }
+  let body_resolved = if item_marked.body == none {
+    ExprResolveResult { expr: item_marked, diagnostics: [] }
   } else {
-    resolve_expr_types(texpr: item.body.value, env: env, module_name: module_name)
+    resolve_expr_types(texpr: item_marked.body.value, env: env, module_name: module_name)
   }
   let resolved_body = if item.body == none { none } else { Present { value: body_resolved.expr } }
   let body_diags = if item.body == none { [] } else { body_resolved.diagnostics }
 
-  let anno_resolved = if item.type_annotation == none {
+  let anno_resolved = if item_marked.type_annotation == none {
     NodeResolveResult { resolved: unit_type, diagnostics: [] }
   } else {
-    resolve_node(n: item.type_annotation.value, env: env, module_name: module_name)
+    resolve_node(n: item_marked.type_annotation.value, env: env, module_name: module_name)
   }
-  let resolved_anno = if item.type_annotation == none { none } else { Present { value: anno_resolved.resolved } }
+  let resolved_anno = if item_marked.type_annotation == none { none } else { Present { value: anno_resolved.resolved } }
   let anno_diags = anno_resolved.diagnostics
 
   let transport_resolved = if item.transport == none {
@@ -1713,7 +1782,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   let prop_diags = flat_map(prop_results, pr => pr.diagnostics)
 
   let child_results = if item.connective == Conj && item.transport == none {
-    item.children |> map(child =>
+    item_marked.children |> map(child =>
       let authored_type = field_node_type_expr(n: child)
       let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
       let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
@@ -1741,25 +1810,25 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       }
     )
   } else {
-    map(item.children, child => resolve_item_types(item: child, env: env, module_name: module_name))
+    map(item_marked.children, child => resolve_item_types(item: child, env: env, module_name: module_name))
   }
   let child_diags = flat_map(child_results, cr => cr.diagnostics)
-  let owner = decl_ref(module_path: module_name, decl_name: authored_name(env: env, node: item))
-  let resolved_children = if (item.connective == Conj || item.connective == Disj) && item.transport == none {
-    map(child_results, cr => binder_marked_member(member: cr.item, owner: owner, binders: tp_names, env: env))
-  } else {
-    map(child_results, cr => cr.item)
-  }
+  // The post-hoc binder_marked_member / binder_marked_param / binder_marked_inferred layers this line
+  // replaces are DELETED, per DESIGN.md 4b ("a climb deletes the lower-rung production machinery it
+  // obsoletes"): binder_marked_item marked these same positions before the nested resolves ran, and
+  // every rebuild on this path copies `declaration: n.declaration`, so the identity is already on the
+  // resolved node. The reference_* pass below is NOT part of that machinery: it installs the scope
+  // declaration of a NON-binder reference (reference_with_declaration), a different fact, and it
+  // leaves an already-marked node alone.
+  let resolved_children = map(child_results, cr => cr.item)
   let is_function_item = match item.module_item_kind { ModuleItemFunction => true  _ => false }
   let stamped_params = if is_function_item { map(resolved_params, p => reference_param_with_declaration(param: p, binders: tp_names, env: env)) } else { resolved_params }
   let stamped_ret = if is_function_item { reference_inferred_with_declaration(inferred: resolved_ret, binders: tp_names, env: env) } else { resolved_ret }
-  let marked_params = map(stamped_params, p => binder_marked_param(param: p, owner: owner, binders: tp_names, env: env))
-  let marked_ret = binder_marked_inferred(inferred: stamped_ret, owner: owner, binders: tp_names, env: env)
 
   ItemResolveResult {
     item: Node {
       occurrence_identity: OccurrenceSynthetic, name: item.name, span: item.span, ident_span: item.ident_span, children: resolved_children,
-      params: marked_params, inferred: marked_ret,
+      params: stamped_params, inferred: stamped_ret,
       return_cardinality: item.return_cardinality,
       uses: resolved_uses, body: resolved_body,
       connective: item.connective, transport: resolved_transport,
