@@ -1798,7 +1798,11 @@ fn binder_marked_module_item(item: Node, module_name: String, source_indices: Ma
   // A coproduct's variants are items in their own right -- resolve_item_types maps them through itself
   // -- so the hoist gives each what it would get there. A record's children are MEMBERS, which
   // binder_marked_item already walks, so they are not re-entered.
-  if item.connective == Disj {
+  // The `&& item.transport == none` conjunct is not a second condition of substance here: bare
+  // `if item.connective == Disj {` does not parse, because `Disj {` reads as a data literal. The
+  // conjunct is the guard this file already uses for the same test (see the Disj arm of
+  // resolve_item_types), and a marked variant with a transport is not a thing this pass is asked about.
+  if item.connective == Disj && item.transport == none {
     node_with_children_params_inferred(
       n: marked,
       children: map(marked.children, c => binder_marked_module_item(item: c, module_name: module_name, source_indices: source_indices)),
