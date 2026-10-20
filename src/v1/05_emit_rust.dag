@@ -2028,13 +2028,16 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
 // declaration's own product node, children = its fields, run 63), and its stored layer is asked once
 // through rust_field_stored_layer_type. The fn signature and the applied generic argument both call
 // it, so `Witness<TerminationProof>` and `-> TerminationProof` cannot disagree on the Rc layer (run 78).
+// Only a HOST-TEMPLATE container (Vec, BTreeSet, HashMap, Option: is_declared_container_alias_spelling) spells
+// its own layer; Witness is arity-registered but a declared enum, so it takes its declaration's layer (run 164 probe:
+// bare=false for Witness<..> because is_container_type read the arity table).
 fn render_rust_declaration_position(n: Node, spelled: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> String {
   let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   let names_declaration = match resolve_type_decl_routed(index: type_decl_items, type_expr: n, source_indices: source_indices).resolution {
     TypeDeclResolved { identity: _, decl: _ } => true
     _ => false
   }
-  let bare_declared_leaf = names_declaration && n.return_cardinality != CardOptional && !is_container_type(name: leaf) && !(generic_param_names |> any(g => g == leaf))
+  let bare_declared_leaf = names_declaration && n.return_cardinality != CardOptional && !is_declared_container_alias_spelling(name: leaf) && !(generic_param_names |> any(g => g == leaf))
   if bare_declared_leaf {
     concat(rust_field_stored_layer_type(rt_field: n, ty: spelled, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names))
   } else {
