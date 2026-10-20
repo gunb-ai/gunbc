@@ -209,6 +209,51 @@ data instrument_dispatch_directory: String = "instrument-dispatch"
 
 data instrument_dispatch_artifact_name: String = "instrument-dispatch-receipt"
 
+// Role-tagged artifact names. EXTERNAL FACT (observed 2026-10-20, runs 39387420882 + 39398874591):
+// for this repo/app token the workflow-runs API returns inputs=NULL on BOTH the list and the per-run
+// endpoints, so a run cannot be told apart by its dispatch inputs from inside a job -- discovery
+// keyed on inputs sees zero candidates and the chain silently starves (this cost four shard runs
+// their base). The artifact-list endpoint DOES carry reliable name, workflow_run.id,
+// workflow_run.head_sha and created_at (status/conclusion arrive null there), and its name= filter
+// is EXACT (a substring query returns nothing). So each wave role uploads under its own suffixed
+// name, generated from the same K row as everything else, and cross-run discovery is an exact-name
+// query -- closed, never free text. Status is deliberately NOT a discovery filter: every receipt
+// header carries its own status field and the READER refuses a non-zero one, so the transport never
+// becomes the authority on validity -- it hands over candidates; content checks in the lookup are
+// a second guard, the reader remains the first.
+fn instrument_dispatch_wave_artifact_roles() -> List<String> {
+  ["base"]
+    + list_map(xs: indices_below(n: instrument_dispatch_wave_shard_count), f: fn(i) {
+        join([to_string(i), "-of-", to_string(instrument_dispatch_wave_shard_count)], "")
+      })
+    + [join(["merge-of-", to_string(instrument_dispatch_wave_shard_count)], "")]
+}
+
+// (wave_shard choice, artifact role) generated together from the K row; the two parallel folds
+// below build choices and roles with the SAME index, so they cannot drift apart.
+fn instrument_dispatch_wave_artifact_name(role: String) -> String {
+  join([instrument_dispatch_artifact_name, "-", role], "")
+}
+
+// The upload name as a closed ${{-chain over the same choice literals as the wave_shard input:
+// each wave role uploads its own artifact; every other label keeps the plain name untouched.
+fn instrument_dispatch_wave_upload_name_expression() -> String {
+  let term = fn(choice, role) {
+    join(["(inputs.", instrument_dispatch_label_input, " == '", render_label(l: instrument_dispatch_wave_label()), "' && inputs.", instrument_dispatch_wave_shard_input, " == '", choice, "' && '", instrument_dispatch_wave_artifact_name(role), "')"], "")
+  }
+  let base_term = term("base", "base")
+  let shard_terms = list_map(xs: indices_below(n: instrument_dispatch_wave_shard_count), f: fn(i) {
+    term(join([to_string(i), "/", to_string(instrument_dispatch_wave_shard_count)], ""), join([to_string(i), "-of-", to_string(instrument_dispatch_wave_shard_count)], ""))
+  })
+  let merge_term = term(join(["merge/", to_string(instrument_dispatch_wave_shard_count)], ""), join(["merge-of-", to_string(instrument_dispatch_wave_shard_count)], ""))
+  let default_term = join(["'", instrument_dispatch_artifact_name, "'"], "")
+  let all_terms = [base_term] + shard_terms + [merge_term, default_term]
+  join(["${{ ", fold(all_terms, init: "", f: fn(acc, t) {
+    if length(acc) == 0 { t } else { join([acc, " || ", t], "") }
+  }), " }}"], "")
+}
+
+
 data instrument_dispatch_retention_days: Int = 30
 
 // A bound, not a budget: the census emits and builds the compiler closure (about 35 minutes measured on
@@ -622,7 +667,7 @@ fn instrument_dispatch_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present {
       value: [
-        kv(key: "name", value: yaml_string(s: instrument_dispatch_artifact_name)),
+        kv(key: "name", value: yaml_string(s: instrument_dispatch_wave_upload_name_expression())),
         kv(key: "path", value: yaml_string(s: instrument_dispatch_upload_path())),
         kv(key: "if-no-files-found", value: yaml_string(s: "error")),
         kv(key: "retention-days", value: yaml_int(n: instrument_dispatch_retention_days)),
@@ -662,7 +707,7 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     // expansion inside, and the GH default `bash -e` propagates any python failure to the step, so
     // a transport that cannot stage refuses BEFORE the instrument runs.
     "python3 - <<'PYEOF'\n",
-    "import glob, json, os, shutil, subprocess, urllib.request, zipfile\n",
+    "import glob, json, os, shutil, subprocess, urllib.request, urllib.error, zipfile\n",
     "HEAD = os.environ['GITHUB_SHA']\n",
     "REPO = os.environ['GITHUB_REPOSITORY']\n",
     "RUN = int(os.environ['GITHUB_RUN_ID'])\n",
@@ -670,7 +715,6 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "MODE = os.environ['GUNBC_WAVE_SHARD']\n",
     "STAGING = os.environ['WAVE_RECEIPT_STAGING']\n",
     "WORKFLOW_FILE = '", instrument_dispatch_workflow_name, ".yml'\n",
-    "WAVE_LABEL = '", render_label(l: instrument_dispatch_wave_label()), "'\n",
     "def api(path):\n",
     "    req = urllib.request.Request('https://api.github.com' + path, headers={'Authorization': 'Bearer ' + TOKEN, 'Accept': 'application/vnd.github+json'})\n",
     "    with urllib.request.urlopen(req, timeout=60) as r:\n",
@@ -709,22 +753,67 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     // A head shard belongs to one head, so shard candidates are restricted to THIS head; a base is
     // a fact of (main revision, instrument revision) reused by every wave run (ruling 2026-10-20:
     // select the base artifact by the main revision in its file name, newest among those), so base
-    // candidates are searched across heads. Rationale lives here, NOT in the emitted python string
-    // list: bare comment lines inside a list body leak verbatim into the generated program.
-    "def candidate_runs(head_ok):\n",
+    // candidates are searched across heads.
+    "def clear(dest):\n",
+    "    os.makedirs(dest, exist_ok=True)\n",
+    "    for old in os.listdir(dest):\n",
+    "        p = os.path.join(dest, old)\n",
+    "        shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)\n",
+    // Discovery EXTERNAL FACT (2026-10-20, runs 39387420882 / 39398874591): inputs are NULL for
+    // every run on BOTH runs endpoints under this app token, so roles come only from the suffixed
+    // artifact names (upload is the closed ${{-chain above; the name= filter is EXACT). Reliable
+    // fields: name, workflow_run.id, workflow_run.head_sha, created_at -- status/conclusion arrive
+    // NULL and are NOT filters: receipt headers carry their own status and the reader refuses a
+    // non-zero one. The repo artifacts endpoint is tried first (one call); on any HTTP error the
+    // fallback enumerates recent workflow runs and asks each run's own artifacts -- the endpoints
+    // this fleet has actually served. fetch() requires the exact artifact name AND a must-match
+    // file inside the zip before declaring success, so a wrong-revision candidate is skipped
+    // rather than staged; the probe dir lives outside STAGING, so skipping never leaves a stray in
+    // the reader's receipt dir and never touches already-staged shards. Probe attempts are capped:
+    // past that many of the freshest base runs, staleness is likely; the reader then refuses
+    // (unobserved, 2) -- fail-closed, no guessing.
+    "ARTIFACT_PREFIX = '", instrument_dispatch_artifact_name, "'\n",
+    "SHARD_ROLES = [", fold(list_map(xs: instrument_dispatch_wave_artifact_roles(), f: fn(r) { join(["'", r, "'"], "") }), init: "", f: fn(acc, r) {
+      if length(acc) == 0 { r } else { join([acc, ", ", r], "") }
+    }), "]\n",
+    "def role_artifact_name(role):\n",
+    "    return ARTIFACT_PREFIX + '-' + role\n",
+    "def artifact_candidates(role, head_ok):\n",
+    "    target = role_artifact_name(role)\n",
     "    out = []\n",
+    "    try:\n",
+    "        for a in api('/repos/' + REPO + '/actions/artifacts?name=' + target + '&per_page=100')['artifacts']:\n",
+    "            wr = a.get('workflow_run') or {}\n",
+    "            rid = wr.get('id')\n",
+    "            if rid is None or rid == RUN:\n",
+    "                continue\n",
+    "            if head_ok and (wr.get('head_sha') or '') != HEAD:\n",
+    "                continue\n",
+    "            out.append((str(a.get('created_at') or ''), rid))\n",
+    "        out.sort(reverse=True)\n",
+    "        return out\n",
+    "    except urllib.error.HTTPError:\n",
+    "        pass\n",
     "    for w in api('/repos/' + REPO + '/actions/workflows/' + WORKFLOW_FILE + '/runs?per_page=100')['workflow_runs']:\n",
-    "        if w.get('status') != 'completed' or w.get('id') == RUN:\n",
+    "        rid = w.get('id')\n",
+    "        if rid is None or rid == RUN:\n",
     "            continue\n",
     "        if head_ok and w.get('head_sha') != HEAD:\n",
     "            continue\n",
-    "        inputs = w.get('inputs') or {}\n",
-    "        out.append((str(w.get('created_at') or ''), w['id'], str(inputs.get('label') or ''), str(inputs.get('wave_shard') or '')))\n",
+    "        try:\n",
+    "            arts = api('/repos/' + REPO + '/actions/runs/' + str(rid) + '/artifacts')['artifacts']\n",
+    "        except urllib.error.HTTPError:\n",
+    "            continue\n",
+    "        if any(a.get('name') == target and not a.get('expired') for a in arts):\n",
+    "            out.append((str(w.get('created_at') or ''), rid))\n",
     "    out.sort(reverse=True)\n",
     "    return out\n",
-    "def fetch(wid, dest):\n",
+    "def fetch(wid, dest, want_name, must_glob):\n",
     "    for a in api('/repos/' + REPO + '/actions/runs/' + str(wid) + '/artifacts')['artifacts']:\n",
-    "        if a.get('expired') or a.get('state') != 'completed':\n",
+    "        if a.get('name') != want_name or a.get('expired'):\n",
+    "            continue\n",
+    "        st = a.get('state')\n",
+    "        if st is not None and st != 'completed':\n",
     "            continue\n",
     "        zp = os.path.join(dest, 'receipt-' + str(wid) + '.zip')\n",
     "        req = urllib.request.Request(a['archive_download_url'], headers={'Authorization': 'Bearer ' + TOKEN})\n",
@@ -737,35 +826,23 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "        with zipfile.ZipFile(zp) as z:\n",
     "            z.extractall(dest)\n",
     "        os.remove(zp)\n",
-    "        return True\n",
+    "        return bool(glob.glob(os.path.join(dest, '**', must_glob), recursive=True))\n",
     "    return False\n",
-    "def clear(dest):\n",
-    "    for old in os.listdir(dest):\n",
-    "        p = os.path.join(dest, old)\n",
-    "        shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)\n",
     "os.makedirs(STAGING, exist_ok=True)\n",
     "clear(STAGING)\n",
     "MB = merge_base()\n",
     "ensure_objects(MB)\n",
+    "PROBE = os.path.join(os.path.dirname(STAGING), 'base-probe')\n",
     "if MODE != 'base':\n",
     "    if MODE.startswith('merge/'):\n",
-    "        k = MODE.split('/')[1]\n",
-    "        seen = {}\n",
-    "        for created, wid, label, shard in candidate_runs(True):\n",
-    "            if shard.endswith('/' + k) and not shard.startswith('merge/') and shard != 'base' and shard != 'none':\n",
-    "                seen.setdefault(shard, wid)\n",
-    "        for shard, wid in seen.items():\n",
-    "            fetch(wid, STAGING)\n",
-    "    want = 'base-' + MB + '-*' + '.txt'\n",
-    "    PROBE = os.path.join(os.path.dirname(STAGING), 'base-probe')\n",
-    "    for created, wid, label, shard in candidate_runs(False):\n",
-    "        if shard != 'base' or label != WAVE_LABEL:\n",
-    "            continue\n",
-    "        os.makedirs(PROBE, exist_ok=True)\n",
+    "        for role in SHARD_ROLES:\n",
+    "            for created, wid in artifact_candidates(role, True):\n",
+    "                if fetch(wid, STAGING, role_artifact_name(role), 'shard-*-' + role + '.txt'):\n",
+    "                    break\n",
+    "    for created, wid in artifact_candidates('base', False)[:8]:\n",
     "        clear(PROBE)\n",
-    "        fetch(wid, PROBE)\n",
-    "        if glob.glob(os.path.join(PROBE, '**', want), recursive=True):\n",
-    "            for hit in glob.glob(os.path.join(PROBE, '**', want), recursive=True):\n",
+    "        if fetch(wid, PROBE, role_artifact_name('base'), 'base-' + MB + '-*' + '.txt'):\n",
+    "            for hit in glob.glob(os.path.join(PROBE, '**', 'base-' + MB + '-*' + '.txt'), recursive=True):\n",
     "                shutil.copy2(hit, os.path.join(STAGING, os.path.basename(hit)))\n",
     "            break\n",
     "    clear(PROBE)\n",

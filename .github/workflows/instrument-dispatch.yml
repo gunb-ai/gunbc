@@ -226,7 +226,7 @@ jobs:
         id: wave_receipt_transport
         run: |
           python3 - <<'PYEOF'
-          import glob, json, os, shutil, subprocess, urllib.request, zipfile
+          import glob, json, os, shutil, subprocess, urllib.request, urllib.error, zipfile
           HEAD = os.environ['GITHUB_SHA']
           REPO = os.environ['GITHUB_REPOSITORY']
           RUN = int(os.environ['GITHUB_RUN_ID'])
@@ -234,7 +234,6 @@ jobs:
           MODE = os.environ['GUNBC_WAVE_SHARD']
           STAGING = os.environ['WAVE_RECEIPT_STAGING']
           WORKFLOW_FILE = 'instrument-dispatch.yml'
-          WAVE_LABEL = '//gunbc/instruments:namespace-wave-binding-diff'
           def api(path):
               req = urllib.request.Request('https://api.github.com' + path, headers={'Authorization': 'Bearer ' + TOKEN, 'Accept': 'application/vnd.github+json'})
               with urllib.request.urlopen(req, timeout=60) as r:
@@ -256,20 +255,46 @@ jobs:
               raise SystemExit('wave-transport: the merge base object is unreachable after 8 deepen rounds -- refusing before the instrument runs')
           def merge_base():
               return api('/repos/' + REPO + '/compare/main...' + HEAD)['merge_base_commit']['sha']
-          def candidate_runs(head_ok):
+          ARTIFACT_PREFIX = 'instrument-dispatch-receipt'
+          SHARD_ROLES = ['0-of-4', '1-of-4', '2-of-4', '3-of-4']
+          def role_artifact_name(role):
+              return ARTIFACT_PREFIX + '-' + role
+          def artifact_candidates(role, head_ok):
+              target = role_artifact_name(role)
               out = []
+              try:
+                  for a in api('/repos/' + REPO + '/actions/artifacts?name=' + target + '&per_page=100')['artifacts']:
+                      wr = a.get('workflow_run') or {}
+                      rid = wr.get('id')
+                      if rid is None or rid == RUN:
+                          continue
+                      if head_ok and (wr.get('head_sha') or '') != HEAD:
+                          continue
+                      out.append((str(a.get('created_at') or ''), rid))
+                  out.sort(reverse=True)
+                  return out
+              except urllib.error.HTTPError:
+                  pass
               for w in api('/repos/' + REPO + '/actions/workflows/' + WORKFLOW_FILE + '/runs?per_page=100')['workflow_runs']:
-                  if w.get('status') != 'completed' or w.get('id') == RUN:
+                  rid = w.get('id')
+                  if rid is None or rid == RUN:
                       continue
                   if head_ok and w.get('head_sha') != HEAD:
                       continue
-                  inputs = w.get('inputs') or {}
-                  out.append((str(w.get('created_at') or ''), w['id'], str(inputs.get('label') or ''), str(inputs.get('wave_shard') or '')))
+                  try:
+                      arts = api('/repos/' + REPO + '/actions/runs/' + str(rid) + '/artifacts')['artifacts']
+                  except urllib.error.HTTPError:
+                      continue
+                  if any(a.get('name') == target and not a.get('expired') for a in arts):
+                      out.append((str(w.get('created_at') or ''), rid))
               out.sort(reverse=True)
               return out
-          def fetch(wid, dest):
+          def fetch(wid, dest, want_name, must_glob):
               for a in api('/repos/' + REPO + '/actions/runs/' + str(wid) + '/artifacts')['artifacts']:
-                  if a.get('expired') or a.get('state') != 'completed':
+                  if a.get('name') != want_name or a.get('expired'):
+                      continue
+                  st = a.get('state')
+                  if st is not None and st != 'completed':
                       continue
                   zp = os.path.join(dest, 'receipt-' + str(wid) + '.zip')
                   req = urllib.request.Request(a['archive_download_url'], headers={'Authorization': 'Bearer ' + TOKEN})
@@ -282,9 +307,10 @@ jobs:
                   with zipfile.ZipFile(zp) as z:
                       z.extractall(dest)
                   os.remove(zp)
-                  return True
+                  return bool(glob.glob(os.path.join(dest, '**', must_glob), recursive=True))
               return False
           def clear(dest):
+              os.makedirs(dest, exist_ok=True)
               for old in os.listdir(dest):
                   p = os.path.join(dest, old)
                   shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
@@ -292,25 +318,17 @@ jobs:
           clear(STAGING)
           MB = merge_base()
           ensure_objects(MB)
+          PROBE = os.path.join(os.path.dirname(STAGING), 'base-probe')
           if MODE != 'base':
               if MODE.startswith('merge/'):
-                  k = MODE.split('/')[1]
-                  seen = {}
-                  for created, wid, label, shard in candidate_runs(True):
-                      if shard.endswith('/' + k) and not shard.startswith('merge/') and shard != 'base' and shard != 'none':
-                          seen.setdefault(shard, wid)
-                  for shard, wid in seen.items():
-                      fetch(wid, STAGING)
-              want = 'base-' + MB + '-*' + '.txt'
-              PROBE = os.path.join(os.path.dirname(STAGING), 'base-probe')
-              for created, wid, label, shard in candidate_runs(False):
-                  if shard != 'base' or label != WAVE_LABEL:
-                      continue
-                  os.makedirs(PROBE, exist_ok=True)
+                  for role in SHARD_ROLES:
+                      for created, wid in artifact_candidates(role, True):
+                          if fetch(wid, STAGING, role_artifact_name(role), 'shard-*-' + role + '.txt'):
+                              break
+              for created, wid in artifact_candidates('base', False)[:8]:
                   clear(PROBE)
-                  fetch(wid, PROBE)
-                  if glob.glob(os.path.join(PROBE, '**', want), recursive=True):
-                      for hit in glob.glob(os.path.join(PROBE, '**', want), recursive=True):
+                  if fetch(wid, PROBE, role_artifact_name('base'), 'base-' + MB + '-*' + '.txt'):
+                      for hit in glob.glob(os.path.join(PROBE, '**', 'base-' + MB + '-*' + '.txt'), recursive=True):
                           shutil.copy2(hit, os.path.join(STAGING, os.path.basename(hit)))
                       break
               clear(PROBE)
@@ -353,7 +371,7 @@ jobs:
       - name: Upload the run's receipt and output
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: instrument-dispatch-receipt
+          name: ${{ (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == 'base' && 'instrument-dispatch-receipt-base') || (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '0/4' && 'instrument-dispatch-receipt-0-of-4') || (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '1/4' && 'instrument-dispatch-receipt-1-of-4') || (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '2/4' && 'instrument-dispatch-receipt-2-of-4') || (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '3/4' && 'instrument-dispatch-receipt-3-of-4') || (inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == 'merge/4' && 'instrument-dispatch-receipt-merge-of-4') || 'instrument-dispatch-receipt' }}
           path: ${{ runner.temp }}/instrument-dispatch
           if-no-files-found: error
           retention-days: 30
