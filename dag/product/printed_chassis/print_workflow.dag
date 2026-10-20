@@ -1,5 +1,5 @@
 module product.printed_chassis.print_workflow
-import product.printed_chassis.preparation_identity {PreparedSlot,read_prepared_slots}
+import product.printed_chassis.preparation_identity {PreparedSlot,PreparedAssembly,read_prepared_assembly}
 
 import extdeps.languages.json.parse {FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
 import std.process {ExitFailure}
@@ -106,43 +106,38 @@ fn provision_and_run(plan_file:String,output:String,appimage:String,machine:Stri
 
 
 // Preparation is the revision authority. No operator-authored revision labels are admitted.
-// THE ROOT IS READ BACK, NEVER RE-ASSERTED: run wrote it into the checked cad/assembly.json whose
-// digest the prepared slots already bind, so a later verb cannot reconcile a preparation of one
-// assembly as another. The durable inventory is still the cassette's own store and schema
-// (assembly_inventory_store, gunbc.cassette-inventory.v2), so every other root refuses here until
-// that store is keyed by root; two roots must not alias through one unqualified part id.
-fn prepared_root(prepared_output:String) -> PrintedAssemblyRoot? {
- let read=Filesystem.Read(path:concat(prepared_output,"/cad/assembly.json"))
- if !read.success {return none}
- match parse_json_document(s:read.content) {
-  JsonDocumentParsed {value:v}=>match json_field_string(obj:v,key:"root") {FieldRead {value:w}=>printed_assembly_root_from_wire(s:w) FieldAbsent=>none FieldMalformed {cause:_}=>none}
-  JsonDocumentUnreadable {gap:_}=>none
- }
-}
-type InventoryRoot = InventoryRootReady {parts:List<AssemblyPart>} | InventoryRootRefused
+// THE ROOT IS READ BACK, NEVER RE-ASSERTED, and from the same bytes the slots were verified against
+// (preparation_identity read_prepared_assembly). The durable inventory is still the cassette's own
+// store and schema (assembly_inventory_store, gunbc.cassette-inventory.v2), so every other root
+// refuses here until that store is keyed by root.
+type InventoryRoot = InventoryRootReady {parts:List<AssemblyPart>,bindings:List<PreparedSlot>} | InventoryRootRefused
 fn inventory_root(prepared_output:String) -> InventoryRoot {
- match prepared_root(prepared_output:prepared_output) {
+ match read_prepared_assembly(output:prepared_output) {
   Absent=>InventoryRootRefused
-  Present {value:r}=>match r {
-   ResidentialCassette=>match select_printable_assembly(root:r) {PrintableAssemblyReady {assembly:a}=>InventoryRootReady {parts:a.parts} PrintableAssemblyRefused {reason:_}=>InventoryRootRefused}
-   CassetteRackReview=>InventoryRootRefused
-   A16InletDuct=>InventoryRootRefused
+  Present {value:prepared}=>match printed_assembly_root_from_wire(s:prepared.root_wire) {
+   Absent=>InventoryRootRefused
+   Present {value:r}=>match r {
+    ResidentialCassette=>match select_printable_assembly(root:r) {
+     PrintableAssemblyReady {assembly:a}=>cassette_inventory_root(parts:a.parts,bindings:prepared.slots)
+     PrintableAssemblyRefused {reason:_}=>InventoryRootRefused
+    }
+    CassetteRackReview=>InventoryRootRefused
+    A16InletDuct=>InventoryRootRefused
+   }
   }
  }
 }
-fn selected_prepared_slots(prepared_output:String) -> List<PreparedSlot>? {
- let bindings=match read_prepared_slots(output:prepared_output) {Present {value:b}=>b Absent=>return none}
- let desired=match inventory_root(prepared_output:prepared_output) {InventoryRootReady {parts:p}=>required_printed_parts(parts:p,bindings:bindings) InventoryRootRefused=>return none}
- if any(bindings,b=>!any(desired,d=>d.slot==b.slot)) {none} else {Present {value:bindings}}
+fn cassette_inventory_root(parts:List<AssemblyPart>,bindings:List<PreparedSlot>) -> InventoryRoot {
+ let desired=required_printed_parts(parts:parts,bindings:bindings)
+ if any(bindings,b=>!any(desired,d=>d.slot==b.slot)) {InventoryRootRefused} else {InventoryRootReady {parts:parts,bindings:bindings}}
 }
 fn preparation_refused() -> CliWireResponse {CliWirePrintable {bytes:"Prepared projects, CAD binding or assembly membership refused",exit:exit_failure(reason:"Preparation identity refused")}}
 
 // Shadow reconciliation consumes an independent inventory capture and verified preparation.
 fn plan_remaining(inventory_file:String,prepared_output:String) -> CliWireResponse {
- let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return preparation_refused()}
  match inventory_root(prepared_output:prepared_output) {
   InventoryRootRefused=>preparation_refused()
-  InventoryRootReady {parts:p}=>inventory_report(parts:p,bindings:bindings,path:inventory_file)
+  InventoryRootReady {parts:p,bindings:bindings}=>inventory_report(parts:p,bindings:bindings,path:inventory_file)
  }
 }
 
@@ -152,7 +147,7 @@ fn inventory_initialize(capture_file:String) -> ProcessExit {
  if !read.success {exit_failure(reason:"Inventory capture unreadable")} else {initialize_inventory(capture:read.content)}
 }
 fn record_inspection(prepared_output:String,baseline:String,receipt:String,slot:String,attempt:String,physical_item:String,observed_at:String,accepted:Bool) -> CliWireResponse {
- let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return preparation_refused()}
+ let bindings=match inventory_root(prepared_output:prepared_output) {InventoryRootReady {parts:_,bindings:b}=>b InventoryRootRefused=>return preparation_refused()}
  let binding=match filter(bindings,b=>b.slot==slot && b.attempt==attempt).first() {Present {value:b}=>b Absent=>return preparation_refused()}
  match mutate_inventory(mutation:InspectPart {baseline:baseline,next_snapshot:receipt,part:RequiredPart {slot:slot,revision:Present {value:binding.revision}},attempt:binding.attempt,physical_item:physical_item,evidence:InspectionEvidence {reference:receipt,observed_at:observed_at},accepted:accepted}) {
  ExitSuccess=>plan_remaining_stored(prepared_output:prepared_output)
@@ -162,16 +157,16 @@ fn record_inspection(prepared_output:String,baseline:String,receipt:String,slot:
 
 // Reservations consume generated, byte-verified queues. This verb sends no start command.
 fn reserve_plan(prepared_output:String,baseline:String,receipt:String) -> ProcessExit {
- let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return exit_failure(reason:"Preparation identity refused")}
+ let bindings=match inventory_root(prepared_output:prepared_output) {InventoryRootReady {parts:_,bindings:b}=>b InventoryRootRefused=>return exit_failure(reason:"Preparation identity refused")}
  let requests=map(bindings,b=>PartReservation {part:RequiredPart {slot:b.slot,revision:Present {value:b.revision}},attempt:b.attempt})
  mutate_inventory(mutation:ReserveParts {baseline:baseline,next_snapshot:receipt,reservations:requests})
 }
 
 fn plan_remaining_stored(prepared_output:String) -> CliWireResponse {
- let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return preparation_refused()}
+ let prepared=inventory_root(prepared_output:prepared_output)
  let captured=match observe_stored_inventory() {ObservationEstablished {observed:c}=>c ObservationRefused {cause:InventoryUnread {reason:r}}=>return CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}}
- match inventory_root(prepared_output:prepared_output) {
+ match prepared {
  InventoryRootRefused=>preparation_refused()
- InventoryRootReady {parts:p}=>captured_inventory_report(parts:p,bindings:bindings,capture:captured)
+ InventoryRootReady {parts:p,bindings:bindings}=>captured_inventory_report(parts:p,bindings:bindings,capture:captured)
  }
 }

@@ -9,6 +9,7 @@ import product.printed_chassis.printable_assembly {
   PrintableAssemblyReady, PrintableAssemblyRefused, printable_manifest, printed_assembly_root_wire, printed_assembly_root_from_wire,
 }
 import product.printed_chassis.printable_assembly_selection { select_printable_assembly }
+import product.printed_chassis.preparation_identity { manifest_identity }
 
 fn selected(root: PrintedAssemblyRoot) -> PrintableAssembly? {
   match select_printable_assembly(root: root) {
@@ -80,4 +81,23 @@ test fn w_duct_manifest_names_its_root_and_keepout() -> Bool {
     }
     Absent => false
   }
+}
+
+// RED for the prepared-root identity: the root is inside the digested bytes. Two manifests that
+// differ only in root have different digests, so a prepared readback bound to the rack-review
+// manifest cannot verify against a residential-cassette manifest -- the swap the two overlapping
+// cassette roots would otherwise permit. Each identity also reports the root from its own bytes.
+test fn w_the_prepared_root_is_bound_by_the_manifest_digest() -> Bool {
+  match manifest_identity(content: "{\"root\": \"cassette-rack-review\", \"parts\": []}") {
+    Present { value: a } => match manifest_identity(content: "{\"root\": \"residential-cassette\", \"parts\": []}") {
+      Present { value: b } => a.digest.hex != b.digest.hex && a.root_wire == "cassette-rack-review" && b.root_wire == "residential-cassette"
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// A manifest without a root refuses rather than defaulting to the cassette.
+test fn w_a_manifest_without_a_root_refuses() -> Bool {
+  match manifest_identity(content: "{\"parts\": []}") { Present { value: _ } => false Absent => true }
 }
