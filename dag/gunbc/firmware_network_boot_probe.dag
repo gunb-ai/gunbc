@@ -126,7 +126,7 @@ fn route_for(row: FirmwareBootFamilyRow, request: ProbeRequest) -> RouteVerdict 
 }
 
 // ONE ACCOUNT, STATED ONCE: AxisReply values are SUPPLIED TRANSPORT-SHAPED HYPOTHESES. No existing
-// extdeps.bmc reader produces them yet (the frontier below is Pending), so nothing this module
+// extdeps.bmc reader produces them from a bound read yet (the supplied-observation decoder exists; the producer-bound reader in the frontier below is Pending), so nothing this module
 // returns is receipt-backed until the declared reader produces SuppliedProbeInput from a real read. probe() writes no wire
 // protocol. A reply names its own axis, so there is no axis tag to disagree with the payload.
 type AxisReply
@@ -477,8 +477,9 @@ fn firmware_boot_family_rows() -> List<FirmwareBootFamilyRow> {
 
 // ---- THE FRONTIER THIS MODULE OWES: A REAL READER FOR AxisReply.
 //
-// probe() consumes AxisReply, and nothing yet decodes a real extdeps.bmc reply into one, so every
-// run of this module is fixtures-in / fixtures-out. The decoder belongs in its own module, not here:
+// probe() consumes AxisReply. A decoder from supplied REST observations exists (gunbc.firmware_network_boot_readers
+// decode_redfish_boot_reads), but the producer-bound reader observe_redfish_boot_axes is pending, so
+// AxisReplyInhabitedByReader is unestablished and every run of this module is fixtures-in / fixtures-out. The decoder belongs in its own module, not here:
 // extdeps.bmc.{megarac,openbmc,redfish} own their command surfaces, and a decoder written in the
 // probe's file would be a second owner of that surface that cannot be reviewed as transport work.
 // Until it exists the frontier is Pending and the inhabitation claim is Uninhabited, both as values

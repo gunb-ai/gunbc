@@ -158,7 +158,7 @@ fn boot_options_beyond_decoder() -> AxisReply {
   ReplyBeyondDecoder { axis: BootOptionsAxis, why: "the ComputerSystem BootOptions collection is published by Redfish but this decoder does not read it, so BootOption references, enabled state and kinds are not observed" }
 }
 
-// BootOrder, BootOptions, NICs, SecureBoot, BIOS version. An axis whose exchange had no response has no reply.
+// BootOrder, BootOptions, NICs, SecureBoot, BIOS version. An axis whose exchange yielded no readable response has no response-derived reply (the two decoder-gap replies are emitted regardless of the transport response).
 fn redfish_axis_replies(reads: RedfishBootReads) -> List<AxisReply> {
   let system = read_doc(get: reads.system)
   list_append(left: boot_order_reply(system: system), right: list_append(left: [boot_options_beyond_decoder(), nics_beyond_decoder()], right: list_append(left: secure_boot_reply(get: reads.secure_boot), right: bios_version_reply(system: system))))
@@ -170,7 +170,13 @@ type RedfishExchange
   = SystemExchange
   | SecureBootExchange
 
-type RedfishUnread { exchange: RedfishExchange, cause: NonEmptyStr }
+// WHY an exchange was not read. The two are different facts: no response was reached, or a success response arrived
+// whose body could not be read (the status is the BMC's and is kept).
+type RedfishUnreadCause
+  = RedfishExchangeUnreached { cause: NonEmptyStr }
+  | RedfishResponseBodyUnreadable { status: HttpStatus, cause: NonEmptyStr }
+
+type RedfishUnread { exchange: RedfishExchange, why: RedfishUnreadCause }
 
 // DECODER-ONLY RESULT: the decoded replies plus, per exchange, the ones that were never read. It is not a
 // probe contact: the subject, row and receipt join, and the Responded/Silent choice, belong to the future
@@ -181,9 +187,9 @@ type RedfishDecodeOutcome
 
 fn unread_of(exchange: RedfishExchange, get: RestExchangeObservation) -> List<RedfishUnread> {
   match get {
-    RestExchangeRefused { cause: c } => [RedfishUnread { exchange: exchange, cause: c }]
+    RestExchangeRefused { cause: c } => [RedfishUnread { exchange: exchange, why: RedfishExchangeUnreached { cause: c } }]
     RestResponseObserved { status: s, body: RestBodyReadRefused { cause: c } } =>
-      if http_status_is_success(status: s) { [RedfishUnread { exchange: exchange, cause: c }] } else { [] }
+      if http_status_is_success(status: s) { [RedfishUnread { exchange: exchange, why: RedfishResponseBodyUnreadable { status: s, cause: c } }] } else { [] }
     RestResponseObserved { status: _, body: RestBodyRead { body: _ } } => []
   }
 }
