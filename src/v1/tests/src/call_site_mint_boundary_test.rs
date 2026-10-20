@@ -127,8 +127,13 @@ fn a_call_that_passes_actuals_gets_no_call_site_mint() {
     let distinct: std::collections::HashSet<&String> = ids.iter().collect();
     // A minted variable is tagged with the call site. Any of '@', ':' or '-' in an id is a site tag:
     // the shapes tried were "K@<file>:<start>-<end>" (span-keyed) and bare "K" (name-keyed).
-    let is_site_tagged = |id: &&String| id.contains('@') || id.contains(':') || id.contains('-');
-    let minted: Vec<&&String> = distinct.iter().filter(is_site_tagged).collect();
+    // The predicate's parameter type is left to inference on purpose: `distinct` is a HashSet<&String>,
+    // so `iter()` yields `&&String` and `filter` hands the predicate `&&&String` -- annotating it by
+    // hand is how this row failed to compile the first time it ran.
+    let minted: Vec<&&String> = distinct
+        .iter()
+        .filter(|id| id.contains('@') || id.contains(':') || id.contains('-'))
+        .collect();
 
     println!(
         "MINT-BOUNDARY-INVENTORY positions={} distinct={} minted={} calls={} sample={:?}",
