@@ -117,28 +117,3 @@ test fn is_authored_resolved_arm_refuses() -> Bool {
     Rejected { diagnostics: _ } => true
   }
 }
-
-test fn dbg_unit_miss() -> Bool {
-  is_infer_reason(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red"), reason: ^infer_facts_lookup_miss)
-}
-test fn dbg_unit_shape() -> Bool {
-  is_infer_reason(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red"), reason: ^infer_transform_shape_invalid)
-}
-test fn dbg_unit_notco() -> Bool {
-  is_infer_reason(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red"), reason: ^infer_match_scrutinee_not_coproduct)
-}
-test fn dbg_unit_armnd() -> Bool {
-  is_infer_reason(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red"), reason: ^arm_resolution_reason_arm_not_declared_by_owner)
-}
-test fn dbg_unit_spell() -> Bool {
-  is_infer_reason(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red"), reason: ^arm_resolution_reason_arm_spelling_unreadable)
-}
-test fn dbg_plain_accepts() -> Bool {
-  match is_src(decls: "type Color = Red | Green\n", body: "true") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } => match infer(tree: root) { Accepted { value: _, diagnostics: _ } => true Rejected { diagnostics: _ } => false }
-  }
-}
-test fn dbg_unit_ownerpath() -> Bool {
-  is_infer_reason(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red"), reason: ^arm_resolution_reason_owner_path_unreadable)
-}
