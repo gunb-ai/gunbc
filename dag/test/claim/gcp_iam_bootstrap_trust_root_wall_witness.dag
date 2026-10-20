@@ -171,7 +171,7 @@ test fn the_exact_row_establishes_the_binding() -> Bool {
 test fn an_unmatched_page_with_another_page_is_incomplete_never_absent() -> Bool {
   (match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_a, value: "tagValues/9")] }, next_page_token: Present { value: "more" }) {
     TagBindingEstablished => false  TagBindingAbsent => false  TagBindingIncomplete => true })
-    && (match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: none, next_page_token: Present { value: "" }) {
+    && (match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Absent, next_page_token: Present { value: "" }) {
     TagBindingEstablished => false  TagBindingAbsent => true  TagBindingIncomplete => false })
 }
 
