@@ -3,7 +3,7 @@ module test.claim.firmware_network_boot_probe_witness
 import std.types { Bool, List }
 import gunbc.firmware_network_boot_standing {
   FirmwareBootObservation, SecureBootUnobserved, SecureBootEnabled, SecureBootDisabled, SecureBootRefused,
-  NicsUnobserved, NicsRefused, boot_order_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved, AuthenticationRequired,
+  BootOptionsUnobserved, NicsUnobserved, NicsRefused, boot_order_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved, AuthenticationRequired,
 }
 import gunbc.firmware_network_boot_probe {
   FirmwareBootFamilyRow, BmcStack, RouteVerdict,
@@ -200,4 +200,24 @@ test fn a_reply_beyond_the_decoder_is_unobserved_not_refused() -> Bool {
         BmcUnreachable { subject: _, attempt: _ } => false
       }
   }
+}
+
+// Every shipped row declares BootOptions unanswerable (our gap), so an empty reply set leaves it Unobserved.
+fn options_unobserved_on(stack: BmcStack) -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: stack) {
+    Absent => false
+    Present { value: row } =>
+      match probe(row: row, subject: subject(), contact: BmcResponded { replies: [] }) {
+        BmcObserved { subject: _, observation: o } =>
+          match o.boot_options {
+            BootOptionsUnobserved { reason: _ } => true
+            _ => false
+          }
+        BmcUnreachable { subject: _, attempt: _ } => false
+      }
+  }
+}
+
+test fn shipped_rows_leave_boot_options_unobserved_with_our_reason() -> Bool {
+  options_unobserved_on(stack: FirmwareFamilyStack { family: OpenBmc }) && options_unobserved_on(stack: FirmwareFamilyStack { family: AmiMegaRac })
 }
