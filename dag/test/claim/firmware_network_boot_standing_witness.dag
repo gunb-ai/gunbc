@@ -14,7 +14,8 @@ import std.optional { Optional, Present, Absent }
 // THE SEAL PROBES RUN THROUGH THE CORPUS'S OWN HARNESS, never a hand-rolled compiler call: it reports
 // blocking diagnostics by class AND subject, so a probe can name WHICH mint refused rather than merely
 // that something refused.
-import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
+import gunbc.compile_census_probe { blocking_subject_count_for, census_rows_for }
+import gunbc.compile_diagnostic_census { census_count_at_key, censuses_differ_by_exactly_the_target_key }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // THE FRONTIER IS WITNESSED, NOT ASSERTED IN PROSE: the witness reads the bound triggers and
 // states what their status is TODAY, so the day the probe lands, this is the thing that changes.
@@ -1268,25 +1269,30 @@ fn fixture_available() -> AvailableNetworkStanding {
   available_network_options(options: good_options())
 }
 
-// EXISTENCE IS NOT DERIVABLE FROM USABILITY, AND THE ATTEMPT IS WHERE THE DIFFERENCE IS DECISION-
-// BEARING (merry-fox-82, round 2 item 2). I published M19 ('answer existence with the usability fold')
-// as EQUIVALENT-BY-CONSTRUCTION. That claim was too broad and it was wrong: it was made over the
-// binder alone, where both Disabled and Enabled satisfy a one-shot's prerequisite and nothing else
-// consults the standing. Widen the interface by one call -- `network_boot_attempt`, which forwards the
-// SAME standing into the SAME binder one layer up -- and the mutant separates:
+// EXISTENCE IS NOT DERIVABLE FROM USABILITY -- AND THE TWO MUTATIONS MUST NOT BE CONFLATED
+// (merry-fox-82, round 3). I published M19 ('answer existence with the usability fold') as
+// EQUIVALENT-BY-CONSTRUCTION over the binder; that claim was wrong, and my first correction to it
+// explained the wrong mutation. Two different edits are in play, and they separate in different
+// places:
 //
+//   (a) COLLAPSE Disabled -> NoExists. This is what the RED row measures (`Empty =>
+//       NoNetworkOptionExists` in network_option_existence). It is decision-bearing AT THE BINDER:
+//       the one-shot row's RequiresExistingBootOption prerequisite is consulted inside
+//       `bind_route_from`, so with existence collapsed the prerequisite fails there and every row for
+//       this blocker refuses. Equivalence held for it at NO interface -- not the binder, not the
+//       attempt. That is simply what makes M19 false.
+//   (b) RETAG Disabled -> Enabled. This one preserves the one-shot prerequisite everywhere the
+//       prerequisite is consulted, binder and attempt alike: 'an option exists' is satisfied either
+//       way. No prerequisite-shaped witness separates it, and none here claims to. If enablement
+//       itself ever needs enforcing, it needs its own consumer and its own row, not this one.
+//
+// WHAT THIS TEST THEN ESTABLISHES, which is all it claims: on the same fixture --
 //   observation: BootOrder = [NVMe0]; BootOptions = { NVMe0 enabled, PXE DISABLED }
-//   so usability (available_network_options) says NoAvailableNetworkOption, while existence says
-//   NetworkOptionExistsDisabled.
-//     real fold      : the redirect rows refuse (no usable target), the one-shot row binds (an option
-//                    exists, which is all its prerequisite asks) -> AttemptConstructed
-//     usability-derived: existence collapses to NoNetworkOptionExists, the one-shot prerequisite fails,
-//                    every row for this blocker refuses                      -> AttemptRouteUnbound
-//
-// So the equivalence is refused and the interface it was claimed over is named: the claim held for
-// `bind_route_from` in isolation and failed as soon as the standing travelled through `prepare`/
-// `network_boot_attempt`. A mutant is equivalent only relative to an interface; naming the interface
-// is part of the claim, and mine named the narrow one.
+// so usability says NoAvailableNetworkOption while existence says NetworkOptionExistsDisabled -- the
+// real fold reaches AttemptConstructed on the one-shot (an option exists, which is all its
+// prerequisite asks), and the mutation (a) answer, AttemptRouteUnbound, is refused by name in the
+// same match. Naming which of the two mutations a row measures is part of the claim; my first version
+// of this comment measured (a) while telling the story of (b).
 test fn an_attempt_over_a_disabled_option_constructs_where_usability_would_unbind_it() -> Bool {
   let disabled_options = [opt_disk(ref_disk()), opt_disabled_pxe(ref_pxe())]
   match network_boot_attempt(
@@ -1302,8 +1308,9 @@ test fn an_attempt_over_a_disabled_option_constructs_where_usability_would_unbin
     unit_label: "synthetic-unit",
   ) {
     // CONSTRUCTED, on a one-shot: the route that can arm an entry that exists but is neither selected
-    // nor enabled. If existence had been taken from usability this arm would be AttemptRouteUnbound,
-    // which is the other half of the witness -- the mutant's answer, refused by name.
+    // nor enabled. Under the MEASURED mutation -- Disabled collapsed to NoNetworkOptionExists -- this
+    // arm would be AttemptRouteUnbound instead, which is the other half of the witness, refused by
+    // name. (The retag mutation, Disabled to Enabled, keeps this arm Constructed; see the header.)
     AttemptConstructed { attempt: built } =>
       match built.route {
         RedfishOneShotOverride { service_root: root, authority: _ } => root == "redfish:Systems/Self"
@@ -2079,8 +2086,9 @@ test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guesse
     Refused { cause: NoRouteOwnsThisBlocking { why: _ }, gaps: _ } => false
     // THE TWO BLOCKER-3 CAUSES, named rather than swept under a `_ => false`: they are refusals, so a
     // wildcard would let the seam report 'the conflict is named' while naming something else entirely.
-    // Each states a remedy the other does not -- one says read this, the other says your transcription
-    // is from another board -- and this test's whole claim is that the seam distinguishes causes.
+    // Each states a different missing thing -- one says the read that would resolve the slot has not
+    // been taken, the other says the transcription's version spelling does not match the version this
+    // unit currently reports -- and this test's whole claim is that the seam distinguishes causes.
     Refused { cause: RouteBindingUnresolved { mechanism: _, owed_read: _ }, gaps: _ } => false
     Refused {
       cause: RouteBindingStaleForUnit {
@@ -2191,7 +2199,7 @@ test fn classification_is_the_kind_and_the_label_is_never_consulted() -> Bool {
 // call route (may a stranger call the mint and pass its output off as this module's verdict), and
 // merry's specific ask -- legitimate evidence reused with a swapped conclusion.
 
-data verdict_probe_hdr: String = "module probe_verdict_forgery\nimport std.types { Bool, EpochMs, List, NonEmptyStr }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }\nimport extdeps.uri { uri_https }\nimport extdeps.bmc.types { BootTargetPxe }\nimport extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }\nimport gunbc.firmware_network_boot_standing { FirmwareNetworkBootStanding, Ready, ReadyEvidence, AdmittedReadyConclusion, FirmwareBootObservation, firmware_boot_observation, BootOrderUnobserved, BootOptionsUnobserved, NicsUnobserved, SecureBootUnobserved, BiosVersionUnobserved, PreparationBlockingOn, NoInterfaceCarriesPxe, prepare, join_head_to_options, available_network_options, network_option_existence, NetworkOptionExistsEnabled, boot_order_entry, boot_option, redirect_target, RedirectTargetStanding }\n"
+data verdict_probe_hdr: String = "module probe_verdict_forgery\nimport std.types { Bool, EpochMs, List, NonEmptyStr }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }\nimport extdeps.uri { uri_https }\nimport extdeps.bmc.types { BootTargetPxe }\nimport extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }\nimport gunbc.firmware_network_boot_standing { FirmwareNetworkBootStanding, Ready, ReadyEvidence, AdmittedReadyConclusion, FirmwareBootObservation, firmware_boot_observation, BootOrderUnobserved, BootOptionsUnobserved, NicsUnobserved, SecureBootUnobserved, BiosVersionUnobserved, PreparationBlockingOn, NoInterfaceCarriesPxe, prepare, join_head_to_options, available_network_options, network_option_existence, NetworkOptionExistsEnabled, boot_order_entry, boot_option, redirect_target, RedirectTargetStanding, admissible_readiness_for, RouteReadinessStanding }\nimport std.algebra { length }\n"
 
 // THE OBSERVATION EVERY FORGE SHARES, spelled once so the two sources below differ in EXACTLY one
 // way: whether a Ready is wrapped around the evidence.
@@ -2302,7 +2310,7 @@ test fn the_conclusion_seal_is_a_wall_measured_as_a_delta_not_a_lone_count() -> 
 // caller has to bring unit evidence to the mint -- and is still refused, for the same reason as
 // before: it is not an admitted caller. Refusing a well-formed call is the only refusal worth
 // witnessing; refusing a call that would not compile proves nothing.
-data direct_mint_source: String = verdict_probe_hdr + "\nfn bypass_to_a_verdict() -> FirmwareNetworkBootStanding {\n  let enabled_network_option = boot_option(reference: \"0001\", kind: BootTargetPxe, label: \"PXE\", enabled: true)\n  prepare(\n    blocker: NoInterfaceCarriesPxe,\n    join: join_head_to_options(devices: [boot_order_entry(reference: \"0001\", label: \"PXE\")], options: [enabled_network_option]),\n    available: available_network_options(options: [enabled_network_option]),\n\n    existence: network_option_existence(options: [enabled_network_option]),\n    observed_bios_version: Present { value: \"1.08\" },\n  )\n}\n"
+data direct_mint_source: String = verdict_probe_hdr + "\nfn s0_probe_case() -> Bool {\n  let enabled_network_option = boot_option(reference: \"0001\", kind: BootTargetPxe, label: \"PXE\", enabled: true)\n  let join = join_head_to_options(devices: [boot_order_entry(reference: \"0001\", label: \"PXE\")], options: [enabled_network_option])\n  let available = available_network_options(options: [enabled_network_option])\n  let existence = network_option_existence(options: [enabled_network_option])\n  let redirect = redirect_target(join: join, available: available)\n  let readiness = admissible_readiness_for(blocker: NoInterfaceCarriesPxe, redirect_to: redirect, existence: existence, observed_bios_version: Present { value: \"1.08\" })\n  let direct = prepare(blocker: NoInterfaceCarriesPxe, join: join, available: available, existence: existence, observed_bios_version: Present { value: \"1.08\" })\n  0 <= length(xs: readiness)\n}\n"
 
 // THE LAWFUL PAIR, AND NOT A WEAK ONE (merry-fox-82, round 2 item 3). The first control imported
 // the mint and defined an identity function, which proved only that importing is allowed -- it
@@ -2318,36 +2326,108 @@ data direct_mint_source: String = verdict_probe_hdr + "\nfn bypass_to_a_verdict(
 // rather than to the imports, the builders, the literals, or the module.
 data lawful_import_source: String = verdict_probe_hdr + "\nfn names_the_blocker(b: PreparationBlockingOn) -> PreparationBlockingOn {\n  b\n}\n"
 
-data lawful_call_source: String = verdict_probe_hdr + "\nfn where_to_redirect() -> RedirectTargetStanding {\n  let enabled_network_option = boot_option(reference: \"0001\", kind: BootTargetPxe, label: \"PXE\", enabled: true)\n  redirect_target(\n    join: join_head_to_options(devices: [boot_order_entry(reference: \"0001\", label: \"PXE\")], options: [enabled_network_option]),\n    available: available_network_options(options: [enabled_network_option]),\n  )\n}\n"
+// THE CONTROL CONSTRUCTS AND CONSUMES ALL FIVE OF prepare's INPUTS, with the SAME expressions the
+// probe uses -- blocker, join, available, existence, observed_bios_version -- and hands them to the
+// module's UNGATED sibling path, `admissible_readiness_for`, the readiness fold that answers the same
+// catalog question without minting a verdict (and so without caller admission). This is what makes the
+// pair differential in the sense that matters: every builder call and literal the probe needs is
+// exercised by a source that is NOT refused, so the refusal below is attributable to the call to
+// `prepare` rather than to the builders or the literals. (Round 3, merry-fox-82: the earlier control
+// built only `join` and `available` and called redirect_target, so the probe's `existence` and
+// `observed_bios_version` expressions were exercised NOWHERE clean, and a bug in them was invisible
+// to the pair.)
+// WHAT THIS PAIR DOES NOT DEPEND ON, STATED SO IT IS NOT ASSUMED: the census does NOT certify that
+// the fixtures' import lists and call sites are the intended ones. A mutation that dropped
+// `network_option_existence` from the SHARED import list, or that substituted another expression for
+// one of the five arguments at the call site, left every census count unchanged -- the census is blind
+// to unbound names, and it reported the mint's refusal and nothing about the dropped name (measured:
+// rows R2G2 and R2G3 of the published mutation table). So a broken import or a substituted argument
+// would NOT have placed a row on the control, and no count here attests vocabulary coverage. That
+// coverage comes from the SOURCE-TEXT control -- the mechanical test below, which pins the shared
+// import header and then requires every builder call and the full argument spine, by name, in BOTH
+// fixtures of the pair -- and from nowhere else.
+data lawful_call_source: String = verdict_probe_hdr + "\nfn s0_probe_case() -> Bool {\n  let enabled_network_option = boot_option(reference: \"0001\", kind: BootTargetPxe, label: \"PXE\", enabled: true)\n  let join = join_head_to_options(devices: [boot_order_entry(reference: \"0001\", label: \"PXE\")], options: [enabled_network_option])\n  let available = available_network_options(options: [enabled_network_option])\n  let existence = network_option_existence(options: [enabled_network_option])\n  let redirect = redirect_target(join: join, available: available)\n  let readiness = admissible_readiness_for(blocker: NoInterfaceCarriesPxe, redirect_to: redirect, existence: existence, observed_bios_version: Present { value: \"1.08\" })\n  0 <= length(xs: readiness)\n}\n"
 
-// THE CONTROL MUST BE CLEAN IN ITSELF, AND THE PAIR MUST BE DIFFERENTIAL.
-// `total_blocking_count_for` answers -1 when the census never ran and a count otherwise, so:
-//  (a) the control must RUN (a census that never ran is not a clean compile) and be free of the
-//      admission refusal, while exercising the same argument builders;
-//  (b) the hostile source's blocking count must be the control's PLUS EXACTLY ONE -- the admission
-//      refusal for `prepare`. The differential shape is the point: both sources share one header, so
-//      whatever the shared imports themselves draw is present in both and cancels. If the probe were
-//      refused for a SECOND reason (an unresolvable name, a wrong arity, a missing import -- exactly
-//      the bugs merry-fox-82 found in the first version), the delta would be 2 and this test would go
-//      red. That is what 'otherwise valid call, refused solely by admission' means mechanically; a
-//      bare `>= 1` on one class could never say it.
-test fn the_direct_mint_probe_has_a_clean_control_over_the_same_arguments() -> Bool {
-  let control = total_blocking_count_for(source: lawful_call_source)
-  let probe = total_blocking_count_for(source: direct_mint_source)
-  // (a) THE CONTROL COMPILES AT ALL, and calls the same builders without being refused for it.
-  0 <= control
-    && blocking_subject_count_for(
-      source: lawful_call_source,
-      wanted_class: "ConstructorCallAdmissionRefused",
-      wanted_subject: "prepare",
+// THE PAIR'S CLAIMS, EACH IN ITS OWN TEST (merry-fox-82, round 3: an `&&`-chain over several claims
+// reports ONE FAIL for several assertions, which is how a wrong claim survives). The pair asserts
+// exactly four things, and nothing beyond them:
+//   both censuses RAN -- `census_rows_for` yields `none` exactly when a census could not run, so each
+//   test matches on `Present` and a never-run census fails its test rather than satisfying it
+//   vacuously, which retires the old `0 <= total_blocking_count_for(...)`;
+//   the CONTROL has 0 blocking rows AT THE TARGET KEY (the `ConstructorCallAdmissionRefused` row at
+//   `prepare`) and the PROBE has exactly 1 there. Cleanliness is claimed ONLY at the target key: a
+//   synthetic fragment importing this much of the fleet draws blocking rows of its own (see the note
+//   below the pair), so 'zero blocking rows anywhere' for the control and 'exactly one blocking row in
+//   the whole census' for the probe were tried, are permanently RED, and are NOT claimed anywhere;
+//   EVERY OTHER KEY IS UNCHANGED between the two censuses, by gunbc.compile_diagnostic_census's own
+//   comparator -- not by arithmetic on totals, because equal totals can hide an offsetting pair of
+//   changes, which is exactly what `probe == control + 1` used to paper over;
+//   the fixtures' IMPORT and ARGUMENT-SPINE COVERAGE comes from the source-text control, the
+//   mechanical test below, and not from any census count (see the paragraph above the control).
+// (a) THE CONTROL RAN. A census that could not run yields none on both sides, and the claim below is
+// then false rather than vacuously true.
+test fn the_control_census_ran() -> Bool {
+  match census_rows_for(source: lawful_call_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// (a') THE CONTROL IS CLEAN AT THE TARGET: it builds the same five arguments and is not refused for
+// calling the ungated path with them.
+test fn the_control_is_clean_at_the_target_key() -> Bool {
+  match census_rows_for(source: lawful_call_source) {
+    Absent => false
+    Present { value: control } => census_count_at_key(
+      rows: control.rows,
+      diagnostic_class: "ConstructorCallAdmissionRefused",
+      subject_name: "prepare",
+      blocking: true,
     ) == 0
-    // (b) THE HOSTILE SOURCE IS THE CONTROL PLUS ONE REFUSAL AND NOTHING ELSE.
-    && blocking_subject_count_for(
-      source: direct_mint_source,
-      wanted_class: "ConstructorCallAdmissionRefused",
-      wanted_subject: "prepare",
-    ) >= 1
-    && probe == control + 1
+  }
+}
+
+// (b) THE PROBE RAN AND IS REFUSED, once, at the target key.
+test fn the_probe_is_refused_once_at_the_target_key() -> Bool {
+  match census_rows_for(source: direct_mint_source) {
+    Absent => false
+    Present { value: probe } => census_count_at_key(
+      rows: probe.rows,
+      diagnostic_class: "ConstructorCallAdmissionRefused",
+      subject_name: "prepare",
+      blocking: true,
+    ) == 1
+  }
+}
+
+// WHY THERE IS NO 'ZERO BLOCKING ROWS ANYWHERE' CLAIM ON THE CONTROL, AND NO 'EXACTLY ONE BLOCKING
+// ROW' CLAIM ON THE PROBE. Both were tried and both were permanently RED, for a reason the
+// instrument itself documents (test.claim.machine_intake.no_fallback_plan_ineligibility_wall): a
+// synthetic source that imports this much of the fleet draws ~130 census rows, blocking UnresolvedType
+// entries among them, because the fragment cannot resolve every name it imports. So 'the control has
+// no blocking rows of any severity' is not a statement this instrument can make about a green fixture,
+// and 'the probe has exactly one' is not one it can make about a red one -- asserting either would be
+// rigour that can never be satisfied. WHAT THE INSTRUMENT DOES SUPPORT is what is claimed instead: the
+// TARGET KEY is clean on the control and carries the single refusal on the probe, and everything
+// OUTSIDE the target key is identical between the two censuses -- the exact differential against a
+// structurally paired source, which is the same shape those two walls settled on.
+
+// (c) THE DIFFERENCE IS EXACTLY THE TARGET KEY, by the SHARED comparator -- every key other than the
+// target carries the same count on both sides. A difference of totals could never say this: equal
+// totals can hide an offsetting pair of changes.
+test fn the_probe_differs_from_its_control_by_exactly_the_target_key() -> Bool {
+  match census_rows_for(source: lawful_call_source) {
+    Absent => false
+    Present { value: control } => match census_rows_for(source: direct_mint_source) {
+      Absent => false
+      Present { value: probe } => censuses_differ_by_exactly_the_target_key(
+        red: probe.rows,
+        green: control.rows,
+        target_class: "ConstructorCallAdmissionRefused",
+        target_subject: "prepare",
+      )
+    }
+  }
 }
 
 test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
@@ -2367,6 +2447,66 @@ test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
       wanted_class: "ConstructorCallAdmissionRefused",
       wanted_subject: "prepare",
     ) == 0
+}
+
+// THE CENSUS DOES NOT SEE UNBOUND NAMES, so the probe's own vocabulary is pinned by text instead.
+// MEASURED, not assumed: deleting `network_option_existence` from the shared import list (row R2G2 of the published mutation table) left
+// total_blocking_count_for and every class-and-subject count EXACTLY as they were -- the pair's two target counts stayed
+// at 0 and 1 and every row here stayed green -- because the ephemeral compile reports the mint's
+// admission refusal and is silent about a call whose name is no longer in scope. A fixture can
+// therefore LOSE an argument builder and still look like a fixture. Nothing about the two rows above
+// can catch that, so it is caught here, against the same strings the sources are built from: if the
+// import list stops carrying one of the builders, or a source stops APPLYING one, this test goes red.
+// The pair (imported, applied) matters: a name can sit in the import list while a mutation quietly
+// removes its call, and the reverse -- a call with no import -- is the R2G2 case.
+test fn the_probe_and_its_control_still_exercise_every_argument_builder() -> Bool {
+  // EVERY builder named below must be imported by the shared header AND appear as a call in BOTH
+  // sources: the control now carries all five of prepare's inputs with the probe's expressions, which
+  // is what lets the comparator's 'every other key identical' claim cover those expressions. The
+  // control must call the UNGATED path and must never reach for the mint.
+  string_contains(verdict_probe_hdr, "boot_option,")
+    && string_contains(verdict_probe_hdr, "boot_order_entry,")
+    && string_contains(verdict_probe_hdr, "join_head_to_options,")
+    && string_contains(verdict_probe_hdr, "available_network_options,")
+    && string_contains(verdict_probe_hdr, "network_option_existence,")
+    && string_contains(verdict_probe_hdr, "admissible_readiness_for,")
+    && string_contains(direct_mint_source, "boot_option(reference:")
+    && string_contains(direct_mint_source, "boot_order_entry(reference:")
+    && string_contains(direct_mint_source, "join_head_to_options(")
+    && string_contains(direct_mint_source, "available_network_options(")
+    && string_contains(direct_mint_source, "network_option_existence(")
+    && string_contains(direct_mint_source, "observed_bios_version:")
+    // The control really does build the same five arguments, really does not call the mint, and
+    // really does go through the ungated sibling path rather than some unrelated call.
+    && string_contains(lawful_call_source, "boot_option(reference:")
+    && string_contains(lawful_call_source, "boot_order_entry(reference:")
+    && string_contains(lawful_call_source, "join_head_to_options(")
+    && string_contains(lawful_call_source, "available_network_options(")
+    && string_contains(lawful_call_source, "network_option_existence(")
+    && string_contains(lawful_call_source, "observed_bios_version:")
+    && string_contains(lawful_call_source, "admissible_readiness_for(")
+    && !string_contains(lawful_call_source, "prepare(")
+    // THE CALL SITES, NOT MERELY THE NAMES. Pinning a builder NAME is not enough, because control and
+    // probe are built from ONE shared line list: `let existence = network_option_existence(...)` is a
+    // line of BOTH sources, so a probe whose forged call stopped consuming that binding would still
+    // contain the string. MEASURED (R2G3): replacing `existence: existence` in the probe's prepare call
+    // with a call to an unbound builder left this test GREEN on the name-only claims -- the census is
+    // blind to unbound names, so nothing else saw it either. What a fixture must therefore be held to
+    // is its ARGUMENT SPINE: each call must pass the shared bindings BY NAME, so no mutation can quietly
+    // substitute a different expression for one of the five while keeping every builder in view.
+    && string_contains(
+      direct_mint_source,
+      "prepare(blocker: NoInterfaceCarriesPxe, join: join, available: available, existence: existence, observed_bios_version: Present { value: \"1.08\" })"
+    )
+    && string_contains(
+      lawful_call_source,
+      "admissible_readiness_for(blocker: NoInterfaceCarriesPxe, redirect_to: redirect, existence: existence, observed_bios_version: Present { value: \"1.08\" })"
+    )
+    // And the two spines must agree where they are supposed to agree: same blocker, same existence
+    // binding, same BIOS version literal. A control whose arguments had drifted would make the
+    // comparator's 'every key outside the target is identical' claim vacuous, so it is pinned too.
+    && string_contains(direct_mint_source, "redirect_target(join: join, available: available)")
+    && string_contains(lawful_call_source, "redirect_target(join: join, available: available)")
 }
 
 // THE JOIN, TESTED DIRECTLY, ALL FIVE ARMS. This is the seam's most load-bearing function after
@@ -2568,7 +2708,38 @@ test fn an_all_disk_boot_order_with_network_shaped_labels_is_not_ready() -> Bool
         && match b {
              NetworkBootOptionNotSelected =>
                match r {
-                 PointUefiBootNext { service_root: _, boot_option: _, authority: _ } => true
+                 // WHICH OPTION, NOT MERELY WHICH MECHANISM (MEASURED, M6). This arm used to answer
+                 // `true` for any PointUefiBootNext, so dropping the head's KIND gate -- making a disk
+                 // head its own redirect target -- left this test GREEN: the module was telling the
+                 // operator to point BootNext at "0100", an NVMe DISK, and calling it network boot.
+                 // A route name is not the safety property; the bound reference is. So the payload is
+                 // bound and compared, with no catch-all arm.
+                 PointUefiBootNext { service_root: _, boot_option: bo, authority: _ } =>
+                   match bo {
+                     MechanismNameBound {
+                       value: v,
+                       grounded_by: GroundedByBootOptionEnumeration,
+                     } =>
+                       // THE FOLD'S ANSWER ON THIS UNIT, read off the fixture rather than guessed. The
+                       // head is an enumerated, ENABLED DISK, so the classifier excludes it and the
+                       // redirect falls back to the first AVAILABLE network option; this test's
+                       // available list is [HTTP, PXE, DISK] and the fallback preserves that order (the
+                       // same order-dependence the fallback is tested for elsewhere), so it is the HTTP
+                       // reference -- not the disk head, which is what the mutation produces.
+                       v == ref_http()
+                          // THE POINT OF THE CLAIM. Under the mutation that drops the head's KIND gate
+                          // (M6), `redirect_for_head` returns the head as its own target, so this unit
+                          // binds "0100" -- its NVMe disk, per the fixture above -- while still calling
+                          // the route a network-boot redirect. `v == ref_http()` already rejects that,
+                          // and the explicit negation states the hazard in the terms the hazard has: the
+                          // network-boot route must never point BootNext at the disk that is the head.
+                          && v != "0100"
+                     MechanismNameUnbound { owed_read: _ } => false
+                     MechanismNameBound {
+                       value: _,
+                       grounded_by: GroundedByBiosAttributeRead { bios_version: _ },
+                     } => false
+                   }
                  RedfishOneShotOverride { service_root: _, authority: _ } => true
                  IpmiOneShotOverride { channel: _, authority: _ } => true
                  // The persistent authoring route reaching this unit is the defect this whole split
@@ -3450,9 +3621,11 @@ test fn a_reference_listed_twice_with_identical_readings_is_not_a_conflict() -> 
 // HOLD 3a, THE VERSION THAT WAS ALREADY READ IS NOT THROWN AWAY. The SecureBootEnabled arm used to
 // pass `observed_bios_version: Absent` on the reasoning that Secure Boot is evaluated ABOVE the BIOS
 // axis so 'this fold has no version'. The axis is a field of the same observation, in scope at that
-// line, and discarding it was fail-open in disguise: a SecureBoot attribute transcription grounded to
-// BIOS 1.08 on a unit now reporting 2.00 was never compared, because the comparison's right-hand side
-// had been deleted, so every stale attribute name read as merely unverifiable instead of wrong.
+// line. What the omission cost was NOT a fail-open -- with Absent the binder refused the route as
+// unresolved, so nothing unchecked ever reached a write -- it was a LOST READ and a blunter refusal: a
+// SecureBoot attribute transcription grounded to BIOS 1.08 on a unit now reporting 2.00 had its
+// comparison's right-hand side deleted, so every stale attribute name read as merely unverifiable
+// instead of wrong, and the operator was sent to perform a read the module already had.
 //
 // WITNESSED AT THE BINDER, AND THAT IS THE HONEST RUNG, not a dodge: today every BIOS-attribute slot
 // in the catalog is an unbound typed slot, so the public entry fails closed with RouteBindingUnresolved

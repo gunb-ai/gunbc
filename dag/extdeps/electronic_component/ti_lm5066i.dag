@@ -1,0 +1,111 @@
+module extdeps.electronic_component.ti_lm5066i
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.texas_instruments { texas_instruments }
+import std.measure { millivolt }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow,
+  HotSwapControllerSpec,
+  HotSwapControllerSpecification,
+  ThresholdWindow,
+  ControllerPin,
+  GateDrive,
+  OutputFeedback,
+  CurrentSenseInput,
+  SupplyKelvinSense,
+  UndervoltageEnable,
+  OvervoltageLockout,
+  PowerGoodOutput,
+  PowerGoodFeedback,
+  FaultTimer,
+  FaultRetryMode,
+  PowerLimitSet,
+  CurrentLimitRange,
+  InternalRegulatorOutput,
+  ReferenceOutput,
+  TemperatureDiodeInput,
+  AuxiliaryVoltageInput,
+  NoConnection,
+  SharedPinRole,
+  SerialData,
+  SerialClock,
+  AlertOutput,
+  GroundReturn,
+  SupplyInput,
+  AddressSelect,
+  I2cOrSmbus,
+}
+
+// TI's LM5066I datasheet, SNVS950C (April 2014, revised July 2016), read 2026-10-19: the PWP (HTSSOP-28)
+// pin configuration and Pin Functions table, the Electrical Characteristics' UVLO and OVLO thresholds
+// (VVIN = 48 V, -40 C to 125 C), and the package option addendum, which gives orderable
+// LM5066IPMHE/NOPB (HTSSOP, PWP, 28 pins) the part marking LM5066I. UVLO's threshold is the falling
+// one; its rising threshold is set by the divider and the 20 uA hysteresis current, so a reading below
+// the falling minimum is below every enable point the pin has. SDAI is the data input and SDAO the
+// data output; SDAO is typed open-drain by the SMBus wiring the bus requires, not by a datasheet line.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/lit/ds/symlink/lm5066i.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.ti_lm5066i",
+      decl_name: "lm5066i_pwp",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data lm5066i_pwp: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: texas_instruments,
+  ordering_code: "LM5066IPMHE/NOPB",
+  package: "HTSSOP-28 (PWP), exposed pad to ground",
+  top_marking: "LM5066I",
+  specification: HotSwapControllerSpec { controller: HotSwapControllerSpecification {
+    pins: [
+      ControllerPin { number: 1, name: "OUT", role: OutputFeedback },
+      ControllerPin { number: 2, name: "GATE", role: GateDrive },
+      ControllerPin { number: 3, name: "SENSE", role: CurrentSenseInput },
+      ControllerPin { number: 4, name: "VIN_K", role: SupplyKelvinSense },
+      ControllerPin { number: 5, name: "VIN", role: SharedPinRole { role: SupplyInput } },
+      ControllerPin { number: 6, name: "NC", role: NoConnection },
+      ControllerPin { number: 7, name: "UVLO/EN", role: UndervoltageEnable },
+      ControllerPin { number: 8, name: "OVLO", role: OvervoltageLockout },
+      ControllerPin { number: 9, name: "AGND", role: SharedPinRole { role: GroundReturn } },
+      ControllerPin { number: 10, name: "GND", role: SharedPinRole { role: GroundReturn } },
+      ControllerPin { number: 11, name: "SDAI", role: SharedPinRole { role: SerialData { bus: I2cOrSmbus, open_drain: false } } },
+      ControllerPin { number: 12, name: "SDAO", role: SharedPinRole { role: SerialData { bus: I2cOrSmbus, open_drain: true } } },
+      ControllerPin { number: 13, name: "SCL", role: SharedPinRole { role: SerialClock { bus: I2cOrSmbus } } },
+      ControllerPin { number: 14, name: "SMBA", role: SharedPinRole { role: AlertOutput { open_drain: true } } },
+      ControllerPin { number: 15, name: "VREF", role: ReferenceOutput },
+      ControllerPin { number: 16, name: "DIODE", role: TemperatureDiodeInput },
+      ControllerPin { number: 17, name: "VAUX", role: AuxiliaryVoltageInput },
+      ControllerPin { number: 18, name: "ADR2", role: SharedPinRole { role: AddressSelect { bit: 2 } } },
+      ControllerPin { number: 19, name: "ADR1", role: SharedPinRole { role: AddressSelect { bit: 1 } } },
+      ControllerPin { number: 20, name: "ADR0", role: SharedPinRole { role: AddressSelect { bit: 0 } } },
+      ControllerPin { number: 21, name: "VDD", role: InternalRegulatorOutput },
+      ControllerPin { number: 22, name: "CL", role: CurrentLimitRange },
+      ControllerPin { number: 23, name: "FB", role: PowerGoodFeedback },
+      ControllerPin { number: 24, name: "RETRY", role: FaultRetryMode },
+      ControllerPin { number: 25, name: "TIMER", role: FaultTimer },
+      ControllerPin { number: 26, name: "PWR", role: PowerLimitSet },
+      ControllerPin { number: 27, name: "NC", role: NoConnection },
+      ControllerPin { number: 28, name: "PGD", role: PowerGoodOutput },
+    ],
+    enable_threshold: ThresholdWindow { minimum: millivolt(count: 2410), typical: millivolt(count: 2480), maximum: millivolt(count: 2550) },
+    overvoltage_threshold: ThresholdWindow { minimum: millivolt(count: 2390), typical: millivolt(count: 2460), maximum: millivolt(count: 2530) },
+  } },
+  vendor_application_statements: [
+    "An external resistor divider from the system input voltage sets the undervoltage turn-on threshold. An internal 20-uA current source provides hysteresis. The enable threshold at the pin is nominally 2.48 V. This pin can also be used for remote shutdown control.",
+    "The load current can be remotely switched off by taking the UVLO/EN pin below its threshold with an open collector or open-drain device, as shown in Figure 16. When UVLO/EN pin is released, the LM5066I switches on the FET with in-rush current and power limiting.",
+    "Connect this to a diode-configured MMBT3904 NPN transistor for temperature monitoring.",
+  ],
+}
