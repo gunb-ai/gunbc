@@ -4503,59 +4503,6 @@ fn record_lit_ref_names(n: Node, source_indices: Map<String, NewlineIndex>, type
   }
 }
 
-// ROOT-3 THIRD ATTESTATION ARM (board row 3, materialization_carriers 51-site census): an ANONYMOUS
-// record literal (no authored type name at the literal) is rendered by emit_typed_record_lit with a
-// head the EMITTER decides — the resolved/inferred nominal type, or a fields-signature lookup — so
-// the emitted text spells a name the authored source never does (compile_stage_memo `retention:
-// {...}` renders `ProviderRetention { .. }`). The authored-source text gate
-// (reference_derived_candidate_authored) therefore refuses exactly the candidate whose use-line the
-// emitted bytes need, and rustc reports E0422 on the head the emitter itself wrote. The correction
-// is not a widened text gate: attestation for this class comes from the same decision chain the
-// candidate proposer uses for the tn-Absent arm (emit_inferred_type_leaf_name when the summary is
-// known, else anonymous_record_lit_surface_name — both already consulted by record_lit_ref_names),
-// so the admitted set is precisely `heads the emitter will render for anonymous literals in this
-// module's items`, never a deep-inferred over-collection (the AuthoredTokenOrdinal fabrication
-// class enters via type-surface collection, not via this walk, and stays refused). Registry
-// resolution, export proof, local-decl, kernel and already-imported filters all still apply
-// downstream — this arm only replaces WHICH evidence attests the reference: the emitted occurrence
-// rather than an authored spelling that structurally cannot exist. Dissolve-on: the same trigger
-// the text gate declares (P2a candidate-producer / BoundReferenceProvider deriving use-lines from
-// bound-reference structure).
-
-fn collect_anonymous_record_lit_heads(n: Node, source_indices: Map<String, NewlineIndex>, type_summaries: TypeSummaryIndex) -> List<String> {
-  let self_head = match n.expr_data {
-    ExprRecordLit { parent_enum: _ } =>
-      match record_lit_type_name_at(texpr: n, source_indices: source_indices) {
-        Present { value: _ } => []
-        Absent =>
-          let inferred = emit_inferred_type_leaf_name(n: n, source_indices: source_indices)
-          if inferred != "" && (type_summary_decided(index: type_summaries, key: inferred) != none) { [inferred] } else {
-            let anon = anonymous_record_lit_surface_name(n: n, source_indices: source_indices, type_summaries: type_summaries)
-            if anon != "" { [anon] } else { [] }
-          }
-      }
-    _ => []
-  }
-  let list_fields = concat(
-    concat(
-      n.children |> flat_map(c => collect_anonymous_record_lit_heads(n: c, source_indices: source_indices, type_summaries: type_summaries)),
-      n.params |> flat_map(c => collect_anonymous_record_lit_heads(n: c, source_indices: source_indices, type_summaries: type_summaries))
-    ),
-    concat(
-      n.uses |> flat_map(c => collect_anonymous_record_lit_heads(n: c, source_indices: source_indices, type_summaries: type_summaries)),
-      n.properties |> flat_map(c => collect_anonymous_record_lit_heads(n: c, source_indices: source_indices, type_summaries: type_summaries))
-    )
-  )
-  let opt_fields = concat(
-    match n.body { Present { value: b } => collect_anonymous_record_lit_heads(n: b, source_indices: source_indices, type_summaries: type_summaries)  Absent => [] },
-    concat(
-      match n.transport { Present { value: t } => collect_anonymous_record_lit_heads(n: t, source_indices: source_indices, type_summaries: type_summaries)  Absent => [] },
-      match n.type_annotation { Present { value: t } => collect_anonymous_record_lit_heads(n: t, source_indices: source_indices, type_summaries: type_summaries)  Absent => [] }
-    )
-  )
-  concat(self_head, concat(list_fields, opt_fields))
-}
-
 // TAKES THE SURFACE NAMES, NOT THE ITEMS, BECAUSE ITS ONLY CALLER HAS ALREADY WALKED THEM.
 // This function used to re-run collect_item_emit_surface_names over every item -- the identical
 // walk reference_derived_use_line_plan runs one line earlier to build type_surface_names -- so the
@@ -4917,71 +4864,17 @@ fn expand_variant_payload_struct_imports(names: List<String>, type_summaries: Ty
   )
 }
 
-data reference_derived_authored_source_gate_note: String = "reference_derived_use_lines synthesizes a use-line only for an ATTESTED candidate: two authored-source-text forms decided by reference_derived_candidate_authored (NewlineIndex char_codes), plus one emitter-attested form decided by collect_anonymous_record_lit_heads (emitter_attested_anonymous_head_note — a head the emitter itself renders for an anonymous record literal, which the authored text structurally cannot spell). Direct: the candidate's own name is spelled. Variant-induced: the candidate is a unit-only enum and the module spells at least one variant that binds UNAMBIGUOUSLY back to it — derive_variant_to_enum maps a variant shared by two enums to the empty string, so a homonym never equals the enum name and is REFUSED rather than picked. A name that enters the candidate set only via inferred/type-summary over-collection — attested by neither form — must not become a pub use. Empty/unavailable module source REFUSES every candidate (fail-closed): ⊤-as-ignorance must not admit the full candidate set (§5 absorbing fallback). Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use — that name is a record, not a unit-only enum, so the variant-induced arm cannot readmit it. Second receipt (Root K): the emitter qualifies variants as Parent::Variant in pattern and nested-argument positions where the source spells only the variant, so asking whether the PARENT was spelled refused a parent the module demonstrably uses — 109 of 132 sites. UnlistedImportUse names are already spelled at the use site, so they pass when source text is readable. Declared residue, in two classes that fail at DIFFERENT stages — this gate is a filter over a candidate set, so it can only refuse, never propose. Refused HERE: a parent enum with neither its own name nor any binding variant spelled, and a non-enum candidate whose only evidence is over-collection. Never REACHING here, and therefore unfixable by any gate decision: a name the candidate collector never proposes. Measured by execution — forcing this gate to admit unconditionally and re-emitting v2.lens.complexity_accumulator_copy.analyze still produces no use-line for Behavior, whose unit-only variant Transform is spelled bare in a pattern position and binds unambiguously, so the arm's preconditions hold and the name is simply absent upstream. That class is pre-existing and unchanged by Root K (identical count in both arms), and it is where the remaining sites live: widening this gate further cannot reach them. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider) — this text-attestation gate is the conservative interim, not the destination."
-
-fn module_authored_source_text(module: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  match map_get(source_indices, module.span.file) {
-    Present { value: index } => chars_to_string(chars: index.char_codes, start: 0, end: index.char_codes |> count)
-    Absent => ""
-  }
-}
-
-fn reference_derived_candidate_spelled_in_module(module_source: String, name: String) -> Bool {
-  module_source != "" && string_contains(s: module_source, pattern: name)
-}
-
 data host_realized_builtin_needs_no_import_note: String = "A derived use-line must name a provider the EMITTED code actually paths into, and a host-realized builtin is not one. emit_typed_call intercepts a family of free calls by name -- to_string, discriminant, get, with, empty_set among them -- and renders each as a host expression: to_string(value: e) becomes (e.clone()).to_string(), the Rust METHOD, never a path to v1.compiler.emit_core_support. So the SOURCE reference is real and resolves to a real provider module, while the EMITTED module never mentions that provider. Importing it is dead in a single-crate build and FATAL under the seven-crate stage0 partition, where the provider is not even a member of the consuming crate -- which is exactly how this surfaced: E0432 unresolved import crate::v1_compiler_emit_core_support in v1-stage0-std-core, from a `pub use` this derivation emitted for v1.std.core's to_string calls. Two authorities are READ rather than duplicated, and both answer the same question -- does this name's emitted form contain a path to another module. v1.compiler.infer_method builtin_function_registry: a name it resolves is a host builtin, realized as a host expression. std.types is_container_type: List, Set and Map are structural containers rendered inline as Vec and HashMap, so a `pub use crate::std_types::` List-and-Map re-export names a provider the emitted code never paths into either -- dead in one crate, and E0432 in v1-stage0-emit-core where std_types is a member of v1-stage0-extdeps-languages instead. That second half is the same defect one level out: the first filter fixed a host-realized CALL, this one a host-realized TYPE, and the shared property is realization-without-a-path rather than anything about calls or types. LATENT, NOT NEW: import-free modules always received derived use-lines, so the defect predates this cut; deleting the corpus_repr gate merely extended the derivation to import-bearing modules, where v1.std.core is the first member to carry an intercepted free call. CEILING: the roster this consults covers five of the eight names the call emitter intercepts (empty_map, map and utf8_decode_bytes are absent from it), so a module that both references one of those three across a module boundary AND lands in a different partition crate would still refuse. None exists today. The right terminal shape is the one the closure-stub note already names -- derive use-lines from the EMITTED reference set rather than from source references, which needs no roster of intercepts at all because an intercepted call emits no path."
 
 fn reference_is_host_realized_builtin(name: String) -> Bool {
   infer_builtin_call_type(name: name) != none || is_container_type(name: name)
 }
 
-// WHY the authored-source gate has a second arm for parent enums.
-//
-// The gate asks whether a candidate name is spelled in the module. For a PARENT ENUM that is the
-// wrong question: the emitter qualifies a variant by its parent (Parent::Variant, via
-// rust_variant_path and the variant-ctor emit path) at sites where the .dag source
-// spells only the VARIANT — a bare match arm on Accepted, a nested construction of Unavailable.
-// The parent is then never in the module text, so its use-line was refused and the emitted
-// Parent::Variant had no import.
-//
-// The gate is therefore not relaxed; the question is corrected. A parent-enum candidate is admitted
-// when an authored VARIANT of that same enum is spelled, and only on the UNAMBIGUOUS binding:
-// derive_variant_to_enum maps a variant name shared by two enums to the empty string, so a homonym
-// variant admits NEITHER enum rather than picking one — fail-closed, no plausible guess.
-//
-// Residue, declared not hidden: a corpus-wide ambiguous variant leaves its parent unimported even
-// where the emitter qualifies it from the scrutinee type, and a parent reached by neither its own
-// spelling nor an unambiguous authored variant stays unsynthesized. Both refuse rather than
-// fabricate. This arm carries no dissolution condition of its own — it dissolves with the text gate
-// it corrects, on the trigger reference_derived_authored_source_gate_note already declares.
-
-fn reference_derived_variant_induced_parent_spelled(module_source: String, enum_name: String, type_summaries: TypeSummaryIndex, variant_to_enum: Map<String, String>) -> Bool {
-  match type_summary_decided(index: type_summaries, key: enum_name) {
-    Present { value: summary } =>
-      match summary.repr {
-        EnumRepr { unit_only: _ } =>
-          sorted_map_keys(summary.variant_name_set) |> any(vn =>
-            match map_get(variant_to_enum, vn) {
-              Present { value: parent } => parent != "" && qualified_last_segment(name: parent) == qualified_last_segment(name: enum_name) && reference_derived_candidate_spelled_in_module(module_source: module_source, name: vn)
-              Absent => false
-            }
-          )
-        _ => false
-      }
-    Absent => false
-  }
-}
-
-fn reference_derived_candidate_authored(module_source: String, name: String, type_summaries: TypeSummaryIndex, variant_to_enum: Map<String, String>) -> Bool {
-  reference_derived_candidate_spelled_in_module(module_source: module_source, name: name)
-    || reference_derived_variant_induced_parent_spelled(module_source: module_source, enum_name: name, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
-}
-
 // THE CANDIDATE PRODUCER FOR NAMES THE SOURCE NEVER SPELLS.
 //
-// host_realized_builtin_needs_no_import_note and reference_derived_authored_source_gate_note name
-// the same terminal shape from opposite ends: derive use-lines from the EMITTED reference set,
+// host_realized_builtin_needs_no_import_note names one end of the same terminal shape the
+// (now-deleted, absorbed) authored-source text attestation named from the other end: derive
+// use-lines from the EMITTED reference set,
 // because a name the collector never proposes cannot be admitted by any gate decision however wide.
 // This is that producer, at type grain and with no second authority: the realized names are read
 // back out of render_rust_type -- the one function that decides what a type reference becomes --
@@ -5000,7 +4893,7 @@ fn reference_derived_candidate_authored(module_source: String, name: String, typ
 // registry to another module, pass provider_proven_exports_symbol, and -- the arm below -- be
 // spelled in the module's own EMITTED text. That last attestation is why a misrendered candidate
 // cannot fabricate a use-line: a name the emitter did not write is not attested by the artifact it
-// wrote, which is a strictly stronger witness than the authored-source gate it joins.
+// wrote, which is a strictly stronger witness than the authored-source text gate it outlived.
 // Splits a Rust TEXT into bare identifier tokens. Two callers with one authority: a rendered TYPE
 // string (Rc<Vec<Int>>, crate::a::B) and a whole emitted MODULE source. The type caller only ever
 // contains the first nine delimiters; the source caller also carries statement and block
@@ -5246,8 +5139,8 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 // parent_enum may appear in a routed row without appearing as a row of its own. Until that is
 // measured, a routed row is a claim about WHERE the obligation went, never that it was discharged.
 // THE ONE DECISION, WITH TWO CONSUMERS (DESIGN section 2, one concept derived twice rather than
-// modelled twice). reference_derived_use_lines takes the survivors and emits exactly the use-lines it
-// emitted before; the census takes the same rows and counts them. Byte-identity of the emitted crate
+// modelled twice). reference_derived_use_line_plan takes the survivors and emits exactly the use-lines
+// it emitted before; the census takes the same rows and counts them. Byte-identity of the emitted crate
 // is therefore STRUCTURAL rather than asserted: the emitted use-lines cannot move unless this
 // function's answer moves, because there is no second copy of the decision to drift from.
 fn reference_derived_candidate_disposition(name: String, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: TypeSummaryIndex, variant_to_enum: Map<String, String>, in_type_position: Bool) -> ReferenceDerivedCandidateDisposition {
@@ -5357,13 +5250,6 @@ fn reference_derived_row_diagnostics(rows: List<ReferenceDerivedCandidateRow>, m
       CandidateLeafAmbiguous => []
     }
   )
-}
-
-fn reference_derived_candidate_survived(disposition: ReferenceDerivedCandidateDisposition) -> Bool {
-  match disposition {
-    CandidateSurvived { provider_module: _ } => true
-    _ => false
-  }
 }
 
 // The disposition's name as one stable token, for a census line and for a witness oracle. It is a
@@ -5566,23 +5452,14 @@ fn canonical_string_set(items: List<String>) -> List<String> {
   sorted_map_keys(presence)
 }
 
-fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
+fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String, applied_type_argument_names: List<String>) -> ReferenceDerivedUseLinePlan {
   {
-    let module_source = match typed_module_by_name(module_name: this_module_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
-      Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
-      Absent => ""
-    }
     let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)))
     let item_emit_surface_names = items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info))
     let type_surface_names = unique_strings(items: item_emit_surface_names)
-    let applied_type_argument_names = unique_strings(items: items
-      |> flat_map(item => collect_item_type_surface_occurrences(item: item, source_indices: source_indices))
-      |> filter(occurrence => occurrence.applied_argument)
-      |> map(occurrence => occurrence.name))
     let type_position_set = type_surface_names |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
     let field_surface_names = collect_items_field_import_surface_names(surface_names: item_emit_surface_names, emit_info: emit_info)
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
-    let emitter_attested_anon_heads = unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
     let realized_surface_names = unique_strings(items: items |> flat_map(item => collect_item_realized_surface_names(item: item, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)))
     let emitted_source_tokens = rust_identifier_tokens(s: rust_qualified_segments_marked(s: rust_code_outside_string_literals(s: emitted_source)))
     let emitted_source_token_set = emitted_source_tokens
@@ -5597,10 +5474,6 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       rendered_type_surface_names: realized_surface_names,
     )
     let candidates = unique_strings(items: repair_input_origin_compatibility_names(candidates: origin_candidates))
-      |> filter(name =>
-        reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
-          || emitter_attested_anon_heads |> any(h => h == name)
-          || emit_map_has(m: emitted_source_token_set, key: name))
       |> filter(name => !reference_is_host_realized_builtin(name: name))
       |> filter(name => emit_map_has(m: emitted_source_token_set, key: name))
     let local_decl_names = items |> flat_map(item =>
@@ -5621,19 +5494,22 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
         }]
       }
     )
-    let unlisted = rows
-      |> filter(r => reference_derived_candidate_survived(disposition: r.disposition))
-      |> map(r => r.name)
-    let resolved = unlisted |> flat_map(name =>
-      match lookup_item_by_leaf(leaf: name, registry: registry, emit_info: emit_info) {
-        ItemFound { info: info } => [ReferenceDerivedProviderBinding { name: name, provider_module: info.module_name }]
-        ItemLeafAmbiguous { leaf: _ } => []
-        ItemNotFound => []
+    let resolved = rows |> flat_map(r =>
+      match r.disposition {
+        CandidateSurvived { provider_module: provider } => [ReferenceDerivedProviderBinding { name: r.name, provider_module: provider }]
+        _ => []
       }
     )
-    let providers = canonical_string_set(items: resolved |> map(b => b.provider_module))
+    let grouped_seed: Map<String, List<String>> = empty_map()
+    let grouped = resolved |> fold(init: grouped_seed, f: (acc, b) =>
+      if b.provider_module == "" { acc } else {
+        let existing = match map_get(acc, b.provider_module) { Present { value: v } => v  Absent => [] }
+        map_insert(acc, b.provider_module, concat(existing, [b.name]))
+      }
+    )
+    let providers = sorted_map_keys(grouped)
     let typed_lines = providers |> flat_map(provider =>
-      let names = canonical_string_set(items: resolved |> filter(b => b.provider_module == provider) |> map(b => b.name))
+      let names = canonical_string_set(items: match map_get(grouped, provider) { Present { value: v } => v  Absent => [] })
       let plan_module_env = match map_get(module_index.by_name, this_module_name) {
         Present { value: tm } => Present { value: tm.type_env }
         Absent => none
@@ -5754,11 +5630,6 @@ fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, 
   )
 }
 
-fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
-  let plan = reference_derived_use_line_plan(items: items, unlisted_type_names: unlisted_type_names, this_module_name: this_module_name, registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, shared_types: shared_types, emitted_source: emitted_source)
-  plan.lines
-}
-
 // One module's emission and the refusals that withhold publishing it, returned together. The file
 // is what emit_rust writes; the rows are what the census counts. Nothing here changes what the file
 // contains -- reference_rows is the plan's OTHER projection of a computation the emitter already
@@ -5853,6 +5724,10 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   )
   let module_import_items = module_imports(n: m)
   let this_module_name = authored_name(env: scope.type_env, node: m)
+  let applied_type_argument_names = unique_strings(items: typed_module.items
+    |> flat_map(item => collect_item_type_surface_occurrences(item: item, source_indices: scope.type_env.source_indices))
+    |> filter(occurrence => occurrence.applied_argument)
+    |> map(occurrence => occurrence.name))
   let wire_context_items = concat(typed_module.items, contracts_items_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
   let wire_context_imports = concat(module_import_items, contracts_imports_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
   let wire_contract_item = wire_context_items
@@ -5864,7 +5739,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
     |> join(separator: "\n\n")
   let prelude = emit_prelude(module_name: this_module_name)
-  let rendered_imports = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items, module_env: Present { value: scope.type_env }, from_module: rust_module_emit_filename(module_name: this_module_name))
+  let rendered_imports = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items, module_env: Present { value: scope.type_env }, from_module: rust_module_emit_filename(module_name: this_module_name), applied_type_argument_names: applied_type_argument_names)
   let imports_str = rendered_imports.text
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
   let already_imported_names = concat(
@@ -5884,7 +5759,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       source_indices: scope.type_env.source_indices,
       module_index: module_index,
       shared_types: shared_types,
-      emitted_source: items_str
+      emitted_source: items_str,
+      applied_type_argument_names: applied_type_argument_names
     )
   let reference_use_lines = reference_plan.lines
   let merged_import_lines = dedupe_rust_import_lines(lines: concat(dag_import_lines, reference_use_lines))
@@ -7538,14 +7414,10 @@ type RenderedUseLines {
   edges: List<EmittedEdge>
 }
 
-fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_items: List<Node>, module_env: TypeEnv?, from_module: String) -> RenderedUseLines {
+fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_items: List<Node>, module_env: TypeEnv?, from_module: String, applied_type_argument_names: List<String>) -> RenderedUseLines {
   if imports |> count == 0 {
     RenderedUseLines { text: "", edges: [] }
   } else {
-    let applied_type_argument_names = unique_strings(items: supplement_items
-      |> flat_map(item => collect_item_type_surface_occurrences(item: item, source_indices: source_indices))
-      |> filter(occurrence => occurrence.applied_argument)
-      |> map(occurrence => occurrence.name))
     let import_modules = unique_strings(items: imports |> map(imp => authored_name_at(source_indices: source_indices, node: imp)))
     let import_blocks = import_modules |> map(import_module =>
       let mod_imports = imports |> filter(imp => authored_name_at(source_indices: source_indices, node: imp) == import_module)
@@ -19659,6 +19531,15 @@ fn native_serve_declares_startup(modules: List<TypedModule>, pipeline_module: St
   count(native_effect_decl_sites(modules: modules, kind: ModuleItemFunction, name: native_serve_startup_function)
     |> filter(site => site.module_name == pipeline_module)) > 0
 }
+// A startup entry MAY also declare `native_serve_startup_bound` (a Second): the bound on its own startup readiness, which the
+// rendered main reads for its readiness wait in place of gunbc.native_serve native_serve_startup_deadline. It is the driver's
+// declared data, as the handler and the startup fold are, and a driver that declares none keeps the default bound.
+data native_serve_startup_bound_name: String = "native_serve_startup_bound"
+
+fn native_serve_declares_startup_bound(modules: List<TypedModule>, pipeline_module: String) -> Bool {
+  count(native_effect_decl_sites(modules: modules, kind: ModuleItemDataValue, name: native_serve_startup_bound_name)
+    |> filter(site => site.module_name == pipeline_module)) > 0
+}
 data native_cli_entry_function: String = "v2_cli_main"
 data native_claim_entry_function: String = "native_claim_report"
 
@@ -19817,7 +19698,7 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
-      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module))
+      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module), startup_bound: native_serve_declares_startup_bound(modules: modules, pipeline_module: pipeline_module))
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -20142,7 +20023,7 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // transport error): at startup the main refuses before announcing, so /livez is never answered by a
 // process that cannot serve; a failed replacement ends the process with
 // native_serve_worker_replacement_exit_code once the request in hand is answered.
-fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, startup: Bool) -> TextFile {
+fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, startup: Bool, startup_bound: Bool) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let effectful = (bindings |> count) > 0
   let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
@@ -20152,22 +20033,28 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
     concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup;", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};", "\n")
   } else { "" }
-  let startup_run = if startup {
+  let bound_import = if startup_bound { concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup_bound;", "\n") } else { "" }
+  let startup_second = if startup_bound { "native_serve_startup_bound()" } else { "contract.startup_deadline.clone()" }
+  let worker_startup = if startup {
     concat(
-      "    // The startup fold runs before any bind: it judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
-      "    match std::fs::read(\"/proc/self/exe\") \{", "\n",
-      "        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
-      "            NativeServeStartup::NativeServeStartupPassed \{ note \} => println!(\"\{\}\", native_serve_startup_passed_line(note.clone())),", "\n",
-      "            NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
-      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
+      "        // It judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
+      "        let startup_value = match std::fs::read(\"/proc/self/exe\") \{", "\n",
+      "            Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) \{", "\n",
+      "                NativeServeStartup::NativeServeStartupPassed \{ line, value \} => \{", "\n",
+      "                    if !STARTUP_ANNOUNCED.swap(true, std::sync::atomic::Ordering::SeqCst) \{ println!(\"\{\}\", native_serve_startup_passed_line(line.clone())); \}", "\n",
+      "                    value.clone()", "\n",
+      "                \}", "\n",
+      "                NativeServeStartup::NativeServeStartupRefused \{ reason \} => \{", "\n",
+      "                    eprintln!(\"\{\}\", native_serve_startup_refusal_line(reason.clone()));", "\n",
+      "                    std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "                \}", "\n",
+      "            \},", "\n",
+      "            Err(cause) => \{", "\n",
+      "                eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
       "                std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
       "            \}", "\n",
-      "        \},", "\n",
-      "        Err(cause) => \{", "\n",
-      "            eprintln!(\"\{\}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: \{\}\", cause)));", "\n",
-      "            std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
-      "        \}", "\n",
-      "    \}", "\n")
+      "        \};", "\n",
+      "        let _ = started_tx.send(());", "\n")
   } else { "" }
   let worker_realize = if effectful {
     concat(
@@ -20177,15 +20064,65 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "        \};", "\n",
       binding_lines)
   } else { "" }
+  let started_decl = if startup { "    let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();\n" } else { "" }
+  let startup_wait = if startup {
+    concat(
+      "    if started_rx.recv_timeout(ready_within).is_err() \{", "\n",
+      "        eprintln!(\"\{\}\", native_serve_startup_refusal_line(\"the startup did not complete within its bound\".to_string()));", "\n",
+      "        std::process::exit(native_serve_startup_refused_exit_code() as i32);", "\n",
+      "    \}", "\n")
+  } else { "" }
+  let timeout_arm = if startup {
+    "        Err(_) => Err(\"the worker ended before it reported ready\".to_string()),\n"
+  } else {
+    "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),\n"
+  }
+  let ready_within = if startup {
+    concat("std::time::Duration::from_secs(second_count(", startup_second, ") as u64)")
+  } else {
+    "std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64)"
+  }
+  let ready_name = if startup { "ready_within" } else { "deadline" }
+  let ready_let = if startup { concat("    let ready_within = ", ready_within, ";", "\n") } else { "" }
+  let startup_arg = if startup { ", startup_value.clone()" } else { "" }
+  let startup_static = if startup { "// Whether the startup line has been printed: every worker generation judges the image, only the first announces.\nstatic STARTUP_ANNOUNCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\n" } else { "" }
   let worker_call = if effectful {
     concat(
-      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", handler_effect_args, ")) \{", "\n",
+      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
       "                Ok(response) => response,", "\n",
       "                Err(cause) => native_serve_effect_failed(cause.to_string()),", "\n",
       "            \};", "\n")
   } else {
-    "            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision);\n"
+    concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, ");\n")
   }
+  // Order of the serve main: a startup entry realizes its first worker (which runs the startup fold) BEFORE the bind, so a
+  // refusing self-check never becomes reachable; a driver with no startup keeps the original bind-then-realize order.
+  let realize_block = concat(
+      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
+      ready_let,
+      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
+      "    let mut generation = match realize_generation(&stuck, ", ready_name, ") \{", "\n",
+      "        Ok(generation) => generation,", "\n",
+      "        Err(cause) => \{", "\n",
+      "            eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \};", "\n"
+  )
+  let bind_block = concat(
+      "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
+      "        Ok(listener) => listener,", "\n",
+      "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      "    let bound = match listener.local_addr() \{", "\n",
+      "        Ok(addr) => addr,", "\n",
+      "        Err(cause) => \{ eprintln!(\"REFUSED: bound but could not read the bound address: \{\}\", cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      "    let bound_host = bound.ip().to_string();", "\n",
+      "    let bound_port = bound.port() as i64;", "\n"
+  )
+  let first_block = if startup { realize_block } else { bind_block }
+  let second_block = if startup { bind_block } else { realize_block }
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
@@ -20197,7 +20134,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "use std::rc::Rc;", "\n",
       "\n",
       "use ", crate_name, "::extdeps_http_server::ServeWireResponse;", "\n",
-      "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count\};", "\n",
+      "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count", if startup { ", second_count" } else { "" }, "\};", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{", "\n",
       "    native_serve_announcement,", effect_failed_import, " native_serve_frame, native_serve_handler_name, native_serve_read_refused,", "\n",
       "    native_serve_admission, native_serve_deadline_refused, native_serve_handler_failed, native_serve_outgoing, native_serve_route,", "\n",
@@ -20207,6 +20144,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::native_serve_handle;", "\n",
       startup_import,
+      bound_import,
       "\n",
       "// What a worker hands back across the thread boundary: owned plain values, because the compiled", "\n",
       "// handler's values are reference-counted and stay on the worker's thread.", "\n",
@@ -20271,6 +20209,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    \}", "\n",
       "\}", "\n",
       "\n",
+      startup_static,
       "struct HandlerCall \{", "\n",
       "    method: String,", "\n",
       "    path: String,", "\n",
@@ -20293,8 +20232,10 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    let state = std::sync::Arc::new(std::sync::Mutex::new(WORKER_WAITING));", "\n",
       "    let guard = WorkerGuard \{ state: state.clone(), stuck: stuck.clone() \};", "\n",
       "    let worker_state = state.clone();", "\n",
+      started_decl,
       "    std::thread::spawn(move || \{", "\n",
       "        let _guard = guard;", "\n",
+      worker_startup,
       worker_realize,
       "        let _ = ready.send(Ok(()));", "\n",
       "        while let Ok((call, reply)) = inbox.recv() \{", "\n",
@@ -20305,10 +20246,11 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            \}", "\n",
       "        \}", "\n",
       "    \});", "\n",
+      startup_wait,
       "    match readiness.recv_timeout(ready_within) \{", "\n",
       "        Ok(Ok(())) => Ok(Generation \{ calls, state \}),", "\n",
       "        Ok(Err(cause)) => Err(cause),", "\n",
-      "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),", "\n",
+      timeout_arm,
       "    \}", "\n",
       "\}", "\n",
       "", "\n",
@@ -20385,26 +20327,8 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \};", "\n",
-      startup_run,
-      "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
-      "        Ok(listener) => listener,", "\n",
-      "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",
-      "    \};", "\n",
-      "    let bound = match listener.local_addr() \{", "\n",
-      "        Ok(addr) => addr,", "\n",
-      "        Err(cause) => \{ eprintln!(\"REFUSED: bound but could not read the bound address: \{\}\", cause); std::process::exit(2); \}", "\n",
-      "    \};", "\n",
-      "    let bound_host = bound.ip().to_string();", "\n",
-      "    let bound_port = bound.port() as i64;", "\n",
-      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
-      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
-      "    let mut generation = match realize_generation(&stuck, deadline) \{", "\n",
-      "        Ok(generation) => generation,", "\n",
-      "        Err(cause) => \{", "\n",
-      "            eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
-      "            std::process::exit(2);", "\n",
-      "        \}", "\n",
-      "    \};", "\n",
+      first_block,
+      second_block,
       "    eprintln!(\"\{\}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));", "\n",
       "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);", "\n",
       "    for accepted in listener.incoming() \{", "\n",
@@ -20455,7 +20379,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "                            \}", "\n",
       "                        \};", "\n",
       "                        if replace \{", "\n",
-      "                            generation = match realize_generation(&stuck, deadline) \{", "\n",
+      "                            generation = match realize_generation(&stuck, ", ready_name, ") \{", "\n",
       "                                Ok(generation) => generation,", "\n",
       "                                Err(cause) => \{", "\n",
       "                                    eprintln!(\"REFUSED: \{\}\", native_serve_worker_unrealized(cause));", "\n",
