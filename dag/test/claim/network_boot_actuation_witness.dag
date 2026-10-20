@@ -1,0 +1,158 @@
+module test.claim.network_boot_actuation_witness
+
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { decl_ref }
+import extdeps.bmc.types { BootTargetPxe, BootOverrideOnce, ResetForceRestart }
+import gunbc.os_install_mechanism { PxeHttpInstall, VirtualMediaInstall, install_boot_target_for }
+import gunbc.nbd_proxy_virtual_media_install {
+  ActuatorBootOnce,
+  ActuatorForceRestart,
+  ActuatorPxeNetworkBootStaging,
+  os_install_actuator_plan,
+  srv3_nbd_proxy_export_placeholder,
+}
+import gunbc.provisioning.provisioning_arm {
+  DeliveryStrategy,
+  PxeOrUefiHttp,
+  VirtualMedia,
+  DeliveryEvidence,
+  VirtualMediaUnavailable,
+  FirmwareAlreadyReady,
+  ArmedPxeOrUefiHttp,
+  provisioning_arm_consumer_ref,
+}
+import gunbc.provisioning.network_boot_actuation {
+  NetworkBootActuation,
+  ArmActuationPxe,
+  ArmActuationVirtualMedia,
+  ArmActuationWithheld,
+  network_boot_arm_actuator_steps,
+}
+import gunbc.firmware_network_boot_standing { Unobserved }
+import test.claim.provisioning_arm_witness {
+  arm_for,
+  full_evidence,
+  evidence_with,
+  fixture_firmware_needs_boot_next,
+  fixture_firmware_ready,
+  pinned,
+  media_available,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn actuate(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> NetworkBootActuation {
+  network_boot_arm_actuator_steps(arm: arm_for(strategy: strategy, evidence: evidence, unit: unit), export: srv3_nbd_proxy_export_placeholder)
+}
+
+fn is_withheld(a: NetworkBootActuation) -> Bool {
+  match a {
+    ArmActuationWithheld { attempt: _, shape: _ } => true
+    ArmActuationPxe { attempt: _, firmware: _, plan: _ } => false
+    ArmActuationVirtualMedia { attempt: _, plan: _ } => false
+  }
+}
+
+test fn a_pxe_arm_projects_the_existing_pxe_plan() -> Bool {
+  match actuate(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha") {
+    ArmActuationPxe { attempt: _, firmware: _, plan: p } =>
+      p == os_install_actuator_plan(mechanism: PxeHttpInstall, export: srv3_nbd_proxy_export_placeholder)
+    _ => false
+  }
+}
+
+test fn a_virtual_media_arm_projects_the_existing_virtual_media_plan() -> Bool {
+  match actuate(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-alpha") {
+    ArmActuationVirtualMedia { attempt: _, plan: p } =>
+      p == os_install_actuator_plan(mechanism: VirtualMediaInstall, export: srv3_nbd_proxy_export_placeholder)
+    _ => false
+  }
+}
+
+test fn the_pxe_plan_boots_once_from_the_pxe_target_then_restarts() -> Bool {
+  match actuate(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha") {
+    ArmActuationPxe { attempt: _, firmware: _, plan: p } =>
+      p.steps == [
+        ActuatorPxeNetworkBootStaging,
+        ActuatorBootOnce { target: BootTargetPxe, enabled: BootOverrideOnce },
+        ActuatorForceRestart { reset_type: ResetForceRestart },
+      ] && install_boot_target_for(mechanism: PxeHttpInstall) == BootTargetPxe
+    _ => false
+  }
+}
+
+test fn the_firmware_preparation_is_the_standings_route_carried_unchanged() -> Bool {
+  let arm = arm_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
+  match arm.shape {
+    ArmedPxeOrUefiHttp { chainloader: _, firmware: f, origin: _, seed: _ } =>
+      match network_boot_arm_actuator_steps(arm: arm, export: srv3_nbd_proxy_export_placeholder) {
+        ArmActuationPxe { attempt: _, firmware: g, plan: _ } => f == g && f != FirmwareAlreadyReady
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn a_ready_firmware_standing_carries_no_preparation_route() -> Bool {
+  let e = evidence_with(firmware: fixture_firmware_ready(), chainloader: pinned(), virtual_media: media_available())
+  match actuate(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
+    ArmActuationPxe { attempt: _, firmware: FirmwareAlreadyReady, plan: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unobserved_arm_is_withheld_not_actuated_as_the_other_strategy() -> Bool {
+  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chainloader: pinned(), virtual_media: media_available())
+  is_withheld(a: actuate(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha"))
+}
+
+test fn a_refused_arm_is_withheld_not_actuated_as_the_other_strategy() -> Bool {
+  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chainloader: pinned(), virtual_media: VirtualMediaUnavailable { cause: "catalog row lacks the capability" })
+  is_withheld(a: actuate(strategy: VirtualMedia, evidence: e, unit: "unit-alpha"))
+}
+
+fn same_actuation_for(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> Bool {
+  match actuate(strategy: strategy, evidence: evidence, unit: unit) {
+    ArmActuationPxe { attempt: _, firmware: f, plan: p } =>
+      match actuate(strategy: strategy, evidence: evidence, unit: "unit-alpha") {
+        ArmActuationPxe { attempt: _, firmware: g, plan: q } => f == g && p == q
+        _ => false
+      }
+    ArmActuationVirtualMedia { attempt: _, plan: p } =>
+      match actuate(strategy: strategy, evidence: evidence, unit: "unit-alpha") {
+        ArmActuationVirtualMedia { attempt: _, plan: q } => p == q
+        _ => false
+      }
+    ArmActuationWithheld { attempt: _, shape: s } =>
+      match actuate(strategy: strategy, evidence: evidence, unit: "unit-alpha") {
+        ArmActuationWithheld { attempt: _, shape: t } => s == t
+        _ => false
+      }
+  }
+}
+
+test fn the_projection_does_not_depend_on_the_unit_label() -> Bool {
+  same_actuation_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "owen")
+    && same_actuation_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "mtcollins1")
+    && same_actuation_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "srv4")
+    && same_actuation_for(strategy: VirtualMedia, evidence: full_evidence(), unit: "owen")
+    && same_actuation_for(strategy: VirtualMedia, evidence: full_evidence(), unit: "srv4")
+}
+
+test fn the_attempt_is_carried_through_as_data() -> Bool {
+  let arm = arm_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-bravo")
+  match network_boot_arm_actuator_steps(arm: arm, export: srv3_nbd_proxy_export_placeholder) {
+    ArmActuationPxe { attempt: a, firmware: _, plan: _ } => a == arm.attempt
+    _ => false
+  }
+}
+
+test fn the_two_strategies_project_different_plans() -> Bool {
+  actuate(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
+    != actuate(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-alpha")
+}
+
+test fn the_s5_frontier_names_this_declaration() -> Bool {
+  provisioning_arm_consumer_ref() == decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps")
+}
