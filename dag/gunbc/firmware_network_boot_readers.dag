@@ -4,7 +4,7 @@ import std.types { Bool, HttpStatus, List, list_length, NonEmptyStr, String }
 import std.algebra { list_map, list_flat_map, list_append }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
 import extdeps.bmc.redfish_memory_inventory { redfish_document }
-import extdeps.ietf.http_semantics { HttpStatusClass, Successful, Informational, Redirection, ClientError, ServerError, http_status_class_of }
+import extdeps.ietf.http_semantics { HttpStatusClass, Successful, Informational, Redirection, ClientError, ServerError, http_status_class_of, http_unauthorized, http_forbidden, http_not_found }
 import extdeps.transports.rest { RestExchangeObservation, RestResponseObserved, RestExchangeRefused, RestBodyRead, RestBodyReadRefused }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.languages.json.parse { FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_bool, json_field_string_list }
@@ -57,13 +57,12 @@ type RedfishDocRead
   | RedfishDocRefused { refusal: FirmwareReadRefusal }
   | RedfishDocNoResponse
 
-// extdeps.ietf.http_semantics classifies statuses but names no codes, so the codes are RFC 9110
-// section 15 literals here. 401 means credentials must be established; 403 means they were accepted
+// extdeps.ietf.http_semantics names the codes (RFC 9110 section 15.5). 401 means credentials must be established; 403 means they were accepted
 // and the account lacks the privilege (a role grant); 404 is a resource the service does not serve.
 fn redfish_status_refusal(status: HttpStatus, detail: NonEmptyStr) -> FirmwareReadRefusal {
-  if status == 401 { AuthenticationRequired { detail: detail } }
-  else if status == 403 { AuthorizationDenied { detail: detail } }
-  else if status == 404 { ResourceNotFound { detail: detail } }
+  if status == http_unauthorized() { AuthenticationRequired { detail: detail } }
+  else if status == http_forbidden() { AuthorizationDenied { detail: detail } }
+  else if status == http_not_found() { ResourceNotFound { detail: detail } }
   else { UnexpectedHttpStatus { status: status, detail: detail } }
 }
 
@@ -195,10 +194,14 @@ fn unread_of(exchange: RedfishExchange, get: RestExchangeObservation) -> List<Re
   }
 }
 
+fn decoded_reads(reads: RedfishBootReads) -> RedfishDecodeOutcome {
+  RedfishDecoded { replies: redfish_axis_replies(reads: reads), unread: list_append(left: unread_of(exchange: SystemExchange, get: reads.system), right: unread_of(exchange: SecureBootExchange, get: reads.secure_boot)) }
+}
+
 fn decode_redfish_boot_reads(route: ReadRoute, reads: RedfishBootReads) -> RedfishDecodeOutcome {
   match route {
     MegaRacRestGetRoute => RedfishRouteNotRedfish { route: route }
-    RedfishGetRoute => RedfishDecoded { replies: redfish_axis_replies(reads: reads), unread: list_append(left: unread_of(exchange: SystemExchange, get: reads.system), right: unread_of(exchange: SecureBootExchange, get: reads.secure_boot)) }
-    OpenBmcRedfishGetRoute => RedfishDecoded { replies: redfish_axis_replies(reads: reads), unread: list_append(left: unread_of(exchange: SystemExchange, get: reads.system), right: unread_of(exchange: SecureBootExchange, get: reads.secure_boot)) }
+    RedfishGetRoute => decoded_reads(reads: reads)
+    OpenBmcRedfishGetRoute => decoded_reads(reads: reads)
   }
 }
