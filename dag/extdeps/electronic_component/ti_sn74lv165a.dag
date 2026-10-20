@@ -10,7 +10,7 @@ import extdeps.electronic_component.types {
   ParallelInput, SerialOutput, SerialInput, ShiftLoadControl, ClockInput, ClockInhibit, LogicGround, LogicSupply,
 }
 
-// TI's SN74LV165A datasheet, SCLS398 (read 2026-10-20): "SNx4LV165A 8-Bit Parallel-Load Shift
+// TI's SN74LV165A datasheet, SCLS402R (read 2026-10-20): "SNx4LV165A 8-Bit Parallel-Load Shift
 // Registers", recommended VCC 2 V to 5.5 V, the D, DB, DGV, NS and PW pin table, and the package option
 // addendum, which gives orderable SN74LV165APWR (TSSOP, PW, 16 pins) the part marking LV165A. The
 // part has eight parallel inputs (A to H), a serial input (SER), complementary serial outputs (QH and

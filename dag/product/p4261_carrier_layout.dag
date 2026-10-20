@@ -62,7 +62,7 @@ import extdeps.electronic_component.ti_sn74lv165a { sn74lv165a_pw }
 import product.electrical.carrier_phase {
   CarrierPhaseObservation, CarrierTransitionObservation, CarrierPhaseStanding, ProtectedBusStanding,
   carrier_phase_standing, protected_bus_standing, phase_by_key, is_phase_classified, is_bus_read, phase_standing_text, protected_bus_text, phases_text,
-  SwitchPoleState, TowardOnLegend, AwayFromOnLegend, PolePositionUnrecorded,
+  SwitchPoleState, TowardOnLegend, AwayFromOnLegend, PolePositionUnrecorded, IndicatorsUnobserved, MomentaryTouch, SwitchPoleClosure, pole_closures_text, SomeLit, PhaseAliasedVoltage,
   SupplyReading, CurrentRead, CurrentAmbiguous, CurrentUnrecorded, ConstantVoltageShown, SourceModeUnrecorded, SettingOneOf,
   IndicatorObservation, DesignatorRead, DesignatorCandidate, IndicatorByPlace, GreenIndicator, RedOrAmberIndicator, ColourUnrecorded,
   IndicatorLit, IndicatorDark, IndicatorBlinking, SeenInPhotograph, OperatorReported, IndicatorsObserved, IndicatorsDescribed, NoIndicatorSeen,
@@ -140,6 +140,7 @@ import product.electrical.continuity {
   Unpowered,
   Energized,
   ModuleRemoved,
+  ModuleInstalled,
   ModuleUnrecorded,
   EvidenceRef,
   OperatorStatement,
@@ -400,6 +401,7 @@ type MeasuredBoard {
   bench: BenchRecord
   phases: List<CarrierPhaseObservation>
   transitions: List<CarrierTransitionObservation>
+  pole_closures: List<SwitchPoleClosure>
 }
 
 // The input under study: a mapped housing and the terminal of the fuse beside it. The fused side is the
@@ -1596,7 +1598,7 @@ fn protected_bus_in(layout: CarrierLayoutObservation, key: NonEmptyStr) -> Prote
 fn phases_reading(layout: CarrierLayoutObservation) -> String {
   match layout.measured {
     Absent => "no carrier phase recorded"
-    Present { value: b } => phases_text(phases: b.phases, transitions: b.transitions, bias_ceiling: bias_ceiling(b: b), downstream: downstream_terminals(layout: layout))
+    Present { value: b } => join([phases_text(phases: b.phases, transitions: b.transitions, bias_ceiling: bias_ceiling(b: b), downstream: downstream_terminals(layout: layout)), ". ", pole_closures_text(closures: b.pole_closures, vector: e1_vector_all_on)], "")
   }
 }
 
@@ -1656,7 +1658,7 @@ data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHyp
     "energized at 48 V, the top end of the part across from pin 21 (reported at 0 ohm to pin 21, read directly, not through the wire, no baseline recorded) read about 4.86 V, hedged ('like 4.86 or something'; first 'it reads 5v'): U1_P5's bias supply reads live at a VDD-like level -- at a point reported at 0 ohm to pin 21, not joined to it by a baseline and not yet separated from pins 20 and 22 -- so on that reading the controller is not off for want of its own supply",
     "the 11-13 mA draw does not establish which circuits are powered, so it neither shows nor excludes other powered logic",
   ],
-  decided_by: "Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the resistor's nearer end to lead b, and the via to lead b); Q300's lead b to the exact U51 pin its trace meets, on that range, then that pin's role under SCLS398 (a parallel input reads the node, a serial output could drive it); the resistor's third character confirmed; and whether pin 7 has a pull-up, pin 7's lead to J20's red lead. U51's and U49's markings read 'LV165A' (SN74LV165A, 2026-10-20), so what clocks them is the next part to name. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Nothing drives Q300's lead b or pin 7 until a reviewed decision. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
+  decided_by: "Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the resistor's nearer end to lead b, and the via to lead b); Q300's lead b to the exact U51 pin its trace meets, on that range, then that pin's role under SCLS402R (a parallel input reads the node, a serial output could drive it); the resistor's third character confirmed; and whether pin 7 has a pull-up, pin 7's lead to J20's red lead. U51's and U49's markings read 'LV165A' (SN74LV165A, 2026-10-20), so what clocks them is the next part to name. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Nothing drives Q300's lead b or pin 7 until a reviewed decision. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
 }
 
 // THE LOCAL CONTROLS PUT THE CARRIER THROUGH RECORDED STATES; NONE IS NAMED BY FUNCTION. What S1, S2,
@@ -1665,8 +1667,10 @@ data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHyp
 // whether it pulls a logic input low or collapses a rail until the resistor-coupled test separates
 // the two.
 data p4261_local_control_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
-  claim: "on J20 power alone with the module absent, the carrier's local controls put it through recorded states: S2's poles select between the bias-only draw (about 13 mA, nothing lit) and a further domain drawing about 38 mA with nothing lit; from there, S1's pole 2 moved toward ON starts a sequence (about 80 mA, indicators lit) that settles at about 94 mA with a subset lit and one blinking; S2 returned takes it back to the bias-only state; a bridge held across J30's A and B lights DS3 and DS4 and, released, replays the sequence; a bridge held across J68's R1 and R2 extinguishes every indicator with an audible click and, released, restarts the sequence. U49 and U51, beside the end of Q300's lead b trace, are SN74LV165A parallel-load shift registers, parts that each read eight inputs and shift them out serially: the switch poles, the header points and Q300's node may be collected by them into a serial word for whatever clocks them. None of this names J68 a reset, J30 a button, S1 or S2 a power switch, S1's pole 1 inert, or any 0 V header point a ground; the protected input bus is unread in every phase",
+  claim: "on J20 power alone with the module absent, the carrier's local controls put it through recorded states: S2's poles select between the bias-only draw (about 13 mA, nothing lit) and a further domain drawing about 38 mA with nothing lit; from there, S1's pole 2 moved toward ON starts a sequence (about 80 mA, indicators lit) that settles at about 94 mA with a subset lit and one blinking; S2 returned takes it back to the bias-only state; a bridge held across J30's A and B lights DS3 and DS4 and, released, replays the sequence; a bridge held across J68's R1 and R2 extinguishes every indicator with an audible click and, released, restarts the sequence. U49 and U51, beside the end of Q300's lead b trace, are SN74LV165A parallel-load shift registers, parts that each read eight inputs and shift them out serially: the switch poles, the header points and Q300's node may be collected by them into a serial word for whatever clocks them. With all four poles toward ON at 48 V (97 mA, CV), and again settled after a J30 tap, Q21_P5's small output legs read about 1.7 V, so the protected input bus reads held off in those two states and is unread in the others; in the all-on state Q300's lead b reads 0 V, the via 4.37 V and pin 7 0 V, as before the switches were found. The module installed changes no step's draw. Unpowered, every pole of S1 and S2 reads about 0 ohm across its terminals toward the ON legend and over range on the 2 Mohm range away from it, so each closes toward ON (pole_closures_text). None of this names J68 a reset, J30 a button, S1 or S2 a power switch, S1's pole 1 inert, or any 0 V header point a ground",
   sources: [
+    "2026-10-20, all four poles toward ON, 48 V, 97 mA with CV lit (p3-all-poles-on): Q21_P5's small output legs about 1.66 V (which lead, unrecorded), the via on Q301's lead b node 4.37 V, Q300's lead b 0 V, the resistor's far end 48 V; re-read from the pin 1 marker, pin 7 0 V, pin 8 1.8 V, P6 0 V. The first report's 'pin 7 is 1.8v i believe' matched pin 8 and is superseded. The protected bus reads held off from the legs (ProtectedInputBusInPhase p3-all-poles-on); the enable chain reads as before the switches were found",
+    "2026-10-20, the module installed and the steps repeated: 'the module doesn't change any of the supply current numbers' (p0 to p3 recorded again with the module installed, at the same draws; how it was seated, and under what cooling, unrecorded). After a J30 tap, 'it just repeats the power phases'; settled, Q21_P5's small output legs about 1.7 V with the module's state at that reading unrecorded (p3-after-j30-tap), so the bus reads held off there too",
     "2026-10-20, module absent: 'found some literal on off switches - the current jumped a bit and some lights turned on'; the source's display read 54.00 V, 0.085 A, 4.587 W with CV lit and OCP armed, and green and red-or-amber indicators were lit (first-lit-state); which poles were moved, and whether with the output on, is unrecorded",
     "the staircase, one pole set at a time (e1_phases, e1_transitions): S2.1 off / S2.2 on, 0.013 A, nothing lit; S2.1 on / S2.2 off, 0.038 A, nothing lit, 'toggling either S1 switch does nothing' there; S1 pole 2 on, about 0.08 A then 0.094 A as 'the lights settle (from all lit to a few lit/one blinking near U1_TFP)'; S1 pole 1 off afterwards 'doesn't matter'; S2 returned 'returns back to the initial state'. The attribution to S1's pole 2 is the operator's; a later sentence says 'switch 1', so which S1 pole started the sequence is recorded with that doubt. Whether S1 is sampled only at a start or a restart is unread",
     "J30 bridged ('A and B'): 'a softer reset through the same sort of phase', 'slowly returns to .94A' (typed; 0.094 A or 0.94 A, unresolved), DS3 and DS4 lit 'as long as I hold J30 short'; energized in the settled state, 'J30 reads 3.1v, on pin 1 it's 0v'. A pulled-up input bridged to its return reads this way; so does a 3.3 V rail bridged to a point that happens to read 0 V",
@@ -1796,7 +1800,7 @@ data k1_measured: MeasuredBoard = MeasuredBoard {
   source_draws: [],
   bench: BenchRecord { incidents: [], attachments: [], voltages: [], resistances: k1_resistances },
   phases: [],
-  transitions: [],
+  transitions: [], pole_closures: [],
 }
 
 // "Rework" beside the PCB code is a printed marking; whether any rework was performed, and what, is
@@ -2620,14 +2624,14 @@ data e1_zv_volts: List<NodeVoltageObservation> = [
 data e1_s1: ComponentInstanceIdentity = e1_component(local: "S1")
 data e1_s2: ComponentInstanceIdentity = e1_component(local: "S2")
 data e1_j68: ComponentInstanceIdentity = e1_component(local: "J68")
-data e1_j30: ComponentInstanceIdentity = e1_component(local: "J30 (operator-named two-pin header; a two-pin header silkscreened J31 was photographed nearby, so which designator this is stays unresolved)")
+data e1_j30: ComponentInstanceIdentity = e1_component(local: "J30")
 data e1_u49: ComponentInstanceIdentity = e1_component(local: "U49")
 data e1_u51: ComponentInstanceIdentity = e1_component(local: "U51")
 data e1_u1_tfp_blinker: ComponentInstanceIdentity = e1_component(local: "indicator blinking near U1_TFP (designator unrecorded)")
 data e1_j68_points: List<NonEmptyStr> = ["L1", "L2", "L3", "L4", "L5", "R1", "R2", "R3", "R4", "R5"]
 data e1_j68_high_points: List<NonEmptyStr> = ["R1", "L2", "L3", "L4", "L5"]
 data e1_j68_low_points: List<NonEmptyStr> = ["L1", "R2", "R3", "R4", "R5"]
-data e1_j30_points: List<NonEmptyStr> = ["A", "B", "C", "pin 1 (the operator's own count)", "point read at 3.1 V (A, B or C of the marked photograph, which unrecorded)"]
+data e1_j30_points: List<NonEmptyStr> = ["A", "B", "C"]
 data e1_switch_event_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads: the source's display at 54.00 V / 0.085 A / 4.587 W with CV lit, and the lit indicator groups beside the heatsinked control region and at the board edge (not on Drive)")
 data e1_switch_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads: S1 beside J540 and DS3 to DS6, and S2 near the large high-density connectors, each a two-pole package with a printed ON legend (not on Drive)")
 data e1_settled_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads: the settled state's indicators, the top group beside DS10 to DS13, DS1_2, and the bottom group DS3 to DS6 (not on Drive)")
@@ -2691,20 +2695,114 @@ fn e1_phase_volt(c: ComponentInstanceIdentity, point: NonEmptyStr, millivolts: N
   PhaseNodeVoltage { at: e1_terminal(c: c, name: point), reference: e1_ground_ref, value: ReadAbout { value: millivolt(count: millivolts) }, certainty: StatedPlainly, evidence: said }
 }
 
-data e1_settled_volts: List<PhaseNodeVoltage> = concat(concat(
-  [
-    e1_phase_volt(c: e1_j30, point: "pin 1 (the operator's own count)", millivolts: 0, said: e1_j30_volts_said),
-    e1_phase_volt(c: e1_j30, point: "point read at 3.1 V (A, B or C of the marked photograph, which unrecorded)", millivolts: 3100, said: e1_j30_volts_said),
-  ],
-  map(e1_j68_high_points, n => e1_phase_volt(c: e1_j68, point: n, millivolts: 1800, said: e1_j68_volts_said))),
+data e1_settled_volts: List<PhaseNodeVoltage> = concat(
+  map(e1_j68_high_points, n => e1_phase_volt(c: e1_j68, point: n, millivolts: 1800, said: e1_j68_volts_said)),
   map(e1_j68_low_points, n => e1_phase_volt(c: e1_j68, point: n, millivolts: 0, said: e1_j68_volts_said)))
 
-fn e1_phase(key: NonEmptyStr, supply: SupplyReading, vector: List<SwitchPoleState>, held: HeaderBridge?, recovering_from: HeaderBridge?, settling: PhaseSettling, indicators: IndicatorPattern, volts: List<PhaseNodeVoltage>, evidence: List<EvidenceRef>) -> CarrierPhaseObservation {
+// J30's two readings were at points the operator named their own way ('pin 1' by their count, and the
+// point that read 3.1 V), each one of J30's three physical positions A, B, C in the marked photograph,
+// which one unrecorded: kept as aliased readings, never as terminals of their own.
+fn e1_j30_aliased_volt(label: NonEmptyStr, millivolts: Nat) -> PhaseAliasedVoltage {
+  PhaseAliasedVoltage { label: label, candidates: map(e1_j30_points, n => e1_terminal(c: e1_j30, name: n)), reference: e1_ground_ref, value: ReadAbout { value: millivolt(count: millivolts) }, certainty: StatedPlainly, evidence: e1_j30_volts_said }
+}
+
+data e1_j30_aliased: List<PhaseAliasedVoltage> = [
+  e1_j30_aliased_volt(label: "pin 1 (the operator's own count)", millivolts: 0),
+  e1_j30_aliased_volt(label: "point read at 3.1 V", millivolts: 3100),
+]
+
+fn e1_phase_in(conditions: BenchConditions, key: NonEmptyStr, supply: SupplyReading, vector: List<SwitchPoleState>, held: HeaderBridge?, recovering_from: HeaderBridge?, settling: PhaseSettling, indicators: IndicatorPattern, volts: List<PhaseNodeVoltage>, aliased: List<PhaseAliasedVoltage>, evidence: List<EvidenceRef>) -> CarrierPhaseObservation {
   CarrierPhaseObservation {
-    key: key, asset: p4261_e1_b, conditions: e1_live_bench, setting: e1_phase_setting, supply: supply, switch_vector: vector,
-    held: held, recovering_from: recovering_from, settling: settling, indicators: indicators, node_voltages: volts, evidence: evidence,
+    key: key, asset: p4261_e1_b, conditions: conditions, setting: e1_phase_setting, supply: supply, switch_vector: vector,
+    held: held, recovering_from: recovering_from, settling: settling, indicators: indicators, node_voltages: volts, aliased_voltages: aliased, evidence: evidence,
   }
 }
+
+fn e1_phase(key: NonEmptyStr, supply: SupplyReading, vector: List<SwitchPoleState>, held: HeaderBridge?, recovering_from: HeaderBridge?, settling: PhaseSettling, indicators: IndicatorPattern, volts: List<PhaseNodeVoltage>, evidence: List<EvidenceRef>) -> CarrierPhaseObservation {
+  e1_phase_in(conditions: e1_live_bench, key: key, supply: supply, vector: vector, held: held, recovering_from: recovering_from, settling: settling, indicators: indicators, volts: volts, aliased: [], evidence: evidence)
+}
+
+// ALL FOUR POLES TOWARD ON, THE MODULE ABSENT (2026-10-20, 48 V). The operator left every pole toward
+// the ON legend and read, against J20's black lead: the source 48 V, 0.097 A, 4.653 W with CV lit;
+// Q21_P5's small output legs about 1.66 V (which of the six was touched is unrecorded, so each stands
+// for a touch, as the 1 V readings do); the via on Q301's lead b node 4.37 V; Q300's lead b 0 V; the
+// resistor's far end 48 V; and, re-read counting from the pin 1 marker, pin 7 0 V, pin 8 1.8 V and P6
+// 0 V. The first report's 'pin 7 is 1.8v i believe' is superseded by that re-read and not recorded at
+// pin 7. Which indicators were lit in this state was not described, so the phase is unclassified; the
+// protected bus reads held off from the legs, and the enable chain reads as it did before the switches
+// were found.
+data e1_vector_all_on: List<SwitchPoleState> = [e1_pole(package: e1_s2, pole: 1, position: TowardOnLegend), e1_pole(package: e1_s2, pole: 2, position: TowardOnLegend), e1_pole(package: e1_s1, pole: 1, position: TowardOnLegend), e1_pole(package: e1_s1, pole: 2, position: TowardOnLegend)]
+data e1_all_on_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "i just keep all poles at on position" }
+data e1_switch_legend_photos: List<EvidenceRef> = [
+  e1_photo(taken_on: "2026-10-20", locator: "bench-session upload 9fe8a23b, S2 straight down with its legend legible, both sliders toward ON (not on Drive)"),
+  e1_photo(taken_on: "2026-10-20", locator: "bench-session upload 60ce8352, S1 straight down with its legend legible, both sliders toward ON (not on Drive)"),
+]
+data e1_sw_a_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "SW-A1 48v, .097A, 4.653w - it shows CV, no CC / SW-A2 : 1.66v / SW-A3: pin 7 is 1.8v i believe, pin 6 is 0v / SW-A4: 4.37v / SW-A5: 0v / SW-A6: 48v (input voltage)" }
+data e1_sw_a_reread_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "SW-A7 - pin 7 is 0v, SW-A8: pin 8 is 1.8v, p6 is also 0v" }
+data e1_all_on_volts: List<PhaseNodeVoltage> = concat(
+  map(e1_small_leg_names, n => e1_phase_volt(c: e1_q21, point: n, millivolts: 1660, said: e1_sw_a_said)),
+  [
+    PhaseNodeVoltage { at: e1_q301_b_via, reference: e1_ground_ref, value: ReadAbout { value: millivolt(count: 4370) }, certainty: StatedPlainly, evidence: e1_sw_a_said },
+    PhaseNodeVoltage { at: e1_q300_lead_b, reference: e1_ground_ref, value: ReadAbout { value: millivolt(count: 0) }, certainty: StatedPlainly, evidence: e1_sw_a_said },
+    PhaseNodeVoltage { at: e1_q301_resistor_far, reference: e1_ground_ref, value: ReadAbout { value: millivolt(count: 48000) }, certainty: StatedPlainly, evidence: e1_sw_a_said },
+    e1_phase_volt(c: e1_u1_p5, point: "pin 7", millivolts: 0, said: e1_sw_a_reread_said),
+    e1_phase_volt(c: e1_u1_p5, point: "pin 8", millivolts: 1800, said: e1_sw_a_reread_said),
+    e1_phase_volt(c: e1_back_cluster, point: "P6", millivolts: 0, said: e1_sw_a_reread_said),
+  ])
+
+// THE MODULE INSTALLED, AND A J30 TAP (2026-10-20). The operator seated the GH200 module and repeated
+// the steps: 'the module doesn't change any of the supply current numbers', so P0 to P3 are recorded
+// again with the module installed, at the same draws; how it was seated and what cooled it are not
+// recorded, and the private plan's module-presence test is not this, since it waits on the protected
+// bus read in each phase. A tap on J30's A and B 'just repeats the power phases': back in the settled
+// state, Q21_P5's small output legs read about 1.7 V against J20's black lead, with the module's state
+// at that reading unrecorded; the protected bus reads held off from it.
+data e1_module_installed_bench: BenchConditions = BenchConditions { power: Energized, module: ModuleInstalled }
+data e1_module_unrecorded_bench: BenchConditions = BenchConditions { power: Energized, module: ModuleUnrecorded }
+data e1_module_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "I'm a bit confused at what you want me to do at this point.  I put the module on the board and repeated a lot of this - nothing really c hanged" }
+data e1_module_draw_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "public: the module doesn't change any of the supply current numbers" }
+data e1_tap_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "SW-A2 - ~1.7V / SW-A5: this is hard to get - could we skip it? or is there any pin on the top of the board i could use for this? and what do you mean by changed?" }
+data e1_tap_repeats_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "J30's tap - doesn't fundamentally change anything in terms of voltage, it just repeats the power phases we discussed" }
+data e1_j30_tap: HeaderBridge = HeaderBridge { header: e1_j30, first: e1_terminal(c: e1_j30, name: "A"), second: e1_terminal(c: e1_j30, name: "B"), coupling: DirectBridge, hold: MomentaryTouch }
+data e1_module_unchanged: IndicatorPattern = IndicatorsDescribed { description: "as with the module absent ('nothing really changed'); which designators, unread", presence: SomeLit, evidence: e1_module_said }
+
+// WHICH WAY EACH POLE CLOSES (2026-10-20, unpowered). Across each pole's two terminals: 'basically 0
+// ohms when the switches are ON, when they're off, even 2M won't measure them'. No shorted-probe
+// baseline is named, so the zero is a reported zero; it still says the pole conducts toward the ON
+// legend and is open away from it, on every pole.
+data e1_closure_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "regarding the continuity - they are basically 0 ohms when the switches are ON, when they're off, even 2M won't measure them" }
+
+// Each pole has two solder terminals, a and b, named by the pole; which physical pad is which is the
+// package's, and a closure reading is across the two.
+data e1_pole_terminal_names: List<NonEmptyStr> = ["pole 1 terminal a", "pole 1 terminal b", "pole 2 terminal a", "pole 2 terminal b"]
+
+fn e1_pole_terminal_a(package: ComponentInstanceIdentity, pole: Nat) -> ElectricalTerminalRef {
+  if pole == 1 { e1_terminal(c: package, name: "pole 1 terminal a") } else { e1_terminal(c: package, name: "pole 2 terminal a") }
+}
+
+fn e1_pole_terminal_b(package: ComponentInstanceIdentity, pole: Nat) -> ElectricalTerminalRef {
+  if pole == 1 { e1_terminal(c: package, name: "pole 1 terminal b") } else { e1_terminal(c: package, name: "pole 2 terminal b") }
+}
+
+fn e1_closure(package: ComponentInstanceIdentity, pole: Nat, position: SwitchPolePosition, display: ResistanceDisplay, range: MeterRange) -> SwitchPoleClosure {
+  SwitchPoleClosure { pole: e1_pole(package: package, pole: pole, position: position), first: e1_pole_terminal_a(package: package, pole: pole), second: e1_pole_terminal_b(package: package, pole: pole), display: display, range: range, evidence: e1_closure_said }
+}
+
+data e1_pole_closures: List<SwitchPoleClosure> = flat_map([e1_s1, e1_s2], p => flat_map([1, 2], n => [
+  e1_closure(package: p, pole: n, position: TowardOnLegend, display: DisplayZeroWithoutBaseline { reported: "basically 0 ohms" }, range: RangeUnrecorded),
+  e1_closure(package: p, pole: n, position: AwayFromOnLegend, display: DisplayOverRange, range: RangeFullScale { ohms: 2000000 }),
+]))
+
+fn e1_module_phase(key: NonEmptyStr, count: Nat, vector: List<SwitchPoleState>, settling: PhaseSettling, indicators: IndicatorPattern) -> CarrierPhaseObservation {
+  e1_phase_in(conditions: e1_module_installed_bench, key: key, supply: e1_read_ma(count: count), vector: vector, held: Absent, recovering_from: Absent, settling: settling, indicators: indicators, volts: [], aliased: [], evidence: [e1_module_said, e1_module_draw_said])
+}
+
+data e1_module_phases: List<CarrierPhaseObservation> = [
+  e1_module_phase(key: "p0-bias-module-installed", count: 13, vector: e1_vector_p0, settling: SettledSteady, indicators: NoIndicatorSeen { evidence: e1_module_said }),
+  e1_module_phase(key: "p1-s2-domain-module-installed", count: 38, vector: e1_vector_p1, settling: SettledSteady, indicators: NoIndicatorSeen { evidence: e1_module_said }),
+  e1_module_phase(key: "p2-s1-sequence-module-installed", count: 80, vector: e1_vector_p3, settling: TransientPassing, indicators: e1_module_unchanged),
+  e1_module_phase(key: "p3-settled-module-installed", count: 94, vector: e1_vector_p3, settling: SettledSteady, indicators: e1_module_unchanged),
+]
 
 fn e1_read_ma(count: Nat) -> SupplyReading {
   SupplyReading { voltage: Absent, current: CurrentRead { value: milliampere(count: count) }, mode: SourceModeUnrecorded }
@@ -2714,23 +2812,30 @@ data e1_j30_recovery_draw: SupplyReading = SupplyReading { voltage: Absent, curr
 data e1_j68_held_draw: SupplyReading = SupplyReading { voltage: Absent, current: CurrentRead { value: milliampere(count: 70) }, mode: SourceModeUnrecorded }
 data e1_draw_unrecorded: SupplyReading = SupplyReading { voltage: Absent, current: CurrentUnrecorded, mode: SourceModeUnrecorded }
 
-data e1_phases: List<CarrierPhaseObservation> = [
+data e1_phases_module_absent: List<CarrierPhaseObservation> = [
   e1_phase(key: "first-lit-state", supply: SupplyReading { voltage: Present { value: volt(count: 54) }, current: CurrentRead { value: milliampere(count: 85) }, mode: ConstantVoltageShown }, vector: e1_vector_unrecorded, held: Absent, recovering_from: Absent, settling: SettlingUnrecorded,
-    indicators: IndicatorsDescribed { description: "green indicators beside the heatsinked control region and red-or-amber indicators at the board edge lit; which designators is unread from these photographs", evidence: e1_switch_event_photo },
+    indicators: IndicatorsDescribed { description: "green indicators beside the heatsinked control region and red-or-amber indicators at the board edge lit; which designators is unread from these photographs", presence: SomeLit, evidence: e1_switch_event_photo },
     volts: [], evidence: [e1_switch_event_said, e1_switch_event_photo, e1_switch_photo]),
   e1_phase(key: "p0-bias", supply: e1_read_ma(count: 13), vector: e1_vector_p0, held: Absent, recovering_from: Absent, settling: SettledSteady, indicators: NoIndicatorSeen { evidence: e1_s2_said }, volts: [], evidence: [e1_s2_said, e1_ceiling_said, e1_j68_current_said]),
   e1_phase(key: "p1-s2-domain", supply: e1_read_ma(count: 38), vector: e1_vector_p1, held: Absent, recovering_from: Absent, settling: SettledSteady, indicators: NoIndicatorSeen { evidence: e1_s2_said }, volts: [], evidence: [e1_s2_said, e1_s1_inert_said]),
-  e1_phase(key: "p2-s1-sequence", supply: e1_read_ma(count: 80), vector: e1_vector_p3, held: Absent, recovering_from: Absent, settling: TransientPassing, indicators: IndicatorsDescribed { description: "all lit", evidence: e1_s1_sequence_said }, volts: [], evidence: [e1_s1_sequence_said]),
-  e1_phase(key: "p3-settled", supply: e1_read_ma(count: 94), vector: e1_vector_p3, held: Absent, recovering_from: Absent, settling: SettledSteady, indicators: IndicatorsObserved { items: e1_settled_indicators }, volts: e1_settled_volts, evidence: [e1_s1_sequence_said, e1_settled_photo, e1_j30_volts_said, e1_j68_volts_said]),
+  e1_phase(key: "p2-s1-sequence", supply: e1_read_ma(count: 80), vector: e1_vector_p3, held: Absent, recovering_from: Absent, settling: TransientPassing, indicators: IndicatorsDescribed { description: "all lit", presence: SomeLit, evidence: e1_s1_sequence_said }, volts: [], evidence: [e1_s1_sequence_said]),
+  e1_phase_in(conditions: e1_live_bench, key: "p3-settled", supply: e1_read_ma(count: 94), vector: e1_vector_p3, held: Absent, recovering_from: Absent, settling: SettledSteady, indicators: IndicatorsObserved { items: e1_settled_indicators }, volts: e1_settled_volts, aliased: e1_j30_aliased, evidence: [e1_s1_sequence_said, e1_settled_photo, e1_j30_volts_said, e1_j68_volts_said]),
   e1_phase(key: "j30-held", supply: e1_draw_unrecorded, vector: e1_vector_p3, held: Present { value: e1_j30_bridge }, recovering_from: Absent, settling: SettlingUnrecorded,
     indicators: IndicatorsObserved { items: [
       IndicatorObservation { indicator: DesignatorRead { designator: "DS3" }, colour: GreenIndicator, state: IndicatorLit, basis: OperatorReported { evidence: e1_blinkers_said } },
       IndicatorObservation { indicator: DesignatorRead { designator: "DS4" }, colour: GreenIndicator, state: IndicatorLit, basis: OperatorReported { evidence: e1_blinkers_said } },
     ] }, volts: [], evidence: [e1_j30_said, e1_bridges_said, e1_blinkers_said]),
-  e1_phase(key: "j30-release", supply: e1_j30_recovery_draw, vector: e1_vector_p3, held: Absent, recovering_from: Present { value: e1_j30_bridge }, settling: TransientPassing, indicators: IndicatorsDescribed { description: "'the soft reset', the same sequence replayed, returning slowly to the settled state", evidence: e1_bridges_said }, volts: [], evidence: [e1_j30_said, e1_bridges_said]),
+  e1_phase(key: "j30-release", supply: e1_j30_recovery_draw, vector: e1_vector_p3, held: Absent, recovering_from: Present { value: e1_j30_bridge }, settling: TransientPassing, indicators: IndicatorsDescribed { description: "'the soft reset', the same sequence replayed, returning slowly to the settled state", presence: SomeLit, evidence: e1_bridges_said }, volts: [], evidence: [e1_j30_said, e1_bridges_said]),
   e1_phase(key: "j68-held", supply: e1_j68_held_draw, vector: e1_vector_p3, held: Present { value: e1_j68_bridge }, recovering_from: Absent, settling: SettlingUnrecorded, indicators: NoIndicatorSeen { evidence: e1_j68_held_said }, volts: [], evidence: [e1_j68_said, e1_bridges_said, e1_j68_held_said, e1_j68_held_photo, e1_j68_current_said]),
-  e1_phase(key: "j68-release", supply: e1_draw_unrecorded, vector: e1_vector_p3, held: Absent, recovering_from: Present { value: e1_j68_bridge }, settling: TransientPassing, indicators: IndicatorsDescribed { description: "'starts boot sequence over': the sequence replayed from the start", evidence: e1_j68_held_said }, volts: [], evidence: [e1_j68_said, e1_j68_held_said]),
+  e1_phase(key: "p3-all-poles-on", supply: SupplyReading { voltage: Present { value: volt(count: 48) }, current: CurrentRead { value: milliampere(count: 97) }, mode: ConstantVoltageShown }, vector: e1_vector_all_on, held: Absent, recovering_from: Absent, settling: SettledSteady,
+    indicators: IndicatorsUnobserved, volts: e1_all_on_volts, evidence: concat([e1_all_on_said, e1_sw_a_said, e1_sw_a_reread_said], e1_switch_legend_photos)),
+  e1_phase_in(conditions: e1_module_unrecorded_bench, key: "p3-after-j30-tap", supply: e1_draw_unrecorded, vector: e1_vector_p3, held: Absent, recovering_from: Absent, settling: SettledSteady,
+    indicators: IndicatorsDescribed { description: "the settled state's, by the operator's statement that the tap only repeats the phases; which designators, unread", presence: SomeLit, evidence: e1_tap_repeats_said },
+    volts: map(e1_small_leg_names, n => e1_phase_volt(c: e1_q21, point: n, millivolts: 1700, said: e1_tap_said)), aliased: [], evidence: [e1_tap_said, e1_tap_repeats_said]),
+  e1_phase(key: "j68-release", supply: e1_draw_unrecorded, vector: e1_vector_p3, held: Absent, recovering_from: Present { value: e1_j68_bridge }, settling: TransientPassing, indicators: IndicatorsDescribed { description: "'starts boot sequence over': the sequence replayed from the start", presence: SomeLit, evidence: e1_j68_held_said }, volts: [], evidence: [e1_j68_said, e1_j68_held_said]),
 ]
+
+data e1_phases: List<CarrierPhaseObservation> = concat(e1_phases_module_absent, e1_module_phases)
 
 fn e1_transition(key: NonEmptyStr, from_phase: NonEmptyStr, stimulus: PhaseStimulus, to_phase: NonEmptyStr, supply_trace: List<SupplyReading>, indicator_trace: List<IndicatorPattern>, audible: AudibleEvent, evidence: List<EvidenceRef>) -> CarrierTransitionObservation {
   CarrierTransitionObservation { key: key, asset: p4261_e1_b, from_phase: from_phase, stimulus: stimulus, to_phase: to_phase, supply_trace: supply_trace, indicator_trace: indicator_trace, audible: audible, evidence: evidence }
@@ -2742,13 +2847,14 @@ data e1_transitions: List<CarrierTransitionObservation> = [
   e1_transition(key: "s1-toggled-in-p1", from_phase: "p1-s2-domain", stimulus: SwitchPolesMoved { poles: [e1_pole(package: e1_s1, pole: 1, position: PolePositionUnrecorded), e1_pole(package: e1_s1, pole: 2, position: PolePositionUnrecorded)], timing: MoveTimingUnrecorded }, to_phase: "p1-s2-domain",
     supply_trace: [], indicator_trace: [], audible: NoSoundReported, evidence: [e1_s1_inert_said]),
   e1_transition(key: "s1-pole-2-on", from_phase: "p1-s2-domain", stimulus: SwitchPolesMoved { poles: [e1_pole(package: e1_s1, pole: 2, position: TowardOnLegend)], timing: MovedEnergized }, to_phase: "p2-s1-sequence",
-    supply_trace: [e1_read_ma(count: 80)], indicator_trace: [IndicatorsDescribed { description: "all lit", evidence: e1_s1_sequence_said }], audible: NoSoundReported, evidence: [e1_s1_sequence_said, e1_s1_after_said]),
+    supply_trace: [e1_read_ma(count: 80)], indicator_trace: [IndicatorsDescribed { description: "all lit", presence: SomeLit, evidence: e1_s1_sequence_said }], audible: NoSoundReported, evidence: [e1_s1_sequence_said, e1_s1_after_said]),
   e1_transition(key: "sequence-settles", from_phase: "p2-s1-sequence", stimulus: SettlingDelay, to_phase: "p3-settled",
-    supply_trace: [e1_read_ma(count: 94)], indicator_trace: [IndicatorsDescribed { description: "a few lit, one blinking near U1_TFP", evidence: e1_s1_sequence_said }], audible: NoSoundReported, evidence: [e1_s1_sequence_said]),
+    supply_trace: [e1_read_ma(count: 94)], indicator_trace: [IndicatorsDescribed { description: "a few lit, one blinking near U1_TFP", presence: SomeLit, evidence: e1_s1_sequence_said }], audible: NoSoundReported, evidence: [e1_s1_sequence_said]),
   e1_transition(key: "s1-pole-1-off-in-p3", from_phase: "p3-settled", stimulus: SwitchPolesMoved { poles: [e1_pole(package: e1_s1, pole: 1, position: AwayFromOnLegend)], timing: MovedEnergized }, to_phase: "p3-settled",
     supply_trace: [], indicator_trace: [], audible: NoSoundReported, evidence: [e1_s1_after_said, e1_bridges_said]),
   e1_transition(key: "s2-returned", from_phase: "p3-settled", stimulus: SwitchPolesMoved { poles: [e1_pole(package: e1_s2, pole: 1, position: AwayFromOnLegend), e1_pole(package: e1_s2, pole: 2, position: TowardOnLegend)], timing: MoveTimingUnrecorded }, to_phase: "p0-bias",
     supply_trace: [], indicator_trace: [], audible: NoSoundReported, evidence: [e1_s1_after_said]),
+  e1_transition(key: "j30-tapped", from_phase: "p3-settled", stimulus: HeaderBridgeApplied { bridge: e1_j30_tap }, to_phase: "p3-after-j30-tap", supply_trace: [], indicator_trace: [], audible: NoSoundReported, evidence: [e1_tap_said, e1_tap_repeats_said]),
   e1_transition(key: "j30-bridged", from_phase: "p3-settled", stimulus: HeaderBridgeApplied { bridge: e1_j30_bridge }, to_phase: "j30-held", supply_trace: [], indicator_trace: [], audible: NoSoundReported, evidence: [e1_j30_said, e1_bridges_said, e1_blinkers_said]),
   e1_transition(key: "j30-released", from_phase: "j30-held", stimulus: HeaderBridgeReleased { bridge: e1_j30_bridge }, to_phase: "j30-release", supply_trace: [e1_j30_recovery_draw], indicator_trace: [], audible: NoSoundReported, evidence: [e1_bridges_said]),
   e1_transition(key: "j30-recovery-settles", from_phase: "j30-release", stimulus: SettlingDelay, to_phase: "p3-settled", supply_trace: [], indicator_trace: [], audible: NoSoundReported, evidence: [e1_bridges_said]),
@@ -2801,6 +2907,7 @@ data e1_measured: MeasuredBoard = MeasuredBoard {
   bench: e1_bench_record,
   phases: e1_phases,
   transitions: e1_transitions,
+  pole_closures: e1_pole_closures,
   diode_readings: [
     DiodeModeObservation { asset: p4261_e1_b, probes: RedBlack { red: e1_d2_far, black: e1_d2_near }, display: ForwardMillivolts { millivolts: 600 }, conditions: e1_bench, evidence: OperatorStatement { stated_on: "2026-10-15", verbatim: "yeah putting the red on the ground of the diode and black on the supply reads .6" } },
     DiodeModeObservation { asset: p4261_e1_b, probes: RedBlack { red: e1_d5_top, black: e1_d5_bottom }, display: ForwardMillivolts { millivolts: 605 }, conditions: e1_bench, evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "diode reading on D5 gives .605 / yes red was on top" } },
@@ -2872,10 +2979,10 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { component: e1_component(local: "D5_P5"), terminals: names(ns: ["end nearer the OVLO (pin 8) pad", "other end"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a small back-side part in the _P5 group, a different component from the input TVS D5" } },
     InstalledComponent { component: e1_01b, terminals: names(ns: ["one end", "other end"]), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "01B", evidence: e1_back_photo } }, discriminator: "'01B' is 1.00 kohm in the EIA-96 code (a nominal-value candidate); its maker and its place in the enable network are unread" } },
     InstalledComponent { component: e1_beige, terminals: names(ns: ["top end", "bottom end"]), identification: MarkingUnresolved { marking: Absent, discriminator: beige_part_discriminator } },
-    InstalledComponent { component: e1_s1, terminals: names(ns: ["pole 1", "pole 2"]), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "two-pole DIP package with a printed ON legend, beside J540 and DS3 to DS6", evidence: e1_switch_photo } }, discriminator: "its package marking, and an unpowered continuity reading per pole in each actuator position, which alone says which way a pole closes" } },
-    InstalledComponent { component: e1_s2, terminals: names(ns: ["pole 1", "pole 2"]), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "two-pole DIP package with a printed ON legend, near the large high-density connectors", evidence: e1_switch_photo } }, discriminator: "its package marking, and an unpowered continuity reading per pole in each actuator position, which alone says which way a pole closes" } },
+    InstalledComponent { component: e1_s1, terminals: names(ns: e1_pole_terminal_names), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "two-pole DIP package with a printed ON legend, beside J540 and DS3 to DS6", evidence: e1_switch_photo } }, discriminator: "its package marking, and an unpowered continuity reading per pole in each actuator position, which alone says which way a pole closes" } },
+    InstalledComponent { component: e1_s2, terminals: names(ns: e1_pole_terminal_names), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "two-pole DIP package with a printed ON legend, near the large high-density connectors", evidence: e1_switch_photo } }, discriminator: "its package marking, and an unpowered continuity reading per pole in each actuator position, which alone says which way a pole closes" } },
     InstalledComponent { component: e1_j68, terminals: names(ns: e1_j68_points), identification: MarkingUnresolved { marking: Absent, discriminator: "a 2 x 5 header: its ten points to J20's black lead unpowered on a recorded range against the shorted-probe baseline, which alone joins a point to the return; a 2 x 5 footprint fixes no pinout" } },
-    InstalledComponent { component: e1_j30, terminals: names(ns: e1_j30_points), identification: MarkingUnresolved { marking: Absent, discriminator: "the header's silkscreen photographed to settle J30 against J31, and its points to J20's black lead unpowered on a recorded range against the baseline" } },
+    InstalledComponent { component: e1_j30, terminals: names(ns: e1_j30_points), identification: MarkingUnresolved { marking: Absent, discriminator: "a three-position header silkscreened J30 beside U41 and D7_P2 (bench-session upload 2304eac4; J31, beside Q530, is another header): which of A, B, C the operator's 'pin 1' and 3.1 V point were, and each position to J20's black lead unpowered on a recorded range against the baseline" } },
     InstalledComponent { component: e1_u49, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { text: "LV165A / 2BKG4 / AEC0", evidence: e1_lv165a_photo } } },
     InstalledComponent { component: e1_u51, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { text: "LV165A / 2BKG4 / AEC0", evidence: e1_lv165a_photo } } },
   ],
@@ -2888,7 +2995,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     UnresolvedPart { designator: Absent, marking: Absent, obligation: "the large bare pads by F300 and the copper-ringed mounting holes were read as populations ('all of the big bare pads', 'J20 connects to all copper holes'); each would be a terminal once numbered on a photograph", evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "all of the big bare pads are connected the to the power rail" } },
     UnresolvedPart { designator: Present { value: "J24" }, marking: Absent, obligation: "a keyed socket of about 2 x 5 positions in the debug corner: its ground and logic-reference points by unpowered readings and idle voltages, nothing bridged", evidence: e1_switch_photo },
     UnresolvedPart { designator: Present { value: "J540" }, marking: Absent, obligation: "a smaller multi-pin socket beside U71, U95, DS3 to DS6 and S1: its position count, its ground and logic-reference points, nothing bridged", evidence: e1_switch_photo },
-    UnresolvedPart { designator: Present { value: "J31" }, marking: Absent, obligation: "a two-pin header silkscreened J31 near Q530 in the corner photograph: whether it is the header the operator calls J30", evidence: e1_switch_photo },
+    UnresolvedPart { designator: Present { value: "J31" }, marking: Absent, obligation: "a two-pin header silkscreened J31 beside Q530 in the corner photograph, a different header from J30: its role and its points", evidence: e1_switch_photo },
   ],
 }
 
