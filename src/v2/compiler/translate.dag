@@ -1025,6 +1025,52 @@ fn translate_type_param_carrier_optional(node: Node) -> Optional<Node> {
   })
 }
 
+// THE SHARED PER-NODE TRANSLATION BOUNDARY: root and nested positions both finalize here, so an
+// Optional (the one recognizer, v2.std.optional_layers type_node_occupancy_child ->
+// declaration_denotation_is_optional) takes the target's optional head and optional instantiation
+// form wherever it sits -- a field, a generic argument, a parameter -- never only at the root. The
+// payload is already projected by the fold, so T?? keeps its depth.
+fn translate_algebra_finalize_at_node(
+  acc: TypeExprTranslateAcc,
+  anchor: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  match type_node_occupancy_child(n: anchor) {
+    Absent => translate_algebra_finalize(acc: acc, anchor: anchor, projection: projection)
+    Present { value: _ } =>
+      match acc {
+        TypeExprTranslatePositional { items: projected } =>
+          bind_outcome(
+            o: list_head_and_tail(xs: projected, node: anchor),
+            f: fn(split) {
+              bind_outcome(
+                o: translate_type_expression_project(
+                  node: Node {
+                    kind: TypeNode { connective: Atom { identity: projection.optional_head } },
+                    children: [],
+                    occurrence_id: anchor.occurrence_id
+                  },
+                  target: target,
+                  projection: projection
+                ),
+                f: fn(head_projected) {
+                  outcome_accepted(
+                    target_type_expr_optional_instantiation_emitted(
+                      form: projection.optional_instantiation_form,
+                      head: head_projected,
+                      args: split.tail
+                    )
+                  )
+                }
+              )
+            }
+          )
+        _ => translate_algebra_finalize(acc: acc, anchor: anchor, projection: projection)
+      }
+  }
+}
+
 fn translate_algebra_finalize(
   acc: TypeExprTranslateAcc,
   anchor: Node,
@@ -1218,6 +1264,7 @@ fn translate_arrow_signature_split_from(labels: List<Symbol>, domain: Node, codo
 // the type, so its fold result is discarded here whatever it was. A binder node with no type, or a
 // second type, refuses.
 fn translate_binder_node_step(
+  target: TargetModel,
   done: TypeExprTranslateAcc,
   d: Diagnostics,
   e: Edge,
@@ -1232,7 +1279,7 @@ fn translate_binder_node_step(
           Rejected { diagnostics: cr } => Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
           Accepted { value: child_acc, diagnostics: cd } =>
             bind_outcome(
-              o: translate_algebra_finalize(acc: child_acc, anchor: e.target, projection: projection),
+              o: translate_algebra_finalize_at_node(acc: child_acc, anchor: e.target, target: target, projection: projection),
               f: fn(translated) {
                 Accepted { value: TypeExprTranslateBinder { type_expr: Present { value: translated } }, diagnostics: diagnostics_merge(outer: d, inner: cd) }
               }
@@ -1340,7 +1387,7 @@ fn translate_algebra(
           match done {
             TypeExprTranslateDone { node: _ } => Accepted { value: done, diagnostics: d }
             TypeExprTranslateBinder { type_expr: _ } =>
-              translate_binder_node_step(done: done, d: d, e: e, child: child, projection: projection)
+              translate_binder_node_step(target: target, done: done, d: d, e: e, child: child, projection: projection)
             TypeExprTranslateSlots { slots: slots } =>
               match e.label {
                 StructuralLabel { label: _ } =>
@@ -1353,11 +1400,7 @@ fn translate_algebra(
                       Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
                     Accepted { value: child_acc, diagnostics: cd } =>
                       bind_outcome(
-                        o: translate_algebra_finalize(
-                          acc: child_acc,
-                          anchor: e.target,
-                          projection: projection
-                        ),
+                        o: translate_algebra_finalize_at_node(acc: child_acc, anchor: e.target, target: target, projection: projection),
                         f: fn(projected) {
                           bind_outcome(
                             o: bind_outcome(
@@ -1407,11 +1450,7 @@ fn translate_algebra(
                       Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
                     Accepted { value: child_acc, diagnostics: cd } =>
                       bind_outcome(
-                        o: translate_algebra_finalize(
-                          acc: child_acc,
-                          anchor: e.target,
-                          projection: projection
-                        ),
+                        o: translate_algebra_finalize_at_node(acc: child_acc, anchor: e.target, target: target, projection: projection),
                         f: fn(projected) {
                           Accepted {
                             value: TypeExprTranslateVariants {
@@ -1439,11 +1478,7 @@ fn translate_algebra(
                   Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
                 Accepted { value: child_acc, diagnostics: cd } =>
                   bind_outcome(
-                    o: translate_algebra_finalize(
-                      acc: child_acc,
-                      anchor: e.target,
-                      projection: projection
-                    ),
+                    o: translate_algebra_finalize_at_node(acc: child_acc, anchor: e.target, target: target, projection: projection),
                     f: fn(projected) {
                       Accepted {
                         value: TypeExprTranslatePositional {
@@ -1509,44 +1544,20 @@ fn translate_type_expression_project_admitted(
                     projection: projection
                   )
                 } else {
-                  match type_node_occupancy_child(n: node) {
-                    Present { value: payload } =>
-                      bind_outcome(
-                        o: translate_type_expression_project(
-                          node: Node {
-                            kind: TypeNode { connective: Atom { identity: projection.optional_head } },
-                            children: [],
-                            occurrence_id: node.occurrence_id
-                          },
-                          target: target,
-                          projection: projection
-                        ),
-                        f: fn(head_projected) {
-                          bind_outcome(
-                            o: translate_type_expression_project(node: payload, target: target, projection: projection),
-                            f: fn(payload_projected) {
-                              outcome_accepted(
-                                target_type_expr_optional_instantiation_emitted(
-                                  form: projection.optional_instantiation_form,
-                                  head: head_projected,
-                                  args: Cons { head: payload_projected, tail: Empty }
-                                )
-                              )
-                            }
-                          )
-                        }
+                  bind_outcome(
+                    o: fold_node(
+                      n: node,
+                      algebra: translate_algebra(target: target, projection: projection)
+                    ),
+                    f: fn(acc) {
+                      translate_algebra_finalize_at_node(
+                        acc: acc,
+                        anchor: node,
+                        target: target,
+                        projection: projection
                       )
-                    Absent =>
-                      bind_outcome(
-                        o: fold_node(
-                          n: node,
-                          algebra: translate_algebra(target: target, projection: projection)
-                        ),
-                        f: fn(acc) {
-                          translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
-                        }
-                      )
-                  }
+                    }
+                  )
                 }
               }
             Conj =>
