@@ -15,14 +15,15 @@ import extdeps.languages.css.values {
 import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_property_wire, BoxSizing, Background, Color, FontFamily, FontSize, LineHeight, WebkitFontSmoothing, ColorScheme, Margin,
   AlignItems, BorderBottom, BorderBottomColor, Display, Flex, FlexWrap, FontWeight, Gap, GridTemplateColumns, Height, LetterSpacing,
   MarginBottom, MarginInline, MarginLeft, MarginTop, MaxWidth, Opacity, PaddingBlock, PaddingTop, TextDecoration, TextTransform, TextWrap, Transition, Width,
-  Border, BorderLeft, BorderRadius, BorderTop, Content, OverflowX, Padding, Transform, UserSelect, WhiteSpace }
+  Border, BorderLeft, BorderRadius, BorderTop, Content, OverflowX, Padding, Transform, UserSelect, WhiteSpace,
+  Outline, Overflow }
 import extdeps.languages.css.complex_selector {
   SelectorList, ComplexSelector, CompoundSelector, TypeSelector, SimpleSelector, UniversalType, ElementType, ClassPart, PseudoClassPart, PseudoElementPart,
   selector_list_wire, element_compound, class_compound,
 }
 import extdeps.languages.css.expression {
   CssValue, ValIdent, ValNumber, ValLength, ValTime, ValVar, ValCall, ValOperator, ValSpaceList, ValCommaList, ValFlex,
-  FnClamp, FnMin, FnCalc, FnMinmax, FnRotate, OpSub, Seconds, Degrees, ValString, ValAngle, css_value_wire,
+  FnClamp, FnMin, FnCalc, FnMinmax, FnRotate, FnCubicBezier, OpSub, Seconds, Degrees, ValString, ValAngle, css_value_wire,
 }
 import gunbc.design.gunb_ai_live_scale {
   LiveMeasure, live_measure_page, live_measure_wide, live_measure_prose, live_measure_title,
@@ -621,6 +622,166 @@ data command_banner: List<String> = ["╔══ COMMAND PANEL ══════
 data invariant_banner: List<String> = ["╔══ INVARIANT PANEL — clay only here ═════════════════════════════"]
 data roles_banner: List<String> = ["╔══ ROLE TOKENS — shared between code spans and graph elements ═", "The visual-correspondence rule: every colored code token has a", "same-colored graph object, and vice versa.", "", "Taxonomy (one color per structural meaning):", "  stable      ordinary structure                    warm-white", "  focus       the source fact this card pivots on   brass", "  derived     directly downstream / 1-2 hops        moss", "  transitive  multi-hop downstream (distant kin)    moss-dim", "  artifact    terminal generated slot               warm-white", "  removed     diff removal                          clay", "  boundary    violation / no artifact emitted       clay", "  context     ambient text without a role           stone", "", "stable and artifact share warm-white intentionally: they are the", "bookends of the system (source root and target slot). The cut-", "corner pentagon shape carries the artifact distinction."]
 
+data deck_comment_0: List<String> = ["╔══ STORY DECK — one progressive example, four accreting stages ═══", "Rendered by assets/cards.js. Each stage shares the same base graph;", "the visual story builds up layer by layer (lasso, dots, artifacts).", "Navigate via prev/next buttons or ← / → keys."]
+data deck_comment_1: List<String> = ["Vertical stack: code and graph each get the full card width. The", "richer system (with the Sessions parallel domain) makes the graph", "wider than the code pane can accommodate when split 50/50; the", "stacked layout keeps the SVG text readable."]
+data deck_entries: List<SheetEntry> = [
+  EntryComment { lines: deck_comment_0 },
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "deck"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Margin, value: sheet_space(items: [sheet_var(name: "gap-lg"), ValNumber { milli: 0 }])),
+      sheet_expr(property: Background, value: sheet_var(name: "void-up")),
+      sheet_expr(property: Border, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, sheet_var(name: "border-dark")])),
+      sheet_expr(property: BorderRadius, value: sheet_px(milli: 5000)),
+      sheet_expr(property: Padding, value: sheet_space(items: [sheet_rem(milli: 1250), sheet_rem(milli: 1500), sheet_rem(milli: 1500)])),
+      sheet_ident(property: Outline, ident: "none"),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "deck-head"), items: [
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: AlignItems, ident: "center"),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 1000)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: MarginBottom, value: sheet_rem(milli: 1000)),
+      sheet_ident(property: FlexWrap, ident: "wrap"),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "deck-name"), items: [
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 680)),
+    ] },
+    ItemDeclLine { decls: [
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 180, unit: Em)),
+      sheet_ident(property: TextTransform, ident: "uppercase"),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "warm-white")),
+    ]),
+  ]),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "deck-head"), descendant: class_compound(name: "deck-ticks")), items: [
+    compact_decls(decls: [
+      sheet_ident(property: MarginLeft, ident: "auto"),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: AlignItems, ident: "center"),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 450)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Flex, value: sheet_space(items: [ValNumber { milli: 0 }, ValNumber { milli: 0 }, ValIdent { ident: "auto" }])),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "deck-tick"), items: [
+    ItemDeclLine { decls: [
+      sheet_expr(property: Width, value: sheet_px(milli: 16000)),
+      sheet_expr(property: Height, value: sheet_px(milli: 10000)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Background, value: sheet_var(name: "border-dark-strong")),
+      sheet_expr(property: BorderRadius, value: sheet_px(milli: 3000)),
+      sheet_expr(property: Transition, value: sheet_space(items: [ValIdent { ident: "background" }, ValTime { milli: 200, unit: Seconds }])),
+    ]),
+  ]),
+  inline_rule(selector: single_compound_selector(c: classes_compound(names: ["deck-tick", "active"])), decls: [sheet_expr(property: Background, value: sheet_var(name: "moss"))]),
+  block_rule(selector: class_list(name: "deck-pos"), items: [
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 620)),
+    ] },
+    ItemDeclLine { decls: [
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 130, unit: Em)),
+      sheet_expr(property: Color, value: sheet_var(name: "stone-faint")),
+    ] },
+  ]),
+  inline_rule(selector: descendant_list(ancestor: class_compound(name: "deck-pos"), descendant: class_compound(name: "deck-current")), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white"))]),
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "deck-stage"), items: [
+    compact_decls(decls: [
+      sheet_ident(property: Overflow, ident: "hidden"),
+      sheet_expr(property: Border, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, sheet_var(name: "border-dark")])),
+      sheet_expr(property: BorderRadius, value: sheet_px(milli: 4000)),
+      sheet_expr(property: Background, value: sheet_var(name: "void")),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "card-track"), items: [
+    compact_decls(decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_expr(property: Transition, value: sheet_space(items: [ValIdent { ident: "transform" }, ValTime { milli: 350, unit: Seconds }, ValCall { function: FnCubicBezier, args: [ValNumber { milli: 400 }, ValNumber { milli: 0 }, ValNumber { milli: 200 }, ValNumber { milli: 1000 }] }])),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "deck-card"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Flex, value: sheet_space(items: [ValNumber { milli: 0 }, ValNumber { milli: 0 }, sheet_len(milli: 100000, unit: Percent)])),
+      sheet_expr(property: Padding, value: sheet_space(items: [sheet_rem(milli: 1200), sheet_rem(milli: 1500), sheet_rem(milli: 1250)])),
+      sheet_ident(property: BoxSizing, ident: "border-box"),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "deck-card-head"), items: [
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: AlignItems, ident: "baseline"),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 850)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: MarginBottom, value: sheet_rem(milli: 650)),
+      sheet_ident(property: FlexWrap, ident: "wrap"),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "deck-card-num"), items: [
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 600)),
+    ] },
+    ItemDeclLine { decls: [
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 180, unit: Em)),
+      sheet_ident(property: TextTransform, ident: "uppercase"),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "stone-faint")),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "deck-card-name"), items: [
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-sans")),
+      sheet_expr(property: FontWeight, value: ValNumber { milli: 600000 }),
+    ] },
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 1150)),
+      sheet_expr(property: Color, value: sheet_var(name: "warm-white")),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: -5, unit: Em)),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "deck-card-concept"), items: [
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-sans")),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 920)),
+    ] },
+    ItemDeclLine { decls: [
+      sheet_expr(property: LineHeight, value: ValNumber { milli: 1600 }),
+      sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
+    ] },
+    ItemDeclLine { decls: [
+      sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, ValNumber { milli: 0 }, sheet_rem(milli: 1250)])),
+      sheet_expr(property: MaxWidth, value: sheet_len(milli: 46000, unit: Em)),
+    ] },
+  ]),
+  inline_rule(selector: descendant_list(ancestor: class_compound(name: "deck-card-concept"), descendant: element_compound(tag: "strong")), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })]),
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: deck_comment_1 },
+  block_rule(selector: class_list(name: "deck-card-body"), items: [
+    compact_decls(decls: [
+      sheet_ident(property: Display, ident: "grid"),
+      sheet_expr(property: GridTemplateColumns, value: ValFlex { milli: 1000 }),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 850)),
+    ]),
+  ]),
+]
+
 data reset_base_entries: List<SheetEntry> = [
   EntryComment { lines: header_comment },
   EntryGap { blank_lines: 2 },
@@ -640,7 +801,7 @@ data reset_base_entries: List<SheetEntry> = [
 
 data later_sections: List<List<SheetEntry>> = [
   masthead_entries, text_roles_entries, hero_entries, prose_entries, measure_entries,
-  carved_entries, command_entries, invariant_entries, role_entries,
+  carved_entries, command_entries, invariant_entries, role_entries, deck_entries,
 ]
 
 data sheet_entries: List<SheetEntry> = concat(concat(reset_base_entries, layout_entries), fold(later_sections, init: [], f: (acc, section) => concat(acc, concat([EntryGap { blank_lines: 2 }], section))))

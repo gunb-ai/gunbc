@@ -9,10 +9,11 @@ module test.claim.site_gunb_ai_css_witness
 // lands, so the parity claim is "served starts with render, and the render ends where a section
 // ends". Once the sheet is complete the prefix claim and the equality claim are the same claim.
 //
-// PARTIAL, UNCOVERED RANGE: this claim covers the served bytes [0, len(render)) = fixture lines 1-314 (file
+// PARTIAL, UNCOVERED RANGE: this claim covers the served bytes [0, len(render)) = fixture lines 1-402 (file
 // header, TOKENS, RESET + BASE, LAYOUT, MASTHEAD, TEXT ROLES, HERO, PROSE, MEASURE WRAPPERS, CARVED RULE, COMMAND PANEL,
-// INVARIANT PANEL and ROLE TOKENS). NOT covered: fixture lines 315-680 (the STORY DECK through MEDIA QUERIES),
-// i.e. every byte after the ".map-context    { color: var(--stone-dim); }\n" that ends ROLE TOKENS.
+// INVARIANT PANEL, ROLE TOKENS and the first part of the STORY DECK, through .deck-card-body). NOT covered: fixture
+// lines 403-680 (the rest of the STORY DECK through MEDIA QUERIES), i.e. every byte after the
+// ".deck-card-body" rule's closing "}\n".
 // witness_render_ends_at_a_section_boundary pins where the covered range stops. Later PRs extend the
 // render per section group until the prefix claim is an equality claim.
 //
@@ -55,8 +56,8 @@ test fn witness_generated_sheet_is_a_prefix_of_the_served_sheet() -> Bool {
 // The render stops exactly where a section stops: the served bytes that follow it are the gap and
 // the next section's banner, so a render that merely stopped early inside the :root block is red.
 test fn witness_render_ends_at_a_section_boundary() -> Bool {
-  rendered_sheet().ends_with(suffix: ".map-context    { color: var(--stone-dim); }\n")
-    && served_sheet().substring(start: rendered_sheet().length(), end: rendered_sheet().length() + 10) == "\n\n/* ╔══ S"
+  rendered_sheet().ends_with(suffix: "  gap: 0.85rem;\n}\n")
+    && served_sheet().substring(start: rendered_sheet().length(), end: rendered_sheet().length() + 10) == "\n/* Code p"
 }
 
 // Supplied values at the interface the decimal wire answers for: the shortest decimal denoting the
