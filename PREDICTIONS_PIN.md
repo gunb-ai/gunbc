@@ -379,6 +379,19 @@ NEXT PER RULING, only if the strip-head gate still diverges on F5: F5 ALONE at t
 main, the Acc head, and the Acc head minus generic_alias_unfold/generic_type_unify_unfold/
 peel_alias_rhs_once. One input locates the boundary without a long run.
 
+WITHDRAWN by stern-bat-401 (msg_216dbb24), as confounded, and the withdrawal is recorded here beside the
+claim as instructed. The confound, measured: compile_dag_diagnostic_census_uncached (src/v1/stage0/src/
+cli_run/emit_host.rs) re-indexes the witness-root corpus and closes the fixture's imports on EVERY call --
+its content-keyed memo guard was deleted with run_required_floor -- and fixture F5's source says
+`import std.algebra`, which is Charter 6's single largest native resolve root. So the 200s non-return was
+corpus-scale work the four-line fixture never asked for, not the type checker failing on trivial input. The
+three-head F5 discriminator is NOT run. Independent confirmation that the compile path is not hanging: the
+two-closure gate's FULL-corpus compile completes at both the Acc head and the strip head, which is how
+76/67 and 234/228 exist at all.
+WHAT REMAINS, and it is not mine to fix: the uncached per-call re-index is a §6 cost-shape defect in the
+instrument itself -- an instrument whose per-case cost is the cost of the whole corpus cannot be used to
+measure one case. Routed to Charter 4 (warm-wolf-570), which owns that instrument.
+
 ## Strip measurement (stern-bat-401 msg_37357ae1 / msg_f1427119): does PR-2's Acc NEED the widening?
 COMPOSITION, established by attribution (not assumption) with git log -S on the PR-2 head:
  - the EQUALITY WIDENING = commits ac0aa2dd711 + d943faa1fc1: it is BOTH the type_heads_agree call
@@ -499,3 +512,23 @@ Acc head 97e47f8e562; rows come from the instrument ref once and are hashed.
    re-run before any 19/11/13-style count is trusted.
 A row that behaves identically at both heads where a difference was predicted is reported as
 NON-DISCRIMINATING, not quietly dropped.
+
+## Item 4 (stern msg_216dbb24): node_type_shape must print what the comparator compares.
+SCOPE MEASURED BEFORE BUILDING (blast radius, so the fix does not arrive as a surprise red):
+ - node_type_shape is NOT purely diagnostic. 60 .dag consumers; one decision site compares its STRING
+   OUTPUT to a literal: src/v1/04_infer.dag `got_is_string = node_type_shape(...) == "Primitive(String)"`.
+   Its output also becomes diagnostic SUBJECTS that CI-run claims pin (MethodNotFound receiver_type,
+   TypeMismatch subject). So an arm change can go red in dag/test/claim, not only in messages.
+ - Claim-pinned strings per arm, at MAIN (measured with git grep over dag/test, src/v2, src/v1/tests):
+     UnresolvedDecl( / Node(Name<..>)  = 0    <-- the APPLIED-HEAD arm, where declaration identity belongs
+     Coproduct(Name)                   = 5    <-- the Disj arm; printing its children would perturb these
+     Product(Name<..>)                 = 4
+     Primitive(Name)                   = 3    (also the decision literal above)
+     Map( / Container( / Named(        = 0
+ - THEREFORE: printing declaration identity on the applied-head arm has MEASURED zero claim-pin blast
+   radius. The Disj-children half of the fix is not free (5 pinned subjects) and is the half prereq (a)
+   named; it goes in the same row with its own RED, and if a pinned subject moves, the claim moves with it
+   and says why.
+ - Row target: dag/gunbc/recurring_failure_mode. Candidate existing row to extend rather than a new one:
+   search first for a renderer/shape row (the Box<Int> / Box<Int><Bool> printing class quiet-eagle-395
+   recorded) before declaring a new one.
