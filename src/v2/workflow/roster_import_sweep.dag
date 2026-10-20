@@ -1468,7 +1468,10 @@ fn roster_control_d4_clean(name: String, text: String, prepared: PreparedGrammar
 fn roster_control_d4_value_call_positive(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   match roster_sweep_text(path: "control/d4-value.dag", text: "module c.d4.value\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n", prepared: prepared, lex: lex) {
     RosterEdit { start: _, end: _, text: t, own_line: _ } =>
-      if t == "import std.algebra { collection_count_shape }" { "" } else { "CONTROL-FAIL d4-value-positive: proposed " + t + " instead of import std.algebra { collection_count_shape }\n" }
+      // The expected text carries the LEADING NEWLINE the sweep itself emits: this specimen has no import line, so the
+      // first import anchors after the parsed module header (roster_module_header_end) as its own line (#14486). Pinning
+      // the text WITHOUT it would pin the pre-#14486 shape and pass only if the anchor regressed.
+      if t == "\nimport std.algebra { collection_count_shape }" { "" } else { "CONTROL-FAIL d4-value-positive: proposed [" + t + "] instead of [\nimport std.algebra { collection_count_shape }]\n" }
     RosterClean => "CONTROL-FAIL d4-value-positive: a free value-position call of a row's name swept Clean -- the free-name reading moved\n"
     RosterRefused { reason: reason } => "CONTROL-FAIL d4-value-positive: refused " + roster_refusal_text(reason: reason) + "\n"
     RosterLabelEdits { edits: edits } => "CONTROL-FAIL d4-value-positive: " + int_to_decimal_string(value: length(xs: edits)) + " label edits instead of the import\n"
