@@ -1,7 +1,7 @@
 module gunbc.machine_intake.bmc_recovery_route
 
 import std.types { Bool, Int, List, NonEmptyStr, Port, String, list_length }
-import std.interval { interval_high, interval_low }
+import std.interval { closed_interval, interval_high, interval_low, IntervalRefused }
 // THE OPTIONAL MINTS, not the raw arms: a branch that has to produce an optional uses these, because
 // `Present { value: SomeType { ... } }` parses as a type annotation followed by a block (see the note at
 // in_band_argv_credential_option). Absent/Present are still needed for MATCHING.
@@ -34,8 +34,8 @@ import gunbc.machine_intake.bmc_inband_recovery_receipts {
   captured_epoch_millisecond, captured_band, captured_instant_band, captured_band_precedes,
   captured_band_ordering, CapturedBandOrdering, BandPrecedes, BandDoesNotPrecede,
   EarlierBandRefuses, LaterBandRefuses,
-  captured_bound_utc_text, recovery_inband_channel_instant, recovery_device_node_creation_instant,
-  recovery_reset_instant, recovery_post_reset_instant,
+  captured_bound_utc_text, captured_milliseconds_le, recovery_inband_channel_instant,
+  recovery_device_node_creation_instant, recovery_reset_instant, recovery_post_reset_instant,
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
 // THE PRIVILEGE FACT IS NOT RE-MINTED HERE. §2: "Decomposing a leaf by minting a fresh authority for a
@@ -4445,6 +4445,14 @@ test fn the_reset_ledger_refuses_a_row_whose_selection_is_a_revocable_grant() ->
 // claim would itself be the fabrication this replaced: the value these bounds replaced decoded to
 // 06:53:00.000, a reading nothing ever measured.
 test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool {
+  // the reversed pair, bound once so the carrier and the mint are asked about THE SAME endpoints
+  let reversed_low = captured_epoch_millisecond(
+    day: recovery_capture_day(),
+    hour: 6,
+    minute: 59,
+    second: 59,
+  )
+  let reversed_high = captured_epoch_millisecond(day: recovery_capture_day(), hour: 6, minute: 50, second: 0)
   let channel = captured_instant_band(instant: recovery_inband_channel_instant())
   let device_node = captured_instant_band(instant: recovery_device_node_creation_instant())
   let post_reset = captured_instant_band(instant: recovery_post_reset_instant())
@@ -4482,7 +4490,16 @@ test fn the_capture_bands_read_back_as_the_times_the_artifact_records() -> Bool 
       ),
       high: captured_epoch_millisecond(day: recovery_capture_day(), hour: 6, minute: 50, second: 0),
     ) {
-      CaptureTimeBandInverted { reason: r } => string_non_empty(value: r)
+      // NOT MERELY NON-EMPTY: equal to what the mint itself says about those endpoints. A check that
+      // only asked for a non-empty string passed while a fold swapped the mint's sentence for a fixed
+      // word, which is the same defect this claim's own comment forbids -- the carrier has to carry the
+      // mint's words, so the claim asks the mint directly and compares. The mint's sentence is never
+      // retyped here; a re-typed copy could go stale against std.interval and still pass.
+      CaptureTimeBandInverted { reason: r } =>
+        match closed_interval(low: reversed_low, high: reversed_high, le: captured_milliseconds_le) {
+          IntervalRefused { reason: m } => r == m
+          IntervalReady { interval: _ } => false
+        }
       CaptureTimeBand { band: _ } => false
     })
 }
