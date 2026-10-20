@@ -432,26 +432,9 @@ fn lex_rule_set_keyword_class_map(rules: LexRuleSet) -> Map<Symbol, Bool> {
   lex_rule_set_insert_keyword_classes(m: empty_map(), rules: rules)
 }
 
-fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
-  match lex_rule_token_class_optional(rule: rule) {
-    Present { value: c } => c == token_class
-    Absent => false
-  }
-}
-
-fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
-  fold_list(
-    xs: lex_rule_set_matching_rules(rules: rules),
-    empty: false,
-    cons: fn(acc, rule) {
-      acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
-    }
-  )
-}
-
 // A token class the rule set lexes by a KEYWORD pattern -- `fn`, `in`, `let` -- as distinct from the
 // classes it lexes by character classes or literals (an identifier, an int literal), which are also
-// token classes (lex_rule_set_token_class_member) and name operands. Whether a pattern IS a keyword
+// token classes (lex_rule_set_token_class_map) and name operands. Whether a pattern IS a keyword
 // is asked through the pattern's one fold, fold_lex_pattern, not a second matcher over LexPattern.
 // Every STRUCTURAL question about a pattern goes through that fold. The one sanctioned direct walk
 // is v2.compiler.tokenize lex_match_pattern, which runs a pattern against input. Matching threads a
