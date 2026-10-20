@@ -1,7 +1,8 @@
 module gunbc.roadmap.roadmap_dispatch_actuator
 
-import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
-import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly }
+import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments, coreutils_install_binary_name, coreutils_install_directory_owned_arguments }
+import extdeps.exec.program { uncataloged_program }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly, DirectoryOwnerGroupWritableSetgid }
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
 import std.optional { Present }
@@ -3204,6 +3205,28 @@ fn dispatch_attempt_worker_git_entry_migration(
   match instance.worker {
     WorkerIsServiceUser => []
     WorkerDedicatedAccount => [
+      // THE ENTRY'S TOP IS INSTALLED, NOT MERELY SWEPT, and the distinction is the round-3 finding the
+      // wet witness used to hide: `git worktree add` CREATES .git/worktrees/<key> under the instance
+      // principal's umask (~0755, group briansrls), and a sweep only ADDS bits -- chgrp + g+w + g+s on a
+      // 0755 top lands it at 2770-group-something, never at the declared mode the readback's top leg
+      // holds every granted top to. install -d -o -g -m is the one primitive that states all three
+      // ownership fields absolutely (measured on this host: an EXISTING node:node 0755 dir became
+      // node:<group> 02775 under it, file contents and children untouched), so the spawn converges the
+      // entry to the same declared arm the deploy converges the three shared tops to, and the grant is
+      // IDEMPOTENT: re-spawning an attempt re-states the mode instead of refusing. The arm is the shared
+      // authority's non-sticky directory -- a sticky entry top would EPERM the instance principal's own
+      // checkout entries against the worker (the argument at the sweep below) -- and the group is the
+      // caller's parameter like every other grant in this slice, NO DEFAULT, with the production pairing
+      // claim asserting the declared group.
+      argv_command(
+        program: uncataloged_program(invocation: coreutils_install_binary_name),
+        arguments: coreutils_install_directory_owned_arguments(
+          mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid),
+          owner: instance.directory_owner.user,
+          group: group,
+          path: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
+        ),
+      ),
       dashboard_git_worker_subtree_chgrp_command(
         target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
         group: group,

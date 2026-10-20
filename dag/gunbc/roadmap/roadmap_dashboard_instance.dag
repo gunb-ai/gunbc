@@ -32,7 +32,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerGroupWritableSetgid, srv1_dashboard_service_principal }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerGroupWritableSetgid, DirectoryOwnerGroupWritableSetgidSticky, declared_directory_mode, srv1_dashboard_service_principal }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name }
 import gunbc.owned_directory {
   OwnedDirectoryTarget,
@@ -1889,7 +1889,12 @@ fn dashboard_instance_worker_git_directories(instance: HostDashboardInstance) ->
       member: join(["git-worker-", child as String], "") as NonEmptyStr,
       path: dashboard_instance_child(root: instance.repo_root, child: child as String),
       owner: dashboard_instance_worker_writable_owner(instance: instance),
-      mode: DirectoryOwnerGroupWritableSetgid,
+      // THE ONE MODE AUTHORITY (dashboard_git_worker_subtree_declared_directory_mode): objects/ installs
+      // 3770 (the sticky arm, fencing the root-owned pack/ and info/ a group-writable parent would
+      // otherwise expose to rename-over), refs/ and logs/ install 2770. This is the value `install -d -m`
+      // carries and the value the readback's top leg is held to -- the same DeclaredDirectoryMode, so
+      // there is no longer a second FileMode the two could disagree with (round 3 finding (4)).
+      mode: dashboard_git_worker_subtree_declared_directory_mode(child: child),
       group_adoption: dashboard_instance_worker_writable_group_adoption(instance: instance),
     })
   }
@@ -2050,6 +2055,37 @@ data dashboard_git_worker_sticky_children: List<NonEmptyStr> = [dashboard_git_wo
 
 fn dashboard_git_worker_subtree_needs_sticky(child: NonEmptyStr) -> Bool {
   any(xs: dashboard_git_worker_sticky_children, predicate: c => (c as String) == (child as String))
+}
+
+// THE MODE AUTHORITY FOR THE THREE SHARED SUBTREES -- THE ONE PLACE A GRANTED TOP-LEVEL MODE IS DECIDED
+// (WORKER-ROOT-EQUIVALENT-3, round 3 finding (4), bright-moth-475 2026-10-20: the declaration said 2770
+// while the readback demanded 2775/3775 and the sweep adds but never clears bits, so
+// assert-then-migrate left objects/ at 3770 and the readback refused its own route). There is now ONE
+// named arm per subtree, in gunbc.managed_directory, and EVERY consumer renders from this function: the
+// owned-directory declaration (what the deploy installs), the migration's sticky decision (the +t action
+// below, still keyed on dashboard_git_worker_subtree_needs_sticky -- the SAME row this matches on), and
+// the readback's top expectation (the fold's `top:` argument). A rename or a mode change moves all three
+// together because they read the same two constructors; there is no second FileMode to forget.
+// objects/ gets DirectoryOwnerGroupWritableSetgidSticky (3770): it holds root-owned entries (pack/, info/
+// -- #13942's, which the named maintenance job writes and deletes through) in a directory the attempt
+// group writes, and rename(2) checks the PARENT, so without +t a worker could mv root's objects/pack
+// aside and plant a symlink the owner's repack then writes through (measured: EPERM under +t, succeeds
+// without -- extdeps.tools.findutils find_subtree_group_writable_command carries the measurement).
+// refs/ and logs/ get DirectoryOwnerGroupWritableSetgid (2770): every entry there belongs to an attempt
+// and attempts are ONE account, so there is nothing foreign to fence and +t would only EPERM the worker's
+// own lock-and-rename.
+// THE OTHER LEG IS --- IN EVERY ARM: no principal outside {briansrls, gunbc-attempt} reads the lab repo --
+// fleet_posix_accounts declares the worker's group membership as the CLOSED list [gunbc-attempt] and the
+// instance's service user is briansrls, so those are the only readers (finding (b)'s answer, asked of the
+// model rather than of preference). Interior entries keep whatever the host left them at: the sweep adds
+// g+w/g+s/+t and NEVER touches o-bits, so a fan-out dir that arrived at 775 stays readable at 775-family;
+// only the declared TOP is held to the arm exactly.
+fn dashboard_git_worker_subtree_declared_directory_mode(child: NonEmptyStr) -> DeclaredDirectoryMode {
+  if dashboard_git_worker_subtree_needs_sticky(child: child) {
+    DirectoryOwnerGroupWritableSetgidSticky
+  } else {
+    DirectoryOwnerGroupWritableSetgid
+  }
 }
 
 // WHICH SUBTREE HOLDS A FILE GIT WRITES IN PLACE, and therefore which one's files must be group-writable.
@@ -2252,15 +2288,21 @@ data dashboard_git_maintenance_owned_config_keys: List<NonEmptyStr> = [
 // what file_mode_octal renders. There is no decimal literal in this slice and no comment restating an
 // octal in decimal, because there is nothing to restate -- the octal text is the rendering, not a
 // comment on a number.
-//   02775  the granted DIRECTORY: owner and attempt group rwx, other r-x, SETGID -- the bit that makes
-//          a fan-out directory git creates later inherit the attempt group rather than the creating
-//          process's primary group, which is the whole reason a worker can write into objects/<xx>/.
-//   03775  the granted directory that HOLDS ROOT-OWNED ENTRIES (.git/objects: pack/ and info/ are
-//          #13942's, and the root maintenance job writes and deletes through them). Sticky is the
-//          companion to g+w, not an extra: in a world-writable-by-group directory without it,
-//          rename(2) checks only the PARENT, so a confined worker can move root's objects/pack aside
-//          and plant a symlink for the root repack to write through. See
-//          dashboard_git_worker_sticky_children for why exactly one subtree gets it.
+//   02770  the granted DIRECTORY top (managed_directory.DirectoryOwnerGroupWritableSetgid): owner and
+//          attempt group rwx, other ---, SETGID -- the bit that makes a fan-out directory git creates
+//          later inherit the attempt group rather than the creating process's primary group, which is
+//          the whole reason a worker can write into objects/<xx>/.
+//   03770  the granted directory top that HOLDS ROOT-OWNED ENTRIES (.git/objects: pack/ and info/ are
+//          #13942's, and the named maintenance job writes and deletes through them). Sticky is the
+//          companion to g+w, not an extra: in a group-writable directory without it, rename(2) checks
+//          only the PARENT, so a confined worker can move root's objects/pack aside and plant a symlink
+//          for the maintenance job to write through. See dashboard_git_worker_sticky_children for why
+//          exactly one subtree gets it. THE OTHER LEG IS --- AND STAYS --- AT THE TOP: no principal
+//          outside {instance service user, gunbc-attempt} reads the lab repo (fleet_posix_accounts
+//          declares the worker's groups as the closed list [gunbc-attempt]). INTERIORS are not held to
+//          an octal: the sweep only ADDS g+w/g+s/+t and never touches o-bits, so an interior that
+//          arrived from the host at 0755/0775 keeps its readable other-leg -- see
+//          dashboard_git_worker_interior_directory_mode_is_accepted for what IS demanded there.
 //   0664   the granted FILE: owner and group rw, other r-- . A loose object is 0444 and stays that
 //          way -- git writes it read-only on purpose and nobody needs to write it, which is why the
 //          file predicate does not accept 0444 and does not need to.
@@ -2276,23 +2318,16 @@ data dashboard_git_worker_other_read_execute_bits: PermissionBits = dashboard_gi
 data dashboard_git_worker_owner_group_write_bits: PermissionBits = dashboard_git_permission_bits(r: true, w: true, x: false)
 data dashboard_git_worker_other_read_bits: PermissionBits = dashboard_git_permission_bits(r: true, w: false, x: false)
 
-data dashboard_git_worker_granted_directory_mode: FileMode = FileMode {
-  owner: dashboard_git_worker_owner_group_full_bits,
-  group: dashboard_git_worker_owner_group_full_bits,
-  other: dashboard_git_worker_other_read_execute_bits,
-  setuid: false,
-  setgid: true,
-  sticky: false,
-}
+// THE TWO GRANTED TOPS ARE RENDERINGS OF THE DECLARED ARMS, not hand-built FileModes (round 3, finding
+// (4)): 02770 and 03770, rendered by managed_directory.declared_directory_mode over the SAME two arms
+// dashboard_git_worker_subtree_declared_directory_mode picks. An earlier cut spelled these as literals at
+// 02775/03775 while the owned-directory declaration demanded 02770 from managed_directory -- two
+// authorities for one mode, and the route that installs-then-sweeps landed at 2770/3770 and REFUSED ITSELF
+// at the readback (the lab deploy of 0ed9fbca802, where the migration never ran and the tops sat at the
+// asserted 2770). One row per mode now, in managed_directory; this module only renders and reads fields.
+data dashboard_git_worker_granted_directory_mode: FileMode = declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid)
 
-data dashboard_git_worker_granted_shared_directory_mode: FileMode = FileMode {
-  owner: dashboard_git_worker_owner_group_full_bits,
-  group: dashboard_git_worker_owner_group_full_bits,
-  other: dashboard_git_worker_other_read_execute_bits,
-  setuid: false,
-  setgid: true,
-  sticky: true,
-}
+data dashboard_git_worker_granted_shared_directory_mode: FileMode = declared_directory_mode(m: DirectoryOwnerGroupWritableSetgidSticky)
 
 
 
@@ -2327,26 +2362,33 @@ fn dashboard_git_worker_subtree_granted_directory_mode(child: NonEmptyStr) -> Fi
   }
 }
 
-// THE PLAIN GRANT, 02775, and it REFUSES 03775 -- deliberately, and a claim leg pins it: the sticky
+// THE PLAIN GRANT, and it REFUSES the sticky shape -- deliberately, and a claim leg pins it: the sticky
 // shape is only correct for the one subtree that holds foreign-owned entries, so a predicate that
-// accepted both would let refs/ or logs/ drift to 03775 unnoticed (where +t would EPERM the worker's
-// own first `git add` against the entry's own index/HEAD). Ask the per-subtree question when the subtree is
-// known; ask this one when the question is "is this the plain grant".
+// accepted both would let refs/ or logs/ drift to the sticky mode unnoticed (where +t would EPERM the
+// worker's own first `git add` against the entry's own index/HEAD). Ask the per-subtree question when the
+// subtree is known; ask this one when the question is "is this the plain grant".
 fn dashboard_git_worker_directory_mode_is_granted(mode: FileMode) -> Bool {
   dashboard_git_worker_file_modes_are_equal(a: mode, b: dashboard_git_worker_granted_directory_mode)
 }
 
-// IS A DIRECTORY *BENEATH* A GRANTED SUBTREE ACCEPTED? Both shapes are, and the pair is not
-// redundancy: the migration's own chmod leaves every directory it walked at 03775 under objects/, but
-// a fan-out directory git CREATES TOMORROW can never be sticky -- mkdir inherits S_ISGID from the
-// parent and does NOT inherit S_ISVTX, and git's adjust_shared_perm (core.sharedRepository=group) then
-// adds only the group triple. So the honest expected mode for a directory git makes is 02775 even
-// under a 03775 parent, and a readback that demanded 03775 throughout would refuse a repository that
-// is correctly granted. Measured on the host: mkdir under a 3775 parent -> 2755, then git's shared
-// perm -> 2775.
+// IS A DIRECTORY *BENEATH* A GRANTED SUBTREE ACCEPTED? THE GRANTED BITS PLUS THE SAFETY FLOOR, NOT AN
+// EXACT MODE -- and this is where the second authority used to live (round 3, finding (4)): an exact
+// {02775, 03775} window is what a tree looks like when the walk reached a directory the HOST had left at
+// 0755/0775, but the bits the host owns are not ours to certify. What OUR route guarantees on every
+// directory it swept is exactly two things -- group-writable and setgid (plus +t in objects/) -- and what
+// #13942's confinement requires of anything inside a granted subtree is the floor: never world-writable,
+// never setuid. The other leg is whatever umask left: a fan-out directory git creates tomorrow inherits
+// S_ISGID from its parent but NOT S_ISVTX, and git's adjust_shared_perm(core.sharedRepository=group) then
+// raises only the group triple -- so the honest expected mode under a 03770 parent is the granted bits at
+// whatever the creating process's umask gave `other` (measured on the host: mkdir under a sticky parent
+// -> 2755, shared perm -> 2775; under the asserted 03770 the same walk yields the granted bits with the
+// host's other-leg). Demanding an exact `other` triple here would (i) certify the host's umask as if our
+// route had set it and (ii) refuse a correctly-granted tree whose fan-out dirs arrived at a different
+// umask, which is a refusal of reality, not of a defect (DESIGN 5's inverse: the model must not fail on
+// states it never promised). Sticky is DON'T-CARE: sweep-touched interiors under objects/ carry it,
+// git-created fan-out dirs cannot inherit it, and both are granted.
 fn dashboard_git_worker_interior_directory_mode_is_accepted(mode: FileMode) -> Bool {
-  dashboard_git_worker_file_modes_are_equal(a: mode, b: dashboard_git_worker_granted_directory_mode)
-    || dashboard_git_worker_file_modes_are_equal(a: mode, b: dashboard_git_worker_granted_shared_directory_mode)
+  mode.group.write && mode.setgid && !mode.other.write && !mode.setuid
 }
 
 // A GRANTED FILE is group-writable, NOT world-writable, and carries NEITHER special bit -- three
