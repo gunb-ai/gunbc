@@ -357,6 +357,20 @@ fn expand_nominal_alias_rhs_by_name(n: Node, env: TypeEnv, module_name: String) 
   let brand = authored_name_at(source_indices: source_indices, node: n)
   match lookup_type_for(env: env, node: n) {
     Present { value: resolved } =>
+      // D.5 (docs/plans/v1-interface-cull-audit.md, 69e4233d881): `structural` is read on exactly
+      // two paths — the brand arm (with_authored_identity) and the inferred-Resolved arm. Both
+      // pre-decisions that do not read `structural` are made BEFORE the walk: the brand arm's two
+      // brand-only conjuncts, and the second arm's demand test (structural is used there only when
+      // the inferred fact is a Resolved node). When neither can read it, the ordinary arm returns
+      // `resolved` unchanged and the walk would be discarded — deleted demand (§2), not a cache.
+      let brand_arm_possible = brand != "" && !is_declared_container_alias_spelling(name: brand)
+      let inferred_arm_uses_structural = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
+        match resolved.inferred {
+          Present { value: Resolved { node: _ } } => true
+          _ => false
+        }
+      } else { false }
+      if !brand_arm_possible && !inferred_arm_uses_structural { resolved } else {
       let structural = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
           Present { value: Resolved { node: target } } =>
@@ -378,6 +392,7 @@ fn expand_nominal_alias_rhs_by_name(n: Node, env: TypeEnv, module_name: String) 
           _ => resolved
         }
       } else { resolved }
+      }
     Absent => n
   }
 }
@@ -604,7 +619,31 @@ fn resolve_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> Node
     let arg_results = n.children |> map(child => resolve_nominal_alias_rhs(n: child, env: env, module_name: module_name))
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
-    let validation = resolve_node(n: n, env: env, module_name: module_name)
+    // D.6 (docs/plans/v1-interface-cull-audit.md, 69e4233d881): only diagnostics are consumed from
+    // the validation walk - `validation.resolved` was discarded at every use, a second transformed
+    // value built and thrown away (DESIGN 2). For this node shape (NoConnective, children > 0) at
+    // depth 0, resolve_node's arm analysis is exact and total: a keyed collection yields the key
+    // and value walks' diagnostics; a one-argument use yields the element walk's diagnostics;
+    // any other multi-argument use reaches the identity arm with NO diagnostics and no child walk
+    // at all. Taking the diagnostics from the same sub-walks deletes the parent's transformed
+    // value and the dead multi-argument walk - deleted demand, not a cache. Refusals are
+    // byte-identical: each arm below is the identical resolve_node_bounded call the old
+    // validation recursion made (same node via child_type_node, same depth 1, same masked: true).
+    let validation_diags =
+      if is_user_generic_use_site(n: n, env: env) {
+        // Its diagnostics flow through resolved VALUES (slot bindings -> substituted target ->
+        // target diagnostics), so the transformed value is consumed here transitively: not deletable.
+        resolve_node(n: n, env: env, module_name: module_name).diagnostics
+      } else if node_is_keyed_collection(n: n, source_indices: env.source_indices) {
+        let key_child_node = match n.children |> first { Present { value: k } => k  Absent => unit_type }
+        let val_child_node = match skip(n.children, 1) |> first { Present { value: v } => v  Absent => unit_type }
+        let key_diags = resolve_node_bounded(n: child_type_node(ch: key_child_node), env: env, module_name: module_name, depth: 1, masked: true).diagnostics
+        let val_diags = resolve_node_bounded(n: child_type_node(ch: val_child_node), env: env, module_name: module_name, depth: 1, masked: true).diagnostics
+        concat(key_diags, val_diags)
+      } else if n.children |> count == 1 {
+        let child_node = match n.children |> first { Present { value: c } => c  Absent => unit_type }
+        resolve_node_bounded(n: child_type_node(ch: child_node), env: env, module_name: module_name, depth: 1, masked: true).diagnostics
+      } else { [] }
     NodeResolveResult {
       resolved: Node {
         occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: resolved_args,
@@ -613,7 +652,7 @@ fn resolve_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> Node
         properties: n.properties, type_annotation: n.type_annotation,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData
       },
-      diagnostics: concat(arg_diags, validation.diagnostics)
+      diagnostics: concat(arg_diags, validation_diags)
     }
   } else {
     resolve_node(n: n, env: env, module_name: module_name)
