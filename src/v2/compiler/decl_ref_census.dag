@@ -607,7 +607,7 @@ fn unresolved_site(c: CitedRef, context: ResolutionContext) -> List<String> {
 
 fn site_of_resolution(file: Symbol, r: DeclarationRefResolution) -> List<String> {
   if resolution_is_unresolved(r: r, refused: []) {
-    [concat(file as String, " cites ", resolution_subject(r: r))]
+    [concat(symbol_lexeme(sym: file), " cites ", resolution_subject(r: r))]
   } else {
     []
   }
