@@ -3,11 +3,10 @@ module gunbc.site.gunb_ai_deck
 import std.types { String, Int, List, Bool }
 import std.optional { Absent, Present }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.render_repeat_string_bootstrap { repeat_string }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.ecmascript.emit {
   EsExpr, EsString, EsInt, EsNull, EsCall, EsArray, EsPropertyPath, es_text, es_member, es_member_separated,
-  es_property_key, es_separated, es_call_open, es_call_array_end, es_aligned_row,
+  es_property_key, es_separated, es_call_open, es_call_array_end, es_aligned_row, es_spaces, es_text_width,
   es_lbrace, es_rbrace, es_lbracket, es_rbracket, es_lparen, es_rparen
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -138,8 +137,8 @@ type DeckContent
   | CardNodeRows { rows: List<CardNode> }
   | DeckName { name: String }
 
-// What dissolves every RetainedJs block: extdeps.languages.ecmascript.emit growing statement and function
-// forms (const, arrow functions, if/for, member calls). EsExpr models only the expression forms the typed
+// What dissolves every RetainedJs block: the capability "ECMAScript statement and function emit rows" in
+// extdeps.languages.ecmascript.emit, which grows statement and function forms (const, arrow functions, if/for, member calls). EsExpr models only the expression forms the typed
 // rows are written in, so the renderer's statements have nothing to be typed against yet.
 data retention_extends: DeclarationRef = DeclarationRef {
   module_path: "extdeps.languages.ecmascript.emit",
@@ -153,14 +152,6 @@ type RetainedJs {
 }
 
 type DeckSegment = SegmentRetained { block: RetainedJs } | SegmentGenerated { content: DeckContent }
-
-fn spaces(n: Int) -> String {
-  repeat_string(s: " ", n: n)
-}
-
-fn text_width(s: String) -> Int {
-  0 + s.length()
-}
 
 fn str(s: String) -> EsExpr {
   EsString { value: s }
@@ -229,7 +220,7 @@ fn wider(acc: Int, w: Int) -> Int {
 // group, the removed and added diff lines are the other.
 fn source_width(lines: List<CodeLine>) -> Int {
   fold(lines, init: 0, f: (acc, l) => match l {
-    SourceLine { n: _, rows: _ } => wider(acc: acc, w: text_width(s: line_prefix(l: l)))
+    SourceLine { n: _, rows: _ } => wider(acc: acc, w: es_text_width(s: line_prefix(l: l)))
     RemovedLine { n: _, rows: _ } => acc
     AddedLine { n: _, rows: _ } => acc
     BlankLine { n: _ } => acc
@@ -239,18 +230,18 @@ fn source_width(lines: List<CodeLine>) -> Int {
 fn diff_width(lines: List<CodeLine>) -> Int {
   fold(lines, init: 0, f: (acc, l) => match l {
     SourceLine { n: _, rows: _ } => acc
-    RemovedLine { n: _, rows: _ } => wider(acc: acc, w: text_width(s: line_prefix(l: l)))
-    AddedLine { n: _, rows: _ } => wider(acc: acc, w: text_width(s: line_prefix(l: l)))
+    RemovedLine { n: _, rows: _ } => wider(acc: acc, w: es_text_width(s: line_prefix(l: l)))
+    AddedLine { n: _, rows: _ } => wider(acc: acc, w: es_text_width(s: line_prefix(l: l)))
     BlankLine { n: _ } => acc
   })
 }
 
 fn listing_head(l: CodeLine, width: Int) -> String {
-  join([spaces(n: 8), line_prefix(l: l), spaces(n: width - text_width(s: line_prefix(l: l)) + 1), es_lbracket], "")
+  join([es_spaces(n: 8), line_prefix(l: l), es_spaces(n: width - es_text_width(s: line_prefix(l: l)) + 1), es_lbracket], "")
 }
 
 fn listing_rows(head: String, rows: List<List<CodePart>>) -> String {
-  concat(join(map(enumerate(rows), pair => concat(if pair.first == 0 { head } else { spaces(n: text_width(s: head)) }, join(map(pair.second, p => part_wire(p: p)), ", "))), ",\n"), es_call_array_end)
+  concat(join(map(enumerate(rows), pair => concat(if pair.first == 0 { head } else { es_spaces(n: es_text_width(s: head)) }, join(map(pair.second, p => part_wire(p: p)), ", "))), ",\n"), es_call_array_end)
 }
 
 fn listing_line(l: CodeLine, lines: List<CodeLine>) -> String {
@@ -258,7 +249,7 @@ fn listing_line(l: CodeLine, lines: List<CodeLine>) -> String {
     SourceLine { n: _, rows: rs } => listing_rows(head: listing_head(l: l, width: source_width(lines: lines)), rows: rs)
     RemovedLine { n: _, rows: rs } => listing_rows(head: listing_head(l: l, width: diff_width(lines: lines)), rows: rs)
     AddedLine { n: _, rows: rs } => listing_rows(head: listing_head(l: l, width: diff_width(lines: lines)), rows: rs)
-    BlankLine { n: _ } => concat(spaces(n: 8), line_prefix(l: l))
+    BlankLine { n: _ } => concat(es_spaces(n: 8), line_prefix(l: l))
   }
 }
 
@@ -279,13 +270,13 @@ fn receipt_label_cell(r: ReceiptRow) -> String {
 fn receipt_value_cell(r: ReceiptRow) -> String {
   match r {
     ReceiptValue { label: _, pieces: ps } => join([es_member(key: "value", value: str(s: pieces_wire(pieces: ps))), " ", es_rbrace], "")
-    ReceiptCode { label: _, lines: ls } => join(["code: ", es_lbracket, "\n", join(map(ls, x => concat(spaces(n: 10), lit(s: x))), ",\n"), "\n", spaces(n: 8), es_rbracket, es_rbrace], "")
+    ReceiptCode { label: _, lines: ls } => join(["code: ", es_lbracket, "\n", join(map(ls, x => concat(es_spaces(n: 10), lit(s: x))), ",\n"), "\n", es_spaces(n: 8), es_rbracket, es_rbrace], "")
   }
 }
 
 fn receipt_wire(rows: List<ReceiptRow>) -> String {
   let table = map(rows, r => [receipt_label_cell(r: r), receipt_value_cell(r: r)])
-  join(map(table, row => concat(spaces(n: 8), es_aligned_row(row: row, table: table, gaps: [1]))), ",\n")
+  join(map(table, row => concat(es_spaces(n: 8), es_aligned_row(row: row, table: table, gaps: [1]))), ",\n")
 }
 
 fn artifact_row_cells(a: ArtifactDecl) -> List<String> {
@@ -294,12 +285,12 @@ fn artifact_row_cells(a: ArtifactDecl) -> List<String> {
 
 fn artifact_wire(rows: List<ArtifactDecl>) -> String {
   let table = map(rows, a => artifact_row_cells(a: a))
-  join(map(table, row => concat(spaces(n: 6), es_aligned_row(row: row, table: table, gaps: [1, 2, 1]))), ",\n")
+  join(map(table, row => concat(es_spaces(n: 6), es_aligned_row(row: row, table: table, gaps: [1, 2, 1]))), ",\n")
 }
 
 fn role_map_wire(rows: List<RoleRow>) -> String {
   let table = map(rows, r => [es_property_key(key: r.key), lit(s: role_wire(r: r.role))])
-  join(map(table, row => concat(spaces(n: 10), es_aligned_row(row: row, table: table, gaps: [1]))), ",\n")
+  join(map(table, row => concat(es_spaces(n: 10), es_aligned_row(row: row, table: table, gaps: [1]))), ",\n")
 }
 
 fn node_cells(n: LayoutNode) -> List<String> {
@@ -311,7 +302,7 @@ fn slot_cells(a: ArtifactSlot) -> List<String> {
 }
 
 fn call_rows(callee: String, table: List<List<String>>, gaps: List<Int>, indent: Int) -> List<String> {
-  map(table, row => join([spaces(n: indent), callee, es_lparen, es_aligned_row(row: row, table: table, gaps: gaps)], ""))
+  map(table, row => join([es_spaces(n: indent), callee, es_lparen, es_aligned_row(row: row, table: table, gaps: gaps)], ""))
 }
 
 fn layout_node_wire(nodes: List<LayoutNode>) -> List<String> {
@@ -351,13 +342,13 @@ fn panel_cells(p: PanelRow) -> List<String> {
 
 fn panels_wire(rows: List<PanelRow>) -> String {
   let table = map(rows, p => panel_cells(p: p))
-  join(map(table, row => concat(spaces(n: 8), es_aligned_row(row: row, table: table, gaps: [1, 1, 1, 1, 1]))), ",\n")
+  join(map(table, row => concat(es_spaces(n: 8), es_aligned_row(row: row, table: table, gaps: [1, 1, 1, 1, 1]))), ",\n")
 }
 
 fn lane_extra_wire(extra: CellExtra?) -> String {
   match extra {
-    Present { value: CellVia { text: t } } => join([",\n", spaces(n: 16), es_member(key: "via", value: str(s: t)), " ", es_rbrace], "")
-    Present { value: CellKindArtifact } => join([",\n", spaces(n: 16), es_member(key: "kind", value: str(s: "artifact")), " ", es_rbrace], "")
+    Present { value: CellVia { text: t } } => join([",\n", es_spaces(n: 16), es_member(key: "via", value: str(s: t)), " ", es_rbrace], "")
+    Present { value: CellKindArtifact } => join([",\n", es_spaces(n: 16), es_member(key: "kind", value: str(s: "artifact")), " ", es_rbrace], "")
     Absent => concat(" ", es_rbrace)
   }
 }
@@ -375,23 +366,23 @@ fn lane_table(rows: List<LaneRow>) -> List<List<String>> {
 
 fn lane_cell_wire(c: LaneCell, table: List<List<String>>) -> String {
   match c {
-    LaneGap => concat(spaces(n: 14), es_text(e: EsNull))
-    LaneItem { id: i, label: l, role: r, extra: e } => concat(spaces(n: 14), es_aligned_row(row: lane_item_cells(id: i, label: l, role: r, extra: e), table: table, gaps: [1, 2]))
+    LaneGap => concat(es_spaces(n: 14), es_text(e: EsNull))
+    LaneItem { id: i, label: l, role: r, extra: e } => concat(es_spaces(n: 14), es_aligned_row(row: lane_item_cells(id: i, label: l, role: r, extra: e), table: table, gaps: [1, 2]))
   }
 }
 
 fn lane_row_wire(row: LaneRow, table: List<List<String>>) -> String {
-  join([spaces(n: 10), es_lbrace, "\n", spaces(n: 12), es_member_separated(key: "id", value: str(s: row.id)), "\n", spaces(n: 12), "cells: ", es_lbracket, "\n", join(map(row.cells, c => lane_cell_wire(c: c, table: table)), ",\n"), "\n", spaces(n: 12), es_rbracket, "\n", spaces(n: 10), es_rbrace], "")
+  join([es_spaces(n: 10), es_lbrace, "\n", es_spaces(n: 12), es_member_separated(key: "id", value: str(s: row.id)), "\n", es_spaces(n: 12), "cells: ", es_lbracket, "\n", join(map(row.cells, c => lane_cell_wire(c: c, table: table)), ",\n"), "\n", es_spaces(n: 12), es_rbracket, "\n", es_spaces(n: 10), es_rbrace], "")
 }
 
 fn lanes_wire(columns: List<String>, rows: List<LaneRow>) -> String {
   let table = lane_table(rows: rows)
-  join([spaces(n: 8), es_member_separated(key: "columns", value: EsArray { elements: map(columns, c => str(s: c)) }), "\n", spaces(n: 8), "rows: ", es_lbracket, "\n", join(map(rows, r => lane_row_wire(row: r, table: table)), ",\n"), "\n", spaces(n: 8), es_rbracket], "")
+  join([es_spaces(n: 8), es_member_separated(key: "columns", value: EsArray { elements: map(columns, c => str(s: c)) }), "\n", es_spaces(n: 8), "rows: ", es_lbracket, "\n", join(map(rows, r => lane_row_wire(row: r, table: table)), ",\n"), "\n", es_spaces(n: 8), es_rbracket], "")
 }
 
 fn card_file_wire(code_file: String, shape: CardShape?) -> String {
-  concat(concat(spaces(n: 6), es_member_separated(key: "codeFile", value: str(s: code_file))), match shape {
-    Present { value: s } => join(["\n", spaces(n: 6), es_member_separated(key: "shape", value: str(s: shape_wire(s: s)))], "")
+  concat(concat(es_spaces(n: 6), es_member_separated(key: "codeFile", value: str(s: code_file))), match shape {
+    Present { value: s } => join(["\n", es_spaces(n: 6), es_member_separated(key: "shape", value: str(s: shape_wire(s: s)))], "")
     Absent => ""
   })
 }
@@ -401,7 +392,7 @@ fn content_wire(c: DeckContent) -> String {
     ArtifactRows { rows: rs } => artifact_wire(rows: rs)
     LayoutNodeRows { nodes: ns, artifacts: slots } => join(concat(layout_node_wire(nodes: ns), layout_slot_wire(slots: slots)), ",\n")
     LayoutEdgeRows { groups: gs } => join(flat_map(gs, g => edge_group_wire(group: g)), ",\n")
-    CardHeader { id: i, num: n, name: nm } => join([spaces(n: 6), es_member_separated(key: "id", value: str(s: i)), "\n", spaces(n: 6), es_member_separated(key: "num", value: str(s: n)), "\n", spaces(n: 6), es_member_separated(key: "name", value: str(s: nm))], "")
+    CardHeader { id: i, num: n, name: nm } => join([es_spaces(n: 6), es_member_separated(key: "id", value: str(s: i)), "\n", es_spaces(n: 6), es_member_separated(key: "num", value: str(s: n)), "\n", es_spaces(n: 6), es_member_separated(key: "name", value: str(s: nm))], "")
     CardFile { code_file: f, shape: s } => card_file_wire(code_file: f, shape: s)
     CodeRows { lines: ls } => join(map(ls, l => listing_line(l: l, lines: ls)), ",\n")
     RoleMapRows { rows: rs } => role_map_wire(rows: rs)
@@ -409,7 +400,7 @@ fn content_wire(c: DeckContent) -> String {
     LanesBlock { columns: cs, rows: rs } => lanes_wire(columns: cs, rows: rs)
     PanelRows { rows: rs } => panels_wire(rows: rs)
     CardNodeRows { rows: rs } => card_nodes_wire(rows: rs)
-    DeckName { name: n } => concat(spaces(n: 4), es_member_separated(key: "name", value: str(s: n)))
+    DeckName { name: n } => concat(es_spaces(n: 4), es_member_separated(key: "name", value: str(s: n)))
   }
 }
 

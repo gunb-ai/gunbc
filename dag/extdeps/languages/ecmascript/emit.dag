@@ -105,6 +105,10 @@ fn es_text_width(s: String) -> Int {
   0 + s.length()
 }
 
+fn es_spaces(n: Int) -> String {
+  repeat_string(s: " ", n: n)
+}
+
 fn es_column(table: List<List<String>>, index: Int) -> List<String> {
   flat_map(table, r => flat_map(enumerate(r), pair => if pair.first == index { [pair.second] } else { [] }))
 }
@@ -122,7 +126,7 @@ fn es_gap_at(gaps: List<Int>, index: Int) -> Int {
 }
 
 fn es_aligned_cell(cell: String, column: List<String>, gap: Int) -> String {
-  concat(cell, repeat_string(s: " ", n: es_column_width(cells: column) - es_text_width(s: cell) + gap))
+  concat(cell, es_spaces(n: es_column_width(cells: column) - es_text_width(s: cell) + gap))
 }
 
 fn es_aligned_row(row: List<String>, table: List<List<String>>, gaps: List<Int>) -> String {
