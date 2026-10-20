@@ -770,6 +770,15 @@ data interim_job_user_whole_binary_grants: DivergenceReason = DivergenceReason {
   dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the srv1 deploy route runs its host-root effects under the administrator edge from a main-pinned dispatch and the whole-binary rows are deleted from ci_runner_sudo_binaries (plan stage 2), gated by deploy_route_switch_admitted. SUFFICIENT FOR overlaying these rows as RealizedAdministratorEdge (host-root rows) or RealizedFederatedGrant (the argv-pinned systemctl row)" as NonEmptyStr),
 }
 
+// THE CONTROLLER INSTALL HAS NO GRANT AT ALL, which is not the whole-binary case: dd and install into
+// /etc/systemd/system are named by no rendered or live sudoers line, so the effect is refused at its
+// first write (recurring failure mode a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize,
+// run 39284886844). Granting it to the job user would make that account root-equivalent.
+data controller_install_holds_no_grant: DivergenceReason = DivergenceReason {
+  statement: "the effect's root writes (dd/install into /etc/systemd/system and /usr/local) are authorized by no grant, so the apply is refused at its first privileged line; the only realization that exists is the operator running it locally" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the controller install runs its host-root writes under the administrator edge from the main-pinned deploy slot, gated by deploy_route_switch_admitted (plan gunbc.plans.srv1_deploy_principal_split, controller-install scope addition). Sufficient only when the install's argv are emitted through the edge and no job-user sudoers line names them." as NonEmptyStr),
+}
+
 fn srv1_host_root_effect(subject: NonEmptyStr) -> PrivilegedEffect {
   PrivilegedEffect {
     subject: subject,
@@ -831,6 +840,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: srv1_host_root_effect(subject: "install a staged unit or file under /etc or /usr/local as root (live_deploy preamble, dashboard_deploy, approval_broker_dark_install)" as NonEmptyStr),
     realized: RealizedUnauthorized,
     divergence_reason: Present { value: interim_job_user_whole_binary_grants },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.host_effect_realize", decl_name: "microvm_controller_staged_write_steps"),
+    effect: srv1_host_root_effect(subject: "stage and install the microVM controller's units, slice and release files under /etc/systemd/system and /usr/local as root (host_effect_apply MicrovmControllerInstall, run 39284886844 refused at 'controller slice unit (stage)')" as NonEmptyStr),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: controller_install_holds_no_grant },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.live_deploy.operations", decl_name: "deploy_stage_visudo_check_command"),
