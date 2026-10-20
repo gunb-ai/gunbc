@@ -1824,7 +1824,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   // `type Measure<Q, S, M> = ...` produced ZERO stamps at all, because the pass covered only fn
   // params/return (is_function_item) and Conj/Disj members. ORDER plus COVERAGE, one defect. So the
   // identity goes on the authored occurrence before anything is resolved, from this item's own header.
-  let item_marked = binder_marked_item(item: item, owner: owner, binders: tp_names, env: env)
+  let item_marked = binder_marked_item(item: item, owner: owner, binders: tp_names, source_indices: env.source_indices)
   let collision_diags = match first_duplicate_type_param_name(names: tp_names) {
     Present { value: dup } =>
       [make_error_node(diagnostic: InternalError { message: concat(concat(concat("the name '", dup), concat("' is bound twice in the header of '", authored_name_at(source_indices: env.source_indices, node: item))), "': either a type parameter is repeated (`type Pair<T, T>`), or a value parameter shares a type parameter's name (`fn f<T>(T: T)`). A type parameter's identity is (owner, name), so one header may bind a name once. Rename one of them."), span: item.span }, module_name: module_name)]
