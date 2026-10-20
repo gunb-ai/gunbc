@@ -1370,6 +1370,19 @@ fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
   }
 }
 
+// The declared binding power of a prefix (unary) operator, read from the language's
+// PrefixOperatorSpec rows beside the infix rows find_operator_bp reads. `parse_prefix` asks this
+// instead of carrying a hand-written literal: the literal it used to carry (12) admitted every
+// infix row at or above it, so `-1 - 2` and `!a * b` parsed with the prefix covering the tail.
+fn find_prefix_binding_power(ops: List<PrefixOperatorSpec>, symbol: String) -> Int? {
+  let matching = ops |> filter(op => op.symbol == symbol)
+  if matching |> count > 0 {
+    Present { value: first(matching).value.binding_power }
+  } else {
+    none
+  }
+}
+
 fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOp? {
   let matching = ops |> filter(op => op.symbol == symbol)
   if matching |> count > 0 {
@@ -5622,17 +5635,30 @@ fn parse_prefix(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
   let span = token_span(tok: tok)
+  let text = match tok { Present { value: t } => t.text  Absent => "" }
   match sh {
-    Present { value: ShBang } => {
-      let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: 12)
-      if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Not }, children: [r.expr], inferred: none, span: span))
-    }
-    Present { value: ShMinus } => {
-      let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: 12)
-      if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Neg }, children: [r.expr], inferred: none, span: span))
-    }
+    Present { value: ShBang } =>
+      // The operand parses at the DECLARED prefix binding power, read from the same
+      // SyntaxSpec table the infix gate reads -- never a literal. A language whose rows declare no
+      // prefix row for this symbol does not have this prefix operator, and parse_primary answers
+      // with its ordinary expected-expression error rather than a hand-written power.
+      match find_prefix_binding_power(ops: ctx.env.syntax_spec.prefix_operators, symbol: text) {
+        Absent => parse_primary(tokens: tokens, ctx: ctx)
+        Present { value: bp } => {
+          let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: bp)
+          if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Not }, children: [r.expr], inferred: none, span: span))
+        }
+      }
+    Present { value: ShMinus } =>
+      match find_prefix_binding_power(ops: ctx.env.syntax_spec.prefix_operators, symbol: text) {
+        Absent => parse_primary(tokens: tokens, ctx: ctx)
+        Present { value: bp } => {
+          let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: bp)
+          if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Neg }, children: [r.expr], inferred: none, span: span))
+        }
+      }
     _ => parse_primary(tokens: tokens, ctx: ctx)
   }
 }

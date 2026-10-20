@@ -72,9 +72,26 @@ type OperatorSpec {
   algebra_field: AlgebraFieldKind?
 }
 
+// A PREFIX (unary) operator's binding power, declared beside the infix rows rather than written as
+// a literal at each prefix arm of the parser. Before this type existed, `v1.compiler.parse`
+// `parse_prefix` handed each prefix arm's operand a hand-written minimum binding power, and the one
+// value chosen (12) admitted every infix row with left_bp >= 12 -- so `-1 - 2` parsed as -(1 - 2)
+// and `!a * b` as !(a * b), silently, in the seed parser and in everything that reads its tree.
+// The class is gunbc.recurring_failure_mode.unary_minus_absorbs_a_following_additive_operator.
+//
+// A prefix operator binds only its own postfix operand, so its power sits above every infix row it
+// must not absorb: `|>` at 17 stays outside `-a |> f`, while `.` at 19 is consumed by the operand's
+// postfix layer -- the same closure the v2 grammar rows enforce structurally, where
+// `unary_expr -> '-' unary_expr | postfix_expr` cannot swallow an infix tail at any power.
+type PrefixOperatorSpec {
+  symbol: String
+  binding_power: Int
+}
+
 type SyntaxSpec {
   item_forms: List<ItemForm>
   operators: List<OperatorSpec>
+  prefix_operators: List<PrefixOperatorSpec>
   keyword_literals: Map<String, LiteralValue>
   keyword_set: Map<String, Bool>
 }
