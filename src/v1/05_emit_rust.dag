@@ -19660,7 +19660,7 @@ fn native_serve_declares_startup(modules: List<TypedModule>, pipeline_module: St
     |> filter(site => site.module_name == pipeline_module)) > 0
 }
 // A startup entry MAY also declare `native_serve_startup_bound` (a Second): the bound on its own startup readiness, which the
-// rendered main writes into the contract in place of gunbc.native_serve native_serve_startup_deadline. It is the driver's
+// rendered main reads for its readiness wait in place of gunbc.native_serve native_serve_startup_deadline. It is the driver's
 // declared data, as the handler and the startup fold are, and a driver that declares none keeps the default bound.
 data native_serve_startup_bound_name: String = "native_serve_startup_bound"
 
@@ -20162,8 +20162,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "use ", crate_name, "::gunbc_native_serve::\{native_serve_startup_passed_line, native_serve_startup_refusal_line, native_serve_startup_refused_exit_code, NativeServeStartup};", "\n")
   } else { "" }
   let bound_import = if startup_bound { concat("use ", crate_name, "::", pipeline_mod, "::native_serve_startup_bound;", "\n") } else { "" }
-  let contract_let = if startup_bound { "    let mut contract = match" } else { "    let contract = match" }
-  let contract_bound = if startup_bound { "    contract.startup_deadline = native_serve_startup_bound();\n" } else { "" }
+  let startup_second = if startup_bound { "native_serve_startup_bound()" } else { "contract.startup_deadline.clone()" }
   let worker_startup = if startup {
     concat(
       "        // It judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.", "\n",
@@ -20207,7 +20206,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
     "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),\n"
   }
   let ready_within = if startup {
-    "std::time::Duration::from_secs(second_count(contract.startup_deadline.clone()) as u64)"
+    concat("std::time::Duration::from_secs(second_count(", startup_second, ") as u64)")
   } else {
     "std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64)"
   }
@@ -20448,14 +20447,13 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "\n",
       "fn main() \{", "\n",
       "    let argv: Vec<String> = std::env::args().skip(1).collect();", "\n",
-      contract_let, " &*native_serve_start(Rc::new(argv.into())) \{", "\n",
+      "    let contract = match &*native_serve_start(Rc::new(argv.into())) \{", "\n",
       "        NativeServeStart::NativeServeListen \{ contract \} => contract.clone(),", "\n",
       "        NativeServeStart::NativeServeStartRefused \{ reason \} => \{", "\n",
       "            eprintln!(\"REFUSED: \{\}\", reason);", "\n",
       "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \};", "\n",
-      contract_bound,
       first_block,
       second_block,
       "    eprintln!(\"\{\}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));", "\n",

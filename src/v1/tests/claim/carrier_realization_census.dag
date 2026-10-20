@@ -507,10 +507,10 @@ test fn a_driver_with_no_startup_binds_before_it_realizes_its_worker_on_the_requ
   !string_contains(s: head, pattern: "realize_generation(&stuck") && !string_contains(s: head, pattern: "startup_deadline")
 }
 
-test fn a_declared_startup_bound_replaces_the_contracts_default_before_the_first_worker_is_realized() -> Bool {
+test fn a_declared_startup_bound_replaces_the_contracts_default_in_the_readiness_wait() -> Bool {
   let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: true, startup_bound: true)
   match (file.content |> split(delimiter: "TcpListener::bind((")).first() {
-    Present { value: head } => string_contains(s: head, pattern: "contract.startup_deadline = native_serve_startup_bound();") && string_contains(s: head, pattern: "let mut contract")
+    Present { value: head } => string_contains(s: head, pattern: "second_count(native_serve_startup_bound())") && !string_contains(s: head, pattern: "second_count(contract.startup_deadline.clone())")
     Absent => false
   }
 }
