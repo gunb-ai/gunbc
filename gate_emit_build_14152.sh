@@ -4,17 +4,28 @@
 # the diagnostic-count gate and still fail CI on emitted Rust (E0277 `S: Clone` at
 # stage0/src/std_realization_measurement.rs:341:72 on PR-1 head e5cc5d9).
 #
-# USAGE: bash gate_emit_build_14152.sh <sha> <label> <repair|name-keyed|main>
+# USAGE: bash gate_emit_build_14152.sh <sha> <label> <doc|pin|repair|name-keyed|main>
 # ONE dispatch: fresh clone at the printed SHA, private target dir, release build of gunbc, then
 # `gunbc test //gunbc/instruments:self-host`. Prints V2-NATIVE / EmittedCompilerBuildFailed lines and,
 # if the emitted crate is retained, the source line CI blamed.
 set -uo pipefail
-SHA="${1:?sha}"; LABEL="${2:?label}"; KIND="${3:?kind pin|repair|name-keyed|main}"
-case "$KIND" in pin|repair|name-keyed|main) ;; *) echo "VOID bad kind"; exit 7 ;; esac
+SHA="${1:?sha}"; LABEL="${2:?label}"; KIND="${3:?kind doc|pin|repair|name-keyed|main}"
+case "$KIND" in doc|pin|repair|name-keyed|main) ;; *) echo "VOID bad kind"; exit 7 ;; esac
 WORK=/tmp/gateemit_${LABEL}; rm -rf "$WORK"; mkdir -p "$WORK"
 d=$WORK/repo
 echo "T=$(date +%T) clone begin"
-git clone -q --no-checkout https://github.com/gunb-ai/gunbc.git "$d" 2>/dev/null || { echo "VOID clone failed"; exit 7; }
+# Retried clone: a bare `git clone` on the runner failed transiently while another dispatch cloned at
+# once, and a gate that dies at clone must say so with git's stderr rather than print a bare VOID.
+CLONED=0
+for attempt in 1 2 3; do
+  rm -rf "$d"
+  if git clone -q --no-checkout https://github.com/gunb-ai/gunbc.git "$d" 2> "$WORK/clone_err.$attempt"; then
+    CLONED=1; echo "T=$(date +%T) clone ok on attempt $attempt"; break
+  fi
+  echo "T=$(date +%T) clone attempt $attempt failed: $(tr '\n' ' ' < "$WORK/clone_err.$attempt" | cut -c1-200)"
+  sleep 20
+done
+[ "$CLONED" = 1 ] || { echo "VOID clone failed (3 attempts; stderr echoed above)"; exit 7; }
 ( cd "$d" && git checkout -q "$SHA" ) || { echo "VOID checkout $SHA"; exit 7; }
 echo "T=$(date +%T) MEASURED_AT $(cd $d && git rev-parse HEAD)"
 # GUARD: which tree is this, so a .dag-only or wrong-branch tree cannot read as green
@@ -29,6 +40,16 @@ case "$KIND" in
   repair)     { [ "$acc" = 0 ] && [ "$nm" = 1 ] && [ "$sp" = 1 ]; } || { echo "VOID repair tree guard failed (would measure the wrong tree)"; exit 8; } ;;
   name-keyed) { [ "$acc" = 0 ] && [ "$sp" = 0 ] && [ "$nm" -ge 1 ]; } || { echo "VOID name-keyed tree guard failed"; exit 8; } ;;
   main)       { [ "$acc" = 0 ] && [ "$sp" = 0 ]; } || { echo "VOID main tree guard failed (main must carry neither mint)"; exit 8; } ;;
+  doc)        # A documentation-only head: compiler sources must be main's, the row must be present, and
+              # the boundary-guard module that earlier heads carried must be GONE (its presence would mean
+              # the deleted decoration came back, or that this is not the head under review).
+              { [ "$acc" = 0 ] && [ "$nm" = 0 ] && [ "$sp" = 0 ] \
+                && [ -s "$d/dag/gunbc/recurring_failure_mode/silent_first_wins_rebind_of_a_generic_type_variable_in_unify_generics.dag" ] \
+                && [ ! -e "$d/src/v1/tests/src/call_site_mint_boundary_test.rs" ] \
+                && ! grep -q "mod call_site_mint_boundary_test;" "$d/src/v1/tests/src/lib.rs" \
+                && cmp -s "$d/src/v1/04_infer.dag" <(git -C "$d" show origin/main:src/v1/04_infer.dag) \
+                && cmp -s "$d/src/v1/stage0/src/v1_compiler_infer.rs" <(git -C "$d" show origin/main:src/v1/stage0/src/v1_compiler_infer.rs); } \
+                || { echo "VOID doc tree guard failed (compiler not byte-identical to main, deleted guard present, or the row absent)"; exit 8; } ;;
 esac
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$WORK/tgt}"
 mkdir -p "$CARGO_TARGET_DIR"
