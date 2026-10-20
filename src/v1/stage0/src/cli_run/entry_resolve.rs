@@ -2123,24 +2123,19 @@ pub(crate) fn resolved_graph_from_sources_with_index(
             return Err(format_error_nodes(&diagnostics, &source_indices));
         }
         super::provider_acquire::ClosureProviderStep::Acquire(modules) => {
-            let mut merged = sources.clone();
-            for module in &modules {
-                let provider = index.source_files.get(module).cloned().ok_or_else(|| {
-                    format!(
-                        "generated provider acquisition: the pool answered for '{module}' and then                          had no source for it"
-                    )
-                })?;
-                for s in load_sources_for_entry_with_pool(index, &provider.path)? {
-                    if !merged.iter().any(|x| x.path == s.path) {
-                        merged.push(s);
-                    }
-                }
-            }
-            if merged.len() == sources.len() {
-                return Err(format!(
-                    "generated provider acquisition made no progress: acquiring {modules:?} added                      no source to the closure"
-                ));
-            }
+            let merged = super::provider_acquire::extend_with_acquired(
+                sources.clone(),
+                &modules,
+                &|module: &str| {
+                    let provider = index.source_files.get(module).cloned().ok_or_else(|| {
+                        format!(
+                            "generated provider acquisition: the pool answered for '{module}' \
+                             and then had no source for it"
+                        )
+                    })?;
+                    load_sources_for_entry_with_pool(index, &provider.path)
+                },
+            )?;
             let acquired =
                 resolved_graph_from_sources_with_index(index, merged, phase_label, memo_share)?;
             if memo_share == ResolvedGraphMemoShare::Memoize {

@@ -2075,24 +2075,30 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 ///
 /// The control that the selected bytes equal the full render's is
 /// [`compile_dag_render_selection_agreement`], which runs the full render for real.
+/// A demanded provider joins an emit-check fixture with its own import closure, read from the
+/// witness-root module index the way the fixture's own imports were.
+pub(crate) fn fixture_pool_closure_of(
+    module: &str,
+    pool: &HashMap<String, String>,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let path = pool
+        .get(module)
+        .ok_or_else(|| format!("generated provider '{module}' is not in the module index"))?;
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("generated provider '{module}' at {path}: {e}"))?;
+    resolve_virtual_source_with_imports(&workspace_relative_repo_path(path), &content, pool)
+}
+
 pub(crate) fn compile_fixture_rendering_only_what_is_read(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     read_path: Option<&str>,
     pool: &HashMap<String, String>,
 ) -> Result<Rc<v1_compiler_compile::PipelineResult>, FixtureRenderRefusal> {
-    // The witness-root module index is this surface's pool for generated providers: a demanded
-    // module joins with its own import closure, read the way the fixture's imports were.
+    // The witness-root module index is this surface's pool for generated providers.
     let resolved = super::provider_acquire::compile_to_provider_fixed_point(
         sources,
         &|module: &str| pool.contains_key(module),
-        &|module: &str| {
-            let path = pool
-                .get(module)
-                .ok_or_else(|| format!("generated provider '{module}' left the pool"))?;
-            let content = std::fs::read_to_string(path)
-                .map_err(|e| format!("generated provider '{module}' at {path}: {e}"))?;
-            resolve_virtual_source_with_imports(&workspace_relative_repo_path(path), &content, pool)
-        },
+        &|module: &str| fixture_pool_closure_of(module, pool),
     )
     .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
     let selection = fixture_render_selection(&resolved, read_path)?;
