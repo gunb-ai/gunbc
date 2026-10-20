@@ -50,13 +50,14 @@ import v1.compiler.infer_types {
 }
 
 import v1.compiler.infer_env {
+  fn_type_param_names,
   TypeEnv, TypeBinding, authored_name, census_declaration_type_env, declaration_substitution_basis,
   is_recursive_type, lookup_type, lookup_type_for,
   GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
   listed_import_required_bare_call_blocked
 }
 
-import v1.compiler.infer_resolve { fn_type_param_names, expand_nominal_alias_rhs }
+import v1.compiler.infer_resolve { expand_nominal_alias_rhs }
 
 import v1.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries

@@ -2,7 +2,7 @@ module v1.compiler.infer_env
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.std.core { resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, generic_param_name_at, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type, is_container_type }
@@ -1839,11 +1839,27 @@ fn enclosing_declaration_of(declarations: List<Node>, n: Node) -> Node? {
   preceding |> filter(d => d.span.start == nearest_start) |> first
 }
 
+// THE TYPE PARAMETERS A DECLARATION DECLARES. A type item (a connective, no transport) keeps them in `params`; a fn item's
+// `params` are its VALUE parameters, and its type parameters are the ones whose name is their own type expression.
+fn fn_type_param_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  item.params |> filter(p =>
+    param_node_name_at(n: p, source_indices: source_indices) == authored_name_at(source_indices: source_indices, node: param_node_type_expr(n: p))
+  ) |> map(p => param_node_name_at(n: p, source_indices: source_indices))
+}
+
+fn declared_type_parameter_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  if item.connective != NoConnective && item.transport == none {
+    item.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+  } else {
+    fn_type_param_names(item: item, source_indices: source_indices)
+  }
+}
+
 fn is_declared_type_parameter_of_enclosing_declaration(n: Node, parameter: String, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
   match map_get(env.symbol_index.declarations_by_file, n.span.file) {
     Present { value: declarations } =>
       match enclosing_declaration_of(declarations: declarations, n: n) {
-        Present { value: d } => d.params |> any(p => authored_name_at(source_indices: source_indices, node: p) == parameter)
+        Present { value: d } => declared_type_parameter_names(item: d, source_indices: source_indices) |> any(tp => tp == parameter)
         Absent => false
       }
     Absent => false

@@ -131,7 +131,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { is_type_variable_name, settled_type, settled_type_of_declaration, declaration_named_by_type_name, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
+import v1.compiler.infer_env { fn_type_param_names, is_type_variable_name, settled_type, settled_type_of_declaration, declaration_named_by_type_name, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -178,7 +178,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
 import v1.compiler.infer_resolve {
-  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
+  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
