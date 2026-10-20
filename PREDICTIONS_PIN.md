@@ -267,3 +267,29 @@ nothing about PR-2's fold.
 GATE DEFECT FOUND AND FIXED: gate_two_closures_14152.sh exits 0 for "measurement
 completed", NOT for "green"; and it printed only the comparator JSON's byte count. Both
 made a red head look like a completed pass. It now prints the per-module JSON in full.
+
+## Family fixtures (probe/family-map-fixture, off the Acc head 97e47f8e562)
+
+Data-bearing dispatch j2ee41ed9 at probe head b9450e06eac. The two earlier dispatches
+(811e9f1493a, 4d3429c7f89) were COMPILE failures surfaced as VOID (E0603; FAM_LINES=0,
+VOID_NO_TEST_RESULT) -- they produced no data and are not runs.
+
+F1-F5 pre-registered in the message to stern before any dispatch:
+  F1 unannotated empty_map() call as a Map argument -> REFUSES (the Map(Primitive(K),Primitive(V)) shape)
+  F2 the identical program with the call bound through an annotation -> ACCEPTS
+  F3 same_shape<T> over two distinct concrete Maps -> REFUSES (true disagreement)
+  F4 same_shape<T> over two identical concrete Maps -> ACCEPTS
+  F5 map_insert on a parameter-typed Map -> ACCEPTS (control; if it refuses everything is void)
+  F1 refuses + F2 accepts => family (ii) PRODUCER DEFECT, home upstream of the Acc.
+
+F6/F7 recorded here, written AFTER the fixtures were added but BEFORE reading the
+data-bearing run's output (that run had not completed when these lines were written):
+  F6 warm-wolf's verbatim shape (same_arm<T>(a:T,b:T) over P1{a:Int} vs Q1{a:Int}, two distinct
+     coproducts) -> my prediction: ACCEPTS on the Acc head, i.e. the fold does not refuse it,
+     because the tag route is the constructor-tag defect (one_type_variable_bound_to_two_distinct_coproducts),
+     which PR-2's node_type_equals_core widening targets and which is a SEPARATE change (parent's (b) split).
+     Consequence if confirmed: Charter 4's ExpectedRed rows do NOT flip from PR-2 as currently
+     composed; they flip only if the equality widening lands. warm-wolf must be told this
+     BEFORE their enrollment is relied on.
+  F7 same_arm over two values of the SAME coproduct -> ACCEPTS (if it refuses, the Acc is
+     over-strict on constructor comparison generally and subsumes F6's reading).
