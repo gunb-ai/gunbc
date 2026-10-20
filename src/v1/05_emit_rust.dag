@@ -19487,7 +19487,9 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   if shared_layer_refuse_text(answer: data_layer) != "" {
     return shared_layer_refuse_text(answer: data_layer)
   }
-  let needs_rc = match data_layer { SharedLayerAtShared => true  _ => false }
+  // A container initializer (List<Int> = fold(..)) is emitted already Rc-wrapped by the expression
+  // emitter; only a bare declared shared type's constructor value still needs the data row's wrap.
+  let needs_rc = !is_container_type(name: rust_fn_sig_leaf_name(source_indices: scope.type_env.source_indices, n: type_node)) && (match data_layer { SharedLayerAtShared => true  _ => false })
 
   let ty_str = if preserves_declared_brand {
     render_rust_shared_type_with_optional(n: type_node, type_name: ann_name, rendered: ty_str, shared_types: shared_types, source_indices: scope.type_env.source_indices, type_decl_items: emit_info.type_decl_items)
