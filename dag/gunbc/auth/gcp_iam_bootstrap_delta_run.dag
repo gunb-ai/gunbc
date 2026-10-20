@@ -1,0 +1,96 @@
+module gunbc.auth.gcp_iam_bootstrap_delta_run
+
+import std.types { NonEmptyStr, String, Secret }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.scoped_authorization { AuthorizationRequest }
+import std.optional { Present, Absent }
+import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
+import gunbc.auth.gcp_iam_converge_run { observe_token, request_and_wait_as }
+import gunbc.auth.approval_run_identity { run_attempt }
+import gunbc.auth.gcp_iam_bootstrap_delta {
+  BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused, observe_bootstrap_delta, subject_not_bootstrapped_text,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta_route {
+  BootstrapDeltaRequestBody, BootstrapDeltaRequestable, BootstrapDeltaRequestAdmitted, BootstrapDeltaUnrequestable, RootCeremonyCellsMissing, root_cell_missing_text, bootstrap_delta_digest_hex, ApprovedSubjectsOutcome, AllApprovedSubjectsApplied, ApprovedSubjectRefused, bootstrap_delta_requestable,
+  BootstrapDeltaRequest, BootstrapDeltaRequested, BootstrapDeltaRequestRefused, bootstrap_delta_request, apply_approved_subjects,
+}
+
+// ── THE BOOTSTRAP DELTA RUN (fleet-converge mode gcp_iam_converge, two jobs ahead of the converge) ─
+// The converge's order (gunbc.auth.gcp_iam_converge_run), split across the environment boundary:
+//   request (job gcp-iam-bootstrap-request, UNGATED, the converge's environment and pool) -- as
+//            iam-observe: derive the whole roster's delta; an empty one exits clean and asks nobody; a
+//            nonempty one files ONE request over exactly its cells and writes the approved output only
+//            when the live gate admits an approval of exactly that request for this attempt.
+//   apply   (job gcp-iam-bootstrap-apply, the gcp-iam-bootstrap environment, only on that output) --
+//            re-derive the delta as iam-observe, re-derive the request for this attempt, re-admit the
+//            recorded approval, then federate as iam-bootstrap and apply exactly the approved cells,
+//            reading each back. The independent readback is the converge job that follows.
+// ORDER OF FIRST USE: the first-time root ceremony provisions iam-bootstrap's pool, provider, account,
+// role, project cell, deny policy and trust, and is read back; only then is a delta requestable. Before
+// it, the request refuses typed (RootCeremonyCellsMissing, naming the ceremony) and the apply job
+// never starts, so no absent identity is met as a raw authentication failure.
+// The approval is enforced by this reviewed code until a custom protection rule answered only on a
+// redeemed capability gates the environment (gunbc.rung_drop gcp_iam_bootstrap_approval_in_reviewed_code).
+
+data iam_bootstrap_token_env: NonEmptyStr = "IAM_BOOTSTRAP_ACCESS_TOKEN"
+
+data gcp_iam_bootstrap_delta_approved_output: String = "bootstrap_approved"
+
+data bootstrap_label: String = "gcp iam bootstrap delta"
+
+type BootstrapDeltaStep
+  = BootstrapNothingToDo
+  | BootstrapStepRefused { reason: String }
+  | BootstrapStepRequest { request: AuthorizationRequest<BootstrapDeltaRequestBody> }
+
+// THE ONE DERIVATION BOTH STEPS RUN, so the apply step's request is the request step's when nothing moved.
+fn bootstrap_delta_step(delta: BootstrapDelta) -> BootstrapDeltaStep {
+  match run_attempt() {
+    Absent => BootstrapStepRefused { reason: "GITHUB_RUN_ID is unset; this entry runs only as the fleet-converge job" }
+    Present { value: attempt } => match delta {
+      BootstrapObserved { root_residual: _ } => BootstrapNothingToDo
+      BootstrapDeltaRefused { reasons } => BootstrapStepRefused { reason: concat("the delta refuses, nothing requested: ", join(reasons, "; ")) }
+      BootstrapDeltaRequired { subjects, root_residual: _ } => match bootstrap_delta_requestable(subjects: subjects) {
+        BootstrapDeltaUnrequestable { reasons } => BootstrapStepRefused { reason: concat("not requestable: ", join(reasons, "; ")) }
+        RootCeremonyCellsMissing { cells } => BootstrapStepRefused { reason: concat("ROOT CEREMONY CELLS MISSING: a cell a trust-root ceremony owns is not established (before its first run, or drift after it), so nothing is requested and no iam-bootstrap token is minted. Each missing cell names the ceremony that repairs it; run that ceremony and read it back, then the delta is requestable. Missing: ", join(map(cells, c => root_cell_missing_text(m: c)), " || ")) }
+        BootstrapDeltaRequestAdmitted { body } => match bootstrap_delta_request(b: body, attempt: attempt) {
+          BootstrapDeltaRequestRefused { reason } => BootstrapStepRefused { reason: reason }
+          BootstrapDeltaRequested { request } => BootstrapStepRequest { request: request }
+        }
+      }
+    }
+  }
+}
+
+fn gcp_iam_bootstrap_delta_request_wet() -> ProcessExit
+{
+  match observe_token() {
+    Absent => exit_failure(reason: concat(bootstrap_label, ": no workload identity token for iam-observe; an operator token is not an admitted source"))
+    Present { value: observe } => match bootstrap_delta_step(delta: observe_bootstrap_delta(token: observe)) {
+      BootstrapNothingToDo => ExitSuccess
+      BootstrapStepRefused { reason } => exit_failure(reason: join([bootstrap_label, ": ", reason], ""))
+      BootstrapStepRequest { request } => request_and_wait_as(request: request, label: bootstrap_label,
+        body_file_name: "gcp-iam-bootstrap-delta-submit.json", output: gcp_iam_bootstrap_delta_approved_output)
+    }
+  }
+}
+
+fn gcp_iam_bootstrap_delta_apply_wet() -> ProcessExit
+{
+  match observe_token() {
+    Absent => exit_failure(reason: concat(bootstrap_label, ": no workload identity token for iam-observe"))
+    Present { value: observe } => match bootstrap_delta_step(delta: observe_bootstrap_delta(token: observe)) {
+      BootstrapNothingToDo => exit_failure(reason: concat(bootstrap_label, ": the delta emptied between the tap and the apply; the iam-bootstrap token is unused"))
+      BootstrapStepRefused { reason } => exit_failure(reason: join([bootstrap_label, ": ", reason], ""))
+      BootstrapStepRequest { request } => match approved_gcp_access_for_request(request: request, token_variable: iam_bootstrap_token_env) {
+        ApprovedGcpAccessRefused { reason } => exit_failure(reason: join([bootstrap_label, ": nothing applied: ", reason], ""))
+        ApprovedGcpAccessReady { authorization: _, token } => {
+          match apply_approved_subjects(subjects: request.subject.subjects, digest: bootstrap_delta_digest_hex(b: request.subject), token: token) {
+            ApprovedSubjectRefused { key, reason } => exit_failure(reason: join([bootstrap_label, ": an approved subject refused; nothing after it was applied: ", key, ": ", reason as String], ""))
+            AllApprovedSubjectsApplied => ExitSuccess
+          }
+        }
+      }
+    }
+  }
+}
