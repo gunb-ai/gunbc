@@ -174,7 +174,8 @@ test fn bmc_grants_naming_two_principals_refuse_the_member() -> Bool {
 }
 
 // THE LIVE TRIAL'S SECRET IS ROSTERED, NOT A ROOT: its cells are the bootstrap delta's and the converge's,
-// so one approval tap takes it from declared to converged.
+// so it goes from declared to converged with no operator token: two taps while it is new (the bootstrap
+// delta, then the converge's estate approval), one tap thereafter (operator ruling on gunbc#14550).
 test fn the_live_trial_secret_classifies_bootstrap_rostered() -> Bool {
   any(declared_secrets(), s => s == "gunbc-bootstrap-live-trial")
     && match secret_iam_owner(secret: "gunbc-bootstrap-live-trial" as NonEmptyStr) {
