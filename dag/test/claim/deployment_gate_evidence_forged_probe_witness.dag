@@ -28,12 +28,20 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // literal is the easy forgery; handing fabricated inputs to an open mint is the one that works. Both
 // are attempted here, from a foreign module, on well-formed inputs.
 //
-// WHY A CONTROL, AND WHAT IT CONTROLS. The control source imports the same names, calls nothing and
-// builds nothing; it reads zero rows at every key below. Paired with the probe, the only difference
-// along the axis under test is the presence of the forgeries — so a refusal can be attributed to the
-// forgery rather than to importing the module at all. A nonzero exit code or a total blocking count is
-// deliberately NOT asserted: a fixture that imports production modules never reads zero blocking rows,
-// so a total would be a check with no red in it.
+// WHY A CONTROL, AND WHAT IT CONTROLS. The control source calls nothing and builds nothing; it reads
+// zero rows at every key below. Paired with the probe, the only difference along the axis under test is
+// the presence of the forgeries -- so a refusal can be attributed to the forgery rather than to
+// importing the module at all. A nonzero exit code or a total blocking count is deliberately NOT
+// asserted: a fixture that imports production modules never reads zero blocking rows, so a total would be
+// a check with no red in it.
+//
+// WHY THE CONTROL IMPORTS THE CONFINED NAMES RATHER THAN DROPPING THEM. Dropping them would make the
+// admission controls VACUOUS: a count of zero for a name the control never mentions proves nothing about
+// the boundary. So it imports every name the probe attacks and calls none -- which is also what makes the
+// pairing meaningful, since importing a confined name is demonstrably not itself a refusal (the head this
+// round started from already imported mint_accepted_rule_review and its control test read zero rows).
+// The sealed RECORD types are imported for the same reason: sealing confines CONSTRUCTION, not naming, so
+// importing one is exactly what makes its SoleConstructorViolation control worth reading.
 
 data probe_dir: String = "dag/test/probe/"
 
@@ -60,7 +68,7 @@ fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
 // THE CONTROL: names the sealed records and the sealed mints, calls nothing, writes no literal. If
 // THIS reads a violation, everything the probe reports would be about importing the module rather
 // than about forging.
-data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, observe_removal_boundary_standing, admit_reviewer_removal, RemovalBoundaryStandingObservation }\nimport gunbc.auth.deployment_gate_operator_steps { build_reviewer_removal_act, AdmittedReviewerRemovalAct, ReviewerRemovalStepDecision, ReviewerRemovalReady, RemovalAdmitted, RemovalRefused }\nimport gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }\nimport test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }\nfn label() -> String { \"control names the sealed records and the sealed mints, and forges nothing\" }\n"
+data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, RemovalBoundaryStandingObservation, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, observe_removal_boundary_standing, admit_reviewer_removal }\nimport gunbc.auth.deployment_gate_operator_steps { AdmittedReviewerRemovalAct, ReviewerRemovalStepDecision, ReviewerRemovalReady, RemovalAdmitted, RemovalRefused, build_reviewer_removal_act }\nimport gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }\nimport test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }\nfn label() -> String { \"control names the sealed records, imports the sealed mints and the witness proxies, calls none of them, and forges nothing.\" }\n"
 
 test fn a_source_that_only_names_the_gate_types_forges_no_evidence() -> Bool {
   refusals(c: control_census(), class: "SoleConstructorViolation", subject: "AcceptedRuleReviewReceipt") == 0
@@ -190,27 +198,40 @@ test fn a_foreign_call_to_the_standing_mint_is_refused() -> Bool {
 
 // THE CONTROL FOR (g) AND (h): the control source imports every one of those four names and calls
 // nothing, so a nonzero at any of them cannot be an import artifact.
-test fn naming_the_proxies_and_the_standing_mint_forges_nothing() -> Bool {
+// ONE CLAIM PER CONFINED NAME, rather than one conjunction of four. A single red over four names can
+// only say "something in here is wrong"; a red per name says WHICH, and the four names are four
+// different kinds of door (a receipt mint, a trial mint, an act mint, a standing mint). They are
+// separate control claims, so they are separate tests.
+test fn the_control_reports_no_admission_refusal_for_the_receipt_proxy() -> Bool {
   refusals(
     c: control_census(),
     class: "ConstructorCallAdmissionRefused",
     subject: "receipt_for",
   ) == 0
-    && refusals(
-         c: control_census(),
-         class: "ConstructorCallAdmissionRefused",
-         subject: "admitted_pair",
-       ) == 0
-    && refusals(
-         c: control_census(),
-         class: "ConstructorCallAdmissionRefused",
-         subject: "ready_act",
-       ) == 0
-    && refusals(
-         c: control_census(),
-         class: "ConstructorCallAdmissionRefused",
-         subject: "observe_removal_boundary_standing",
-       ) == 0
+}
+
+test fn the_control_reports_no_admission_refusal_for_the_trial_proxy() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "admitted_pair",
+  ) == 0
+}
+
+test fn the_control_reports_no_admission_refusal_for_the_act_proxy() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "ready_act",
+  ) == 0
+}
+
+test fn the_control_reports_no_admission_refusal_for_the_standing_mint() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "observe_removal_boundary_standing",
+  ) == 0
 }
 
 // (d) AND THE LITERALS, still refused at the records. Kept as separate reds from (a)-(c) on purpose:
