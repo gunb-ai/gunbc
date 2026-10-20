@@ -707,7 +707,7 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     // expansion inside, and the GH default `bash -e` propagates any python failure to the step, so
     // a transport that cannot stage refuses BEFORE the instrument runs.
     "python3 - <<'PYEOF'\n",
-    "import glob, json, os, shutil, subprocess, urllib.request, urllib.error, zipfile\n",
+    "import glob, json, os, shutil, subprocess, tempfile, urllib.request, urllib.error, zipfile\n",
     "HEAD = os.environ['GITHUB_SHA']\n",
     "REPO = os.environ['GITHUB_REPOSITORY']\n",
     "RUN = int(os.environ['GITHUB_RUN_ID'])\n",
@@ -773,7 +773,7 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     // past that many of the freshest base runs, staleness is likely; the reader then refuses
     // (unobserved, 2) -- fail-closed, no guessing.
     "ARTIFACT_PREFIX = '", instrument_dispatch_artifact_name, "'\n",
-    "SHARD_ROLES = [", fold(list_map(xs: instrument_dispatch_wave_artifact_roles(), f: fn(r) { join(["'", r, "'"], "") }), init: "", f: fn(acc, r) {
+    "SHARD_ROLES = [", fold(list_map(xs: indices_below(n: instrument_dispatch_wave_shard_count), f: fn(i) { join(["'", to_string(i), "-of-", to_string(instrument_dispatch_wave_shard_count), "'"], "") }), init: "", f: fn(acc, r) {
       if length(acc) == 0 { r } else { join([acc, ", ", r], "") }
     }), "]\n",
     "def role_artifact_name(role):\n",
@@ -815,7 +815,8 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "        st = a.get('state')\n",
     "        if st is not None and st != 'completed':\n",
     "            continue\n",
-    "        zp = os.path.join(dest, 'receipt-' + str(wid) + '.zip')\n",
+    "        tmp = tempfile.mkdtemp(dir=os.path.dirname(dest))\n",
+    "        zp = os.path.join(tmp, 'receipt.zip')\n",
     "        req = urllib.request.Request(a['archive_download_url'], headers={'Authorization': 'Bearer ' + TOKEN})\n",
     "        with urllib.request.urlopen(req, timeout=600) as r, open(zp, 'wb') as f:\n",
     "            while True:\n",
@@ -824,9 +825,20 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "                    break\n",
     "                f.write(chunk)\n",
     "        with zipfile.ZipFile(zp) as z:\n",
-    "            z.extractall(dest)\n",
+    "            z.extractall(tmp)\n",
     "        os.remove(zp)\n",
-    "        return bool(glob.glob(os.path.join(dest, '**', must_glob), recursive=True))\n",
+    "        hits = glob.glob(os.path.join(tmp, '**', must_glob), recursive=True)\n",
+    "        if not hits:\n",
+    "            shutil.rmtree(tmp)\n",
+    "            return False\n",
+    "        for root, dirs, files in os.walk(tmp):\n",
+    "            for name in files:\n",
+    "                sub = os.path.relpath(root, tmp)\n",
+    "                dst_dir = dest if sub == '.' else os.path.join(dest, sub)\n",
+    "                os.makedirs(dst_dir, exist_ok=True)\n",
+    "                shutil.copy2(os.path.join(root, name), os.path.join(dst_dir, name))\n",
+    "        shutil.rmtree(tmp)\n",
+    "        return True\n",
     "    return False\n",
     "os.makedirs(STAGING, exist_ok=True)\n",
     "clear(STAGING)\n",
