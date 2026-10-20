@@ -395,14 +395,14 @@ type ObligationReading
   | ObligationUnreadable { cause: String }
 
 fn obligation_reading_of_text(text: String, expected_key: String) -> ObligationReading {
-  let lines = filter(split(s: text, delimiter: "\n"), l => trim(s: l) != "")
-  let discharged = length(lines) > 0 && lines[0] == "DISCHARGED"
-  let body = if discharged { skip(xs: lines, n: 1) } else { lines }
+  let lines = filter(split(s: text, delimiter: "\n"), l => l != "")
+  let discharged = length(filter(lines, l => l == "DISCHARGED")) > 0
+  let body = filter(lines, l => l != "DISCHARGED")
   let key_lines = filter(body, l => starts_with(s: l, prefix: "key "))
   if length(key_lines) != 1 {
     ObligationUnreadable { cause: "the obligation file does not carry exactly one key line" }
-  } else if key_lines[0] != concat("key ", expected_key) {
-    ObligationStale { found: key_lines[0] }
+  } else if length(filter(key_lines, l => l == concat("key ", expected_key))) != 1 {
+    ObligationStale { found: join(key_lines, "") }
   } else if discharged {
     ObligationDischarged
   } else {

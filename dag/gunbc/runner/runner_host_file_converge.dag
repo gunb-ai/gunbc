@@ -2341,7 +2341,7 @@ fn run_runner_host_cap_bracket(
           let admitting = if written { all(slots, o => slot_cap_outcome_settled(o: o)) } else { match host_left_of_readmit(units: owned, outcomes: readmitted) { HostAdmitting => true _ => false } }
           let discharged = if admitting { write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) } else { Present { value: "host not read back as admitting" } }
           // A discharge that did not land is reported, not hidden: release would then find the units unmasked and issue no argv.
-          let discharge_note = match discharged { Present { value: w } => if admitting { [SlotCapsRefused { unit: subject.desired_units[0], step: "discharge", reason: w }] } else { [] } Absent => [] }
+          let discharge_note = match discharged { Present { value: w } => if admitting { map(subject.desired_units, u => SlotCapsRefused { unit: u, step: "discharge", reason: w }) } else { [] } Absent => [] }
           CapPhaseRan { files: files, reload: reload, slots: concat(slots, discharge_note) }
         }
         BracketAdmissionNotClosed { listeners: ls } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls }))
