@@ -527,10 +527,6 @@ fn minted_ownership() -> EnvironmentRuleOwnership
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_authorization_witness",
-      decl_name: "a_ladder_holding_the_human_route_reports_itself_broken"
-    ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_authorization_witness",
       decl_name: "an_unestablished_or_mismatched_ownership_never_answers"
     ),
     decl_ref(
@@ -698,6 +694,10 @@ fn fx_mint_probe(
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_authorization_witness",
+      decl_name: "the_app_answers_its_own_rule_while_a_human_reviewer_is_configured"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_authorization_witness",
       decl_name: "the_mint_refuses_a_repository_it_cannot_put_in_a_route"
     ),
     decl_ref(
@@ -830,14 +830,6 @@ fn answerable_refusal_name() -> NonEmptyStr
     decl_ref(
       module_path: "test.claim.deployment_gate_authorization_witness",
       decl_name: "a_wait_for_another_environment_is_never_answered"
-    ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_authorization_witness",
-      decl_name: "the_app_answers_its_own_rule_while_a_human_reviewer_is_configured"
-    ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_authorization_witness",
-      decl_name: "a_ladder_holding_the_human_route_reports_itself_broken"
     ),
   ]
 {
@@ -995,8 +987,10 @@ test fn the_app_answers_its_own_rule_while_a_human_reviewer_is_configured() -> B
       human_review_path: human_review_endpoint_path
     ) {
       BrokerIsBarredFromTheHumanReviewEndpoint =>
-        length(xs: broker_effect_paths) == 1
-          && !(broker_effect_paths |> any(p => p == human_review_endpoint_path))
+        // One entry, and it is not the human route. Binding the ladder rather than re-typing its name
+        // inside the arm keeps this reading the SAME list the model consumes.
+        length(xs: broker_effect_route_paths) == 1
+          && !(broker_effect_route_paths |> any(p => p == human_review_endpoint_path))
       BrokerMayPostToTheHumanReviewEndpoint { offending_path: _ } => false
     })
     // (4) The human surface is a REAL surface we are not touching: it exists upstream with its own

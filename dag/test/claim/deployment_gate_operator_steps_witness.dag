@@ -223,30 +223,28 @@ fn ownership_for(
   identity_repo: NonEmptyStr,
   rule_id: Int
 ) -> EnvironmentRuleOwnership
-  admit_callers: [
-  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  admit_callers: [// THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
   // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
   // could call the helper and obtain a sealed record without ever being named by the mint. The
   // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
   // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
   // proxies is what makes the chain close end to end, because admission is enforced with no
-  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "joined_pair"
+    ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "receipt_for"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "standing_fixture"
-    ),    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "joined_pair"
+      decl_name: "standing_at"
     ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
-    ),
-
   ]
 {
   ownership_with_enabled(
@@ -496,17 +494,23 @@ fn rejected_trial(run_id: Int) -> Optional<AcceptedRuleReviewReceipt>
 // gunbc.test.probe.deployment_gate_evidence_forged_probe enrolls. So the only way to get an admitted
 // admission is to hand the mint what two readbacks returned and see whether it admits.
 fn admitted_pair() -> ReviewerRemovalAdmission
-  admit_callers: [
-  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
+  admit_callers: [// THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
   // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
   // could call the helper and obtain a sealed record without ever being named by the mint. The
   // roster is every declaration IN THIS MODULE that consumes it -- derived from the call sites, not
   // from memory -- and nothing else. The mint rosters stay as narrow as they were; closing the
   // proxies is what makes the chain close end to end, because admission is enforced with no
-  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).
-    decl_ref(
+  // same-module exemption (v2.compiler.infer: a call refuses when no entry names its caller).    decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_from_another_attempt_or_an_aged_one_is_not_spendable"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "historical_evidence_does_not_outlive_the_rule"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -522,21 +526,12 @@ fn admitted_pair() -> ReviewerRemovalAdmission
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "completion_is_a_read_after_the_removal_not_the_admission"
-    ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "the_removal_act_is_admitted_only_by_a_typed_prerequisite"
-    ),
-    decl_ref(
-      module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "historical_evidence_does_not_outlive_the_rule"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "the_removal_act_names_its_subject_in_its_identity_and_in_its_route"
     ),
-
   ]
 {
   admit_reviewer_removal(
@@ -607,6 +602,10 @@ fn standing_at(
   observed_at: Timestamp
 ) -> RemovalBoundaryStandingObservation
   admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_from_another_attempt_or_an_aged_one_is_not_spendable"
+    ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "standing_fixture"
@@ -1153,7 +1152,7 @@ test fn the_observation_window_residual_declares_what_it_cannot_close() -> Bool 
   // a substring below, which is the check that actually bites.
   //
   // WHAT IT CLAIMS TO HAVE TRIED is the compare-and-set it actually lacks.
-    && (limit.attempted as String).contains("compare-and-set")
+  (limit.attempted as String).contains("compare-and-set")
     // THE UPSTREAM ABSENCE IS EVIDENCED, not asserted: it names the mechanism it looked for and failed
     // to find on the pinned description.
     && (limit.upstream_absence as String).contains("ETag")

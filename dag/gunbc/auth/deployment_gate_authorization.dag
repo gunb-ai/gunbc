@@ -1554,7 +1554,11 @@ fn observe_removal_boundary_standing(
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "standing_fixture"
+      decl_name: "standing_at"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
     ),
     // THE DISABLED-RULE CASE BUILDS ITS OBSERVATION THROUGH THIS DOOR TOO. It is not a second door: it
     // can only produce a STANDING THAT REFUSES, because the ownership read inside the join says the rule

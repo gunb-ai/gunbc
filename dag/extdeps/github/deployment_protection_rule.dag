@@ -704,6 +704,9 @@ fn human_review_body_matches_the_documented_fields(body: List<NonEmptyStr>) -> B
 // load-bearing: drop the first and a caller could pass the App's body to the human route; drop the
 // last and the two censuses could silently grow into the same list.
 fn the_two_review_surfaces_are_distinguishable() -> Bool {
+  // The App's own body is NOT describable by the human surface's census. This is the load-bearing
+  // clause: it is false the moment the two censuses agree on field names, which is exactly the
+  // state in which a caller could hand one body to the other endpoint.
   !human_review_body_matches_the_documented_fields(
     body: [
       review_endpoint_body_environment_name_field,
@@ -711,11 +714,12 @@ fn the_two_review_surfaces_are_distinguishable() -> Bool {
       review_endpoint_body_comment_field,
     ]
   )
-    && human_review_body_matches_the_documented_fields(
-      body: human_review_body_documented_field_names
-    )
+    // The distinguishing field is the environment one specifically -- an id list over there, a single
+    // name over here -- rather than some incidental mismatch in the other two fields.
     && !(human_review_body_documented_field_names
       |> any(f => f == review_endpoint_body_environment_name_field))
+    // AND the routes themselves differ, so "different body" is not describing two spellings of one
+    // call. Both paths come from the substrate; neither is repeated here.
     && review_endpoint_path != human_review_endpoint_path
 }
 
