@@ -4,7 +4,7 @@ import v2.std.language_model { LanguageModel }
 import v2.compiler.normalized_tree { normalized_tree_record_declarations, MemberDeclarationsNotRead, MemberDeclarationsRead, NormalizedTree, normalized_tree_resource_declarations }
 import v2.compiler.body_lowering_fold { TypeDeclModuleModifierRows, TypeDeclarationModifierChannel, TypeDeclarationModifiersCaptured }
 import v2.std.member_declaration_kind { DeclaredMember, declared_members_have_duplicate, MemberKindChannel, MemberKindsCaptured, MemberKindsUnavailable, QualifiedDeclaredMember, no_member_declaration_kinds }
-import v2.compiler.lexical_scope { ArrowAuthoredSlot, ArrowBodyOrNamedSlot, ArrowCarriedSlot, ArrowCodomainSlot, ArrowDomainSlot, ArrowResourceRequirementsSlot, ArrowSlotScope, ArrowTypeParamsSlot, BindBinderSlot, BindBodySlot, BindValueSlot, PatternBinderCandidate, SlotScopeOuter, SlotScopeParamsOverOuter, SlotScopeParamsOverTypeParams, SlotScopeTypeParams, arrow_domain_binder_names, arrow_domain_binders, arrow_slot, arrow_slot_scope, bind_binder, bind_carries_arm_scope_exit, bind_positional_slot, declaration_names_value, module_root_bindings, pattern_binder_candidates, try_edge_declared_binding }
+import v2.compiler.lexical_scope { ArrowAuthoredSlot, ArrowBodyOrNamedSlot, ArrowCarriedSlot, ArrowCodomainSlot, ArrowDomainSlot, ArrowResourceRequirementsSlot, ArrowSlotScope, ArrowTypeParamsSlot, BindBinderSlot, BindBodySlot, BindValueSlot, PatternBinderCandidate, SlotScopeOuter, SlotScopeParamsOverOuter, SlotScopeParamsOverTypeParams, SlotScopeTypeParams, arrow_domain_binder_names, arrow_domain_binders, arrow_slot, arrow_slot_scope, bind_binder, bind_value, bind_carries_arm_scope_exit, bind_positional_slot, declaration_names_value, module_root_bindings, pattern_binder_candidates, try_edge_declared_binding }
 import v2.std.declaration_marker { ReachesNoTestCode, ReachesTestMarkedDeclaration, TestCodeIndex, test_code_index_add_module, test_code_index_empty, test_code_reach }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -975,7 +975,7 @@ fn bind_frame_binders(n: Node) -> FrameBinders {
         name: b.name,
         binding: LexicalBinding {
           binder_site: b.atom.occurrence_id,
-          standing: match list_at_optional(xs: positional_child_target_nodes(node: n), index: 1) {
+          standing: match bind_value(n: n) {
             Present { value: v } => LexicalValued { node: v }
             Absent => LexicalUntyped
           }
