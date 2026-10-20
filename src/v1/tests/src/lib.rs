@@ -19,6 +19,8 @@ mod unknown_pipeline_driver_refusal_test;
 mod native_driver_cost_refusal_test;
 
 #[cfg(test)]
+mod alias_guard_seam_probe_test;
+#[cfg(test)]
 mod ambiguous_prefix_infix_newline_test;
 #[cfg(test)]
 mod anonymous_record_struct_resolution_test;
