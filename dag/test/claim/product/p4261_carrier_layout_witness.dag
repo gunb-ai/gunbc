@@ -276,8 +276,32 @@ import product.p4261_carrier_layout {
   identification_text,
   mosfet_of,
   MarkingCandidate,
+  e1_phases,
+  e1_transitions,
+  e1_s1,
+  e1_s2,
+  e1_j68,
+  e1_j30,
+  e1_u49,
+  e1_u51,
+  e1_phase_setting,
+  downstream_terminals,
+  phase_standing_in,
+  protected_bus_in,
+  register_pin_direction_text,
+  phases_reading,
+  CarrierPhaseObserved,
+  ProtectedInputBusInPhase,
+  controller_of,
 }
 import extdeps.electronic_component.diodes_bss138 { bss138 }
+import product.electrical.carrier_phase {
+  CarrierPhaseObservation, CarrierPhaseStanding, InputBiasOnly, AuxiliaryDomainActive, SequenceTransient, ControlSteady, BridgeHeld, BridgeReleaseRecovery, PhaseUnclassified,
+  PhaseGap, DrawAmbiguous, SettlingUnread, PhaseNotEnergized, DrawUnread,
+  ProtectedBusStanding, ProtectedInputBusActive, ProtectedInputBusHeldOff, ProtectedBusUnread, ProtectedBusGap, NoReadingAtDownstream, SourceVoltageUnrecorded, ReadingIsABound,
+  PhaseNodeVoltage, SupplyReading, CurrentRead, SourceModeUnrecorded, SettingUnrecorded, SettledSteady, SettlingUnrecorded, PhaseSettling, SourceSettingStanding,
+  transition_text, phase_standing_text,
+}
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 
@@ -301,7 +325,7 @@ fn layout_with(base: CarrierLayoutObservation, components: List<InstalledCompone
 }
 
 fn e1_with_continuity(cs: List<ContinuityObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: cs, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench } }, input: p4261_e1_layout.input)
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: cs, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions } }, input: p4261_e1_layout.input)
 }
 
 fn component_of(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> List<InstalledComponent> {
@@ -396,7 +420,7 @@ test fn the_photographs_establish_no_input_bound() -> Bool {
 // derives nothing: every reading names the E1 asset, and the K1's board is the K1 asset.
 test fn a_reading_on_the_e1_cannot_qualify_the_k1() -> Bool {
   let k1_given_e1 = layout_with(base: p4261_k1_layout, components: p4261_k1_layout.components,
-    measured: Present { value: MeasuredBoard { asset: p4261_k1_a, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench } },
+    measured: Present { value: MeasuredBoard { asset: p4261_k1_a, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions } },
     input: Present { value: e1_input })
   let unpolarized = match input_polarity(layout: k1_given_e1) {
     PolarityUnestablished { gaps: _ } => true
@@ -622,7 +646,7 @@ test fn only_a_rating_across_the_input_bounds_it() -> Bool {
   let low_pos = terminal_ref(component: low, terminal: positive_term())
   let low_neg = terminal_ref(component: low, terminal: negative_term())
   let with_low = concat(p4261_e1_layout.components, [low_part])
-  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench } }, input: p4261_e1_layout.input)
+  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions } }, input: p4261_e1_layout.input)
   let unread = layout_with(base: p4261_e1_layout, components: with_low, measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
   count(f300) == 1 && all(f300, s => is_unplaced(s: s))
     && bound_volts(b: input_bound(layout: p4261_e1_layout)) == 60
@@ -717,7 +741,7 @@ fn relabelled_e1() -> CarrierLayoutObservation {
   layout_with(
     base: p4261_e1_layout,
     components: map(p4261_e1_layout.components, c => InstalledComponent { component: rl_c(c: c.component), terminals: map(c.terminals, t => rl_t(t: t)), identification: c.identification }),
-    measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: map(e1_measured.continuity, o => rl_obs(o: o)), diode_readings: map(e1_measured.diode_readings, o => rl_diode(o: o)), source_draws: map(e1_measured.source_draws, o => rl_draw(o: o)), bench: rl_bench(b: e1_measured.bench) } },
+    measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: map(e1_measured.continuity, o => rl_obs(o: o)), diode_readings: map(e1_measured.diode_readings, o => rl_diode(o: o)), source_draws: map(e1_measured.source_draws, o => rl_draw(o: o)), bench: rl_bench(b: e1_measured.bench), phases: e1_measured.phases, transitions: e1_measured.transitions } },
     input: Present { value: InputConnector { housing: rl_housing(h: e1_j20_housing), fuse_terminal: rl_ref(r: e1_input.fuse_terminal) } },
   )
 }
@@ -937,7 +961,7 @@ fn on_input(open: Nat, loaded: Nat, behaviour: SourceBehaviour) -> SourceDrawObs
 }
 
 fn e1_with_draws(ds: List<SourceDrawObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: ds, bench: e1_measured.bench } }, input: p4261_e1_layout.input)
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: ds, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions } }, input: p4261_e1_layout.input)
 }
 
 fn draw_finding(layout: CarrierLayoutObservation) -> Bool {
@@ -1032,7 +1056,7 @@ test fn the_energized_draw_renders_and_survives_relabelling() -> Bool {
 // ── THE INPUT SWITCHES AND THEIR CONTROLLER ───────────────────────────────────────────────────
 
 fn e1_with_attached(attachments: List<ProbeAttachment>, vs: List<NodeVoltageObservation>, rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, attachments: attachments, voltages: vs, resistances: rs } } }, input: p4261_e1_layout.input)
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, attachments: attachments, voltages: vs, resistances: rs }, phases: e1_measured.phases, transitions: e1_measured.transitions } }, input: p4261_e1_layout.input)
 }
 
 fn e1_with_bench(vs: List<NodeVoltageObservation>, rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
@@ -1197,6 +1221,7 @@ fn baselined_board(b: MeasuredBoard) -> MeasuredBoard {
   MeasuredBoard {
     asset: b.asset, continuity: b.continuity, diode_readings: b.diode_readings, source_draws: b.source_draws,
     bench: BenchRecord { incidents: b.bench.incidents, attachments: b.bench.attachments, voltages: b.bench.voltages, resistances: map(b.bench.resistances, o => baselined(o: o)) },
+    phases: b.phases, transitions: b.transitions,
   }
 }
 
@@ -1736,4 +1761,237 @@ test fn the_bias_supply_is_rendered_and_no_window_is_read() -> Bool {
     && !separated.contains("so not yet the pin's access point")
     && separated.contains("no window is read from it")
     && carrier_input_reading(layout: p4261_k1_layout).contains("U1_P5 VDD (pin 21, internal-regulator output): unread")
+}
+
+
+// ── THE LOCAL CONTROLS AND THE CARRIER'S PHASES ──────────────────────────────────────────────
+
+fn phase_arm(layout: CarrierLayoutObservation, key: NonEmptyStr) -> Nat {
+  match phase_standing_in(layout: layout, key: key) {
+    Absent => 9
+    Present { value: s } => match s {
+      InputBiasOnly { phase: _, draw: _, bias_ceiling: _ } => 0
+      AuxiliaryDomainActive { phase: _, draw: _, bias_ceiling: _ } => 1
+      SequenceTransient { phase: _ } => 2
+      ControlSteady { phase: _ } => 3
+      BridgeHeld { phase: _, bridge: _ } => 4
+      BridgeReleaseRecovery { phase: _, bridge: _ } => 5
+      PhaseUnclassified { phase: _, gap: _ } => 6
+    }
+  }
+}
+
+fn phase_gap_is(layout: CarrierLayoutObservation, key: NonEmptyStr, which: Nat) -> Bool {
+  match phase_standing_in(layout: layout, key: key) {
+    Absent => false
+    Present { value: s } => match s {
+      PhaseUnclassified { phase: _, gap } => match gap {
+        DrawAmbiguous { verbatim: _ } => which == 0
+        SettlingUnread => which == 1
+        PhaseNotEnergized => which == 2
+        DrawUnread => which == 3
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
+
+fn e1_with_phases(ps: List<CarrierPhaseObservation>) -> CarrierLayoutObservation {
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: ps, transitions: e1_measured.transitions } }, input: p4261_e1_layout.input)
+}
+
+fn e1_phase_named(key: NonEmptyStr) -> List<CarrierPhaseObservation> {
+  filter(e1_phases, p => p.key == key)
+}
+
+fn phase_with(p: CarrierPhaseObservation, conditions: BenchConditions, setting: SourceSettingStanding, supply: SupplyReading, held: HeaderBridge?, settling: PhaseSettling, volts: List<PhaseNodeVoltage>) -> CarrierPhaseObservation {
+  CarrierPhaseObservation {
+    key: p.key, asset: p.asset, conditions: conditions, setting: setting, supply: supply, switch_vector: p.switch_vector, held: held, recovering_from: p.recovering_from,
+    settling: settling, indicators: p.indicators, node_voltages: volts, evidence: p.evidence,
+  }
+}
+
+fn supply_ma(count: Nat) -> SupplyReading {
+  SupplyReading { voltage: Absent, current: CurrentRead { value: milliampere(count: count) }, mode: SourceModeUnrecorded }
+}
+
+fn phase_text_in(layout: CarrierLayoutObservation, key: NonEmptyStr) -> String {
+  match phase_standing_in(layout: layout, key: key) {
+    Absent => ""
+    Present { value: s } => phase_standing_text(s: s)
+  }
+}
+
+// THE PHASES CLASSIFY FROM THEIR RECORDS, NEVER FROM A FUNCTION. Live, the E1's nine recorded phases
+// stand as: the S2 bias state INPUT BIAS ONLY (13 mA, not above the 13 mA the carrier drew before any
+// control was moved), the S2 domain state AUXILIARY DOMAIN ACTIVE (38 mA, nothing lit), the S1
+// sequence SEQUENCE TRANSIENT, the settled state CONTROL STEADY, each held bridge BRIDGE HELD and each
+// release RELEASE RECOVERY; the first lit state, photographed with its settling and vector unrecorded,
+// is UNCLASSIFIED. The J68 hold's '.7A' renders as typed with both values and picks neither. A
+// finding on the settled phase is established and one on the first lit state is not; no phase by a
+// key not recorded is a finding. Supplied: the domain state's draw lowered to the bias ceiling reads
+// bias only; the settled state with its settling unrecorded is unclassified; a phase not energized is
+// unclassified; and the J68 hold with no bridge recorded falls to its ambiguous draw, so the bridge,
+// not the dark indicators, is what names it.
+test fn the_carrier_phases_classify_from_their_records() -> Bool {
+  let live = p4261_e1_layout
+  let arms = phase_arm(layout: live, key: "p0-bias") == 0 && phase_arm(layout: live, key: "p1-s2-domain") == 1
+    && phase_arm(layout: live, key: "p2-s1-sequence") == 2 && phase_arm(layout: live, key: "p3-settled") == 3
+    && phase_arm(layout: live, key: "j30-held") == 4 && phase_arm(layout: live, key: "j68-held") == 4
+    && phase_arm(layout: live, key: "j30-release") == 5 && phase_arm(layout: live, key: "j68-release") == 5
+    && phase_arm(layout: live, key: "first-lit-state") == 6 && phase_gap_is(layout: live, key: "first-lit-state", which: 1)
+    && phase_arm(layout: live, key: "p9-not-recorded") == 9
+    && count(e1_phases) == 9 && count(e1_transitions) == 12
+  let texts = phase_text_in(layout: live, key: "p0-bias").contains("INPUT BIAS ONLY (13 mA, not above the 13 mA bias draw, nothing lit)")
+    && phase_text_in(layout: live, key: "p1-s2-domain").contains("AUXILIARY DOMAIN ACTIVE (38 mA, above the 13 mA bias draw, nothing lit; which domain is unread)")
+    && phase_text_in(layout: live, key: "p1-s2-domain").contains("S2.1 toward the ON legend, S2.2 away from the ON legend, S1.1 position unrecorded, S1.2 position unrecorded")
+    && phase_text_in(layout: live, key: "p3-settled").contains("CONTROL STEADY (indicators lit, settled; what runs is unread)")
+    && phase_text_in(layout: live, key: "p3-settled").contains("DS10 (candidate: the top group's four indicators are read against the printed labels taken top to bottom as DS10, DS11, DS13, DS12")
+    && phase_text_in(layout: live, key: "p3-settled").contains("DS5 red or amber lit in a photograph")
+    && phase_text_in(layout: live, key: "p3-settled").contains("green blinking by the operator's statement")
+    && phase_text_in(layout: live, key: "j68-held").contains("BRIDGE HELD (a direct bridge held between J68 R1 and J68 R2; a logic input pulled low and a rail collapsed read alike until the resistor-coupled test)")
+    && phase_text_in(layout: live, key: "j68-held").contains("'.7A' as typed (70 mA or 700 mA; the decimal is unresolved)")
+    && phase_text_in(layout: live, key: "j30-release").contains("RELEASE RECOVERY (after a direct bridge held between")
+    && phase_text_in(layout: live, key: "j30-release").contains("'.94A' as typed (94 mA or 940 mA; the decimal is unresolved)")
+    && phase_text_in(layout: live, key: "first-lit-state").contains("UNCLASSIFIED (whether it was passing or settled is unrecorded)")
+    && phase_text_in(layout: live, key: "first-lit-state").contains("54 V, 85 mA, the source showing CV")
+    && phase_text_in(layout: live, key: "p0-bias").contains("setting carried forward as 54 V through a 100 mA limit with over-current shutoff armed")
+  let findings = finding_holds(layout: live, f: CarrierPhaseObserved { key: "p3-settled" })
+    && !finding_holds(layout: live, f: CarrierPhaseObserved { key: "first-lit-state" })
+    && !finding_holds(layout: live, f: CarrierPhaseObserved { key: "p9-not-recorded" })
+  let p1 = e1_phase_named(key: "p1-s2-domain")
+  let p3 = e1_phase_named(key: "p3-settled")
+  let p0 = e1_phase_named(key: "p0-bias")
+  let j68 = e1_phase_named(key: "j68-held")
+  let lowered = e1_with_phases(ps: map(p1, p => phase_with(p: p, conditions: p.conditions, setting: p.setting, supply: supply_ma(count: 13), held: Absent, settling: p.settling, volts: p.node_voltages)))
+  let unsettled = e1_with_phases(ps: map(p3, p => phase_with(p: p, conditions: p.conditions, setting: p.setting, supply: p.supply, held: Absent, settling: SettlingUnrecorded, volts: p.node_voltages)))
+  let unpowered = e1_with_phases(ps: map(p0, p => phase_with(p: p, conditions: BenchConditions { power: Unpowered, module: ModuleRemoved }, setting: p.setting, supply: p.supply, held: Absent, settling: p.settling, volts: p.node_voltages)))
+  let unbridged = e1_with_phases(ps: map(j68, p => phase_with(p: p, conditions: p.conditions, setting: p.setting, supply: p.supply, held: Absent, settling: p.settling, volts: p.node_voltages)))
+  let supplied = count(p1) == 1 && count(p3) == 1 && count(p0) == 1 && count(j68) == 1
+    && phase_arm(layout: lowered, key: "p1-s2-domain") == 0
+    && phase_arm(layout: unsettled, key: "p3-settled") == 6 && phase_gap_is(layout: unsettled, key: "p3-settled", which: 1)
+    && phase_arm(layout: unpowered, key: "p0-bias") == 6 && phase_gap_is(layout: unpowered, key: "p0-bias", which: 2)
+    && phase_arm(layout: unbridged, key: "j68-held") == 6 && phase_gap_is(layout: unbridged, key: "j68-held", which: 0)
+  arms && texts && findings && supplied
+}
+
+fn bus_arm(layout: CarrierLayoutObservation, key: NonEmptyStr) -> Nat {
+  match protected_bus_in(layout: layout, key: key) {
+    Absent => 9
+    Present { value: s } => match s {
+      ProtectedInputBusActive { phase: _, readings: _, source: _ } => 0
+      ProtectedInputBusHeldOff { phase: _, readings: _, source: _ } => 1
+      ProtectedBusUnread { phase: _, gap } => match gap {
+        NoReadingAtDownstream { terminals: _ } => 2
+        SourceVoltageUnrecorded => 3
+        ReadingIsABound { readings: _ } => 4
+      }
+    }
+  }
+}
+
+fn bus_volt(t: ElectricalTerminalRef, value: VoltageValue) -> PhaseNodeVoltage {
+  PhaseNodeVoltage { at: t, reference: e1_ground_ref, value: value, certainty: StatedPlainly, evidence: supplied_said() }
+}
+
+fn settled_with_bus(value: VoltageValue, setting: SourceSettingStanding) -> CarrierLayoutObservation {
+  let p3 = e1_phase_named(key: "p3-settled")
+  let t = (downstream_terminals(layout: p4261_e1_layout)).first()
+  e1_with_phases(ps: map(p3, p => match t {
+    Absent => p
+    Present { value: term } => phase_with(p: p, conditions: p.conditions, setting: setting, supply: p.supply, held: Absent, settling: p.settling, volts: concat(p.node_voltages, [bus_volt(t: term, value: value)]))
+  }))
+}
+
+// THE PROTECTED INPUT BUS IS READ ONLY AT THE SWITCHES' DOWNSTREAM TERMINALS, IN THE PHASE. Live, no
+// phase holds such a reading, so the bus is unread in every one, the finding on the settled phase is
+// not established, and the report says so; current and indicators establish nothing about it. The
+// downstream terminals are Q21_P5's and Q22_P5's source-role pins, from their identification. Supplied
+// in the settled phase: 53 V at one of them reads the bus ACTIVE with the source at 54 V and
+// establishes the finding; 1 V reads it held off, also a finding; the same 53 V with the source's
+// setting unrecorded reads nothing; a bound reads nothing.
+test fn the_protected_bus_is_read_only_at_the_downstream_terminals() -> Bool {
+  let live = p4261_e1_layout
+  let downstream = downstream_terminals(layout: live)
+  let unread = all(e1_phases, p => bus_arm(layout: live, key: p.key) == 2)
+    && !finding_holds(layout: live, f: ProtectedInputBusInPhase { key: "p3-settled" })
+    && !finding_holds(layout: live, f: ProtectedInputBusInPhase { key: "p9-not-recorded" })
+    && carrier_input_reading(layout: live).contains("in phase 'p3-settled' the protected input bus is unread: no reading at Q21_P5 pin")
+    && count(downstream) > 0 && all(downstream, t => terminal_ref_equal(a: t, b: terminal_ref(component: e1_q21, terminal: t.terminal)) || terminal_ref_equal(a: t, b: terminal_ref(component: e1_q22, terminal: t.terminal)))
+    && !any(downstream, t => terminal_ref_equal(a: t, b: terminal_ref(component: e1_q21, terminal: "tab" as TerminalIdentity)))
+  let active = settled_with_bus(value: about(mv: 53000), setting: e1_phase_setting)
+  let held_off = settled_with_bus(value: about(mv: 1000), setting: e1_phase_setting)
+  let no_source = settled_with_bus(value: about(mv: 53000), setting: SettingUnrecorded)
+  let bound = settled_with_bus(value: ReadBelow { bound: millivolt(count: 2000) }, setting: e1_phase_setting)
+  unread
+    && bus_arm(layout: active, key: "p3-settled") == 0 && finding_holds(layout: active, f: ProtectedInputBusInPhase { key: "p3-settled" })
+    && carrier_input_reading(layout: active).contains("the protected input bus is ACTIVE")
+    && bus_arm(layout: held_off, key: "p3-settled") == 1 && finding_holds(layout: held_off, f: ProtectedInputBusInPhase { key: "p3-settled" })
+    && bus_arm(layout: no_source, key: "p3-settled") == 3 && !finding_holds(layout: no_source, f: ProtectedInputBusInPhase { key: "p3-settled" })
+    && bus_arm(layout: bound, key: "p3-settled") == 4
+}
+
+fn transition_text_of(key: NonEmptyStr) -> String {
+  join(map(filter(e1_transitions, t => t.key == key), t => transition_text(t: t)), "")
+}
+
+fn j68_point(name: NonEmptyStr) -> ElectricalTerminalRef {
+  terminal_ref(component: e1_j68, terminal: name as TerminalIdentity)
+}
+
+// A BRIDGE IS A RECORDED STIMULUS, NOT A RESET; A 0 V POINT IS NOT A GROUND. The J68 transition renders
+// its endpoints, its coupling, its hold and the click with its origin unrecorded; the S1 transition
+// records the move as a move, apart from the state's vector, with the output on; the S1 pole toggled in
+// the domain state and the pole turned off in the settled state each lead back to the same phase. The
+// settled phase carries J68's ten points, five at 1.8 V and five at 0 V, and J30's two, and none of
+// the 0 V points is one node with J20's return in the live netlist: no unpowered reading joins them.
+// The report carries the phases under their observed names.
+test fn a_bridge_is_a_recorded_stimulus_and_a_zero_volt_point_is_not_a_ground() -> Bool {
+  let live = board_netlist(b: e1_measured)
+  let p3 = e1_phase_named(key: "p3-settled")
+  let volts = flat_map(p3, p => p.node_voltages)
+  let at_1v8 = filter(volts, v => match v.value { ReadAbout { value } => millivolt_count(v: value) == 1800, ReadBelow { bound: _ } => false })
+  let at_0 = filter(volts, v => match v.value { ReadAbout { value } => millivolt_count(v: value) == 0, ReadBelow { bound: _ } => false })
+  transition_text_of(key: "j68-bridged").contains("'p3-settled' -> 'j68-held' on bridge applied: a direct bridge held between J68 R1 and J68 R2")
+    && transition_text_of(key: "j68-bridged").contains("; an audible click, origin unrecorded")
+    && transition_text_of(key: "s1-pole-2-on").contains("'p1-s2-domain' -> 'p2-s1-sequence' on poles moved (S1.2 toward the ON legend; moved with the output on)")
+    && transition_text_of(key: "s1-toggled-in-p1").contains("'p1-s2-domain' -> 'p1-s2-domain' on poles moved (S1.1 position unrecorded, S1.2 position unrecorded; whether the output was on is unrecorded)")
+    && transition_text_of(key: "s1-pole-1-off-in-p3").contains("'p3-settled' -> 'p3-settled'")
+    && transition_text_of(key: "s2-returned").contains("-> 'p0-bias'")
+    && count(volts) == 12 && count(at_1v8) == 5 && count(at_0) == 6
+    && all(["R1", "L2", "L3", "L4", "L5"], n => any(at_1v8, v => terminal_ref_equal(a: v.at, b: j68_point(name: n))))
+    && all(["L1", "R2", "R3", "R4", "R5"], n => any(at_0, v => terminal_ref_equal(a: v.at, b: j68_point(name: n))))
+    && !any(["L1", "R2", "R3", "R4", "R5"], n => one_node(net: live, a: j68_point(name: n), b: e1_ground_ref))
+    && !any(e1_measured.bench.resistances, o => reads_pair(o: o, a: j68_point(name: "R2"), b: e1_ground_ref))
+    && carrier_input_reading(layout: p4261_e1_layout).contains("Carrier phases (names of what was observed, not of a function): ")
+    && carrier_input_reading(layout: p4261_e1_layout).contains("on J20 power alone with the module absent, the carrier's local controls put it through recorded states")
+    && carrier_input_reading(layout: p4261_k1_layout).contains("no carrier phase recorded")
+    && phases_reading(layout: unmeasured_k1()).contains("no carrier phase recorded")
+}
+
+// U49 AND U51 ARE SHIFT REGISTERS, AND A PIN'S DIRECTION IS ITS DATASHEET ROLE. Both identify as TI's
+// SN74LV165APWR from 'LV165A', which credits no MOSFET or controller specification. Which way a net at
+// a U51 pin runs is read from the pin: 3 and 11 are read by the part, 7 and 9 driven by it, 1, 2 and
+// 15 controls or clocks into it, 8 and 16 its supply or return, 17 no pin at all; Q300, a marking
+// candidate, has no pin roles to read.
+test fn u49_and_u51_are_shift_registers_with_pin_roles() -> Bool {
+  let parts = concat(component_of(layout: p4261_e1_layout, c: e1_u49), component_of(layout: p4261_e1_layout, c: e1_u51))
+  count(parts) == 2
+    && all(parts, c => match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("Texas Instruments Incorporated SN74LV165APWR, from the marking 'LV165A / 2BKG4 / AEC0'") })
+    && all(parts, c => match mosfet_of(c: c) { Absent => true, Present { value: _ } => false })
+    && all(parts, c => match controller_of(c: c) { Absent => true, Present { value: _ } => false })
+    && all(parts, c => count(c.terminals) == 16)
+    && finding_holds(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u51 })
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 3).contains("U51 pin 3 (E) is READ by the part")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 11).contains("U51 pin 11 (A) is READ by the part")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 7).contains("U51 pin 7 (QH (inverted)) is DRIVEN by the part")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 9).contains("U51 pin 9 (QH) is DRIVEN by the part")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 1).contains("U51 pin 1 (SH/LD) is a control or clock into the part")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 15).contains("U51 pin 15 (CLK INH) is a control or clock into the part")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 8).contains("U51 pin 8 (GND) is its supply or return")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 16).contains("U51 pin 16 (VCC) is its supply or return")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 17).contains("U51 has no pin 17")
+    && register_pin_direction_text(layout: p4261_e1_layout, c: e1_q300, number: 1).contains("is not identified as a shift register")
+    && carrier_input_reading(layout: p4261_e1_layout).contains("U49 and U51, beside the end of Q300's lead b trace, are SN74LV165A parallel-load shift registers")
 }

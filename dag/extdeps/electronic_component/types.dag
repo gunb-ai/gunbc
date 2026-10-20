@@ -181,6 +181,56 @@ type ConnectorSpecification {
   mating: ConnectorMatingStanding
 }
 
+// A LOGIC PIN'S ROLE ON A SHIFT REGISTER, as its datasheet's pin table names it. A parallel input is
+// read by the part; a serial output is driven by it; the control pins are driven by whatever clocks
+// it. Which way a net at one of these pins runs is the role's, not the package's.
+type LogicPinRole
+  = ParallelInput { bit: Nat }
+  | SerialOutput { inverted: Bool }
+  | SerialInput
+  | ShiftLoadControl
+  | ClockInput
+  | ClockInhibit
+  | LogicGround
+  | LogicSupply
+
+type LogicPin {
+  number: Nat
+  name: NonEmptyStr
+  role: LogicPinRole
+}
+
+type ShiftRegisterSpecification {
+  bits: Nat
+  supply: MillivoltRange
+  pins: List<LogicPin>
+}
+
+// Which way a net meeting a shift-register pin runs, from the pin's role: read into the part, driven
+// out of it, a control or clock the part receives, its supply or return, or no such pin.
+type LogicPinDirection
+  = ReadByThePart { pin: LogicPin }
+  | DrivenByThePart { pin: LogicPin }
+  | ControlOrClockIntoThePart { pin: LogicPin }
+  | SupplyOrReturn { pin: LogicPin }
+  | NoLogicPinNumbered { number: Nat }
+
+fn logic_pin_direction(spec: ShiftRegisterSpecification, number: Nat) -> LogicPinDirection {
+  match (filter(spec.pins, p => p.number == number)).first() {
+    Absent => NoLogicPinNumbered { number: number }
+    Present { value: pin } => match pin.role {
+      ParallelInput { bit: _ } => ReadByThePart { pin: pin }
+      SerialInput => ReadByThePart { pin: pin }
+      SerialOutput { inverted: _ } => DrivenByThePart { pin: pin }
+      ShiftLoadControl => ControlOrClockIntoThePart { pin: pin }
+      ClockInput => ControlOrClockIntoThePart { pin: pin }
+      ClockInhibit => ControlOrClockIntoThePart { pin: pin }
+      LogicGround => SupplyOrReturn { pin: pin }
+      LogicSupply => SupplyOrReturn { pin: pin }
+    }
+  }
+}
+
 type ComponentSpecification
   = TvsDiodeSpec { tvs: TvsSpecification }
   | CapacitorSpec { capacitor: CapacitorSpecification }
@@ -188,6 +238,7 @@ type ComponentSpecification
   | TemperatureSensorSpec { sensor: TemperatureSensorSpecification }
   | ConnectorSpec { connector: ConnectorSpecification }
   | HotSwapControllerSpec { controller: HotSwapControllerSpecification }
+  | ShiftRegisterSpec { register: ShiftRegisterSpecification }
 
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
@@ -220,5 +271,6 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     TemperatureSensorSpec { sensor: _ } => Absent
     ConnectorSpec { connector: _ } => Absent
     HotSwapControllerSpec { controller: _ } => Absent
+    ShiftRegisterSpec { register: _ } => Absent
   }
 }
