@@ -18,6 +18,12 @@ import gunbc.site.markup { page_render_refusal_prefix }
 // capability that dissolves it, a JavaScript target model in extdeps.languages that the renderer can be
 // emitted from. Until that model exists there is nothing to type those lines against.
 //
+// THE EMITTER HALF IS ADMITTED DEBT TOO, WITH THE SAME TRIGGER. The fns below that assemble JavaScript
+// text (q, listing_rows, receipt_text and the table wires) are string folds standing where a JS grammar's
+// rows would be read backward, exactly as gunbc.site.gunb_ai_css renders CSS before it. They dissolve with
+// the RetainedJs blocks: when a JS target model exists in extdeps.languages, the typed rows below are
+// emitted through it and these folds are deleted; the typed rows and the witness stay.
+//
 // FORMATTING IS DATA TOO. The cards.js text is hand-authored and column-aligned, so alignment is derived,
 // never padded by hand: a column is the longest cell plus the table's own gap, the line-number column of
 // the code listing is the longest `ln(N,` of its group, and a wrapped listing line continues under its
