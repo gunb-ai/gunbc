@@ -3494,12 +3494,7 @@ pub fn node_type_equals_core(
                                             if (left_is_container.clone()
                                                 && right_is_container.clone())
                                             {
-                                                if !type_heads_agree(
-                                                    left.clone(),
-                                                    right.clone(),
-                                                    left_name.clone(),
-                                                    right_name.clone(),
-                                                ) {
+                                                if (left_name.clone() != right_name.clone()) {
                                                     false
                                                 } else {
                                                     match left.children.clone().first().cloned() {
@@ -3572,62 +3567,7 @@ pub fn node_type_equals_core(
                                                                 },
                                                             )
                                                         } else {
-                                                            {
-                                                                let left_applied = ((left
-                                                                    .connective
-                                                                    .clone()
-                                                                    == Connective::NoConnective)
-                                                                    && ((left.children.clone().len()
-                                                                        as i64)
-                                                                        > 0));
-                                                                let right_applied =
-                                                                    ((right.connective.clone()
-                                                                        == Connective::NoConnective)
-                                                                        && ((right
-                                                                            .children
-                                                                            .clone()
-                                                                            .len()
-                                                                            as i64)
-                                                                            > 0));
-                                                                if (left_applied.clone()
-                                                                    && right_applied.clone())
-                                                                {
-                                                                    if !type_heads_agree(
-                                                                        left.clone(),
-                                                                        right.clone(),
-                                                                        left_name.clone(),
-                                                                        right_name.clone(),
-                                                                    ) {
-                                                                        false
-                                                                    } else {
-                                                                        if ((left
-                                                                            .children
-                                                                            .clone()
-                                                                            .len()
-                                                                            as i64)
-                                                                            != (right
-                                                                                .children
-                                                                                .clone()
-                                                                                .len()
-                                                                                as i64))
-                                                                        {
-                                                                            false
-                                                                        } else {
-                                                                            {
-                                                                                let mut __all =
-                                                                                    true;
-                                                                                for pair in Rc::new(left.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if !(match right.children.clone().get((pair.0.clone()) as usize).cloned() {
-    Some(right_child) => node_type_equals(child_type_node(pair.1.clone()), child_type_node(right_child.clone()), source_indices.clone(), text.clone()),
-    std::option::Option::None => false,
-}) { __all = false; break; } }
-                                                                                __all
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                } else {
-                                                                    false
-                                                                }
-                                                            }
+                                                            false
                                                         }
                                                     }
                                                 }
