@@ -185,57 +185,48 @@ fn drain_rows() -> Vec<PhaseRow> {
 // `CompileRun.wall_ms` is sampled before the transaction's locals finish dropping, and output
 // materialization and diagnostic rendering happen in the caller. So the receipt printed by
 // `compile_emission_over` is missing everything outside the transaction, and a reader summing rows
-// against `wall_ms` silently absorbs that gap as zero. This section times the whole CLI invocation
-// from the kernel's own accounting of when the process started, and prints what no row explains as
-// its own row. `cli_run.rs` calls `print_compile_transaction_receipt` exactly once per
-// compilation; the invocation-total rows arrive at process exit.
+// against `wall_ms` silently absorbs that gap as zero. The CLI's `main` records the entry instant
+// here and prints the invocation rows on its return path, BEFORE it exits -- before every exit,
+// including the `Verdict::apply` path, which ends the process with `libc::_exit`. Printing at the
+// return path rather than from an `atexit` hook is what makes that path safe: an exit-time hook
+// would be skipped by `_exit` and the receipt would silently vanish exactly when a compile fails
+// to write its tree.
+//
+// Boundary this measures: argv decode (before the transaction), output materialization,
+// diagnostic rendering, teardown. It does NOT reach code before `main` (the runtime's own
+// startup) -- that residue shows up in `process_unattributed` as time no row explains, which is
+// where a hidden phase is supposed to surface.
 
-/// Process-lifetime receipts staged for exit time. Process-global, not thread-local: the exit
-/// hook runs on the exiting thread, which is not the thread that compiled when `cargo test`
-/// drives these functions from test threads.
+/// Process-lifetime receipts staged for the CLI return path. Process-global, not thread-local:
+/// the compile transaction and the printing site are the same thread in the CLI, but a host that
+/// drives a compile from a worker thread must not lose the row.
 static COMPILE_TRANSACTIONS: std::sync::Mutex<Vec<(String, u128)>> =
     std::sync::Mutex::new(Vec::new());
-static ATEXIT_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static INVOCATION_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+/// The invocation rows print once per process, no matter how many exits the CLI offers.
+static INVOCATION_PRINTED: std::sync::Once = std::sync::Once::new();
 
-/// THE WHOLE CLI INVOCATION, as the kernel saw it: `/proc/self/stat` field 22 is the process's
-/// start time in clock ticks since boot and `/proc/uptime` field 2 is the boot-relative uptime
-/// read moments later, so their difference is the process's age at that read and `now - age` is
-/// its start. `None` when either read fails -- the rows are then OMITTED (§4d: an unreadable
-/// figure is absent, never a fabricated zero).
-fn process_invocation_age() -> Option<Duration> {
-    // THE PROCESS, not the reading thread: `/proc/self/stat` describes the calling THREAD, and
-    // its field 22 is when that thread was created — which for a test harness (each test on its
-    // own libtest worker thread) is ~now, and for any threaded caller is a lie about the
-    // invocation. The thread-group leader (`/proc/self/task/<pid>/stat`) carries the process's
-    // own start time, which is the figure the receipt is about.
-    let pid = unsafe { libc::getpid() };
-    let stat = std::fs::read_to_string(format!("/proc/self/task/{pid}/stat")).ok()?;
-    // Field 2 (the comm) is parenthesized and may itself hold spaces; field 22 is counted from
-    // the closing paren, so split there rather than at index 21.
-    let after_comm = stat.rfind(')')?;
-    let field22 = stat[after_comm + 1..]
-        .split_whitespace()
-        // Fields 3.. follow the comm; field 22 is the 20th of them.
-        .nth(20 - 1)?
-        .parse::<u64>()
-        .ok()?;
-    let ticks_per_second = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
-    if ticks_per_second <= 0 {
-        return None;
-    }
-    let uptime = std::fs::read_to_string("/proc/uptime").ok()?;
-    let uptime_now: f64 = uptime.split_whitespace().next()?.parse().ok()?;
-    let age_seconds = uptime_now - (field22 as f64) / (ticks_per_second as f64);
-    if !age_seconds.is_finite() || age_seconds < 0.0 {
-        return None;
-    }
-    Some(Duration::from_secs_f64(age_seconds))
+/// Called by the CLI's `main`, as its first act, so the invocation total includes argv decode.
+/// First call wins; a second call (a host re-entering `main` in a test) keeps the first instant,
+/// which is the only honest start.
+pub fn record_invocation_start() {
+    let _ = INVOCATION_START.set(std::time::Instant::now());
+}
+
+/// The invocation total, or `None` when `record_invocation_start` was never called -- a library
+/// consumer that compiles without a CLI `main`. Printing a total then would attribute the whole
+/// process to a transaction sequence the caller never started (§4d: absent, never fabricated).
+fn invocation_elapsed() -> Option<Duration> {
+    INVOCATION_START.get().map(|started| started.elapsed())
 }
 
 /// Print the compile transaction's receipt: the drained phase rows with attribution, the
-/// transaction total, and the transaction's own unattributed time. Then arm the process-exit
-/// rows. One call site: `cli_run::compile_emission_over` (the wrapper), which passes the instant
-/// the transaction began so rows a PREDECESSOR recorded before it are excluded from the netting.
+/// transaction total, and the transaction's own unattributed time, and stage the invocation
+/// total for the process rows. One call site: `cli_run::compile_emission_over` (the wrapper),
+/// which passes the instant the transaction began so rows a PREDECESSOR recorded before it are
+/// excluded from the netting. Staging on EVERY disposition is what lets
+/// `invocation_receipt_lines` tell "a verb that never compiled" (print nothing) apart from
+/// "a compile that failed" (print everything the rows explain).
 pub fn print_compile_transaction_receipt(subject: &str, transaction_started: std::time::Instant) {
     let total = transaction_started.elapsed();
     // The transaction's time that NO row explains, as a FLOOR: total minus the disjoint cover of
@@ -270,7 +261,6 @@ pub fn print_compile_transaction_receipt(subject: &str, transaction_started: std
     if let Ok(mut t) = COMPILE_TRANSACTIONS.lock() {
         t.push((subject.to_string(), total.as_millis()));
     }
-    arm_invocation_receipt_at_exit();
 }
 
 /// The two transaction rows (total + the floor of what NO row explains), as pure data so the
@@ -306,51 +296,49 @@ fn compile_transaction_lines(
     ]
 }
 
-/// Arm the process-exit rows once per process. `libc::atexit` runs them for every exit that goes
-/// through the C runtime (`std::process::exit` does; `Verdict::apply`'s `libc::_exit` does not --
-/// an invocation ending that way loses only the two process rows, and keeps everything the
-/// transaction printed).
-fn arm_invocation_receipt_at_exit() {
-    if !ATEXIT_ARMED.swap(true, std::sync::atomic::Ordering::Relaxed) {
-        // The callback is `extern "C"` and touches only `static` and reentrancy-free state.
-        extern "C" fn print() {
-            print_invocation_receipt_rows();
-        }
-        unsafe { libc::atexit(print) };
-    }
+/// Print the invocation rows. Called by the CLI on its return path, before every exit it takes
+/// (including `Verdict::apply`'s `libc::_exit`), which is why this is not an `atexit` hook.
+pub fn print_invocation_receipt() {
+    INVOCATION_PRINTED.call_once(|| {
+        print_invocation_receipt_inner();
+    });
 }
 
-fn print_invocation_receipt_rows() {
-    // The age must be read while the process still has time to report, and the same read IS the
-    // measurement of the invocation: the age at exit time is the invocation total.
+fn print_invocation_receipt_inner() {
     let transactions: Vec<(String, u128)> = COMPILE_TRANSACTIONS
         .lock()
         .map(|t| t.clone())
         .unwrap_or_default();
-    // §4d: an unreadable invocation figure means the rows are OMITTED, never reported as zero.
-    for line in invocation_receipt_lines(process_invocation_age(), &transactions, index_scale()) {
+    // §4d: no recorded invocation start means no rows at all, never a zero.
+    for line in invocation_receipt_lines(invocation_elapsed(), &transactions, index_scale()) {
         eprintln!("{line}");
     }
 }
 
 /// The two process rows (invocation total + the unattributed-outside-the-transactions figure),
-/// as pure data. `transactions` are `(subject, total_ms)` pairs in call order. An empty
-/// `age` — `/proc` unreadable — yields NO rows: an absent figure is honest, a zero is a lie
+/// as pure data. `transactions` are `(subject, total_ms)` pairs in call order. No recorded
+/// invocation start yields NO rows: an absent figure is honest, a zero is a lie
 /// (§4d: "Check the instrument reads real data before it is called a receipt").
 fn invocation_receipt_lines(
-    age: Option<Duration>,
+    elapsed: Option<Duration>,
     transactions: &[(String, u128)],
     scale: PhaseScale,
 ) -> Vec<String> {
-    let Some(age) = age else {
+    // Rows exist only for an invocation that actually ran a compile transaction: the compile
+    // route stages one on EVERY disposition (the wrapper), so an empty list here means a verb
+    // that never compiled (run, check, ...) -- and those routes keep their existing stderr.
+    // No recorded start is the other omission: a library consumer without a CLI `main` must not
+    // get a total that attributes the whole process to transactions nobody started (§4d).
+    if elapsed.is_none() || transactions.is_empty() {
         return Vec::new();
-    };
+    }
+    let elapsed = elapsed.expect("checked above");
     let scale = scale.wire();
     let transactions_total_ms: u128 = transactions.iter().map(|(_, ms)| ms).sum();
     vec![
         format!(
             "[pre-entry] phase=process_invocation_total ms={} scale={scale} attribution=inclusive transactions={}",
-            age.as_millis(),
+            elapsed.as_millis(),
             transactions.len()
         ),
         // Unattributed OUTSIDE every transaction: argv decode, output materialization, diagnostic
@@ -358,7 +346,8 @@ fn invocation_receipt_lines(
         // cost cannot be read as `wall_ms`'s rounding error.
         format!(
             "[pre-entry] phase=process_unattributed ms={} scale={scale} attribution=exclusive",
-            age.as_millis()
+            elapsed
+                .as_millis()
                 .saturating_sub(transactions_total_ms)
                 .try_into()
                 .unwrap_or(u64::MAX)
@@ -446,11 +435,12 @@ mod tests {
         DEMAND_ACQUIRED_MODULES.with(|c| c.set(None));
     }
 
-    /// §4d, as a RED: an unreadable invocation figure OMITS the process rows. A `0` here would
-    /// read as "the CLI spent no time outside the transaction" -- the fabricated-zero class the
-    /// plan names.
+    /// §4d, as a RED: with no recorded invocation start the process rows are OMITTED. A `0` here
+    /// would read as "the CLI spent no time outside the transaction" -- the fabricated-zero class
+    /// the plan names. (The `record_invocation_start`-happens test is
+    /// `the_invocation_total_advances_with_wall_time`.)
     #[test]
-    fn unreadable_invocation_omits_the_process_rows_instead_of_reporting_zero() {
+    fn an_invocation_without_a_recorded_start_omits_the_process_rows_instead_of_reporting_zero() {
         let lines =
             invocation_receipt_lines(None, &[("subject".to_string(), 7u128)], PhaseScale::Tree);
         assert!(lines.is_empty(), "{lines:?}");
@@ -568,20 +558,30 @@ mod tests {
         (15..=45).contains(&excl)
     }
 
-    /// "Check the instrument reads real data before it is called a receipt": the age is the
-    /// kernel's own process-start accounting (field 22 of `/proc/self/stat` against
-    /// `/proc/uptime`), so it must ADVANCE with wall time between reads — a parse accident, a
-    /// constant, or a sign flip does not grow by the sleep. The ABSOLUTE value is not asserted:
-    /// a fresh test binary can genuinely be 0ms old at the tick granularity of field 22 (10ms),
-    /// and a real zero is honest where a fabricated one would be the §4d failure class.
+    /// "Check the instrument reads real data before it is called a receipt": the invocation
+    /// total is a wall-clock `Instant` taken at the CLI's entry, so it must ADVANCE between reads
+    /// — a constant, or a total computed from anything other than elapsed real time, does not
+    /// grow by the sleep. The absolute value is not asserted: the instant is process-global and
+    /// first-wins, so an earlier test in the same binary legitimately fixes the base.
     #[test]
-    fn the_invocation_age_advances_with_wall_time() {
-        let first = process_invocation_age().expect("/proc is readable on the runner");
+    fn the_invocation_total_advances_with_wall_time() {
+        record_invocation_start();
+        let first = invocation_elapsed().expect("start was recorded above");
         std::thread::sleep(Duration::from_millis(80));
-        let second = process_invocation_age().expect("/proc is readable on the runner");
+        let second = invocation_elapsed().expect("start was recorded above");
         assert!(
             second > first && second - first < Duration::from_secs(5),
-            "age must advance ~1:1 with wall time: first={first:?} second={second:?}"
+            "invocation total must advance ~1:1 with wall time: first={first:?} second={second:?}"
         );
+    }
+
+    /// A verb that never compiled stages no transaction and therefore prints no invocation rows:
+    /// `run`/`check`/... keep their existing stderr byte-for-byte, which is what makes this
+    /// receipt safe for the 14k-test suite.
+    #[test]
+    fn an_invocation_without_a_compile_transaction_prints_nothing() {
+        let lines =
+            invocation_receipt_lines(Some(Duration::from_millis(500)), &[], PhaseScale::Tree);
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }
