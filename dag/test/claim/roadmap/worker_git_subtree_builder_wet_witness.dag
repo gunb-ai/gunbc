@@ -1,7 +1,8 @@
 module test.claim.roadmap.worker_git_subtree_builder_wet_witness
 
 // WORKER-ROOT-EQUIVALENT-3 wet witnesses for the argv builders the lab worker's commit grant is made
-// of: the root-owned shared-repository posture (extdeps/git) and the bounded subtree re-group
+// of: the shared-repository posture, written by the instance's own principal (extdeps/git), and the
+// bounded subtree re-group
 // (extdeps/tools/findutils). DESIGN 5 -- done means EXECUTED: an argv-shape claim stays green over a
 // command that cannot run. At 2dc2b8de3f98 all five git builders rendered
 // `git env GIT_CONFIG_GLOBAL=... git config ...` (argv_words is [program] ++ arguments, and their
@@ -259,9 +260,9 @@ fn wet_receipt_has_none(out: String, forbidden: List<String>) -> Bool {
 data wet_granted_directory_mode: String = "2775"
 
 // 03775, the mode .git/objects must END UP at: the granted directory plus the STICKY BIT. Rename(2)
-// checks the PARENT for write and not the entry, so a 02775 objects/ let a confined worker move
-// root's objects/pack aside (the 0555 on pack/ is no bar to a rename) and plant a symlink in its
-// place -- after which the named ROOT maintenance job writes new packs into, and `repack -d` deletes
+// checks the PARENT for write and not the entry, so a 02775 objects/ let a confined worker move the
+// tree owner's objects/pack aside (the 0555 on pack/ is no bar to a rename) and plant a symlink in
+// its place -- after which the named maintenance job writes new packs into, and `repack -d` deletes
 // packs from, a directory the worker chose. +t keeps the group's right to CREATE entries and takes
 // away only the rename and unlink of entries the caller does not own.
 data wet_granted_shared_directory_mode: String = "3775"
@@ -282,15 +283,17 @@ data wet_planted_file_mode: String = "644"
 // gunbc.roadmap.roadmap_dashboard_instance dashboard_git_worker_subtree_confined_children declares them.
 data wet_objects_pruned: List<String> = ["pack", "info"]
 
-// ONE, THE SHARED-REPOSITORY POSTURE WRITES THE KEYS IT CLAIMS TO WRITE. The three root-owned config
-// builders RUN, and the repository afterwards says what the model says it says: `git config --get
+// ONE, THE SHARED-REPOSITORY POSTURE WRITES THE KEYS IT CLAIMS TO WRITE. The three config builders,
+// which production runs as the instance's own principal, RUN, and the repository afterwards says what
+// the model says it says: `git config --get
 // core.sharedRepository` answers `group`. That key is what the whole worker grant rests on -- without it
 // git creates a new object fan-out directory 0755 and a new reflog 0644, so the group write dies at the
 // worker's FIRST commit even though every directory above it is group-writable. At 2dc2b8de all three
 // exited 1 without writing anything, and no claim noticed. gc.auto=0 and maintenance.auto=false are the
-// consumer obligation for the repack that moves to root (DESIGN 3c): `git commit` spawns
-// `git maintenance run --auto`, whose sweep opens packed-refs.lock IN .git ITSELF, a path #13942 confines
-// to root -- measured as a printed "error unable to lock packed-refs file" over an exit-0 commit, which
+// consumer obligation for the repack that moves to the named maintenance job (DESIGN 3c): `git commit`
+// spawns `git maintenance run --auto`, whose sweep opens packed-refs.lock IN .git ITSELF, a path #13942
+// keeps out of the worker's reach -- measured as a printed "error unable to lock packed-refs file" over
+// an exit-0 commit, which
 // is exactly the noise that teaches an operator to ignore a confined write. THE READBACK IS THE
 // REPOSITORY'S OWN git (a builder is never asked to grade its own work), and a stray global config
 // cannot satisfy it: the posture's typed GIT_CONFIG_GLOBAL/GIT_CONFIG_NOSYSTEM refusals are what keep the
@@ -530,8 +533,8 @@ test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is
 
 // SIX, THE STICKY BIT LANDS AND STILL LETS THE WORKER WORK. The finding that forced it is
 // that rename(2) checks the PARENT for write and not the entry, so a group-writable objects/ let a
-// confined attempt move root's objects/pack aside (its 0555 is no bar to being RENAMED) and plant a
-// symlink there -- after which the named ROOT maintenance job writes new packs into, and `repack -d`
+// confined attempt move the tree owner's objects/pack aside (its 0555 is no bar to being RENAMED) and
+// plant a symlink there -- after which the named maintenance job writes new packs into, and `repack -d`
 // deletes packs from, a directory the worker chose. THE CLAIM HAS TWO HALVES AND BOTH ARE NEEDED:
 //   (a) THE BIT IS THERE. objects/ reads back 03775 after the migration, and the two subtrees that do
 //       not need it (refs/, logs/) read back 02775 -- the model's own decision, exercised on both arms
@@ -540,9 +543,9 @@ test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is
 //   (b) THE FEATURE STILL WORKS. +t is only a hazard if it bars the worker from its OWN entries, so the
 //       worker renames a file it owns inside the sticky objects/, creates a new fan-out directory, and
 //       replaces its own index.lock-style entry -- all must succeed. This is the half that protects
-//       against the fix being applied where it must not be (the per-attempt worktree entry, where
-//       root's `git worktree add` leaves root-owned index and HEAD: +t there would EPERM the very
-//       first `git add`).
+//       against the fix being applied where it must not be (the per-attempt worktree entry, where the
+//       instance principal's `git worktree add` leaves index and HEAD owned by IT: +t there would EPERM
+//       the very first `git add`).
 // THE HALF THIS FILE CANNOT RUN, and where it lives: mv of an entry the caller does NOT own must fail
 // with EPERM. Minting a foreign-owned entry needs privileges the wet runtime does not have (no sudo, no
 // root), and protected_hardlinks bars a hardlink of a file the caller cannot read, so the discriminating

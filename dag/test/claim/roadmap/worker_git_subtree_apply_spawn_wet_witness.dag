@@ -450,7 +450,8 @@ test fn the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_post
 // refuses an empty receipt, a line it cannot parse, and a receipt missing the subtree's top) accepts
 // objects/, refs/ and logs/, and the specific facts are read off `find`:
 //   - objects/'s own top is 3775 -- the STICKY bit, which `chmod g+w` cannot produce and which is what keeps
-//     the worker from renaming root's objects/pack aside and planting a symlink for the root maintenance job
+//     the worker from renaming the tree owner's objects/pack aside and planting a symlink for the
+//     maintenance job to write through
 //     to write packs into;
 //   - the EXISTING fan-out directory objects/f9 is 2775 -- the 0755 that made the worker's first commit fail;
 //   - the pre-existing reflog is 0664, the one file-level grant the model makes;

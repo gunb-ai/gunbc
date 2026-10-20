@@ -3242,7 +3242,7 @@ fn dispatch_attempt_worker_git_entry_migration(
 //                                it is already too late for that entry: the private entry's files
 //                                were created at 0644 and 0755 under the umask and the group write
 //                                dies on the worker's first index.lock.
-//   gc.auto=0, maintenance.auto=false  hand the automatic repack to the root job
+//   gc.auto=0, maintenance.auto=false  hand the automatic repack to the named maintenance job
 //                                (dashboard_git_maintenance_exec_commands). `git commit` spawns
 //                                `git maintenance run --auto`, whose sweep reaches for
 //                                packed-refs.lock IN .git ITSELF -- confined. The commit survives it
