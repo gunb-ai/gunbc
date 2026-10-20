@@ -818,7 +818,7 @@ fn instrument_dispatch_workflow(seed: String, guard: String, script: String) -> 
         inputs: [
           DispatchInput {
             name: instrument_dispatch_wave_shard_input,
-            description: Present { value: "For //gunbc/instruments:namespace-wave-binding-diff only: the run's shape -- base (once per main revision), i/K (one head shard), merge/K (the join that mints the verdict). none = not a wave run; a wave label dispatched with none refuses as malformed (2)." },
+            description: Present { value: "Wave gate only: base | i/K | merge/K. none = not a wave run; a wave label with none refuses malformed (2)." },
             required: false,
             default: Present { value: "none" },
             type: InputChoice { options: instrument_dispatch_wave_shard_options() },
