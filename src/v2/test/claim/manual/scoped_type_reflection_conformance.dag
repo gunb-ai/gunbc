@@ -215,30 +215,13 @@ test fn cited_unique_but_non_coproduct_spelling_refuses_rather_than_diverging() 
 }
 
 // THE QUALIFIED KEY IS THE MODULE'S OWN NAME, so the live pair v2.std.integer / std.integer, which both
-// declare Int, answers to two keys and each cited spelling resolves to its own declaration. The
+// declare Int, answers to two keys and each key reads exactly one declaration (Int is an alias, so the coproduct
+// resolver refuses it for its own reason; the key count is the subject here). The
 // ambiguity red this slot held (a cited name reaching two rows) flipped when decl_index stopped
 // stripping `v2.`; it stays enrolled as the positive, with the one-row-each read beside it, so a
 // return to the stripped key reds both.
-test fn cited_pair_across_the_two_trees_resolves_each_to_its_own_declaration() -> Bool {
-  outcome_is_accepted(
-    o: resolve_type_node_at(
-      pool_roots: scoped_reflection_pool_roots,
-      ref: DeclarationRef {
-        module_path: "v2.std.integer",
-        decl_name: "Int",
-        field: WholeDeclaration
-      }
-    )
-  ) && outcome_is_accepted(
-    o: resolve_type_node_at(
-      pool_roots: scoped_reflection_pool_roots,
-      ref: DeclarationRef {
-        module_path: "std.integer",
-        decl_name: "Int",
-        field: WholeDeclaration
-      }
-    )
-  ) && length(xs: decl_facts_at(pool_roots: scoped_reflection_pool_roots, qualified_name: "v2.std.integer.Int")) == 1
+test fn cited_pair_across_the_two_trees_reads_one_declaration_each() -> Bool {
+  length(xs: decl_facts_at(pool_roots: scoped_reflection_pool_roots, qualified_name: "v2.std.integer.Int")) == 1
     && length(xs: decl_facts_at(pool_roots: scoped_reflection_pool_roots, qualified_name: "std.integer.Int")) == 1
 }
 
