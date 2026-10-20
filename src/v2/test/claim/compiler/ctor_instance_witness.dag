@@ -102,17 +102,16 @@ fn ci_planted() -> Outcome<ResolvedTree> { ers_assemble(body: "fn bad() -> Bool 
 
 test fn ci_positive_control_plain_infers_holds() -> Bool { ers_infer_accepted(o: ci_plain()) }
 test fn ci_planted_error_counts_one_holds() -> Bool { ers_error_count(o: ci_planted()) == 1 }
-// EXPECTED RED, trigger: the native T? producer cut (adhoc-1c3afc22-276), after which Occupancy no longer reaches infer
-// and the constructor-use variable of Absent at Int? is solved. Flips to accepts when the cut lands.
-test fn ci_bare_absent_at_optional_int_is_expected_red_holds() -> Bool { !ers_infer_accepted(o: ci_bare()) }
+// The cut (#14531) removed Occupancy, so the constructor-use variable of Absent at Int? is solved: accepts.
+test fn ci_bare_absent_at_optional_int_accepts_holds() -> Bool { ers_infer_accepted(o: ci_bare()) }
 test fn ci_absent_at_rigid_optional_accepts_holds() -> Bool { ers_infer_accepted(o: ci_rigid()) }
 test fn ci_present_string_at_optional_int_refuses_holds() -> Bool { ers_error_count(o: ci_present()) >= 1 }
 test fn ci_unsolved_constructor_variable_refuses_holds() -> Bool { ers_error_count(o: ci_unsolved()) >= 1 }
 
 fn ci_rigid_payload() -> Outcome<ResolvedTree> { ers_assemble(body: "fn r<T>(x: T) -> Int? { Present { value: x } }\n") }
-// EXPECTED ACCEPTED (a hole), trigger: the rigid-T decision owned by jolly-bee-729 (undecidable_generic_formal admits it).
-test fn ci_rigid_payload_at_optional_int_is_still_accepted_holds() -> Bool { ers_infer_accepted(o: ci_rigid_payload()) }
+// A rigid T at a declared Int is refused (inhabitance_judged_type_variables): the former hole is closed.
+test fn ci_rigid_payload_at_optional_int_refuses_holds() -> Bool { ers_error_count(o: ci_rigid_payload()) >= 1 }
 
 fn ci_two_uses() -> Outcome<ResolvedTree> { ers_assemble(body: "fn a() -> Int? { Absent }\nfn b() -> String? { Absent }\nfn c() -> Int? {\n  let x: String? = Absent\n  Absent\n}\n") }
-// EXPECTED RED, same trigger as ci_bare_absent_at_optional_int_is_expected_red_holds.
-test fn ci_two_absent_uses_at_distinct_types_is_expected_red_holds() -> Bool { !ers_infer_accepted(o: ci_two_uses()) }
+// Each Absent is judged at its own declared type, so three uses at two types accept.
+test fn ci_two_absent_uses_at_distinct_types_accepts_holds() -> Bool { ers_infer_accepted(o: ci_two_uses()) }
