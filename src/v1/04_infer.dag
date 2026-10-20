@@ -57,7 +57,7 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, declaration_provenance
   map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
-  ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
+  ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span diagnostic_to_message,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
   InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch,
@@ -18075,6 +18075,15 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       module_name: raven_module
     )
   ] } else { [] }
+  // THE 24, INDIVIDUALLY (manager msg_8be1fe9d) -- CONTROL, identical to the probe branch's block.
+  let raven_env_rows = if raven_module == "std.measure" {
+    env_errors |> map(d => inference_error(
+      message: concat("RAVENENV|", diagnostic_to_message(d: d.diagnostic)),
+      span: diagnostic_to_span(d: d.diagnostic),
+      module_name: raven_module
+    ))
+  } else { [] }
+  let raven_all_rows = concat(raven_rows, raven_env_rows)
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
       typed: TypedModule {
@@ -18094,7 +18103,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         item_registry: empty_map(),
         occurrence_transport: Present { value: resolved.occurrence_transport },
       },
-      diagnostics: concat(env_diags, seed_diags),
+      diagnostics: concat(raven_all_rows, env_diags, seed_diags),
       binding_forks: env_result.binding_forks
     }
   }
@@ -18189,10 +18198,10 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       item_registry: refresh_direct_service_names(registry: ctx.item_registry, typed_items: grounded.items, source_indices: source_indices, module_name: resolved_module_name),
       occurrence_transport: Present { value: resolved.occurrence_transport },
     },
-    diagnostics: frontier_occurrence_budget_checked(
+    diagnostics: concat(raven_all_rows, frontier_occurrence_budget_checked(
       module_name: resolved_module_name,
       module_span: resolved.module.span,
-      diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags)),
+      diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags))),
     binding_forks: env_result.binding_forks
   }
 }
