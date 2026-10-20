@@ -158,7 +158,7 @@ test fn every_owed_declaration_has_a_frontier_row() -> Bool {
 
 // RED: a dropped row fails the join.
 test fn a_dropped_frontier_row_fails_the_join() -> Bool {
-  !owed_all_named(filter(wire_strict_reader_frontier_rows, r => !(row_names([r]) == ["read_shape"])))
+  !owed_all_named(wire_strict_reader_frontier_rows |> filter(r => !(row_names([r]) == ["read_shape"])))
 }
 
 // B3/B4: every admission row the protocol declares is a subset of its declared arms.
