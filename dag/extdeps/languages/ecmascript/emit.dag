@@ -1,7 +1,6 @@
 module extdeps.languages.ecmascript.emit
 
 import std.types { String, Int, List }
-import std.render_repeat_string_bootstrap { repeat_string }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.languages.json.emit { escape_json_string }
 import extdeps.uri { Uri, Https }
@@ -97,43 +96,3 @@ fn es_call_open(callee: String, leading: List<EsExpr>) -> String {
 }
 
 data es_call_array_end: String = "])"
-
-// Column alignment is a property of a table of rows, derived from the cells: a column is as wide as its
-// longest cell and each non-final cell is padded to that width plus the column's gap (the spaces between
-// it and the next cell). The final cell is never padded.
-fn es_text_width(s: String) -> Int {
-  0 + s.length()
-}
-
-fn es_spaces(n: Int) -> String {
-  repeat_string(s: " ", n: n)
-}
-
-fn es_column(table: List<List<String>>, index: Int) -> List<String> {
-  flat_map(table, r => flat_map(enumerate(r), pair => if pair.first == index { [pair.second] } else { [] }))
-}
-
-fn es_column_width(cells: List<String>) -> Int {
-  fold(cells, init: 0, f: (acc, c) => if es_text_width(s: c) > acc { es_text_width(s: c) } else { acc })
-}
-
-fn es_count(xs: List<String>) -> Int {
-  fold(xs, init: 0, f: (acc, _x) => acc + 1)
-}
-
-fn es_gap_at(gaps: List<Int>, index: Int) -> Int {
-  fold(enumerate(gaps), init: 0, f: (acc, g) => if g.first == index { g.second } else { acc })
-}
-
-fn es_aligned_cell(cell: String, column: List<String>, gap: Int) -> String {
-  concat(cell, es_spaces(n: es_column_width(cells: column) - es_text_width(s: cell) + gap))
-}
-
-fn es_aligned_row(row: List<String>, table: List<List<String>>, gaps: List<Int>) -> String {
-  let last = es_count(xs: row) - 1
-  join(map(enumerate(row), pair => if pair.first == last {
-    pair.second
-  } else {
-    es_aligned_cell(cell: pair.second, column: es_column(table: table, index: pair.first), gap: es_gap_at(gaps: gaps, index: pair.first))
-  }), "")
-}
