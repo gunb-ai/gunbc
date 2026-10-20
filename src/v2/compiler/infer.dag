@@ -185,7 +185,28 @@ type InferGatherFoldAcc {
   await_loop_row: Bool
   await_transform_row: Bool
   children_remaining: Int
-  declared_position_expected: Optional<Node>
+  declared_position_expected: Optional<Node>,
+  branch_hold: InferBranchHold
+}
+
+// AN UNDERIVED BRANCH ARM IS HELD, NOT MERGED. An arm whose root settled with no derived type (a literal
+// that needs an expected type: Absent, none, [], {..}) contributes neither entries nor diagnostics at its
+// own step; its settled accumulator waits here until the branch's declaring sibling has settled, and the
+// join then re-infers THAT arm only, once, with the sibling's type as its declared_position_expected --
+// the first-pass facts are replaced, never appended. frame is the branch's own frame, so the re-run
+// sees the same instances and binder types the first pass did.
+type InferHeldArm {
+  edge: Edge
+  settled: InferGatherFoldAcc
+}
+
+type InferBranchHold {
+  frame: Optional<InferFrame>
+  held: List<InferHeldArm>
+}
+
+fn infer_no_branch_hold() -> InferBranchHold {
+  InferBranchHold { frame: Absent, held: Empty }
 }
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
@@ -5422,7 +5443,8 @@ fn infer_gather_fold_acc_failed(
     await_loop_row: await_loop_row,
     await_transform_row: await_transform_row,
     children_remaining: children_remaining,
-    declared_position_expected: Absent
+    declared_position_expected: Absent,
+    branch_hold: infer_no_branch_hold()
   }
 }
 
@@ -5446,7 +5468,8 @@ fn infer_gather_fold_acc_ok(
     await_loop_row: await_loop_row,
     await_transform_row: await_transform_row,
     children_remaining: children_remaining,
-    declared_position_expected: Absent
+    declared_position_expected: Absent,
+    branch_hold: infer_no_branch_hold()
   }
 }
 
@@ -5461,7 +5484,8 @@ fn infer_gather_stamp_declared_position_expected(acc: InferGatherFoldAcc, expect
     await_loop_row: acc.await_loop_row,
     await_transform_row: acc.await_transform_row,
     children_remaining: acc.children_remaining,
-    declared_position_expected: expected
+    declared_position_expected: expected,
+    branch_hold: acc.branch_hold
   }
 }
 
@@ -6833,6 +6857,18 @@ fn infer_gather_fold_step(
           resolved: resolved
         )
     }
+  } else if acc.await_branch_row && infer_settled_arm_is_underived(settled: child) && infer_branch_has_arm(branch: acc.node, arm: edge.target) {
+    infer_gather_fold_step_merged(
+      acc: infer_gather_with_branch_hold(
+        acc: acc,
+        hold: InferBranchHold { frame: acc.branch_hold.frame, held: list_snoc_item(xs: acc.branch_hold.held, item: InferHeldArm { edge: edge, settled: child }) }
+      ),
+      merged_entries: acc.entries,
+      merged_pending: acc.pending,
+      partials: partials,
+      kinds: kinds,
+      resolved: resolved
+    )
   } else {
     let family = infer_literal_edge_payload(parent: acc.node, edge: edge)
     match family {
@@ -6893,12 +6929,7 @@ fn infer_gather_fold_step_merged(
 ) -> InferGatherFoldAcc {
   let children_remaining = acc.children_remaining - 1
   if acc.await_branch_row && children_remaining == 0 {
-    infer_gather_branch_row_on_entries(
-      node: acc.node,
-      entries: merged_entries,
-      pending: merged_pending,
-      partials: partials
-    )
+    infer_gather_branch_join(acc: acc, merged_entries: merged_entries, merged_pending: merged_pending, partials: partials, kinds: kinds, resolved: resolved)
   } else if acc.await_match_row && children_remaining == 0 {
     infer_gather_match_row_on_entries(
       node: acc.node,
@@ -6928,19 +6959,172 @@ fn infer_gather_fold_step_merged(
   } else if children_remaining == 0 {
     infer_gather_settled_row(acc: acc, merged_entries: merged_entries, merged_pending: merged_pending, partials: partials, kinds: kinds, resolved: resolved)
   } else {
-    infer_gather_stamp_declared_position_expected(
-      acc: infer_gather_fold_acc_ok(
-        node: acc.node,
-        entries: merged_entries,
-        pending: merged_pending,
-        await_branch_row: acc.await_branch_row,
-        await_match_row: acc.await_match_row,
-        await_loop_row: acc.await_loop_row,
-        await_transform_row: acc.await_transform_row,
-        children_remaining: children_remaining
+    infer_gather_with_branch_hold(
+      acc: infer_gather_stamp_declared_position_expected(
+        acc: infer_gather_fold_acc_ok(
+          node: acc.node,
+          entries: merged_entries,
+          pending: merged_pending,
+          await_branch_row: acc.await_branch_row,
+          await_match_row: acc.await_match_row,
+          await_loop_row: acc.await_loop_row,
+          await_transform_row: acc.await_transform_row,
+          children_remaining: children_remaining
+        ),
+        expected: acc.declared_position_expected
       ),
-      expected: acc.declared_position_expected
+      hold: acc.branch_hold
     )
+  }
+}
+
+fn infer_gather_with_branch_hold(acc: InferGatherFoldAcc, hold: InferBranchHold) -> InferGatherFoldAcc {
+  InferGatherFoldAcc {
+    node: acc.node,
+    entries: acc.entries,
+    failed: acc.failed,
+    pending: acc.pending,
+    await_branch_row: acc.await_branch_row,
+    await_match_row: acc.await_match_row,
+    await_loop_row: acc.await_loop_row,
+    await_transform_row: acc.await_transform_row,
+    children_remaining: acc.children_remaining,
+    declared_position_expected: acc.declared_position_expected,
+    branch_hold: hold
+  }
+}
+
+// A branch arm is one of the branch node's positional children 1 and 2 (0 is the condition).
+fn infer_branch_arm_sibling(branch: Node, arm: Node) -> Optional<Node> {
+  let targets = positional_child_target_nodes(node: branch)
+  match list_at_optional(xs: targets, index: 1) {
+    Absent => Absent
+    Present { value: then_target } =>
+      match list_at_optional(xs: targets, index: 2) {
+        Absent => Absent
+        Present { value: else_target } =>
+          if arm == then_target { Present { value: else_target } }
+          else if arm == else_target { Present { value: then_target } }
+          else { Absent }
+      }
+  }
+}
+
+fn infer_branch_has_arm(branch: Node, arm: Node) -> Bool {
+  match infer_branch_arm_sibling(branch: branch, arm: arm) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// An arm SETTLED UNDERIVED: its root carries no derived type (the only reason a root can lack one is
+// infer_grounding_not_derived -- a type state, read off the settled facts, never off the arm's syntax).
+fn infer_settled_arm_is_underived(settled: InferGatherFoldAcc) -> Bool {
+  if settled.failed {
+    false
+  } else {
+    match lookup_inferred_facts_in_entries(entries: settled.entries, key: settled.node) {
+      Absent => false
+      Present { value: facts } =>
+        match inferred_facts_resolved_type(facts: facts) {
+          Holds { value: _ } => false
+          Violates { diagnostic: d } => d.reason == ^infer_grounding_not_derived
+        }
+    }
+  }
+}
+
+type InferHoldResolution {
+  entries: Map<Node, List<InferredFacts>>
+  pending: Diagnostics
+  refused: Optional<NonEmptyDiagnostics>
+}
+
+// THE JOIN RESOLVES EACH HELD ARM EXACTLY ONCE. With a declaring sibling (a settled arm whose root has a
+// derived type) the held arm is re-inferred as a subtree under the branch's frame with that type as its
+// declared_position_expected -- the ordinary declared-position judgment, so what the arm may be is
+// decided by the same route as any other declared position. Its first-pass accumulator is dropped; the
+// re-run's replaces it. With no declaring sibling the first-pass result is merged as it always was.
+// Declaring arms are never re-run.
+fn infer_gather_branch_join(
+  acc: InferGatherFoldAcc,
+  merged_entries: Map<Node, List<InferredFacts>>,
+  merged_pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  resolved: ResolvedTree,
+) -> InferGatherFoldAcc {
+  let start = InferHoldResolution { entries: merged_entries, pending: merged_pending, refused: Absent }
+  let r = fold(acc.branch_hold.held, init: start, f: fn(cur, h) {
+    match cur.refused {
+      Present { value: _ } => cur
+      Absent =>
+        match infer_held_arm_declaring_type(branch: acc.node, held: h, entries: cur.entries) {
+          Present { value: declaring } =>
+            infer_merge_held_arm(
+              cur: cur,
+              rerun: fold_node_dependent(
+                n: h.settled.node,
+                ctx: infer_held_arm_frame(hold: acc.branch_hold, expected: declaring),
+                algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, resolved: resolved)
+              )
+            )
+          Absent => infer_merge_held_arm(cur: cur, rerun: h.settled)
+        }
+    }
+  })
+  match r.refused {
+    Present { value: refused } =>
+      infer_gather_fold_acc_failed(
+        node: acc.node,
+        pending: rejected_with_pending(pending: r.pending, rejected: refused),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Absent =>
+      infer_gather_branch_row_on_entries(node: acc.node, entries: r.entries, pending: r.pending, partials: partials)
+  }
+}
+
+fn infer_held_arm_frame(hold: InferBranchHold, expected: Node) -> InferFrame {
+  match hold.frame {
+    Present { value: f } =>
+      InferFrame { instances: f.instances, binder_types: f.binder_types, entering: InferFrameEnteredPlain, declared_position_expected: Present { value: expected } }
+    Absent =>
+      InferFrame { instances: infer_no_type_variable_instances(), binder_types: infer_no_binder_types(), entering: InferFrameEnteredPlain, declared_position_expected: Present { value: expected } }
+  }
+}
+
+fn infer_held_arm_declaring_type(branch: Node, held: InferHeldArm, entries: Map<Node, List<InferredFacts>>) -> Optional<Node> {
+  match infer_branch_arm_sibling(branch: branch, arm: held.settled.node) {
+    Absent => Absent
+    Present { value: sibling } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: sibling) {
+        Absent => Absent
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Holds { value: t } => Present { value: t }
+            Violates { diagnostic: _ } => Absent
+          }
+      }
+  }
+}
+
+fn infer_merge_held_arm(cur: InferHoldResolution, rerun: InferGatherFoldAcc) -> InferHoldResolution {
+  if rerun.failed {
+    match rerun.pending {
+      Some { diagnostics: d } => InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: d } }
+      None => InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: diagnostics_singleton(d: infer_canonical_grounding_incoherent_diagnostic(node: infer_gather_fold_failure_node())) } }
+    }
+  } else {
+    InferHoldResolution {
+      entries: concat_inferred_facts_entries(a: cur.entries, b: rerun.entries),
+      pending: diagnostics_merge(outer: cur.pending, inner: rerun.pending),
+      refused: Absent
+    }
   }
 }
 
@@ -9095,7 +9279,10 @@ fn infer_loop_schedules_first(parent: Node, edge: Edge) -> Bool {
 
 // The frame's entry is charged at the subtree root it opens, after that root's own init.
 fn infer_gather_framed_init(acc: InferGatherFoldAcc, frame: InferFrame) -> InferGatherFoldAcc {
-  let stamped = infer_gather_stamp_declared_position_expected(acc: acc, expected: frame.declared_position_expected)
+  let stamped = infer_gather_with_branch_hold(
+    acc: infer_gather_stamp_declared_position_expected(acc: acc, expected: frame.declared_position_expected),
+    hold: InferBranchHold { frame: Present { value: frame }, held: Empty }
+  )
   match frame.entering {
     InferFrameEnteredPlain => stamped
     InferFrameEnteredWith { advisory: a } =>
@@ -9109,7 +9296,8 @@ fn infer_gather_framed_init(acc: InferGatherFoldAcc, frame: InferFrame) -> Infer
         await_loop_row: stamped.await_loop_row,
         await_transform_row: stamped.await_transform_row,
         children_remaining: stamped.children_remaining,
-        declared_position_expected: stamped.declared_position_expected
+        declared_position_expected: stamped.declared_position_expected,
+        branch_hold: stamped.branch_hold
       }
     InferFrameEnteredRefused { refused: r } =>
       infer_gather_fold_acc_failed(
