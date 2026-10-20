@@ -48,13 +48,18 @@ module test.claim.diagnostic_span_location_rendering_witness
 // second -- if the seed grew a second formatter, the rows that read the CLI's line and the lane's
 // line would diverge again.
 //
-// NOT IN SCOPE, DELIBERATELY: five sites render `{file}:{start}-{end}` as an IDENTITY KEY (a
-// cache/dedup key that is never shown to an author) -- dag/gunbc/dag_collect.dag:64,
-// src/v1/05_emit_rust.dag:14725, src/v1/05_emit_rust.dag:18118, src/v1/ownership.dag:597. A key
-// is not a location, and changing one would churn a cache key for no author-facing gain. They are
-// named in the PR rather than quietly left alone. src/v1/05_emit_rust.dag:709 is NOT one of them:
-// it interpolates `to_string(n.span.start)` into `compile_error!` TEXT a human reads, so it is
-// reader-facing and is in scope.
+// NOT IN SCOPE, DELIBERATELY: sites that render a span as an IDENTITY KEY -- a cache/dedup/map key
+// never shown to an author -- stay as they are, because a key is not a location and churning one
+// buys no author-facing gain. Named by symbol, since a line number in a citation rots the moment
+// the file moves: `dag_node_key` in src/v1/dag_collect.dag (its
+// `file:start..end` anchor component), the `dying_base_sites` map lookup in
+// src/v1/05_emit_rust.dag keyed by `to_string(value: expr.span.start)`, and
+// src/v1/ownership.dag's `EdgeClassification.span_start` / `site_key` fields as filled by
+// `record_use`. They are named in the
+// PR rather than quietly left alone. The `compile_error!` TEXT sites are NOT of that class: what a
+// human reads is located by the authority -- `render_rust_optional_carrier_inner`'s Absent arm,
+// `emit_width_type_arg_identity_refusal`, `rust_type_arg_identity_spelling`'s
+// UnitVariantPhantomEvidenceUnavailable arm, and `emit_shell_call`'s argv-element refusal.
 // ---------------------------------------------------------------------------------------------
 
 import std.logic { Bool }
@@ -134,10 +139,12 @@ data observed_offset_shapes: List<String> = ["m.dag:90-90", "m.dag:64-64", "m.da
 // afterwards, so nothing refusing is committed and no reader has to reproduce a file that exists
 // only in someone's /tmp. The fixture goes under the CHECKOUT's gitignored `target/`, not `/tmp`:
 // `gunbc compile` fail-closes on the entry when it is outside the workspace root
-// (src/v1/stage0/src/cli_run.rs:7228 and :7303 -- 'a fixture written elsewhere, such as /tmp,
+// (src/v1/stage0/src/cli_run.rs `compile_emission_over`'s workspace-root guards -- 'a fixture written
+    // elsewhere, such as /tmp,
 // cannot be keyed into the module graph'), measured at the head with exit=1 and that cause.
 // `target/` is inside the workspace root and gitignored (.gitignore:10), the placement the host's
-// own fixtures use (src/v1/stage0/src/cli_run.rs:26356), so a deliberately-refusing file is
+// own fixtures use (src/v1/stage0/src/cli_run.rs's fixture-writing host helpers), so a
+// deliberately-refusing file is
 // neither version-controlled nor visible to any corpus lane. The binaries are the checkout's own,
 // resolved as the real lanes resolve them (git toplevel + target/release/...), so every row
 // reaches the same driver and nothing reads an env var for it.
@@ -320,7 +327,8 @@ fn sweep_finding_lines(result: WitnessOutcome) -> List<String> {
 // THE OBSERVED CASE. A file whose last content is a `//` comment is refused at a location inside
 // that comment -- one column past the comment's last character, on the comment's line -- because
 // the EOF token's span ends at the scanner's CONSUMED position, which the comment arm advanced
-// past (src/v1/01_tokenize.dag:97-104 emits no token, and :157 then stamps EOF at that position).
+// past (`advance_over_comment_line` emits no token, and `tokenize_artifact`'s EOF arm then stamped
+// EOF at that consumed position).
 // It must be located at the last lexeme, in line:col. Pre-fix: the refusal renders
 // `m.dag:90-90`, no position, so this row FAILS.
 test fn an_end_of_input_refusal_after_a_comment_is_located_at_the_last_lexeme_in_line_col() -> Bool {

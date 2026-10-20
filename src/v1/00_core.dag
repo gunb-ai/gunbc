@@ -2903,7 +2903,7 @@ fn render_span_location(span: SourceSpan, source_indices: Map<String, NewlineInd
 
 // The same question with only the located answer, for a caller that genuinely needs the triple
 // (a caret column, a slice) and has a fallback for its absence. The seed's optional
-// spelling is `T?` with Present/Absent, as at Node.ident_span (00_core.dag:1196). Prefer
+// spelling is `T?` with Present/Absent, as at `Node`'s `ident_span` field in this module. Prefer
 // `render_span_location`:
 // a caller that reaches past this has to decide what to say when there is no position, and that
 // decision belongs here.

@@ -172,13 +172,13 @@ fn tokenize_artifact(source: String, file: String, env: ParseEnvironment) -> V1L
   let final_state = tokenize_loop(source: src, tokens: [], annotations: [], pos: initial, fuel: source_len(source: src) + 1, env: env)
   // THE EOF SPAN ENDS AT THE LAST LEXEME, NOT AT THE SCANNER'S CONSUMED POSITION.
   // `final_state.pos` is where the scanner STOPPED, which includes everything it read without
-  // emitting a lexeme: the `//` arm advances past a whole comment line (01_tokenize.dag:97-104,
-  // no token), and the newline arm's token spans the newline itself. So stamping EOF at the
+  // emitting a lexeme: the `//` arm in `scan_next_token` advances past a whole comment line and
+  // emits NO token, and the newline arm's token spans the newline itself. So stamping EOF at the
   // consumed position sends an author into trivia. Measured at the head, a file whose last content
   // is `  // trailing note` was refused at `m.dag:90-90` -- line 7 column 19, one column past that
   // comment's last character -- while the last lexeme is the `}` on line 6; and a file ending in a
   // newline was refused one line past its last line. A span either ends at a lexeme or it is not a
-  // span: see the authority in 00_core.dag, which is also what says SO when there is no lexeme.
+  // span: see `render_span_location` in v1.std.core, which is also what says SO when there is no lexeme.
   // Deliberately NOT a 'does this land in a comment' test -- there is no comment shape to test,
   // comments emit nothing, and a guard would be the second copy of a rule this block removes.
   let eof_end = last_code_token_end(tokens: final_state.tokens)
