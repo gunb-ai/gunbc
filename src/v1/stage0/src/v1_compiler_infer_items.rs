@@ -29,7 +29,7 @@ pub use crate::v1_std_core::{
     authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
     make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
     resource_use_name_at, resource_use_resource, Cardinality, Connective, ErrorNode, InferredNode,
-    LeafOwner, NewlineIndex, Node,
+    LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -275,7 +275,7 @@ pub fn inferred_to_outputs(
 
 pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
-        let kind = if ((item.connective.clone() != Connective::NoConnective)
+        let kind = if ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
             && (item.transport.clone() == std::option::Option::None))
         {
             ItemKind::TypeItem

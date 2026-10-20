@@ -24,6 +24,7 @@ import v1.std.core {
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
   Connective, Conj, Disj, NoConnective,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration,
   node_name_span, no_span,
   NewlineIndex, authored_name_at,
   LeafOwner, SingleOwner, LeafAmbiguous,
@@ -293,8 +294,13 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
   }
 }
 
+// THE KIND OF A TYPE DECLARATION IS THE KIND OF ITS DECLARATION FORM, read from the positive authority
+// the parse constructor stamped (module_item_kind), never from the connective. An alias
+// (`type X = ...` whose right side is not an anonymous record) carries NoConnective, so a connective
+// discriminator filed it as OtherItem: the host census then marshalled a unit node for it and the
+// type-declarer seam, which filters TypeItem, never saw List, Map or Set.
 fn item_kind(item: Node) -> ItemKind {
-  let kind = if item.connective != NoConnective && item.transport == none {
+  let kind = if item.module_item_kind == ModuleItemTypeDeclaration && item.transport == none {
     TypeItem
   } else if item.transport != none {
     ServiceItem
