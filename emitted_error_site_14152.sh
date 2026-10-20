@@ -29,7 +29,8 @@ echo "build rc=$brc exists=$([ -x "$bin" ] && echo yes || echo no)"
 [ $brc -eq 0 ] && [ -x "$bin" ] || { grep -aE "^error" "$WORK/build.log" | head -6; echo "VOID no gunbc"; exit 6; }
 ( cd "$d" && "$bin" test //gunbc/instruments:self-host ) > "$WORK/self_host.log" 2>&1
 echo "SELF_HOST_RC=$?"
-grep -aoE "V2-NATIVE REFUSAL cause=[A-Za-z]+ first_error=[^\n]{0,200}" "$WORK/self_host.log" | head -3
+grep -a "V2-NATIVE REFUSAL" "$WORK/self_host.log" | head -4 | cut -c1-600
+grep -a "error" "$WORK/self_host.log" | grep -avE "^[[:space:]]*$" | sort -u | head -12 | cut -c1-400
 grep -aoE "produced [0-9]+ hard diagnostic" "$WORK/self_host.log" | head -2
 # Locate the blamed emitted file anywhere under the retained emit trees.
 loc=$(grep -aoE "@ [^ ]+\.(rs):[0-9]+:[0-9]+" "$WORK/self_host.log" | head -1)
@@ -37,7 +38,16 @@ echo "FIRST_ERROR_LOC=$loc"
 rel=$(echo "$loc" | sed 's/^@ //; s/:[0-9]*:[0-9]*$//')
 base=$(basename "$rel")
 echo "LOOKING_FOR=$base"
-f=$(find /tmp -maxdepth 8 -path '*gunbc-emit-compile*' -name "$base" 2>/dev/null | head -1)
+ALLC=$(find /tmp -maxdepth 8 -path '*gunbc-emit-compile*' -name "$base" 2>/dev/null | sort)
+echo "COPIES=$(echo "$ALLC" | grep -c . )"
+echo "$ALLC" | sed 's/^/  copy: /' | head -10
+f=""
+for c in $ALLC; do
+  m=$(grep -ac "UNRESOLVED_" "$c" || true)
+  echo "  copy_markers $m  $(basename $(dirname $(dirname $(dirname $c))))/$base"
+  [ "$m" != "0" ] && [ -z "$f" ] && f="$c"
+done
+[ -n "$f" ] || f=$(echo "$ALLC" | head -1)
 echo "EMITTED_FOUND=${f:-NONE}"
 [ -n "$f" ] || { echo "VOID emitted file not found"; exit 5; }
 line=$(echo "$loc" | sed 's/.*:\([0-9]*\):[0-9]*$/\1/')
