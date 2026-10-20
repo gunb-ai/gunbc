@@ -3,14 +3,6 @@ module gunbc.rung_drop_amendment.heal_green_window_over_a_stale_mirror
 import std.types { NonEmptyStr }
 import gunbc.rung_drop_amendment { RungDropAmendment }
 
-// A MEASURED EXPOSURE OF THE STAGE0-MIRROR MEMBER, AND A SECOND CONSUMER OF THE SAME LOSS.
-// gunbc#14493 head a642bb2194a: a merge took main's side of the v1_compiler_emit_rust.rs mirror while
-// src/v1/05_emit_rust.dag carried `__keyed`. Heal run 39378154865 DETECTED it (regen-scope
-// WholePopulationScope, its heal-repair-candidate names the mirror) and the required `witnesses` job
-// was green on the stale mirror, because v2-bootstrap compares no generated artifact with its authority.
-// The repair arrived as bot commit 5b255a972a6 from heal-publish run 39383896432, about 12 minutes
-// after the heal job went green. The window is publisher latency, not a scoped-bound miss.
-
 data heal_green_window_over_a_stale_mirror: RungDropAmendment = RungDropAmendment {
   drop_identity: "v1_required_lanes_withdrawn" as NonEmptyStr,
 
@@ -18,5 +10,5 @@ data heal_green_window_over_a_stale_mirror: RungDropAmendment = RungDropAmendmen
 
   later_event: "gunbc#14493 head a642bb2194a was green on the required `witnesses` job over a stage0 mirror stale against its .dag (heal run 39378154865 held the repair candidate; heal-publish run 39383896432 pushed bot commit 5b255a972a6 about 12 minutes later), and v2-bootstrap built the seed from the stale mirror. SECOND CONSUMER OF THE SAME LOSS: gunbc.regen_affected_set drives a diff-scoped heal round, and v2.workflow.required_regen RegenEmissionScope records as PRECONDITION 3 that a scoped round cannot discover a mirror outside its bound that was committed stale, because it relied on the unscoped comparison only the withdrawn generated lane gave" as NonEmptyStr,
 
-  bearing: "members (2) and (8) of the population: a landing in the window between a green required context and the unapplied heal candidate takes the stale mirror, and a stale mirror outside a scoped round's bound is compared by nothing. The scoped arm itself is sound for a .dag edited on the branch with its mirror equal to main (it seeds the edited module's own mirror). A required-path refusal is the operator's call; the restoration trigger is unchanged" as NonEmptyStr,
+  bearing: "members (2) and (8) of the population: a landing in the window between a green required context and the unapplied heal candidate takes the stale mirror, and a stale mirror outside a scoped round's bound is compared by nothing. The window is publisher latency, not a scoped-bound miss. The scoped arm itself is sound for a .dag edited on the branch with its mirror equal to main (it seeds the edited module's own mirror). A required-path refusal is the operator's call; the restoration trigger is unchanged" as NonEmptyStr,
 }
