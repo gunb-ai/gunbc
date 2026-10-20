@@ -5504,7 +5504,12 @@ fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
 /// spawned exactly as `demand-census` is. Every line and the exit are decided by
 /// `v2.compiler.source_root_eval` `native_decl_ref_census_output`; the host adds no verdict.
 fn run_decl_ref_census(source_roots: &[String]) -> InvocationOutcome {
-    match cli_run::run_v2_decl_ref_census(source_roots) {
+    // The v1 namespace (src/v1) is declared .dag the census must index to resolve a `v1.*` citation,
+    // but it is never part of the corpus the compiler is EMITTED from: its last segments collide with
+    // v2's (gunbc.ci.ci_layer_roots non_executing_witness_module_prefixes).
+    let mut index_roots = source_roots.to_vec();
+    index_roots.push("src/v1".to_string());
+    match cli_run::run_v2_decl_ref_census(source_roots, &index_roots) {
         Ok(code) => InvocationOutcome {
             termination: match code {
                 0 => Termination::ObservationHeld,

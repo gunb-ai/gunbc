@@ -7178,10 +7178,13 @@ pub fn run_v2_demand_census(source_roots: &[String]) -> Result<i32, String> {
 /// whole job is the preparation it shares with every native instrument; the census is the emitted
 /// binary's, which prints its own lines and decides its own exit. The child's stdout is relayed
 /// line for line and its status is returned unjudged.
-pub fn run_v2_decl_ref_census(source_roots: &[String]) -> Result<i32, String> {
+pub fn run_v2_decl_ref_census(
+    source_roots: &[String],
+    index_roots: &[String],
+) -> Result<i32, String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let mut args = vec!["decl-ref-census".to_string()];
-    args.extend(source_roots.iter().cloned());
+    args.extend(index_roots.iter().cloned());
     let output = Command::new(&preparation.binary_path)
         .args(&args)
         .output()
