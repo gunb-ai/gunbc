@@ -286,7 +286,10 @@ import v2.std.compilers.target_model {
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductDecorationRule,
   TargetSemanticDeclCoproductEnumSurface,
+  DeclEmitStringQuote,
   MembersInAssociatedBlock,
+  TargetSemanticDeclEmitEscape,
+  TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclDecorationLine,
   TargetSemanticDeclEmission,
   TargetSemanticDeclSerializeProfile,
@@ -2808,7 +2811,13 @@ fn rust_semantic_decl_lex_rows() -> List<Node> {
     semantic_decl_lex_literal_row(token_class: ^rust_token_colon, text: ": "),
     semantic_decl_lex_literal_row(token_class: ^rust_token_comma, text: ", "),
     semantic_decl_lex_literal_row(token_class: ^rust_token_rbrace, text: " }"),
-    semantic_decl_lex_ident_row(token_class: ^rust_token_ident)
+    semantic_decl_lex_literal_row(token_class: ^rust_token_kw_impl, text: " impl "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_kw_pub_const, text: "pub const "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_str_ref_type, text: "&str"),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_equals, text: " = "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_semicolon, text: ";"),
+    semantic_decl_lex_ident_row(token_class: ^rust_token_ident),
+    semantic_decl_lex_ident_row(token_class: ^rust_token_str_lit)
   ]
 }
 
@@ -2837,7 +2846,19 @@ fn rust_semantic_decl_serialize_profile_bundle_node() -> Node {
   semantic_decl_serialize_profile_bundle(
     lex_rows: rust_semantic_decl_lex_rows(),
     spelling_rows: rust_semantic_decl_binding_spelling_rows(),
-    emit_transform_rows: []
+    emit_transform_rows: [
+      TargetSemanticDeclEmitTransformRow {
+        token_class: ^rust_token_str_lit,
+        transform: DeclEmitStringQuote {
+          open: "\"",
+          close: "\"",
+          escapes: [
+            TargetSemanticDeclEmitEscape { from: "\\", to: "\\\\" },
+            TargetSemanticDeclEmitEscape { from: "\"", to: "\\\"" }
+          ]
+        }
+      }
+    ]
   )
 }
 
@@ -2924,6 +2945,49 @@ fn rust_struct_general_decl_top_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field_block)
       ]
     ),
+    // A structure's constants live in an inherent `impl` of the same name, in the SAME emission: the owner
+    // name is a surface atom, so the type and its impl are one printed unit (no caller concatenation).
+    grammar_formal_production(
+      lhs: ^rust_decl_struct,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
+        grammar_formal_terminal(identity: ^rust_token_kw_struct),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field_block),
+        grammar_formal_terminal(identity: ^rust_token_kw_impl),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_terminal(identity: ^rust_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_member_list),
+        grammar_formal_terminal(identity: ^rust_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_member,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_kw_pub_const),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_terminal(identity: ^rust_token_colon),
+        grammar_formal_terminal(identity: ^rust_token_str_ref_type),
+        grammar_formal_terminal(identity: ^rust_token_equals),
+        grammar_formal_terminal_free(identity: ^rust_token_str_lit),
+        grammar_formal_terminal(identity: ^rust_token_semicolon)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_member_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_member),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_member_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_member_list_suffix,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_member),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_member_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^rust_decl_member_list_suffix, rhs: []),
     grammar_formal_production(
       lhs: ^rust_decl_struct,
       rhs: [

@@ -1942,12 +1942,19 @@ fn target_semantic_decl_field_surface_from_edge_otherwise(
 }
 
 fn target_semantic_decl_surface_field_block(fields: List<Node>) -> Node {
+  target_semantic_decl_surface_field_block_with(fields: fields, body_edges: Empty)
+}
+
+fn target_semantic_decl_surface_field_block_with(fields: List<Node>, body_edges: List<Edge>) -> Node {
   target_semantic_decl_surface_conj(
-    children: [
-      target_semantic_decl_surface_pos(
-        target: target_semantic_decl_surface_cons_list(items: fields)
-      )
-    ]
+    children: list_append(
+      left: [
+        target_semantic_decl_surface_pos(
+          target: target_semantic_decl_surface_cons_list(items: fields)
+        )
+      ],
+      right: body_edges
+    )
   )
 }
 
@@ -1977,17 +1984,18 @@ fn target_semantic_decl_surface_decoration_pos_edges(
 fn target_semantic_decl_surface_struct_name_field_edges(
   name: Symbol,
   fields: List<Node>,
+  body_edges: List<Edge>,
   struct_typedef_name_after_fields: Bool
 ) -> List<Edge> {
   if struct_typedef_name_after_fields {
     [
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields)),
+      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block_with(fields: fields, body_edges: body_edges)),
       target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
     ]
   } else {
     [
       target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields))
+      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block_with(fields: fields, body_edges: body_edges))
     ]
   }
 }
@@ -1996,7 +2004,8 @@ fn target_semantic_decl_surface_struct_nongeneric(
   name: Symbol,
   decoration_lines: List<TargetSemanticDeclDecorationLine>,
   fields: List<Node>,
-  member_edges: List<Edge>,
+  body_member_edges: List<Edge>,
+  trailing_member_edges: List<Edge>,
   struct_typedef_name_after_fields: Bool
 ) -> Node {
   target_semantic_decl_surface_conj(
@@ -2006,9 +2015,10 @@ fn target_semantic_decl_surface_struct_nongeneric(
         left: target_semantic_decl_surface_struct_name_field_edges(
           name: name,
           fields: fields,
+          body_edges: body_member_edges,
           struct_typedef_name_after_fields: struct_typedef_name_after_fields
         ),
-        right: member_edges
+        right: trailing_member_edges
       )
     )
   )
@@ -2025,18 +2035,12 @@ fn target_semantic_decl_member_surface(m: TargetSemanticDeclMember) -> Node {
 
 fn target_semantic_decl_member_block_edge(members: List<TargetSemanticDeclMember>) -> Edge {
   target_semantic_decl_surface_pos(
-    target: target_semantic_decl_surface_conj(
-      children: [
-        target_semantic_decl_surface_pos(
-          target: target_semantic_decl_surface_cons_list(
-            items: fold_list(
-              xs: members,
-              empty: Empty,
-              cons: fn(acc, m) { list_snoc_item(xs: acc, item: target_semantic_decl_member_surface(m: m)) }
-            )
-          )
-        )
-      ]
+    target: target_semantic_decl_surface_cons_list(
+      items: fold_list(
+        xs: members,
+        empty: Empty,
+        cons: fn(acc, m) { list_snoc_item(xs: acc, item: target_semantic_decl_member_surface(m: m)) }
+      )
     )
   )
 }
@@ -2047,6 +2051,7 @@ fn target_semantic_decl_member_edges(
   projection: TargetSemanticDeclSurfaceProjection,
   name: Symbol,
   members: List<TargetSemanticDeclMember>,
+  inside_body: Bool,
   at: Node
 ) -> Outcome<List<Edge>> {
   if is_empty(xs: members) {
@@ -2060,13 +2065,19 @@ fn target_semantic_decl_member_edges(
               correction: Unavailable { reason: ExternalContractUnknown }
             })
       MembersInsideTypeBody =>
-        outcome_accepted(value: [target_semantic_decl_member_block_edge(members: members)])
+        outcome_accepted(
+          value: if inside_body { [target_semantic_decl_member_block_edge(members: members)] } else { [] }
+        )
       MembersInAssociatedBlock =>
         outcome_accepted(
-          value: [
-            target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-            target_semantic_decl_member_block_edge(members: members)
-          ]
+          value: if inside_body {
+            []
+          } else {
+            [
+              target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+              target_semantic_decl_member_block_edge(members: members)
+            ]
+          }
         )
     }
   }
@@ -2264,6 +2275,7 @@ fn target_semantic_decl_surface_tagged_union_nongeneric(
           projection: projection,
           variants: variants
         ),
+        body_edges: Empty,
         struct_typedef_name_after_fields: projection.struct_typedef_name_after_fields
       )
     )
@@ -2806,19 +2818,23 @@ fn target_semantic_struct_surface_from_record_admitted(
         ),
         f: fn(fields) {
         bind_outcome(
-        o: target_semantic_decl_member_edges(projection: projection, name: name, members: members, at: record),
-        f: fn(member_edges) {
+        o: target_semantic_decl_member_edges(projection: projection, name: name, members: members, inside_body: true, at: record),
+        f: fn(body_member_edges) {
+        bind_outcome(
+        o: target_semantic_decl_member_edges(projection: projection, name: name, members: members, inside_body: false, at: record),
+        f: fn(trailing_member_edges) {
           if is_empty(xs: params) {
             outcome_accepted(
               value: target_semantic_decl_surface_struct_nongeneric(
                 name: name,
                 decoration_lines: projection.record_decoration_lines,
                 fields: fields,
-                member_edges: member_edges,
+                body_member_edges: body_member_edges,
+                trailing_member_edges: trailing_member_edges,
                 struct_typedef_name_after_fields: projection.struct_typedef_name_after_fields
               )
             )
-          } else if !is_empty(xs: member_edges) {
+          } else if !is_empty(xs: members) {
             outcome_rejected(d: Diagnostic {
                   reason: ^target_semantic_decl_members_on_generic_unsupported,
                   at: node_locus(node: record),
@@ -2842,6 +2858,8 @@ fn target_semantic_struct_surface_from_record_admitted(
               )
             }
           }
+        }
+        )
         }
         )
         }
