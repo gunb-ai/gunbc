@@ -148,8 +148,9 @@ test fn w_severed_fixture_linked_chunks_only_is_coherent() -> Bool {
 // close: the chunk/roster join has never been run against the REAL roster, only against a fixture,
 // because the live join needs the same whole-module `decl_facts` parse as verifying roster content.
 // These two claims do not re-implement that join (they would be a second copy of it, and DESIGN
-// prices exactly that); they assert the two properties that a chunk deletion or a rename would
-// silently break, and they do it over the live carriers rather than a fixture.
+// prices exactly that); they assert the two properties that a row relabelled to a name the schedule
+// does not carry would silently break, and they do it over the live carriers rather than a fixture.
+// What they do NOT do is cover the population from the other side -- see the note under the first claim.
 //
 // WHY NOT A NEW WITNESS FILE. The live-join check the header asks for pays a whole-module `decl_facts`
 // parse over `src/v2/workflow` -- its own comment gives the measured cost and is the place to read it.
@@ -177,8 +178,19 @@ data wet_reds_under_test: List<String> = list_flat_map(
 // observed. And the row must carry `ExpectedToHold`: enrolling a claim the schedule already marks
 // `ExpectedRed` would be excusing it twice, and enrolling one the schedule does not carry at all would
 // be accounting for a claim that does not exist. Every half is derived by joining the two authorities;
-// no identity string appears in this claim, so a leaf renaming or deleting one of its chunk's rows
-// turns this red instead of quietly shrinking a list nobody was reading.
+// no identity string appears in this claim, so a leaf RENAMING one of its chunk's rows turns this red
+// instead of quietly shrinking a list nobody was reading.
+//
+// WHAT THIS CLAIM DOES NOT CHECK, STATED BECAUSE IT WAS ONCE CLAIMED. It checks that every row of the
+// chunks under test is a schedule claim the schedule still expects to hold. It does NOT check the
+// chunks cover the executed-failed population: the population is derived FROM the chunks, so deleting
+// one enrolled identity shrinks the population and every property still holds over the remainder --
+// measured, not reasoned: nimble-badger-800's M4 mutation deleted one enrolled identity and left all
+// 7 claims in this file green. The reverse coverage, an
+// executed-and-failed claim that carries no enrolment here, is the disposition
+// `UnaccountedRedWithoutEnrolment` in `gunbc.instruments.known_red_derivation` (#14464): PENDING,
+// because that instrument has not landed and run on the fleet yet. Do not read this claim as the
+// roster's completeness check; when #14464 runs, that instrument is.
 test fn each_enrolled_wet_red_is_a_scheduled_claim_the_schedule_still_expects_to_hold() -> Bool {
   let schedule_qualified = list_flat_map(
     xs: local_repo_wet_schedule(),
