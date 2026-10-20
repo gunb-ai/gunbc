@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.unary_minus_absorbs_a_following_additive_operator
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unary_minus_absorbs_a_following_additive_operator: RecurringFailureMode = RecurringFailureMode {
+  identity: "unary_minus_absorbs_a_following_additive_operator" as NonEmptyStr,
+
+  receipts: [
+    "**unary minus absorbs a following additive operator** (invalid state: the seed parser reads `-1 - j` as `-(1 - j)` and `-a + b` as `-(a + b)`. v1.compiler.parse parse_prefix parses the operand of ShMinus at min_bp 12, while extdeps.languages.dag.syntax gives infix `+` and `-` left_bp 13 (and `*`, `/` 15), so the operand loop keeps consuming every additive and multiplicative operator after the prefix. Harm: silent wrongness. The program is accepted and computes a different integer, with no diagnostic on any route that reads the seed's parse tree, which is the interpreter and every emitter.)",
+
+    "DISTINGUISHING FACTS: a negative literal standing alone (`last_rank: -1`, `{ -1 }`) is unaffected, as is any unary minus whose operand is followed by a comparison, a logical operator or a closing bracket. Only an additive or multiplicative infix operator that follows the operand is absorbed. A multiplicative absorption (`-a * b` read as `-(a * b)`) agrees in value except at the overflow boundary, so the additive case is the one that changes answers.",
+
+    "RECEIPT 2026-10-19 (std.integer Int delivery 1): the signed grounding fold first spelled the negative encoding `-1 - j`, and `Negative { pred: 2 }` emitted `1` instead of `-3`. The emitted-bytes witness test.claim.integer_signed_grounding_emit_witness caught it, and a probe module confirmed the interpreter agrees with the emitter: `-1 - 2 == 0 - 3` is false. The fold now spells `0 - 1 - k`. A corpus census at that head, over every .dag file outside the stage0 mirrors, found no other expression of the exposed shape (a unary minus in expression-start position whose operand is followed by an arithmetic infix operator), validated against the known positives above.",
+
+    "Rung found at: silent wrongness, which is outside the ladder and forbidden. It is latent today only because the census found no exposed site, and nothing stops the next author writing one. Ceiling: structurally guaranteed. Prefix binding power is a modeled grammar fact, and a prefix operand bound above every infix operator it should not absorb cannot misparse. Next trigger, at capability grain: prefix operators' binding powers declared in the language's syntax spec beside OperatorSpec (not the literal 12 in parse_prefix), read by the seed parser and by v2's grammar-row parse alike. A discriminating fixture must show `-1 - 2` evaluating to -3 on the interpreter and in the emitted Rust, and the v2 native parse must be checked for the same reading before either is called fixed.",
+  ],
+
+  evidence: [],
+}
