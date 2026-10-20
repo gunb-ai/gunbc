@@ -10,14 +10,16 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // hand growth in src/v1 a stop-line, and this change adds two hand items to
 // v1_compiler.coproduct_reflection.
 //
-// WHAT THE CHANGE IS. It REPLACES one encoding with the one the corpus already owns. The host
-// marshalled a declared field as `name -> bare type Atom`; v2.std.node_query binder_node (one
-// constructor) and declared_field_list (one reader, eight consumers) speak `name -> binder Conj`
-// carrying a BinderTypeEdge and an optional BinderDefaultEdge. The two were never reconciled, so
-// declared_field_list read every decl_facts record as the empty list and the host form could not
-// carry a field default at all. The bare form, and the node_query fallback arm that read it
-// (member_edge_type_name, recorded there as stage0 HOLD #13388), are deleted in the same change;
-// nothing reads the bare form after it.
+// WHAT THE CHANGE IS. It covers exactly the field shapes of a declared RECORD in the type-declaration
+// arm of the reflection: a field with a type and no default, a field with a type and a literal
+// default, and an optional field (`f: T?`). Before it the host marshalled such a field as
+// `name -> bare type Atom`, while v2.std.node_query binder_node (the constructor) and
+// declared_field_list (the reader) speak `name -> binder Conj` carrying a BinderTypeEdge and an
+// optional BinderDefaultEdge, so declared_field_list read every decl_facts record as the empty list
+// and the host form carried no default. For those three shapes the bare form, and the node_query
+// fallback arm that read it (member_edge_type_name, recorded there as stage0 HOLD #13388), are
+// deleted in the same change. A field with a NON-LITERAL default is covered by no shape: the marshal
+// refuses it (review 83500).
 //
 // WHY IT SERVES v2. decl_facts is the reflection route v2 witnesses and generators read (the
 // derived Swift wire reader among them); the change removes a divergence between that route and the
@@ -25,10 +27,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // v1_seed_standing PURPOSE test).
 //
 // DEFAULTS FAIL CLOSED. A literal default is reflected as the BinderDefaultEdge target
-// ComputationNode { Value } over the atom of its own spelling; a non-literal default is the bare
-// Atom of its authored source text, a distinct shape that v2.std.node_query field_default_reading
-// types as LiteralDefault versus SourceTextDefault; a default with no readable source, or an
-// operator expression, refuses at the marshal.
+// ComputationNode { Value } over the atom of its own spelling, the one meaning binder_node gives that
+// edge. Every other default expression refuses at the marshal with a typed error: reflecting its
+// source text under the same edge would give BinderDefaultEdge two meanings by producer (DESIGN 3).
 //
 // HAND-ITEM DELTA: +2 citable declarations, both in v1_compiler.coproduct_reflection.
 data decl_facts_field_binder_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {

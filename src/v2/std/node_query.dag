@@ -171,21 +171,19 @@ type DeclaredField {
   default: Optional<Node>
 }
 
-// A FIELD DEFAULT HAS TWO CONTRACTS and the node kind separates them. A literal default is an
-// elaborated value: a ComputationNode { Value } whose one child is the atom of the literal's own
-// spelling, so a string keeps its quotes and `"false"` is never `false`. A default the host does not
-// elaborate is the TypeNode Atom of its source text. Neither reads as the other, and a node that is
-// neither shape is MalformedDefault: a refusal, never read as either contract.
+// A FIELD DEFAULT HAS ONE CONTRACT: an elaborated value. A literal default is a ComputationNode
+// { Value } whose one child is the atom of the literal's own spelling, so a string keeps its quotes
+// and `"false"` is never `false`. The host marshal refuses every default it cannot express this way
+// (a second source-text reading of BinderDefaultEdge was deleted: review 83500), so any other node is
+// MalformedDefault: a refusal, never read as a literal.
 type FieldDefault
   = LiteralDefault { lexeme: Symbol }
-  | SourceTextDefault { text: Symbol }
   | MalformedDefault { reason: Symbol }
 
 fn field_default_reading(d: Node) -> FieldDefault {
   match d.kind {
     ComputationNode { behavior: Value } => literal_default_of_children(xs: d.children)
-    TypeNode { connective: Atom { identity: sym } } => SourceTextDefault { text: sym }
-    _ => MalformedDefault { reason: symbol_intern_lexeme(lexeme: "a default node is neither a literal Value computation nor a source-text Atom") }
+    _ => MalformedDefault { reason: symbol_intern_lexeme(lexeme: "a default node is not a literal Value computation") }
   }
 }
 
