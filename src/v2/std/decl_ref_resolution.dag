@@ -5,7 +5,7 @@ import std.types { List }
 import std.decl_ref { CitationIndexCoverage, OutsideDeclIndexTestWitnessModule, DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import v2.compiler.name_resolve { ResolutionContext }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.algebra { fold_list, map_lookup }
+import std.algebra { fold_list, map_lookup, list_at_optional }
 import v2.std.integer { Int }
 import v2.std.node { Node, named_edge_sort_key, symbol_intern_lexeme }
 import v2.std.node_query { node_labeled_child_edges }
@@ -50,8 +50,20 @@ type DeclarationRefResolution
   | DeclarationRefOutsideIndex { reference: DeclarationRef, coverage: CitationIndexCoverage }
 
 fn declaration_ref_module_outside_index(ref: DeclarationRef) -> Bool {
-  let path = ref.module_path as String
-  path.starts_with(prefix: "test.") || path.starts_with(prefix: "v2.test.")
+  let segments = (ref.module_path as String).split(delimiter: ".")
+  let first = list_at_optional(xs: segments, index: 0)
+  let second = list_at_optional(xs: segments, index: 1)
+  match first {
+    Present { value: head } => head == "test" || (head == "v2" && declaration_ref_segment_is_test(segment: second))
+    Absent => false
+  }
+}
+
+fn declaration_ref_segment_is_test(segment: Optional<String>) -> Bool {
+  match segment {
+    Present { value: s } => s == "test"
+    Absent => false
+  }
 }
 
 fn declaration_ref_module_qualified_name(ref: DeclarationRef) -> QualifiedName {
