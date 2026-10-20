@@ -3317,7 +3317,7 @@ fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensu
                 lines: list_append(
                   left: list_append(
                     left: [concat("[decl-ref-census] ingest_refused_files=", to_string(n: length(xs: context.refused_files)))],
-                    right: map(xs: context.refused_files, f: fn(f) { concat("[decl-ref-census] ingest_refused ", f) })
+                    right: fold_list(xs: context.refused_files, empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] ingest_refused ", f)) })
                   ),
                   right: decl_ref_census_lines(c: census)
                 ),
