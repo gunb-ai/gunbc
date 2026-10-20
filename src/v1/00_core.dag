@@ -2828,13 +2828,6 @@ data unlocated_position_phrase: String = "(no position:"
 // below, which keeps the real path -- a real file's position is not "synthetic".
 data synthetic_span_file: String = "<synthetic>"
 
-// HOW THE TOKENISER SAYS "there is no lexeme to end a span at", without inventing one. An EOF
-// token whose span is `unlocatable_span_offset..unlocatable_span_offset` in a REAL file asserts
-// that the file has no lexemes at all: it names its file, and it refuses to claim an offset. The
-// value is negative so no position in any file can collide with it, and `locate_span` turns it
-// into the typed `FileHasNoLexemes` cause rather than an arithmetic result.
-data unlocatable_span_offset: Int = -1
-
 fn file_has_no_lexemes(file: String) -> SpanLocation {
   SpanLocation.Unlocated { cause: FileHasNoLexemes { file: file } }
 }
@@ -2843,8 +2836,11 @@ fn file_has_no_lexemes(file: String) -> SpanLocation {
 // keeping the file it is about:
 //   * SynthesizedNode -- the compiler made this node; there is no source behind the span at all.
 //   * FileHasNoLexemes -- the file is real and named, but pure trivia (comments/whitespace/nothing)
-//     produced no lexeme, so there is no position to report. This is the arm the tokenise fix
-//     leaves behind: the alternative is a fabricated offset 0, which sends an author to line 1.
+//     produced no lexeme, so there is no position to report. NOT produced here: only a caller that
+//     holds the token stream can know it, so it is decided in the tokeniser, by
+//     `token_stream_has_no_lexemes` (built from `is_trivia_shape`, the same predicate the EOF-span
+//     rule uses) and said by `render_span_location_in_stream`. A caller that has only a span gets
+//     NoSourceIndex or a Located answer, never a guess about lexemes.
 //   * NoSourceIndex -- the compiler has not indexed the source it is refusing in, so the line is
 //     genuinely not known. Printing the offsets instead is the original sin this block removes.
 //   * SpanOutsideIndexedSource -- the span disagrees with the file (negative, inverted, or past
@@ -2852,8 +2848,6 @@ fn file_has_no_lexemes(file: String) -> SpanLocation {
 fn locate_span(span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> SpanLocation {
   if span.file == synthetic_span_file {
     SpanLocation.Unlocated { cause: SynthesizedNode { authored_file: synthetic_span_file } }
-  } else if span.start == unlocatable_span_offset && span.end == unlocatable_span_offset {
-    file_has_no_lexemes(span.file)
   } else {
     match map_get(source_indices, span.file) {
       Absent => SpanLocation.Unlocated { cause: NoSourceIndex { file: span.file } }
@@ -2913,7 +2907,14 @@ fn unlocated_cause_file(cause: UnlocatedCause) -> String {
 // lexemes)`. That line is deliberately not a location -- no editor accepts it -- which is the
 // point: the alternative was `byte 75`, a byte count wearing a location's clothes.
 fn render_span_location(span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> String {
-  match locate_span(span: span, source_indices: source_indices) {
+  render_span_location_of(location: locate_span(span: span, source_indices: source_indices))
+}
+
+// THE ONE RENDERER: a decided location in, reader-facing text out. Every arm that says WHERE is
+// here, and nothing upstream of it formats a position -- `locate_span` decides, the stream entry
+// above decides, and this says it.
+fn render_span_location_of(location: SpanLocation) -> String {
+  match location {
     Located { at: at } =>
       concat(at.file, concat(":", concat(to_string(value: at.start_line), concat(":", to_string(value: at.start_col)))))
     Unlocated { cause: cause } =>
