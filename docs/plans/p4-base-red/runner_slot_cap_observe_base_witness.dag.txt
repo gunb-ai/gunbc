@@ -36,7 +36,7 @@ module test.claim.runner.runner_slot_cap_observe_base_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.algebra { string_contains }
+import std.algebra { string_contains, list_head, skip }
 import std.measure { Second, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }

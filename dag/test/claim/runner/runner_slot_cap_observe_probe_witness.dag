@@ -15,7 +15,7 @@ module test.claim.runner.runner_slot_cap_observe_probe_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, exit_failure }
 import std.optional { Absent, Present }
-import std.algebra { string_contains }
+import std.algebra { string_contains, list_head, skip }
 import std.measure { Second, byte_size_count, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
@@ -272,8 +272,7 @@ fn probe_run(legs: List<ProbeScriptedCommand>) -> ProbeRun {
           // refusing, and an empty ledger is itself the answer (nothing ever reached dispatch).
           cause: concat(
             witness_diagnostic_rendered_reason(diagnostic: d),
-            "<LEGENDS>",
-            join(probe_legs_of_route(route: route), " | "),
+            concat("<LEGENDS>", join(probe_legs_of_route(route: route), " | ")),
           ),
         }
         WitnessInterrupted { at: _, route: _, state: _, now: _ } => ProbeRunEnded { cause: "worker-interrupted" }
