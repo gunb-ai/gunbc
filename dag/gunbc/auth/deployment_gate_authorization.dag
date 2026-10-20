@@ -1568,7 +1568,15 @@ fn observe_removal_boundary_standing(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "standing_disabled_rule"
     ),
-  ]
+
+    // THE NON-INSTANT REDS ARRIVE THROUGH THIS DOOR. It is not a second door: like the disabled-rule
+    // fixture it can only produce a REFUSAL, because the mint's own calendar check is what names the
+    // string. Naming it keeps the "the guard is load-bearing now" claim honest -- the case is reached
+    // by calling the mint, not by writing a variant literal.
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_at_instant"
+    ),  ]
 {
   // THE INSTANT IS VALIDATED BEFORE ANYTHING ELSE, because it is about to become the basis of a
   // freshness comparison, and std/measure's own comment is explicit that these comparisons are defined

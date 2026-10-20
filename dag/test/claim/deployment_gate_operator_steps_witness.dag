@@ -1052,7 +1052,11 @@ fn protection_for(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "standing_at"
     ),
-  ]
+
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_completion_stamped_with_a_non_instant_is_refused_not_recorded"
+    ),  ]
 {
   observe_environment_protection(
     owner: owner,
@@ -1083,7 +1087,11 @@ fn joined_pair(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "standing_disabled_rule"
     ),
-  ]
+
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "standing_at_instant"
+    ),  ]
 {
   join_protection_to_ownership(
     protection: protection_for(
@@ -2102,4 +2110,127 @@ test fn the_configured_installation_is_separate_from_the_readback() -> Bool {
     // from the other axis is refused by the checker. The numbers are still compared through .value
     // because equality on these carriers is memberwise — the type does not do this check
     configured.installation_id.value == 1900000001 && configured.app_id.value == 1234567
+}
+
+// THE MINT ADMITS TEXT, SO THE CALENDAR CHECK IS NOW THE ONLY THING BETWEEN A STRING AND AN INSTANT.
+// Before, the parameter's own type did part of that work; a caller could not hand over a non-instant
+// without the checker refusing. Now the mint accepts any text and refuses what is not a canonical UTC
+// instant, which means a deleted guard would be silent: the same string would brand straight into the
+// sealed record and become the basis of a freshness comparison. Each arm below differs from the healthy
+// control in ONE character position -- length, a separator, a digit field, or a field out of range -- so
+// the claim is about the calendar, not about whether the caller remembered to pass something.
+fn standing_at_instant(instant: String) -> RemovalBoundaryStandingObservation
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "an_instant_that_is_not_a_utc_instant_never_becomes_a_standing"
+    ),
+  ]
+{
+  observe_removal_boundary_standing(
+    joined: joined_pair(
+      environment: gate_env,
+      reviewer_present: true,
+      main_only: true,
+      enabled: true,
+    ),
+    boundary: standing_boundary_for(environment: gate_env, identity_repo: gate_repo),
+    attempt: standing_attempt(),
+    observed_at: instant,
+  )
+}
+
+test fn an_instant_that_is_not_a_utc_instant_never_becomes_a_standing() -> Bool {
+  // THE CONTROL FIRST: with everything else identical, a canonical instant does mint a standing. Without
+  // this arm the test would pass if the fixture refused for an unrelated reason.
+  match standing_at_instant(instant: "2026-10-19T12:00:00Z") {
+    StandingRead { standing: _ } => true
+    StandingRefused { because: _ } => false
+  }
+  // TOO SHORT BY ONE CHARACTER.
+  && match standing_at_instant(instant: "2026-10-19T12:00:00") {
+    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
+    _ => false
+  }
+  // THE WRONG SEPARATORS: a date-shaped string is not an instant.
+  && match standing_at_instant(instant: "2026/10/19 12:00:00Z") {
+    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
+    _ => false
+  }
+  // MONTH 13: every character is in place and the calendar still refuses it.
+  && match standing_at_instant(instant: "2026-13-19T12:00:00Z") {
+    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
+    _ => false
+  }
+  // DAY 32 IN A 31-DAY MONTH: this is the arm a length-and-shape check alone would let through.
+  && match standing_at_instant(instant: "2026-10-32T12:00:00Z") {
+    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
+    _ => false
+  }
+  // HOUR 24.
+  && match standing_at_instant(instant: "2026-10-19T24:00:00Z") {
+    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
+    _ => false
+  }
+  // A LETTER WHERE A DIGIT BELONGS.
+  && match standing_at_instant(instant: "2026-XX-19T12:00:00Z") {
+    StandingRefused { because: StandingInstantIsNotCanonical { observed_at: _ } } => true
+    _ => false
+  }
+}
+
+// THE SAME GUARD ON THE COMPLETION MINT, which has no door to close: it is deliberately unconfined, so
+// the calendar check is the only barrier. A post-removal read stamped with a non-instant would otherwise
+// certify "the reviewer is gone" with a receipt nobody can date -- and the freshness bound reads that
+// stamp. The healthy arm is here too, so a fixture that always refuses proves nothing.
+test fn a_completion_stamped_with_a_non_instant_is_refused_not_recorded() -> Bool {
+  match observe_reviewer_removal(
+    boundary: srv1_deployment_gate_boundary,
+    after: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: gate_env,
+      reviewer_present: false,
+      main_only: true,
+    ),
+    observed_at: "2026-02-30T12:00:00Z",
+  ) {
+    ReviewerRemovalCompletionRefused {
+      because: CompletionInstantIsNotCanonical { observed_at: _ }
+    } => true
+    _ => false
+  }
+  // FEBRUARY 29 EXISTS ONLY IN A LEAP YEAR: 2026 is not one, and the day-number check alone would pass it.
+  && match observe_reviewer_removal(
+    boundary: srv1_deployment_gate_boundary,
+    after: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: gate_env,
+      reviewer_present: false,
+      main_only: true,
+    ),
+    observed_at: "2026-02-29T12:00:00Z",
+  ) {
+    ReviewerRemovalCompletionRefused {
+      because: CompletionInstantIsNotCanonical { observed_at: _ }
+    } => true
+    _ => false
+  }
+  // THE CONTROL: the same read, canonically stamped, IS recorded -- the refusal above is about the stamp.
+  && match observe_reviewer_removal(
+    boundary: srv1_deployment_gate_boundary,
+    after: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: gate_env,
+      reviewer_present: false,
+      main_only: true,
+    ),
+    observed_at: "2026-02-28T12:00:00Z",
+  ) {
+    ReviewerRemovalCompletionRecorded { receipt } =>
+      receipt.reviewer_removed && receipt.main_only_policy_present
+    ReviewerRemovalCompletionRefused { because: _ } => false
+  }
 }
