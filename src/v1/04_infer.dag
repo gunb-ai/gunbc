@@ -11777,7 +11777,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     match fv.field_declared_type {
       Present { value: ft } =>
         if (uninstantiated_owner_param_names |> count) == 0 { acc } else {
-          unify_generics(formal: match ft.inferred { Present { value: Resolved { node: rt } } => rt  _ => ft }, actual: resolved_type(n: fv.ar.typed), generic_names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, acc: acc)
+          unify_generics(formal: match presence_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fv.fi_name) |> first { Present { value: sf } => field_node_type_expr(n: sf)  Absent => ft }, actual: resolved_type(n: fv.ar.typed), generic_names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, acc: acc)
         }
       Absent => acc
     }
