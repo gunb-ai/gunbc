@@ -4,13 +4,14 @@ import std.types { Bool, HttpStatus, List, list_length, NonEmptyStr, String }
 import std.algebra { list_map, list_flat_map, list_append }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
 import extdeps.bmc.redfish_memory_inventory { redfish_document }
+import extdeps.ietf.http_semantics { HttpStatusClass, Successful, Informational, Redirection, ClientError, ServerError, http_status_class_of }
 import extdeps.transports.rest { RestExchangeObservation, RestResponseObserved, RestExchangeRefused, RestBodyRead, RestBodyReadRefused }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.languages.json.parse { FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_bool, json_field_string_list }
-import gunbc.firmware_network_boot_standing { boot_order_entry, FirmwareReadRefusal, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, AuthorizationDenied, ReplyShapeUnrecognized }
+import gunbc.firmware_network_boot_standing { boot_order_entry, FirmwareReadRefusal, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, AuthorizationDenied, UnexpectedHttpStatus, ReplyShapeUnrecognized }
 import gunbc.firmware_network_boot_probe {
   AxisReply, ObservationAxis, BootOrderAxis, NicsAxis, BootOptionsAxis, SecureBootAxis, BiosVersionAxis,
-  FirmwareBootFamilyRow, ProbeSubject, ReadRoute, RedfishGetRoute, OpenBmcRedfishGetRoute, MegaRacRestGetRoute, SuppliedProbeInput, supplied_probe_input, ReadResponseReceipt, BmcResponded,
+  ReadRoute, RedfishGetRoute, OpenBmcRedfishGetRoute, MegaRacRestGetRoute,
   ReplyBootOrder, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder,
 }
 
@@ -63,7 +64,7 @@ fn redfish_status_refusal(status: HttpStatus, detail: NonEmptyStr) -> FirmwareRe
   if status == 401 { AuthenticationRequired { detail: detail } }
   else if status == 403 { AuthorizationDenied { detail: detail } }
   else if status == 404 { ResourceNotFound { detail: detail } }
-  else { VendorCommandRejected { detail: detail } }
+  else { UnexpectedHttpStatus { status: status, detail: detail } }
 }
 
 fn shape_refusal(detail: String) -> FirmwareReadRefusal {
@@ -71,7 +72,15 @@ fn shape_refusal(detail: String) -> FirmwareReadRefusal {
 }
 
 // RedfishDocNoResponse means the transport observed no response at all: that is not a BMC answer, so no reply is minted.
-fn is_success(status: HttpStatus) -> Bool { status >= 200 && status <= 299 }
+fn is_success(status: HttpStatus) -> Bool {
+  match http_status_class_of(status: status) {
+    Successful => true
+    Informational => false
+    Redirection => false
+    ClientError => false
+    ServerError => false
+  }
+}
 
 fn read_doc(get: RestExchangeObservation) -> RedfishDocRead {
   match get {
@@ -164,17 +173,32 @@ fn redfish_axis_replies(reads: RedfishBootReads) -> List<AxisReply> {
   list_append(left: boot_order_reply(system: system), right: list_append(left: [boot_options_beyond_decoder(), nics_beyond_decoder()], right: list_append(left: secure_boot_reply(get: reads.secure_boot), right: bios_version_reply(system: system))))
 }
 
+// An exchange that produced no usable response (the transport refused, or nothing was observed). It is
+// REPORTED, never turned into a reply and never into a responded contact.
+type RedfishExchange
+  = SystemExchange
+  | SecureBootExchange
+
+type RedfishUnread { exchange: RedfishExchange, cause: NonEmptyStr }
+
+// DECODER-ONLY RESULT: the decoded replies plus, per exchange, the ones that were never read. It is not a
+// probe contact: the subject, row and receipt join, and the Responded/Silent choice, belong to the future
+// observe_redfish_boot_axes, which holds the real attempt. A non-Redfish route is refused outright.
 type RedfishDecodeOutcome
-  = RedfishDecoded { input: SuppliedProbeInput }
+  = RedfishDecoded { replies: List<AxisReply>, unread: List<RedfishUnread> }
   | RedfishRouteNotRedfish { route: ReadRoute }
 
-// DECODER-ONLY HAND-OFF. The receipt, subject, row and observations are the CALLER's claims; nothing here
-// proves they describe one attempt against one controller, so this is not the real-reader frontier.
-// A row whose route is not a Redfish route is refused, however the receipt's route is spelled.
-fn decode_supplied_redfish_boot_reads(subject: ProbeSubject, row: FirmwareBootFamilyRow, response: ReadResponseReceipt, reads: RedfishBootReads) -> RedfishDecodeOutcome {
-  match row.route {
-    MegaRacRestGetRoute => RedfishRouteNotRedfish { route: row.route }
-    RedfishGetRoute => RedfishDecoded { input: supplied_probe_input(subject: subject, row: row, contact: BmcResponded { receipt: response, replies: redfish_axis_replies(reads: reads) }) }
-    OpenBmcRedfishGetRoute => RedfishDecoded { input: supplied_probe_input(subject: subject, row: row, contact: BmcResponded { receipt: response, replies: redfish_axis_replies(reads: reads) }) }
+fn unread_of(exchange: RedfishExchange, get: RestExchangeObservation) -> List<RedfishUnread> {
+  match get {
+    RestExchangeRefused { cause: c } => [RedfishUnread { exchange: exchange, cause: c }]
+    RestResponseObserved { status: _, body: _ } => []
+  }
+}
+
+fn decode_redfish_boot_reads(route: ReadRoute, reads: RedfishBootReads) -> RedfishDecodeOutcome {
+  match route {
+    MegaRacRestGetRoute => RedfishRouteNotRedfish { route: route }
+    RedfishGetRoute => RedfishDecoded { replies: redfish_axis_replies(reads: reads), unread: list_append(left: unread_of(exchange: SystemExchange, get: reads.system), right: unread_of(exchange: SecureBootExchange, get: reads.secure_boot)) }
+    OpenBmcRedfishGetRoute => RedfishDecoded { replies: redfish_axis_replies(reads: reads), unread: list_append(left: unread_of(exchange: SystemExchange, get: reads.system), right: unread_of(exchange: SecureBootExchange, get: reads.secure_boot)) }
   }
 }

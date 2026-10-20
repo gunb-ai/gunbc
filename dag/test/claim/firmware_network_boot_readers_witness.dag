@@ -7,17 +7,17 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestExchangeObservation, RestResponseObserved, RestExchangeRefused, RestBodyRead, RestBodyReadRefused }
 import gunbc.firmware_network_boot_standing {
   BootOrderObserved, BootOptionsUnobserved, NicsUnobserved, SecureBootEnabled, BiosVersionObserved,
-  ResourceNotFound, AuthenticationRequired, AuthorizationDenied, VendorCommandRejected, ReplyShapeUnrecognized,
+  ResourceNotFound, AuthenticationRequired, AuthorizationDenied, UnexpectedHttpStatus, ReplyShapeUnrecognized,
   BootOrderEntry, FirmwareBootObservation,
 }
 import gunbc.firmware_network_boot_probe {
   AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder, NicsAxis, BootOptionsAxis,
-  DecodedFromSuppliedReplies, SuppliedSilence, SuppliedRouteMismatch, ReadAttemptReceipt, ReadResponseReceipt, ProbeSubject, probe, firmware_boot_family_rows,
+  DecodedFromSuppliedReplies, SuppliedSilence, SuppliedRouteMismatch, ReadAttemptReceipt, ReadResponseReceipt, ProbeSubject, probe, supplied_probe_input, BmcResponded, firmware_boot_family_rows,
   FirmwareFamilyStack, FirmwareBootFamilyRow, ReadRoute, no_reply_reason,
 }
 import extdeps.bmc.endpoint { OpenBmc, AmiMegaRac }
 import gunbc.firmware_network_boot_readers {
-  RedfishBootReads, redfish_axis_replies, decode_supplied_redfish_boot_reads, RedfishDecoded, RedfishRouteNotRedfish, RedfishDecodeOutcome,
+  RedfishBootReads, redfish_axis_replies, decode_redfish_boot_reads, RedfishDecoded, RedfishRouteNotRedfish, RedfishDecodeOutcome, RedfishUnread,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -60,8 +60,8 @@ fn is_auth(r: AxisReply) -> Bool {
 fn is_denied(r: AxisReply) -> Bool {
   match r { ReplyRefusedByBmc { axis: _, refusal: AuthorizationDenied { detail: _ } } => true _ => false }
 }
-fn is_rejected(r: AxisReply) -> Bool {
-  match r { ReplyRefusedByBmc { axis: _, refusal: VendorCommandRejected { detail: _ } } => true _ => false }
+fn is_unexpected(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: UnexpectedHttpStatus { status: _, detail: _ } } => true _ => false }
 }
 fn is_refusal(r: AxisReply) -> Bool { match r { ReplyRefusedByBmc { axis: _, refusal: _ } => true _ => false } }
 fn is_secure_on(r: AxisReply) -> Bool { match r { ReplySecureBootEnabled => true _ => false } }
@@ -109,13 +109,13 @@ test fn http_statuses_map_to_their_refusal_arms() -> Bool {
   let fb = redfish_axis_replies(reads: reads(system: system_ok(), secure: status(code: 403)))
   let rj = redfish_axis_replies(reads: reads(system: system_ok(), secure: status(code: 500)))
   any_of(rs: nf, p: is_not_found) && any_of(rs: au, p: is_auth) && !any_of(rs: au, p: is_denied) &&
-  any_of(rs: fb, p: is_denied) && !any_of(rs: fb, p: is_auth) && !any_of(rs: fb, p: is_rejected) && any_of(rs: rj, p: is_rejected)
+  any_of(rs: fb, p: is_denied) && !any_of(rs: fb, p: is_auth) && !any_of(rs: fb, p: is_unexpected) && any_of(rs: rj, p: is_unexpected)
 }
 
 // A non-2xx status with a readable JSON body is still a refusal by status, never decoded as the resource.
 test fn a_non_success_status_is_not_decoded_even_with_a_plausible_body() -> Bool {
   let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: RestResponseObserved { status: 503, body: RestBodyRead { body: "{\"SecureBootEnable\":true}" } }))
-  !any_of(rs: rs, p: is_secure_on) && any_of(rs: rs, p: is_rejected)
+  !any_of(rs: rs, p: is_secure_on) && any_of(rs: rs, p: is_unexpected)
 }
 
 test fn an_unreadable_body_or_missing_response_is_typed_not_decoded() -> Bool {
@@ -155,19 +155,26 @@ fn row_for(stack: FirmwareFamilyStack) -> Optional<FirmwareBootFamilyRow> {
   fold(firmware_boot_family_rows(), init: Absent, f: (acc, r) => match acc { Present { value: _ } => acc Absent => if r.family.stack == stack { Present { value: r } } else { Absent } })
 }
 
-fn decode_on(row: FirmwareBootFamilyRow) -> RedfishDecodeOutcome {
-  decode_supplied_redfish_boot_reads(subject: ProbeSubject { unit_label: "u" }, row: row, response: ReadResponseReceipt { attempt: ReadAttemptReceipt { observed_at: 1, attempt_identity: "a", route: route_of(row: row) }, response_identity: "r" }, reads: reads(system: system_ok(), secure: secure_on()))
+fn decode_with(row: FirmwareBootFamilyRow, rs: RedfishBootReads) -> RedfishDecodeOutcome {
+  decode_redfish_boot_reads(route: route_of(row: row), reads: rs)
 }
 
-// INHABITANCE at the supplied boundary only: the decoder's output is what probe() consumes, on the OpenBMC row.
+fn unread_count(o: RedfishDecodeOutcome) -> Int {
+  match o { RedfishDecoded { replies: _, unread: u } => list_length(items: u) RedfishRouteNotRedfish { route: _ } => 0 - 1 }
+}
+fn reply_count(o: RedfishDecodeOutcome) -> Int {
+  match o { RedfishDecoded { replies: r, unread: _ } => list_length(items: r) RedfishRouteNotRedfish { route: _ } => 0 - 1 }
+}
+
+// The receipt join is the future observe_redfish_boot_axes's: the test plays it, to show the decoder's replies are what probe() consumes.
 test fn decoder_output_feeds_the_probe() -> Bool {
   match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
     Absent => false
     Present { value: r } =>
-      match decode_on(row: r) {
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: secure_on())) {
         RedfishRouteNotRedfish { route: _ } => false
-        RedfishDecoded { input: i } =>
-          match probe(input: i) {
+        RedfishDecoded { replies: rep, unread: _ } =>
+          match probe(input: supplied_probe_input(subject: ProbeSubject { unit_label: "u" }, row: r, contact: BmcResponded { receipt: ReadResponseReceipt { attempt: ReadAttemptReceipt { observed_at: 1, attempt_identity: "a", route: route_of(row: r) }, response_identity: "r" }, replies: rep })) {
             DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
               order_ok(o: o) && options_gap(o: o) && nics_gap(o: o) && secure_ok(o: o) && bios_ok(o: o)
             SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
@@ -177,14 +184,47 @@ test fn decoder_output_feeds_the_probe() -> Bool {
   }
 }
 
-// A MegaRAC proprietary-route row is refused even though the receipt's route is spelled to match it.
+// All exchanges answered: five replies, nothing unread.
+test fn an_all_response_batch_reports_nothing_unread() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: secure_on())) {
+        o => unread_count(o: o) == 0 && reply_count(o: o) == 5
+      }
+  }
+}
+
+// One exchange refused by the transport: its axes get no reply and it is named unread; the other still decodes.
+test fn a_partial_batch_names_the_unread_exchange_and_decodes_the_rest() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: RestExchangeRefused { cause: "timeout" })) {
+        o => unread_count(o: o) == 1 && reply_count(o: o) == 4
+      }
+  }
+}
+
+// No exchange answered: no replies, both exchanges unread. Nothing here is a responded contact.
+test fn a_no_response_batch_is_all_unread_with_no_replies() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: RestExchangeRefused { cause: "refused" }, secure: RestExchangeRefused { cause: "refused" })) {
+        o => unread_count(o: o) == 2 && reply_count(o: o) == 2
+      }
+  }
+}
+
+// A MegaRAC proprietary-route row is refused, whatever the reads.
 test fn a_megarac_proprietary_route_row_is_not_decoded_as_redfish() -> Bool {
   match row_for(stack: FirmwareFamilyStack { family: AmiMegaRac }) {
     Absent => false
     Present { value: r } =>
-      match decode_on(row: r) {
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: secure_on())) {
         RedfishRouteNotRedfish { route: _ } => true
-        RedfishDecoded { input: _ } => false
+        RedfishDecoded { replies: _, unread: _ } => false
       }
   }
 }
