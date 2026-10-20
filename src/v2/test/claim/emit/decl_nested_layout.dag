@@ -2,7 +2,7 @@ module v2.test.claim.emit.decl_nested_layout
 
 import v2.compiler.translate { serialize_concrete_syntax_layout_to_source }
 import v2.extdeps.languages.swift { swift_target_model }
-import v2.std.compilers.semantic_decl_emission { semantic_decl_emission_from_target, semantic_decl_serialize_target }
+import v2.std.compilers.semantic_decl_emission { DeclEmitLineBreaks, TargetSemanticDeclEmitTransformRow, TargetSemanticDeclSerializeProfile, semantic_decl_binding_spelling_row, semantic_decl_emission_from_target, semantic_decl_serialize_target }
 import v2.std.compilers.target_model { ConcreteSyntaxLayoutItem, FixedToken, LayoutNest, LayoutToken }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Symbol, symbol_lexeme }
@@ -14,12 +14,14 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE DECL ROUTE KEEPS A NESTED BLOCK AND ITS UNIT (DESIGN 5: a declared grammar fact is never dropped). The
-// items are SUPPLIED at the serializer boundary: a layout-keeping spine over the Swift target, whose unit
-// ^swift_indent is spelled by the target. The decl routing claims pair this with the real producer.
+// items are SUPPLIED at the serializer boundary over the Swift decl target's own lex rows, with the profile this
+// claim states: the unit ^dnl_indent spelled as four spaces, a line break before the colon and rbrace token
+// classes. The profile is the claim's, so the goldens do not depend on the Swift rows' layout choices; the
+// Swift routing claims pair this with the real producer.
 
 fn dnl_tok(class: Symbol) -> ConcreteSyntaxLayoutItem { LayoutToken { token: FixedToken { token_class: class } } }
 
-fn dnl_line() -> List<ConcreteSyntaxLayoutItem> { [ dnl_tok(class: ^swift_token_line_start), dnl_tok(class: ^swift_token_kw_case) ] }
+fn dnl_line() -> List<ConcreteSyntaxLayoutItem> { [ dnl_tok(class: ^swift_token_colon) ] }
 
 fn dnl_depth_one(unit: Symbol) -> List<ConcreteSyntaxLayoutItem> {
   [ dnl_tok(class: ^swift_token_lbrace), LayoutNest { unit: unit, items: dnl_line() }, dnl_tok(class: ^swift_token_rbrace) ]
@@ -30,13 +32,24 @@ fn dnl_depth_two(unit: Symbol) -> List<ConcreteSyntaxLayoutItem> {
 }
 
 fn dnl_flat() -> List<ConcreteSyntaxLayoutItem> {
-  list_append(left: [ dnl_tok(class: ^swift_token_lbrace) ], right: list_append(left: dnl_line(), right: [ dnl_tok(class: ^swift_token_rbrace) ]))
+  [ dnl_tok(class: ^swift_token_lbrace), dnl_tok(class: ^swift_token_colon), dnl_tok(class: ^swift_token_rbrace) ]
+}
+
+fn dnl_profile(base: TargetSemanticDeclSerializeProfile) -> TargetSemanticDeclSerializeProfile {
+  TargetSemanticDeclSerializeProfile {
+    lex_rule_rows: base.lex_rule_rows,
+    binding_spelling_rows: list_append(left: base.binding_spelling_rows, right: [ semantic_decl_binding_spelling_row(binding: ^dnl_indent, spelling: "    ") ]),
+    emit_transform_rows: [
+      TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_colon, transform: DeclEmitLineBreaks { before: 1, after: 0 } },
+      TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_rbrace, transform: DeclEmitLineBreaks { before: 1, after: 0 } }
+    ]
+  }
 }
 
 fn dnl_text(items: List<ConcreteSyntaxLayoutItem>) -> String {
   match semantic_decl_emission_from_target(target: swift_target_model()) {
     Accepted { value: emission, diagnostics: _ } =>
-      match semantic_decl_serialize_target(profile: emission.struct_serialize_profile, rules: emission.struct_translation_rules, host_binding_spellings: swift_target_model().binding_spellings) {
+      match semantic_decl_serialize_target(profile: dnl_profile(base: emission.struct_serialize_profile), rules: emission.struct_translation_rules, host_binding_spellings: swift_target_model().binding_spellings) {
         Accepted { value: serialize_target, diagnostics: _ } =>
           match serialize_concrete_syntax_layout_to_source(target: serialize_target, items: items) {
             Accepted { value: medium, diagnostics: _ } => medium.carried
@@ -49,18 +62,18 @@ fn dnl_text(items: List<ConcreteSyntaxLayoutItem>) -> String {
 }
 
 test fn a_nested_block_indents_by_its_spelled_unit_one_level() -> Bool {
-  dnl_text(items: dnl_depth_one(unit: ^swift_indent)) == " {\n    case \n}"
+  dnl_text(items: dnl_depth_one(unit: ^dnl_indent)) == " { \n    : \n }"
 }
 
 test fn a_nested_block_inside_a_nested_block_indents_two_levels() -> Bool {
-  dnl_text(items: dnl_depth_two(unit: ^swift_indent)) == " {\n    case \n        case \n}"
+  dnl_text(items: dnl_depth_two(unit: ^dnl_indent)) == " { \n    : \n        : \n }"
 }
 
 // RED: the same tokens with the nest removed print flush left, so the goldens above discriminate the nest.
 test fn the_same_tokens_without_a_nest_print_flush_left() -> Bool {
-  dnl_text(items: dnl_flat()) == " {\ncase \n}"
+  dnl_text(items: dnl_flat()) == " { \n: \n }"
 }
 
 test fn a_nest_whose_unit_the_target_does_not_spell_refuses() -> Bool {
-  dnl_text(items: dnl_depth_one(unit: ^swift_no_such_unit)) == "translate_layout_unit_unspelled"
+  dnl_text(items: dnl_depth_one(unit: ^dnl_no_such_unit)) == "translate_layout_unit_unspelled"
 }
