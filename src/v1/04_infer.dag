@@ -10964,27 +10964,39 @@ data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall fro
 // general tag-reference seam of operator Ruling 1a, which had no population: for the zero-field arms
 // it was already dead, and for payload arms it waived every site anywhere). A call
 // `discriminant(v: X {})` whose sole argument is a zero-field literal naming a PAYLOAD coproduct
-// variant X waives the MissingField rows of X on that literal ONLY when the (constructing module, arm name) PAIR is listed in payload_arm_tag_reference_waiver_pairs. Anywhere else the literal is a
+// variant X waives the MissingField rows of X on that literal ONLY when the arm's declaration (declaring module of its owner, arm name) is a row of payload_arm_tag_reference_waiver_pairs. Anywhere else the literal is a
 // hollow construction and refuses with one MissingField per owed field. The argument is inferred as
 // any other expression (typed node, type and every other diagnostic unchanged). A call through a
 // body binding named `discriminant` is a function value, not the builtin, and is not the idiom.
 // DISSOLVE-ON: an arm-name capability from a resolved arm (Charter 3 R1's resolved-arm surface, with
 // elaborate_arm_reference), at which point this function, the list and the row are deleted together.
-data payload_arm_tag_reference_waiver_pairs: List<String> = [
-  "v2.std.compilers.target_model.AlgebraPrimitive",
-  "v2.std.compilers.target_model.AlgebraInverseCompose",
-  "v2.std.compilers.target_model.OrderingComparison",
-  "v2.std.compilers.target_model.EqualityComparison",
-  "v2.std.compilers.target_model.CoercionCrossing",
-  "v2.std.compilers.target_model.InfixToken",
-  "v2.std.compilers.target_model.PrefixToken",
-  "v2.std.compilers.target_model.CallIdent",
-  "v2.std.compilers.target_model.MethodIdent",
-  "probe_floor_tag_ref_seam.Fielded",
-  "vtag.Fielded",
-  "test.claim.constructor_tag_route_probe.W11",
-  "v2.test.claim.manual.constructor_tag_route_probe.W11"
+data payload_arm_tag_reference_waiver_pairs: List<DeclarationRef> = [
+  decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "AlgebraPrimitive"),
+  decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "AlgebraInverseCompose"),
+  decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "OrderingComparison"),
+  decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "EqualityComparison"),
+  decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "CoercionCrossing"),
+  decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "InfixToken"),
+  decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "PrefixToken"),
+  decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "CallIdent"),
+  decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "MethodIdent")
 ]
+
+// WHETHER THE LITERAL'S ARM IS ONE OF THE LISTED ARM DECLARATIONS, matched by identity: the module
+// that declares the arm's owning coproduct plus the arm's name, never a spelled "module.arm" string
+// and never the constructing module. A renamed or moved arm stops matching and its hollow literal
+// refuses at the listed row.
+fn payload_arm_tag_reference_is_waived(arm_name: String, scope: InferScope) -> Bool {
+  match variant_owner_node(scope: scope, name: arm_name) {
+    Present { value: owner } =>
+      match declaration_ref_of_type_node(rt: owner, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+        Present { value: owner_decl } =>
+          payload_arm_tag_reference_waiver_pairs |> any(w => w.module_path == owner_decl.module_path && w.decl_name == arm_name)
+        Absent => false
+      }
+    Absent => false
+  }
+}
 
 fn payload_arm_tag_reference_waiver_results(func_name: String, callee_is_body_binding: Bool, results: List<ArgInferResult>, scope: InferScope) -> List<ArgInferResult> {
   if func_name != "discriminant" || callee_is_body_binding || (results |> count) != 1 {
@@ -10999,7 +11011,7 @@ fn payload_arm_tag_reference_waiver_results(func_name: String, callee_is_body_bi
           } else {
             match record_lit_type_name_at(texpr: arg, source_indices: scope.type_env.source_indices) {
               Present { value: tn } =>
-                if variant_owner_node(scope: scope, name: tn) != none && (payload_arm_tag_reference_waiver_pairs |> any(w => w == concat(scope.module_name, ".", tn))) {
+                if payload_arm_tag_reference_is_waived(arm_name: tn, scope: scope) {
                   ArgInferResult {
                     typed_arg: air.typed_arg,
                     diagnostics: air.diagnostics |> filter(d =>

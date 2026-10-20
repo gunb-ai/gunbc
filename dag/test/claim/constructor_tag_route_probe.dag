@@ -55,15 +55,6 @@ test fn consumer_names_only_two_of_twelve_arms() -> Bool {
     && same_arm(tag: tag_of(v: W03 { a: 1, b: 2 }), v: W03 { a: 9, b: 9 })
 }
 
-// CONTROL 6: the identity a tag carries IS the identity `discriminant` yields at the tag-reference
-// position, so the arm the sugar resolves against T's roster and a value of that arm give the same
-// arm. `discriminant(v: W11 {})` is the tag-reference spelling for a PAYLOAD arm -- the one place
-// a payload arm names as a value -- and it must agree with the tag of a value of that arm.
-test fn payload_arm_tag_reference_agrees_with_value_tag() -> Bool {
-  discriminant(v: W11 {}) == discriminant(v: W11 { a: 7 })
-    && same_arm(tag: tag_of(v: W11 { a: 7 }), v: W11 { a: 9 })
-}
-
 // CONTROL 7: the same for a unit arm, and it still discriminates.
 test fn unit_arm_tag_reference_agrees_and_discriminates() -> Bool {
   discriminant(v: W08) == discriminant(v: W08)

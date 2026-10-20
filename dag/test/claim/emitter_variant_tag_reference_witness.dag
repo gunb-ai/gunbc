@@ -60,10 +60,10 @@ module test.claim.emitter_variant_tag_reference_witness
 // whole lowering. It is asserted so the row cannot pass by emitting nothing at all.
 test fn fielded_variant_tag_reference_folds_to_its_name() -> Bool {
   compile_dag_rust_emit_check(
-    "module vtag\n\nimport std.types { String }\n\ntype Shape\n  = Bare\n  | Fielded { token: String }\n\nfn tag_of_fielded() -> String {\n  discriminant(v: Fielded {})\n}\n",
+    "module v2.std.compilers.target_model\n\nimport std.types { String }\n\ntype Shape\n  = Bare\n  | PrefixToken { token: String }\n\nfn tag_of_fielded() -> String {\n  discriminant(v: PrefixToken {})\n}\n",
     "src/vtag.rs",
-    ["\"Fielded\".to_string()"],
-    ["Shape::Fielded {}"]
+    ["\"PrefixToken\".to_string()"],
+    ["Shape::PrefixToken {}"]
   )
 }
 

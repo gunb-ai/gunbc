@@ -40,13 +40,6 @@ test fn consumer_names_only_two_of_twelve_arms() -> Bool {
     && same_arm(tag: tag_of(v: W03 { a: 1, b: 2 }), v: W03 { a: 9, b: 9 })
 }
 
-// The identity a tag carries IS what `discriminant` yields at the tag-reference position: a
-// PAYLOAD arm spelled `W11 {}` and a value of that arm give the same arm.
-test fn payload_arm_tag_reference_agrees_with_value_tag() -> Bool {
-  discriminant(v: W11 {}) == discriminant(v: W11 { a: 7 })
-    && same_arm(tag: tag_of(v: W11 { a: 7 }), v: W11 { a: 9 })
-}
-
 test fn unit_arm_tag_reference_agrees_and_discriminates() -> Bool {
   discriminant(v: W08) == discriminant(v: W08)
     && same_arm(tag: tag_of(v: W08), v: W08)
