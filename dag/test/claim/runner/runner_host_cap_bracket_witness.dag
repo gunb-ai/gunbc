@@ -1,7 +1,6 @@
 module test.claim.runner.runner_host_cap_bracket_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
-import std.algebra { any, all }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_file_converge { runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
 import std.optional { Absent, Present }
