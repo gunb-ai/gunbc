@@ -23,7 +23,8 @@ import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
 // fact from a refused one; no count literal is compared (a count copied from the tree is a change
 // detector, DESIGN section 5), so a green here does not say how many rows are unread.
 //
-// KNOWN GAP, review-held: nothing here stops a row authored after the migration from choosing a
+// KNOWN GAP, tracked at gunbc.recurring_failure_mode ledger_row_authored_unread_after_the_rung_migration (its trigger names the
+// capability): nothing here stops a row authored after the migration from choosing a
 // RungUnread cause. The cause arms are real prose classes, not a grandfather list, so the wall that
 // would refuse a new row's unread arm needs a decidable notion of "new" (a roster of grandfathered
 // identities would be the second authority the doctrine forbids).
