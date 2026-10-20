@@ -8,12 +8,18 @@ import std.render_repeat_string_bootstrap { repeat_string }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.site.markup { page_render_refusal_prefix }
 import extdeps.languages.css.values {
-  CssLengthUnit, Rem, Ch, CssDecimalLength, css_decimal_length_wire, css_hsl_wire,
+  CssLengthUnit, Px, Rem, Ch, CssDecimalLength, css_decimal_length_wire, css_hsl_wire,
   CssFontStack, CssFontFamily, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif,
-  GenericMonospace, css_font_stack_wire, DoubleQuote,
+  GenericMonospace, css_font_stack_wire, DoubleQuote, CssVarRef,
 }
-import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_property_wire }
-import extdeps.languages.css.selectors { SelectorSubject, root_selector, selector_subject_wire }
+import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_property_wire, BoxSizing, Background, Color, FontFamily, FontSize, LineHeight, WebkitFontSmoothing, ColorScheme, Margin }
+import extdeps.languages.css.complex_selector {
+  SelectorList, ComplexSelector, CompoundSelector, TypeSelector, SimpleSelector, UniversalType, ElementType, PseudoClassPart, PseudoElementPart,
+  selector_list_wire, element_compound,
+}
+import extdeps.languages.css.expression {
+  CssValue, ValIdent, ValNumber, ValLength, ValVar, css_value_wire,
+}
 import gunbc.design.gunb_ai_live_scale {
   LiveMeasure, live_measure_page, live_measure_wide, live_measure_prose, live_measure_title,
   live_gap_xs, live_gap_sm, live_gap_md, live_gap_lg, live_gap_xl, live_font_mono, live_font_sans,
@@ -24,8 +30,8 @@ import gunbc.design.gunb_ai_hues {
   live_accent_saturation, live_accent_lightness,
 }
 
-// gunb.ai's assets/site.css, built from typed rows. THIS SLICE: the file header and the :root token
-// block; later slices append sections to sheet_entries until the whole served file is the render.
+// gunb.ai's assets/site.css, built from typed rows. THIS SLICE: the file header, the :root token
+// block and RESET + BASE; later slices append sections to sheet_entries until the whole served file is the render.
 //
 // THE FILE IS HAND-AUTHORED, SO ITS FORMATTING IS DATA TOO. A comment is content the served bytes
 // carry, a blank-line run is a decision, and a declaration group is column-aligned. Alignment is not
@@ -52,20 +58,28 @@ type SheetValue
   | ValueLiveColor { token: LiveColorToken }
   | ValueLength { length: CssDecimalLength }
   | ValueFonts { stack: CssFontStack }
+  | ValueExpr { value: CssValue }
 
 type SheetDecl {
   property: CssPropertyName
   value: SheetValue
 }
 
+// A group of declarations is either column-aligned (the :root token groups) or written with one space
+// after the colon (the ordinary rules): the served sheet uses both, so the choice is data.
+type DeclAlignment = ColumnAligned | Compact
+
 type SheetItem
   = ItemComment { lines: List<String> }
-  | ItemDecls { decls: List<SheetDecl> }
+  | ItemDecls { decls: List<SheetDecl>, alignment: DeclAlignment }
   | ItemBlank
+
+// A rule is written either one declaration per line between braces or whole on one line.
+type RuleLayout = RuleBlock | RuleInline
 
 type SheetEntry
   = EntryComment { lines: List<String> }
-  | EntryRule { selector: SelectorSubject, items: List<SheetItem> }
+  | EntryRule { selector: SelectorList, layout: RuleLayout, items: List<SheetItem> }
   | EntryGap { blank_lines: Int }
 
 fn sheet_hue(hue: HueDegrees) -> SheetDecl {
@@ -99,13 +113,13 @@ data tokens_items: List<SheetItem> = [
       sheet_hue(hue: live_hue_moss),
       sheet_hue(hue: live_hue_clay),
       sheet_hue(hue: live_hue_brass),
-    ] },
+    ], alignment: ColumnAligned },
     ItemDecls { decls: [
       sheet_percentage(parameter: live_accent_saturation),
-    ] },
+    ], alignment: ColumnAligned },
     ItemDecls { decls: [
       sheet_percentage(parameter: live_accent_lightness),
-    ] },
+    ], alignment: ColumnAligned },
     ItemBlank,
     ItemComment { lines: ["Accents — materials, not status signals.", "moss   = structural continuity / derived / held / re-derived", "clay   = boundary / removed / violated / no artifact emitted", "brass  = human edit focus / selected source fact (rare, narrow)"] },
     ItemDecls { decls: [
@@ -115,44 +129,44 @@ data tokens_items: List<SheetItem> = [
       sheet_live_color(token: live_token_clay),
       sheet_live_color(token: live_token_clay_dim),
       sheet_live_color(token: live_token_clay_subtle),
-    ] },
+    ], alignment: ColumnAligned },
     ItemDecls { decls: [
       sheet_live_color(token: live_token_brass),
       sheet_live_color(token: live_token_brass_dim),
       sheet_live_color(token: live_token_brass_subtle),
-    ] },
+    ], alignment: ColumnAligned },
     ItemBlank,
     ItemComment { lines: ["Neutrals — void scale (dark surfaces)"] },
     ItemDecls { decls: [
       sheet_live_color(token: live_token_void),
       sheet_live_color(token: live_token_void_up),
       sheet_live_color(token: live_token_void_up2),
-    ] },
+    ], alignment: ColumnAligned },
     ItemBlank,
     ItemComment { lines: ["Neutrals — stone scale (text on dark)"] },
     ItemDecls { decls: [
       sheet_live_color(token: live_token_stone),
       sheet_live_color(token: live_token_stone_dim),
       sheet_live_color(token: live_token_stone_faint),
-    ] },
+    ], alignment: ColumnAligned },
     ItemBlank,
     ItemComment { lines: ["Neutrals — warm white (light surfaces / strong text)"] },
     ItemDecls { decls: [
       sheet_live_color(token: live_token_warm_white),
       sheet_live_color(token: live_token_warm_white_dim),
-    ] },
+    ], alignment: ColumnAligned },
     ItemBlank,
     ItemComment { lines: ["Borders"] },
     ItemDecls { decls: [
       sheet_live_color(token: live_token_border_dark),
       sheet_live_color(token: live_token_border_dark_strong),
-    ] },
+    ], alignment: ColumnAligned },
     ItemBlank,
     ItemComment { lines: ["Type families"] },
     ItemDecls { decls: [
       sheet_fonts(name: "font-mono", stack: live_font_mono),
       sheet_fonts(name: "font-sans", stack: live_font_sans),
-    ] },
+    ], alignment: ColumnAligned },
     ItemBlank,
     ItemComment { lines: ["Measures — width grammar"] },
     ItemDecls { decls: [
@@ -160,7 +174,7 @@ data tokens_items: List<SheetItem> = [
       sheet_measure(m: live_measure_wide),
       sheet_measure(m: live_measure_prose),
       sheet_measure(m: live_measure_title),
-    ] },
+    ], alignment: ColumnAligned },
     ItemBlank,
     ItemComment { lines: ["Gaps — vertical/spacing rhythm"] },
     ItemDecls { decls: [
@@ -169,7 +183,55 @@ data tokens_items: List<SheetItem> = [
       sheet_measure(m: live_gap_md),
       sheet_measure(m: live_gap_lg),
       sheet_measure(m: live_gap_xl),
-    ] },
+    ], alignment: ColumnAligned },
+]
+
+fn sheet_var(name: String) -> CssValue {
+  ValVar { reference: CssVarRef { name: name } }
+}
+
+fn sheet_expr(property: CssPropertyName, value: CssValue) -> SheetDecl {
+  SheetDecl { property: property, value: ValueExpr { value: value } }
+}
+
+fn sheet_ident(property: CssPropertyName, ident: String) -> SheetDecl {
+  sheet_expr(property: property, value: ValIdent { ident: ident })
+}
+
+fn single_compound_selector(c: CompoundSelector) -> SelectorList {
+  SelectorList { selectors: [ComplexSelector { compounds: [c] }] }
+}
+
+fn root_list() -> SelectorList {
+  single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [PseudoClassPart { name: "root" }] })
+}
+
+fn universal_compound(parts: List<SimpleSelector>) -> CompoundSelector {
+  CompoundSelector { type_selector: Present { value: UniversalType }, parts: parts }
+}
+
+fn inline_rule(selector: SelectorList, decls: List<SheetDecl>) -> SheetEntry {
+  EntryRule { selector: selector, layout: RuleInline, items: [ItemDecls { decls: decls, alignment: Compact }] }
+}
+
+data reset_banner: List<String> = ["╔══ RESET + BASE ══════════════════════════════════════════════════"]
+
+data reset_universal_selector: SelectorList = SelectorList { selectors: [
+  ComplexSelector { compounds: [universal_compound(parts: [])] },
+  ComplexSelector { compounds: [universal_compound(parts: [PseudoElementPart { name: "before" }])] },
+  ComplexSelector { compounds: [universal_compound(parts: [PseudoElementPart { name: "after" }])] },
+] }
+
+data html_items: List<SheetItem> = [
+  ItemDecls { decls: [
+    sheet_expr(property: Background, value: sheet_var(name: "void")),
+    sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
+    sheet_expr(property: FontFamily, value: sheet_var(name: "font-sans")),
+    sheet_expr(property: FontSize, value: ValLength { length: CssDecimalLength { milli: 16000, unit: Px } }),
+    sheet_expr(property: LineHeight, value: ValNumber { milli: 1600 }),
+    sheet_ident(property: WebkitFontSmoothing, ident: "antialiased"),
+    sheet_ident(property: ColorScheme, ident: "dark"),
+  ], alignment: Compact },
 ]
 
 data sheet_entries: List<SheetEntry> = [
@@ -177,7 +239,15 @@ data sheet_entries: List<SheetEntry> = [
   EntryGap { blank_lines: 2 },
   EntryComment { lines: tokens_banner },
   EntryGap { blank_lines: 1 },
-  EntryRule { selector: root_selector, items: tokens_items },
+  EntryRule { selector: root_list(), layout: RuleBlock, items: tokens_items },
+  EntryGap { blank_lines: 2 },
+  EntryComment { lines: reset_banner },
+  EntryGap { blank_lines: 1 },
+  inline_rule(selector: reset_universal_selector, decls: [sheet_ident(property: BoxSizing, ident: "border-box")]),
+  EntryGap { blank_lines: 1 },
+  EntryRule { selector: single_compound_selector(c: element_compound(tag: "html")), layout: RuleBlock, items: html_items },
+  inline_rule(selector: single_compound_selector(c: element_compound(tag: "body")), decls: [sheet_expr(property: Margin, value: ValNumber { milli: 0 })]),
+  inline_rule(selector: single_compound_selector(c: element_compound(tag: "a")), decls: [sheet_ident(property: Color, ident: "inherit")]),
 ]
 
 fn value_wire(v: SheetValue) -> String {
@@ -187,6 +257,7 @@ fn value_wire(v: SheetValue) -> String {
     ValueLength { length: l } => css_decimal_length_wire(l: l)
     ValueFonts { stack: s } => css_font_stack_wire(s: s, quote: DoubleQuote)
     ValueLiveColor { token: t } => css_hsl_wire(c: live_token_css(t: t))
+    ValueExpr { value: x } => css_value_wire(v: x)
   }
 }
 
@@ -203,9 +274,19 @@ fn longest_name(decls: List<SheetDecl>) -> Int {
 }
 
 // The value starts one space after the longest `--name:` of its group.
-fn decl_line(d: SheetDecl, name_column: Int, indent: Int) -> String {
-  let name = decl_name_wire(d: d)
-  join([repeat_string(s: " ", n: indent), name, repeat_string(s: " ", n: name_column + 1 - name.length()), value_wire(v: d.value), ";"], "")
+fn decl_pad(d: SheetDecl, name_column: Int, alignment: DeclAlignment) -> Int {
+  match alignment {
+    ColumnAligned => name_column + 1 - name_width(d: d)
+    Compact => 1
+  }
+}
+
+fn decl_text(d: SheetDecl, name_column: Int, alignment: DeclAlignment) -> String {
+  join([decl_name_wire(d: d), repeat_string(s: " ", n: decl_pad(d: d, name_column: name_column, alignment: alignment)), value_wire(v: d.value), ";"], "")
+}
+
+fn decl_line(d: SheetDecl, name_column: Int, alignment: DeclAlignment, indent: Int) -> String {
+  concat(repeat_string(s: " ", n: indent), decl_text(d: d, name_column: name_column, alignment: alignment))
 }
 
 type CommentAcc {
@@ -237,18 +318,29 @@ fn item_wire(item: SheetItem) -> String {
   match item {
     ItemBlank => ""
     ItemComment { lines: ls } => comment_wire(lines: ls, indent: 2)
-    ItemDecls { decls: ds } => join(map(ds, d => decl_line(d: d, name_column: longest_name(decls: ds), indent: 2)), "\n")
+    ItemDecls { decls: ds, alignment: a } => join(map(ds, d => decl_line(d: d, name_column: longest_name(decls: ds), alignment: a, indent: 2)), "\n")
   }
 }
 
-fn rule_wire(selector: SelectorSubject, items: List<SheetItem>) -> String {
-  join([selector_subject_wire(s: selector), " {\n", join(map(items, i => item_wire(item: i)), "\n"), "\n}\n"], "")
+fn inline_item_wire(item: SheetItem) -> String {
+  match item {
+    ItemBlank => ""
+    ItemComment { lines: ls } => comment_wire(lines: ls, indent: 0)
+    ItemDecls { decls: ds, alignment: a } => join(map(ds, d => decl_text(d: d, name_column: longest_name(decls: ds), alignment: a)), " ")
+  }
+}
+
+fn rule_wire(selector: SelectorList, layout: RuleLayout, items: List<SheetItem>) -> String {
+  match layout {
+    RuleBlock => join([selector_list_wire(l: selector), " {\n", join(map(items, i => item_wire(item: i)), "\n"), "\n}\n"], "")
+    RuleInline => join([selector_list_wire(l: selector), " { ", join(map(items, i => inline_item_wire(item: i)), " "), " }\n"], "")
+  }
 }
 
 fn entry_wire(e: SheetEntry) -> String {
   match e {
     EntryComment { lines: ls } => concat(comment_wire(lines: ls, indent: 0), "\n")
-    EntryRule { selector: s, items: is } => rule_wire(selector: s, items: is)
+    EntryRule { selector: s, layout: l, items: is } => rule_wire(selector: s, layout: l, items: is)
     EntryGap { blank_lines: n } => repeat_string(s: "\n", n: n)
   }
 }

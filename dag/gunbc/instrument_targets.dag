@@ -474,6 +474,44 @@ fn native_serve_startup_refusal_binding() -> TargetBinding {
   }
 }
 
+// THE SLOW-STARTUP POSITIVE: a startup of a calibrated spin (about 0.6 to 2.4 s) launched with a 100 ms request deadline must still announce, bind and serve, because startup is bounded by its own gunbc.native_serve native_serve_startup_deadline and not the request deadline. `gunbc test //gunbc/instruments:native-serve-startup-slow`. Run by name, not a merge gate.
+fn native_serve_startup_slow_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve-startup-slow" } }
+}
+
+fn native_serve_startup_slow_entry() -> String {
+  "dag/gunbc/instruments/native_serve_startup_slow_fixture.dag"
+}
+
+fn native_serve_startup_slow_binding() -> TargetBinding {
+  TargetBinding {
+    target: native_serve_startup_slow_label()
+    producer: NativeServeProgramProducer {
+      entry: native_serve_startup_slow_entry()
+      probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_startup_slow_probe.dag" phases: [] }
+    }
+  }
+}
+
+// THE OVERRUN RED: the entry declares its own 1 s startup bound and a startup far past it; the main must exit with the startup exit code before it binds. `gunbc test //gunbc/instruments:native-serve-startup-overrun`. Run by name, not a merge gate.
+fn native_serve_startup_overrun_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve-startup-overrun" } }
+}
+
+fn native_serve_startup_overrun_entry() -> String {
+  "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag"
+}
+
+fn native_serve_startup_overrun_binding() -> TargetBinding {
+  TargetBinding {
+    target: native_serve_startup_overrun_label()
+    producer: NativeServeProgramProducer {
+      entry: native_serve_startup_overrun_entry()
+      probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_startup_overrun_probe.dag" phases: [NativeServeRefusedLaunch] }
+    }
+  }
+}
+
 // THE HOST READ POINT for the probe, as native_claim_child_deadline_count is for the deadline: the
 // row's probe for an entry, never a second map.
 fn native_serve_probe_for_entry(entry: String) -> NativeServeProbe? {
@@ -1155,7 +1193,7 @@ fn instrument_targets() -> List<Label> {
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), brand_mark_assets_label()
+    native_emission_controls_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
   ]
 }
 
@@ -1177,7 +1215,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), brand_mark_assets_binding()
+    native_emission_controls_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
   ]
 }
 
