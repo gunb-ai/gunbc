@@ -1287,16 +1287,28 @@ fn bind_attribute_route(
 // reason the classifier above is one (review 81853). The first version was
 // `blocker_requires_existing_option(blocker) -> Bool`, which matched a coproduct and returned
 // true/false, so the fold's one consumer could not tell 'this blocker says an option exists' from
-// 'this blocker says nothing either way', and neither could a reader. Those two are different facts
-// with different remedies, and the admissibility decision below reads them differently: an
-// option-neutral blocker (NIC selection, Secure Boot, an unsupported override) does not care whether a
-// redirect needs an existing option, while an option-denying blocker forbids one. Naming the arms
-// also keeps the function total: a new blocker must say which kind it is.
+// 'this blocker says nothing either way', and neither could a reader. Naming the arms also keeps the
+// function total: a new blocker must say which kind it is.
+//
+// HOW FAR THAT GOES, SAID EXACTLY (review 83033 called this borderline, and it is right). The two
+// arms DO collapse at the only consumer: `route_is_admissible_for` maps Needs -> true and
+// DeniesOrIgnores -> `!demands_existing_option(...)`, so no decision today distinguishes 'a route's
+// demand is FALSE' from 'a route's demand is UNEVIDENCED'. An earlier draft of this comment claimed
+// the consumer "reads them differently"; it does not, and saying so was a citation attesting a rule
+// the code does not implement -- the very defect this repo keeps a recurring-failure-mode row for.
+// What the union buys, and all it buys today, is (a) the READER can see the two facts are different,
+// which a Bool cannot express at the call site, and (b) totality: adding a blocker forces an answer.
+// The merge inside the second arm is deliberate and load-bearing in one place: it is what makes the
+// admissibility witness's mutation meaningful (flipping one blocker's arm changes an emitted plan).
+// If the remedies ever diverge -- e.g. the neutral blockers start carrying an owed_read that the
+// denying ones must not -- the split is one new arm plus one new consumer branch, and it should come
+// from that reader, not from a speculative arm with nothing reading it.
 type BlockerOptionStanding
   = BlockerNeedsAnExistingOption
-  // The blocker means 'there is no network option to point at', or it does not speak the question.
-  // Either way a route that demands an existing option is inadmissible for it: for the denying case
-  // because the demand is false, for the neutral case because the route's demand is unevidenced.
+  // The blocker either means 'there is no network option to point at' (NetworkBootOptionAbsent) or
+  // never speaks the question (NIC selection, Secure Boot, unsupported override). A route that
+  // demands an existing option is inadmissible for either: for the denying case because the demand
+  // is false, for the neutral case because the demand is unevidenced. ONE ARM, BECAUSE ONE ANSWER.
   | BlockerDeniesOrIgnoresExistingOption
 
 fn blocker_option_standing(blocker: PreparationBlockingOn) -> BlockerOptionStanding {
