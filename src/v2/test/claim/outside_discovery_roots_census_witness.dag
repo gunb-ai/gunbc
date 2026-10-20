@@ -41,7 +41,12 @@ import v2.workflow.outside_discovery_roots_census {
   v1_claim_note_location,
   note_declared_paths,
   subject_helpers_declare_nothing,
-  prose_mentioning_paths
+  prose_mentioning_paths,
+  scan_dir_gap_population,
+  scan_dir_gap_receipt_lines,
+  scan_dir_gap_header_lines,
+  is_census_visible,
+  scan_dir_authority_identity
 }
 import v2.workflow.outside_discovery_roots_census_live {
   TrackedListing,
@@ -530,4 +535,73 @@ fn parse_marker_names(text: String, path: String) -> ParseMarkers {
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// THE SCAN-DIR GAP: A POPULATION, NOT A STANDING.
+//
+// Five claims, each a refusal of a specific shortcut:
+//  (1) a path inside one of the authority's three lanes never enters the population. The lazy implementation
+//      -- "gap = anything under src/v2/test/claim" or "gap = anything not scanned that I know about" -- passes
+//      this one while lying about scanned files, so the lane test is exercised against real lane paths.
+//  (2) the ruled population and this standing-less population are DISJOINT, which is what one predicate read
+//      in two directions buys: the layout refuses the note's paths (so they are ruled findings) and accepts
+//      everything in the gap. Appearing twice under two judgments would be a double-count a reader cannot see.
+//  (3) census visibility is decided by the layout authority, in one direction for each population.
+//  (4) a path the marker read never answered cannot enter the population: it is a join over the answer, so it
+//      is computed and not a hand-listed set someone remembered.
+//  (5) the receipt says it rules no standing and names the lane authority, so the absence of a standing can
+//      never be read as a judgment of "fine".
+// ---------------------------------------------------------------------------
+
+data note_declared_first_path: String = "src/v1/tests/claim/annotation_gap_round_trip_test.dag"
+
+// Real paths from the authority's own three lanes, taken as tracked by `git ls-files` at this commit.
+data scan_lane_fixture_paths: List<String> = [
+  "dag/test/claim/a_payload_surplus_variant_wall.dag",
+  "src/v2/test/claim/manual/add_body_emit_python.dag",
+  "src/v2/test/claim/emit/arrow_scope_atom_refuses_unresolved.dag"
+]
+
+test fn a_path_in_a_scan_lane_never_enters_the_gap_population() -> Bool {
+  all(xs: scan_lane_fixture_paths, predicate: fn(path) {
+    !(any(xs: scan_dir_gap_population(claim_bearers: [path]), predicate: fn(gap) { gap == path }))
+  })
+}
+
+// THE MUTUAL-EXCLUSION CLAIM. The two populations are decided by ONE predicate -- `repository_module_file_of_path`
+// -- read in opposite directions, so a path can be in at most one of them. Asserted over the full subject
+// list, where it is the property a reader actually needs: the 13 note paths carry a ruled standing and must
+// not also appear in a standing-less population. It is exercised over the whole list rather than one path,
+// because a partial list would let a prefix-typo exclusion look correct.
+test fn the_ruled_population_and_the_gap_population_are_disjoint() -> Bool {
+  let gap = scan_dir_gap_population(claim_bearers: note_declared_paths)
+  all(xs: note_declared_paths, predicate: fn(path) {
+    !(any(xs: gap, predicate: fn(g) { g == path }))
+  })
+}
+
+// The census-visible test is what keeps the two populations apart: `OutsideDiscoveryRoots` is refused BY the
+// layout, this one is owned by the layout and skipped by the lanes. A path can be in at most one, and the
+// src/v1 population must stay in its own standing.
+test fn census_visibility_decides_which_population_a_path_is_in() -> Bool {
+  all(xs: governed_listing_rows, predicate: fn(path) {
+    is_census_visible(path: path)
+  }) && all(xs: note_declared_paths, predicate: fn(path) {
+    !(is_census_visible(path: path)) && path_is_under_note_subject(path: path)
+  })
+}
+
+// The population is a JOIN over the marker answer: a path the read never answered cannot appear, no matter how
+// un-scanned it is. A hand-listed population would pass every other claim here and still be fiction.
+test fn a_path_the_marker_read_never_answered_cannot_enter_the_gap() -> Bool {
+  let gap = scan_dir_gap_population(claim_bearers: [note_declared_first_path])
+  !(any(xs: gap, predicate: fn(g) { string_contains(s: g, pattern: "add_body_emit_python") }))
+}
+
+test fn the_gap_receipt_says_it_rules_no_standing_and_names_the_lane_authority() -> Bool {
+  let lines = concat(scan_dir_gap_header_lines(), scan_dir_gap_receipt_lines(paths: [note_declared_first_path]))
+  all(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: "OUTSIDE-SCAN-DIRS") })
+    && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: "no standing is ruled") })
+    && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: scan_dir_authority_identity) })
 }

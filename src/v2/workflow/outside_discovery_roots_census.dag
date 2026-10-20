@@ -35,6 +35,7 @@ module v2.workflow.outside_discovery_roots_census
 import std.types { String, Bool, List }
 import std.optional { Optional, Absent, Present }
 import std.algebra { list_map }
+import gunbc.ci.ci_layer_roots { witness_discovery_scan_dirs }
 import v2.cli.repository_layout { repository_module_file_of_path, repository_tree_directory }
 
 // THE STANDING. Four states, each a decision the census can actually make from its inputs:
@@ -216,6 +217,80 @@ fn outside_roots_receipt_lines(findings: List<String>, vouched_by_note: Bool) ->
     xs: findings,
     f: fn(path) { outside_roots_receipt_line(path: path, vouched_by_note: vouched_by_note) }
   )
+}
+
+// THE SCAN-DIR GAP: A POPULATION, NOT A STANDING (warm-wolf-570's ruling).
+//
+// `witness_discovery_scan_dirs` is the authority on which directories the wet claim lanes scan, and it is a
+// CLOSED list of three. A tracked `.dag` that declares a test fn but sits under none of them is running in
+// no lane -- but it is NOT the same fact as `OutsideDiscoveryRoots`, and giving it the same standing would
+// be a judgment nobody has made: these paths are census-VISIBLE (the layout authority owns them, the
+// discovery roots cover them); the open question is whether the flat `src/v2/test/claim` shape, which holds
+// the largest share of them, is the accepted shape. That is somebody else's ruling to make, so this census
+// prints them and says nothing about whether it is a defect.
+//
+// Why the two populations cannot overlap, and why no extra exclusion is needed to keep them apart.
+// `OutsideDiscoveryRoots` is assigned exactly when `repository_module_file_of_path` refuses the path; this
+// population admits exactly the paths that same authority ACCEPTS. One predicate, evaluated once, puts a path
+// in at most one of the two -- so the note's `src/v1/tests/claim` population is kept out of the standing-less
+// population by the ruling it already has, not by a second exclusion bolted on here. A filter that could not
+// change the answer would be dead code with a comment claiming it was load-bearing.
+data scan_dir_authority_location: String = "gunbc.ci.ci_layer_roots"
+data scan_dir_authority_identity: String = "witness_discovery_scan_dirs"
+
+// The gap is reported at PATH grain because that is the grain the marker read answers at: `git grep -l`
+// prints a path, not a number of claims. Printing a claim count here would transcribe a figure this
+// instrument never measured.
+data scan_dir_gap_grain_token: String = "population only: no standing is ruled; path grain, per the marker read"
+
+// Membership in a scan lane is the authority's own list, joined at the directory boundary. This module holds
+// no copy of the three directories (§6b: the second local list is the defect the trigger names).
+fn path_is_in_a_scan_lane(path: String) -> Bool {
+  any(xs: witness_discovery_scan_dirs, predicate: fn(dir) {
+    path.starts_with(prefix: concat(dir, "/"))
+  })
+}
+
+// Census-visible means the layout authority answers for the path; the src/v1 population does not qualify and
+// keeps its own standing instead of appearing here too.
+fn is_census_visible(path: String) -> Bool {
+  match repository_module_file_of_path(path: path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE GAP POPULATION, computed from the marker answer the census was already handed. Nothing new is read and
+// nothing is excluded by name.
+fn scan_dir_gap_population(claim_bearers: List<String>) -> List<String> {
+  filter(
+    xs: claim_bearers,
+    predicate: fn(path) {
+      !(path.starts_with(prefix: fixture_path_prefix))
+        && is_census_visible(path: path)
+        && !(path_is_in_a_scan_lane(path: path))
+    }
+  )
+}
+
+fn scan_dir_gap_receipt_line(path: String) -> String {
+  concat(
+    concat("OUTSIDE-SCAN-DIRS ", path),
+    concat(" | ", scan_dir_gap_grain_token)
+  )
+}
+
+fn scan_dir_gap_receipt_lines(paths: List<String>) -> List<String> {
+  list_map(xs: paths, f: fn(path) { scan_dir_gap_receipt_line(path: path) })
+}
+
+fn scan_dir_gap_header_lines() -> List<String> {
+  [
+    concat(
+      "OUTSIDE-SCAN-DIRS census: lane authority ",
+      concat(scan_dir_authority_location, concat(":", scan_dir_authority_identity))
+    )
+  ]
 }
 
 // THE DECLARED POPULATION, as an expectation: every tracked `.dag` under the note's subject that DECLARES a

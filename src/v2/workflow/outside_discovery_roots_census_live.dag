@@ -152,6 +152,7 @@ type OutsideRootsCensusOutput {
   findings: List<String>,
   note_vouched: List<String>,
   undeclared: List<String>,
+  scan_dir_gap: List<String>,
   unread: Bool,
   lines: List<String>
 }
@@ -168,17 +169,25 @@ fn outside_roots_census(listing: TrackedListing, bearers: ClaimBearerRead) -> Ou
           let findings = outside_roots_findings(rows: rows)
           let vouched = findings_under_note_subject(findings: findings)
           let undeclared = findings_outside_note_subject(findings: findings)
+          let gap = scan_dir_gap_population(claim_bearers: marker_paths)
           OutsideRootsCensusOutput {
             standing_rows: rows,
             findings: findings,
             note_vouched: vouched,
             undeclared: undeclared,
+            scan_dir_gap: gap,
             unread: listing_is_unread(rows: rows),
             lines: concat(
               outside_roots_header_lines(),
               concat(
                 outside_roots_receipt_lines(findings: vouched, vouched_by_note: true),
-                outside_roots_receipt_lines(findings: undeclared, vouched_by_note: false)
+                concat(
+                  outside_roots_receipt_lines(findings: undeclared, vouched_by_note: false),
+                  concat(
+                    scan_dir_gap_header_lines(),
+                    scan_dir_gap_receipt_lines(paths: gap)
+                  )
+                )
               )
             )
           }

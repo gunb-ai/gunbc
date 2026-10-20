@@ -1501,8 +1501,10 @@ fn floor_route_gap_expectation_chunk_19() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.the_index_lists_exactly_the_population_the_note_declares_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.the_live_reads_produce_an_observed_population_rather_than_a_refusal_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "v2.test.claim.outside_discovery_roots_census_real_execution.the_scan_dir_gap_is_observed_on_the_real_route_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
     tail: Empty {}
-  }  }
+  }  } }
 }
 
 // ALL SIX test.claim.machine_intake.mtcollins1_census_image_local_wet identities: the census envelope grammar read

@@ -76,3 +76,19 @@ test fn the_live_reads_produce_an_observed_population_rather_than_a_refusal_by_r
   )
   !(out.unread) && !(is_empty(out.findings))
 }
+
+// THE GAP POPULATION IS OBSERVED, NOT ASSUMED. The scan-dir gap is printed with no standing, on the ruling
+// that nobody has decided whether the flat `src/v2/test/claim` shape is accepted -- which makes it exactly the
+// population that could sit at zero forever and look like a clean report. A zero here is only meaningful if
+// the read ran; the same capture that produced the ruled findings produced this one, and `unread` is the
+// refusal, so an empty gap on a read census is an observation and not a silence. Asserted on the real route
+// because no fixture can say the route emits it: the hermetic witness gives the shape, this gives inhabitation.
+test fn the_scan_dir_gap_is_observed_on_the_real_route_by_real_execution() -> Bool {
+  let out = outside_roots_census(
+    listing: tracked_claim_listing(),
+    bearers: tracked_claim_bearers()
+  )
+  !(out.unread)
+    && !(is_empty(out.scan_dir_gap))
+    && all(xs: out.scan_dir_gap, predicate: fn(path) { is_in(listing: out.findings, path: path) == false })
+}
