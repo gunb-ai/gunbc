@@ -18,6 +18,11 @@ import gunbc.runner.runner_host_cap_bracket {
   HostLeftDrained,
   host_left_of_readmit,
   slot_drain_needs_worker,
+  host_cap_bracket_budget,
+  bracket_budget_verdict,
+  BudgetCovers,
+  BudgetCannotCover,
+  BracketBudgetVerdict,
   slot_drain_reading_of,
   bracket_wait_step,
   host_cap_drain_ticks,
@@ -43,34 +48,34 @@ fn exceeded(s: BracketWaitStep, busy: Int, unproven: Int) -> Bool { match s { Br
 test fn the_declared_bound_yields_positive_ticks() -> Bool { host_cap_drain_ticks(policy: runner_host_cap_drain_policy) > 0 }
 
 test fn every_slot_masked_stopped_and_idle_is_drained() -> Bool {
-  is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), drained(n: "02")], ticks_left: 3))
+  is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), drained(n: "02")], ticks_left: 3, time_up: false))
 }
 
 // a slot whose job is finishing holds the wait while ticks remain
 test fn a_finishing_job_waits_inside_the_bound() -> Bool {
-  is_waiting(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), finishing(n: "02")], ticks_left: 3))
+  is_waiting(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), finishing(n: "02")], ticks_left: 3, time_up: false))
 }
 
 // RED: bound exhausted with a live job refuses, naming the busy slot
 test fn the_bound_exceeded_refuses_naming_the_busy_slot() -> Bool {
-  exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), finishing(n: "02")], ticks_left: 0), busy: 1, unproven: 0)
+  exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), finishing(n: "02")], ticks_left: 0, time_up: false), busy: 1, unproven: 0)
 }
 
 // RED: could-not-tell is not idle, at the bound it is unproven and refuses
 test fn an_unreadable_idleness_reading_is_never_drained() -> Bool {
-  !is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unreadable(n: "01")], ticks_left: 3))
-    && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unreadable(n: "01")], ticks_left: 0), busy: 0, unproven: 1)
+  !is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unreadable(n: "01")], ticks_left: 3, time_up: false))
+    && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unreadable(n: "01")], ticks_left: 0, time_up: false), busy: 0, unproven: 1)
 }
 
 // RED: a slot that is not masked has admission open, so it is never drained
 test fn an_unmasked_slot_is_never_drained() -> Bool {
-  !is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unmasked(n: "01")], ticks_left: 3))
+  !is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unmasked(n: "01")], ticks_left: 3, time_up: false))
 }
 
 // RED: mask-only plus an idle running listener withholds and names the unit
 test fn mask_only_with_an_idle_listener_is_not_closed() -> Bool {
-  is_not_closed(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), idle_listener(n: "02")], ticks_left: 3))
-    && is_not_closed(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [idle_listener(n: "02")], ticks_left: 0))
+  is_not_closed(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), idle_listener(n: "02")], ticks_left: 3, time_up: false))
+    && is_not_closed(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [idle_listener(n: "02")], ticks_left: 0, time_up: false))
 }
 
 fn units() -> List<NonEmptyStr> { [u(n: "01"), u(n: "02")] }
@@ -115,22 +120,42 @@ fn projected(active: String, listing: String) -> SlotDrainReading {
 }
 
 test fn a_deactivating_unit_with_a_live_worker_is_not_drained() -> Bool {
-  is_waiting(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_worker())], ticks_left: 3))
-    && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_worker())], ticks_left: 0), busy: 1, unproven: 0)
+  is_waiting(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_worker())], ticks_left: 3, time_up: false))
+    && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_worker())], ticks_left: 0, time_up: false), busy: 1, unproven: 0)
 }
 
 test fn a_deactivating_unit_with_a_quiescent_cgroup_is_drained() -> Bool {
-  is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_listener_only())], ticks_left: 3))
+  is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_listener_only())], ticks_left: 3, time_up: false))
 }
 
 test fn a_stopped_masked_unit_is_drained_without_a_cgroup_reading() -> Bool {
   !slot_drain_needs_worker(read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "inactive")))
-    && is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "inactive", listing: "")], ticks_left: 3))
+    && is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "inactive", listing: "")], ticks_left: 3, time_up: false))
 }
 
 test fn an_unknown_or_missing_active_state_is_unproven_never_idle() -> Bool {
   let unknown = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "wedged")), worker: SlotIdle)
   let missing = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\n")), worker: SlotIdle)
-  exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unknown], ticks_left: 0), busy: 0, unproven: 1)
-    && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [missing], ticks_left: 0), busy: 0, unproven: 1)
+  exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unknown], ticks_left: 0, time_up: false), busy: 0, unproven: 1)
+    && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [missing], ticks_left: 0, time_up: false), busy: 0, unproven: 1)
+}
+
+// TOTAL ELAPSED TIME BOUNDS THE WAIT AS WELL AS THE TICK COUNT: a slow pass leaves ticks but no time.
+test fn time_up_exceeds_the_bound_whatever_ticks_remain() -> Bool {
+  exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [finishing(n: "01")], ticks_left: 100, time_up: true), busy: 1, unproven: 0)
+    && is_waiting(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [finishing(n: "01")], ticks_left: 100, time_up: false))
+}
+
+test fn a_drained_host_is_drained_even_when_time_is_up() -> Bool {
+  is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01")], ticks_left: 0, time_up: true))
+}
+
+// THE STEP BUDGET IS THE POLICY'S THREE FIGURES, and a smaller one refuses before anything is masked.
+test fn the_budget_is_drain_plus_operations_plus_release() -> Bool {
+  second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) == 2700 + 600 + 300
+}
+
+test fn a_budget_short_of_the_bracket_refuses_before_masking() -> Bool {
+  (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3599)) { BudgetCannotCover { needed: n, given: g } => second_count(s: n) == 3600 && second_count(s: g) == 3599 BudgetCovers => false })
+    && (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3600)) { BudgetCovers => true BudgetCannotCover { needed: _, given: _ } => false })
 }

@@ -954,6 +954,11 @@ data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "runner_host_file_converge_ci_wet",
 }
 
+data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_file_converge.dag",
+  function: "runner_host_cap_release_ci_wet",
+}
+
 // Where gunbc.fleet.site_pxe_edge_converge writes its run receipt: declared here, beside the step that cats it,
 // and imported by the writer and the upload step (the import graph runs converge -> ci_spec, not back).
 data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
@@ -1390,6 +1395,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_host_memory_envelope_observe_target,
     gunbc_ci_runner_host_file_converge_target,
+    gunbc_ci_runner_host_cap_release_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
@@ -3035,6 +3041,16 @@ fn gunbc_ci_runner_host_file_converge_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_runner_host_file_converge_target.entry,
     function: gunbc_ci_runner_host_file_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+  )
+}
+
+fn gunbc_ci_runner_host_cap_release_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_cap_release_target.entry,
+    function: gunbc_ci_runner_host_cap_release_target.function,
     claim_run: false,
     receipt_rel: "target/runner-host-file-converge-receipt.txt"
   )

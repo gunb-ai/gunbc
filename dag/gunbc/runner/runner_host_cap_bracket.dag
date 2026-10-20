@@ -2,7 +2,9 @@ module gunbc.runner.runner_host_cap_bracket
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, Minute, minute }
+import std.types { EpochMs }
+import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome,
@@ -75,11 +77,48 @@ data runner_host_cap_admission_closure: AdmissionClosure = AdmissionMaskOnly
 type HostCapDrainPolicy {
   wait_bound: Second
   poll_interval: Second
+  operations_allowance: Second
+  release_allowance: Second
 }
 
+// THE OPERATIONS AND RELEASE ALLOWANCES ARE POLICY CHOICES TOO, each bounding what the wait bound does
+// not: the write, daemon-reload, activation and cgroup readback after a drain (operations), and the
+// re-admission with its readback (release). They are generous against a handful of ssh round trips per
+// slot over 19 slots. The enclosing workflow step's timeout is a fold over exactly these three figures
+// (host_cap_bracket_budget), so no second literal can disagree with the bracket.
 data runner_host_cap_drain_policy: HostCapDrainPolicy = HostCapDrainPolicy {
   wait_bound: second(count: 2700),
   poll_interval: second(count: 15),
+  operations_allowance: second(count: 600),
+  release_allowance: second(count: 300),
+}
+
+// THE ENVIRONMENT VARIABLE THROUGH WHICH THE ENCLOSING STEP TELLS THE BRACKET ITS OWN DECLARED BUDGET, in
+// seconds. The workflow derives the step timeout and this value from the same policy row.
+data runner_host_cap_step_budget_env_name: String = "RUNNER_HOST_CAP_STEP_BUDGET_SECONDS"
+
+// WHAT A STEP MUST HOLD FOR THE WHOLE BRACKET: drain, operations and release, in seconds.
+fn host_cap_bracket_budget(policy: HostCapDrainPolicy) -> Second {
+  second(count: second_count(s: policy.wait_bound) + second_count(s: policy.operations_allowance) + second_count(s: policy.release_allowance))
+}
+
+fn host_cap_bracket_budget_minutes(policy: HostCapDrainPolicy) -> Minute {
+  minute(count: (second_count(s: host_cap_bracket_budget(policy: policy)) + 59) / 60)
+}
+
+fn host_cap_release_budget_minutes(policy: HostCapDrainPolicy) -> Minute {
+  minute(count: (second_count(s: policy.release_allowance) + 59) / 60)
+}
+
+// REFUSE BEFORE MASKING when the budget the bracket was given cannot cover it: a step killed mid-wait
+// leaves its masks, so a bracket that cannot finish must not begin.
+type BracketBudgetVerdict
+  = BudgetCovers
+  | BudgetCannotCover { needed: Second, given: Second }
+
+fn bracket_budget_verdict(policy: HostCapDrainPolicy, given: Second) -> BracketBudgetVerdict {
+  let needed = host_cap_bracket_budget(policy: policy)
+  if second_count(s: given) >= second_count(s: needed) { BudgetCovers } else { BudgetCannotCover { needed: needed, given: given } }
 }
 
 fn host_cap_drain_ticks(policy: HostCapDrainPolicy) -> Int {
@@ -119,13 +158,13 @@ fn drain_reading_drained(r: SlotDrainReading) -> Bool {
   r.masked && !r.listener_running && match r.activity { SlotIdle => true SlotHasLiveWorker => false SlotActivityUnobserved { cause: _ } => false }
 }
 
-fn bracket_wait_step(closure: AdmissionClosure, readings: List<SlotDrainReading>, ticks_left: Int) -> BracketWaitStep {
+fn bracket_wait_step(closure: AdmissionClosure, readings: List<SlotDrainReading>, ticks_left: Int, time_up: Bool) -> BracketWaitStep {
   let idle_listeners = map(filter(readings, r => drain_reading_idle_listener(r: r)), r => r.unit)
   if length(idle_listeners) > 0 {
     match closure { AdmissionMaskOnly => BracketAdmissionNotClosed { listeners: idle_listeners } }
   } else if all(readings, r => drain_reading_drained(r: r)) {
     BracketDrained
-  } else if ticks_left <= 0 {
+  } else if ticks_left <= 0 || time_up {
     BracketBoundExceeded {
       busy: map(filter(readings, r => drain_reading_busy(r: r)), r => r.unit),
       unproven: map(filter(readings, r => drain_reading_unproven(r: r)), r => r.unit),
@@ -143,11 +182,15 @@ type HostLeftState
 type HostCapBracketRefusal
   = BracketRefusedAdmissionNotClosed { listeners: List<NonEmptyStr> }
   | BracketRefusedBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second }
+  | BracketRefusedBudgetCannotCover { needed: Second, given: Second }
+  | BracketRefusedClockUnreadable { detail: String }
 
 fn bracket_refusal_wire(r: HostCapBracketRefusal) -> String {
   match r {
     BracketRefusedAdmissionNotClosed { listeners: ls } => join(["admission is not closed: a running idle listener is not stopped under a mask-only closure, so no cap was written; listeners=", join(map(ls, u => u as String), " ")], "")
     BracketRefusedBoundExceeded { busy: b, unproven: u, waited: w } => join(["the drain bound of ", to_string(second_count(s: w)), "s was exceeded, so no cap was written; busy=", join(map(b, x => x as String), " "), " unproven=", join(map(u, x => x as String), " ")], "")
+    BracketRefusedBudgetCannotCover { needed: n, given: g } => join(["the step budget of ", to_string(second_count(s: g)), "s cannot cover the bracket's ", to_string(second_count(s: n)), "s (drain + operations + release), so nothing was masked and no cap was written; the host is untouched"], "")
+    BracketRefusedClockUnreadable { detail: d } => join(["the wall clock could not be read (", d, "), so the total elapsed time cannot be bounded: nothing was masked and no cap was written; the host is untouched"], "")
   }
 }
 
@@ -228,28 +271,56 @@ fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, uni
 // listener refuses the host before anything is changed, because stopping it races a job assignment.
 // Later passes only MASK every slot; nothing is ever stopped, so a slot leaves service only when its own
 // job ends and the mask blocks its restart. Each pass is judged by bracket_wait_step.
-fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int) -> BracketWaitStep
+fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
 {
   let closure = runner_host_cap_admission_closure
   let before = map(units, u => read_slot_drain_over(target: target, context: context, unit: u))
-  match bracket_wait_step(closure: closure, readings: before, ticks_left: ticks_left + 1) {
+  match bracket_wait_step(closure: closure, readings: before, ticks_left: ticks_left + 1, time_up: false) {
     BracketAdmissionNotClosed { listeners: ls } => BracketAdmissionNotClosed { listeners: ls }
     BracketDrained => BracketDrained
-    BracketWaiting { ticks_left: _ } => drain_pass_over(target: target, context: context, units: units, policy: policy, ticks_left: ticks_left)
-    BracketBoundExceeded { busy: b, unproven: u } => drain_pass_over(target: target, context: context, units: units, policy: policy, ticks_left: ticks_left)
+    BracketWaiting { ticks_left: _ } => drain_pass_over(target: target, context: context, units: units, policy: policy, ticks_left: ticks_left, started: started)
+    BracketBoundExceeded { busy: b, unproven: u } => drain_pass_over(target: target, context: context, units: units, policy: policy, ticks_left: ticks_left, started: started)
   }
 }
 
-fn drain_pass_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int) -> BracketWaitStep
+// THE TOTAL ELAPSED TIME IS BOUNDED, NOT ONLY THE POLL COUNT: reads and masks take time of their own, so
+// a count of 15s sleeps undercounts. The deadline is the wait bound from the instant the bracket began; an
+// unreadable clock counts as past it (could-not-tell is not still-inside-the-bound).
+fn drain_time_up_over(policy: HostCapDrainPolicy, started: EpochMs) -> Bool
+{
+  match observer_clock_read() {
+    ObserverClockUnreadable { detail: _ } => true
+    ObserverClockObserved { instant: i } => ((observer_instant_millis(instant: i) as Int) - (started as Int)) >= second_count(s: policy.wait_bound) * 1000
+  }
+}
+
+fn drain_pass_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
 {
   let _masked = map(units, u => mask_slot_only_over(target: target, context: context, unit: u))
   let readings = map(units, u => read_slot_drain_over(target: target, context: context, unit: u))
-  match bracket_wait_step(closure: runner_host_cap_admission_closure, readings: readings, ticks_left: ticks_left) {
+  match bracket_wait_step(closure: runner_host_cap_admission_closure, readings: readings, ticks_left: ticks_left, time_up: drain_time_up_over(policy: policy, started: started)) {
     BracketWaiting { ticks_left: n } => {
       let _paced = sleep_delay_seconds_second_carrier_projection(duration: policy.poll_interval)
-      drain_pass_over(target: target, context: context, units: units, policy: policy, ticks_left: n)
+      drain_pass_over(target: target, context: context, units: units, policy: policy, ticks_left: n, started: started)
     }
     step => step
+  }
+}
+
+// THE START OF THE BRACKET, or the refusal that stops it before anything is masked.
+type BracketStart
+  = BracketStartAt { started: EpochMs }
+  | BracketStartRefused { refusal: HostCapBracketRefusal }
+
+fn bracket_start_over(policy: HostCapDrainPolicy, given: Second) -> BracketStart
+{
+  match bracket_budget_verdict(policy: policy, given: given) {
+    BudgetCannotCover { needed: n, given: g } => BracketStartRefused { refusal: BracketRefusedBudgetCannotCover { needed: n, given: g } }
+    BudgetCovers =>
+      match observer_clock_read() {
+        ObserverClockUnreadable { detail: d } => BracketStartRefused { refusal: BracketRefusedClockUnreadable { detail: d } }
+        ObserverClockObserved { instant: i } => BracketStartAt { started: observer_instant_millis(instant: i) }
+      }
   }
 }
 
