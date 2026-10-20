@@ -66,6 +66,7 @@ import v2.std.node {
 }
 import v2.std.node_query { find_named_child }
 import v2.std.witness { Holds, Violates, Witness, list_nth }
+import std.host_text { chars }
 
 type GhaFoldStepBundle {
   production_binding: Symbol,
@@ -669,7 +670,7 @@ fn gha_fold_translation_rules_node_for_emitted(
 fn gha_fold_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 

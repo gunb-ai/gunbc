@@ -132,6 +132,7 @@ import std.materialization_object {
   store_object_name, store_object_format_version, store_lookup_from_address, store_commit_prepare_addressed, store_commit_settle,
   StoreCommitAddressRefused,
 }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
