@@ -6,7 +6,11 @@ module test.probe.deployment_gate_evidence_forged_probe
 // refuses, so this module attempts the REAL forgery rather than a caricature of it: a foreign module
 // handing FABRICATED INPUTS to the producers, which is the route an actual caller would take.
 //
-// FOUR FORGERIES, THE FOUR ROUTES THAT WOULD WORK IF THE SEAL WERE ONLY A COMMENT.
+// THE FORGERIES BELOW, ONE PER ROUTE THAT WOULD WORK IF THE SEAL WERE ONLY A COMMENT. (a)-(d) were the
+// original four; (e)-(h) came from the side-chat round and (i)-(j) from the clock ruling -- the count is
+// deliberately not in this sentence, because a numbered header goes stale every time a door is added and
+// a stale count in a security claim is worse than none. The test names in
+// test.claim.deployment_gate_evidence_forged_probe_witness are the authority on what is claimed.
 //
 // (a) THE ACCEPTED REVIEW. A receipt is the primary evidence that GitHub accepted a rule review for a
 // run, on an environment, under an installation. Its producer, mint_accepted_rule_review, is the only
@@ -32,8 +36,9 @@ module test.probe.deployment_gate_evidence_forged_probe
 // sits under the whole-tree strict-resolve exclusion, so this source reaches the compiler only through
 // that witness.
 
-import std.types { Int, Bool, NonEmptyStr }
-import std.optional { Present }
+import std.types { Int, Bool, NonEmptyStr, Timestamp }
+import std.optional { Present, Optional, optional_present }
+import std.scoped_authorization { AttemptIdentity }
 import gunbc.auth.deployment_gate_authorization {
   AcceptedRuleReviewReceipt,
   AcceptedReviewOutcome,
@@ -53,6 +58,10 @@ import gunbc.auth.deployment_gate_authorization {
   RemovalRefused,
   observe_removal_boundary_standing,
   RemovalBoundaryStandingObservation,
+  ProtectionOwnershipJoin,
+  DeploymentGateBoundary,
+  ObservedInstant,
+  read_observed_instant,
 }
 // THE ACT BUILDER LIVES IN THE STEPS MODULE, which is the point: the confined producer is the module
 // that owns the act, and this probe is foreign to it.
@@ -309,10 +318,36 @@ fn forge_through_the_act_proxy() -> Int {
 
 // (h) THE STANDING'S OWN DOOR, FROM OUTSIDE (blocker 3's mint). A standing is what turns historical
 // evidence into a licence, so it must be as hard to obtain as the receipts. Inputs are parameters: this
-// function contains a call to a confined mint and no sealed literal.
+// function contains a call to a confined mint and no sealed literal. The instant argument is a PARAMETER
+// too, not a value written here -- this probe must not contain an ObservedInstant literal, since the whole
+// claim of the seal is that no caller can hand one over.
 fn forge_the_standing(
-  ownership: EnvironmentRuleOwnership,
-  protection: GitHubEnvironmentProtectionSettings
+  joined: ProtectionOwnershipJoin,
+  boundary: DeploymentGateBoundary,
+  attempt: AttemptIdentity,
+  observed_at: ObservedInstant,
 ) -> RemovalBoundaryStandingObservation {
-  observe_removal_boundary_standing(ownership: ownership, protection: protection)
+  observe_removal_boundary_standing(
+    joined: joined,
+    boundary: boundary,
+    attempt: attempt,
+    observed_at: optional_present(value: observed_at),
+  )
 }
+
+// (i) THE CLOCK'S DOOR, FROM OUTSIDE (the ruling's clock seal). A standing whose instant came from a
+// foreign reading is a stale observation wearing a fresh stamp: the bound in blocker 2 only bites if the
+// instant it measures against is the one the clock returned. The door admits the stage-5 read and named
+// fixtures and nobody else, so the only thing left to check is that a foreign module cannot reach it.
+// The argument is a parameter, not a literal: what is being tested is the DOOR, not the string.
+fn forge_the_instant(reading: NonEmptyStr?) -> Optional<ObservedInstant> {
+  read_observed_instant(reading: reading)
+}
+
+data forged_instant_text: Timestamp = "2026-10-19T12:00:00Z"
+
+// (j) THE FORGED INSTANT, written instead of read (the ruling's clock RED). This is the (d) family, and
+// it is the check the whole seal comes down to: if a foreign module can write the instant an observation
+// is stamped with, then blocker 2's freshness bound measures a number the caller chose. The text beside it
+// is a well-formed UTC instant -- a shape check is not what is being refused here.
+data forged_instant: ObservedInstant = ObservedInstant { instant: forged_instant_text }

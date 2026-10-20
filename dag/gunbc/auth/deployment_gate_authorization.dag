@@ -1473,8 +1473,10 @@ fn join_protection_to_ownership(
 // shape at the call site -- an annotated row, a cast, a helper with a declared return -- while
 // byte-identical annotations on neighbouring declarations accept the identical rows. That refusal is
 // a language-layer defect, recorded in the ledger as
-// gunbc.recurring_failure_mode.a_sealed_mints_alias_parameter_refuses_every_value (§5: a routing
-// decision around a check is recorded, not absorbed). The sealed record is ALSO the better model
+// gunbc.recurring_failure_mode.an_admitted_mint_s_alias_parameter_refuses_every_argument (§5: a
+// routing decision around a check is recorded, not absorbed). That row carries the control that
+// makes the refusal recognisable: the identical annotation on a plain same-module fn accepts the
+// identical argument, so the test is a control beside the refused pair, not the error message. The sealed record is ALSO the better model
 // independent of the defect: it is the difference between "a string that happens to look like a time"
 // and "the time this read happened", and only the second is what a boundary-weakening decision may
 // rest on. If this record hits the same refusal, STOP and escalate before working around it twice.

@@ -68,7 +68,7 @@ fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
 // THE CONTROL: names the sealed records and the sealed mints, calls nothing, writes no literal. If
 // THIS reads a violation, everything the probe reports would be about importing the module rather
 // than about forging.
-data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, RemovalBoundaryStandingObservation, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, observe_removal_boundary_standing, admit_reviewer_removal }\nimport gunbc.auth.deployment_gate_operator_steps { AdmittedReviewerRemovalAct, ReviewerRemovalStepDecision, ReviewerRemovalReady, RemovalAdmitted, RemovalRefused, build_reviewer_removal_act }\nimport gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }\nimport test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }\nfn label() -> String { \"control names the sealed records, imports the sealed mints and the witness proxies, calls none of them, and forges nothing.\" }\n"
+data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, RemovalBoundaryStandingObservation, ObservedInstant, read_observed_instant, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, observe_removal_boundary_standing, admit_reviewer_removal }\nimport gunbc.auth.deployment_gate_operator_steps { AdmittedReviewerRemovalAct, ReviewerRemovalStepDecision, ReviewerRemovalReady, RemovalAdmitted, RemovalRefused, build_reviewer_removal_act }\nimport gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }\nimport test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }\nfn label() -> String { \"control names the sealed records, imports the sealed mints and the witness proxies, calls none of them, and forges nothing.\" }\n"
 
 test fn a_source_that_only_names_the_gate_types_forges_no_evidence() -> Bool {
   refusals(c: control_census(), class: "SoleConstructorViolation", subject: "AcceptedRuleReviewReceipt") == 0
@@ -194,6 +194,48 @@ test fn a_foreign_call_to_the_standing_mint_is_refused() -> Bool {
     class: "ConstructorCallAdmissionRefused",
     subject: "observe_removal_boundary_standing",
   ) >= 1
+}
+
+// (i) THE CLOCK'S DOOR, FROM OUTSIDE (the ruling's clock seal, one half). The door has an admitted
+// roster -- the stage-5 read and named fixtures -- so what is left to prove is that a stranger cannot
+// use it. If this ever reads zero, an outsider can obtain an instant and the freshness bound in blocker
+// 2 measures a number whoever called chose.
+test fn a_foreign_call_to_the_clock_door_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "read_observed_instant",
+  ) >= 1
+}
+
+// (i) THE CLOCK'S DOOR, THE OTHER HALF: the value itself, written rather than read. A confined door that
+// can be walked around by writing the record is not a door. The text this probe writes IS a well-formed
+// UTC instant, so the only thing left that can refuse it is the seal.
+test fn a_forged_observed_instant_literal_is_refused_at_the_record() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "SoleConstructorViolation",
+    subject: "ObservedInstant",
+  ) >= 1
+}
+
+// THE CONTROLS FOR THE CLOCK PAIR. The control imports both names and writes no literal and calls
+// nothing, so a nonzero at either cannot be an artifact of importing the module -- the same pairing the
+// older seals use, one claim per name so a red says WHICH door.
+test fn the_control_reports_no_admission_refusal_for_the_clock_door() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "read_observed_instant",
+  ) == 0
+}
+
+test fn the_control_reports_no_violation_for_the_observed_instant_record() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "SoleConstructorViolation",
+    subject: "ObservedInstant",
+  ) == 0
 }
 
 // THE CONTROL FOR (g) AND (h): the control source imports every one of those four names and calls
