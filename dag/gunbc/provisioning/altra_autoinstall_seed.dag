@@ -69,7 +69,7 @@ module gunbc.provisioning.altra_autoinstall_seed
 // no decision in this module reads a string. A hostname in a seed is a per-unit special case wearing a
 // config field, which is the class of undeclared rule this whole program exists to retire; two units of
 // the same model must reach the same digest. Two host-bearing fields exist and are NOT that thing:
-// `ArchiveMirror::NamedMirror { host }` names the ARCHIVE we fetch from (shared by every unit, and its
+// `ArchiveMirrorAuthority`'s `host` names the ARCHIVE we fetch from (shared by every unit, and its
 // absence is a refusal, not a default), and `project_autoinstall_identity`'s `binding_hostname` is a
 // PARAMETER the binding layer supplies into a field upstream's payload demands — this module never
 // invents it, never branches on it, and does not store it in the seed, so it cannot reach the digest.
@@ -92,6 +92,8 @@ import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, Cite
 import extdeps.debian.debconf {
   DebconfAnswerKind,
   DebconfSelectionRecord,
+  MintedSelection,
+  RefusedAtTheMint,
   debconf_answer_record,
   debconf_selection_answer,
   debconf_selection_kind,
@@ -626,8 +628,12 @@ fn debconf_answer(
   value: NonEmptyStr,
 ) -> List<DebconfSelectionRecord> {
   match debconf_answer_record(owner: owner, label: label, kind: kind, value: value) {
-    Present { value: record } => [record]
-    Absent => []
+    // THE MINT'S OWN TWO ARMS. Collapsing an illegal attempt to NO RECORDS is still the safe direction and
+    // certifies nothing — no record means the required key is unestablished, the verdict is OpenQuestion, and
+    // the seed is refused — but the refusal now travels as a typed cause rather than as an absence, so nothing
+    // downstream is tempted to ask "why" by re-running the mint's own checks.
+    MintedSelection { record: record } => [record]
+    RefusedAtTheMint { cause: _ } => []
   }
 }
 
@@ -982,14 +988,22 @@ fn known_prompting_packages() -> List<KnownPromptingPackage> {
   ]
 }
 
-// WHAT A MISSING MIRROR IS, MODELLED. It is not an empty string and not a placeholder host: it is the
-// ABSENCE of the closed member that names the mirror authority, and its consequence is DERIVED rather
-// than asserted. With no mirror, subiquity has nothing to answer the archive-location question with, so
-// the seed becomes interactive although no package in the list prompts — which is why the arm below is a
-// NonInteractiveProofFailure and not a note beside a default. A future requirement (a per-site mirror)
-// adds a NamedMirror row and keeps the audit's MirrorAbsent arm intact; it does not add a String field
-// that could be empty.
-type ArchiveMirror = NamedMirror { host: NonEmptyStr } | MirrorAbsent
+// WHAT A MIRROR IS, AND WHAT ITS ABSENCE IS. The presence is this closed record — a host, never a bare String
+// that could be empty or a URL with a scheme in it. The absence is std.optional::Absent, the carrier §3b names
+// for presence and absence, NOT a hand-built second arm: an earlier cut wrote `NamedMirror | MirrorAbsent`, which
+// is a re-mint of that authority, and the readers paid for it — an absence re-handled at every consumer, plus a
+// digest spelling that let a host literally named `absent` collide with having no mirror at all. Absent here means
+// EXACTLY ONE THING: no mirror was supplied. A supplied-but-illegal mirror never reaches this field at all, because
+// the host arrives through a mint whose result is a sealed record or a typed refusal (the
+// `DebconfSelectionMint` idiom on the debconf shelf), and a refusal is reported, not demoted to Absent — a
+// rejection and an absence are different facts and only ever occupy different types. With no mirror, subiquity has nothing to answer the
+// archive-location question with, so the seed becomes interactive although no package in the list prompts — which
+// is why the audit's Absent arm is a refusal and not a note beside a default. A future requirement (a per-site
+// mirror with a port, or a proxy) adds a constructor to ArchiveMirrorAuthority; it does not add a String field
+// that could be empty, and it cannot digest into an existing arm's bytes because mirror_diagnostic tags per arm.
+type ArchiveMirrorAuthority = | NamedMirrorAuthority { host: NonEmptyStr }
+
+type ArchiveMirror = Optional<ArchiveMirrorAuthority>
 
 // THE LOCALE AXIS IS CLOSED TO THE TWO SPELLINGS THE INSTALLER ACCEPTS WITHOUT A FOLLOW-UP QUESTION. A
 // future requirement (a French-language install, a non-UTF-8 console) adds a constructor HERE, which
@@ -1587,8 +1601,8 @@ fn audit_seed_interactivity(
       SeedRefused { cause: PackagePrompts { name: "locale" as NonEmptyStr, question: question } }
     Absent =>
       match network.mirror {
-        MirrorAbsent => SeedRefused { cause: ArchiveMirrorAbsent }
-        NamedMirror { host: _ } =>
+        Absent => SeedRefused { cause: ArchiveMirrorAbsent }
+        Present { value: _ } =>
           match network.addressing {
             InstallerManaged => SeedRefused { cause: AddressingIsInstallerManaged }
             SeededNetplan { source: _ } =>
@@ -1715,8 +1729,8 @@ fn questions_closed_count(
     InstallerManaged => 0
   }
   let mirror_closed = match network.mirror {
-    NamedMirror { host: _ } => 1
-    MirrorAbsent => 0
+    Present { value: _ } => 1
+    Absent => 0
   }
   closed + addressing_closed + mirror_closed + 1
 }
@@ -3009,13 +3023,27 @@ fn address_family_diagnostic(family: SeedAddressFamily) -> NonEmptyStr {
   }
 }
 
-// AN ABSENT MIRROR RENDERS AS ITS OWN TOKEN. It must not be rendered as an empty segment, because then the
-// seed that has no mirror and the seed whose mirror is the empty string would digest identically — and the
-// first is a refusal while the second should not be expressible at all.
+// ONE SPELLING, THE TWO ARMS TAGGED APART (review 83255). The first version rendered a named mirror as the bare
+// host and an absent one as the bare word "absent" — a collision with the worst possible shape: a mirror
+// literally named `absent` fed the digest EXACTLY like no mirror at all, so a receipt could not tell "this seed
+// has no archive" (a refusal) from "this seed points at a host called absent" (a misconfiguration that installs
+// anyway). Those two facts are one bit apart and the digest said they were the same bytes. The named arm now
+// carries its OWN LENGTH FRAME (`host[<n>]:<h>`), which every present mirror must carry, and the absent arm is
+// the bare token `absent`, which the framed form can never produce because no host can drop the `host[<n>]:`
+// prefix. THE TAG IS WHAT SEPARATES THE ARMS; THE FRAME MAKES THE FIELD SELF-DELIMITING. Today the render is a
+// fixed-order list of non-empty segments joined by '|', so a host containing that delimiter cannot yet make two
+// distinct seeds collide — it can only append junk inside its own segment. The frame is what keeps it that way
+// when the preimage changes shape: reorder a segment, make one optional, and an unframed host containing '|'
+// starts masquerading as the next segment's label. Framing now is cheaper than reasoning about it later, and it
+// is the same framing every other host- or serial-shaped field in this preimage already uses. THIS STRING IS THE
+// DIGEST PREIMAGE — render_altra_autoinstall_seed is its only consumer — so the tagging is not a reporting
+// choice but the thing that makes the receipt's answer trustworthy; a second untagged spelling kept beside it
+// would be the collision again with a greener name. A future arm of ArchiveMirrorAuthority adds a case HERE with
+// its own tag (unhandled, no default), so a new kind of mirror cannot digest into an existing arm's bytes.
 fn mirror_diagnostic(mirror: ArchiveMirror) -> NonEmptyStr {
   match mirror {
-    NamedMirror { host: h } => h
-    MirrorAbsent => "absent"
+    Present { value: NamedMirrorAuthority { host: h } } => framed_field(label: "host", value: h)
+    Absent => "absent"
   }
 }
 

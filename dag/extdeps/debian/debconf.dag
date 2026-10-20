@@ -161,8 +161,33 @@ type DebconfSelectionRecord sole_constructor {
   value: NonEmptyStr
 }
 
-// THE ONLY MINT. Refuses an empty key field, a key field carrying whitespace, and an empty value — the three ways
-// a record could be authored that would not survive the trip to the installer.
+// WHY A REFUSAL CARRIES ITS CAUSE (review 83255). The mint refuses four DIFFERENT defects and they have
+// different remedies: an owner carrying a boundary is a mis-typed package name, a label carrying a boundary is a
+// mis-typed question name, a value carrying a newline is two records smuggled into one, and a value made only of
+// separators is an answer that was never given. A bare absence would make the caller re-derive which of the four
+// it got — by re-running these same checks on the fields it already holds, which is the second-copy-of-a-rule
+// defect this shelf exists to prevent. So the refusal is one closed union, one arm per refused fact, and each arm
+// carries the offending field back so the diagnostic is located rather than merely categorised. An EMPTY key
+// field or an empty value gets no arm because it is unnameable at the signature — both fields are NonEmptyStr,
+// the refinement refuses it before this function is entered, and a cause arm for it would be a dead row no
+// witness can turn RED. FUTURE REQUIREMENT: a fifth refused fact adds an arm here AND the arm's check in the
+// mint's chain; the witness row that sweeps these arms fails if either falls behind.
+type DebconfSelectionRefusalCause
+  = OwnerCarriesAFieldBoundary { owner: NonEmptyStr }
+  | LabelCarriesAFieldBoundary { label: NonEmptyStr }
+  | ValueEndsTheLine { value: NonEmptyStr }
+  | ValueSelectsNothing { value: NonEmptyStr }
+
+// THE MINT'S RESULT: a sealed record, or the typed reason this one could not be sealed. Two arms, exhaustive, no
+// Optional — the presence and the cause of its absence are decided by the same examination and must travel
+// together, which is why Optional<DebconfSelectionRecord> was the wrong carrier: it kept the cause and the
+// record in two different worlds.
+type DebconfSelectionMint
+  = MintedSelection { record: DebconfSelectionRecord }
+  | RefusedAtTheMint { cause: DebconfSelectionRefusalCause }
+
+// THE ONLY MINT. Refuses a key field carrying whitespace or a newline, and a value that is whitespace-only or
+// carries a newline — the ways a record could be authored that would not survive the trip to the installer.
 //
 // KEY FIELDS MAY NOT CONTAIN WHITESPACE, and the reason is upstream's reader rather than tidiness: the regex that
 // splits a line is `/^\s*(\S+)\s+(\S+)\s+(\S+)(?:\s(.*))?/` (line 132), so each of the first three fields is a
@@ -181,21 +206,29 @@ fn debconf_selection_record(
   label: NonEmptyStr,
   kind: DebconfSelectionKind,
   value: NonEmptyStr,
-) -> Optional<DebconfSelectionRecord> {
+) -> DebconfSelectionMint {
   match key_field_is_well_formed(text: owner as String) {
-    False => Absent
+    False => RefusedAtTheMint { cause: OwnerCarriesAFieldBoundary { owner: owner } }
     True =>
       match key_field_is_well_formed(text: label as String) {
-        False => Absent
+        False => RefusedAtTheMint { cause: LabelCarriesAFieldBoundary { label: label } }
         True =>
-          match value_is_well_formed(text: value as String) {
-            False => Absent
-            True => Present { value: DebconfSelectionRecord {
-              owner: owner,
-              label: label,
-              kind: kind,
-              value: value,
-            } }
+          // THE TWO VALUE FACTS ARE EXAMINED APART, not through one collapsed Bool, because the refusal names
+          // which one failed: a newline splits the record (a second record smuggled into one) while a run of
+          // separators answers nothing, and a caller given only "no" could tell them apart only by re-running
+          // these checks itself.
+          match value_ends_the_line(text: value as String) {
+            True => RefusedAtTheMint { cause: ValueEndsTheLine { value: value } }
+            False =>
+              match value_has_a_character_that_is_not_a_separator(text: value as String) {
+                False => RefusedAtTheMint { cause: ValueSelectsNothing { value: value } }
+                True => MintedSelection { record: DebconfSelectionRecord {
+                  owner: owner,
+                  label: label,
+                  kind: kind,
+                  value: value,
+                } }
+              }
           }
       }
   }
@@ -212,7 +245,7 @@ fn debconf_answer_record(
   label: NonEmptyStr,
   kind: DebconfAnswerKind,
   value: NonEmptyStr,
-) -> Optional<DebconfSelectionRecord> {
+) -> DebconfSelectionMint {
   debconf_selection_record(
     owner: owner,
     label: label,
@@ -230,7 +263,7 @@ fn debconf_flag_record(
   label: NonEmptyStr,
   flag: DebconfFlag,
   value: NonEmptyStr,
-) -> Optional<DebconfSelectionRecord> {
+) -> DebconfSelectionMint {
   debconf_selection_record(
     owner: owner,
     label: label,
@@ -239,30 +272,28 @@ fn debconf_flag_record(
   )
 }
 
+// A VALUE THAT ENDS THE LINE IS NOT ONE RECORD. Upstream reads the file line by line and matches the content as
+// (.*) to end of line, so an embedded newline does not survive as content — it SPLITS the record, and the tail is
+// read as a separate record whose owner is whatever text follows. That is an answer smuggled in as a
+// continuation, and it is invisible in the record list, where there is exactly one record. A SPACE, by contrast,
+// is legal content ("English (US)" is a real answer), which is why this refuses exactly the newline; the
+// sibling fact — a value that selects nothing — is the walker below, and the mint examines the two apart so the
+// refusal can name which one failed.
+fn value_ends_the_line(text: String) -> Bool {
+  text.contains(needle: "\n")
+}
+
 // A VALUE THAT SELECTS NOTHING IS NOT AN ANSWER. Upstream stores an empty content happily (lines 133-135) and
 // the package then prompts for the answer anyway, which for a headless board is the hang this whole module
 // exists to prevent. So the mint is STRICTER than upstream on purpose, and the difference is stated here rather
 // than hidden: the refinement already refuses the empty string at the type, and what this check adds is the
 // whitespace-only value — " " is a non-empty String that selects no choice, so it would be credited as closing
-// a question it leaves open. A future requirement to carry upstream's empty content verbatim (a preseed that
-// deliberately clears a value) is an honest reason to add a second constructor named for that intent, not a
-// reason to relax this one.
-// THE VALUE'S TWO REFUSALS, in one gate. A NEWLINE IS STRUCTURAL AND MAY NOT RIDE IN A VALUE: upstream reads
-// the file line by line and matches the content as (.*) to end of line, so an embedded newline does not survive
-// as content — it SPLITS the record, and the tail is read as a separate record whose owner is whatever text
-// follows. That is an answer smuggled in as a continuation, and it is invisible in the record list, where there
-// is exactly one record. A SPACE, by contrast, is legal content ("English (US)" is a real answer), which is why
-// this check refuses exactly the newline and nothing else in that direction. NO THIRD REFUSAL IS WRITTEN FOR A
-// VALUE THAT IS A LONE SPACE: the walker it delegates to refuses any string made entirely of separators, and a
-// lone space is exactly that string. A branch written for the special case would be a second copy of a rule the
-// walker already holds, and a mutation of the walker would still have to defeat it — which is how two checks for
-// one fact quietly become one check nobody tests.
-fn value_is_well_formed(text: String) -> Bool {
-  match text.contains(needle: "\n") {
-    True => false
-    False => value_has_a_character_that_is_not_a_separator(text: text)
-  }
-}
+// a question it leaves open. NO SPECIAL CASE FOR A LONE SPACE IS WRITTEN ABOVE IT: this walker refuses any
+// string made entirely of separators, and a lone space is exactly that string; a branch written for the special
+// case would be a second copy of a rule the walker already holds, and a mutation of the walker would still have
+// to defeat it — which is how two checks for one fact quietly become one check nobody tests. A future
+// requirement to carry upstream's empty content verbatim (a preseed that deliberately clears a value) is an
+// honest reason to add a second constructor named for that intent, not a reason to relax this one.
 
 // EVERY CHARACTER A SEPARATOR MEANS NOTHING WAS CHOSEN. Substring-and-length walking again, because this
 // language has no character indexing; the claim is small and deliberately so — it refuses the strings made
@@ -297,8 +328,9 @@ fn value_has_a_character_that_is_not_a_separator(text: String) -> Bool {
 // A KEY FIELD: no space, no tab, no newline in it. Upstream splits the first three fields as (\S+) runs, so any
 // of the three ends the field early and re-aligns every field after it; the scan is written with `contains`
 // because all three refusals are "does this character appear anywhere", which is what \S+ means for one field.
-// NO ZERO-LENGTH ARM HERE, DELIBERATELY, for the reason given at value_is_well_formed: every caller passes a
-// NonEmptyStr, so the empty string cannot be named at the door, and an arm written for it can never go RED.
+// NO ZERO-LENGTH ARM HERE, DELIBERATELY, for the reason debconf_selection_record states at its refusals: every
+// caller passes a NonEmptyStr, so the empty string cannot be named at the door, and an arm written for it can
+// never go RED.
 fn key_field_is_well_formed(text: String) -> Bool {
   match text.contains(needle: " ") {
     True => false

@@ -27,6 +27,13 @@ import extdeps.debian.debconf {
   Flagged,
   Answered,
   SeenFlag,
+  DebconfSelectionMint,
+  MintedSelection,
+  RefusedAtTheMint,
+  OwnerCarriesAFieldBoundary,
+  LabelCarriesAFieldBoundary,
+  ValueEndsTheLine,
+  ValueSelectsNothing,
   debconf_answer_record,
   debconf_flag_record,
   debconf_flag_spelling,
@@ -161,10 +168,10 @@ import gunbc.provisioning.altra_autoinstall_seed {
   DualStack,
   EnUsUtf8,
   InstallerManaged,
+  ArchiveMirrorAuthority,
   Ipv4Only,
-  MirrorAbsent,
   MultipleDisksMatch,
-  NamedMirror,
+  NamedMirrorAuthority,
   NoDiskMatches,
   NoEntrypointAtAll,
   NonInteractiveConsoleStanza,
@@ -393,19 +400,19 @@ data no_keys: List<SshPublicKey> = []
 data network_posture: SeedNetworkPosture = SeedNetworkPosture {
   addressing: SeededNetplan { source: "00-gunbc.yaml" as NonEmptyStr },
   family: Ipv4Only,
-  mirror: NamedMirror { host: "mirror.internal.invalid" as NonEmptyStr },
+  mirror: Present { value: NamedMirrorAuthority { host: "mirror.internal.invalid" as NonEmptyStr } },
 }
 
 data posture_no_mirror: SeedNetworkPosture = SeedNetworkPosture {
   addressing: SeededNetplan { source: "00-gunbc.yaml" as NonEmptyStr },
   family: Ipv4Only,
-  mirror: MirrorAbsent,
+  mirror: Absent,
 }
 
 data posture_installer_managed: SeedNetworkPosture = SeedNetworkPosture {
   addressing: InstallerManaged,
   family: DualStack,
-  mirror: NamedMirror { host: "mirror.internal.invalid" as NonEmptyStr },
+  mirror: Present { value: NamedMirrorAuthority { host: "mirror.internal.invalid" as NonEmptyStr } },
 }
 
 // EVERY PACKAGE HERE DECLARES WHICH OF THE THREE KNOWLEDGE ARMS IT IS IN. openssh-server and postfix both
@@ -1057,6 +1064,63 @@ test fn the_transport_moves_the_digest() -> Bool {
             left: altra_autoinstall_seed_digest(seed: via_media),
             right: altra_autoinstall_seed_digest(seed: via_pxe),
           )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: THE COLLISION THAT THE TAG EXISTS TO PREVENT (review 83255; mutations
+// M25-Mirror-UntaggedAbsent / M25-Mirror-HostUntagged). The preimage once rendered an absent mirror as the bare
+// word "absent" and a named one as the bare host, so a mirror whose host was literally `absent` — legal as a
+// NonEmptyStr, and the kind of string that appears in a broken config — fed the digest EXACTLY the bytes of "no
+// mirror at all". The two facts are one bit apart (refused vs. installs-anyway) and the receipt said they were
+// the same seed. Asserted BOTH WAYS: the two digests must differ, and each must still equal itself, so the
+// witness is not merely watching two broken seeds collide with a third thing.
+test fn a_host_named_after_the_absence_token_is_never_digested_as_no_host_at_all() -> Bool {
+  match build_seed_fixture(
+    network: SeedNetworkPosture {
+      addressing: StaticIpv4,
+      family: Ipv4Only,
+      mirror: Present { value: NamedMirrorAuthority { host: "absent" as NonEmptyStr } },
+    },
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+  ) {
+    Present { value: host_called_absent } =>
+      match build_seed_fixture(
+        network: SeedNetworkPosture {
+          addressing: StaticIpv4,
+          family: Ipv4Only,
+          mirror: Absent,
+        },
+        packages: clean_packages,
+        entry_keys: one_key,
+        console: locked_console,
+        credential: seeded_handle,
+        delivery: virtual_media_strategy,
+        target: target_altra,
+      ) {
+        Present { value: no_mirror } =>
+          // DIFFERENT SEEDS, because they are different facts about the machine.
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: host_called_absent),
+            right: altra_autoinstall_seed_digest(seed: no_mirror),
+          )
+            // ...AND EACH IS STILL ITSELF: the host arm must not have collapsed into a third spelling either,
+            // which is why a tag that made both arms constant would also fail here.
+            && content_hash_eq_structural(
+              left: altra_autoinstall_seed_digest(seed: host_called_absent),
+              right: altra_autoinstall_seed_digest(seed: host_called_absent),
+            )
+            && content_hash_eq_structural(
+              left: altra_autoinstall_seed_digest(seed: no_mirror),
+              right: altra_autoinstall_seed_digest(seed: no_mirror),
+            )
         Absent => false
       }
     Absent => false
@@ -3121,7 +3185,7 @@ test fn both_fixtures_yield_bound_records_rather_than_placeholders() -> Bool {
 data network_posture_alt_netplan: SeedNetworkPosture = SeedNetworkPosture {
   addressing: SeededNetplan { source: "99-gunbc-alt.yaml" as NonEmptyStr },
   family: Ipv4Only,
-  mirror: NamedMirror { host: "mirror.internal.invalid" as NonEmptyStr },
+  mirror: Present { value: NamedMirrorAuthority { host: "mirror.internal.invalid" as NonEmptyStr } },
 }
 
 // THE SAME SEED ON THE OTHER UNIT, for the witness that requires both bindings to be Bound rather than
@@ -4313,8 +4377,8 @@ test fn a_record_renders_the_canonical_four_field_line() -> Bool {
     kind: AnswerSelect,
     value: "America" as NonEmptyStr,
   ) {
-    Absent => false
-    Present { value: record } =>
+    RefusedAtTheMint { cause: _ } => false
+    MintedSelection { record: record } =>
       (debconf_selection_line(record: record) as String) == "tzdata tzdata/Areas select America"
   }
 }
@@ -4331,8 +4395,8 @@ test fn a_value_with_spaces_renders_with_exactly_three_separators() -> Bool {
     kind: AnswerSelect,
     value: "English (US)" as NonEmptyStr,
   ) {
-    Absent => false
-    Present { value: record } =>
+    RefusedAtTheMint { cause: _ } => false
+    MintedSelection { record: record } =>
       match (debconf_selection_line(record: record) as String) {
         line =>
           line == "keyboard-configuration keyboard-configuration/layout select English (US)"
@@ -4462,8 +4526,8 @@ fn flag_for_area_plus_answered_zone() -> List<DebconfSelectionRecord> {
     flag: SeenFlag,
     value: "America" as NonEmptyStr,
   ) {
-    Absent => []
-    Present { value: flag_record } =>
+    RefusedAtTheMint { cause: _ } => []
+    MintedSelection { record: flag_record } =>
       list_append(
         left: [flag_record],
         right: debconf_answer_for(
@@ -4526,8 +4590,8 @@ test fn a_flag_mints_and_renders_while_the_answer_projection_skips_it() -> Bool 
     flag: SeenFlag,
     value: "true" as NonEmptyStr,
   ) {
-    Absent => false
-    Present { value: flag_record } =>
+    RefusedAtTheMint { cause: _ } => false
+    MintedSelection { record: flag_record } =>
       match (debconf_selection_line(record: flag_record) as String) {
         line =>
           match line == "tzdata tzdata/Areas seen true" {
@@ -4542,8 +4606,8 @@ test fn a_flag_mints_and_renders_while_the_answer_projection_skips_it() -> Bool 
                     kind: AnswerSelect,
                     value: "America" as NonEmptyStr,
                   ) {
-                    Absent => false
-                    Present { value: answer_record } =>
+                    RefusedAtTheMint { cause: _ } => false
+                    MintedSelection { record: answer_record } =>
                       match debconf_selection_answer(record: answer_record) {
                         Absent => false
                         Present { value: credited } => credited == AnswerSelect
@@ -4605,17 +4669,17 @@ test fn an_answer_whose_owner_carries_a_space_closes_nothing_and_the_seed_is_ref
   }
 }
 
-// A RECORD THAT COULD NOT SURVIVE THE TRIP IS NEVER WRITTEN, field by field, and the refusals are each
-// separately load-bearing (mutation: key_field_is_well_formed returning true unconditionally, or
-// value_is_well_formed returning true unconditionally). The three reasons come from upstream's reader rather
-// than from taste. A SPACE OR NEWLINE IN A KEY FIELD re-aligns every field after it — upstream splits the first
-// three as (\S+) runs, so the answer lands on a package nobody meant to configure while tzdata's own question
-// stays live. A NEWLINE IN A VALUE renders one record as two lines, and the second line is read as a separate
-// record whose owner is whatever follows: an answer smuggled in as a continuation. A VALUE THAT SELECTS NOTHING
-// is upstream-legal (it stores '' at lines 133-135) and leaves the package prompting anyway, so this programme
-// is STRICTER than upstream and the difference is stated at the constructor; the empty string itself is already
-// refused one level down, by the NonEmptyStr refinement, so the arm below is the whitespace-only value the
-// refinement cannot see, which is the one a human actually types into a preseed editor.
+// A RECORD THAT COULD NOT SURVIVE THE TRIP IS NEVER WRITTEN, field by field, and each refusal is separately
+// load-bearing AND SEPARATELY NAMED (mutations M24-KeyField-SpaceAllowed / -TabAllowed / -NewlineAllowed /
+// M24-Value-SelectsAnything / M24-Value-WalkerBaseCase, one per check; and M25-Cause-OwnerReportedAsValue /
+// M25-Cause-ValueFactsCollapsed, one per cause arm). Review 83255 asked whether a refusal that carries no cause
+// would force a caller to re-derive which defect it got — and re-deriving means re-running these same checks. So
+// the mint answers with one arm per refused fact, and each arm is asserted BY NAME below, with the other three
+// arms present as controls that must NOT be the one reported: a refusal that arrives with the wrong cause sends
+// the caller to fix the wrong field, which is the same failure the cause union exists to prevent. The reasons
+// come from upstream's reader rather than from taste. A SPACE IN A KEY FIELD re-aligns every field after it —
+// upstream splits the first three as (\S+) runs, so the answer lands on a package nobody meant to configure
+// while tzdata's own question stays live.
 test fn the_mint_refuses_the_fields_that_could_not_survive_the_trip() -> Bool {
   match debconf_answer_record(
     owner: "tzdata extra" as NonEmptyStr,
@@ -4623,52 +4687,91 @@ test fn the_mint_refuses_the_fields_that_could_not_survive_the_trip() -> Bool {
     kind: AnswerSelect,
     value: "America" as NonEmptyStr,
   ) {
-    Present { value: _ } => false
-    Absent =>
-      match debconf_answer_record(
-        owner: "tzdata" as NonEmptyStr,
-        label: "tzdata Areas" as NonEmptyStr,
-        kind: AnswerSelect,
-        value: "America" as NonEmptyStr,
-      ) {
-        Present { value: _ } => false
-        Absent =>
-          match debconf_answer_record(
+    MintedSelection { record: _ } => false
+    RefusedAtTheMint { cause: cause } => match cause {
+      // THE CAUSE NAMES THE FIELD, and carries the offending value back so the diagnostic is located rather than
+      // merely categorised.
+      OwnerCarriesAFieldBoundary { owner: reported } =>
+        (reported as String) == "tzdata extra"
+          && match debconf_answer_record(
             owner: "tzdata" as NonEmptyStr,
-            label: "tzdata/Areas" as NonEmptyStr,
+            label: "tzdata Areas" as NonEmptyStr,
             kind: AnswerSelect,
-            value: "America\ntzdata tzdata/Zones/America select New_York" as NonEmptyStr,
+            value: "America" as NonEmptyStr,
           ) {
-            Present { value: _ } => false
-            Absent =>
-              match debconf_answer_record(
-                owner: "tzdata" as NonEmptyStr,
-                label: "tzdata/Areas" as NonEmptyStr,
-                kind: AnswerSelect,
-                value: "  " as NonEmptyStr,
-              ) {
-                Present { value: _ } => false
-                // AND A LEGAL RECORD STILL MINTS, so the refusals above are not a mint that always fails. Its
-                // fields are read back through the accessors rather than compared as a whole record, because a
-                // record whose fields were swapped at the constructor would still be the record the caller asked
-                // for under a whole-record compare.
-                Absent =>
-                  match debconf_answer_record(
+            MintedSelection { record: _ } => false
+            RefusedAtTheMint { cause: label_cause } => match label_cause {
+              LabelCarriesAFieldBoundary { label: reported_label } =>
+                (reported_label as String) == "tzdata Areas"
+                  && match debconf_answer_record(
                     owner: "tzdata" as NonEmptyStr,
                     label: "tzdata/Areas" as NonEmptyStr,
                     kind: AnswerSelect,
-                    value: "America" as NonEmptyStr,
+                    value: "America\ntzdata tzdata/Zones/America select New_York" as NonEmptyStr,
                   ) {
-                    Absent => false
-                    Present { value: good } =>
-                      (debconf_selection_owner(record: good) as String) == "tzdata"
-                        && (debconf_selection_label(record: good) as String) == "tzdata/Areas"
-                        && (debconf_selection_value(record: good) as String) == "America"
-                        && debconf_selection_answer(record: good) == Present { value: AnswerSelect }
+                    MintedSelection { record: _ } => false
+                    RefusedAtTheMint { cause: value_cause } => match value_cause {
+                      // A NEWLINE IN A VALUE IS A STRUCTURAL DEFECT, not the selects-nothing defect: the record
+                      // would render as two lines and the second is read as a separate record whose owner is
+                      // whatever follows — an answer smuggled in as a continuation.
+                      ValueEndsTheLine { value: reported_value } =>
+                        (reported_value as String) ==
+                          "America\ntzdata tzdata/Zones/America select New_York"
+                          && match debconf_answer_record(
+                            owner: "tzdata" as NonEmptyStr,
+                            label: "tzdata/Areas" as NonEmptyStr,
+                            kind: AnswerSelect,
+                            value: "  " as NonEmptyStr,
+                          ) {
+                            MintedSelection { record: _ } => false
+                            RefusedAtTheMint { cause: blank_cause } => match blank_cause {
+                              // THE WHITESPACE-ONLY VALUE TAKES ITS OWN ARM. Upstream stores an empty content
+                              // happily (lines 133-135) and the package prompts anyway, so this programme is
+                              // stricter than upstream on purpose; the refinement already refuses the empty
+                              // string, and what this arm covers is the blank a human actually types.
+                              ValueSelectsNothing { value: reported_blank } =>
+                                (reported_blank as String) == "  "
+                                  // AND A LEGAL RECORD STILL MINTS, so the refusals above are not a mint that
+                                  // always fails. Its fields are read back through the accessors rather than
+                                  // compared as a whole record, because a record whose fields were swapped at the
+                                  // constructor would still be "the record the caller asked for" under a
+                                  // whole-record compare.
+                                  && match debconf_answer_record(
+                                    owner: "tzdata" as NonEmptyStr,
+                                    label: "tzdata/Areas" as NonEmptyStr,
+                                    kind: AnswerSelect,
+                                    value: "America" as NonEmptyStr,
+                                  ) {
+                                    MintedSelection { record: good } =>
+                                      (debconf_selection_owner(record: good) as String) == "tzdata"
+                                        && (debconf_selection_label(record: good) as String) == "tzdata/Areas"
+                                        && (debconf_selection_value(record: good) as String) == "America"
+                                        && match debconf_selection_answer(record: good) {
+                                            Present { value: AnswerSelect } => true
+                                            Present { value: _ } => false
+                                            Absent => false
+                                          }
+                                    RefusedAtTheMint { cause: _ } => false
+                                  }
+                              LabelCarriesAFieldBoundary { label: _ } => false
+                              OwnerCarriesAFieldBoundary { owner: _ } => false
+                              ValueEndsTheLine { value: _ } => false
+                            }
+                          }
+                        ValueSelectsNothing { value: _ } => false
+                        OwnerCarriesAFieldBoundary { owner: _ } => false
+                        LabelCarriesAFieldBoundary { label: _ } => false
+                      }
                   }
-              }
+              OwnerCarriesAFieldBoundary { owner: _ } => false
+              ValueEndsTheLine { value: _ } => false
+              ValueSelectsNothing { value: _ } => false
+            }
           }
-      }
+      LabelCarriesAFieldBoundary { label: _ } => false
+      ValueEndsTheLine { value: _ } => false
+      ValueSelectsNothing { value: _ } => false
+    }
   }
 }
 
@@ -4686,37 +4789,58 @@ test fn a_tab_in_a_key_field_a_newline_in_a_key_field_and_a_one_character_value_
     kind: AnswerSelect,
     value: "America" as NonEmptyStr,
   ) {
-    Present { value: _ } => false
-    Absent =>
-      match debconf_answer_record(
-        owner: "tzdata" as NonEmptyStr,
-        label: "tzdata/Areas\nzones" as NonEmptyStr,
-        kind: AnswerSelect,
-        value: "America" as NonEmptyStr,
-      ) {
-        Present { value: _ } => false
-        Absent =>
-          match debconf_answer_record(
-            owner: "tzdata" as NonEmptyStr,
-            label: "tzdata/Areas" as NonEmptyStr,
-            kind: AnswerSelect,
-            value: " " as NonEmptyStr,
-          ) {
-            Present { value: _ } => false
-            // AND A ONE-CHARACTER VALUE THAT IS NOT A SEPARATOR STILL MINTS, so the arm above is about separators
-            // specifically and not a mint that refuses short values out of hand.
-            Absent =>
+    MintedSelection { record: _ } => false
+    RefusedAtTheMint { cause: cause } => match cause {
+      // THE TAB IS REPORTED AS THE OWNER'S DEFECT, the same arm a space takes: both are (\S+) boundaries, so
+      // they are the same fact about the field and get the same cause — a distinct arm per delimiter instead would
+      // be a second copy of the boundary rule, split by which character happened to trigger it.
+      OwnerCarriesAFieldBoundary { owner: _ } =>
+        match debconf_answer_record(
+          owner: "tzdata" as NonEmptyStr,
+          label: "tzdata/Areas\nzones" as NonEmptyStr,
+          kind: AnswerSelect,
+          value: "America" as NonEmptyStr,
+        ) {
+          MintedSelection { record: _ } => false
+          RefusedAtTheMint { cause: label_cause } => match label_cause {
+            LabelCarriesAFieldBoundary { label: _ } =>
               match debconf_answer_record(
-                owner: "x" as NonEmptyStr,
-                label: "x/y" as NonEmptyStr,
-                kind: AnswerBoolean,
-                value: "1" as NonEmptyStr,
+                owner: "tzdata" as NonEmptyStr,
+                label: "tzdata/Areas" as NonEmptyStr,
+                kind: AnswerSelect,
+                value: " " as NonEmptyStr,
               ) {
-                Absent => false
-                Present { value: short } => (debconf_selection_value(record: short) as String) == "1"
-              }
+                MintedSelection { record: _ } => false
+                RefusedAtTheMint { cause: blank_cause } => match blank_cause {
+                  // THE LONE SPACE TAKES THE SAME ARM AS THE LONGER BLANK, because the walker refuses "any string
+                  // made entirely of separators" and does not special-case length: the earlier hand-written
+                  // single-space branch was deleted for duplicating exactly that.
+                  ValueSelectsNothing { value: _ } =>
+                    // AND A ONE-CHARACTER VALUE THAT IS NOT A SEPARATOR STILL MINTS, so the arm above is about
+                    // separators specifically and not a mint that refuses short values out of hand.
+                    match debconf_answer_record(
+                      owner: "x" as NonEmptyStr,
+                      label: "x/y" as NonEmptyStr,
+                      kind: AnswerBoolean,
+                      value: "1" as NonEmptyStr,
+                    ) {
+                      RefusedAtTheMint { cause: _ } => false
+                      MintedSelection { record: short } => (debconf_selection_value(record: short) as String) == "1"
+                    }
+                  ValueEndsTheLine { value: _ } => false
+                  OwnerCarriesAFieldBoundary { owner: _ } => false
+                  LabelCarriesAFieldBoundary { label: _ } => false
+                }
+            }
+            OwnerCarriesAFieldBoundary { owner: _ } => false
+            ValueEndsTheLine { value: _ } => false
+            ValueSelectsNothing { value: _ } => false
           }
-      }
+        }
+      ValueEndsTheLine { value: _ } => false
+      ValueSelectsNothing { value: _ } => false
+      LabelCarriesAFieldBoundary { label: _ } => false
+    }
   }
 }
 
