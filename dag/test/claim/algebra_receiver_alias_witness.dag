@@ -2,7 +2,9 @@ module test.claim.algebra_receiver_alias_witness
 
 import std.types { Bool, Int, String, List }
 import std.optional { Present, Absent }
-import gunbc.compile_census_probe { blocking_subject_census, total_blocking_census, census_verdict }
+import std.algebra { string_contains, concat }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.compile_census_probe { blocking_subject_census, total_blocking_census, census_verdict, census_int_text }
 
 // These are deliberately source fixtures: the alias spelling is expected to
 // refuse until owner identity is carried to variant_reference_inferred_node.
@@ -33,4 +35,31 @@ test fn alias_field_is_a_refusal_fixture() -> ProcessExit {
 
 test fn explicit_initializer_is_an_acceptance_fixture() -> ProcessExit {
   census_verdict(census: total_blocking_census(source: alias_initializer_source), holds: fn(n) { n == 0 })
+}
+
+// THE NO-OBSERVATION CONTRACT, ASSERTED AS A CLAIM. Two cells of this witness answer the census
+// question through a route the census builtin cannot arm, and the OLD Int probe made that look
+// EXACTLY like a finding: a census that never ran answered -1, the comparison `>= 1` failed, and the
+// harness printed FAIL -- indistinguishable from `alias_return`, which really did observe zero
+// refusal diagnostics. The typed probe answers with the refusal itself, and this claim pins what the
+// refusal must look like so the two classes cannot collapse again: the code must be the contract's
+// "no observation" code (2), and the reason must carry the census's OWN cause rather than a
+// restated one. The cause is matched by the stable fragment of its refusal, never by the figures
+// inside it, so a fixture that grows a module does not rot this claim.
+//
+// When the route is armed (the defect the parent routed to #14152 PR-2, and the census seam), this
+// claim goes RED naming itself: alias_field would then OBSERVE, so the run must be re-read, not the
+// claim re-tuned. The harness text of this claim's red is "FAIL"; once #14539 lands it prints
+// UNOBSERVED, which is the same exit code this claim asserts.
+test fn alias_field_refusal_is_a_no_observation_with_its_own_cause() -> ProcessExit {
+  let verdict = census_verdict(census: blocking_subject_census(source: alias_field_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)"), holds: fn(n) { n >= 1 })
+  match verdict {
+    ExitFailure { code: code, reason: reason } =>
+      if code == 2 && string_contains(s: reason, pattern: "not evaluated: census not runnable:") && string_contains(s: reason, pattern: "render selection refused") {
+        ExitSuccess
+      } else {
+        ExitFailure { code: 1, reason: concat("refused with code ", concat(census_int_text(n: code), " but not in the no-observation shape; reason carried: ", reason)) }
+      }
+    ExitSuccess => ExitFailure { code: 1, reason: "alias_field OBSERVED a refusal diagnostic where this tree's census route is known not to be runnable; the seam has been armed and the two cells here must be re-read" }
+  }
 }
