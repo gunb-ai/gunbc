@@ -3714,7 +3714,6 @@ fn decode_list_introduction_shape_bundle(bundle: Node) -> Outcome<TargetListIntr
     TypeNode { connective: Conj } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Disj } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Arrow } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
-    TypeNode { connective: Occupancy } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Instantiation } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
     ComputationNode { behavior: _ } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
   }
