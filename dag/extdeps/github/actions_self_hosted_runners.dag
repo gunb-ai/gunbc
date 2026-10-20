@@ -1,6 +1,6 @@
 module extdeps.github.actions_self_hosted_runners
 
-import std.types { String, NonEmptyStr, Int, List, Secret }
+import std.types { String, NonEmptyStr, Int, Bool, List, Secret }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -40,6 +40,34 @@ type OrganizationRunnerWire {
 type OrganizationRunnerListWire {
   total_count: Int
   runners: List<OrganizationRunnerWire>
+}
+
+// THE WHOLE ROSTER, PAGE BY PAGE, IS THE SAME UPSTREAM LISTING WITH EVERY RUNNER FIELD A ROSTER
+// CONSUMER READS. The by-name readback above needs only id and name; the roster read
+// (gunbc.fleet.organization_runner_roster_read) decodes status, busy, os, ephemeral, version and the
+// label names too, so its page is a wider projection of the SAME response schema (REST API version
+// 2022-11-28), not a second upstream. `page` and `per_page` are upstream's documented offset
+// parameters (docs.github.com/en/rest/using-the-rest-api/using-pagination-in-the-rest-api); a typed
+// rest answer carries the decoded body and no response headers, so the Link header is not visible
+// through this operation and the walk terminates on total_count instead.
+type OrganizationRunnerLabelWire {
+  name: String
+}
+
+type OrganizationRunnerRosterEntryWire {
+  id: Int
+  name: String
+  os: String
+  status: String
+  busy: Bool
+  ephemeral: Bool?
+  version: String?
+  labels: List<OrganizationRunnerLabelWire>
+}
+
+type OrganizationRunnerRosterPageWire {
+  total_count: Int
+  runners: List<OrganizationRunnerRosterEntryWire>
 }
 
 // THE DELETE ANSWERS 204 WITH NO BODY. It is the same organization self-hosted-runners write
@@ -86,6 +114,32 @@ service github.ActionsSelfHostedRunners {
     }
     response {
       200 => OrganizationRunnerListWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation ListOrganizationRunnersPage {
+    requires Network
+    input {
+      installation_token: Secret
+      org: NonEmptyStr
+      per_page: Int = organization_runners_max_per_page
+      page: Int
+    }
+    output {
+      result: OrganizationRunnerRosterPageWire
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/orgs/\{org\}/actions/runners",
+      query: { per_page: per_page, page: page }
+    }
+    response {
+      200 => OrganizationRunnerRosterPageWire
       401 => GitHubErrorShape
       403 => GitHubErrorShape
       404 => GitHubErrorShape

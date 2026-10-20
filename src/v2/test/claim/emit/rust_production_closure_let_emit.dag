@@ -6,7 +6,7 @@ import v2.extdeps.languages.rust {
   rust_target_model,
   rust_value_expression_projection
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { TargetRealizationCatalog, PrimitiveRealizationsUnwired,
   FixedToken,
   TargetModel,
   TargetValueExpression,
@@ -47,7 +47,7 @@ fn rpcl_serialize(expr: TargetValueExpression, target: TargetModel) -> Outcome<S
   match target_value_expression_to_concrete_tokens(
     expr: expr,
     projection: rust_value_expression_projection(),
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: TargetRealizationCatalog { operators: rust_operator_realizations_catalog_node(), primitives: PrimitiveRealizationsUnwired }
   ) {
     Accepted { value: tokens, diagnostics: _ } =>
       match serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens) {

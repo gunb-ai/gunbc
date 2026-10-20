@@ -51,7 +51,7 @@ import v2.compiler.infer {
   inferred_facts_index_enter,
   inferred_facts_not_derived
 }
-import v2.compiler.inferred_tree { InferredFacts, InferredFactsEntry, ObligatedInferredTree }
+import v2.compiler.inferred_tree { LexicalReferenceUntyped, InferredFacts, InferredFactsEntry, ObligatedInferredTree }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { List, Map }
 
@@ -602,6 +602,7 @@ test fn mbt_the_frontier_arm_accepts_and_reports_the_underived_scrutinee_holds()
 
 fn mbt_underived_scrutinee_entry() -> Map<Node, List<InferredFacts>> {
   match inferred_facts_not_derived(
+    site: LexicalReferenceUntyped,
     node: mbt_scrutinee(),
     descent: infer_descent_witness_for_node(n: mbt_scrutinee())
   ) {

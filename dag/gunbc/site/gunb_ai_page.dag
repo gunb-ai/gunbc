@@ -1,0 +1,820 @@
+module gunbc.site.gunb_ai_page
+
+// gunb.ai's one page, as a typed std.markup MarkupDocument.
+//
+// THIS MODULE IS THE CONSUMER (§3c). It is the reason the layers under it are not modelled "for
+// later": every sentence, link, prompt and command line is read from gunbc.site.gunb_ai_content;
+// the masthead seal is drawn by gunbc.design.brand_mark's own box/disc builders; the theme colour
+// is a gunbc.design.gunb_ai_hues swatch reached through gunbc.site.gunb_ai_tokens' role
+// vocabulary; the two web-font families are extdeps.fonts.google_fonts rows; the deck mount is one
+// attribute row. Nothing on the page is a hand-copied second version of a fact that has a home in
+// this repo, and none of those rows exists without this module reading it.
+//
+// WHAT THIS MODULE DOES NOT OWN, and who does.
+//   Element, attribute, comment and doctype SYNTAX, including escaping and the guards: std.markup
+//     and extdeps.languages.html. The page is ONE MarkupDocument whose root is a nested Element tree
+//     with MarkupComment nodes, and it reaches the file only through
+//     extdeps.languages.html.try_serialize_html_document_with, which runs the URL guard over every
+//     href/src, the doctype-name check, the comment-terminator check and the raw-text check. No
+//     line is ever written as a RawNode, so no content is hidden from a guard, and there is no
+//     second serializer here.
+//   Indentation. The served file is NOT depth-indented (<head> and <body> sit at column 0, the
+//     <pre> block is flush left inside an 8-space section), and whitespace between tags is real DOM
+//     text, so each node's leading whitespace is a FragmentText child that states its own column,
+//     measured from the served page (dag/test/fixture/gunb_ai/live_index.html). std.layout does
+//     not apply: it derives indentation from depth, which this page does not follow.
+//   CSS declarations, custom properties, colours as styles: gunbc.site.gunb_ai_tokens and
+//     gunbc.site.gunb_ai_layout. No style attribute appears in this file.
+//   Served sentences: gunbc.site.gunb_ai_content.
+//   The deck's cards: the deck layer. What is served today is filled at runtime by
+//     assets/cards.js from its inline DECK_CARDS (verified: cards.js issues no fetch, so the
+//     data-deck attribute is a mount hint the script reads, not a file request). This module emits
+//     the mount element and nothing else of the deck.
+//
+// FAIL CLOSED (§5). render_page yields PageRendered only when the document serializes; a guard
+// refusal yields PageRefused { reason }, the language layer's own located reason (it names the
+// offending url, terminator or close sequence), and the writer exits non-zero HAVING WRITTEN
+// NOTHING — the bytes are produced before any Filesystem call, so no path exists on which a refused
+// render lands on disk, and there is no fallback markup here to fall back to.
+//
+// PARITY, AND THE INSTRUMENT. test.claim.site_gunb_ai_page_witness runs render_page inside a claim
+// and compares the emitted bytes to dag/test/fixture/gunb_ai/live_index.html — a committed copy of
+// what gunb.ai serves (cmp-verified byte-identical to the Pages repo's index.html at 3152d4c).
+// The comparison is byte-exact except at the rows of parity_nullities (type ParityDifference),
+// each of which names one difference and the spec clause that makes it semantically null; a
+// difference of any other kind turns the claim red rather than passing quietly.
+// Same render outside the claim runner, in one dispatch:
+//   cargo build --release -p v1-compiler --bin gunbc
+//   mkdir -p /tmp/gunbai
+//   ./target/release/gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_page.dag \
+//     --function page_write_arg --arg dir=/tmp/gunbai
+
+import std.types { String, Int, List, Bool }
+import std.optional { Optional, Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
+import std.algebra { string_contains }
+import std.render_repeat_string_bootstrap { repeat_string }
+import std.markup {
+  Fragment, Element, FragmentText, MarkupComment, MarkupDocument, Attribute, attr,
+  MarkupMedium, EscapeHtml, SelfClose, document_line_ending,
+}
+import extdeps.languages.html {
+  canonical_html_spellings, html5_void_tags, html5_raw_text_tags, html_doctype_name,
+  html_markup_medium, try_serialize_html_document_with, EmitOk, EmitRejected,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.design.palette { swatch_paint }
+import gunbc.site.markup { page_render_refusal_prefix }
+import gunbc.site.gunb_ai_content {
+  site_wordmark, site_eyebrow, document_title, meta_description_text,
+  headline_text, tagline_text, hero_paragraph_one, hero_emphasis_lead,
+  hero_paragraph_two_tail, hero_paragraph_three,
+  install_label, install_prompt, install_commands,
+  link_repository, link_contact, glyph_middle_dot,
+}
+import gunbc.design.brand_mark {
+  brand_mark_box_path, brand_mark_disc_path, BrandMarkBox, BrandMarkDisc,
+}
+import gunbc.design.gunb_ai_hues { theme_chrome_black }
+import extdeps.fonts.google_fonts { jetbrains_mono_source, noto_sans_source, jetbrains_mono_weights, noto_sans_weights,
+  google_fonts_api_host, google_fonts_static_host, google_fonts_css2_endpoint, google_fonts_url,
+}
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
+
+// ── The medium, and the one thing this module spells itself ───────────────────────────────────
+//
+// This page differs from extdeps.languages.html's default medium in exactly ONE field:
+//   void_rendering: the page spells its void elements (its meta and link tags) XHTML-style,
+//     `<meta />`, where html_markup_medium spells them `<meta>`. SelfClose is the medium's own arm,
+//     so this is a spelling decision recorded where spelling is decided — not a string workaround,
+//     and not a per-tag exception. <script> is unaffected: it is raw-text, not void, so it still
+//     gets a close tag.
+// plus the seal's <path> joining the void set (the served file closes it with "/>"). The comment and
+// document grammars are the language module's own rows, read off html_markup_medium, so the
+// delimiters exist once.
+data page_medium: MarkupMedium = MarkupMedium {
+  tag_overrides: [],
+  bracket: canonical_html_spellings,
+  text_escape: EscapeHtml,
+  void_tags: concat(html5_void_tags, [seal_tag]),
+  void_rendering: SelfClose,
+  raw_text_tags: html5_raw_text_tags,
+  comment_grammar: html_markup_medium().comment_grammar,
+  document_grammar: html_markup_medium().document_grammar,
+}
+
+// ── Facts the document element and head carry ─────────────────────────────────────────────────
+//
+// Each is one row, read once by the element below. These are the head's own facts — not copy (that
+// is gunb_ai_content) and not styling (that is the token and layout layers).
+
+// The html element's language. The served page declares en on the root and nowhere else.
+data page_language: String = "en"
+data meta_charset_name: String = "charset"
+data meta_charset_value: String = "utf-8"
+data meta_viewport_name: String = "viewport"
+data meta_viewport_content: String = "width=device-width, initial-scale=1"
+data meta_description_name: String = "description"
+data meta_theme_color_name: String = "theme-color"
+
+// The favicon. The FILE's bytes are the inventory's named asset gap (gunbc.design.brand_mark_assets
+// emits PNG targets only, so assets/mark.svg is still hand-maintained in the Pages repo); this row
+// is only the reference the page makes to it, which is a page fact.
+data icon_href: String = "assets/mark.svg"
+data icon_type: String = "image/svg+xml"
+data rel_icon: String = "icon"
+data rel_stylesheet: String = "stylesheet"
+data rel_preconnect: String = "preconnect"
+
+// The css2 query's parameter separator. The hosts and the endpoint are upstream facts and live in
+// extdeps.fonts.google_fonts.
+data google_fonts_family_separator: String = "&"
+
+// The stylesheet and the deck script. src/href values are page facts: they name what the page
+// loads, and both paths are the served Paths today (assets/site.css is the next layer's output and
+// assets/cards.js is the deck layer's, each named in the plan carrier).
+data stylesheet_href: String = "assets/site.css"
+data cards_script_src: String = "assets/cards.js"
+data script_defer_attribute: String = "defer"
+data crossorigin_attribute: String = "crossorigin"
+
+// The deck mount. The served page mounts one element and assets/cards.js fills it at runtime; the
+// attribute name and value are what the script selects on (verified: cards.js reads
+// querySelectorAll('[data-deck]') and its per-deck branches match this value). The deck's CARDS are
+// the next layer's model, not this element's business.
+data deck_mount_attribute: String = "data-deck"
+data deck_mount_value: String = "users.dag"
+
+// The four comments, as data. Their text is commentary on the source, so it is not gunb_ai_content's
+// (which owns served copy) — but it is still a fact about the page, and it belongs in rows rather
+// than buried in a call so the witness can assert a comment still stands where it stands.
+data comment_masthead: String = "Mark + wordmark"
+data comment_hero: String = "Hero spine \u{2014} identity on the left; prose + install fill the right"
+data comment_carved_rule: String = "Carved rule \u{2014} fills page width, aligns with specimen cards below"
+data comment_footer: String = "Footer"
+
+// The deck comment is four lines of prose in the served file; the lines are one row's list so the
+// joiner owns the leading-space alignment the file shows (each continuation line is indented to the
+// column the opening text starts at).
+data comment_deck_lines: List<String> = [
+  "One Users system, three isolated views. Each card pivots on a",
+  "different structural claim (closure, propagation, budget) but",
+  "all read from the same source model. Navigate with prev/next",
+  "or \u{2190} / \u{2192} keys.",
+]
+data comment_deck_indent: Int = 9
+
+// The seal's subpath separator: the served file breaks d="..." across indented lines. Whitespace
+// inside a path attribute is insignificant to the SVG grammar, so these breaks are layout of the
+// SOURCE file, kept so the bytes match what is served; the subpaths themselves come from builders.
+data seal_path_line_break: String = "\n          "
+data seal_path_close_indent: String = "\n        "
+
+// The h1 closes the headline with a full stop; the <title> does not (both read off the served page).
+// That asymmetry is why gunb_ai_content.headline_text stores the sentence unpunctuated: the title
+// reads the row as-is and the heading adds its own mark, so neither is a truncation of the other.
+data heading_terminal_mark: String = "."
+
+// ── The masthead seal ─────────────────────────────────────────────────────────────────────────
+//
+// A DIFFERENT drawing from the studio mark, not that mark at another scale. Verified against
+// gunbc.design.brand_mark's geometry rows: the studio shell is x:0,y:120,w:1200,h:960 with r:360
+// corners in a 1200-unit frame, while the served seal is a 120-unit frame whose shell is
+// x:10,y:20,w:100,h:80 with r:30 corners — dividing the studio box by 10 gives 0,12,120,96 r36,
+// which is not this. What they share is the path GRAMMAR, so each subpath here is built by the
+// builder that spells it (brand_mark_box_path for the two rounded rectangles, brand_mark_disc_path
+// for the two eyes). Reusing the builders means a change to the arc spelling reaches the masthead;
+// keeping the geometry separate means a studio redesign cannot silently repaint the hero.
+// The <path> tag name. It joins the medium's void set because the served file closes it with "/>"
+// and an element with no children needs a void spelling; html5_void_tags itself is left untouched,
+// so no HTML element gains a self-closing form it does not have.
+data seal_tag: String = "path"
+
+data hero_shell: BrandMarkBox = BrandMarkBox { x: 10, y: 20, w: 100, h: 80, r: 30 }
+data hero_mouth: BrandMarkBox = BrandMarkBox { x: 52, y: 54, w: 16, h: 6, r: 2 }
+data hero_eye_left: BrandMarkDisc = BrandMarkDisc { cx: 35, cy: 48, r: 8 }
+data hero_eye_right: BrandMarkDisc = BrandMarkDisc { cx: 85, cy: 48, r: 8 }
+
+// The served seal is one <path> in evenodd fill, so the two eyes are HOLES in the shell rather than
+// discs painted over it. Subpaths are emitted in the served order: shell, left eye, right eye, mouth.
+fn hero_seal_d() -> String {
+  join(
+    [
+      seal_path_line_break,
+      brand_mark_box_path(b: hero_shell),
+      seal_path_line_break,
+      brand_mark_disc_path(c: hero_eye_left),
+      seal_path_line_break,
+      brand_mark_disc_path(c: hero_eye_right),
+      seal_path_line_break,
+      brand_mark_box_path(b: hero_mouth),
+      seal_path_close_indent,
+    ],
+    "",
+  )
+}
+
+
+// ── Whitespace as DOM text ────────────────────────────────────────────────────────────────────
+//
+// Whitespace between tags is real text in the DOM, so it is a FragmentText child of the node it
+// sits in, never a join performed by a writer. `col` is the literal column the next token starts
+// at in the served file (measured from the fixture, not derived from depth). Text goes through the
+// medium's EscapeHtml, which leaves spaces and newlines alone.
+fn pg_spaces(n: Int) -> String {
+  repeat_string(s: " ", n: n)
+}
+
+// A line break, then the column the next node starts at.
+fn pg_break(col: Int) -> Fragment {
+  FragmentText { content: join(["\n", pg_spaces(n: col)], "") }
+}
+
+// A blank line, then the column the next node starts at.
+fn pg_gap(col: Int) -> Fragment {
+  FragmentText { content: join(["\n\n", pg_spaces(n: col)], "") }
+}
+
+fn pg_text(s: String) -> Fragment {
+  FragmentText { content: s }
+}
+
+// An element whose children each start a new line at `col`, closing on its own line at `close_col`.
+fn pg_stacked(tag: String, attrs: List<Attribute>, col: Int, kids: List<Fragment>, close_col: Int) -> Fragment {
+  Element {
+    tag: tag,
+    attributes: attrs,
+    children: concat(
+      flat_map(kids, k => [pg_break(col: col), k]),
+      [pg_break(col: close_col)],
+    ),
+  }
+}
+
+// An element holding one run of inline children on one line.
+fn pg_inline(tag: String, attrs: List<Attribute>, kids: List<Fragment>) -> Fragment {
+  Element { tag: tag, attributes: attrs, children: kids }
+}
+
+// An element whose body sits on its own line at `col + 2`, closing back at `col` — the shape the
+// served file uses for containers holding one paragraph.
+fn pg_wrapped(tag: String, attrs: List<Attribute>, col: Int, kids: List<Fragment>) -> Fragment {
+  Element {
+    tag: tag,
+    attributes: attrs,
+    children: concat([pg_break(col: col + 2)], concat(kids, [pg_break(col: col)])),
+  }
+}
+
+fn class_attr(cls: String) -> Attribute {
+  attr(name: attr_class, value: cls)
+}
+
+fn pg_note(body: String) -> Fragment {
+  MarkupComment { body: body }
+}
+
+// ── The document ──────────────────────────────────────────────────────────────────────────────
+
+fn page_document() -> MarkupDocument {
+  MarkupDocument { doctype: html_doctype_name, root: page_root() }
+}
+
+fn page_root() -> Fragment {
+  pg_stacked(
+    tag: tag_html, attrs: [attr(name: "lang", value: page_language)], col: 0,
+    kids: [page_head(), page_body()], close_col: 0,
+  )
+}
+
+// The comments, as they are emitted. The witness reads this row to prove a comment still stands
+// where it stands; the page builders read the same rows.
+fn comment_texts() -> List<String> {
+  concat(
+    [comment_masthead, comment_hero, comment_carved_rule, comment_footer],
+    [deck_comment_body()],
+  )
+}
+
+// ── Rendering ────────────────────────────────────────────────────────────────────────────────
+// Variant names are unique across the whole closure (the resolver rejects a name shared by two
+// types), so each arm names the kind of event it is: a render refusal is not a filesystem refusal.
+type PageRender
+  = PageRendered { bytes: String }
+  | PageRefused { reason: String }
+
+// The whole document, or the language layer's located refusal. No write happens here; the writer is
+// the only thing that touches the filesystem, and it writes only on PageRendered. The served file
+// ends in a line break after </html>, which no node can carry (the root is one element), so it is
+// the file's terminator, written through the same line-ending row the doctype line uses.
+fn render_page() -> PageRender {
+  render_document(doc: page_document())
+}
+
+fn render_document(doc: MarkupDocument) -> PageRender {
+  match try_serialize_html_document_with(doc: doc, medium: page_medium) {
+    EmitOk { html: h } => PageRendered { bytes: concat(h, document_line_ending()) }
+    EmitRejected { reason: r } => PageRefused { reason: r }
+  }
+}
+
+// ── The head ──────────────────────────────────────────────────────────────────────────────────
+//
+// Every head tag is a typed element, so each href/src below is walked by the URL guard: a link that
+// ever pointed at a javascript: or disallowed scheme makes the whole page refuse rather than ship.
+
+fn meta_tag(name: String, content: String) -> Fragment {
+  pg_inline(tag: tag_meta, attrs: [attr(name: attr_name, value: name), attr(name: attr_content, value: content)], kids: [])
+}
+
+fn link_tag(attrs: List<Attribute>) -> Fragment {
+  pg_inline(tag: tag_link, attrs: attrs, kids: [])
+}
+
+fn page_head() -> Fragment {
+  pg_stacked(
+    tag: tag_head, attrs: [], col: 2, close_col: 0,
+    kids: [
+      pg_inline(tag: tag_meta, attrs: [attr(name: meta_charset_name, value: meta_charset_value)], kids: []),
+      meta_tag(name: meta_viewport_name, content: meta_viewport_content),
+      pg_inline(tag: tag_title, attrs: [], kids: [pg_text(s: document_title())]),
+      meta_tag(name: meta_description_name, content: meta_description_text()),
+      link_tag(attrs: [attr(name: attr_rel, value: rel_icon), attr(name: attr_type, value: icon_type), attr(name: attr_href, value: icon_href)]),
+      meta_tag(name: meta_theme_color_name, content: theme_color_value()),
+      link_tag(attrs: [attr(name: attr_rel, value: rel_preconnect), attr(name: attr_href, value: google_fonts_url(uri: google_fonts_api_host))]),
+      link_tag(attrs: [attr(name: attr_rel, value: rel_preconnect), attr(name: attr_href, value: google_fonts_url(uri: google_fonts_static_host)), attr(name: crossorigin_attribute, value: "")]),
+      link_tag(attrs: [attr(name: attr_href, value: fonts_stylesheet_url()), attr(name: attr_rel, value: rel_stylesheet)]),
+      link_tag(attrs: [attr(name: attr_rel, value: rel_stylesheet), attr(name: attr_href, value: stylesheet_href)]),
+      // The deck script. src goes through the URL guard; defer is a boolean attribute, spelled by
+      // std.markup as name="" (the repo's existing convention for boolean attributes) — the
+      // difference from the served page's bare form is recorded in parity_nullities below.
+      pg_inline(tag: tag_script, attrs: [attr(name: attr_src, value: cards_script_src), attr(name: script_defer_attribute, value: "")], kids: []),
+    ],
+  )
+}
+
+// ── Names the markup uses ─────────────────────────────────────────────────────────────────────
+//
+// Class names are rows because the stylesheet that styles them is a hand-written fact today (the
+// inventory's named gap: assets/site.css is still maintained by hand, and generating it is the next
+// layer). Modelling the class the page puts on an element is still one-upstream work: when the
+// stylesheet layer lands, it must style exactly these names, and the witness below asserts the page
+// uses no class outside this roster.
+data class_page: String = "page"
+data class_masthead: String = "masthead"
+data class_mark: String = "mark"
+data class_wordmark: String = "wordmark"
+data class_eyebrow: String = "eyebrow"
+data class_masthead_nav: String = "masthead-nav"
+data class_hero_spine: String = "hero-spine"
+data class_hero_left: String = "hero-left"
+data class_hero_right: String = "hero-right"
+data class_tagline: String = "tagline"
+data class_install: String = "install"
+data class_section_label: String = "section-label"
+data class_command: String = "command"
+data class_prompt: String = "prompt"
+data class_carved_rule: String = "carved-rule"
+data class_notch: String = "notch"
+data class_foot: String = "foot"
+data class_sep: String = "sep"
+
+// The roster the witness ranges over, so "the page introduces a class nobody styles" is a red
+// property rather than something only a reader of the stylesheet would notice.
+fn page_classes() -> List<String> {
+  [
+    class_page, class_masthead, class_mark, class_wordmark, class_eyebrow, class_masthead_nav,
+    class_hero_spine, class_hero_left, class_hero_right, class_tagline, class_install,
+    class_section_label, class_command, class_prompt, class_carved_rule, class_notch, class_foot,
+    class_sep,
+  ]
+}
+
+// Tag names, so an open line and its close line are spelled from ONE row (a close tag written as an
+// independent string could drift from the tag it closes, which is the second-copy pattern).
+data tag_html: String = "html"
+data tag_head: String = "head"
+data tag_body: String = "body"
+data tag_main: String = "main"
+data tag_header: String = "header"
+data tag_svg: String = "svg"
+data tag_span: String = "span"
+data tag_nav: String = "nav"
+data tag_a: String = "a"
+data tag_section: String = "section"
+data tag_div: String = "div"
+data tag_h1: String = "h1"
+data tag_p: String = "p"
+data tag_strong: String = "strong"
+data tag_pre: String = "pre"
+data tag_footer: String = "footer"
+data tag_meta: String = "meta"
+data tag_link: String = "link"
+data tag_script: String = "script"
+data tag_title: String = "title"
+
+// Attribute names the head carries. Names are rows for the same reason tags are: the witness reads
+// them to prove a head tag is not missing an attribute the served page has.
+data attr_class: String = "class"
+data attr_href: String = "href"
+data attr_src: String = "src"
+data attr_rel: String = "rel"
+data attr_name: String = "name"
+data attr_content: String = "content"
+data attr_type: String = "type"
+data attr_view_box: String = "viewBox"
+data attr_aria_hidden: String = "aria-hidden"
+data attr_fill_rule: String = "fill-rule"
+data attr_fill: String = "fill"
+data attr_d: String = "d"
+data hidden_true: String = "true"
+data seal_fill: String = "currentColor"
+data seal_fill_rule: String = "evenodd"
+
+// The theme colour comes from the palette, not from a hex literal typed into a tag: the swatch is
+// the upstream fact and srgb8_hex is the wire. Its home is the separate chrome set in
+// gunbc.design.gunb_ai_hues, which is why the page-chrome black is not a token role.
+fn theme_color_value() -> String {
+  swatch_paint(sw: theme_chrome_black)
+}
+
+// The css2 request, GENERATED from the family rows: the families and their weights are read from
+// extdeps.fonts.google_fonts, so a face added there reaches the page without a URL being edited.
+// Verified against the live page 2026-10-18: the served index.html requests exactly these two
+// families at exactly these weights (JetBrains Mono 400;500, Noto Sans 400;500;600) from this
+// endpoint, and the URL below is what that composition produces.
+fn fonts_stylesheet_url() -> String {
+  join(
+    [google_fonts_url(uri: google_fonts_css2_endpoint), "?", family_request(family: jetbrains_mono_source.family, weights: jetbrains_mono_weights), google_fonts_family_separator, family_request(family: noto_sans_source.family, weights: noto_sans_weights), "&", display_request()],
+    "",
+  )
+}
+
+// One family's request clause. The family name's spaces become "+", which is the css2 API's own
+// spelling, and the weights are joined by ";" for a variable axis.
+fn family_request(family: String, weights: List<Int>) -> String {
+  join(["family=", family_spaces_to_plus(family: family), ":wght@", weight_list(weights: weights)], "")
+}
+
+fn family_spaces_to_plus(family: String) -> String {
+  family.replace(from: " ", to: "+")
+}
+
+fn weight_list(weights: List<Int>) -> String {
+  join(map(weights, w => to_string(w)), ";")
+}
+
+// font-display: swap — the served request asks for it, and it is the reason text is visible while
+// the faces load. Its home is the row below rather than an inline fragment of the URL, so the URL
+// above is composed of parts each of which is a fact.
+data font_display_directive: String = "display"
+data font_display_value: String = "swap"
+
+fn display_request() -> String {
+  join([font_display_directive, "=", font_display_value], "")
+}
+
+// ── The body ──────────────────────────────────────────────────────────────────────────────────
+
+fn page_body() -> Fragment {
+  Element {
+    tag: tag_body,
+    attributes: [],
+    children: [pg_gap(col: 2), page_main(), pg_gap(col: 0)],
+  }
+}
+
+// Each section is its comment, a line break, and the node the comment introduces; sections are
+// separated by a blank line, exactly as the served file lays them out.
+fn page_main() -> Fragment {
+  Element {
+    tag: tag_main,
+    attributes: [class_attr(cls: class_page)],
+    children: [
+      pg_gap(col: 4),
+      pg_note(body: comment_masthead), pg_break(col: 4), masthead(),
+      pg_gap(col: 4),
+      pg_note(body: comment_hero), pg_break(col: 4), hero(),
+      pg_gap(col: 4),
+      pg_note(body: comment_carved_rule), pg_break(col: 4), carved_rule(),
+      pg_gap(col: 4),
+      pg_note(body: deck_comment_body()), pg_break(col: 4), deck_mount(),
+      pg_gap(col: 4),
+      pg_note(body: comment_footer), pg_break(col: 4), footer(),
+      pg_gap(col: 2),
+    ],
+  }
+}
+
+data seal_view_box: String = "0 0 120 120"
+
+fn masthead() -> Fragment {
+  pg_stacked(
+    tag: tag_header, attrs: [class_attr(cls: class_masthead)], col: 6, close_col: 4,
+    kids: [
+      pg_stacked(
+        tag: tag_svg, close_col: 6, col: 8,
+        attrs: [class_attr(cls: class_mark), attr(name: attr_view_box, value: seal_view_box), attr(name: attr_aria_hidden, value: hidden_true)],
+        kids: [seal()],
+      ),
+      pg_inline(tag: tag_span, attrs: [class_attr(cls: class_wordmark)], kids: [pg_text(s: site_wordmark)]),
+      pg_inline(tag: tag_span, attrs: [class_attr(cls: class_eyebrow)], kids: [pg_text(s: site_eyebrow())]),
+      pg_stacked(
+        tag: tag_nav, attrs: [class_attr(cls: class_masthead_nav)], col: 8, close_col: 6,
+        kids: [link_anchor(href: link_repository.href, label: link_repository.label)],
+      ),
+    ],
+  )
+}
+
+fn link_anchor(href: String, label: String) -> Fragment {
+  pg_inline(tag: tag_a, attrs: [attr(name: attr_href, value: href)], kids: [pg_text(s: label)])
+}
+
+// The seal is an Element whose attribute values pass through std.markup's escaping and the guards.
+// The cost is one byte: the served file closes the path as `d="…"/>` and the medium's SelfClose
+// spells ` />`. That is the fifth row of parity_nullities (whitespace before the solidus is
+// insignificant in a void element's syntax). The d= value still comes from
+// gunbc.design.brand_mark's builders, and witness_seal_is_built_by_the_brand_geometry asserts that
+// exact text reaches the bytes.
+fn seal() -> Fragment {
+  pg_inline(
+    tag: seal_tag,
+    attrs: [
+      attr(name: attr_fill_rule, value: seal_fill_rule),
+      attr(name: attr_fill, value: seal_fill),
+      attr(name: attr_d, value: hero_seal_d()),
+    ],
+    kids: [],
+  )
+}
+
+// ── The hero ──────────────────────────────────────────────────────────────────────────────────
+//
+// The three prose paragraphs each sit on their own line inside a container, which is what
+// pg_wrapped spells. The <strong> in the second paragraph is composed from gunb_ai_content's
+// rows: hero_emphasis_lead() is the word the page bolds, and hero_paragraph_two_tail is the rest
+// of the sentence, so the bolding is markup shape and the sentence stays one row.
+fn hero() -> Fragment {
+  pg_stacked(
+    tag: tag_section, attrs: [class_attr(cls: class_hero_spine)], col: 6, close_col: 4,
+    kids: [hero_left(), hero_right()],
+  )
+}
+
+fn hero_left() -> Fragment {
+  pg_stacked(
+    tag: tag_div, attrs: [class_attr(cls: class_hero_left)], col: 8, close_col: 6,
+    kids: [
+      // The heading carries the sentence's terminal mark; the <title> does not. Both read
+      // gunb_ai_content.headline_text, which stores the sentence unpunctuated precisely so neither
+      // is a truncation of the other.
+      pg_inline(tag: tag_h1, attrs: [], kids: [pg_text(s: join([headline_text, heading_terminal_mark], ""))]),
+      pg_inline(tag: tag_p, attrs: [class_attr(cls: class_tagline)], kids: [pg_text(s: tagline_text)]),
+    ],
+  )
+}
+
+fn hero_right() -> Fragment {
+  pg_stacked(
+    tag: tag_div, attrs: [class_attr(cls: class_hero_right)], col: 8, close_col: 6,
+    kids: [
+      pg_wrapped(tag: tag_p, attrs: [], col: 8, kids: [pg_text(s: hero_paragraph_one())]),
+      pg_wrapped(tag: tag_p, attrs: [], col: 8, kids: [pg_inline(tag: tag_strong, attrs: [], kids: [pg_text(s: hero_emphasis_lead())]), pg_text(s: join([" ", hero_paragraph_two_tail], ""))]),
+      pg_wrapped(tag: tag_p, attrs: [], col: 8, kids: [pg_text(s: hero_paragraph_three)]),
+      install(),
+    ],
+  )
+}
+
+// The install block. The <pre> starts at column 0 in the served file (so its command text carries
+// no leading spaces — <pre> preserves whitespace) even though it sits in an 8-space section: its
+// preceding break is a bare "\n". Each prompt is a span element and each command is text from
+// install_commands(), and </pre> follows the last command with no break.
+fn install() -> Fragment {
+  Element {
+    tag: tag_section,
+    attributes: [class_attr(cls: class_install)],
+    children: [
+      pg_break(col: 10),
+      pg_inline(tag: tag_span, attrs: [class_attr(cls: class_section_label)], kids: [pg_text(s: install_label())]),
+      pg_text(s: "\n"),
+      pg_inline(tag: tag_pre, attrs: [class_attr(cls: class_command)], kids: command_children()),
+      pg_break(col: 8),
+    ],
+  }
+}
+
+// One prompt span + command text per row of install_commands(), newline-separated between rows and
+// not after the last (the served <pre> closes on the final command's line).
+fn command_children() -> List<Fragment> {
+  children_from(rows: install_commands(), i: 0)
+}
+
+// Index-walked rather than pattern-matched: this language's match binds sum-type variants only, so
+// list shape is tested by position.
+fn children_from(rows: List<String>, i: Int) -> List<Fragment> {
+  let n = rows.length()
+  if i >= n {
+    []
+  } else {
+    let one = concat([prompt_span()], [pg_text(s: row_at(rows: rows, i: i))])
+    if i + 1 == n { one } else {
+      concat(one, concat([pg_text(s: "\n")], children_from(rows: rows, i: i + 1)))
+    }
+  }
+}
+
+fn row_at(rows: List<String>, i: Int) -> String {
+  match get(rows, i) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn prompt_span() -> Fragment {
+  pg_inline(tag: tag_span, attrs: [class_attr(cls: class_prompt)], kids: [pg_text(s: install_prompt)])
+}
+
+// ── The carved rule, the deck mount, the footer ───────────────────────────────────────────────
+
+fn carved_rule() -> Fragment {
+  pg_inline(
+    tag: tag_div,
+    attrs: [class_attr(cls: class_carved_rule), attr(name: attr_aria_hidden, value: hidden_true)],
+    kids: [pg_inline(tag: tag_span, attrs: [class_attr(cls: class_notch)], kids: [])],
+  )
+}
+
+// The deck. Only the mount element is generated here: assets/cards.js selects on [data-deck] and
+// fills the element at runtime from its inline DECK_CARDS, so this page's job is the mount and its
+// attribute value. The deck's cards as typed data are the next layer.
+fn deck_mount() -> Fragment {
+  pg_inline(tag: tag_div, attrs: [attr(name: deck_mount_attribute, value: deck_mount_value)], kids: [])
+}
+
+// The deck's four-line comment body. Continuation lines align to column comment_deck_indent.
+fn deck_comment_body() -> String {
+  let n = comment_deck_lines.length()
+  if n == 0 {
+    ""
+  } else {
+    join([row_at(rows: comment_deck_lines, i: 0), "\n", continuation_block(lines: comment_deck_lines, i: 1, n: n)], "")
+  }
+}
+
+// Only the LAST line is followed by the comment's close, which is what makes the lines one comment.
+fn continuation_block(lines: List<String>, i: Int, n: Int) -> String {
+  if i >= n {
+    ""
+  } else {
+    let tail = if i + 1 == n { "" } else { "\n" }
+    join([pg_spaces(n: comment_deck_indent), row_at(rows: lines, i: i), tail, continuation_block(lines: lines, i: i + 1, n: n)], "")
+  }
+}
+
+fn footer() -> Fragment {
+  pg_stacked(
+    tag: tag_footer, attrs: [class_attr(cls: class_foot)], col: 6, close_col: 4,
+    kids: [
+      link_anchor(href: link_repository.href, label: link_repository.label),
+      pg_inline(tag: tag_span, attrs: [class_attr(cls: class_sep)], kids: [pg_text(s: glyph_middle_dot)]),
+      link_anchor(href: link_contact.href, label: link_contact.label),
+    ],
+  )
+}
+
+// ── The parity differences, as an enumerable roster ───────────────────────────────────────────
+//
+// The witness compares render_page()'s bytes to the committed served page. The byte positions listed below
+// differ, each for a reason stated in the // comment above its row, and each is NULL — the rendered document behaves identically.
+// They are rows rather than prose so the comparison is not "everything matches except what the
+// author forgot to mention": the witness asserts the observed difference set EQUALS this roster, so
+// a fourth difference is red, and it asserts every row here actually occurs, so a difference that
+// quietly disappears is also red (a roster that has outlived its difference is a stale claim).
+type ParityDifference {
+  // What the served page has, verbatim, at the differing position.
+  served: String
+  // What this module emits instead.
+  generated: String
+}
+
+data parity_nullities: List<ParityDifference> = [
+  // HTML attribute values are optional: a present-and-empty value and a bare name set the same
+  // attribute (HTML Living Standard, attributes section — 'Empty string' is a valid value state and
+  // boolean attributes are spelled either way). std.markup spells every attribute name=value, which is
+  // the repo's existing convention (gunbc.site.document emits defer the same way), and the difference
+  // is spelling only.
+  ParityDifference {
+    served: "crossorigin />",
+    generated: "crossorigin=\"\" />",
+  },
+  // Same clause as the crossorigin row: the same attribute, spelled with its empty value.
+  ParityDifference {
+    served: "defer></script>",
+    generated: "defer=\"\"></script>",
+  },
+  // The separator sits inside an attribute value, where U+0026 is the character a value carries and
+  // '&amp;' is its entity spelling; both are decoded to '&' before the URL is used (HTML Living
+  // Standard, character/reference section, plus the URL-parsing step that runs on the decoded value).
+  // The Google Fonts stylesheet loads identically. This is std.markup's attribute escaping being
+  // correct-by-construction — the alternative would be a second emitter that does not escape.
+  ParityDifference {
+    served: "wght@400;500&family=",
+    generated: "wght@400;500&amp;family=",
+  },
+  // The same clause as the row above, listed separately because this URL carries TWO separators and
+  // each is escaped on its own: the roster substitutes one pair per occurrence site, so a row covering
+  // only the first would leave the second unexplained and the equality claim red.
+  ParityDifference {
+    served: ";600&display=swap",
+    generated: ";600&amp;display=swap",
+  },
+  // The seal's <path> is the only self-closed element the served file writes without a space before
+  // the solidus. In SGML-derived markup the space is not significant: the solidus alone terminates the
+  // tag and begins the self-close (HTML Living Standard, 'self-closing start tag state', which is
+  // entered on U+002F regardless of what precedes it). Both spellings produce the same SVG path
+  // element with the same three attributes. Both texts are anchored on the closing newline and eight-
+  // space indent so each occurs exactly once in its own file, which is what keeps the roster's
+  // uniqueness claim from passing on a substring shared with the nine link/meta lines that DO carry
+  // the space.
+  ParityDifference {
+    served: "\n        \"/>",
+    generated: "\n        \" />",
+  },
+  // Both subpaths trace the same circle: centre (cx,cy), radius 8, sweep flag 1 for both arcs, so two
+  // half-circle arcs joined at the ends of a diameter. The served file starts the diameter at the top
+  // and the brand_mark builder starts it at the left; the filled region under fill-rule evenodd is the
+  // same set of points (SVG 1.1 §8.3.8 elliptical arc curve, §11.3.1 fill-rule). The builder is shared
+  // with the studio mark, so the page keeps the builder's spelling rather than a second disc grammar.
+  ParityDifference {
+    served: "M35,40 A8,8 0 0,1 35,56 A8,8 0 0,1 35,40 Z",
+    generated: "M27,48 A8,8 0 0,1 43,48 A8,8 0 0,1 27,48 Z",
+  },
+  // Both subpaths trace the same circle: centre (cx,cy), radius 8, sweep flag 1 for both arcs, so two
+  // half-circle arcs joined at the ends of a diameter. The served file starts the diameter at the top
+  // and the brand_mark builder starts it at the left; the filled region under fill-rule evenodd is the
+  // same set of points (SVG 1.1 §8.3.8 elliptical arc curve, §11.3.1 fill-rule). The builder is shared
+  // with the studio mark, so the page keeps the builder's spelling rather than a second disc grammar.
+  ParityDifference {
+    served: "M85,40 A8,8 0 0,1 85,56 A8,8 0 0,1 85,40 Z",
+    generated: "M77,48 A8,8 0 0,1 93,48 A8,8 0 0,1 77,48 Z",
+  },
+]
+
+// The roster's own identity, for the witness: the difference is identified by the served text, so a
+// row that no longer describes a real difference can be found rather than trusted.
+fn parity_served_texts() -> List<String> {
+  map(parity_nullities, d => d.served)
+}
+
+// ── Writing ───────────────────────────────────────────────────────────────────────────────────
+
+// Variant names are unique across the whole closure, so the two refusal arms carry their kind: a
+// refusal from the render is not the same event as a refusal from the filesystem.
+type PageWrite
+  = PageWritten { path: String }
+  | PageWriteRefused { reason: String }
+
+// Write the page, or refuse. The bytes are produced IN FULL before the first Filesystem call, so a
+// refusal cannot leave a partial file the way a write-then-check order could: there is no path on
+// which content that failed a guard reaches disk.
+fn page_write(dir: String) -> PageWrite {
+  match render_page() {
+    PageRefused { reason: r } => PageWriteRefused { reason: r }
+    PageRendered { bytes: b } => {
+      let path = join([dir, "/", output_name], "")
+      let wrote = Filesystem.Write(path: path, content: b)
+      if wrote.success {
+        PageWritten { path: path }
+      } else {
+        PageWriteRefused { reason: join(["write failed: ", path], "") }
+      }
+    }
+  }
+}
+
+// The one file this module produces. The Pages repo serves it as index.html at the site root.
+data output_name: String = "index.html"
+
+fn page_exit(run: PageWrite) -> ProcessExit {
+  match run {
+    PageWritten { path: _ } => ExitSuccess
+    PageWriteRefused { reason: r } => exit_failure(reason: join([page_render_refusal_prefix, r], ""))
+  }
+}
+
+// Named-arg entry: gunbc run --function page_write_arg --arg dir=<out>.
+fn page_write_arg(dir: String) -> ProcessExit {
+  page_exit(run: page_write(dir: dir))
+}
+
+// Positional NativeCliDriver entry: same bytes, one argv slot.
+fn v2_cli_main(argv: List<String>) -> ProcessExit {
+  match get(argv, 0) {
+    Present { value: dir } => page_exit(run: page_write(dir: dir))
+    Absent => exit_failure(reason: "usage: gunb_ai_page <out-dir>")
+  }
+}

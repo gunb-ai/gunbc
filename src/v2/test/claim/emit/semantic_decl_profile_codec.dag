@@ -6,7 +6,12 @@ import v2.extdeps.languages.rust {
   rust_semantic_decl_serialize_profile_bundle_node
 }
 import v2.std.compilers.semantic_decl_emission {
+  DeclEmitLineBreaks,
+  DeclEmitStringQuote,
+  TargetSemanticDeclEmitEscape,
+  TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclSerializeProfile,
+  semantic_decl_serialize_profile_bundle,
   decode_semantic_decl_serialize_profile_bundle,
   semantic_decl_profile_binding_spellings,
   semantic_decl_profile_lex_rules
@@ -74,6 +79,46 @@ test fn decoded_binding_spellings_match_live() -> Bool {
           }
         Rejected { diagnostics: _ } => false
       }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn line_break_row() -> TargetSemanticDeclEmitTransformRow {
+  TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_lbrace, transform: DeclEmitLineBreaks { before: 0, after: 1 } }
+}
+
+test fn emit_transform_rows_round_trip_through_the_bundle() -> Bool {
+  match decode_semantic_decl_serialize_profile_bundle(
+    bundle: semantic_decl_serialize_profile_bundle(lex_rows: [], spelling_rows: [], emit_transform_rows: [line_break_row()])
+  ) {
+    Accepted { value: p, diagnostics: _ } => p.emit_transform_rows == [line_break_row()]
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_profile_states_only_the_string_quote_no_line_breaks() -> Bool {
+  match decoded_profile() {
+    Accepted { value: p, diagnostics: _ } => p.emit_transform_rows == [quote_row()]
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn quote_row() -> TargetSemanticDeclEmitTransformRow {
+  TargetSemanticDeclEmitTransformRow {
+    token_class: ^rust_token_str_lit,
+    transform: DeclEmitStringQuote {
+      open: "\"",
+      close: "\"",
+      escapes: [TargetSemanticDeclEmitEscape { from: "\\", to: "\\\\" }, TargetSemanticDeclEmitEscape { from: "\"", to: "\\\"" }]
+    }
+  }
+}
+
+test fn string_quote_rows_round_trip_through_the_bundle() -> Bool {
+  match decode_semantic_decl_serialize_profile_bundle(
+    bundle: semantic_decl_serialize_profile_bundle(lex_rows: [], spelling_rows: [], emit_transform_rows: [quote_row()])
+  ) {
+    Accepted { value: p, diagnostics: _ } => p.emit_transform_rows == [quote_row()]
     Rejected { diagnostics: _ } => false
   }
 }
