@@ -76,6 +76,11 @@ import gunbc.live_deploy.spec {
   gunbc_approval_broker_slice_unit_path, gunbc_approval_broker_unit_path, gunbc_approval_broker_unit_name,
 }
 import extdeps.systemd.systemctl { systemctl_enable_argv }
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
+import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path }
+import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path }
+import gunbc.ci.ci_release_bins { approval_device_crypto_serve_release_bin_name }
+import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.live_deploy.member_identity { plan_writes_oidc_config }
 import gunbc.live_deploy.emit { install_file_owner_only_mode }
 import gunbc.auth.tracker_web_oauth_client {
@@ -151,6 +156,7 @@ type DeployApplyLeg
   | ApplyLegBrokerTree { revision: ReleaseRevisionBinding }
   | ApplyLegRetract { step: String, leg: DeployRetractLeg }
   | ApplyLegDependency { dep: DeploymentDependencyStep }
+  | ApplyLegDigestEnvFile { step: String, binary: String, env_name: String, dest: String, owner: NonEmptyStr }
 
 type DeployApplyPlan
   = ApplyPlanReady { legs: List<DeployApplyLeg> }
@@ -171,6 +177,7 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegBrokerTree { revision: _ } => "approval-broker-tree"
     ApplyLegRetract { step: st, leg: _ } => st
     ApplyLegDependency { dep: _ } => "dependency"
+    ApplyLegDigestEnvFile { step: st, binary: _, env_name: _, dest: _, owner: _ } => st
   }
 }
 
@@ -377,7 +384,7 @@ fn deploy_apply_tree_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_
         ApplyPlanRefused { step: "user-work-slice", reason: join(["live-deploy apply refused: ", c, " (DESIGN 5: refuse, never widen)"], "") }
       UserWorkSliceUnitFileReady { file: f } =>
         match gunbc_installed_run_with_argument_command(
-          binary: spec.service.serve_binary as String as NonEmptyStr,
+          binary: fixed_serve_binary_path(binary: spec.service.serve_binary) as NonEmptyStr,
           source_roots: [join([source_root, "/dag"], ""), join([source_root, "/src/v2"], "")],
           entry: convergence_placement_entry_path,
           function: "repository_convergence_readback_wet",
@@ -427,12 +434,12 @@ fn deploy_apply_executable_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, s
     let source = join([source_root, "/", release_executable_install_source], "")
     ApplyPlanReady { legs: [
       ApplyLegDigestVerify { step: "executable-source-digest", path: source, digest: plan.target.executable },
-      apply_root_leg(step: "executable-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: spec.service.serve_binary as String))),
+      apply_root_leg(step: "executable-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: fixed_serve_binary_path(binary: spec.service.serve_binary)))),
       apply_root_leg(step: "executable-install", argv: coreutils_install_file_owned_argv(
         mode: install_executable_shared_mode,
         owner: spec.service.service_user, group: spec.service.service_user,
-        source: source, dest: spec.service.serve_binary as String)),
-      ApplyLegDigestVerify { step: "executable-installed-digest", path: spec.service.serve_binary as String, digest: plan.target.executable },
+        source: source, dest: fixed_serve_binary_path(binary: spec.service.serve_binary))),
+      ApplyLegDigestVerify { step: "executable-installed-digest", path: fixed_serve_binary_path(binary: spec.service.serve_binary), digest: plan.target.executable },
       apply_owned_directory_leg(spec: spec, step: "instance-receipts-dir", path: instance_receipts_dir(instance_root: spec.service.instance_root as String)),
     ] }
   }
@@ -527,16 +534,32 @@ fn deploy_apply_worker_sandbox_plan(spec: DeploymentSpec, revision: ReleaseRevis
   }
 }
 
-fn deploy_apply_broker_unit_write_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<DeployApplyLeg> {
+// THE BROKER'S RELEASE: its tree, the device-crypto sidecar binary installed into the same locus and the
+// env file naming the digest of that binary AS INSTALLED (read back off the host, never off the build
+// or a constant), the sidecar unit, the broker's slice and unit, then the sidecar's enable and restart.
+fn deploy_apply_broker_unit_write_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding, source_root: String) -> List<DeployApplyLeg> {
   if deployment_owns_the_host_approval_broker(spec: spec) {
-    [
+    let owner = spec.approval_broker.service_user
+    let installed = device_crypto_sidecar_binary_path(spec: spec, revision: revision)
+    concat([
       ApplyLegBrokerTree { revision: revision },
+      apply_root_leg(step: "device-crypto-sidecar-install", argv: coreutils_install_file_owned_argv(
+        mode: install_executable_shared_mode, owner: owner, group: owner,
+        source: join([source_root, "/target/release/", approval_device_crypto_serve_release_bin_name], ""), dest: installed)),
+      ApplyLegDigestEnvFile {
+        step: "device-crypto-digest-env",
+        binary: installed,
+        env_name: approval_device_crypto_deployed_digest_env_name as String,
+        dest: device_crypto_deployed_digest_env_file_path(root: spec.approval_broker.repo_root as String, revision: revision),
+        owner: owner,
+      },
+      apply_staged_leg(step: "device-crypto-sidecar-unit", dest: gunbc_device_crypto_sidecar_unit_path() as String, payload: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision))),
       apply_staged_leg(step: "approval-broker-slice-unit", dest: gunbc_approval_broker_slice_unit_path() as String, payload: serialize_systemd_unit_file(file: approval_broker_slice_unit_file())),
       apply_staged_leg(
         step: "approval-broker-unit",
         dest: gunbc_approval_broker_unit_path() as String,
         payload: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port))),
-    ]
+    ], apply_enable_restart_legs(step: "device-crypto-sidecar", unit: gunbc_device_crypto_sidecar_unit_name))
   } else {
     []
   }
@@ -558,7 +581,7 @@ fn deploy_apply_lifecycle_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) ->
   )
 }
 
-fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?) -> DeployApplyPlan {
+fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?, source_root: String) -> DeployApplyPlan {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
     LiveDeployServeUnitOidcReadbackRefused { cause: c } =>
@@ -569,7 +592,7 @@ fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
           deploy_apply_chain(
             first: deploy_apply_worker_sandbox_plan(spec: spec, revision: revision),
             rest: ApplyPlanReady { legs: list_append(
-              left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision),
+              left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision, source_root: source_root),
               right: [apply_staged_leg(step: "serve-unit", dest: deployment_systemd_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))],
             ) },
           )
@@ -822,7 +845,7 @@ fn deploy_apply_step_plan(step: DeploymentStep, effects: List<MemberEffect<Deplo
         ComposeOwned { kind: ck } =>
           match ck {
             OidcConfigArtifact => deploy_apply_oidc_plan(spec: spec, plan: plan, oidc_now: oidc_now)
-            SystemdUnit => deploy_apply_unit_plan(spec: spec, plan: plan, oidc_now: oidc_now)
+            SystemdUnit => deploy_apply_unit_plan(spec: spec, plan: plan, oidc_now: oidc_now, source_root: source_root)
             FabricStorageServeUnit => deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
             FabricStorageServeMapping =>
               if spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeUnit }) {

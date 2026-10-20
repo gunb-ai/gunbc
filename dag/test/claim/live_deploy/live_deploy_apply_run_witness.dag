@@ -30,7 +30,7 @@ import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
   ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   deploy_apply_memory_cap_plan, deploy_apply_leg_step, deploy_apply_tree_plan, deploy_apply_executable_plan,
-  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, ApplyLegRetract, ApplyLegDependency, deploy_apply_unit_plan, deploy_apply_upsert_plan,
+  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile, deploy_apply_unit_plan, deploy_apply_upsert_plan,
 }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe }
@@ -148,6 +148,7 @@ test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
         ApplyLegBrokerTree { revision: _ } => false
         ApplyLegRetract { step: _, leg: _ } => false
         ApplyLegDependency { dep: _ } => false
+        ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => false
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => false
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
       }
@@ -415,6 +416,7 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
         ApplyLegBrokerTree { revision: _ } => false
         ApplyLegRetract { step: _, leg: _ } => false
         ApplyLegDependency { dep: _ } => false
+        ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => false
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
       }
     ApplyPlanReady { legs: Empty } => false
@@ -437,7 +439,7 @@ fn step_index(legs: List<DeployApplyLeg>, step: String) -> Int {
 
 test fn the_unit_plan_installs_the_sandbox_grant_before_the_unit_and_restarts_after() -> Bool {
   let spec = deployment_spec_srv1()
-  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent) {
+  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent, source_root: "/src") {
     ApplyPlanReady { legs: legs } => {
       let slice = step_index(legs: legs, step: "attempt-worker-slice")
       let grant = step_index(legs: legs, step: "attempt-launcher-grant")
@@ -453,7 +455,7 @@ test fn the_unit_plan_installs_the_sandbox_grant_before_the_unit_and_restarts_af
 // never read as a unit with nothing to write.
 test fn an_unreadable_oidc_clock_refuses_the_unit_plan() -> Bool {
   let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
-  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent) {
+  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent, source_root: "/src") {
     ApplyPlanRefused { step: s, reason: r } => s == "serve-unit" && string_contains(s: r, pattern: "observer clock unreadable")
     ApplyPlanReady { legs: _ } => false
   }
@@ -462,7 +464,7 @@ test fn an_unreadable_oidc_clock_refuses_the_unit_plan() -> Bool {
 // The launcher grant's port refusal stops the run at that leg, and no later leg is dispatched.
 test fn a_refused_launcher_grant_stops_the_run_before_the_serve_unit() -> Bool {
   let spec = deployment_spec_srv1()
-  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent) {
+  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent, source_root: "/src") {
     ApplyPlanReady { legs: legs } =>
       match deploy_apply_run_legs(legs: legs, ports: ports(command_code: 0, stdin_code: 0)) {
         ApplyRunFailed { step: s, reason: r, legs_run: n } =>
@@ -514,4 +516,34 @@ test fn the_publication_upsert_runs_whole_and_stops_at_a_failing_leg() -> Bool {
       }
     ApplyRunFailed { step: _, reason: _, legs_run: _ } => false
   }
+}
+
+// THE DIGEST ENV FILE IS WRITTEN FROM THE INSTALLED BINARY'S BYTES: the read must name the installed path, and the
+// payload written is exactly NAME=<that digest>. A read of any other path, or a payload carrying any other value,
+// fails the run; an unparseable read stops the leg before the write.
+fn env_leg() -> DeployApplyLeg {
+  ApplyLegDigestEnvFile { step: "env", binary: "/locus/sidecar", env_name: "D", dest: "/locus/d.env", owner: "u" as NonEmptyStr }
+}
+
+fn env_ports(read_out: String) -> DeployApplyPorts {
+  DeployApplyPorts {
+    object_source: fn() { ObjectSourceCanServe { source: "/src" } },
+    command: fn(c) { if any(c.arguments, a => a == "/locus/sidecar") { observed_out(code: 0, out: read_out) } else { observed(code: 1, err: "read another path") } },
+    stdin: fn(c, p) { if p == "D=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\n" { observed(code: 0, err: "") } else { observed(code: 1, err: "wrong payload") } },
+    ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
+    helper_grant: fn(r) { grant_boom() },
+    root_helper_grant: fn(g, rc, r) { root_grant_boom() },
+    broker_tree: fn(r) { broker_tree_boom() },
+    dependency: fn(d) { dependency_boom() },
+    retract: retract_ports(),
+  }
+}
+
+test fn the_digest_env_is_written_from_the_installed_binarys_digest_and_no_other() -> Bool {
+  let good = deploy_apply_run_legs(legs: [env_leg()], ports: env_ports(read_out: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  /locus/sidecar\n"))
+  let other = deploy_apply_run_legs(legs: [env_leg()], ports: env_ports(read_out: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd  /locus/sidecar\n"))
+  let unparsed = deploy_apply_run_legs(legs: [env_leg()], ports: env_ports(read_out: "garbage"))
+  (match good { ApplyRunOk { legs_run: n, reports: _ } => n == 1  ApplyRunFailed { step: _, reason: _, legs_run: _ } => false })
+    && (match other { ApplyRunFailed { step: s, reason: r, legs_run: _ } => s == "env" && string_contains(s: r, pattern: "wrong payload")  ApplyRunOk { legs_run: _, reports: _ } => false })
+    && (match unparsed { ApplyRunFailed { step: _, reason: r, legs_run: _ } => string_contains(s: r, pattern: "no digest")  ApplyRunOk { legs_run: _, reports: _ } => false })
 }

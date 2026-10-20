@@ -26,6 +26,7 @@ import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_tick_cadence, 
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
+import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -34,6 +35,7 @@ import gunbc.live_deploy.release_locus {
   release_locus_dir,
   release_locus_releases_dir,
   release_locus_binary_path,
+  release_locus_member_path,
   release_locus_tree_receipt_path,
   release_locus_tree_subdirs,
   approval_broker_helper_root_principal,
@@ -208,6 +210,7 @@ import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
   deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
+  gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path,
   deployment_owns_the_host_approval_broker,
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
@@ -251,7 +254,9 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
-import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
+import gunbc.auth.approval_device_crypto_client { approval_device_crypto_sidecar_port, approval_device_crypto_sidecar_host }
+import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oidc_serve_standing, tracker_web_oidc_serve_placement, tracker_web_oidc_config_document,
   tracker_web_oidc_env_assignment, tracker_web_oidc_deploy_now_epoch,
@@ -559,7 +564,7 @@ fn live_deploy_serve_unit_file_over_listener(
       WorkingDirectory { path: svc.repo_root },
     ], concat(user_manager_environment_directives(uid: svc.service_uid), concat(oidc_env, [
       ExecStart { command: join([
-        svc.serve_binary as String,
+        fixed_serve_binary_path(binary: svc.serve_binary),
         " serve",
         deployment_serve_source_root_flags_text(),
         " --entry ", svc.serve_entry as String, " --function ", function as String,
@@ -633,7 +638,7 @@ fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseR
       WorkingDirectory { path: svc.repo_root },
     ], concat(user_manager_environment_directives(uid: svc.service_uid), [
       ExecStart { command: join([
-        svc.serve_binary as String,
+        fixed_serve_binary_path(binary: svc.serve_binary),
         " serve",
         deployment_serve_source_root_flags_text(),
         " --entry dag/gunbc/fabric/fabric_storage_serve.dag --function fabric_storage_serve_handle",
@@ -731,8 +736,8 @@ fn live_deploy_approval_broker_unit_file_on(
   ServiceUnitFile {
     unit: [
       Description { text: "gunbc approval broker HTTP server (gunbc serve)" as NonEmptyStr },
-      After { target: "network-online.target tailscaled.service" as NonEmptyStr },
-      Wants { target: "network-online.target" as NonEmptyStr },
+      After { target: join(["network-online.target tailscaled.service ", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr },
+      Wants { target: join(["network-online.target ", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr },
     ],
     service: [
       ServiceType { mode: SimpleMode },
@@ -740,10 +745,11 @@ fn live_deploy_approval_broker_unit_file_on(
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
       WorkingDirectory { path: release_dir as NonEmptyStr },
+      EnvironmentFile { path: device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision) as NonEmptyStr },
       release_locus_workspace_root_environment(release_dir: release_dir),
       approval_broker_base_url_environment(spec: spec),
       ExecStart { command: join([
-        release_locus_binary_path(root: svc.repo_root as String, revision: revision),
+        serve_binary_path(binary: svc.serve_binary, release_root: svc.repo_root as String, revision: revision),
         " serve",
         deployment_serve_source_root_flags_text(),
         " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
@@ -757,6 +763,50 @@ fn live_deploy_approval_broker_unit_file_on(
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }
 }
+
+// THE SIDECAR IS THE BROKER'S DEPENDENCY, SO ITS UNIT IS THE BROKER'S LOCUS-MEMBER: same service user, same release
+// directory, a native binary installed beside gunbc. The bind is the typed Port row the broker's client dials
+// (approval_device_crypto_sidecar_port), never a literal, so moving the port moves both ends.
+fn live_deploy_device_crypto_sidecar_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
+  let svc = spec.approval_broker
+  let release_dir = release_locus_dir(root: svc.repo_root as String, revision: revision)
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc device-crypto verifier sidecar (native serve entry)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: SimpleMode },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
+      WorkingDirectory { path: release_dir as NonEmptyStr },
+      ExecStart { command: join([
+        device_crypto_sidecar_binary_path(spec: spec, revision: revision),
+        " --host ", approval_device_crypto_sidecar_host as String,
+        " --port ", to_string(approval_device_crypto_sidecar_port as Int),
+        " --release-revision ", release_revision_execstart_text(binding: revision),
+      ], "") as NonEmptyStr },
+      Restart { policy: "on-failure" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
+fn device_crypto_sidecar_binary_path(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
+  release_locus_member_path(root: spec.approval_broker.repo_root as String, revision: revision, name: approval_device_crypto_serve_release_bin_name)
+}
+
+data device_crypto_deployed_digest_env_file_name: String = "device-crypto-deployed-digest.env"
+
+fn device_crypto_deployed_digest_env_file_path(root: String, revision: ReleaseRevisionBinding) -> String {
+  release_locus_member_path(root: root, revision: revision, name: device_crypto_deployed_digest_env_file_name)
+}
+
+fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision)))
+}
+
 
 fn emit_approval_broker_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(spec: spec, revision: revision)))
@@ -787,7 +837,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       ], "") as NonEmptyStr },
     ], concat(user_manager_environment_directives(uid: svc.service_uid), [
       ExecStart { command: join([
-        svc.serve_binary as String,
+        fixed_serve_binary_path(binary: svc.serve_binary),
         " run --source-root dag --source-root src/v2",
         " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_launch_enqueue_cli",
       ], "") as NonEmptyStr },
@@ -824,7 +874,7 @@ fn live_deploy_publication_service_unit_file(spec: DeploymentSpec) -> SystemdUni
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
       ExecStart { command: join([
-        svc.serve_binary as String,
+        fixed_serve_binary_path(binary: svc.serve_binary),
         " run --source-root dag --source-root src/v2",
         " --entry dag/gunbc/roadmap/roadmap_publication_helper.dag",
         " --function publication_helper_run_once_cli",
@@ -952,7 +1002,7 @@ fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: S
       ], "") as NonEmptyStr },
     ], concat(user_manager_environment_directives(uid: svc.service_uid), [
       ExecStart { command: join([
-        svc.serve_binary as String,
+        fixed_serve_binary_path(binary: svc.serve_binary),
         " run --source-root dag --source-root src/v2",
         " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function ", function,
       ], "") as NonEmptyStr },
@@ -1054,7 +1104,7 @@ fn tree_remote_convergence_oneshot(spec: DeploymentSpec) -> ConvergenceOneshot {
     working_directory: svc.repo_root,
     environment_files: [] as List<NonEmptyStr>,
     exec_start: join([
-      svc.serve_binary as String,
+      fixed_serve_binary_path(binary: svc.serve_binary),
       " run --source-root dag --source-root src/v2",
       " --entry dag/gunbc/deployed_tree_remote.dag --function ensure_deployed_tree_remote_wet",
       " --arg repository_path=", svc.repo_root as String,
