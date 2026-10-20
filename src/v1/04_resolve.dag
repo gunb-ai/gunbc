@@ -361,7 +361,7 @@ fn expand_nominal_alias_rhs_by_name(n: Node, env: TypeEnv, module_name: String) 
       // decides, at one place, whether the inferred fact drives the walk (Some: the leaf's own
       // target is walked) or not (Absent: the ordinary walk of `resolved`). The skip and both
       // reading arms consume that single decision; the shape test lives inside the match alone
-      // (review 38608). `brand_only_possible` holds the two brand-only conjuncts of the brand arm
+      // (review 83068, /api/reviews/83068/artifacts/stdout.log). `brand_only_possible` holds the two brand-only conjuncts of the brand arm
       // - if neither brand nor the inferred fact can read `structural`, the ordinary arm returns
       // `resolved` unchanged and the walk is deleted demand (DESIGN §2), not a cache.
       let brand_only_possible = brand != "" && !is_declared_container_alias_spelling(name: brand)
