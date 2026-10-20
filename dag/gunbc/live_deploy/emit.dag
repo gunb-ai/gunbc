@@ -316,9 +316,6 @@ import gunbc.live_deploy.operations {
   deploy_cap_stage_dir_var,
   deploy_stage_dirs_exit_trap_command,
   deploy_stage_write_command,
-  deploy_observed_digest_var,
-  deploy_observed_sha256_admitted_command,
-  deploy_stage_write_observed_sha256_env_command,
   deploy_stage_write_expansion_command,
   deploy_stage_install_command,
   deploy_stage_install_owned_command,
@@ -365,7 +362,7 @@ import v2.std.node { Node }
 import gunbc.ci.ci_deploy_access { DeployAccess }
 import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_install_shell }
 import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_command }
-import v2.workflow.effect_plan_bash_materialize { BashBoundOperationInvocation }
+import v2.workflow.effect_plan_bash_materialize { BashPlanEffect }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command,
   systemctl_daemon_reload_effect,
@@ -374,6 +371,7 @@ import gunbc.live_deploy.effect_leaf {
   apt_install_effect,
   apt_install_unelevated_effect,
   dpkg_status_effect,
+  observed_sha256_env_write_effect,
 }
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
@@ -442,7 +440,7 @@ fn deploy_raw(command: String) -> PipelineStep {
 // constructors live in gunbc.live_deploy.effect_leaf because EffectPlanStep and PipelineStep both
 // declare Do/If/For/While/Retry/Let/Call, and variant names resolve corpus-wide -- a module holding
 // both coproducts does not resolve. The split is forced by the substrate, not a layering choice.
-fn deploy_effect_run(inv: BashBoundOperationInvocation) -> Run {
+fn deploy_effect_run(inv: BashPlanEffect) -> Run {
   Run {
     command: deploy_effect_command(inv: inv),
     env: Empty,
@@ -451,7 +449,7 @@ fn deploy_effect_run(inv: BashBoundOperationInvocation) -> Run {
   }
 }
 
-fn deploy_effect(inv: BashBoundOperationInvocation) -> PipelineStep {
+fn deploy_effect(inv: BashPlanEffect) -> PipelineStep {
   Do { run: deploy_effect_run(inv: inv) }
 }
 
@@ -998,64 +996,25 @@ fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRe
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision)))
 }
 
-// THE RUNTIME-VALUED STAGED WRITE (the orchestration-to-shell bash-emit route that took a runtime value). The value
-// is the sha256sum tool's observed file digest (extdeps.tools.sha256sum DigestFile / Sha256FileDigest), whose validity
-// is std.content_hash Sha256DigestHex: Let binds the observation (a failing sha256sum fails the line under set -e),
-// If-Not-ExitZero refuses with Exit before anything is staged unless the line is admitted by
-// operations.deploy_observed_sha256_admitted_command, and only then the staged write and the owned install run.
-fn deploy_observed_sha256_let_step(observed_path: String) -> PipelineStep {
-  Let { name: deploy_observed_digest_var, value: ExprCmdSubst { callee: sha256sum_program().invocation as String, args: [observed_path] } }
-}
-
-// The refusal and the staged write, separated from the Let that binds the observation and the install that follows, so
-// a witness can bind the variable to a fixture, render exactly these steps through the bash emitter and execute them.
-fn deploy_observed_sha256_guarded_write_steps(env_name: String, stage_name: String) -> List<PipelineStep> {
-  [
-    If {
-      cond: Not { inner: ExitZero { run: Run {
-        command: deploy_observed_sha256_admitted_command(),
-        env: Empty,
-        redirect: Present { value: DiscardAll },
-        capture: Absent
-      } } },
-      then_: Pipeline { steps: [Exit { status: "1" }], on_failure: FailFast },
-      else_: Absent
-    },
-    deploy_raw(command: deploy_stage_write_observed_sha256_env_command(stage_name: stage_name, env_name: env_name)),
-  ]
-}
-
-fn deploy_observed_sha256_env_steps(
-  observed_path: String,
-  env_name: String,
-  stage_name: String,
-  owner: NonEmptyStr,
-  dest: String,
-) -> List<PipelineStep> {
-  concat(
-    concat(
-      [deploy_observed_sha256_let_step(observed_path: observed_path)],
-      deploy_observed_sha256_guarded_write_steps(env_name: env_name, stage_name: stage_name),
-    ),
-    [
-      deploy_raw(command: deploy_stage_install_owned_command(
-        stage_name: stage_name,
-        mode: install_file_shared_mode,
-        owner: owner,
-        group: owner,
-        dest: dest,
-      )),
-    ],
-  )
-}
-
 // THE DEPLOYED DIGEST IS READ OFF THE INSTALLED BYTES, never off the packed artifact or a constant: the env file the
 // broker loads is written from sha256sum of the sidecar binary AS INSTALLED in the locus, so the broker's expectation
 // is the digest of exactly what the sidecar unit executes. The sidecar's own receipt names sha256 of /proc/self/exe;
 // the broker joins the two (gunbc.auth.approval_device_crypto_realization device_crypto_echo_join) and refuses a
 // disagreement.
-// FAIL-CLOSED: see deploy_observed_sha256_env_steps -- the write is refused before any byte is staged unless the
-// observed line opens with a valid Sha256DigestHex, so an empty NAME= can never reach the env file.
+// FAIL-CLOSED: the env file is the typed leaf v2.std.effect_plan_observed_sha256 ObservedSha256EnvWrite, lowered by
+// v2.workflow.effect_plan_bash_materialize; the write is refused before any byte is written unless the observed line opens
+// with a valid Sha256DigestHex, so an empty NAME= can never reach the env file.
+fn device_crypto_sidecar_digest_env_effect(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> BashPlanEffect {
+  let svc = spec.approval_broker
+  observed_sha256_env_write_effect(
+    path: device_crypto_sidecar_binary_path(spec: spec, revision: revision),
+    dest: device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision),
+    env_name: approval_device_crypto_deployed_digest_env_name as String,
+    mode: install_file_shared_mode,
+    owner: svc.service_user,
+  )
+}
+
 fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let svc = spec.approval_broker
   let owner = svc.service_user
@@ -1068,13 +1027,8 @@ fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRe
       source: join(["target/release/", approval_device_crypto_serve_release_bin_name], ""),
       dest: installed,
     )),
-  ], deploy_observed_sha256_env_steps(
-    observed_path: installed,
-    env_name: approval_device_crypto_deployed_digest_env_name as String,
-    stage_name: device_crypto_deployed_digest_env_file_name,
-    owner: owner,
-    dest: device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision),
-  ))
+    deploy_effect(inv: device_crypto_sidecar_digest_env_effect(spec: spec, revision: revision)),
+  ]
 }
 
 fn device_crypto_sidecar_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {

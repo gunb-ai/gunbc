@@ -1,0 +1,52 @@
+module v2.workflow.effect_plan_bash_hex_ere
+
+import std.types { List, Int }
+import std.error_primitives { Ok, Err }
+import std.unicode.scalar { from_code_point }
+import std.content_hash { HexCodePointRange, lower_hex_code_point_ranges, sha256_hex_digit_count }
+
+// THE ERE SPELLING OF std.content_hash'S LOWERCASE-HEX ALPHABET, derived in the bash realization
+// because an ERE is a shell notation and std must not carry one. Each HexCodePointRange becomes
+// `first-last` inside one bracket expression, so the pattern admits exactly the code points
+// content_hash_is_lower_hex_code_point admits. A code point that does not spell as a scalar yields
+// an unterminated bracket: grep then refuses the pattern (status 2) and the guard exits before the
+// write, instead of an empty class matching anything.
+fn effect_plan_bash_hex_code_point_text(cp: Int) -> String {
+  match from_code_point(cp: cp) {
+    Ok { value: text } => text
+    Err { value: _ } => "["
+  }
+}
+
+fn effect_plan_bash_hex_range_text(range: HexCodePointRange) -> String {
+  if range.first == range.last {
+    effect_plan_bash_hex_code_point_text(cp: range.first)
+  } else {
+    concat(
+      effect_plan_bash_hex_code_point_text(cp: range.first),
+      concat("-", effect_plan_bash_hex_code_point_text(cp: range.last))
+    )
+  }
+}
+
+fn effect_plan_bash_hex_class_ere() -> String {
+  concat(
+    "[",
+    concat(
+      fold(lower_hex_code_point_ranges, init: "", f: fn(acc, r) { concat(acc, effect_plan_bash_hex_range_text(range: r)) }),
+      "]"
+    )
+  )
+}
+
+// A sha256sum line opens with the digest at Sha256DigestHex's width and the two-space separator
+// (extdeps.tools.sha256sum prints `<digest>  <path>`).
+fn effect_plan_bash_sha256_line_ere() -> String {
+  concat(
+    "^",
+    concat(
+      effect_plan_bash_hex_class_ere(),
+      concat("\{", concat(to_string(sha256_hex_digit_count), "}  "))
+    )
+  )
+}

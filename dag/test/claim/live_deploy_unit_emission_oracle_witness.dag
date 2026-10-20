@@ -34,9 +34,11 @@ import test.claim.live_deploy.apply_emission_projection { claim_oidc_now }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 import v2.std.orchestration { Pipeline, PipelineStep, Predicate, Let, If, Do, Exit, Not, ExitZero, ExprCmdSubst }
-import gunbc.live_deploy.operations { deploy_observed_sha256_admitted_command }
+import v2.workflow.effect_plan_bash_materialize { BashOperationEffect, ObservedSha256EnvWriteEffect }
+import gunbc.live_deploy.effect_leaf { deploy_effect_command }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.live_deploy.emit {
+  device_crypto_sidecar_digest_env_effect,
   emit_device_crypto_sidecar_unit_doc, device_crypto_sidecar_install_steps, device_crypto_sidecar_binary_path,
   emit_slice_unit_doc,
   live_deploy_protocol,
@@ -384,98 +386,67 @@ test fn the_sidecar_unit_would_install_these_bytes() -> Bool {
 }
 
 // RED: the env file the broker loads is derived from the sidecar binary AS INSTALLED, not from the gunbc binary or a
-// constant -- a digest source pointing at another binary is the join's "some other binary" hole.
+// constant -- a digest source pointing at another binary is the join's "some other binary" hole. The effect is read by
+// matching the ObservedSha256EnvWrite variant, so the source is a typed field and not a substring of shell text.
 test fn the_digest_env_is_computed_from_the_installed_sidecar_binary_and_no_other() -> Bool {
-  let steps = device_crypto_sidecar_install_steps(spec: live_spec(), revision: live_revision())
   let installed = device_crypto_sidecar_binary_path(spec: live_spec(), revision: live_revision())
   let gunbc_bin = release_locus_binary_path(root: live_spec().approval_broker.repo_root as String, revision: live_revision())
-  let text = pipeline_steps_text(steps: steps)
-  string_contains(s: text, pattern: join(["sha256sum", installed], "")) && !string_contains(s: text, pattern: join(["sha256sum", gunbc_bin], ""))
-    && !string_contains(s: text, pattern: "| cut")
+  match device_crypto_sidecar_digest_env_effect(spec: live_spec(), revision: live_revision()) {
+    ObservedSha256EnvWriteEffect { write: w } =>
+      w.path == installed && w.path != gunbc_bin
+        && w.env_name == (approval_device_crypto_deployed_digest_env_name as String)
+    BashOperationEffect { bound: _ } => false
+  }
 }
 
 // THE OLD SHELL FORM IS REJECTED: the digest-env write was one deploy_raw string (`d=$(sha256sum ..) && test ${#d} -eq 64 &&
-// printf .. | sudo install /dev/stdin`). The route is now typed -- the observation is a Let over ExprCmdSubst, not text -- so no
-// Do step may carry the assignment, the length test, or a stdin install of the env file, and the typed Let must exist.
+// printf .. | sudo install /dev/stdin`). The sidecar install now carries it as the ObservedSha256EnvWrite variant of
+// BashPlanEffect, so (1) the effect IS that variant, (2) the one Do step that names the env variable renders exactly that
+// effect's materialization, and (3) no other Do/Run.command names the variable, runs sha256sum, or installs from stdin.
 test fn the_digest_env_is_not_written_by_a_shell_string() -> Bool {
   let steps = device_crypto_sidecar_install_steps(spec: live_spec(), revision: live_revision())
-  let text = pipeline_steps_text(steps: steps)
-  !string_contains(s: text, pattern: "d=$(") && !string_contains(s: text, pattern: "-eq 64") && !string_contains(s: text, pattern: "/dev/stdin")
-    && fold(steps, init: false, f: (acc, st) => acc || step_is_observed_let(st: st))
+  let leaf = device_crypto_sidecar_digest_env_effect(spec: live_spec(), revision: live_revision())
+  let leaf_command = deploy_effect_command(inv: leaf)
+  let is_leaf = match leaf {
+    ObservedSha256EnvWriteEffect { write: _ } => true
+    BashOperationEffect { bound: _ } => false
+  }
+  is_leaf && count_generic_steps_naming_digest_env(steps: steps, leaf_command: leaf_command) == 0
+    && count_steps_equal_to(steps: steps, command: leaf_command) == 1
 }
 
-fn step_is_observed_let(st: PipelineStep) -> Bool {
+fn count_generic_steps_naming_digest_env(steps: List<PipelineStep>, leaf_command: String) -> Int {
+  fold(steps, init: 0, f: (acc, st) => if step_is_generic_digest_shell(st: st, leaf_command: leaf_command) { acc + 1 } else { acc })
+}
+
+fn step_is_generic_digest_shell(st: PipelineStep, leaf_command: String) -> Bool {
   match st {
-    Let { name: n, value: v } => match v {
-      ExprCmdSubst { callee: c, args: a } => c == "sha256sum"
-      _ => false
-    }
+    Do { run: r } =>
+      r.command != leaf_command
+        && (string_contains(s: r.command, pattern: approval_device_crypto_deployed_digest_env_name as String)
+          || string_contains(s: r.command, pattern: "sha256sum")
+          || string_contains(s: r.command, pattern: "/dev/stdin"))
     _ => false
   }
 }
 
-fn step_is_guard(st: PipelineStep) -> Bool {
-  match st {
-    If { cond: c, then_: t, else_: e } => predicate_refuses_unless_admitted(c: c) && pipeline_exits_one(p: t) && !is_present(o: e)
-    _ => false
-  }
+fn count_steps_equal_to(steps: List<PipelineStep>, command: String) -> Int {
+  fold(steps, init: 0, f: (acc, st) => match st {
+    Do { run: r } => if r.command == command { acc + 1 } else { acc }
+    _ => acc
+  })
 }
 
-fn predicate_refuses_unless_admitted(c: Predicate) -> Bool {
-  match c {
-    Not { inner: ExitZero { run: r } } => r.command == deploy_observed_sha256_admitted_command()
-    _ => false
-  }
-}
-
-fn pipeline_exits_one(p: Pipeline) -> Bool {
-  match p.steps {
-    [Exit { status: s }] => s == "1"
-    _ => false
-  }
-}
-
-fn is_present(o: Pipeline?) -> Bool {
-  match o {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn step_at_is_observed_let(steps: List<PipelineStep>, index: Int) -> Bool {
-  match get(xs: steps, index: index) {
-    Present { value: st } => step_is_observed_let(st: st)
-    Absent => false
-  }
-}
-
-fn step_at_is_guard(steps: List<PipelineStep>, index: Int) -> Bool {
-  match get(xs: steps, index: index) {
-    Present { value: st } => step_is_guard(st: st)
-    Absent => false
-  }
-}
-
-fn step_at_writes_env(steps: List<PipelineStep>, index: Int) -> Bool {
-  match get(xs: steps, index: index) {
-    Present { value: st } => step_writes_env(st: st)
-    Absent => false
-  }
-}
-
-fn step_writes_env(st: PipelineStep) -> Bool {
-  match st {
-    Do { run: r } => string_contains(s: r.command, pattern: approval_device_crypto_deployed_digest_env_name as String)
-    _ => false
-  }
-}
-
-// ORDER: the guard sits after the observation and before the only step that names the env variable. The refusal itself is
-// exercised by real execution in test.claim.live_deploy.observed_sha256_guard_real_execution.
-test fn the_digest_guard_precedes_the_env_write() -> Bool {
+// ORDER: the leaf is the last step of the sidecar install, after the binary it observes is installed. The refusal
+// itself (observation failed, malformed digest) is exercised by real execution in
+// test.claim.live_deploy.observed_sha256_guard_real_execution.
+test fn the_digest_env_leaf_follows_the_sidecar_install() -> Bool {
   let steps = device_crypto_sidecar_install_steps(spec: live_spec(), revision: live_revision())
-  step_at_is_observed_let(steps: steps, index: 1) && step_at_is_guard(steps: steps, index: 2) && step_at_writes_env(steps: steps, index: 3)
-    && !step_at_writes_env(steps: steps, index: 0) && !step_at_writes_env(steps: steps, index: 1) && !step_at_writes_env(steps: steps, index: 2)
+  let leaf_command = deploy_effect_command(inv: device_crypto_sidecar_digest_env_effect(spec: live_spec(), revision: live_revision()))
+  match get(xs: steps, index: 1) {
+    Present { value: Do { run: r } } => r.command == leaf_command
+    _ => false
+  } && steps.count() == 2
 }
 
 // THE BROKER INHERITS THE ROADMAP'S EVALUATION CAPS, and that is a stated divergence rather than a

@@ -1,0 +1,39 @@
+module v2.std.effect_plan_observed_sha256
+
+import std.types { NonEmptyStr }
+
+// THE TYPED LEAF FOR "WRITE A ROOT-OWNED ENV FILE WHOSE VALUE IS THE SHA-256 OF A FILE ON THE HOST,
+// OBSERVED WHEN THE PLAN RUNS". It is an effect of v2.std.effect_plan EffectPlanStep Do, beside the
+// operation invocation the same plans already carry, because the value does not exist when the plan
+// is authored: the model names WHICH file is observed and WHERE the observation lands, never the
+// digest, and no model code ever holds the raw observed text. Authoring it as a shell string (the
+// shape this replaces) put the observation, the validity check and the write in one opaque string
+// a witness could only grep.
+//
+// The realization is v2.workflow.effect_plan_bash_materialize, one arm of its closed effect sum
+// BashPlanEffect. This leaf is NOT a second materializer and nothing else lowers it; a different
+// transport adds its own arm over the same fields.
+type ObservedSha256EnvWrite {
+  path: String
+  dest: String
+  env_name: String
+  mode: NonEmptyStr
+  owner: NonEmptyStr
+}
+
+// THE TWO WAYS THE RUNTIME OBSERVATION CAN FAIL, kept apart because they are different harms:
+// the observer could not read the file at all (the installed binary is absent or unreadable), or it
+// answered something that is not a SHA-256 line. Either way no write has happened. Each has its own
+// exit status in the realization, so a reader of the host's result can tell them apart; a value
+// observed at run time cannot be refused at materialization, which is why these are statuses and
+// the statically decidable faults (bad name, NUL, unmaterializable observer argv) are refusals.
+type ObservedSha256FailureCause
+  = ObservationFailed
+  | DigestShapeInvalid
+
+fn observed_sha256_failure_exit_status(cause: ObservedSha256FailureCause) -> String {
+  match cause {
+    ObservationFailed => "70"
+    DigestShapeInvalid => "71"
+  }
+}

@@ -24,9 +24,6 @@ import extdeps.tools.gnu_coreutils {
   coreutils_install_group_flag,
 }
 import extdeps.tools.diffutils { diffutils_cmp_program }
-import extdeps.tools.grep { grep_program }
-import std.content_hash { lower_hex_prefix_ere, sha256_hex_digit_count }
-import extdeps.tools.gnu_coreutils { printf_program }
 import gunbc.fleet.fleet_posix_accounts { fleet_visudo_binary_path, fleet_cp_binary_path, fleet_mv_binary_path }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.exec.command { argv_words }
@@ -41,7 +38,6 @@ import gunbc.shell_command_text {
 }
 import v2.extdeps.languages.bash_build {
   bash_build_command_with_words,
-  bash_build_pipe,
   bash_build_with_redir_to_file,
   bash_build_word_concat_from_nodes,
   bash_build_word_lit,
@@ -190,54 +186,6 @@ fn deploy_stage_write_command(stage_name: String, content: String) -> String {
   shell_command_text_of_node(
     stmt: bash_build_with_redir_to_file(
       inner: shell_command_intent(words: ["printf", "%s", content]),
-      path: deploy_stage_path_word(stage_name: stage_name),
-    ),
-  )
-}
-
-// THE STAGED WRITE OF A RUNTIME-OBSERVED SHA-256. The value exists only on the host, so the route
-// is three typed parts rather than one shell string: the observation (a Let over sha256sum, emitted
-// in gunbc.live_deploy.emit deploy_observed_sha256_env_steps), this admission guard, and a write
-// whose content is the variable WORD, never spliced text. The guard is std.content_hash
-// Sha256DigestHex (lower_hex_64) read as a grep pattern: the whole `sha256sum` line must open with
-// 64 lowercase hex digits and the two-space separator (extdeps.tools.sha256sum prints
-// `<digest>  <path>`), else the step exits before any write. deploy_observed_sha256_line_ere is the
-// ONE spelling of that pattern; the write takes exactly its first 64 characters (%.64s), so what is
-// written is what the guard admitted.
-data deploy_observed_digest_var: String = "_gunbc_observed_digest"
-data deploy_observed_sha256_line_ere: String = concat(lower_hex_prefix_ere(expected_hex_digits: sha256_hex_digit_count), "  ")
-
-fn deploy_observed_sha256_admitted_command() -> String {
-  shell_command_text_of_node(
-    stmt: bash_build_pipe(
-      left: bash_build_command_with_words(words: [
-        bash_build_word_lit(text: printf_program().invocation as String),
-        bash_build_word_lit(text: "%s"),
-        bash_build_word_var(name: deploy_observed_digest_var),
-      ]),
-      right: shell_command_intent(words: [grep_program().invocation as String, "-Eq", deploy_observed_sha256_line_ere]),
-    ),
-  )
-}
-
-// Reads a staged file back out (a witness observes what the guarded write staged, through the same staged-path word).
-fn deploy_stage_read_command(stage_name: String) -> String {
-  shell_command_text_of_node(
-    stmt: bash_build_command_with_words(words: [
-      bash_build_word_lit(text: "cat"),
-      deploy_stage_path_word(stage_name: stage_name),
-    ]),
-  )
-}
-
-fn deploy_stage_write_observed_sha256_env_command(stage_name: String, env_name: String) -> String {
-  shell_command_text_of_node(
-    stmt: bash_build_with_redir_to_file(
-      inner: bash_build_command_with_words(words: [
-        bash_build_word_lit(text: printf_program().invocation as String),
-        bash_build_word_lit(text: concat(env_name, "=%.64s\\n")),
-        bash_build_word_var(name: deploy_observed_digest_var),
-      ]),
       path: deploy_stage_path_word(stage_name: stage_name),
     ),
   )

@@ -5,6 +5,7 @@ import extdeps.exec.program { ProgramIdentity, cataloged_program }
 import std.types { NonEmptyStr, Bool, List, Unit }
 import std.algebra { trim, skip }
 import std.content_hash {
+  lower_hex_64,
   as_content_hash_cryptographic,
   as_content_hash_sha512,
   ContentHash,
@@ -123,8 +124,9 @@ fn sha256sum_file_command(path: String) -> ArgvCommand {
   argv_command(program: sha256sum_program(), arguments: skip(xs: sha256sum_argv(path: path), n: 1))
 }
 
-// The first field of the output line, admitted only at the digest's exact length.
+// The first field of the output line, admitted only as std.content_hash Sha256DigestHex (lower_hex_64:
+// exact width AND the lowercase-hex alphabet), the carrier Digest.hex stands for.
 fn sha256sum_line_digest(line: String) -> Digest? {
   let field = fold(split(s: trim(s: line), delimiter: " "), init: "", f: (acc, w) => if acc == "" { w } else { acc })
-  if field.length() == 64 { Present { value: sha256_digest(hex: field as NonEmptyStr) } } else { none }
+  if lower_hex_64(value: field) { Present { value: sha256_digest(hex: field as NonEmptyStr) } } else { none }
 }
