@@ -15,6 +15,7 @@ fn ts_closure_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_closure_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),
@@ -102,7 +103,7 @@ fn ts_closure_emit_value_producing(
       projection: ts_value_expression_projection_with_block_evaluation_mode(
         block_evaluation_mode: ValueProducing
       ),
-      catalog: catalog
+      catalog: TargetRealizationCatalog { operators: catalog, primitives: PrimitiveRealizationsUnwired }
     ),
     f: fn(tokens) {
       serialize_concrete_syntax_tokens_to_source(
@@ -173,7 +174,7 @@ test fn ts_closure_statement_sequenced_fails_closed_holds() -> Bool {
   match target_value_expression_to_concrete_tokens(
     expr: ts_closure_canonical_expr(),
     projection: ts_value_expression_projection(),
-    catalog: ts_closure_infix_catalog()
+    catalog: TargetRealizationCatalog { operators: ts_closure_infix_catalog(), primitives: PrimitiveRealizationsUnwired }
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true

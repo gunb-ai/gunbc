@@ -1,0 +1,33 @@
+module gunbc.instruments.native_serve_startup_overrun_fixture
+
+import std.types { String, Int, List, CommitSha }
+import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
+import std.measure { Second, second }
+import extdeps.http.server { ServeWireResponse }
+import gunbc.native_serve { native_serve_text_plain, NativeServeStartup, NativeServeStartupPassed }
+
+// THE CONTROL SERVICE FOR "A STARTUP PAST ITS OWN BOUND IS THE MODELED STARTUP REFUSAL" (gunbc.native_serve
+// native_serve_startup_bound declared by this entry, read by v1.compiler.emit_rust native_serve_declares_startup_bound).
+// It declares a 1 s startup bound and a startup of 3*10^10 spin steps (gunbc.instruments.native_serve_startup_slow_fixture
+// states the step cost: about 60 s or more, thirty-plus times the bound, and the process is gone at the bound). The main must exit with
+// native_serve_startup_refused_exit_code before it binds, and the reader
+// (gunbc.instruments.native_serve_startup_overrun_probe) is red if the service ever announces.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
+
+// The same modular-hash countdown as gunbc.instruments.native_serve_fixture fixture_spin (the accumulator's modulus keeps
+// the optimizer from folding it to a closed form), restated here because importing that module would make its
+// compiler pipeline entry a second entry of this crate.
+fn startup_spin(n: Int, acc: Int) -> Int {
+  if n == 0 { acc } else { startup_spin(n: n - 1, acc: (acc * 31 + n) % 1000003) }
+}
+
+data native_serve_startup_bound: Second = second(count: 1)
+
+fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup<Int> {
+  let spun = startup_spin(n: 30000000000, acc: 7)
+  NativeServeStartupPassed { line: concat("overrun startup finished after a spin of ", to_string(value: spun)), value: spun }
+}
+
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, spun: Int) -> ServeWireResponse {
+  ServeWireResponse { status: 200, content_type_label: native_serve_text_plain, body: "unreachable\n", headers: [] }
+}
