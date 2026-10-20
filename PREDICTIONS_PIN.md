@@ -43,3 +43,43 @@ minting-tree inventory above, which is what makes it red if a later mint widens 
 Lesson recorded where it will be read again: a prediction copied from a measurement of a DIFFERENT
 tree (here, a minting tree) is not a prediction about the tree under test. Predictions that have not
 been measured against the base are guesses and must be labelled as guesses.
+
+## Outcome of B1-B6 (measured at the merged head, written after the runs)
+
+Head measured: 5cc80be8e59141785fc32250d0d95b7a53d2841f (`pr1-producer-repair`, a merge commit whose
+second parent is origin/main 7d4cadbe844; pushed as refs/heads/probe/pr1-pin-tree). Earlier heads in
+this section (af4fcc078a1, ea5e0d4951f, be322cacc97, 0b1f8af7c68) are superseded by main moving
+four commits; each was re-measured at the final head rather than carried forward.
+
+- B1 PASS: `pr1_row.sh <head> pin_merged2 pin` printed `MEASURED_AT 5cc80be8e59…` and the tree-shape
+  guard `GUARD acc=0 mint_markers=0 dag_span_keyed=0`.
+- B2 PASS with the correction recorded above: `SYNTAX_RC=0`, and the row verdict line is
+  `test result: ok. 1 passed; 0 failed; 60 filtered out` (the script's own header says the verdict is
+  the `SUMMARY`/`test result:` line; `ROW_RC` is not printed by this script -- an earlier reading of
+  mine claimed it was, and that reading was wrong). Inventory at the fixture on a tree with no mint:
+  `MINT-BOUNDARY-INVENTORY positions=0 distinct=0 minted=0 calls=1 sample=[]` -- the call reaches the
+  arm (`calls=1`, both fatal guards satisfied) and main records no type variable there.
+- B3 PASS: `gate_emit_build_14152.sh <head> pin_merged2 pin` gave `build rc=0`, then
+  `SELF_HOST_RC=0 lines=25` with `EMITTED_BUILD_FAILED_LINES=0` and `LOCATED_BY_GLOB=NONE`. Controls
+  on main tips gave the same `SELF_HOST_RC=0 lines=25`, so the metric is not merely green but
+  unchanged. The mint-era head at the same instrument was `SELF_HOST_RC=2` with
+  `EmittedCompilerBuildFailed`; withdrawing the mint is what closed it.
+- B4 IN FLIGHT at the time of writing (see the two-closure log); recorded separately when read.
+- B5 PASS: `git diff origin/main...HEAD -- src/v1/tests/src/lib.rs` has 0 deletion lines (purely
+  additive), and an awk scan of `lib.rs` finds no `mod *_test;` line whose predecessor lacks
+  `#[cfg(test)]` -- the defect review 82875 blocked, checked again at the merged head.
+- B6 PASS: `parsecheck.py <row>` rc=0; the transcribed-count regex `\b(43|45|76|19|11|39)\b` matches
+  0 lines; the three withdrawn artifact names each appear 0 times; and the row's three emitter
+  citations still resolve at this head after main's commit 6215e222ba8 added 132 lines to
+  `src/v1/05_emit_rust.dag` -- the line numbers were re-checked, not assumed, because that commit
+  touched one of the cited files.
+
+Merge verification at the same head, in the form stern-bat-401 asked for (msg_1c6d0180): the merge is
+a true merge commit (two parents), the stage0 projection needed no regeneration (268 files under
+`src/v1/stage0/src` byte-identical to origin/main, `DRIFT=0`; no hand-written module under
+`src/v1/tests/src` has a stage0 projection, and no `*.generated.*` artifact names any
+`recurring_failure_mode` row, so a new row cannot create projection drift), the diff against main is
+exactly three files and all additions, and the deleted-symbol grep over
+`4e32f5a1007..7d4cadbe844` found the only declaration-level removals to be a `pub use` of
+`function_value_params` / `is_host_text_carrier_type`, both of which are absent from my merged tree
+(main's deletion taken, not silently retained).
