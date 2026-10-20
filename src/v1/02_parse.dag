@@ -3538,9 +3538,9 @@ fn parse_optional_type_param_kind(tokens: TokenStream, ctx: ParseContext) -> Typ
 }
 
 // THE KIND PROPERTY'S name_span MUST BE no_span(), AND THE REASON IS A TRAP WORTH NAMING. Property
-// lookup goes through find_property -> field_init_node_name_at -> authored_name_at, which reads the
-// SOURCE TEXT at the property node's ident_span and falls back to the node's `name` field ONLY when
-// that span's file is absent from source_indices. Passing the kind token's own span therefore made
+// lookup goes through find_property -> field_init_node_name_at -> node_authored_text, which answers the
+// text carried on the property node's ident_span (it used to re-read the SOURCE TEXT at that span,
+// falling back to the node's `name` field only when the span's file was absent). Passing the kind token's own span therefore made
 // this property answer its own name as "WidthResolution" rather than "__param_kind", every lookup
 // missed, and the kind wall compiled, shipped and never fired -- green on every probe including the
 // ones written to go red. The existing sole_constructor property passes no_span() for exactly this
@@ -4537,7 +4537,7 @@ fn parse_exit_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node
 // each is carried as the ONE `requires` property its members would use, whose value is the word as a
 // string literal -- a member is always a parsed type expression and never a string literal, so the
 // reader tells the forms apart by the value's shape. (A property's name is read back from the source
-// at its name span (v1.std.core authored_name_at), so a differently named marker spanned on the
+// through the text its ident_span carries (v1.std.core node_authored_text), so a differently named marker spanned on the
 // `requires` token would read back as `requires`; one name, one span, is the honest carrier.) A member
 // after either word refuses, so a clause cannot both declare nothing and name a resource; and a SECOND
 // `requires` clause refuses in parse_op_body_entries, as v2 refuses it at lowering
