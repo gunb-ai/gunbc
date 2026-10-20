@@ -73,3 +73,36 @@ test fn fn_reads_fn_item_and_not_type_item() -> Bool {
 test fn an_alias_is_not_read_as_a_fn() -> Bool {
   kind_rows(qn: "std.types.List") > 0 && kind_rows_of_fn(qn: "std.types.List") == 0
 }
+
+// A DATA DECLARATION OF A v2.* MODULE IS KEYED UNDER ITS OWN MODULE NAME. cool-moth-104 measured
+// std.algebra kernel_algebra_profile keyed and v2.lens.enforcement.standing_intent whole_corpus_scope
+// not: the stripped key filed the second under `lens.enforcement...`, so a read by its authored
+// qualified name found nothing. Both are data; only one module carries the layer prefix.
+fn data_rows_of(qn: String) -> Int {
+  fold_list(
+    xs: decl_facts_at(pool_roots: decl_kind_roots, qualified_name: qn),
+    empty: 0,
+    cons: fn(n, f) {
+      match f.kind {
+        DataItem => n + 1
+        TypeItem => n
+        FnItem => n
+        ServiceItem => n
+        OtherItem => n
+      }
+    }
+  )
+}
+
+test fn data_in_a_v2_module_is_keyed_under_its_own_module_name() -> Bool {
+  data_rows_of(qn: "v2.lens.enforcement.standing_intent.whole_corpus_scope") == 1
+    && data_rows_of(qn: "lens.enforcement.standing_intent.whole_corpus_scope") == 0
+}
+
+test fn data_in_a_non_v2_module_is_keyed_as_before() -> Bool {
+  data_rows_of(qn: "std.algebra.kernel_algebra_profile") == 1
+}
+
+test fn the_two_trees_share_no_key_for_integer() -> Bool {
+  kind_rows(qn: "v2.std.integer.Int") == 1 && kind_rows(qn: "std.integer.Int") == 1
+}
