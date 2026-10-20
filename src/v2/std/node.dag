@@ -748,29 +748,34 @@ fn bind_positional_slot(ordinal: Int) -> BindSlot {
   }
 }
 
-// THE NODE A Bind HOLDS IN A SLOT: its first positional child whose ordinal bind_positional_slot maps to
-// `slot` -- the binder, the value, or the (first) body. Readers of a Bind's parts read them here, so the
-// table above is the only place a Bind's slots are numbered. The walk stops at that child.
+// THE NODE A Bind OR A Match HOLDS IN A SLOT: its first positional child whose ordinal the table maps to
+// `slot` -- a Bind's binder, value or (first) body, a Match's scrutinee or first arm. Readers of a node's
+// parts read them here, so the tables are the only place those slots are numbered. One walk serves both:
+// it counts positional ordinals and stops at the first child the table selects.
 fn bind_slot_target(n: Node, slot: BindSlot) -> Optional<Node> {
-  bind_slot_target_from(edges: n.children, ordinal: 0, slot: slot)
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { bind_positional_slot(ordinal: i) == slot })
 }
 
-fn bind_slot_target_from(edges: List<Edge>, ordinal: Int, slot: BindSlot) -> Optional<Node> {
+fn match_slot_target(n: Node, slot: MatchSlot) -> Optional<Node> {
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { match_positional_slot(ordinal: i) == slot })
+}
+
+fn positional_target_where(edges: List<Edge>, ordinal: Int, wanted: fn(Int) -> Bool) -> Optional<Node> {
   match edges {
     Empty => optional_absent()
-    Cons { head: e, tail: rest } => bind_slot_target_at(e: e, rest: rest, ordinal: ordinal, slot: slot)
+    Cons { head: e, tail: rest } => positional_target_where_at(e: e, rest: rest, ordinal: ordinal, wanted: wanted)
   }
 }
 
-fn bind_slot_target_at(e: Edge, rest: List<Edge>, ordinal: Int, slot: BindSlot) -> Optional<Node> {
+fn positional_target_where_at(e: Edge, rest: List<Edge>, ordinal: Int, wanted: fn(Int) -> Bool) -> Optional<Node> {
   if is_positional(e: e) {
-    if bind_positional_slot(ordinal: ordinal) == slot {
+    if wanted(ordinal) {
       optional_present(value: e.target)
     } else {
-      bind_slot_target_from(edges: rest, ordinal: ordinal + 1, slot: slot)
+      positional_target_where(edges: rest, ordinal: ordinal + 1, wanted: wanted)
     }
   } else {
-    bind_slot_target_from(edges: rest, ordinal: ordinal, slot: slot)
+    positional_target_where(edges: rest, ordinal: ordinal, wanted: wanted)
   }
 }
 
