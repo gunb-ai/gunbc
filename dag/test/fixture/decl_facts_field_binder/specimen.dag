@@ -7,3 +7,7 @@ type DefaultSpecimen {
   quoted_false: String = "false"
   bool_false: Bool = false
 }
+
+type OptionalSpecimen {
+  maybe_count: Int?
+}

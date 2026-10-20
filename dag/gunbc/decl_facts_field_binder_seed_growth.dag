@@ -31,14 +31,22 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // edge. Every other default expression refuses at the marshal with a typed error: reflecting its
 // source text under the same edge would give BinderDefaultEdge two meanings by producer (DESIGN 3).
 //
-// HAND-ITEM DELTA: +2 citable declarations, both in v1_compiler.coproduct_reflection.
+// OPTIONAL FIELDS. main deleted the Occupancy connective: an optional layer is a std.optional
+// Instantiation over a declaration-reference spine (v2.std.optional_layers wrap_type_node_occupancy).
+// optional_layer_node is the host's SECOND SPELLING of that constructor, because the host cannot call
+// a .dag function; it is admitted only with a differential claim
+// (test.claim.decl_facts_field_binder_witness the_marshalled_optional_field_is_wrap_type_node_occupancy_over_its_type,
+// with its RED) and deleted with the host walk (trigger below).
+//
+// HAND-ITEM DELTA: +3 citable declarations, all in v1_compiler.coproduct_reflection.
 data decl_facts_field_binder_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "core_edge_value", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "marshal_field_binder", field: WholeDeclaration }
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "marshal_field_binder", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "optional_layer_node", field: WholeDeclaration }
   ],
   reason: "The host reflection is a host walk over the seed's own parsed nodes, so the shape it hands the substrate can only be produced where those nodes are readable. marshal_field_binder is the one place a declared field becomes a node, and core_edge_value mints the core-marker edge label the binder shape needs; both exist to make the host emit v2.std.node_query binder_node's shape rather than a second encoding of the same fact (DESIGN section 3).",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
-  trigger: "Delete both when the declaration census is a MODELED operation over a modeled prepared inventory rather than a host walk, at which point the field binder is built by v2.std.node_query binder_node from the parsed declaration and the host marshals no declared field.",
-  current_boundary: "Confined to the type-declaration arm of the reflection: marshal_variant_arm_target calls marshal_field_binder once per field, and the only other change in the module is the import list. The Optional cardinality wrapper is the Occupancy connective node_query declared_field_cardinality_of_target decodes; generic instantiations are still reflected as their head atom (marshal_type_expr_ref, unchanged)."
+  trigger: "Delete all three when the declaration census is a MODELED operation over a modeled prepared inventory rather than a host walk, at which point the field binder is built by v2.std.node_query binder_node from the parsed declaration and the host marshals no declared field.",
+  current_boundary: "Confined to the type-declaration arm of the reflection: marshal_variant_arm_target calls marshal_field_binder once per field, and the only other change in the module is the import list. The Optional cardinality wrapper is the std.optional Instantiation node_query declared_field_cardinality_of_target decodes; generic instantiations are still reflected as their head atom (marshal_type_expr_ref, unchanged)."
 }

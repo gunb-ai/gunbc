@@ -318,10 +318,47 @@ fn core_edge_value(ctx: &InterpContext, marker: &str, target: Value) -> Value {
     }
 }
 
+// ONE std.optional LAYER over a payload: an Instantiation whose head is the declaration reference
+// std.optional.Optional and whose second child is the payload, the node v2.std.optional_layers
+// wrap_type_node_occupancy builds at depth one (differential claim:
+// test.claim.decl_facts_field_binder_witness). The reference is the marked carrier of
+// v2.std.qualified_name declaration_reference_node: a Conj whose one DeclarationReferenceEdge targets
+// the segment spine v2.std.node fold_list_node builds over synthetic atoms.
+fn optional_layer_node(ctx: &InterpContext, payload: Value) -> Value {
+    let mut spine = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        vec![],
+    );
+    for segment in ["Optional", "optional", "std"] {
+        spine = node_record(
+            ctx,
+            node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+            vec![
+                edge_named(ctx, "fold_list_node_head", atom_identity_node(ctx, segment)),
+                edge_named(ctx, "fold_list_node_tail", spine),
+            ],
+        );
+    }
+    let reference = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        vec![core_edge_value(ctx, "DeclarationReferenceEdge", spine)],
+    );
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Instantiation")),
+        vec![
+            edge_positional(ctx, reference),
+            edge_positional(ctx, payload),
+        ],
+    )
+}
+
 // A DECLARED FIELD IS A BINDER NODE, the one shape v2.std.node_query binder_node builds and
 // declared_field_list reads: a Conj of a BinderTypeEdge to the field's type and, when the field
-// declares a default, a BinderDefaultEdge. An optional field (`f: T?`) targets an Occupancy over its
-// type, as declared_field_cardinality_of_target decodes. A literal default is a
+// declares a default, a BinderDefaultEdge. An optional field (`f: T?`) targets one std.optional layer over its
+// type (optional_layer_node), as declared_field_cardinality_of_target decodes. A literal default is a
 // ComputationNode { Value } over the atom of its own spelling. Every non-literal default REFUSES
 // (TypeError): the host cannot elaborate it, and none comes out as no default, which would be a
 // silent loss of a declared fact.
@@ -337,11 +374,7 @@ fn marshal_field_binder(
         field_node_cardinality(field.clone()),
         Cardinality::CardOptional
     ) {
-        type_target = node_record(
-            ctx,
-            node_kind_type_node(ctx, nullary_connective_variant(ctx, "Occupancy")),
-            vec![edge_positional(ctx, type_target)],
-        );
+        type_target = optional_layer_node(ctx, type_target);
     }
     let mut edges = vec![core_edge_value(ctx, "BinderTypeEdge", type_target)];
     // A parsed field keeps its default in `body`; a normalized one (make_field_node) as child 1.
