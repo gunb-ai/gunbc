@@ -288,11 +288,17 @@ data swift_toolchain_signing_key_fingerprint: NonEmptyStr = "52BB7E3DE28A71BE22E
 // SignatureUnverified, not DigestDiffersFromPin -- swap the gate's order and that claim turns red. Same
 // shape for digest-before-size. That is the order measured, where the list was only the order described.
 
+// What gpg yields: a Good signature made by a key with a fingerprint, or a BAD one with its detail. A Bool
+// beside a fingerprint was an undeclared sum -- a bad signature could still carry a listed fingerprint -- so
+// the fingerprint exists only on the arm that has a signature to have been made by a key.
+type SignatureOutcome
+  = GoodSignature { fingerprint: NonEmptyStr }
+  | BadSignature { detail: NonEmptyStr }
+
 // A candidate archive, as measured by a run: what the signature check said and what the bytes hashed to.
 // Held as a record so the instrument reports the same three facts every time and cannot report a subset.
 type SwiftToolchainCandidate {
-  signature_verified: Bool
-  signing_key_fingerprint: NonEmptyStr
+  signature: SignatureOutcome
   observed_digest: Sha256Digest
   observed_size: ByteSize
 }
@@ -347,16 +353,21 @@ fn swift_toolchain_verify(candidate: SwiftToolchainCandidate) -> SwiftToolchainR
 // function -- which is the difference between a type that cannot misstate and a call order that happens
 // not to let it.
 fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVerifiedArchive) -> SwiftToolchainRefusal? {
-  if !candidate.signature_verified {
-    Present {
+  match candidate.signature {
+    BadSignature { detail: _ } => Present {
       value: SignatureUnverified {
         detail: "gpg did not report a Good signature; swift.org's instructions forbid using the toolchain"
         keyring: swift_toolchain_signing_keyring_authority
         instructions: swift_toolchain_verification_instructions_authority
       }
     }
-  } else if candidate.signing_key_fingerprint != swift_toolchain_signing_key_fingerprint {
-    Present { value: SignedByUnlistedKey { observed_fingerprint: candidate.signing_key_fingerprint } }
+    GoodSignature { fingerprint: f } => verify_digest_and_size(candidate: candidate, pinned: pinned, fingerprint: f)
+  }
+}
+
+fn verify_digest_and_size(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVerifiedArchive, fingerprint: NonEmptyStr) -> SwiftToolchainRefusal? {
+  if fingerprint != swift_toolchain_signing_key_fingerprint {
+    Present { value: SignedByUnlistedKey { observed_fingerprint: fingerprint } }
   } else if !content_hash_eq_cryptographic(
       left: candidate.observed_digest,
       right: swift_toolchain_expected_digest(archive: pinned)) {
@@ -382,23 +393,6 @@ fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVeri
 // refusal that explains it both read this, so they cannot name different signatures.
 fn swift_toolchain_expected_signature(archive: SwiftToolchainVerifiedArchive) -> ExternalAuthority {
   swift_toolchain_signature_authority_for(subject: archive.subject)
-}
-
-// Does THIS ROW cite the signature of THIS ROW's subject? The row is the argument, not just its standing,
-// and that is the whole content of the question. Comparing a row's standing against the .sig of whatever
-// happens to be pinned instead admits a row for Ubuntu 24.04 that copies the Debian 13 citation: right
-// number of fields, signature of a release it is not, and the drift this module exists to prevent walks
-// back in through the one door that was supposed to be locked. Asked as a function because the standing is
-// a coproduct, and comparing coproduct values field-by-field at a call site is how one arm's payload gets
-// compared while another's is silently ignored.
-fn swift_toolchain_standing_cites_signature(archive: SwiftToolchainVerifiedArchive) -> Bool {
-  let expected = swift_toolchain_expected_signature(archive: archive)
-  match archive.standing {
-    CitedToAuthority { authority: a } =>
-      a.uri.locator == expected.uri.locator && a.uri.scheme == expected.uri.scheme
-    TranscribedUncited { read_obligation: _ } => false
-    ObservedByReceipt { observed: _ } => false
-  }
 }
 
 // The pin, readable only as a verified archive. A caller gets the typed row or nothing -- there is no
@@ -448,12 +442,14 @@ fn swift_toolchain_archive_as_pin(archive: SwiftToolchainArchive) -> SwiftToolch
   match archive {
     // Not enough to be `Verified`: a row reads as a pin only when its standing points at the signature
     // file of the very subject it describes. An uncited row yields nothing, so it cannot travel as a pin.
-    Verified { archive: a } =>
-      if swift_toolchain_standing_cites_signature(archive: a) {
-        Present { value: a }
-      } else {
-        Absent
-      }
+    Verified { archive: a } => match a.standing {
+      // The row's OWN subject's .sig: a Debian citation on an Ubuntu row is a different Uri. Uri is a
+      // plain record, so `==` is the one equality (scheme and locator together).
+      CitedToAuthority { authority: c } =>
+        if c.uri == swift_toolchain_expected_signature(archive: a).uri { Present { value: a } } else { Absent }
+      TranscribedUncited { read_obligation: _ } => Absent
+      ObservedByReceipt { observed: _ } => Absent
+    }
     Unverified { declared: _ } => Absent
   }
 }
