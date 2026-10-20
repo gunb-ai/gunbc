@@ -1,6 +1,7 @@
 module test.claim.fleet_fan_wire_read_witness
 
 import std.types { Bool, Int, NonEmptyStr, String }
+import std.nat { Nat }
 import std.optional { Absent, Present }
 import std.dissolution { DissolutionPending, DissolutionFired, DissolutionUnbound, dissolution_status }
 import std.measure { percent, percent_count }
@@ -46,7 +47,7 @@ fn is_automatic(r: FleetFanReading) -> Bool {
   }
 }
 
-fn held_at(r: FleetFanReading, p: Int) -> Bool {
+fn held_at(r: FleetFanReading, p: Nat) -> Bool {
   match r {
     FleetFanControlObserved { control: c } =>
       match c {
@@ -76,6 +77,7 @@ test fn witness_manual_with_empty_or_unreadable_rows_is_unobservable() -> Bool {
 test fn witness_out_of_range_or_missing_manager_wire_is_unobservable() -> Bool {
   is_unobservable(r: read(m: "{\"manager_disabled\":2}", f: uniform_25))
     && is_unobservable(r: read(m: "{}", f: uniform_25))
+    && is_unobservable(r: read(m: manual_body, f: "[{\"id\":1,\"fan_number\":1,\"fan_speed\":0,\"fan_pwm\":255}]"))
 }
 
 fn mint_reads(s: FanObserveHost) -> Bool {

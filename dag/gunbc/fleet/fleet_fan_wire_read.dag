@@ -91,6 +91,7 @@ fn fleet_fan_reading_of_megarac_wire(manager_body: String, fan_info_body: String
             Absent => FleetFanControlUnobservable { cause: "get_fan_info is not a nonempty list of rows with integer fan_pwm" as NonEmptyStr }
             Present { value: pwms } =>
               match pwms.first() {
+                // unreachable: megarac_fan_pwm_rows returns none for an empty list; kept so the match is total
                 Absent => FleetFanControlUnobservable { cause: "get_fan_info is empty" as NonEmptyStr }
                 Present { value: lead } =>
                   if (pwms |> filter(p => p != lead) |> count) > 0 {
@@ -98,7 +99,12 @@ fn fleet_fan_reading_of_megarac_wire(manager_body: String, fan_info_body: String
                   } else {
                     match checked_int_to_nat(n: lead) {
                       Absent => FleetFanControlUnobservable { cause: "fan_pwm is negative" as NonEmptyStr }
-                      Present { value: n } => FleetFanControlObserved { control: HeldAtDutyFloor { floor: percent(n) } }
+                      Present { value: n } =>
+                        if lead > 100 {
+                          FleetFanControlUnobservable { cause: "fan_pwm exceeds 100, the percentage the UI labels it as (megarac_fan_policy contract_note)" as NonEmptyStr }
+                        } else {
+                          FleetFanControlObserved { control: HeldAtDutyFloor { floor: percent(n) } }
+                        }
                     }
                   }
               }
