@@ -1760,7 +1760,11 @@ type RemovalRefusalReason
   | ActStandingIsStale {
       observed_at: Timestamp,
       now: Timestamp,
-      max_age_seconds: Int,
+      // THE BOUND TRAVELS AS A MEASURE, not as a number whose name is the only thing saying what it
+      // counts. standing_max_age is declared as a Second; carrying it through unchanged keeps one
+      // authority for that fact (DESIGN §3) instead of minting a second, untyped copy of it at the
+      // moment a refusal is recorded.
+      max_age: Second,
     }
   // THERE IS NO "ARMS ADDRESS DIFFERENT REPOSITORIES" ARM ANY MORE, and that is deliberate rather than
   // an oversight: with each arm compared against the boundary's repository, two arms that both match it

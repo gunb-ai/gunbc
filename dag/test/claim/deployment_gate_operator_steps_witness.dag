@@ -32,6 +32,11 @@ import std.types {
 import std.scoped_authorization {
   AttemptIdentity,
 }
+// second_count: the staleness red compares the bound the refusal carried against the declared row,
+// comparing the MEASURES rather than a stripped number.
+import std.measure {
+  second_count,
+}
 import std.human_intervention { DischargedAt }
 import extdeps.github.app { GitHubAppInstallationId, GitHubAppId }
 import extdeps.github.deployment_protection_rule {
@@ -1241,10 +1246,10 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
       now: standing_instant_stale,
     ) {
       ReviewerRemovalBlocked {
-        missing: ActStandingIsStale { observed_at: o, now: n, max_age_seconds: m },
+        missing: ActStandingIsStale { observed_at: o, now: n, max_age: m },
       } =>
         o == standing_instant && n == standing_instant_stale
-          && m == second_count(s: standing_max_age) as Int
+          && second_count(s: m) == second_count(s: standing_max_age)
       ReviewerRemovalBlocked { missing: _ } => false
       ReviewerRemovalReady { admitted: _ } => false
     })

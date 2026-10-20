@@ -416,7 +416,7 @@ fn reviewer_removal_act_for(
                 missing: ActStandingIsStale {
                   observed_at: read_now.observed_at,
                   now: now,
-                  max_age_seconds: second_count(s: standing_max_age) as Int,
+                  max_age: standing_max_age,
                 },
               }
             } else {
