@@ -302,17 +302,19 @@ test fn a_list_literal_call_argument_conserves_every_element_holds() -> Bool {
     && report_drop_count(report: r, wanted: ^rc_list_callee) == 0
 }
 
-// ---- the multiset control: a repeated spelling, one copy dropped -------------------------------
+// ---- the multiset control: a repeated spelling, every copy conserved ---------------------------
 
 // `rc_rep` is spelled four times in the declaration `rc_repeat`: as its parameter binder (rebuilt
-// into an edge label, so LocusErased against the pool's one label), as the let's binder (dropped: the
-// rostered StatementLetBinder shape), and as the let's value and the body's use (both survive). The pool is declaration-scoped and holds one copy, which the binder consumes,
-// so exactly ONE DroppedReference remains -- neither zero (a pool that failed to consume) nor two (a
-// pool that was never read).
-// RE-PINNED twice. After gunbc#12221 the fixture's second block statement no longer dropped; it then
-// dropped through the named-argument label, and MQ-1 (gunbc#12382) CONSERVED that label, retiring
-// KnownDropShape NamedArgumentLabel. The multiset property is the subject, not the drop shape, so the
-// fixture drops through a shape still rostered as a known drop.
+// into an edge label, so LocusErased against the pool's one label), as the let's binder, and as the
+// let's value and the body's use. The pool is declaration-scoped and holds one copy per surviving
+// occurrence, so a pool that failed to consume would report spurious rows and a pool that was never
+// read would report the binder as dropped.
+// RESTATED as a conserved control (DESIGN section 4b(4)). It was pinned at "exactly ONE
+// DroppedReference" while the statement let binder was a rostered drop; the binder atom is now built
+// from its own token (v2.compiler.body_lowering_fold body_lower_stmt_spine), the drop is retired,
+// and no shape remains that still drops (every other fixture in this module asserts zero drops), so
+// the multiset property is read through the real producer on the same fixture: zero rows, with the
+// spelling's occurrences conserved.
 data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nfn rc_repeat(rc_rep: Int) -> Int {\n  let rc_rep = rc_rep\n  rc_rep\n}\n"
 
 fn repeated_spelling_subject() -> ReferenceConservationSubject {
@@ -323,9 +325,9 @@ fn repeated_spelling_report() -> ReferenceConservationReport {
   conservation_report_of(subject: repeated_spelling_subject())
 }
 
-test fn a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds() -> Bool {
+test fn a_repeated_spelling_is_conserved_with_no_row_holds() -> Bool {
   let r = repeated_spelling_report()
-  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_rep) == 0 && length(xs: r.dropped) == 0 && r.conserved > 0
 }
 
 // ---- a retired drop: the where-refinement predicates ---------------------------------------
@@ -367,13 +369,18 @@ test fn the_third_match_arm_is_conserved_holds() -> Bool {
 }
 
 // Found the same way through v2.test.claim.body_lowering.statement_let_bind: a statement-form let's
-// binder keeps neither its occurrence nor an unconsumed copy of its spelling, while the later use
-// of the name is conserved at its own occurrence.
+// binder kept neither its occurrence nor an unconsumed copy of its spelling (its atom was rebuilt from
+// the enclosing let construct, whose occurrence is not the binder token's). The binder atom is now
+// built from the binder token itself, so the drop is retired and this claim flips from reporting it
+// to asserting its absence: it stays enrolled as the regression control (DESIGN section 4b(4)). The
+// spelling is used again in the body, so the use's conservation cannot satisfy it vacuously only when
+// the binder's own atom also reaches the tree: the dropped count is read for the spelling and for the
+// whole report.
 data statement_let_binder_source: String = "module v2.test.reference_conservation_let\n\nfn rc_let() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n"
 
-test fn a_statement_let_binder_is_reported_dropped_holds() -> Bool {
+test fn a_statement_let_binder_is_conserved_holds() -> Bool {
   let r = conservation_report_of(subject: statement_let_binder_subject())
-  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_bound) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_bound) == 0 && length(xs: r.dropped) == 0
 }
 
 fn match_later_arm_subject() -> ReferenceConservationSubject {

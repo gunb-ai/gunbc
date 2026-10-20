@@ -3219,7 +3219,7 @@ fn body_lower_generic_param_named_optional(item: Node, name_node: Node, kind: Op
 // The binder Atom, carrying the kind as its one BinderTypeEdge when the parameter declares one
 // (v2.std.node type_binder_conforms).
 fn body_lower_generic_param_edge_of(b: BodyLowerGenericBinder) -> Edge {
-  let atom = body_lower_param_ref_atom(source: b.item, identity: b.name)
+  let atom = b.binder
   match b.kind {
     Absent => Edge { label: Authored { name: b.name }, target: atom }
     Present { value: k } =>
@@ -8381,13 +8381,6 @@ fn body_lower_let_sugar_after_name(name: Node, rest: Node, colon_admitted: Bool)
 
 // The let's key binding. The name is the projection of the binder atom below, which is lowered from
 // the token it was read from so it keeps its minted occurrence (v2.compiler.occurrence_role reads it).
-fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
-  match body_lower_let_in_key_binding_atom_optional(captured: captured) {
-    Present { value: binder } => node_atom_identity_optional(node: binder)
-    Absent => Absent
-  }
-}
-
 fn body_lower_let_in_key_binding_atom_optional(captured: Node) -> Optional<Node> {
   match body_lower_let_sugar_optional(captured: captured) {
     Present { value: sugar } => body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: sugar.name))
@@ -8990,7 +8983,7 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                     )
                   )
                 Present { value: let_captured } =>
-                  match body_lower_let_in_key_binding_optional(captured: let_captured) {
+                  match body_lower_let_in_key_binding_atom_optional(captured: let_captured) {
                     Absent =>
                       outcome_rejected(
                         d: body_lower_diagnostic(
@@ -8998,7 +8991,7 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                           n: head
                         )
                       )
-                    Present { value: key } =>
+                    Present { value: key_binding } =>
                       match body_lower_let_statement_value_optional(captured: let_captured) {
                         Absent =>
                           outcome_rejected(
@@ -9017,7 +9010,6 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                                   bind_outcome(
                                     o: body_lower_stmt_spine(spine: rest),
                                     f: fn(body) {
-                                      let key_binding = body_lower_type_atom_node(sym: key, source: let_captured)
                                       match body_lower_let_match_exit_plan_optional(value: value_capture) {
                                         Present { value: plan } =>
                                           body_lower_let_match_exit_join(plan: plan, lowered: value, at: head, key_binding: key_binding, annotation: annotation, rest: body)
