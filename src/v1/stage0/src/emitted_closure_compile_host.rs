@@ -1320,6 +1320,179 @@ pub(crate) fn run_cargo(
     }
 }
 
+/// THE EMITTED RUNTIME'S CALIBRATION SUITE: `counting_allocator_tests`, a `#[cfg(test)]` module of
+/// the `v2-emitted-runtime` crate the emitted workspace carries (generated from
+/// `src/v1/runtime_rust.dag` `counting_allocator_tests`). Nothing else compiles that cfg, so the
+/// suite the allocation meter's calibration rests on (per-method GlobalAlloc counts, the absent
+/// provider reading Unobservable) would be green only where somebody ran it.
+///
+/// THE IDENTITIES THE SUITE MUST HAVE EXECUTED AND PASSED. A filtered `cargo test` exits 0 with zero
+/// tests, so the exit status alone establishes nothing; each name below must appear as `ok`. The
+/// pairing test `runtime_calibration_expected_tests_exist_in_the_runtime_source` holds this list
+/// against the committed runtime source, so a renamed test cannot leave the list claiming it.
+pub(crate) const RUNTIME_CALIBRATION_FILTER: &str = "counting_allocator_tests";
+pub(crate) const RUNTIME_CALIBRATION_EXPECTED: [&str; 5] = [
+    "v1_rt::counting_allocator_tests::a_process_without_the_provider_reads_unobservable_not_zero",
+    "v1_rt::counting_allocator_tests::alloc_counts_one_operation_and_its_requested_bytes",
+    "v1_rt::counting_allocator_tests::alloc_zeroed_counts_one_operation_and_its_requested_bytes",
+    "v1_rt::counting_allocator_tests::realloc_counts_one_operation_and_its_new_size",
+    "v1_rt::counting_allocator_tests::dealloc_counts_nothing",
+];
+
+/// What the suite's own stdout says: the `test <name> ... <outcome>` lines, unjudged.
+fn runtime_suite_outcomes(stdout: &str) -> Vec<(String, String)> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim().strip_prefix("test ")?;
+            let (name, outcome) = rest.split_once(" ... ")?;
+            Some((name.trim().to_string(), outcome.trim().to_string()))
+        })
+        .collect()
+}
+
+/// Every expected identity executed with outcome `ok`; the refusal names each one that did not.
+fn runtime_suite_verdict(stdout: &str, expected: &[&str]) -> Result<(), String> {
+    let outcomes = runtime_suite_outcomes(stdout);
+    let missing: Vec<String> = expected
+        .iter()
+        .filter_map(
+            |want| match outcomes.iter().find(|(name, _)| name == want) {
+                Some((_, outcome)) if outcome == "ok" => None,
+                Some((_, outcome)) => Some(format!("{want} -> {outcome}")),
+                None => Some(format!("{want} -> did not execute")),
+            },
+        )
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing.join("; "))
+    }
+}
+
+/// Runs the suite against THE EMITTED WORKSPACE THE SUBJECT WAS BUILT FROM, in the build's own
+/// target directory and under its own bound compiler and `-D warnings`, so the dependency graph the
+/// build compiled is reused and the suite is judged by the compiler that judged the subject.
+/// `v2-emitted-runtime` is a member of the emitted workspace and not of the root one, so the
+/// emitted manifest is selected explicitly. Returns the executed identities, in the run's order.
+pub(crate) fn run_runtime_calibration_suite(
+    crate_dir: &Path,
+    target_dir: &Path,
+) -> Result<Vec<String>, String> {
+    let (build, _) = probe_cargo_command(crate_dir, target_dir)?;
+    let mut command = std::process::Command::new(build.get_program());
+    command
+        .args([
+            "test",
+            "--release",
+            "--offline",
+            "--color",
+            "never",
+            "--manifest-path",
+        ])
+        .arg(crate_dir.join("Cargo.toml"))
+        .args([
+            "-p",
+            "v2-emitted-runtime",
+            "--lib",
+            RUNTIME_CALIBRATION_FILTER,
+        ])
+        .current_dir(crate_dir);
+    for (key, value) in build.get_envs() {
+        match value {
+            Some(v) => command.env(key, v),
+            None => command.env_remove(key),
+        };
+    }
+    let output = command
+        .output()
+        .map_err(|e| format!("spawning the runtime calibration suite failed: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail: Vec<&str> = stderr.lines().rev().take(20).collect();
+        return Err(format!(
+            "cargo test exited {:?}; stdout: {}; stderr tail: {}",
+            output.status.code(),
+            stdout
+                .lines()
+                .filter(|l| l.starts_with("test "))
+                .collect::<Vec<_>>()
+                .join(" | "),
+            tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
+        ));
+    }
+    runtime_suite_verdict(&stdout, &RUNTIME_CALIBRATION_EXPECTED)?;
+    Ok(runtime_suite_outcomes(&stdout)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect())
+}
+
+#[cfg(test)]
+mod runtime_calibration_suite_tests {
+    use super::{runtime_suite_verdict, RUNTIME_CALIBRATION_EXPECTED};
+
+    fn all_ok() -> String {
+        RUNTIME_CALIBRATION_EXPECTED
+            .iter()
+            .map(|n| format!("test {n} ... ok\n"))
+            .collect::<String>()
+            + "test result: ok. 5 passed; 0 failed\n"
+    }
+
+    #[test]
+    fn every_expected_test_executed_and_passed_is_accepted() {
+        assert_eq!(
+            runtime_suite_verdict(&all_ok(), &RUNTIME_CALIBRATION_EXPECTED),
+            Ok(())
+        );
+    }
+
+    // A filtered cargo test that matched nothing exits 0 and prints only a result line.
+    #[test]
+    fn a_run_that_executed_nothing_is_refused_by_name() {
+        let zero = "running 0 tests\ntest result: ok. 0 passed; 0 failed; 0 ignored\n";
+        let refusal = runtime_suite_verdict(zero, &RUNTIME_CALIBRATION_EXPECTED).unwrap_err();
+        assert_eq!(refusal.matches("did not execute").count(), 5);
+    }
+
+    #[test]
+    fn one_missing_and_one_failing_test_are_each_named() {
+        let text = all_ok()
+            .replace(
+                &format!("{} ... ok", RUNTIME_CALIBRATION_EXPECTED[0]),
+                &format!("{} ... FAILED", RUNTIME_CALIBRATION_EXPECTED[0]),
+            )
+            .replace(
+                &format!("test {} ... ok\n", RUNTIME_CALIBRATION_EXPECTED[4]),
+                "",
+            );
+        let refusal = runtime_suite_verdict(&text, &RUNTIME_CALIBRATION_EXPECTED).unwrap_err();
+        assert!(refusal.contains(&format!("{} -> FAILED", RUNTIME_CALIBRATION_EXPECTED[0])));
+        assert!(refusal.contains(&format!(
+            "{} -> did not execute",
+            RUNTIME_CALIBRATION_EXPECTED[4]
+        )));
+        assert!(!refusal.contains(RUNTIME_CALIBRATION_EXPECTED[2]));
+    }
+
+    // The pairing: every expected identity is a test the runtime source declares.
+    #[test]
+    fn runtime_calibration_expected_tests_exist_in_the_runtime_source() {
+        let source = include_str!("v1_rt.rs");
+        for id in RUNTIME_CALIBRATION_EXPECTED {
+            let function = id.rsplit("::").next().unwrap();
+            assert!(
+                source.contains(&format!("fn {function}()")),
+                "{id} is not declared in the runtime source"
+            );
+        }
+        assert!(source.contains("mod counting_allocator_tests"));
+    }
+}
+
 /// The rust module basenames the crate's `lib.rs` declares, in its own order -- public or not,
 /// and including `#[cfg(test)]` ones: a private `mod` (the host shell's
 /// `#[cfg(test)] mod compiler_tests;`) is a module of the crate as much as a `pub mod` is, and an
@@ -3071,6 +3244,25 @@ mod tests {
         assert!(axis.starts_with(&flags.join(" ")));
         assert!(axis.contains(&invocation.rustflags));
         assert!(axis.contains(WARNING_DENIAL_ENCODED_RUSTFLAGS));
+    }
+
+    // `probe_cargo_build_flags` is a declared mirror of `gunbc.repo.repo_self_emitted_build`
+    // `repo_self_emitted_cargo_build_flags`, the row the release job packs an emitted entry under.
+    // The packed binary and the binary the probe's controls ran are one artifact only while these
+    // two agree, so the mirror is compared with the row's own source text.
+    // SCAFFOLD (operator-approved on gunbc#14570): dissolves when the v2-native build probe takes its flags
+    // from the row, which deletes the mirror and this test.
+    #[test]
+    fn the_probe_build_flags_are_the_row_the_release_job_packs_under() {
+        let row = include_str!("../../../../dag/gunbc/repo/repo_self_emitted_build.dag");
+        let declared = format!(
+            "data repo_self_emitted_cargo_build_flags: String = \"{}\"",
+            probe_cargo_build_flags().join(" ")
+        );
+        assert!(
+            row.contains(&declared),
+            "row and mirror disagree: {declared}"
+        );
     }
 
     #[test]

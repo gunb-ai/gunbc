@@ -3,6 +3,8 @@ module std.bounded_nat
 import std.types { Int, Bool, List }
 import std.measure { BitWidth, bit_width, bit_width_count }
 import std.power_of_two { bitwise_pow2 }
+import std.integer { Unsigned }
+import std.machine_width_range { machine_width_admits }
 
 // ARITHMETIC ON BOUNDED NATURALS, AS DECLARED OPERATIONS RATHER THAN INFIX.
 //
@@ -21,10 +23,10 @@ import std.power_of_two { bitwise_pow2 }
 // TRIGGER STATED AT THE WRONG GRAIN (review 69054 of gunbc#11645; DESIGN 4b(3): a trigger naming
 // less than the capability it gates is satisfied while the capability stays dead). The operations
 // take a width as a VALUE and the witnesses pass bit_width(count: 32) today, so nothing stops
-// std.bitwise passing one too.
+// std.machine_word passing one too.
 //
 // THE IMPORT CYCLE IS BROKEN: bitwise_pow2 lives in std.power_of_two, below both this module and
-// std.bitwise, so std.bitwise may import this family. (std.induction int_pow_bounded is not that
+// std.machine_word, so std.machine_word may import this family. (std.induction int_pow_bounded is not that
 // function: it is partial, linear and capped, where callers here need a total 2^n over [0, 62].)
 //
 // THE SECOND COST, STATED BESIDE IT so the next reader sees the real shape rather than a one-line
@@ -97,7 +99,8 @@ fn bounded_nat_admit(bits: BitWidth) -> BoundedNatAdmission {
   }
 }
 
-// The exclusive upper bound of a width: 2^N.
+// The exclusive upper bound of a width: 2^N, for the arithmetic below. WHICH VALUES A WIDTH ADMITS is
+// std.machine_width_range machine_width_admits, the one range authority the mint and v2.compiler.infer share.
 fn bounded_nat_modulus(bits: BitWidth) -> Int {
   bitwise_pow2(n: bit_width_count(b: bits))
 }
@@ -121,7 +124,7 @@ fn bounded_nat(bits: BitWidth, value: Int) -> BoundedNatMint {
     WidthNotStatic => WidthRefused { cause: WidthNotStatic }
     WidthExceedsHostInt { bits: b } => WidthRefused { cause: WidthExceedsHostInt { bits: b } }
     WidthAdmitted { bits: b } =>
-      if value < 0 || value >= bounded_nat_modulus(bits: b) {
+      if !machine_width_admits(signedness: Unsigned, bits: b, value: value) {
         OutOfWidth { bits: b, value: value }
       } else {
         Minted { n: BoundedNat { bits: b, value: value } }

@@ -154,7 +154,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 for tm in typed.modules.clone().iter().cloned() {
                     __result.push(emit_go_test_file(
                         crate::v1_std_core::authored_name_at(
-                            tm.type_env.clone().source_indices.clone(),
+                            tm.type_env.source_indices.clone(),
                             tm.module.clone(),
                         ),
                         Rc::new({
@@ -162,7 +162,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                             for p in test_projections.iter().cloned() {
                                 if (p.module_name.clone()
                                     == crate::v1_std_core::authored_name_at(
-                                        tm.type_env.clone().source_indices.clone(),
+                                        tm.type_env.source_indices.clone(),
                                         tm.module.clone(),
                                     ))
                                 {
@@ -380,7 +380,6 @@ pub fn emit_go_test_file(
                                             RenderTarget::Go,
                                         )
                                         .items
-                                        .clone()
                                         .module_keyword
                                         .clone(),
                                     ),
@@ -430,7 +429,7 @@ pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
             __result
         })
         .join(&"\n".to_string());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go).items.clone().func_keyword.clone(), " ".to_string()), test_name.clone()), "(t *testing.T) {\n".to_string()), indent.clone()), go_test_signature_comment(projection.clone())), "\n".to_string()), indent.clone()), "_ = ".to_string()), struct_name.clone()), "{}\n".to_string()), indent.clone()), mock_setup.clone()), "\n".to_string()), indent.clone()), "// TODO: add dry-run support to Go service emission for full invocation tests\n".to_string()), "}".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go).items.func_keyword.clone(), " ".to_string()), test_name.clone()), "(t *testing.T) {\n".to_string()), indent.clone()), go_test_signature_comment(projection.clone())), "\n".to_string()), indent.clone()), "_ = ".to_string()), struct_name.clone()), "{}\n".to_string()), indent.clone()), mock_setup.clone()), "\n".to_string()), indent.clone()), "// TODO: add dry-run support to Go service emission for full invocation tests\n".to_string()), "}".to_string())
     }
 }
 
@@ -465,14 +464,13 @@ pub fn emit_go_module(
     {
         let m = typed_module.module.clone();
         let scope = crate::v1_compiler_emit::module_emit_scope(typed_module.clone());
-        let si = typed_module.type_env.clone().source_indices.clone();
+        let si = typed_module.type_env.source_indices.clone();
         let mod_name_str = crate::v1_std_core::authored_name_at(si.clone(), m.clone());
         let pkg_name = go_package_name(mod_name_str.clone());
         let pkg_decl = v1_rt::concat(
             v1_rt::concat(
                 crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                     .items
-                    .clone()
                     .module_keyword
                     .clone(),
                 " ".to_string(),
@@ -802,7 +800,6 @@ pub fn emit_go_item_refusal(item_text: String, reason: String) -> String {
                     v1_rt::concat(
                         crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                             .items
-                            .clone()
                             .func_keyword
                             .clone(),
                         " init() { panic(\"EMIT REFUSED: ".to_string(),
@@ -842,7 +839,6 @@ pub fn emit_go_struct_from_children(
                         v1_rt::concat(
                             crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                                 .items
-                                .clone()
                                 .type_alias_keyword
                                 .clone(),
                             " ".to_string(),
@@ -853,7 +849,6 @@ pub fn emit_go_struct_from_children(
                 ),
                 crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                     .items
-                    .clone()
                     .struct_keyword
                     .clone(),
             ),
@@ -880,7 +875,6 @@ pub fn emit_go_struct_from_children(
                                             RenderTarget::Go,
                                         )
                                         .items
-                                        .clone()
                                         .type_alias_keyword
                                         .clone(),
                                         " ".to_string(),
@@ -891,7 +885,6 @@ pub fn emit_go_struct_from_children(
                             ),
                             crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                                 .items
-                                .clone()
                                 .struct_keyword
                                 .clone(),
                         ),
@@ -960,7 +953,6 @@ pub fn emit_go_sum_from_children(
                                         RenderTarget::Go,
                                     )
                                     .items
-                                    .clone()
                                     .type_alias_keyword
                                     .clone(),
                                     " ".to_string(),
@@ -997,7 +989,6 @@ pub fn emit_go_sum_from_children(
                         v1_rt::concat(
                             crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                                 .items
-                                .clone()
                                 .enum_keyword
                                 .clone(),
                             " ".to_string(),
@@ -1076,7 +1067,6 @@ pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<Type
                         v1_rt::concat(
                             crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                                 .items
-                                .clone()
                                 .func_keyword
                                 .clone(),
                             " (".to_string(),
@@ -1100,7 +1090,6 @@ pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<Type
                                         RenderTarget::Go,
                                     )
                                     .items
-                                    .clone()
                                     .type_alias_keyword
                                     .clone(),
                                     " ".to_string(),
@@ -1111,7 +1100,6 @@ pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<Type
                         ),
                         crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                             .items
-                            .clone()
                             .struct_keyword
                             .clone(),
                     ),
@@ -1129,7 +1117,7 @@ pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<Type
                     __result
                 });
                 let fields_str = field_lines.clone().join(&"\n".to_string());
-                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go).items.clone().type_alias_keyword.clone(), " ".to_string()), struct_name.clone()), " ".to_string()), crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go).items.clone().struct_keyword.clone()), " {\n".to_string()), fields_str.clone()), "\n}\n\n".to_string()), marker_method.clone())
+                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go).items.type_alias_keyword.clone(), " ".to_string()), struct_name.clone()), " ".to_string()), crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go).items.struct_keyword.clone()), " {\n".to_string()), fields_str.clone()), "\n}\n\n".to_string()), marker_method.clone())
             }
         }
     }
@@ -1146,7 +1134,6 @@ pub fn emit_go_type_alias(
                 v1_rt::concat(
                     crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                         .items
-                        .clone()
                         .type_alias_keyword
                         .clone(),
                     " ".to_string(),
@@ -1172,7 +1159,7 @@ pub fn emit_go_fn_def(
     scope: Rc<InferScope>,
 ) -> String {
     {
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = scope.type_env.source_indices.clone();
         let params_str = crate::v1_compiler_emit::emit_params_shared(
             params.clone(),
             RenderTarget::Go,
@@ -1212,7 +1199,7 @@ pub fn emit_go_fn_def(
                         )
                     },
                 );
-                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go).items.clone().func_keyword.clone(), " ".to_string()), go_export_ident(name.clone())), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {\n".to_string()), body_str.clone()), "\n}".to_string())
+                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go).items.func_keyword.clone(), " ".to_string()), go_export_ident(name.clone())), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {\n".to_string()), body_str.clone()), "\n}".to_string())
             }
         } else {
             {
@@ -1223,7 +1210,7 @@ pub fn emit_go_fn_def(
                     body_scope.clone(),
                     1,
                 );
-                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go).items.clone().func_keyword.clone(), " ".to_string()), go_export_ident(name.clone())), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {\n".to_string()), body_str.clone()), "\n}".to_string())
+                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go).items.func_keyword.clone(), " ".to_string()), go_export_ident(name.clone())), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {\n".to_string()), body_str.clone()), "\n}".to_string())
             }
         }
     }
@@ -1253,16 +1240,16 @@ pub fn emit_go_func_def(
             params.clone(),
             uses.clone(),
             service_names.clone(),
-            scope.type_env.clone().source_indices.clone(),
+            scope.type_env.source_indices.clone(),
         );
         let ret_type = crate::v1_compiler_emit::emit_node_type(
             inferred.clone(),
             RenderTarget::Go,
-            scope.type_env.clone().source_indices.clone(),
+            scope.type_env.source_indices.clone(),
         );
         let body_scope =
             crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = scope.type_env.source_indices.clone();
         let body_scope =
             uses.iter()
                 .cloned()
@@ -1294,7 +1281,6 @@ pub fn emit_go_func_def(
                                                 RenderTarget::Go,
                                             )
                                             .items
-                                            .clone()
                                             .func_keyword
                                             .clone(),
                                             " ".to_string(),
@@ -1398,7 +1384,7 @@ pub fn emit_go_typed_expr(
             crate::v1_compiler_emit::emit_unified_pattern(
                 pat.clone(),
                 RenderTarget::Go,
-                scope.type_env.clone().source_indices.clone(),
+                scope.type_env.source_indices.clone(),
             )
         },
     )
@@ -1474,7 +1460,6 @@ pub fn emit_go_service_struct(
                                     RenderTarget::Go,
                                 )
                                 .items
-                                .clone()
                                 .type_alias_keyword
                                 .clone(),
                                 " ".to_string(),
@@ -1485,7 +1470,6 @@ pub fn emit_go_service_struct(
                     ),
                     crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                         .items
-                        .clone()
                         .struct_keyword
                         .clone(),
                 ),
@@ -1503,7 +1487,6 @@ pub fn emit_go_service_struct(
                                             RenderTarget::Go,
                                         )
                                         .items
-                                        .clone()
                                         .type_alias_keyword
                                         .clone(),
                                         " ".to_string(),
@@ -1514,7 +1497,6 @@ pub fn emit_go_service_struct(
                             ),
                             crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                                 .items
-                                .clone()
                                 .struct_keyword
                                 .clone(),
                         ),
@@ -1639,7 +1621,6 @@ pub fn emit_go_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
                         v1_rt::concat(
                             crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                                 .items
-                                .clone()
                                 .type_alias_keyword
                                 .clone(),
                             " ".to_string(),
@@ -1723,7 +1704,7 @@ pub fn emit_go_data_def(
         let ty_str = crate::v1_compiler_emit::emit_node_type(
             type_node.clone(),
             RenderTarget::Go,
-            scope.type_env.clone().source_indices.clone(),
+            scope.type_env.source_indices.clone(),
         );
         let val_str = emit_go_typed_expr(
             value.clone(),

@@ -25,7 +25,7 @@ import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarat
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
 import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, bare_occurrence_binding }
 import v1.compiler.infer_types {
-  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
+  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary,
   normalize_access_type_node, resolved_type,
   child_type_node, emit_map_has, node_type_equals
 }
@@ -579,6 +579,7 @@ type EmitGraphInfo {
   type_decl_items: TypeDeclIndex
   data_variant_wire_spellings: Map<String, DataVariantWireSpelling>
   fn_decl_items: Map<String, Node>
+  fn_decl_identity_items: Map<String, Node>
   fn_map_key_bounds: Map<String, List<String>>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
@@ -603,11 +604,16 @@ type EmitGraphInfo {
   fn_return_type: Node?
   expected_type: Node?
 
-  // The one list parameter of the function being emitted whose Cons-tail is realized as an index
-  // into an unchanged base ("" = none), and the tail binders that advance it, each with its spine
-  // depth. Derived once per fn by v1.compiler.emit_rust tco_cursor_plan from the use graph.
-  tco_cursor_param: String
+  // The list parameters of the function being emitted whose Cons-tail is realized as an index
+  // into an unchanged base (empty = none), and the tail binders that advance them, each with its
+  // spine depth, keyed by the parameter it advances (v1.compiler.emit_rust cursor_tail_key). Derived once per fn by v1.compiler.emit_rust tco_cursor_plan from the use graph.
+  tco_cursor_params: List<String>
   tco_cursor_tails: Map<String, Int>
+
+  // Terminal record literals (keyed by span start) whose same-typed base parameter dies at the
+  // literal, mapped to that parameter. Derived once per fn by v1.compiler.ownership
+  // analyze_dying_base_sites; empty for a fn that is TCO-lowered.
+  dying_base_sites: Map<String, String>
 
   item_leaf_owner_modules: Map<String, LeafOwner>
 }
@@ -616,6 +622,7 @@ type EmitInfoBuildState {
   type_summaries: TypeSummaryIndex
   type_decl_items: TypeDeclIndex
   fn_decl_items: Map<String, Node>
+  fn_decl_identity_items: Map<String, Node>
   structural_alias_fn_surface_names: Map<String, List<String>>
   structural_alias_direct_fn_names: Set<String>
 }
@@ -627,6 +634,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     type_decl_items: empty_type_decl_index(),
     data_variant_wire_spellings: empty_map(),
     fn_decl_items: empty_map(),
+    fn_decl_identity_items: empty_map(),
     fn_map_key_bounds: empty_map(),
     recursive_type_set: empty_set(),
     fielded_variants: empty_set(),
@@ -647,8 +655,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     fn_type_env: empty_type_env(),
     fn_return_type: none,
     expected_type: none,
-    tco_cursor_param: "",
-    tco_cursor_tails: empty_map()
+    tco_cursor_params: [],
+    tco_cursor_tails: empty_map(),
+    dying_base_sites: empty_map()
   }
 }
 
@@ -659,6 +668,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
@@ -678,8 +688,9 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     fn_type_env: env,
     fn_return_type: emit_info.fn_return_type,
     expected_type: emit_info.expected_type,
-    tco_cursor_param: emit_info.tco_cursor_param,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_params: emit_info.tco_cursor_params,
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 
@@ -690,6 +701,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
@@ -709,8 +721,9 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     fn_type_env: emit_info.fn_type_env,
     fn_return_type: fn_return_type,
     expected_type: fn_return_type,
-    tco_cursor_param: emit_info.tco_cursor_param,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_params: emit_info.tco_cursor_params,
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 
@@ -726,6 +739,7 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
@@ -745,8 +759,9 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     fn_type_env: emit_info.fn_type_env,
     fn_return_type: emit_info.fn_return_type,
     expected_type: expected_type,
-    tco_cursor_param: emit_info.tco_cursor_param,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_params: emit_info.tco_cursor_params,
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 
@@ -1169,6 +1184,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
       type_summaries: state.type_summaries,
       type_decl_items: type_decl_index_insert(index: state.type_decl_items, owner_module: module_name, decl_name: decl_name, item: item),
       fn_decl_items: state.fn_decl_items,
+      fn_decl_identity_items: state.fn_decl_identity_items,
       structural_alias_fn_surface_names: structural_alias_fn_surface_names,
       structural_alias_direct_fn_names: structural_alias_direct_fn_names
     }
@@ -1180,6 +1196,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
       type_summaries: state.type_summaries,
       type_decl_items: state.type_decl_items,
       fn_decl_items: map_insert(state.fn_decl_items, decl_name, item),
+      fn_decl_identity_items: map_insert(state.fn_decl_identity_items, type_decl_identity(owner_module: module_name, decl_name: decl_name), item),
       structural_alias_fn_surface_names: state.structural_alias_fn_surface_names,
       structural_alias_direct_fn_names: state.structural_alias_direct_fn_names
     }
@@ -1224,6 +1241,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
         type_summaries: next_summaries,
         type_decl_items: state.type_decl_items,
         fn_decl_items: state.fn_decl_items,
+        fn_decl_identity_items: state.fn_decl_identity_items,
         structural_alias_fn_surface_names: state.structural_alias_fn_surface_names,
         structural_alias_direct_fn_names: state.structural_alias_direct_fn_names
       }

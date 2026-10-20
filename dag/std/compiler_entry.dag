@@ -8,6 +8,7 @@ import std.measure {
   millisecond,
   millisecond_to_nanosecond
 }
+import std.algebra { collection_map_shape }
 
 // WHICH MODULE IS THE COMPILER PIPELINE ENTRY IS A FACT ABOUT THE MODULE, CARRIED BY IT.
 //
@@ -137,7 +138,10 @@ type NativeClaimReport {
 // contract's byte limits and timeout, call the handler once per request, write the returned
 // value -- serially, one request at a time, as the seed does. It is a fifth arm and not a mode on
 // NativeCliDriver for the reason that arm gives for itself: one crate has one entry point, and a
-// served program's main shares nothing with the compile CLI's. Instrument:
+// served program's main shares nothing with the compile CLI's. A driver MAY also declare
+// `native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup` (gunbc.native_serve): the
+// main runs it once per worker generation (the first before the bind, within its own startup_deadline), with its own executable's octets, and a refusal exits
+// without binding, and a driver that declares one has its handler take the note the startup passed with as a trailing argument of the typed value the startup passed with (NativeServeStartup's payload), so a handler can name the receipt it was admitted under; a driver that declares none is emitted unchanged. Instrument:
 // `gunbc test //gunbc/instruments:native-serve`.
 type CompilerEntryDriver
   = RetainedHostCliKernel
@@ -203,7 +207,8 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
   route: NativeClaimDriver,
   ruling: decl_ref(module_path: "std.compiler_entry", decl_name: "NativeClaimDriver"),
   scope: NativeAdmitOnly { admitted: [
-    native_effect_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem")
+    native_effect_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"),
+    native_effect_declared(module_path: "std.realization_measurement", decl_name: "AllocationCounter")
   ] }
 }
 

@@ -1,0 +1,44 @@
+module test.claim.approve_ios_enrolment_machine_witness
+
+import std.logic { Bool }
+import std.types { String }
+import gunbc.auth.approval_device_wire {
+  EnrolmentRefusalWire, EnrolmentRefusalCodeNotIssued, EnrolmentRefusalCodeAlreadyUsed, EnrolmentRefusalCodeExpired, EnrolmentRefusalStoreUnreadable,
+  EnrolmentRefusalAttestationRefused, EnrolmentRefusalAttestationForOtherBytes, EnrolmentRefusalAndroidUnrealized, enrolment_refusal_kinds,
+}
+import gunbc.approve_ios_enrolment_machine { EnrolmentPhase, PhaseSubmissionUnknown, AnswerGranted, AnswerUnanswered, AnswerRefused, enrolment_next, phase_name, enrolment_phases }
+
+// The ruling, stated independently of the machine's own helper: only these two refusals prove the
+// submitted code minted no enrolment.
+fn leaves(k: EnrolmentRefusalWire) -> Bool {
+  match k {
+    EnrolmentRefusalCodeNotIssued => true
+    EnrolmentRefusalCodeExpired => true
+    EnrolmentRefusalCodeAlreadyUsed => false
+    EnrolmentRefusalStoreUnreadable => false
+    EnrolmentRefusalAttestationRefused => false
+    EnrolmentRefusalAttestationForOtherBytes => false
+    EnrolmentRefusalAndroidUnrealized => false
+  }
+}
+
+fn expected_after_refusal(k: EnrolmentRefusalWire) -> String {
+  if leaves(k: k) { "unenrolled" } else { "submissionUnknown" }
+}
+
+fn after(from: EnrolmentPhase, k: EnrolmentRefusalWire) -> String {
+  phase_name(p: enrolment_next(from: from, answer: AnswerRefused { kind: k })) as String
+}
+
+test fn only_the_two_no_enrolment_refusals_leave_submission_unknown() -> Bool {
+  all(enrolment_refusal_kinds(), k => after(from: PhaseSubmissionUnknown, k: k) == expected_after_refusal(k: k))
+}
+
+test fn a_transport_failure_stays_and_a_grant_enrols() -> Bool {
+  (phase_name(p: enrolment_next(from: PhaseSubmissionUnknown, answer: AnswerUnanswered)) as String) == "submissionUnknown"
+    && (phase_name(p: enrolment_next(from: PhaseSubmissionUnknown, answer: AnswerGranted)) as String) == "enrolled"
+}
+
+test fn no_other_phase_moves_on_a_refusal() -> Bool {
+  all(enrolment_phases(), p => (phase_name(p: p) as String) == "submissionUnknown" || all(enrolment_refusal_kinds(), k => after(from: p, k: k) == (phase_name(p: p) as String)))
+}

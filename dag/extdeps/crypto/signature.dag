@@ -9,6 +9,7 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.nist_p256 { p256_ecdsa_verify_octets }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.native_realization_proof { NativeRealizationProof }
 
 // ECDSA per FIPS 186-5 (Digital Signature Standard), over the NIST P-256 curve (SP 800-186) with
 // SHA-256 (FIPS 180-4, cited by extdeps.crypto.hash). The anchor is the standard, not Apple and not
@@ -154,6 +155,19 @@ fn signature_verification_from_implementation(
         SignatureInvalid { suite: signature.suite }
       }
   }
+}
+
+// THE SECOND ADMITTED MINT: A SUCCESS A NATIVE REALIZATION OF verify_signature ANSWERED. When a consumer asks a
+// natively emitted realization of the fold above, the same success arrives as bytes, and this is the only way those
+// bytes become a SignedMessage. It takes the std proof that THIS fold's native realization is bound, so a proof for
+// another fold, or none, mints nothing; which realization is admitted is the consumer's policy and this module names
+// none. Its roster names its one admitted caller.
+fn signed_message_from_native_realization(proof: NativeRealizationProof, key: VerifyingKey, message: NonEmptyStr) -> SignedMessage?
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_crypto_client", decl_name: "signed_from"),
+  ]
+{
+  if proof.fold == decl_ref(module_path: "extdeps.crypto.signature", decl_name: "verify_signature") { Present { value: SignedMessage { key: key, message: message } } } else { none }
 }
 
 // ── The join ─────────────────────────────────────────────────────────────────────────────────

@@ -29,23 +29,30 @@ type CssPropertyName
   | AnimationDelay
   | AnimationDuration
   | TransformOrigin
+  | WebkitFontSmoothing
+  | WebkitOverflowScrolling
   | Background
   | Border
   | BorderBottom
+  | BorderBottomColor
   | BorderCollapse
   | BorderColor
   | BorderLeft
   | BorderRadius
   | BorderStyle
+  | BorderTop
   | BoxShadow
   | BoxSizing
   | ClipPath
   | Color
   | ColorScheme
+  | Content
   | Cursor
   | Display
   | Fill
+  | FillOpacity
   | Flex
+  | FlexBasis
   | FlexDirection
   | FlexWrap
   | FontFamily
@@ -65,25 +72,42 @@ type CssPropertyName
   | ListStyle
   | Margin
   | MarginBottom
+  | MarginInline
   | MarginLeft
   | MarginRight
   | MarginTop
+  | MaxHeight
   | MaxWidth
   | MinHeight
   | MinWidth
   | Opacity
   | Outline
+  | OutlineOffset
   | Overflow
+  | OverflowX
+  | ScrollSnapAlign
+  | ScrollSnapType
+  | ScrollbarWidth
   | Padding
+  | PaddingBlock
+  | PaddingBottom
   | PaddingLeft
+  | PaddingTop
   | Position
   | Stroke
+  | StrokeDasharray
+  | StrokeLinecap
+  | StrokeLinejoin
+  | StrokeOpacity
+  | StrokeWidth
   | TextAlign
   | TextDecoration
   | TextOverflow
   | TextTransform
+  | TextWrap
   | Transform
   | Transition
+  | UserSelect
   | VerticalAlign
   | WhiteSpace
   | Width
@@ -97,23 +121,30 @@ fn css_property_wire(p: CssPropertyName) -> String {
     AnimationDelay => "animation-delay"
     AnimationDuration => "animation-duration"
     TransformOrigin => "transform-origin"
+    WebkitFontSmoothing => "-webkit-font-smoothing"
+    WebkitOverflowScrolling => "-webkit-overflow-scrolling"
     Background => "background"
     Border => "border"
     BorderBottom => "border-bottom"
+    BorderBottomColor => "border-bottom-color"
     BorderCollapse => "border-collapse"
     BorderColor => "border-color"
     BorderLeft => "border-left"
     BorderRadius => "border-radius"
     BorderStyle => "border-style"
+    BorderTop => "border-top"
     BoxShadow => "box-shadow"
     BoxSizing => "box-sizing"
     ClipPath => "clip-path"
     Color => "color"
     ColorScheme => "color-scheme"
+    Content => "content"
     Cursor => "cursor"
     Display => "display"
     Fill => "fill"
+    FillOpacity => "fill-opacity"
     Flex => "flex"
+    FlexBasis => "flex-basis"
     FlexDirection => "flex-direction"
     FlexWrap => "flex-wrap"
     FontFamily => "font-family"
@@ -133,25 +164,42 @@ fn css_property_wire(p: CssPropertyName) -> String {
     ListStyle => "list-style"
     Margin => "margin"
     MarginBottom => "margin-bottom"
+    MarginInline => "margin-inline"
     MarginLeft => "margin-left"
     MarginRight => "margin-right"
     MarginTop => "margin-top"
+    MaxHeight => "max-height"
     MaxWidth => "max-width"
     MinHeight => "min-height"
     MinWidth => "min-width"
     Opacity => "opacity"
     Outline => "outline"
+    OutlineOffset => "outline-offset"
     Overflow => "overflow"
+    OverflowX => "overflow-x"
+    ScrollSnapAlign => "scroll-snap-align"
+    ScrollSnapType => "scroll-snap-type"
+    ScrollbarWidth => "scrollbar-width"
     Padding => "padding"
+    PaddingBlock => "padding-block"
+    PaddingBottom => "padding-bottom"
     PaddingLeft => "padding-left"
+    PaddingTop => "padding-top"
     Position => "position"
     Stroke => "stroke"
+    StrokeDasharray => "stroke-dasharray"
+    StrokeLinecap => "stroke-linecap"
+    StrokeLinejoin => "stroke-linejoin"
+    StrokeOpacity => "stroke-opacity"
+    StrokeWidth => "stroke-width"
     TextAlign => "text-align"
     TextDecoration => "text-decoration"
     TextOverflow => "text-overflow"
     TextTransform => "text-transform"
+    TextWrap => "text-wrap"
     Transform => "transform"
     Transition => "transition"
+    UserSelect => "user-select"
     VerticalAlign => "vertical-align"
     WhiteSpace => "white-space"
     Width => "width"
