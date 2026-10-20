@@ -3,7 +3,7 @@ module gunbc.compile_census_probe
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitFailure, ExitSuccess }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_rows, census_rows_of_class, census_total_count }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_rows, census_rows_of_class, census_blocking_rows_of_class, census_blocking_rows_of_class_at_subject, census_total_count }
 
 // THE SINGLE HOME for "compile this source string and ask what it refused". These were declared
 // locally in test.claim.algebra_receiver_alias_witness, and a second witness needed the same facts --
@@ -25,20 +25,20 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnos
 // Observed|NotRunnable here would nick-name the axis (§2, "net concepts must not grow by
 // re-invention").
 
-// THE PROBES, typed. Each hands through the builtin's union. The three selector probes reuse
-// guarantee_probe_corpus's row selectors on the OBSERVED arm only -- those selectors already return
-// `none` on the refusal arm, so a refusal cannot leak a count even inside this module -- and the
-// refusal arm keeps the builtin's cause text verbatim. This module adds no words of its own to a
-// cause, so a claim quoting a cause quotes the compiler, not this module's idea of the compiler.
+// THE PROBES, typed. Each hands through the builtin's union. The three selector probes consume the
+// row selections from their single home, gunbc.compile_diagnostic_census (census_blocking_rows_of_class,
+// census_blocking_rows_of_class_at_subject) -- the very functions guarantee_probe_corpus's Int?
+// selectors fold, so the selection has one authority and the two surfaces cannot drift; what this
+// module adds over that home is only the union's SHAPE: the same rows re-wrapped as `CensusObserved`,
+// and the refusal arm handing the builtin's cause text through verbatim. This module adds no words of
+// its own to a cause, so a claim quoting a cause quotes the compiler, not this module's idea of it.
 // THE ROWS, when there are any -- the accessor for claims that inspect rows rather than a count.
 // It kept its `ProbeCensusRows?` shape on purpose: absent rows already meant "there are no rows to
 // inspect" AND "the census never ran" at once, and callers already had to match the Optional, so this
 // is the one probe surface that was never in-band. It stays a name at the surface rather than leaking
-// the coproduct, because the claims that use it want the list or nothing -- but note the asymmetry
-// this PR is closing elsewhere: here the refusal is at least distinguishable-by-absence from a zero
-// count, whereas the Int probes could not tell those apart at all.
-data probe_census_rows_absent_reason: String = "census not runnable"
-
+// the coproduct, because the claims that use it want the list or nothing. The refusal arm answers
+// `none` here, exactly as guarantee_probe_corpus's `Int?` selectors do: absence is already the
+// honest answer a rows-inspecting claim can pattern-match on.
 type ProbeCensusRows {
   rows: List<CompileDiagnosticCensusRow>
 }
@@ -68,7 +68,7 @@ fn total_blocking_census(source: String) -> CompileDiagnosticCensus {
 fn blocking_class_census(source: String, wanted_class: String) -> CompileDiagnosticCensus {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
-      CensusObserved { rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted_class) }
+      CensusObserved { rows: census_blocking_rows_of_class(rows: rows, wanted: wanted_class) }
     CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
   }
 }
@@ -82,10 +82,8 @@ fn any_class_census(source: String, wanted_class: String) -> CompileDiagnosticCe
 
 fn blocking_subject_census(source: String, wanted_class: String, wanted_subject: String) -> CompileDiagnosticCensus {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => {
-      let scoped = census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted_class)
-      CensusObserved { rows: scoped |> filter(r => r.subject_name == wanted_subject) }
-    }
+    CensusObserved { rows: rows } =>
+      CensusObserved { rows: census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: wanted_class, wanted_subject: wanted_subject) }
     CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
   }
 }
@@ -216,7 +214,7 @@ fn census_sum_verdict(first: CompileDiagnosticCensus, second: CompileDiagnosticC
         CensusObserved { rows: second_rows } => {
           // Both arms OBSERVED, so the counts here are counts; there is no sentinel to guard against,
           // which is the whole point of matching the union instead of subtracting Ints.
-          let observed = census_add(a: census_total_count(rows: first_rows), b: census_total_count(rows: second_rows))
+          let observed = census_total_count(rows: first_rows) + census_total_count(rows: second_rows)
           if holds(observed) {
             ExitSuccess
           } else {
@@ -239,7 +237,7 @@ fn census_delta_verdict(red: CompileDiagnosticCensus, control: CompileDiagnostic
       match control {
         CensusNotRunnable { cause: cause } => refusal_verdict(cause: cause)
         CensusObserved { rows: control_rows } => {
-          let observed = census_subtract(a: census_total_count(rows: red_rows), b: census_total_count(rows: control_rows))
+          let observed = census_total_count(rows: red_rows) - census_total_count(rows: control_rows)
           if holds(observed) {
             ExitSuccess
           } else {
@@ -262,11 +260,3 @@ fn refusal_verdict(cause: String) -> ProcessExit {
   ExitFailure { code: 2, reason: concat("not evaluated: census not runnable: ", cause) }
 }
 
-
-fn census_add(a: Int, b: Int) -> Int {
-  a + b
-}
-
-fn census_subtract(a: Int, b: Int) -> Int {
-  a - b
-}

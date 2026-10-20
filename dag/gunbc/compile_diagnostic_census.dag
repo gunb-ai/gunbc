@@ -121,6 +121,24 @@ fn census_total_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
   fold(rows, init: 0, f: (acc, r) => acc + r.count)
 }
 
+// THE SELECTED ROWS, spelled ONCE. These two compositions -- "the blocking rows of class X", and
+// "those same rows whose subject is S" -- were each written out at two call sites: the typed probes
+// in gunbc.compile_census_probe and the Int-returning count selectors in gunbc.guarantee_probe_corpus
+// composed census_blocking_rows/census_rows_of_class (plus a raw field comparison on subject_name)
+// by hand, in both places, identically. Two spellings of one selection can drift apart silently --
+// a change to what "blocking of class X" means would have to be made twice -- so the composition
+// lives here, beside the primitive filters it composes and the row type whose `subject_name` field
+// it reads. Both consumers already import this module; neither gains an edge. The corpus keeps its
+// `Int?` selectors as thin folds over these, the probes keep their union re-wrapping as a thin arm
+// over these; the SELECTION has exactly one home.
+fn census_blocking_rows_of_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> List<CompileDiagnosticCensusRow> {
+  census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted)
+}
+
+fn census_blocking_rows_of_class_at_subject(rows: List<CompileDiagnosticCensusRow>, wanted_class: String, wanted_subject: String) -> List<CompileDiagnosticCensusRow> {
+  census_blocking_rows_of_class(rows: rows, wanted: wanted_class) |> filter(r => r.subject_name == wanted_subject)
+}
+
 // THE KEYED COMPARATOR, HOMED HERE BECAUSE THE RULE ABOVE IS THIS MODULE'S.
 //
 // The annotation on CompileDiagnosticCensus names the two exact forms -- a count scoped to a class
