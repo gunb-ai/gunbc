@@ -5,27 +5,33 @@ import std.types { List }
 import std.decl_ref { CitationIndexCoverage, OutsideDeclIndexTestWitnessModule, DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import v2.compiler.name_resolve { ResolutionContext }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.algebra { fold_list, map_lookup, list_at_optional }
+import std.algebra { fold_list, list_snoc_item, map_lookup, list_at_optional, Empty }
 import v2.std.integer { Int }
 import v2.std.node { Node, named_edge_sort_key, symbol_intern_lexeme }
 import v2.std.node_query { node_labeled_child_edges }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
-import v2.std.symbol_index { symbol_index_entry_at }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.symbol_index { MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_entry_at }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, TypeAlias, OpaqueTypeDecl, NotATypeDecl, type_decl_view }
 
 // G1 cited-symbol resolution (feature:cited-symbol-resolution): every typed DeclarationRef resolves
-// to exactly one declaration over a declared module, or refuses with one of three typed arms --
-// module absent, declaration absent, field absent -- or resolves.
+// to exactly one declaration over a declared module, or refuses with one of four typed arms --
+// module absent, declaration absent, field absent, contested -- or resolves.
 //
 // THE FACTS COME FROM THE NATIVE INGEST'S OWN RESOLUTION STATE, not from a second producer. A
 // ResolutionContext (v2.compiler.name_resolve, one per ingest) holds the validated module roots
 // (`roots.by_name`: which modules are declared) and the SymbolIndex (`entries`: the declaration node
 // at each DECLARING path). The module a reference cites and the declaration it names are both read
-// by that real path, so a name cannot be shared by two trees: the host census this replaced stripped
-// a leading `v2.` and so could see one declaration twice (the old DeclarationRefAmbiguous arm). With
-// the key the real path the arm has no constructor: DeclarationRefResolution above has no Ambiguous
-// variant (structural), and the host module's Ambiguous RED stays enrolled against the host resolver
-// (test.claim.long.decl_ref_resolution_witness), which is where that reading still exists.
+// by that real path. The declaration a reference names is read through the index's DECLARING-IDENTITY
+// boundary (symbol_index_declaring_path_of, the one native resolution itself uses), never the raw
+// storage slot: a contested binding keeps ONE raw node while recording several declaring claimants,
+// and reading the slot would call that Resolved and build an identity from the importer's path -- the
+// silent pick native resolution refuses. So the three answers of that boundary are the three
+// outcomes: one claimant resolves under ITS declaring path (a re-export names its home, not the
+// relay); none is DeclarationRefDeclarationAbsent; several is DeclarationRefContested, naming every
+// claimant. The host census this replaced stripped a leading `v2.` and could see one declaration
+// twice; keyed by the real path that duplication has no constructor, and the contested arm is derived
+// from the claimants the index records, not from a spelling comparison. The host module's own
+// Ambiguous RED stays enrolled against the host resolver (test.claim.long.decl_ref_resolution_witness).
 //
 // RUNG, stated honestly: construction cannot reach a DeclarationRef literal today -- it is three
 // strings built `as NonEmptyStr` -- so resolution is the earliest decidable refusal on the real
@@ -51,6 +57,7 @@ type DeclarationRefResolution
   | DeclarationRefModuleAbsent { reference: DeclarationRef }
   | DeclarationRefDeclarationAbsent { reference: DeclarationRef }
   | DeclarationRefFieldAbsent { reference: DeclarationRef }
+  | DeclarationRefContested { reference: DeclarationRef, claimants: List<String> }
   | DeclarationRefOutsideIndex { reference: DeclarationRef, coverage: CitationIndexCoverage }
 
 fn declaration_ref_module_outside_index(ref: DeclarationRef) -> Bool {
@@ -72,10 +79,6 @@ fn declaration_ref_segment_is_test(segment: Optional<String>) -> Bool {
 
 fn declaration_ref_module_qualified_name(ref: DeclarationRef) -> QualifiedName {
   qualified_name_from_dotted_string(dotted: ref.module_path as String)
-}
-
-fn declaration_ref_target_qualified_name(ref: DeclarationRef) -> String {
-  concat(ref.module_path as String, ".", ref.decl_name as String)
 }
 
 // The fields of a declaration are the labeled children of its member node: the type body for a type
@@ -115,25 +118,46 @@ fn resolve_declaration_ref(
         DeclarationRefModuleAbsent { reference: ref }
       }
     Present { value: _ } =>
-      match symbol_index_entry_at(
+      match symbol_index_declaring_path_of(
         index: context.symbol_index,
-        qualified_path: qualified_name_snoc(
+        target: qualified_name_snoc(
           qn: module_qn,
           segment: symbol_intern_lexeme(lexeme: ref.decl_name as String)
         )
       ) {
-        Absent => DeclarationRefDeclarationAbsent { reference: ref }
-        Present { value: declaration } =>
-          if decl_ref_named_field_present(ref: ref, declaration: declaration) {
-            DeclarationRefResolved {
-              declaration_identity: DeclarationIdentity {
-                qualified_name: declaration_ref_target_qualified_name(ref: ref),
-                name: ref.decl_name as String
-              }
-            }
-          } else {
-            DeclarationRefFieldAbsent { reference: ref }
+        MentionDeclaringUnavailable => DeclarationRefDeclarationAbsent { reference: ref }
+        MentionDeclaringContested { claimants: claimants } =>
+          DeclarationRefContested {
+            reference: ref,
+            claimants: fold_list(
+              xs: claimants,
+              empty: Empty,
+              cons: fn(acc, q) { list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: q)) }
+            )
           }
+        MentionDeclaringUnique { declaring: declaring } =>
+          resolve_declaration_ref_at(ref: ref, declaring: declaring, context: context)
+      }
+  }
+}
+
+fn resolve_declaration_ref_at(
+  ref: DeclarationRef,
+  declaring: QualifiedName,
+  context: ResolutionContext
+) -> DeclarationRefResolution {
+  match symbol_index_entry_at(index: context.symbol_index, qualified_path: declaring) {
+    Absent => DeclarationRefDeclarationAbsent { reference: ref }
+    Present { value: declaration } =>
+      if decl_ref_named_field_present(ref: ref, declaration: declaration) {
+        DeclarationRefResolved {
+          declaration_identity: DeclarationIdentity {
+            qualified_name: qualified_name_to_dotted_string(qn: declaring),
+            name: ref.decl_name as String
+          }
+        }
+      } else {
+        DeclarationRefFieldAbsent { reference: ref }
       }
   }
 }
@@ -145,6 +169,7 @@ fn declaration_ref_resolution_is_resolved(resolution: DeclarationRefResolution) 
     DeclarationRefModuleAbsent { reference: _ } => false
     DeclarationRefDeclarationAbsent { reference: _ } => false
     DeclarationRefFieldAbsent { reference: _ } => false
+    DeclarationRefContested { reference: _, claimants: _ } => false
     DeclarationRefOutsideIndex { reference: _, coverage: _ } => false
   }
 }
@@ -157,6 +182,7 @@ fn declaration_ref_resolution_arm_key(resolution: DeclarationRefResolution) -> S
     DeclarationRefModuleAbsent { reference: _ } => "module-absent"
     DeclarationRefDeclarationAbsent { reference: _ } => "declaration-absent"
     DeclarationRefFieldAbsent { reference: _ } => "field-absent"
+    DeclarationRefContested { reference: _, claimants: _ } => "contested"
     DeclarationRefOutsideIndex { reference: _, coverage: _ } => "outside-index"
   }
 }
@@ -178,6 +204,7 @@ type DeclarationRefResolutionCensus {
   module_absent_count: Int
   declaration_absent_count: Int
   field_absent_count: Int
+  contested_count: Int
   outside_index_count: Int
 }
 
@@ -186,6 +213,7 @@ data empty_declaration_ref_resolution_census: DeclarationRefResolutionCensus = D
   module_absent_count: 0,
   declaration_absent_count: 0,
   field_absent_count: 0,
+  contested_count: 0,
   outside_index_count: 0
 }
 
@@ -200,6 +228,7 @@ fn declaration_ref_census_absorb(
         module_absent_count: acc.module_absent_count,
         declaration_absent_count: acc.declaration_absent_count,
         field_absent_count: acc.field_absent_count,
+        contested_count: acc.contested_count,
         outside_index_count: acc.outside_index_count
       }
     DeclarationRefModuleAbsent { reference: _ } =>
@@ -208,6 +237,7 @@ fn declaration_ref_census_absorb(
         module_absent_count: acc.module_absent_count + 1,
         declaration_absent_count: acc.declaration_absent_count,
         field_absent_count: acc.field_absent_count,
+        contested_count: acc.contested_count,
         outside_index_count: acc.outside_index_count
       }
     DeclarationRefDeclarationAbsent { reference: _ } =>
@@ -216,6 +246,7 @@ fn declaration_ref_census_absorb(
         module_absent_count: acc.module_absent_count,
         declaration_absent_count: acc.declaration_absent_count + 1,
         field_absent_count: acc.field_absent_count,
+        contested_count: acc.contested_count,
         outside_index_count: acc.outside_index_count
       }
     DeclarationRefFieldAbsent { reference: _ } =>
@@ -224,6 +255,16 @@ fn declaration_ref_census_absorb(
         module_absent_count: acc.module_absent_count,
         declaration_absent_count: acc.declaration_absent_count,
         field_absent_count: acc.field_absent_count + 1,
+        contested_count: acc.contested_count,
+        outside_index_count: acc.outside_index_count
+      }
+    DeclarationRefContested { reference: _, claimants: _ } =>
+      DeclarationRefResolutionCensus {
+        resolved_count: acc.resolved_count,
+        module_absent_count: acc.module_absent_count,
+        declaration_absent_count: acc.declaration_absent_count,
+        field_absent_count: acc.field_absent_count,
+        contested_count: acc.contested_count + 1,
         outside_index_count: acc.outside_index_count
       }
     DeclarationRefOutsideIndex { reference: _, coverage: _ } =>
@@ -232,6 +273,7 @@ fn declaration_ref_census_absorb(
         module_absent_count: acc.module_absent_count,
         declaration_absent_count: acc.declaration_absent_count,
         field_absent_count: acc.field_absent_count,
+        contested_count: acc.contested_count,
         outside_index_count: acc.outside_index_count + 1
       }
   }
