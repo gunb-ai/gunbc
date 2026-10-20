@@ -29,6 +29,11 @@ import gunbc.firmware_network_boot_probe {
 // not serve arrives as RedfishGetStatus 404 and becomes a ResourceNotFound refusal for exactly
 // its axes, so no match here is on a family.
 //
+// THE FRONTIER NAME: the probe's firmware_boot_axis_reader_ref names produce_probe_input in this module, and that is the
+// hand-off declared below, so the frontier's DeclarationAppears trigger is satisfiable by this module. The probe's
+// inhabitation value stays AxisReplyUninhabited on purpose: the witness bodies are schema-shaped, and only a decoded
+// real capture may move it to AxisReplyInhabitedByReader.
+//
 // WHAT THE FIXTURES ARE NOT (DESIGN 4d). No captured MegaRAC or OpenBMC ComputerSystem body for
 // these axes is in this corpus, so the witness bodies are DMTF-schema-shaped, not observations.
 // The decoder claims the schema; a real capture is a separate receipt in the observing layer.
@@ -172,6 +177,6 @@ fn redfish_axis_replies(reads: RedfishBootReads) -> List<AxisReply> {
 // them. The receipt (when, which attempt, which response, over which route) is the CALLER's claim
 // about the GETs it performed; this module has no clock and issues no request, so it cannot mint
 // one. probe() refuses a receipt whose route differs from the row's (SuppliedRouteMismatch).
-fn redfish_supplied_probe_input(subject: ProbeSubject, row: FirmwareBootFamilyRow, response: ReadResponseReceipt, reads: RedfishBootReads) -> SuppliedProbeInput {
+fn produce_probe_input(subject: ProbeSubject, row: FirmwareBootFamilyRow, response: ReadResponseReceipt, reads: RedfishBootReads) -> SuppliedProbeInput {
   supplied_probe_input(subject: subject, row: row, contact: BmcResponded { receipt: response, replies: redfish_axis_replies(reads: reads) })
 }

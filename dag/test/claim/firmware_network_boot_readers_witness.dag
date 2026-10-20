@@ -17,7 +17,7 @@ import gunbc.firmware_network_boot_probe {
   FirmwareFamilyStack, FirmwareBootFamilyRow, ReadRoute,
 }
 import gunbc.firmware_network_boot_readers {
-  RedfishGet, RedfishGetBody, RedfishGetStatus, RedfishBootReads, redfish_axis_replies, redfish_supplied_probe_input,
+  RedfishGet, RedfishGetBody, RedfishGetStatus, RedfishBootReads, redfish_axis_replies, produce_probe_input,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -189,7 +189,7 @@ test fn reader_output_feeds_the_probe() -> Bool {
   match row {
     Absent => false
     Present { value: r } =>
-      match probe(input: redfish_supplied_probe_input(subject: ProbeSubject { unit_label: "u" }, row: r, response: ReadResponseReceipt { attempt: ReadAttemptReceipt { observed_at: 1, attempt_identity: "a", route: route_of(row: r) }, response_identity: "r" }, reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok()))) {
+      match probe(input: produce_probe_input(subject: ProbeSubject { unit_label: "u" }, row: r, response: ReadResponseReceipt { attempt: ReadAttemptReceipt { observed_at: 1, attempt_identity: "a", route: route_of(row: r) }, response_identity: "r" }, reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok()))) {
         DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
           order_ok(o: o) && options_unobserved(o: o) && secure_ok(o: o) && nics_ok_obs(o: o) && bios_ok(o: o)
         SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
