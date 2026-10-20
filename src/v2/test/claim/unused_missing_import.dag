@@ -9,7 +9,7 @@ import v2.compiler.name_resolve {
   resolve_with_admission
 }
 import v2.compiler.normalized_tree { normalized_tree_imported_modules }
-import v2.compiler.reference_conservation_admission { conserved_normalize_of_text  }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text }
 import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude, qualified_name_from_module_node }
 import v2.std.diagnostic {
   Accepted,
