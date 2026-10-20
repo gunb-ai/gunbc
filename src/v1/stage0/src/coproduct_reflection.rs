@@ -318,14 +318,50 @@ fn core_edge_value(ctx: &InterpContext, marker: &str, target: Value) -> Value {
     }
 }
 
+// ONE std.optional LAYER over a payload: an Instantiation whose head is the declaration reference
+// std.optional.Optional and whose second child is the payload, the node v2.std.optional_layers
+// wrap_type_node_occupancy builds at depth one (differential claim:
+// test.claim.decl_facts_field_binder_witness). The reference is the marked carrier of
+// v2.std.qualified_name declaration_reference_node: a Conj whose one DeclarationReferenceEdge targets
+// the segment spine v2.std.node fold_list_node builds over synthetic atoms.
+fn optional_layer_node(ctx: &InterpContext, payload: Value) -> Value {
+    let mut spine = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        vec![],
+    );
+    for segment in ["Optional", "optional", "std"] {
+        spine = node_record(
+            ctx,
+            node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+            vec![
+                edge_named(ctx, "fold_list_node_head", atom_identity_node(ctx, segment)),
+                edge_named(ctx, "fold_list_node_tail", spine),
+            ],
+        );
+    }
+    let reference = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        vec![core_edge_value(ctx, "DeclarationReferenceEdge", spine)],
+    );
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Instantiation")),
+        vec![
+            edge_positional(ctx, reference),
+            edge_positional(ctx, payload),
+        ],
+    )
+}
+
 // A DECLARED FIELD IS A BINDER NODE, the one shape v2.std.node_query binder_node builds and
 // declared_field_list reads: a Conj of a BinderTypeEdge to the field's type and, when the field
-// declares a default, a BinderDefaultEdge. An optional field (`f: T?`) targets an Occupancy over its
-// type, as declared_field_cardinality_of_target decodes. A literal default is a
-// ComputationNode { Value } over the atom of its own spelling; any other expression is the bare Atom
-// of its source text, so the two are distinct node shapes (node_query field_default_reading). A
-// default with no readable source, or an operator expression whose span is only its operator,
-// REFUSES; none comes out as no default, which would be a silent loss of a declared fact.
+// declares a default, a BinderDefaultEdge. An optional field (`f: T?`) targets one std.optional layer over its
+// type (optional_layer_node), as declared_field_cardinality_of_target decodes. A literal default is a
+// ComputationNode { Value } over the atom of its own spelling. Every non-literal default REFUSES
+// (TypeError): the host cannot elaborate it, and none comes out as no default, which would be a
+// silent loss of a declared fact.
 fn marshal_field_binder(
     ctx: &InterpContext,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -338,11 +374,7 @@ fn marshal_field_binder(
         field_node_cardinality(field.clone()),
         Cardinality::CardOptional
     ) {
-        type_target = node_record(
-            ctx,
-            node_kind_type_node(ctx, nullary_connective_variant(ctx, "Occupancy")),
-            vec![edge_positional(ctx, type_target)],
-        );
+        type_target = optional_layer_node(ctx, type_target);
     }
     let mut edges = vec![core_edge_value(ctx, "BinderTypeEdge", type_target)];
     // A parsed field keeps its default in `body`; a normalized one (make_field_node) as child 1.
@@ -352,8 +384,7 @@ fn marshal_field_binder(
         .or_else(|| field_node_default_value(field.clone()))
     {
         // A literal is an elaborated value: ComputationNode { Value } over the atom of its own
-        // spelling (a string keeps its quotes, so "false" is not false). Anything else is the
-        // uninterpreted Atom of its source text. v2.std.node_query field_default_reading reads both.
+        // spelling (a string keeps its quotes, so "false" is not false). Anything else refuses.
         let spelling = literal_source_lexeme(&default, si);
         let target = match default.expr_data.as_ref() {
             ExprData::ExprLiteral { value, .. } => {
@@ -376,15 +407,15 @@ fn marshal_field_binder(
                     )
                 })
             }
-            // An operator expression's span covers only its operator token, so its source text is
-            // unreadable here; refuse below rather than reflect "+" as the default.
-            ExprData::ExprBinOp { .. } | ExprData::ExprUnaryOp { .. } => None,
-            _ => spelling.map(|l| atom_identity_node(ctx, &l)),
+            // binder_node carries an ELABORATED default. The host cannot elaborate a non-literal
+            // expression, and reflecting its source text as the same BinderDefaultEdge would give
+            // that edge two meanings by producer, so every non-literal default refuses below.
+            _ => None,
         };
         let Some(target) = target else {
             return Err(InterpError::TypeError {
                 msg: format!(
-                    "marshal_field_binder: field `{field_name}` declares a default with no readable source; refusing rather than reflecting it as no default"
+                    "marshal_field_binder: field `{field_name}` declares a default that is not a literal; the host cannot express it as binder_node's elaborated default, so it refuses rather than reflecting it as source text or as no default"
                 ),
             });
         };
@@ -2660,5 +2691,90 @@ mod parse_only_uppercase_variant_regression_tests {
             production.contains("should_emit_nullary_variant_value_atom"),
             "parse-only skeleton must gate on infer-stamped VariantValueBinding only"
         );
+    }
+}
+
+#[cfg(test)]
+mod field_binder_default_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+    use crate::std_syntax::LiteralValue;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, InterpError};
+    use crate::v1_std_core::{
+        empty_node_list, make_field_node, make_named_expr_node, Cardinality, ExprData, Node,
+        SourceSpan,
+    };
+
+    use super::marshal_field_binder;
+
+    fn span() -> Rc<SourceSpan> {
+        Rc::new(SourceSpan {
+            file: "test.dag".to_string(),
+            start: 0,
+            end: 1,
+        })
+    }
+
+    fn expr(name: &str, data: ExprData) -> Rc<Node> {
+        make_named_expr_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            Rc::new(data),
+            empty_node_list(),
+            None,
+            span(),
+            span(),
+        )
+    }
+
+    fn marshal_with_default(default: Rc<Node>) -> Result<(), InterpError> {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic);
+        let si = ctx.source_indices();
+        let type_expr = expr("Int", ExprData::NoExprData);
+        let field = make_field_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            "f".to_string(),
+            type_expr.clone(),
+            Cardinality::Required,
+            Some(default),
+            Rc::new(im_vec![]),
+            span(),
+            span(),
+        );
+        marshal_field_binder(&ctx, &si, &field, "f", &type_expr).map(|_| ())
+    }
+
+    // RED: a default the host cannot elaborate (a reference to a name) refuses; it is not reflected
+    // as its source text under BinderDefaultEdge (review 83500).
+    #[test]
+    fn a_non_literal_default_refuses() {
+        let reference = expr("default_computed", ExprData::ExprVar { binding_kind: None });
+        match marshal_with_default(reference) {
+            Err(InterpError::TypeError { msg }) => assert!(msg.contains("not a literal"), "{msg}"),
+            other => panic!("expected a typed refusal, got {other:?}"),
+        }
+    }
+
+    // CONTROL: the same field with a literal default marshals, so the refusal above is the default's
+    // shape and not the field.
+    #[test]
+    fn a_literal_default_marshals() {
+        let literal = expr(
+            "false",
+            ExprData::ExprLiteral {
+                value: Rc::new(LiteralValue::LitBool { value: false }),
+            },
+        );
+        marshal_with_default(literal).expect("a literal default marshals");
     }
 }
