@@ -20,7 +20,9 @@ import v2.workflow.roster_import_sweep {
   RosterLabelEdits,
   RosterOutcome,
   RosterRefused,
+  RosterHomeClosure,
   roster_applied,
+  roster_home_closures,
   roster_sweep_text_scoped
 }
 
@@ -169,11 +171,11 @@ fn proof_apply(state: ProofState, outcome: RosterOutcome) -> ProofState {
   }
 }
 
-fn proof_round(state: ProofState, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, home: String) -> ProofState {
+fn proof_round(state: ProofState, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, home: String, closures: List<RosterHomeClosure>) -> ProofState {
   if state.done || (state.stuck != "") {
     state
   } else {
-    let outcome = roster_sweep_text_scoped(path: path, text: state.text, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: home) })
+    let outcome = roster_sweep_text_scoped(path: path, text: state.text, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: home) }, closures: closures)
     match outcome {
       RosterClean => ProofState { text: state.text, rounds: state.rounds, done: true, stuck: "" }
       RosterRefused { reason: _ } => ProofState { text: state.text, rounds: state.rounds, done: false, stuck: "the sweep generator refused the module" }
@@ -186,8 +188,9 @@ fn proof_round(state: ProofState, path: String, prepared: PreparedGrammar, lex: 
 
 // THE GENERATOR'S OWN RECOMPUTATION from a base text: sweep, splice, repeat to a fixed point (the apply step converges the same way).
 fn recompute_wave_text(path: String, base_text: String, prepared: PreparedGrammar, lex: PreparedLexRules, home: String) -> ProofState {
+  let closures = roster_home_closures(root: "", scope: OneHome { home: qualified_name_from_dotted_string(dotted: home) })
   fold([0, 1, 2, 3], init: ProofState { text: base_text, rounds: [], done: false, stuck: "" }, f: fn(acc, i) {
-    proof_round(state: acc, path: path, prepared: prepared, lex: lex, home: home)
+    proof_round(state: acc, path: path, prepared: prepared, lex: lex, home: home, closures: closures)
   })
 }
 
