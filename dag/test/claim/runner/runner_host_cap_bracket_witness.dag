@@ -6,7 +6,9 @@ import gunbc.runner.runner_host_file_converge { runner_host_file_subject, Runner
 import std.optional { Absent, Present }
 import std.measure { second, second_count }
 import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
-import gunbc.runner.runner_slot_actuation { SlotRead, SlotReadRefused, slot_activation_plan, ActivationSteps, ActivationRefused, ActivationAlreadyActive, SlotActuationOutcome, SlotActivated, SlotActuationRefused, slot_read_outcome_of, slot_activity_of_listing }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOutcome }
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.runner.runner_slot_actuation { SlotTransport, SlotTransportScripted, SlotActuationNoop, slot_actuation_settled, SlotRead, SlotReadRefused, slot_activation_plan, ActivationSteps, ActivationRefused, ActivationAlreadyActive, SlotActuationOutcome, SlotActivated, SlotActuationRefused, slot_read_outcome_of, slot_activity_of_listing }
 import gunbc.runner.runner_host_cap_bracket {
   AdmissionMaskOnly,
   SlotDrainReading,
@@ -54,7 +56,12 @@ import gunbc.runner.runner_host_cap_bracket {
   owned_set_of,
   OwnedSet,
   OwnedSetUnproven,
-  release_unit_needs_activation,
+  release_owned_slots_through,
+  ReleaseThrough,
+  release_verdict_of,
+  release_verdict_is_settled,
+  release_receipt_text,
+  write_bracket_obligation,
   release_envelope_standing,
   ReleaseFitsEnvelope,
   ReleaseMayOutliveCancellation,
@@ -257,13 +264,6 @@ test fn the_owned_set_is_the_unmasked_units_and_an_unread_one_refuses() -> Bool 
     && (match owned_set_of(readings: [SlotDrainReading { unit: u(n: "03"), admission: AdmissionOpen, run: RunUnobserved { cause: "x" as NonEmptyStr } }]) { OwnedSetUnproven { units: us } => length(us) == 1 OwnedSet { units: _ } => false })
 }
 
-test fn a_never_masked_unit_is_issued_no_activation() -> Bool {
-  match slot_read_outcome_of(unit: u(n: "01"), show_stdout: concat("Id=", u(n: "01") as String, "\nLoadState=loaded\nUnitFileState=enabled\nActiveState=active\n")) {
-    SlotReadRefused { reason: _ } => false
-    r => !release_unit_needs_activation(read: r)
-  }
-}
-
 // the declared release does NOT fit (startup is the workflow's resolve budget), and the standing says so;
 // a policy whose release fits reports it
 test fn the_declared_release_is_a_typed_residual_against_the_cancellation_envelope() -> Bool {
@@ -285,41 +285,74 @@ test fn the_obligation_codec_round_trips_and_refuses_every_other_shape() -> Bool
     && untrusted_text(t: "[]")
 }
 
-// THE COMPOSITION: acquisition records the owned units, the job is interrupted after the first mask, the
-// release step reads the SAME obligation text back, owes exactly those units, issues an argv for each masked
-// one from its show text, and the settled outcomes read back as admitting. Each link is the real function;
-// only the file transport and the ssh runs are supplied.
-fn owned_text(owned: List<NonEmptyStr>) -> String { bracket_obligation_text(o: BracketObligation { key: okey(), units: owned }, discharged: false) }
-fn show_masked_unit(n: String) -> String { concat("Id=", u(n: n) as String, "\nLoadState=masked\nUnitFileState=masked\nActiveState=inactive\n") }
+// THE COMPOSITION THROUGH THE PRODUCTION RELEASE DRIVER: release_owned_slots_through runs its real read,
+// decision, argv construction and readback; only the SSH hop is a scripted list of exec answers, and the
+// argv it is asked to run is recorded. A mutation that disconnects the release or its readback changes the
+// issued argv or the outcome and reds these.
+fn ok(out: String) -> TypedArgvExecOutcome { TypedArgvExecConverged { result: SshSessionExecResult { exit_code: 0, success: true, stdout: out, stderr: "" } } }
+fn show(n: String, load: String, file: String, active: String) -> TypedArgvExecOutcome { ok(out: concat("Id=", u(n: n) as String, "\nLoadState=", load, "\nUnitFileState=", file, "\nActiveState=", active, "\n")) }
+fn scripted(answers: List<TypedArgvExecOutcome>) -> SlotTransport { SlotTransportScripted { answers: answers, issued: [] } }
+fn issued_of(t: SlotTransport) -> List<List<String>> { match t { SlotTransportScripted { answers: _, issued: i } => i _ => [] } }
+fn all_settled(os: List<SlotActuationOutcome>) -> Bool { all(os, o => slot_actuation_settled(o: o)) }
+fn activated(o: SlotActuationOutcome) -> Bool { match o { SlotActivated { unit: _ } => true _ => false } }
+fn noop(o: SlotActuationOutcome) -> Bool { match o { SlotActuationNoop { unit: _, state: _ } => true _ => false } }
+fn refused(o: SlotActuationOutcome) -> Bool { match o { SlotActuationRefused { unit: _, step: _, reason: _ } => true _ => false } }
 
-test fn an_interrupted_bracket_releases_exactly_its_owned_units_with_an_argv_each_and_reads_back_admitting() -> Bool {
-  match owned_set_of(readings: [unmasked(n: "01"), unmasked(n: "02")]) {
-    OwnedSetUnproven { units: _ } => false
-    OwnedSet { units: owned } =>
-      match release_decision_of(reading: obligation_reading_of_text(text: owned_text(owned: owned), expected_key: okey())) {
-        ReleaseOwes { units: us } =>
-          length(us) == 2
-            && length(filter(us, x => match slot_read_outcome_of(unit: x, show_stdout: show_masked_unit(n: if (x as String) == (u(n: "01") as String) { "01" } else { "02" })) {
-                 SlotRead { reading: r } => release_unit_needs_activation(read: SlotRead { reading: r }) && (match slot_activation_plan(r: r) { ActivationSteps { steps: s } => length(s) == 3 _ => false })
-                 SlotReadRefused { reason: _ } => false
-               })) == 2
-            && admitting(l: host_left_of_readmit(units: us, outcomes: map(us, x => SlotActivated { unit: x })))
-        _ => false
-      }
-  }
+// masked unit: read(masked), unmask+enable+start (3 argv), readback(loaded enabled active) => activated, 3 argv
+test fn a_masked_owned_unit_is_activated_with_three_argv_and_read_back() -> Bool {
+  let r = release_owned_slots_through(transport: scripted(answers: [show(n: "01", load: "masked", file: "masked", active: "inactive"), ok(out: ""), ok(out: ""), ok(out: ""), show(n: "01", load: "loaded", file: "enabled", active: "active")]), units: [u(n: "01")])
+  length(r.outcomes) == 1 && activated(o: r.outcomes[0] as SlotActuationOutcome) && length(issued_of(t: r.transport)) == 5
 }
 
-// RED: a release whose activation is refused leaves the host DRAINED and names that unit, not the others
-test fn a_failed_release_leaves_the_host_drained_and_names_the_unit() -> Bool {
-  match host_left_of_readmit(units: units(), outcomes: [SlotActivated { unit: u(n: "01") }, SlotActuationRefused { unit: u(n: "02"), step: "start", reason: "start refused" }]) {
-    HostLeftDrained { units: us } => us == [u(n: "02")]
-    HostAdmitting => false
-  }
+// BLOCKER 2: unmasked but inactive (failed start after an unmask) is a REFUSAL with no mutating argv
+test fn an_unmasked_unit_that_is_not_active_is_refused_not_read_as_readmitted() -> Bool {
+  let r = release_owned_slots_through(transport: scripted(answers: [show(n: "01", load: "loaded", file: "enabled", active: "failed")]), units: [u(n: "01")])
+  length(r.outcomes) == 1 && refused(o: r.outcomes[0] as SlotActuationOutcome) && !all_settled(os: r.outcomes) && length(issued_of(t: r.transport)) == 1
+    && !admitting(l: host_left_of_readmit(units: [u(n: "01")], outcomes: r.outcomes))
 }
 
-// COUNTEREXAMPLE: a preflight that refuses (a slot unread, so ownership unproven) mints no owned set, so no
-// obligation text exists to write; the release then reads Absent, owes nothing and is issued no argv.
-test fn a_refused_preflight_leaves_no_obligation_and_the_release_issues_no_argv() -> Bool {
-  (match owned_set_of(readings: [unmasked(n: "01"), SlotDrainReading { unit: u(n: "02"), admission: AdmissionOpen, run: RunUnobserved { cause: "ps exit=1" as NonEmptyStr } }]) { OwnedSetUnproven { units: _ } => true OwnedSet { units: _ } => false })
-    && (match release_decision_of(reading: ObligationAbsent) { ReleaseNothingOwed => true _ => false })
+test fn an_unmasked_disabled_unit_is_refused() -> Bool {
+  let r = release_owned_slots_through(transport: scripted(answers: [show(n: "01", load: "loaded", file: "disabled", active: "active")]), units: [u(n: "01")])
+  !all_settled(os: r.outcomes)
+}
+
+// the positive already-admitting no-op: one read, no mutating argv
+test fn an_unmasked_active_enabled_unit_is_a_settled_noop_with_only_the_read() -> Bool {
+  let r = release_owned_slots_through(transport: scripted(answers: [show(n: "01", load: "loaded", file: "enabled", active: "active")]), units: [u(n: "01")])
+  length(r.outcomes) == 1 && noop(o: r.outcomes[0] as SlotActuationOutcome) && length(issued_of(t: r.transport)) == 1
+    && admitting(l: host_left_of_readmit(units: [u(n: "01")], outcomes: r.outcomes))
+}
+
+// an activation whose readback shows the unit still not active leaves the host drained
+test fn a_failed_start_after_unmask_leaves_the_host_drained() -> Bool {
+  let r = release_owned_slots_through(transport: scripted(answers: [show(n: "01", load: "masked", file: "masked", active: "inactive"), ok(out: ""), ok(out: ""), ok(out: ""), show(n: "01", load: "loaded", file: "enabled", active: "failed")]), units: [u(n: "01")])
+  !admitting(l: host_left_of_readmit(units: [u(n: "01")], outcomes: r.outcomes))
+}
+
+// an exhausted transport refuses, never invents an answer
+test fn a_transport_with_no_answer_refuses_the_release() -> Bool {
+  !all_settled(os: release_owned_slots_through(transport: scripted(answers: []), units: [u(n: "01")]).outcomes)
+}
+
+// BLOCKER 1: a foreign-masked unit still running a worker is in the OBSERVED population and is Busy
+test fn a_foreign_masked_busy_unit_is_observed_and_blocks_the_write() -> Bool {
+  exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01"), finishing(n: "02")], ticks_left: 0, time_up: true), busy: 1, unproven: 0)
+}
+
+// an empty owned set owes nothing: no obligation is written (the decoder would reject an empty held list)
+test fn an_empty_owned_set_writes_no_obligation() -> Bool {
+  match write_bracket_obligation(host: "srv3", units: [], discharged: false) { Absent => true Present { value: _ } => false }
+}
+
+// the receipt text carries the attempt, host, decision, outcomes and verdict, from the real verdict fold
+test fn the_release_receipt_states_a_failed_release() -> Bool {
+  let os = [SlotActuationRefused { unit: u(n: "01"), step: "readback", reason: "x" }]
+  let d = ReleaseOwes { units: [u(n: "01")] }
+  let v = release_verdict_of(decision: d, outcomes: os)
+  let t = release_receipt_text(attempt: okey(), host: "srv3", decision: d, outcomes: os, verdict: v)
+  !release_verdict_is_settled(v: v) && starts_with(s: t, prefix: concat("runner_host_cap_release attempt=", okey()))
+}
+
+test fn the_release_of_nothing_owed_is_settled() -> Bool {
+  release_verdict_is_settled(v: release_verdict_of(decision: ReleaseNothingOwed, outcomes: []))
 }
