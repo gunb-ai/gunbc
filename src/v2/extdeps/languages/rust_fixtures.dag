@@ -3422,6 +3422,7 @@ fn rust_list_fold_target_model_staging() -> TargetModel {
 
 fn rust_list_fold_target_model_staging_with(projection: TargetValueExpressionProjection) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },

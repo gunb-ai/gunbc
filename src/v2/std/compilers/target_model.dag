@@ -5375,7 +5375,7 @@ fn target_value_expression_list_introduction_element_tokens(
 fn target_value_expression_list_introduction_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match projection.list_introduction_form {
     ListIntroductionUnwired =>
