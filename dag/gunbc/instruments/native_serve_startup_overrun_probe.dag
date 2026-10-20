@@ -1,0 +1,53 @@
+module gunbc.instruments.native_serve_startup_overrun_probe
+
+import std.types { Int, List, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.native_serve { native_serve_startup_refused_exit_code, native_serve_startup_refusal_line }
+import gunbc.native_serve_probe_plan {
+  NativeServePhase, NativeServeRefusedLaunch, native_serve_phase_refusals, no_observation, native_serve_probe_not_held_code,
+}
+
+// THE READER FOR `gunbc test //gunbc/instruments:native-serve-startup-overrun`. The service
+// (gunbc.instruments.native_serve_startup_overrun_fixture) declares a 1 s startup bound and a startup far longer. The
+// launch has a valid revision, so the refusal is the startup bound's. What the run must show: the process exited by
+// itself with the startup exit code, its stderr is the typed startup refusal naming the bound, and it never announced a
+// bound address and answered nothing.
+
+fn native_serve_probe_phases() -> List<NativeServePhase> {
+  [NativeServeRefusedLaunch]
+}
+
+fn native_serve_probe_phases_refused(declared: List<String>) -> List<String> {
+  native_serve_phase_refusals(declared: declared, judged: native_serve_probe_phases())
+}
+
+fn native_serve_probe_release_revision() -> String {
+  "0123456789abcdef0123456789abcdef01234567"
+}
+
+// The same valid revision: the launch is refused by the startup fold, which runs after argv is judged.
+fn native_serve_probe_refused_revision() -> String {
+  native_serve_probe_release_revision()
+}
+
+fn native_serve_probe_request_deadline_ms() -> String {
+  "30000"
+}
+
+fn native_serve_probe_requests(peer_port: Int) -> List<String> {
+  []
+}
+
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_status: Int, refused_stderr: String, served_exit_status: Int) -> ProcessExit {
+  if refused_status == -1 {
+    no_observation(reason: "the launch did not exit by itself (killed at the deadline), so the startup bound neither refused nor passed")
+  } else if refused_status != native_serve_startup_refused_exit_code() {
+    ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: the launch exited ", concat(to_string(value: refused_status), concat(" instead of the startup exit code ", to_string(value: native_serve_startup_refused_exit_code())))) }
+  } else if !starts_with(s: refused_stderr, prefix: native_serve_startup_refusal_line(reason: "")) || (split(s: refused_stderr, delimiter: "did not complete within its bound") |> count) < 2 {
+    ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: stderr is not the startup bound's typed refusal [", concat(refused_stderr, "]")) }
+  } else if (responses |> count) > 0 || starts_with(s: announcement, prefix: "native-serve listening on ") {
+    ExitFailure { code: native_serve_probe_not_held_code, reason: "not held: the service bound and announced past its startup bound" }
+  } else {
+    ExitSuccess
+  }
+}
