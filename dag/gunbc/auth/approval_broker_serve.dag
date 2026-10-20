@@ -35,7 +35,7 @@ import gunbc.auth.approval_writer_authority {
 }
 import gunbc.auth.approval_store_receipt { store_receipt_answer }
 import gunbc.auth.approval_broker_marker {
-  ApprovalBrokerMarker, approval_broker_marked_body,
+  ApprovalBrokerMarker, BrokerBodyMarked, BrokerMarkedBody, BrokerMarkerRefused, approval_broker_marked_body,
   ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved, StoreReceiptHandlerObserved,
   DeviceEnrolHandlerObserved, DeviceRedeemHandlerObserved, DevicePendingHandlerObserved,
   DeviceRequestHandlerObserved, DeviceEnrollmentReadbackHandlerObserved, DevicePushUpdateHandlerObserved,
@@ -193,12 +193,39 @@ fn device_route_response(marker: ApprovalBrokerMarker, process: ApprovalServingP
 // WHAT MAKES THE PROCESS TRUSTWORTHY is that it is bound by the serve ENTRY, one entry per process
 // for its life, and is threaded down rather than inferred from the request. A request cannot choose
 // it by matching a route, which is precisely what it could do to the fold arm.
+// The favicon route's own answer to the emitter's result. A refusal is a typed 500 carrying the reason,
+// matching both broker_text_response's marker-refusal arm and roadmap_serve's favicon route: an unmarked
+// or empty favicon would be a served route lying about what it served.
+fn broker_favicon_response(process: ApprovalServingProcess) -> ServeHttpResponse {
+  match site_favicon_source() {
+    EmitOk { html: h } =>
+      broker_text_response(status: 200, content_type: site_favicon_type, body: h, marker: BrokerStaticRouteServed, process: process)
+    EmitRejected { reason: r } =>
+      ServeHttpResponse {
+        status: 500,
+        content_type: text_plain_utf8,
+        body: page_render_refusal_body(reason: r),
+        headers: [],
+      }
+  }
+}
+
 fn broker_text_response(status: HttpStatus, content_type: MediaType, body: String, marker: ApprovalBrokerMarker, process: ApprovalServingProcess) -> ServeHttpResponse {
-  ServeHttpResponse {
-    status: status,
-    content_type: content_type,
-    body: approval_broker_marked_body(content_type: content_type, body: body, m: marker, process: process),
-    headers: [],
+  match approval_broker_marked_body(content_type: content_type, body: body, m: marker, process: process) {
+    BrokerBodyMarked { body: marked } =>
+      ServeHttpResponse { status: status, content_type: content_type, body: marked, headers: [] }
+    // A marker that cannot be built is a construction failure of THIS response, so it fails the way
+    // every other construction failure in this fold fails: a typed 500 naming the reason, through the
+    // same refusal body a page-render refusal takes. Not an unmarked response — an unmarked response is
+    // what the reading side reports as "the request never reached the broker", and here we know we did
+    // reach it and could not mark it. Those two must not share an answer.
+    BrokerMarkerRefused { reason: r } =>
+      ServeHttpResponse {
+        status: 500,
+        content_type: text_plain_utf8,
+        body: page_render_refusal_body(reason: r),
+        headers: [],
+      }
   }
 }
 
@@ -524,7 +551,7 @@ fn approval_broker_invoke(
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match handler {
-    ApprovalSiteFaviconHandler => broker_text_response(status: 200, content_type: site_favicon_type, body: site_favicon_source(), marker: BrokerStaticRouteServed, process: process)
+    ApprovalSiteFaviconHandler => broker_favicon_response(process: process)
     ApprovalConfirmPageHandler => approval_confirm_page_response(request: request, params: params, process: process)
     ApprovalDecideHandler => approval_decide_response(request: request, params: params, process: process)
     ApprovalSubmitHandler => approval_submit_response(request: request, process: process)
