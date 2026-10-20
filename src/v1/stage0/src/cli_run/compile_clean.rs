@@ -902,9 +902,8 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
                 decl_name: s(),
                 field: Rc::new(crate::std_decl_ref::DeclField::WholeDeclaration),
             }),
-            cause: Rc::new(
+            cause:
                 crate::std_generated_provider::GeneratedProviderUnavailableCause::UnavailableModuleAbsent,
-            ),
             span: no_span(),
         },
         AlgebraApplicationEvidenceUnavailable { receiver_type: s(), argument_index: 0, span: no_span() },
