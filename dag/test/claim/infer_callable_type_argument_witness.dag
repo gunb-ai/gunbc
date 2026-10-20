@@ -36,15 +36,15 @@ fn resolves_clean(source: String) -> ProcessExit {
   ])
 }
 
-test fn fold_lambda_calls_a_nullary_element_parameter() -> Bool {
+test fn fold_lambda_calls_a_nullary_element_parameter() -> ProcessExit {
   resolves_clean(source: fold_thunk_source)
 }
 
-test fn map_lambda_calls_a_unary_element_parameter() -> Bool {
+test fn map_lambda_calls_a_unary_element_parameter() -> ProcessExit {
   resolves_clean(source: map_unary_source)
 }
 
-test fn match_arm_calls_a_callable_element() -> Bool {
+test fn match_arm_calls_a_callable_element() -> ProcessExit {
   resolves_clean(source: match_arm_source)
 }
 

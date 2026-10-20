@@ -41,15 +41,15 @@ fn resolves_clean(source: String) -> ProcessExit {
   ])
 }
 
-test fn nullary_parameter_callable_resolves() -> Bool {
+test fn nullary_parameter_callable_resolves() -> ProcessExit {
   resolves_clean(source: nullary_parameter_source)
 }
 
-test fn nullary_callable_argument_binds_to_a_nullary_formal() -> Bool {
+test fn nullary_callable_argument_binds_to_a_nullary_formal() -> ProcessExit {
   resolves_clean(source: nullary_argument_source)
 }
 
-test fn nullary_alias_typed_parameter_resolves() -> Bool {
+test fn nullary_alias_typed_parameter_resolves() -> ProcessExit {
   resolves_clean(source: nullary_alias_parameter_source)
 }
 
@@ -57,7 +57,7 @@ test fn nullary_global_still_resolves() -> ProcessExit {
   census_verdict(census: total_blocking_census(source: nullary_global_source), holds: fn(n) { n == 0 })
 }
 
-test fn unary_local_still_resolves() -> Bool {
+test fn unary_local_still_resolves() -> ProcessExit {
   resolves_clean(source: unary_parameter_source)
 }
 
