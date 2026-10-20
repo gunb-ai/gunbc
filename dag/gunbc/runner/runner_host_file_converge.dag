@@ -34,9 +34,10 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
-import gunbc.runner.runner_host_cap_bracket { BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, readmit_all_slots_over, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted }
+import gunbc.runner.runner_host_cap_bracket { BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted }
 import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
   HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
@@ -2325,20 +2326,25 @@ fn run_runner_host_cap_bracket(
   match acquire_bracket_over(target: subject.target, context: context, host: subject.host as String, units: subject.desired_units) {
     BracketNotAcquired { refusal: rf } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: ", bracket_refusal_wire(r: rf)], "") }
     BracketAcquired { owned: owned } =>
-      match drain_until_quiescent_over(target: subject.target, context: context, units: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
+      match drain_until_quiescent_over(target: subject.target, context: context, observed: subject.desired_units, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
         BracketDrained => {
           let files = map(runner_host_cap_files(), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
           let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
           let written = all(files, r => runner_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
           // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
-          let readmitted = if written { [] } else { readmit_all_slots_over(target: subject.target, context: context, units: owned) }
-          let slots = map(subject.desired_units, u => if written {
+          let readmitted = if written { [] } else { release_owned_slots_over(target: subject.target, context: context, units: owned) }
+          // ONLY AN OWNED UNIT IS ACTIVATED: a unit someone else masked is not unmasked here (activation would
+          // lift their mask); its caps are not proven by this run, so it is reported unsettled by name.
+          let owned_slots = map(owned, u => if written {
             activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
           } else {
             SlotCapsRefused { unit: u, step: "write", reason: join(["the cap drop-ins did not converge or the manager reload did not settle; ", host_left_wire(l: host_left_of_readmit(units: owned, outcomes: readmitted)), " re-admission: ", join(map(readmitted, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
           })
+          let foreign_slots = map(filter(subject.desired_units, u => length(filter(owned, o => o == u)) == 0), u =>
+            SlotCapsRefused { unit: u, step: "foreign-mask", reason: "masked by someone else before this run: not unmasked and not activated, so its caps are applied when its owner re-admits it and are not proven here" })
+          let slots = concat(owned_slots, foreign_slots)
           // DISCHARGED ONLY AFTER A READ-BACK THAT THE HOST ADMITS AGAIN; otherwise the obligation stays held.
-          let admitting = if written { all(slots, o => slot_cap_outcome_settled(o: o)) } else { match host_left_of_readmit(units: owned, outcomes: readmitted) { HostAdmitting => true _ => false } }
+          let admitting = if written { all(owned_slots, o => slot_cap_outcome_settled(o: o)) } else { match host_left_of_readmit(units: owned, outcomes: readmitted) { HostAdmitting => true _ => false } }
           let discharged = if admitting { write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) } else { Present { value: "host not read back as admitting" } }
           // A discharge that did not land is reported, not hidden: release would then find the units unmasked and issue no argv.
           let discharge_note = match discharged { Present { value: w } => if admitting { map(subject.desired_units, u => SlotCapsRefused { unit: u, step: "discharge", reason: w }) } else { [] } Absent => [] }
@@ -2353,7 +2359,7 @@ fn run_runner_host_cap_bracket(
 
 fn withheld_after_readmit(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, owned: List<NonEmptyStr>, head: String) -> RunnerHostCapPhase
 {
-  let restored = readmit_all_slots_over(target: subject.target, context: context, units: owned)
+  let restored = release_owned_slots_over(target: subject.target, context: context, units: owned)
   let left = host_left_of_readmit(units: owned, outcomes: restored)
   let discharged = match left { HostAdmitting => write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) HostLeftDrained { units: _ } => Present { value: "not admitting" } }
   CapPhaseWithheld { cause: join([head, "; ", host_left_wire(l: left), " restored=", join(map(restored, o => slot_actuation_outcome_wire(o: o)), " "), "; ", release_envelope_wire(policy: runner_host_cap_drain_policy), match discharged { Present { value: w } => concat(" obligation-discharge: ", w) Absent => "" }], "") }
@@ -2625,8 +2631,6 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
 
 data runner_host_file_converge_attempt_raw: String = "runner-host-file-converge-ci"
 
-data runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
-
 // ONE HOST PER RUN, NAMED BY THE DISPATCH. The fleet-converge workflow already carries the operator's
 // chosen host in FLEET_CONVERGE_EXPECTED_HOST; an unset host refuses rather than fanning a root-file
 // write across the fleet from an empty variable.
@@ -2657,7 +2661,7 @@ fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
                     join(map(withheld, w => join(["withheld subject=", w.subject as String, " cause=", w.cause as String, "\n"], "")), ""),
                     runner_host_file_run_text(run: run),
                   ], "")
-                  let w = Filesystem.Write(path: runner_host_file_converge_receipt_path, content: body)
+                  let w = Filesystem.Write(path: gunbc_ci_runner_host_file_converge_receipt_path, content: body)
                   if w.success == false {
                     exit_failure(reason: join(["runner_host_file_converge: receipt write failed: ", w.error, "\n", body], ""))
                   } else if runner_host_file_run_succeeded(run: run) == false {
@@ -2695,29 +2699,43 @@ fn runner_host_cap_release_ci_wet() -> ProcessExit
 {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>
-      exit_failure(reason: join(["runner_host_cap_release: ", v, " ", d, "; one host per run, named by the dispatch"], ""))
+      finish_runner_host_cap_release(host: "unknown", decision: ReleaseObligationUntrusted { cause: join(["the release could not start: ", v, " ", d, "; one host per run, named by the dispatch"], "") }, outcomes: [])
     ActionsVariablePresent { value: raw_host } =>
       match runner_host_file_subject(host: raw_host as HostIdentity) {
-        RunnerHostFileSubjectRefused { cause: c } => exit_failure(reason: c)
+        RunnerHostFileSubjectRefused { cause: c } =>
+          finish_runner_host_cap_release(host: raw_host, decision: ReleaseObligationUntrusted { cause: concat("the release could not start: ", c) }, outcomes: [])
         RunnerHostFileSubjectAdmitted { subject: subject } =>
           match prepare_fleet_ssh_agent_context(attempt_raw: runner_host_file_converge_attempt_raw) {
-            FleetSshContextRefused { cause: c } => exit_failure(reason: c)
+            FleetSshContextRefused { cause: c } =>
+              finish_runner_host_cap_release(host: raw_host, decision: ReleaseObligationUntrusted { cause: concat("the release could not start: ", c) }, outcomes: [])
             FleetSshContextReady { context: context, receipt: _ } => {
-              match release_decision_of(reading: read_bracket_obligation(host: subject.host as String)) {
-                ReleaseNothingOwed => ExitSuccess
-                ReleaseAlreadyDischarged => ExitSuccess
-                ReleaseObligationUntrusted { cause: c } => exit_failure(reason: concat("runner_host_cap_release: ", c))
-                ReleaseOwes { units: owned } => {
-                  let outcomes = release_owned_slots_over(target: subject.target, context: context, units: owned)
-                  let left = host_left_of_readmit(units: owned, outcomes: outcomes)
-                  match left {
-                    HostAdmitting => ExitSuccess
-                    _ => exit_failure(reason: join(["runner_host_cap_release: ", host_left_wire(l: left), " ", join(map(outcomes, o => slot_actuation_outcome_wire(o: o)), " "), "; ", release_envelope_wire(policy: runner_host_cap_drain_policy)], ""))
-                  }
-                }
+              let decision = release_decision_of(reading: read_bracket_obligation(host: subject.host as String))
+              let outcomes = match decision {
+                ReleaseOwes { units: owned } => release_owned_slots_over(target: subject.target, context: context, units: owned)
+                _ => []
               }
+              finish_runner_host_cap_release(host: raw_host, decision: decision, outcomes: outcomes)
             }
           }
       }
+  }
+}
+
+// THE ONE FINISHER OF THE RELEASE, for every arm including the ones that could not start: the receipt is
+// written from the actual result at the path ci_spec declares (the workflow's cat and upload read the same
+// path), a write that fails fails the step, and the exit follows the verdict. The converge receipt is a
+// different path and is never touched.
+fn finish_runner_host_cap_release(host: String, decision: ReleaseDecision, outcomes: List<SlotActuationOutcome>) -> ProcessExit
+{
+  let verdict = release_verdict_of(decision: decision, outcomes: outcomes)
+  let attempt = match runner_host_cap_obligation_identity(host: host) { Present { value: k } => k Absent => "unknown (GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT unset)" }
+  let body = release_receipt_text(attempt: attempt, host: host, decision: decision, outcomes: outcomes, verdict: verdict)
+  let w = Filesystem.Write(path: gunbc_ci_runner_host_cap_release_receipt_path, content: body)
+  if w.success == false {
+    exit_failure(reason: join(["runner_host_cap_release: receipt write failed: ", w.error, "\n", body], ""))
+  } else if release_verdict_is_settled(v: verdict) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: body)
   }
 }

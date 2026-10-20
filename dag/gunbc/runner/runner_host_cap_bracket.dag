@@ -22,6 +22,12 @@ import gunbc.runner.runner_slot_actuation {
   read_slot_worker_over,
   run_slot_steps_over,
   activate_runner_slot_over,
+  activate_runner_slot_through,
+  SlotActuationThrough,
+  read_slot_through,
+  SlotTransport,
+  SlotTransportFleetSsh,
+  slot_activation_read_back_holds,
   slot_actuation_settled,
   slot_actuation_outcome_wire,
   slot_state_active,
@@ -324,19 +330,23 @@ fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, uni
   }
 }
 
+// TWO POPULATIONS, NEVER ONE: `observed` is every desired unit, because a cap written under a unit that
+// still runs a Runner.Worker (or a running idle listener) is the hazard whoever masked it, so every one
+// is read and judged; `owned` is the units THIS attempt masks, and only those are ever masked or released,
+// so a mask someone else holds is neither taken over nor lifted.
 // CLOSE ADMISSION, THEN WAIT. The first pass only READS: under a mask-only closure a running idle
 // listener refuses the host before anything is changed, because stopping it races a job assignment.
 // Later passes only MASK every slot; nothing is ever stopped, so a slot leaves service only when its own
 // job ends and the mask blocks its restart. Each pass is judged by bracket_wait_step.
-fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
+fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionContext, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
 {
   let closure = runner_host_cap_admission_closure
-  let before = map(units, u => read_slot_drain_over(target: target, context: context, unit: u))
+  let before = map(observed, u => read_slot_drain_over(target: target, context: context, unit: u))
   match bracket_wait_step(closure: closure, readings: before, ticks_left: ticks_left + 1, time_up: false) {
     BracketAdmissionNotClosed { listeners: ls } => BracketAdmissionNotClosed { listeners: ls }
     BracketDrained => BracketDrained
-    BracketWaiting { ticks_left: _ } => drain_pass_over(target: target, context: context, units: units, policy: policy, ticks_left: ticks_left, started: started)
-    BracketBoundExceeded { busy: b, unproven: u } => drain_pass_over(target: target, context: context, units: units, policy: policy, ticks_left: ticks_left, started: started)
+    BracketWaiting { ticks_left: _ } => drain_pass_over(target: target, context: context, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started)
+    BracketBoundExceeded { busy: b, unproven: u } => drain_pass_over(target: target, context: context, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started)
   }
 }
 
@@ -351,14 +361,14 @@ fn drain_time_up_over(policy: HostCapDrainPolicy, started: EpochMs) -> Bool
   }
 }
 
-fn drain_pass_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
+fn drain_pass_over(target: SshTarget, context: FleetSshExecutionContext, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
 {
-  let _masked = map(units, u => mask_slot_only_over(target: target, context: context, unit: u))
-  let readings = map(units, u => read_slot_drain_over(target: target, context: context, unit: u))
+  let _masked = map(owned, u => mask_slot_only_over(target: target, context: context, unit: u))
+  let readings = map(observed, u => read_slot_drain_over(target: target, context: context, unit: u))
   match bracket_wait_step(closure: runner_host_cap_admission_closure, readings: readings, ticks_left: ticks_left, time_up: drain_time_up_over(policy: policy, started: started)) {
     BracketWaiting { ticks_left: n } => {
       let _paced = sleep_delay_seconds_second_carrier_projection(duration: policy.poll_interval)
-      drain_pass_over(target: target, context: context, units: units, policy: policy, ticks_left: n, started: started)
+      drain_pass_over(target: target, context: context, observed: observed, owned: owned, policy: policy, ticks_left: n, started: started)
     }
     step => step
   }
@@ -379,14 +389,6 @@ fn bracket_start_over(policy: HostCapDrainPolicy, given: Second) -> BracketStart
         ObserverClockObserved { instant: i } => BracketStartAt { started: observer_instant_millis(instant: i) }
       }
   }
-}
-
-// RE-ADMISSION, ON EVERY EXIT PATH: activate every slot (unmask, enable, start) and read it back.
-// activate_runner_slot_over reads the unit back loaded, enabled and active, so a settled outcome IS the
-// readback.
-fn readmit_all_slots_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> List<SlotActuationOutcome>
-{
-  map(units, u => activate_runner_slot_over(target: target, context: context, unit: u))
 }
 
 // ── The release obligation ──────────────────────────────────────────────────────────────────────
@@ -509,24 +511,88 @@ fn owned_set_of(readings: List<SlotDrainReading>) -> OwnedSetVerdict {
   }
 }
 
-// RELEASE ISSUES NOTHING FOR A UNIT THAT IS NOT MASKED: unmask and enable reload the manager, which pushes
-// pending cap config, so a unit this attempt listed but never masked gets a readback and no argv at all.
-fn release_unit_needs_activation(read: SlotReadOutcome) -> Bool {
-  match read {
-    SlotReadRefused { reason: _ } => true
-    SlotRead { reading: r } => slot_is_masked(r: r)
+// THE ONE RELEASE POLICY, used by every exit path (the finalizer, a refusal, a failed write): a unit this
+// attempt masked is activated (unmask, enable, start) and read back; a unit that is NOT masked gets no argv,
+// but its admission is still JUDGED from the reading, because "not masked" is not "admitting": a unit that
+// was unmasked and then failed to start, or is disabled, or is not loaded, is a named refusal that leaves
+// the host drained. The judgment is the activation readback authority (slot_activation_read_back_holds),
+// not a second definition of admitting. An unreadable show is not "not masked": it falls to activation,
+// which reads again and refuses with the read cause.
+fn release_slot_through(transport: SlotTransport, unit: NonEmptyStr) -> SlotActuationThrough
+{
+  let first = read_slot_through(transport: transport, unit: unit)
+  match first.read {
+    SlotReadRefused { reason: _ } => activate_runner_slot_through(transport: first.transport, unit: unit)
+    SlotRead { reading: r } =>
+      if slot_is_masked(r: r) { activate_runner_slot_through(transport: first.transport, unit: unit) }
+      else if slot_activation_read_back_holds(r: r) {
+        SlotActuationThrough { outcome: SlotActuationNoop { unit: unit, state: "not masked and read back loaded, enabled and active: no argv issued" }, transport: first.transport }
+      } else {
+        SlotActuationThrough { outcome: SlotActuationRefused { unit: unit, step: "readback", reason: "not masked, but not loaded, enabled and active: the unit is out of service and no argv was issued" }, transport: first.transport }
+      }
   }
 }
 
-fn release_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
+type ReleaseThrough {
+  outcomes: List<SlotActuationOutcome>
+  transport: SlotTransport
+}
+
+fn release_owned_slots_through(transport: SlotTransport, units: List<NonEmptyStr>) -> ReleaseThrough
 {
-  let read = read_slot_over(target: target, context: context, unit: unit)
-  if release_unit_needs_activation(read: read) { activate_runner_slot_over(target: target, context: context, unit: unit) } else { SlotActuationNoop { unit: unit, state: "not masked: no argv issued" } }
+  fold(units, init: ReleaseThrough { outcomes: [], transport: transport }, f: (acc, u) => {
+    let one = release_slot_through(transport: acc.transport, unit: u)
+    ReleaseThrough { outcomes: concat(acc.outcomes, [one.outcome]), transport: one.transport }
+  })
 }
 
 fn release_owned_slots_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> List<SlotActuationOutcome>
 {
-  map(units, u => release_slot_over(target: target, context: context, unit: u))
+  release_owned_slots_through(transport: SlotTransportFleetSsh { target: target, context: context }, units: units).outcomes
+}
+
+// THE RELEASE RESULT, PURE: what the finalizer exits with and what its receipt says, from the decision and
+// the per-unit outcomes alone. Only a held obligation issues anything; a stale or unreadable one fails.
+type ReleaseVerdict
+  = ReleaseVerdictSettled { summary: String }
+  | ReleaseVerdictFailed { summary: String }
+
+fn release_verdict_of(decision: ReleaseDecision, outcomes: List<SlotActuationOutcome>) -> ReleaseVerdict {
+  match decision {
+    ReleaseNothingOwed => ReleaseVerdictSettled { summary: "nothing owed: no obligation file, no argv issued" }
+    ReleaseAlreadyDischarged => ReleaseVerdictSettled { summary: "obligation already discharged after an admitting readback, no argv issued" }
+    ReleaseObligationUntrusted { cause: c } => ReleaseVerdictFailed { summary: c }
+    ReleaseOwes { units: us } =>
+      match host_left_of_readmit(units: us, outcomes: outcomes) {
+        HostAdmitting => ReleaseVerdictSettled { summary: host_left_wire(l: HostAdmitting) }
+        left => ReleaseVerdictFailed { summary: host_left_wire(l: left) }
+      }
+  }
+}
+
+fn release_verdict_is_settled(v: ReleaseVerdict) -> Bool { match v { ReleaseVerdictSettled { summary: _ } => true ReleaseVerdictFailed { summary: _ } => false } }
+
+fn release_verdict_summary(v: ReleaseVerdict) -> String { match v { ReleaseVerdictSettled { summary: s } => s ReleaseVerdictFailed { summary: s } => s } }
+
+fn release_decision_wire(d: ReleaseDecision) -> String {
+  match d {
+    ReleaseNothingOwed => "nothing-owed"
+    ReleaseAlreadyDischarged => "already-discharged"
+    ReleaseObligationUntrusted { cause: _ } => "obligation-untrusted"
+    ReleaseOwes { units: us } => join(["owes ", join(map(us, u => u as String), " ")], "")
+  }
+}
+
+// THE RELEASE RECEIPT TEXT: the attempt it belongs to, the host, the decision, each unit's outcome, the
+// verdict, and the residual the bracket accepted (cancellation may outlive the release).
+fn release_receipt_text(attempt: String, host: String, decision: ReleaseDecision, outcomes: List<SlotActuationOutcome>, verdict: ReleaseVerdict) -> String {
+  join([
+    "runner_host_cap_release attempt=", attempt, " host=", host, "\n",
+    "decision=", release_decision_wire(d: decision), "\n",
+    join(map(outcomes, o => concat(slot_actuation_outcome_wire(o: o), "\n")), ""),
+    "verdict=", if release_verdict_is_settled(v: verdict) { "settled" } else { "FAILED" }, " ", release_verdict_summary(v: verdict), "\n",
+    release_envelope_wire(policy: runner_host_cap_drain_policy), "\n",
+  ], "")
 }
 
 // ── Wet: the obligation file ────────────────────────────────────────────────────────────────────
@@ -551,8 +617,11 @@ fn runner_host_cap_obligation_path() -> String?
   }
 }
 
+// AN EMPTY OWNED SET OWES NOTHING AND WRITES NOTHING: the decoder rejects an empty held list, so a writer
+// that emitted one would refuse its own inverse. Absent then means nothing owed, which is true.
 fn write_bracket_obligation(host: String, units: List<NonEmptyStr>, discharged: Bool) -> String?
 {
+  if length(units) == 0 { none } else {
   match runner_host_cap_obligation_identity(host: host) {
     Absent => Present { value: "GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset" }
     Present { value: key } =>
@@ -563,6 +632,7 @@ fn write_bracket_obligation(host: String, units: List<NonEmptyStr>, discharged: 
           if w.success { none } else { Present { value: w.error } }
         }
       }
+  }
   }
 }
 

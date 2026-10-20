@@ -2,7 +2,7 @@ module gunbc.runner.runner_slot_actuation
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
-import std.algebra { trim }
+import std.algebra { trim, list_head, list_tail }
 import extdeps.systemd {
   IdProperty, LoadState, UnitFileState, ActiveState, systemd_unit_property_wire, SystemdUnitProperty,
   SystemdUnitLoadState, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, parse_systemd_unit_load_state,
@@ -22,7 +22,7 @@ import extdeps.procps.ps { ps_unit_comm_listing_argv, ps_unit_runs_command, ps_u
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import extdeps.sudo.elevation { sudo_elevate }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOutcome }
 
 // THE TWO SLOT LIFECYCLE EFFECTS, AS ONE AUTHORITY FOR EVERY CALLER. ActivateRunnerSlot brings a slot
 // the model desires into service; DrainAndMaskRunnerSlot takes a slot out of service without ever
@@ -353,17 +353,63 @@ fn slot_read_outcome_of(unit: NonEmptyStr, show_stdout: String) -> SlotReadOutco
   }
 }
 
-fn read_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotReadOutcome
-{
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties)) {
-    TypedArgvExecRefused { reason: why } => SlotReadRefused { reason: why }
-    TypedArgvExecConverged { result: r } =>
-      if !r.success {
-        SlotReadRefused { reason: join(["systemctl show exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
-      } else {
-        slot_read_outcome_of(unit: unit, show_stdout: r.stdout)
+// THE TRANSPORT OF A SLOT LEG, AS DATA. The wet arm is the administrator-over-fleet-SSH edge; the scripted
+// arm answers each leg, in order, from supplied exec outcomes and records the argv it was asked to run.
+// Both go through the SAME read, decide, act and read-back functions below (the *_through family), so a
+// witness over the scripted arm executes the production decision and issues the production argv; only the
+// SSH hop itself is replaced (gunbc.rung_drop runner_host_file_apply_route_hermetic names that hop). A
+// scripted transport that runs out of answers refuses the leg, never invents one.
+type SlotTransport
+  = SlotTransportFleetSsh { target: SshTarget, context: FleetSshExecutionContext }
+  | SlotTransportScripted { answers: List<TypedArgvExecOutcome>, issued: List<List<String>> }
+
+type SlotExec {
+  outcome: TypedArgvExecOutcome
+  transport: SlotTransport
+}
+
+fn slot_exec(transport: SlotTransport, argv: List<String>) -> SlotExec {
+  match transport {
+    SlotTransportFleetSsh { target: t, context: c } => SlotExec { outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv), transport: transport }
+    SlotTransportScripted { answers: answers, issued: issued } =>
+      SlotExec {
+        outcome: match list_head(xs: answers) {
+          Absent => TypedArgvExecRefused { reason: join(["the scripted transport has no answer left for: ", join(argv, " ")], "") }
+          Present { value: a } => a
+        },
+        transport: SlotTransportScripted {
+          answers: match list_tail(xs: answers) { Absent => [] Present { value: rest } => rest },
+          issued: concat(issued, [argv]),
+        },
       }
   }
+}
+
+type SlotReadThrough {
+  read: SlotReadOutcome
+  transport: SlotTransport
+}
+
+fn read_slot_through(transport: SlotTransport, unit: NonEmptyStr) -> SlotReadThrough
+{
+  let e = slot_exec(transport: transport, argv: systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties))
+  SlotReadThrough {
+    transport: e.transport,
+    read: match e.outcome {
+      TypedArgvExecRefused { reason: why } => SlotReadRefused { reason: why }
+      TypedArgvExecConverged { result: r } =>
+        if !r.success {
+          SlotReadRefused { reason: join(["systemctl show exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
+        } else {
+          slot_read_outcome_of(unit: unit, show_stdout: r.stdout)
+        }
+    },
+  }
+}
+
+fn read_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotReadOutcome
+{
+  read_slot_through(transport: SlotTransportFleetSsh { target: target, context: context }, unit: unit).read
 }
 
 // IDLE IS PROVEN BY THE UNIT'S OWN PROCESS, NEVER BY ABSENCE (review on ff67e67949). The decision is
@@ -394,43 +440,76 @@ fn read_slot_worker_over(target: SshTarget, context: FleetSshExecutionContext, u
   }
 }
 
+type SlotStepsThrough {
+  failure: String?
+  transport: SlotTransport
+}
+
+fn run_slot_steps_through(transport: SlotTransport, steps: List<List<String>>) -> SlotStepsThrough
+{
+  fold(steps, init: SlotStepsThrough { failure: none, transport: transport }, f: (acc, step) => match acc.failure {
+    Present { value: _ } => acc
+    Absent => {
+      let e = slot_exec(transport: acc.transport, argv: slot_actuation_elevated(command: step))
+      SlotStepsThrough {
+        transport: e.transport,
+        failure: match e.outcome {
+          TypedArgvExecRefused { reason: why } => Present { value: join([join(step, " "), ": ", why], "") }
+          TypedArgvExecConverged { result: r } =>
+            if r.success { none } else { Present { value: join([join(step, " "), " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
+        },
+      }
+    }
+  })
+}
+
 fn run_slot_steps_over(target: SshTarget, context: FleetSshExecutionContext, steps: List<List<String>>) -> String?
 {
-  fold(steps, init: none, f: (acc, step) => match acc {
-    Present { value: _ } => acc
-    Absent =>
-      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: slot_actuation_elevated(command: step)) {
-        TypedArgvExecRefused { reason: why } => Present { value: join([join(step, " "), ": ", why], "") }
-        TypedArgvExecConverged { result: r } =>
-          if r.success { none } else { Present { value: join([join(step, " "), " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
-      }
-  })
+  run_slot_steps_through(transport: SlotTransportFleetSsh { target: target, context: context }, steps: steps).failure
 }
 
 // ── The two effects ─────────────────────────────────────────────────────────────────────────────
 
-fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
+type SlotActuationThrough {
+  outcome: SlotActuationOutcome
+  transport: SlotTransport
+}
+
+fn activate_runner_slot_through(transport: SlotTransport, unit: NonEmptyStr) -> SlotActuationThrough
 {
-  match read_slot_over(target: target, context: context, unit: unit) {
-    SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
+  let first = read_slot_through(transport: transport, unit: unit)
+  match first.read {
+    SlotReadRefused { reason: why } => SlotActuationThrough { outcome: SlotActuationRefused { unit: unit, step: "read", reason: why }, transport: first.transport }
     SlotRead { reading: r } =>
       match slot_activation_plan(r: r) {
-        ActivationRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
-        ActivationAlreadyActive => SlotActuationNoop { unit: unit, state: "active" }
-        ActivationSteps { steps: ss } =>
-          match run_slot_steps_over(target: target, context: context, steps: ss) {
-            Present { value: why } => SlotActuationRefused { unit: unit, step: "activate", reason: why }
-            Absent =>
-              match read_slot_over(target: target, context: context, unit: unit) {
-                SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "readback", reason: why }
-                SlotRead { reading: after } =>
-                  if slot_activation_read_back_holds(r: after) { SlotActivated { unit: unit } } else {
-                    SlotActuationRefused { unit: unit, step: "readback", reason: "not loaded, enabled and active after activation" }
-                  }
+        ActivationRefused { reason: why } => SlotActuationThrough { outcome: SlotActuationRefused { unit: unit, step: "plan", reason: why }, transport: first.transport }
+        ActivationAlreadyActive => SlotActuationThrough { outcome: SlotActuationNoop { unit: unit, state: "active" }, transport: first.transport }
+        ActivationSteps { steps: ss } => {
+          let ran = run_slot_steps_through(transport: first.transport, steps: ss)
+          match ran.failure {
+            Present { value: why } => SlotActuationThrough { outcome: SlotActuationRefused { unit: unit, step: "activate", reason: why }, transport: ran.transport }
+            Absent => {
+              let back = read_slot_through(transport: ran.transport, unit: unit)
+              SlotActuationThrough {
+                transport: back.transport,
+                outcome: match back.read {
+                  SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "readback", reason: why }
+                  SlotRead { reading: after } =>
+                    if slot_activation_read_back_holds(r: after) { SlotActivated { unit: unit } } else {
+                      SlotActuationRefused { unit: unit, step: "readback", reason: "not loaded, enabled and active after activation" }
+                    }
+                },
               }
+            }
           }
+        }
       }
   }
+}
+
+fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
+{
+  activate_runner_slot_through(transport: SlotTransportFleetSsh { target: target, context: context }, unit: unit).outcome
 }
 
 fn drain_and_mask_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
