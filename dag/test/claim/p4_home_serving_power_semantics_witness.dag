@@ -11,7 +11,7 @@ import std.optional { Absent, Present }
 import std.dissolution { dissolution_is_bound }
 import v2.std.node { symbol_lexeme }
 import v2.std.fn_index { atom_identities_in_node }
-import v2.std.node_query { declared_field_list }
+import v2.std.node_query { DeclaredField, declared_field_list, node_labeled_child_edges }
 import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts, decl_facts }
 import extdeps.gpu.types {
   GpuModelCatalogRow, PcieAddInCard, SxmModule, IntegratedComputePackage, gpu_catalog_row_eq
@@ -530,22 +530,43 @@ test fn the_gpu_bench_receipts_parse_through_their_owning_module() -> Bool {
 // field set out of the census AST and is red if a field named like a power
 // reading appears — which is the check that stays honest when a file is edited,
 // unlike a sentence saying the word "power" does not appear.
-fn p4_no_power_named_field(type_name: String, qualified_name: String) -> Bool {
+// THE ABSENCE, AND THE FLOOR THAT MAKES IT MEAN SOMETHING. `declared_field_list` answers
+// with `Empty` for anything that is not a payload Conj -- its own comment says an empty
+// list "does not distinguish nullary from not a payload". A coproduct type node is a
+// `Disj`, so reading `DeviceMemoryObservation` straight off the census row returns [] and
+// an `all` over that list is GREEN HAVING READ NO FIELD AT ALL: the claim would hold
+// whether or not the type declared a power channel. So each arm is walked through its own
+// payload instead -- `node_labeled_child_edges` gives the arm edges of a coproduct and the
+// record fields of a record, and each edge's target is the payload Conj whose fields
+// declare that arm's channels. Then the claim requires at least one field to have been
+// SEEN before it is allowed to assert that none of them is a power channel. The floor is
+// existence, deliberately not a transcribed field count: a frozen number rots, and "the
+// walk saw something" is the whole of what anti-vacuity needs.
+fn p4_declared_fields_of(fact: DeclFact) -> List<DeclaredField> {
+  let direct = declared_field_list(payload: fact.node)
+  if count(direct) > 0 {
+    direct
+  } else {
+    fold(node_labeled_child_edges(node: fact.node), init: Empty, f: fn(acc, e) {
+      concat(acc, declared_field_list(payload: e.target))
+    })
+  }
+}
+
+fn p4_no_power_named_field(qualified_name: String) -> Bool {
   let rows = decl_facts_at(pool_roots: ["dag", "src/v1", "src/v2"], qualified_name: qualified_name)
-  count(rows) > 0
-    && all(rows, fact => all(declared_field_list(payload: fact.node), f => {
-      let n = symbol_lexeme(sym: f.name)
-      !mentions_power_word(s: n)
-    }))
+  let fields = fold(rows, init: Empty, f: fn(acc, r) {
+    concat(acc, p4_declared_fields_of(fact: r))
+  })
+  count(fields) > 0
+    && all(fields, fld => !mentions_power_word(s: symbol_lexeme(sym: fld.name)))
 }
 
 test fn no_type_that_would_carry_a_power_reading_declares_one() -> Bool {
   p4_no_power_named_field(
-    type_name: "GpuBenchRequestV2",
     qualified_name: "extdeps.gpu_bench.request_v2::GpuBenchRequestV2"
   )
     && p4_no_power_named_field(
-      type_name: "DeviceMemoryObservation",
       qualified_name: "extdeps.nvidia.management_library::DeviceMemoryObservation"
     )
 }
