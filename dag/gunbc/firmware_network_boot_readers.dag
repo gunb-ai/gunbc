@@ -10,6 +10,7 @@ import extdeps.languages.json.parse { FieldAbsent, FieldRead, FieldMalformed, js
 import gunbc.firmware_network_boot_standing { boot_order_entry, FirmwareReadRefusal, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, ReplyShapeUnrecognized }
 import gunbc.firmware_network_boot_probe {
   AxisReply, ObservationAxis, BootOrderAxis, NicsAxis, SecureBootAxis, BiosVersionAxis,
+  FirmwareBootFamilyRow, ProbeSubject, SuppliedProbeInput, supplied_probe_input, ReadResponseReceipt, BmcResponded,
   ReplyBootOrder, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder,
 }
 
@@ -165,4 +166,12 @@ fn redfish_axis_replies(reads: RedfishBootReads) -> List<AxisReply> {
     secure_boot_reply(get: reads.secure_boot),
     bios_version_reply(system: system),
   ]
+}
+
+// THE READER'S HAND-OFF TO probe(): the decoded replies under the receipt of the read that produced
+// them. The receipt (when, which attempt, which response, over which route) is the CALLER's claim
+// about the GETs it performed; this module has no clock and issues no request, so it cannot mint
+// one. probe() refuses a receipt whose route differs from the row's (SuppliedRouteMismatch).
+fn redfish_supplied_probe_input(subject: ProbeSubject, row: FirmwareBootFamilyRow, response: ReadResponseReceipt, reads: RedfishBootReads) -> SuppliedProbeInput {
+  supplied_probe_input(subject: subject, row: row, contact: BmcResponded { receipt: response, replies: redfish_axis_replies(reads: reads) })
 }

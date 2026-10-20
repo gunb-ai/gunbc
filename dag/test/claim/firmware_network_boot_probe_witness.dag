@@ -2,12 +2,12 @@ module test.claim.firmware_network_boot_probe_witness
 
 import std.types { Bool, List, NonEmptyStr }
 import gunbc.firmware_network_boot_standing {
-  FirmwareBootObservation, NicsObserved, NicsUnobserved, NicsRefused, SecureBootUnobserved, SecureBootEnabled, SecureBootDisabled, SecureBootRefused,
+  FirmwareBootObservation, BootOptionsUnobserved, NicsObserved, NicsUnobserved, NicsRefused, SecureBootUnobserved, SecureBootEnabled, SecureBootDisabled, SecureBootRefused,
   boot_order_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved, AuthenticationRequired,
 }
 import gunbc.firmware_network_boot_probe {
   FirmwareBootFamilyRow, BmcStack, RouteVerdict,
-  firmware_boot_axis_reader_frontier_status, firmware_boot_axis_reply_inhabitation, AxisReplyUninhabited, AxisReplyInhabitedByReader,
+  firmware_boot_axis_reader_frontier_status, no_reply_reason, firmware_boot_axis_reply_inhabitation, AxisReplyUninhabited, AxisReplyInhabitedByReader,
 }
 import std.optional { Present, Absent }
 import std.decl_ref { decl_ref }
@@ -20,7 +20,7 @@ import gunbc.firmware_network_boot_probe {
   FamilyKey, FirmwareFamilyStack, RedfishOnlyStack, DedicatedManagementPort, SharedHostNic,
   RedfishGetRoute, MegaRacRestGetRoute, OpenBmcRedfishGetRoute,
   TransportAnswers, BootOrderAxis, SecureBootAxis, TransportCannotAnswer,
-  ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc, ReplyBiosVersion, BiosVersionAxis,
+  ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc, ReplyBeyondDecoder, ReplyBiosVersion, BiosVersionAxis,
   BmcResponded, BmcSilent, ConnectTimedOut, ContactAttempt, AxisReply, ReadRoute,
   SuppliedSilence, DecodedFromSuppliedReplies, ProbeSubject,
   ReadAxisRequest, SetBootOverrideRequest, ChangeBootOrderRequest, PowerActionRequest,
@@ -329,4 +329,42 @@ test fn a_row_listing_an_axis_twice_routes_nothing() -> Bool {
     coverage: [TransportAnswers { axis: BiosVersionAxis }, TransportCannotAnswer { axis: BiosVersionAxis, why: "contradicts the line above" }]
   )
   is_refused(verdict: route_for(row: twice, request: ReadAxisRequest { axis: BiosVersionAxis }))
+}
+
+// A valid answer the decoder cannot read is OUR limit: Unobserved, never a refusal pinned on the BMC (review 83313).
+test fn a_reply_beyond_the_decoder_is_unobserved_not_refused() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: row } =>
+      match probe(input: ev(row: row, contact: Said { replies: [ReplyBeyondDecoder { axis: NicsAxis, why: "paged" }] })) {
+        DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
+          match o.nics {
+            NicsUnobserved { reason: _ } => true
+            _ => false
+          }
+        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+      }
+  }
+}
+
+// Every shipped row declares BootOptions unanswerable (our gap): its reason is the row's, not the no-reply fallback.
+fn options_unobserved_on(stack: BmcStack) -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: stack) {
+    Absent => false
+    Present { value: row } =>
+      match probe(input: ev(row: row, contact: Said { replies: [] })) {
+        DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
+          match o.boot_options {
+            BootOptionsUnobserved { reason: r } => r != no_reply_reason()
+            _ => false
+          }
+        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+      }
+  }
+}
+
+test fn shipped_rows_leave_boot_options_unobserved_with_our_reason() -> Bool {
+  options_unobserved_on(stack: FirmwareFamilyStack { family: OpenBmc }) && options_unobserved_on(stack: FirmwareFamilyStack { family: AmiMegaRac })
 }

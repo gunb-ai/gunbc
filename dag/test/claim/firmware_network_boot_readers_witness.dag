@@ -13,11 +13,11 @@ import gunbc.firmware_network_boot_standing {
 }
 import gunbc.firmware_network_boot_probe {
   AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder, NicsAxis,
-  BmcResponded, BmcObserved, BmcUnreachable, ProbeSubject, probe, firmware_boot_family_rows,
+  DecodedFromSuppliedReplies, SuppliedSilence, SuppliedRouteMismatch, ReadAttemptReceipt, ReadResponseReceipt, ProbeSubject, probe, firmware_boot_family_rows,
   FirmwareFamilyStack,
 }
 import gunbc.firmware_network_boot_readers {
-  RedfishGet, RedfishGetBody, RedfishGetStatus, RedfishBootReads, redfish_axis_replies,
+  RedfishGet, RedfishGetBody, RedfishGetStatus, RedfishBootReads, redfish_axis_replies, redfish_supplied_probe_input,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -187,10 +187,11 @@ test fn reader_output_feeds_the_probe() -> Bool {
   match row {
     Absent => false
     Present { value: r } =>
-      match probe(row: r, subject: ProbeSubject { unit_label: "u" }, contact: BmcResponded { replies: redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok())) }) {
-        BmcObserved { subject: _, observation: o } =>
+      match probe(input: redfish_supplied_probe_input(subject: ProbeSubject { unit_label: "u" }, row: r, response: ReadResponseReceipt { attempt: ReadAttemptReceipt { observed_at: 1, attempt_identity: "a", route: r.route }, response_identity: "r" }, reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok()))) {
+        DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
           order_ok(o: o) && options_unobserved(o: o) && secure_ok(o: o) && nics_ok_obs(o: o) && bios_ok(o: o)
-        BmcUnreachable { subject: _, attempt: _ } => false
+        SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+        SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
       }
   }
 }
