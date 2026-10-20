@@ -11,9 +11,9 @@ import std.algebra { Cons, Empty }
 import std.optional { Optional, Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
 import std.content_hash { content_hash_atom }
-import gunbc.host.host_effect { HostEffectIntent, HostOs, SshShell, LiveDeployRetract, host_effect_identity_evidence }
+import gunbc.host.host_effect { HostEffectIntent, HostOs, SshShell, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, LiveDeployRetract, host_effect_identity_evidence }
 import gunbc.fleet.fleet_intent { srv1_host }
-import gunbc.host.host_effect_realize { realize_live_deploy_apply_on_host }
+import gunbc.host.host_effect_realize { realize_live_deploy_apply_on_host, deploy_apply_ports_on_host, deploy_apply_run_legs, DeployApplyPorts, ApplyRunOk, ApplyRunFailed }
 import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
@@ -331,4 +331,62 @@ test fn the_sidecar_digest_env_reads_the_installed_sidecar_and_no_other() -> Boo
     && env_binary(legs: legs) != release_locus_binary_path(root: spec.approval_broker.repo_root as String, revision: rev)
     && step_index(legs: legs, step: "device-crypto-sidecar-install") < step_index(legs: legs, step: "device-crypto-digest-env")
     && step_index(legs: legs, step: "device-crypto-digest-env") < step_index(legs: legs, step: "device-crypto-sidecar-restart")
+}
+
+// C1 AND C2 THROUGH THE PRODUCTION ADAPTER. The run-witness controls supply the ensure-directory and
+// retract ports, so they stop at the dispatch. Here the ports are production's deploy_apply_ports_on_host
+// over EmitArtifactThenThinRun, a real transport arm that refuses typed argv before any command, and the
+// leg is the real srv1 plan's own: the run stops at that leg, and the transport's refusal survives into
+// the reason (an unreadable directory never reads as absent). An adapter that no longer reaches C1 or C2
+// cannot produce this reason.
+fn refusing_production_ports() -> DeployApplyPorts {
+  deploy_apply_ports_on_host(
+    spec: deployment_spec_srv1(),
+    principal: ci_deploy_srv1_access.principal,
+    source_root: "/src",
+    transport: EmitArtifactThenThinRun {
+      bootstrap: BootstrapFragment { script: "true" },
+      invocation: ThinInvocation { argv: ["true"] },
+    },
+    intent: the_intent(),
+  )
+}
+
+fn first_ensure_directory_leg(legs: List<DeployApplyLeg>) -> List<DeployApplyLeg> {
+  match legs {
+    Empty => []
+    Cons { head: h, tail: rest } =>
+      match h {
+        ApplyLegEnsureDirectory { target: _ } => [h]
+        _ => first_ensure_directory_leg(legs: rest)
+      }
+  }
+}
+
+fn first_retract_leg(legs: List<DeployApplyLeg>) -> List<DeployApplyLeg> {
+  match legs {
+    Empty => []
+    Cons { head: h, tail: rest } =>
+      match h {
+        ApplyLegRetract { step: _, leg: _ } => [h]
+        _ => first_retract_leg(legs: rest)
+      }
+  }
+}
+
+fn stops_at_the_leg_with_the_transport_refusal(legs: List<DeployApplyLeg>) -> Bool {
+  let run = deploy_apply_run_legs(legs: legs, ports: refusing_production_ports())
+  let refused = match run {
+    ApplyRunFailed { step: _, reason: r, legs_run: n } => n == 0 && string_contains(s: r, pattern: "EmitArtifactThenThinRun")
+    ApplyRunOk { legs_run: _, reports: _ } => false
+  }
+  count(legs) == 1 && refused
+}
+
+test fn the_production_adapter_reaches_c1_and_the_typed_transport_refusal() -> Bool {
+  stops_at_the_leg_with_the_transport_refusal(legs: first_ensure_directory_leg(legs: full_legs(spec: deployment_spec_srv1())))
+}
+
+test fn the_production_adapter_reaches_c2_and_the_typed_transport_refusal() -> Bool {
+  stops_at_the_leg_with_the_transport_refusal(legs: first_retract_leg(legs: full_legs(spec: deployment_spec_srv1())))
 }
