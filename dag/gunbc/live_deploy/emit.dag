@@ -1002,7 +1002,7 @@ fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRe
 // disagreement.
 fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let svc = spec.approval_broker
-  let owner = spec.service.service_user
+  let owner = svc.service_user
   let installed = device_crypto_sidecar_binary_path(spec: spec, revision: revision)
   [
     deploy_raw(command: install_file_owned_command(

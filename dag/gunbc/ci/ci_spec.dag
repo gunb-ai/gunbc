@@ -582,6 +582,11 @@ fn ci_release_build_line() -> String {
 // build the emitted crate under gunbc.repo.repo_self_emitted_build (the flag set the seed's probe
 // build also runs), and install the one executable at target/release/<name>. The executable's name
 // is read from the emitted crate's own manifest, never assumed to be the probe's package name.
+// The line is a shell-transport spelling, like ci_release_build_line beside it: it dissolves onto extdeps.rust.cargo_build
+// (and a typed read of cargo's own executable record in place of the sed over its JSON stream) when the ci emit seam can
+// bind a typed cargo operation instead of a hand-spelled argv line. Failure is loud on both uses: the job script runs each
+// bin as its own statement under the workflow's `set -e`, and an unreadable executable path leaves cp with an empty source.
+// ci_release_pack_build_line joins the lines with " ; " only as the TEXT the pack key names; it is never executed.
 fn ci_emitted_release_build_line(bin: EmittedReleaseBin) -> String {
   let dir = join(["\"$ROOT/target/emitted/", bin.name, "\""], "")
   let stream = join(["\"$ROOT/target/emitted/", bin.name, ".cargo.json\""], "")
