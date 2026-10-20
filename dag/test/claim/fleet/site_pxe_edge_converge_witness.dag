@@ -76,6 +76,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_roster,
   site_pxe_edge_unit_file,
   site_pxe_edge_subject,
+  PackageHeld, PackageBinaryDigestUnread,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -402,6 +403,7 @@ fn observe_run(causes: List<SitePxeEdgeGateCause>) -> SitePxeEdgeRun {
 fn observe_run_with_unit(causes: List<SitePxeEdgeGateCause>, unit_active: SitePxeEdgeProbe) -> SitePxeEdgeRun {
   SitePxeEdgeRun {
     mode: SitePxeEdgeObserveOnly,
+    package: PackageHeld { binary: PackageBinaryDigestUnread { reason: "supplied" } },
     gate_causes: causes,
     files: [],
     activation: SitePxeEdgeProbeNotAttempted { reason: "observe-only" },
@@ -413,6 +415,7 @@ fn observe_run_with_unit(causes: List<SitePxeEdgeGateCause>, unit_active: SitePx
 fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
   SitePxeEdgeRun {
     mode: SitePxeEdgeApply,
+    package: PackageHeld { binary: PackageBinaryDigestUnread { reason: "supplied" } },
     gate_causes: [],
     files: [],
     activation: SitePxeEdgeProbeHeld,

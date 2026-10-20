@@ -62,6 +62,7 @@ data package_nfct: NonEmptyStr = "nfct"
 data package_conntrack: NonEmptyStr = "conntrack"
 data package_iptables: NonEmptyStr = "iptables"
 data package_nftables: NonEmptyStr = "nftables"
+data package_dnsmasq_base: NonEmptyStr = "dnsmasq-base"
 
 data apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
 
@@ -111,6 +112,14 @@ service apt.PackageManager {
     exit { 0 => Unit nonzero => String "apt-get exact non-removing install refused" }
     mock_response { 1 => { success: false, stdout: "", stderr: "no installation supplied" } "no fabricated package installation" }
   }
+  operation Remove {
+    requires none
+    input { package: NonEmptyStr }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
+    transport shell { argv: ["env", "LC_ALL=C", "DEBIAN_FRONTEND=noninteractive", "NEEDRESTART_MODE=l", "apt-get", "--yes", "remove", "{package}"] }
+    exit { 0 => Unit nonzero => String "apt-get remove refused" }
+    mock_response { 1 => { success: false, stdout: "", stderr: "no removal supplied" } "no fabricated package removal" }
+  }
 }
 
 // THE PACKAGE INSTALL AS A TYPED COMMAND, the leg a caller runs after its probe reports the package is
@@ -144,5 +153,32 @@ fn apt_get_install_command(package: NonEmptyStr) -> AptGetInstallCommand {
       AptGetInstallCommandReady { command: command }
     OperationRowArgvCommandRefused { cause: cause } =>
       AptGetInstallCommandRefused { cause: cause }
+  }
+}
+
+// THE EXACT NON-REMOVING INSTALL AND THE REMOVE AS TYPED COMMANDS, each a thin call into the one
+// repartition above (the Operation Row spells the tokens; nothing is added here, elevation stays
+// with the caller). Same coordinates-and-refusal shape as apt_get_install_command.
+fn apt_exact_non_removing_install_command(selection: NonEmptyStr) -> AptGetInstallCommand {
+  match operation_row_argv_command(
+    path: apt_get_install_operation_path,
+    service: apt_get_install_operation_service,
+    operation: "InstallExactNonRemoving",
+    binds: [operation_argv_bind_text(name: "selection", text: selection as String)],
+  ) {
+    OperationRowArgvCommandReady { command: command } => AptGetInstallCommandReady { command: command }
+    OperationRowArgvCommandRefused { cause: cause } => AptGetInstallCommandRefused { cause: cause }
+  }
+}
+
+fn apt_remove_command(package: NonEmptyStr) -> AptGetInstallCommand {
+  match operation_row_argv_command(
+    path: apt_get_install_operation_path,
+    service: apt_get_install_operation_service,
+    operation: "Remove",
+    binds: [operation_argv_bind_text(name: "package", text: package as String)],
+  ) {
+    OperationRowArgvCommandReady { command: command } => AptGetInstallCommandReady { command: command }
+    OperationRowArgvCommandRefused { cause: cause } => AptGetInstallCommandRefused { cause: cause }
   }
 }
