@@ -32,7 +32,9 @@ import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, KernelStringLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
 import gunbc.structural_realization_bindings { kernel_grounding_rows, literal_homomorphism_rows }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import v2.extdeps.languages.dag { dag_algebra_inhabitance_decls, dag_algebra_inhabitance_row_type_params, DagCanonicalBoolLiteral, DagCanonicalIntLiteral, DagCanonicalSymbolLiteral, DagCanonicalStringLiteral, DagCanonicalFloatLiteral, DagCanonicalLiteral, dag_binding_denotation, dag_kernel_type_declaration_binding_optional, dag_canonical_literal_from_node, dag_declared_inhabitants_root, dag_declared_inhabitants_subject_field, dag_grammar_production_member_declared_type, parse_production_captured_child_optional, qualified_name_from_module_node }
+import std.measure { BitWidth, bit_width }
+import std.checked_arithmetic { nat_magnitude }
+import v2.extdeps.languages.dag { dag_algebra_inhabitance_decls, dag_algebra_inhabitance_row_type_params, DagCanonicalBoolLiteral, DagCanonicalIntLiteral, DagCanonicalSymbolLiteral, DagCanonicalStringLiteral, DagCanonicalFloatLiteral, DagCanonicalLiteral, dag_binding_denotation, dag_kernel_type_declaration_binding_optional, dag_canonical_literal_from_node, dag_declared_inhabitants_root, dag_declared_inhabitants_subject_field, dag_grammar_production_member_declared_type, parse_production_captured_child_optional, qualified_name_from_module_node, dag_int_literal_magnitude_int_from_node }
 import v2.extdeps.languages.python { python_declared_inhabitants_root, python_declared_inhabitants_subject_field }
 import v2.extdeps.languages.typescript { ts_declared_inhabitants_root, ts_declared_inhabitants_subject_field }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
@@ -69,6 +71,8 @@ import v2.std.coercion { coercion_cast_crossing }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.machine_width_range { machine_width_admits }
+import std.integer { Signedness, Signed, Unsigned }
 
 
 
@@ -4325,6 +4329,22 @@ fn infer_node_mention_contested(t: Node, bindings: SymbolIndex) -> Optional<Free
   }
 }
 
+fn infer_alias_body_is_phantom(aliased: Node) -> Bool {
+  match infer_type_declaration_ref(t: aliased) {
+    Present { value: head } => head == decl_ref(module_path: "std.constructors", decl_name: "Phantom")
+    Absent => false
+  }
+}
+
+// AN ALIAS WHOSE BODY IS Phantom IS NOT TRANSPARENT. std.constructors `type Phantom` has no inhabitant, so
+// `type Compose<Algebra, MachineConstraint> = Phantom` (std.machine_constraints) states that the composition is
+// uninhabited and carries its arguments as the constraint, not that it denotes Phantom. Unfolding it discarded the
+// carrier and the width: the real std.integer UInt8 became an uninhabitable Phantom and every literal at a UInt8
+// formal, 255 included, refused application_argument_does_not_inhabit before the width was read (measured on the real
+// closure, v2.test.claim.compiler.width_literal_admission_real). The rule is the CLASS -- a Phantom-bodied alias keeps
+// its head and its arguments, which still normalize (UInt -> Nat) -- not one declaration's name, so a second
+// Phantom-bodied constraint alias inherits it. Why the width READER (infer_machine_width_of) still names Compose and
+// MachineWidth: it is the one consumer that gives their arguments meaning; the opacity above is not.
 fn infer_type_alias_unfolded_at(t: Node, bodies: SymbolIndex, bindings: SymbolIndex) -> Optional<Node> {
   match declaration_denotation_of_type(t: t) {
     Absent => optional_absent()
@@ -4338,7 +4358,12 @@ fn infer_type_alias_unfolded_at(t: Node, bodies: SymbolIndex, bindings: SymbolIn
             Present { value: stored } =>
               let declared = infer_type_decl_identity_node(declared: stored, identity: identity)
               match type_decl_view(target: declared) {
-                TypeAlias { binders: _, aliased: aliased } => infer_type_alias_rhs(declared: declared, aliased: aliased, args: denotation.type_arguments)
+                TypeAlias { binders: _, aliased: aliased } =>
+                  if infer_alias_body_is_phantom(aliased: aliased) {
+                    optional_absent()
+                  } else {
+                    infer_type_alias_rhs(declared: declared, aliased: aliased, args: denotation.type_arguments)
+                  }
                 GenericTypeDecl { binders: _, member: _ } => optional_absent()
                 OpaqueTypeDecl { binders: _ } => optional_absent()
                 NotATypeDecl => optional_absent()
@@ -4603,25 +4628,113 @@ fn infer_int_literal_value_at(value: Int, expected: Node, declarations: SymbolIn
   match infer_type_declaration_ref(t: wanted) {
     Absent => InferLiteralNotElaborated
     Present { value: destination } =>
-      match kernel_grounding_for(rows: kernel_grounding_rows, source_kind: KernelIntLiteral, carrier: destination) {
-        KernelGroundingFound { row: row } =>
-          if kernel_grounding_admits(row: row, value: value) {
+      match infer_machine_width_of(t: wanted) {
+        WidthReadable { signedness: signedness, bits: bits } =>
+          if machine_width_admits(signedness: signedness, bits: bits, value: value) {
             InferLiteralElaboratesTo { destination_type: wanted }
           } else {
-            InferLiteralElaborationRefused { cause: ^infer_reason_literal_outside_kernel_grounding_range }
+            InferLiteralElaborationRefused { cause: ^infer_reason_literal_outside_machine_width }
           }
-        KernelGroundingAmbiguous { row_count: _ } => InferLiteralElaborationRefused { cause: ^infer_reason_kernel_grounding_duplicated }
-        KernelGroundingAbsent =>
-          match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: destination, element: none, destination_realizes_natively: false) {
-            ViaHomomorphism { homomorphism: _ } =>
-              if value < 0 {
-                InferLiteralElaborationRefused { cause: ^infer_reason_negative_literal_has_no_image_in_destination }
-              } else {
-                InferLiteralElaboratesTo { destination_type: wanted }
+        WidthUnreadable { reason: r } => InferLiteralElaborationRefused { cause: r }
+        NotWidthConstrained => infer_int_literal_value_at_declared(value: value, wanted: wanted, destination: destination)
+      }
+  }
+}
+
+// A WIDTH-CONSTRAINED INTEGER READ FROM ITS TYPE, IN THREE ANSWERS (fail closed, DESIGN section 5): a type is
+// NotWidthConstrained (it names no MachineWidth, so the grounding and homomorphism path decides),
+// WidthReadable (Compose<A, MachineWidth<N>> with a Nat literal N and a carrier A that is the kernel Int, signed, or
+// std.nat Nat, unsigned), or WidthUnreadable -- it IS width-constrained but the width cannot be read: a malformed
+// Compose, a named width such as MachineWidth<PointerWidth> (IntPlatform, UIntPlatform), a carrier whose signedness is
+// not declared. Unreadable refuses, typed: a width that cannot be read is neither admitted by guessing one nor
+// handed to ordinary grounding, which would accept any literal the carrier accepts. The meaning of a readable width
+// is std.machine_width_range machine_width_admits, not a table here.
+type InferMachineWidth
+  = NotWidthConstrained
+  | WidthReadable { signedness: Signedness, bits: BitWidth }
+  | WidthUnreadable { reason: Symbol }
+
+fn infer_machine_width_of(t: Node) -> InferMachineWidth {
+  match infer_type_declaration_ref(t: t) {
+    Absent => NotWidthConstrained
+    Present { value: head } =>
+      if head == decl_ref(module_path: "std.machine_constraints", decl_name: "Compose") {
+        match infer_type_head_and_args(t: t).args {
+          Cons { head: carrier, tail: Cons { head: width, tail: Empty } } =>
+            if infer_type_names_machine_width(t: width) {
+              match infer_machine_width_bits(t: width) {
+                Absent => WidthUnreadable { reason: ^infer_reason_machine_width_not_static }
+                Present { value: bits } =>
+                  match infer_machine_width_signedness(carrier: carrier) {
+                    Absent => WidthUnreadable { reason: ^infer_reason_machine_width_carrier_signedness_undeclared }
+                    Present { value: signedness } => WidthReadable { signedness: signedness, bits: bits }
+                  }
               }
-            DirectLiteral => InferLiteralNotElaborated
-            LiteralElaborationRefused { cause: c } => InferLiteralElaborationRefused { cause: infer_literal_elaboration_refusal_reason(cause: c) }
+            } else {
+              NotWidthConstrained
+            }
+          Cons { head: _, tail: _ } => WidthUnreadable { reason: ^infer_reason_machine_width_compose_malformed }
+          Empty => WidthUnreadable { reason: ^infer_reason_machine_width_compose_malformed }
+        }
+      } else {
+        NotWidthConstrained
+      }
+  }
+}
+
+fn infer_type_names_machine_width(t: Node) -> Bool {
+  match infer_type_declaration_ref(t: t) {
+    Absent => false
+    Present { value: head } => head == decl_ref(module_path: "std.machine_constraints", decl_name: "MachineWidth")
+  }
+}
+
+fn infer_machine_width_bits(t: Node) -> Optional<BitWidth> {
+  match infer_type_head_and_args(t: t).args {
+    Cons { head: literal, tail: Empty } =>
+      match dag_int_literal_magnitude_int_from_node(node: literal) {
+        Accepted { value: m, diagnostics: _ } => optional_present(value: bit_width(count: nat_magnitude(a: m)))
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+    Cons { head: _, tail: _ } => optional_absent()
+    Empty => optional_absent()
+  }
+}
+
+// std.integer's own carriers need no case here: its Int is the kernel Int by the roster (infer_kernel_value_type_optional) and
+// its UInt = Nat unfolds by the alias rule before this reads it (measured, v2.test.claim.compiler.width_literal_admission,
+// whose peer states those two declarations as std.integer writes them).
+fn infer_machine_width_signedness(carrier: Node) -> Optional<Signedness> {
+  if infer_type_equal_ignoring_provenance(a: carrier, b: integer_int_type_node()) {
+    optional_present(value: Signed)
+  } else {
+    match infer_type_declaration_ref(t: carrier) {
+      Present { value: d } =>
+        if d == decl_ref(module_path: "std.nat", decl_name: "Nat") { optional_present(value: Unsigned) } else { optional_absent() }
+      Absent => optional_absent()
+    }
+  }
+}
+
+fn infer_int_literal_value_at_declared(value: Int, wanted: Node, destination: DeclarationRef) -> InferLiteralElaboration {
+  match kernel_grounding_for(rows: kernel_grounding_rows, source_kind: KernelIntLiteral, carrier: destination) {
+    KernelGroundingFound { row: row } =>
+      if kernel_grounding_admits(row: row, value: value) {
+        InferLiteralElaboratesTo { destination_type: wanted }
+      } else {
+        InferLiteralElaborationRefused { cause: ^infer_reason_literal_outside_kernel_grounding_range }
+      }
+    KernelGroundingAmbiguous { row_count: _ } => InferLiteralElaborationRefused { cause: ^infer_reason_kernel_grounding_duplicated }
+    KernelGroundingAbsent =>
+      match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: destination, element: none, destination_realizes_natively: false) {
+        ViaHomomorphism { homomorphism: _ } =>
+          if value < 0 {
+            InferLiteralElaborationRefused { cause: ^infer_reason_negative_literal_has_no_image_in_destination }
+          } else {
+            InferLiteralElaboratesTo { destination_type: wanted }
           }
+        DirectLiteral => InferLiteralNotElaborated
+        LiteralElaborationRefused { cause: c } => InferLiteralElaborationRefused { cause: infer_literal_elaboration_refusal_reason(cause: c) }
       }
   }
 }
@@ -8550,8 +8663,14 @@ fn infer_append_binder_types(xs: List<InferBinderType>, ys: List<InferBinderType
 // facts are in. So the arm's frame carries one InferBinderType row per payload binder, and a binder whose
 // field is a free formal the scrutinee's arguments do not instantiate REFUSES the arm (located), never
 // types as the bare formal and never stays untyped to be accepted on the advisory frontier (section 5).
+// A Match's scrutinee: its first positional child, the slot v2.std.compilers.body_lowering lower_match
+// writes ahead of the arms.
+fn infer_match_scrutinee(match_node: Node) -> Optional<Node> {
+  list_at_optional(xs: positional_child_target_nodes(node: match_node), index: 0)
+}
+
 fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, edge: Edge, resolved: ResolvedTree) -> InferFrame {
-  match list_at_optional(xs: positional_child_target_nodes(node: parent), index: 0) {
+  match infer_match_scrutinee(match_node: parent) {
     Absent => infer_frame_inherited(frame: frame)
     Present { value: scrutinee } =>
       if scrutinee == edge.target {
@@ -8935,7 +9054,50 @@ fn infer_gather_fold_bind_row_on_entries(
 }
 
 fn infer_gather_schedules_first(parent: Node, edge: Edge) -> Bool {
-  infer_loop_schedules_first(parent: parent, edge: edge) || infer_application_schedules_before_callbacks(parent: parent, edge: edge)
+  infer_loop_schedules_first(parent: parent, edge: edge)
+    || infer_application_schedules_before_callbacks(parent: parent, edge: edge)
+    || infer_bind_schedules_key_and_value_first(parent: parent, edge: edge)
+    || infer_match_schedules_scrutinee_first(parent: parent, edge: edge)
+}
+
+// A BIND SCHEDULES ITS KEY AND ITS VALUE BEFORE ITS BODY. The two are what the body's frame reads from the
+// parent's accumulator -- infer_let_body_frame takes the unannotated binder's type from the VALUE's settled
+// facts (infer_settled_type_at over acc.entries) and an annotated one from the annotation edge, never from a
+// sibling -- so their position in the schedule is a dependency, and textual/child position establishes none
+// (gunbc.plans.demand_engine_program 2.4, specimen "Inference's own sibling dependencies"). Which child is
+// the key and which the value is not re-derived here: the key is the binder v2.compiler.lexical_scope
+// bind_binder reads (the reader resolve sites the binder with, and infer_is_let_bind gates on), the value
+// is infer_bind_value, and the body stays in the rest group, where infer_let_body_edge enters it. The
+// first group is taken by SLOT INDEX, so on every conforming Bind it is the stored prefix
+// (v2.std.compilers.body_lowering lower_bind writes key, value, body in that order) and the schedule is
+// stored order, not a permutation of it.
+fn infer_bind_schedules_key_and_value_first(parent: Node, edge: Edge) -> Bool {
+  match bind_binder(n: parent) {
+    Present { value: binder } =>
+      edge.target == binder.atom
+        || match infer_bind_value(bind: parent) {
+          Present { value: value } => edge.target == value
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+// A MATCH SCHEDULES ITS SCRUTINEE BEFORE ITS ARMS. Each arm's frame -- infer_match_arm_child_frame -- reads
+// the scrutinee's settled facts from the parent's accumulator, for the arm's coverage obligation and for
+// the type a pattern binder is typed with, and both this predicate and that frame take the scrutinee from
+// infer_match_scrutinee. Arms stay in the rest group, in stored order. As above the group is taken by slot
+// index, so the schedule is the stored order.
+fn infer_match_schedules_scrutinee_first(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Match } =>
+      match infer_match_scrutinee(match_node: parent) {
+        Present { value: scrutinee } => edge.target == scrutinee
+        Absent => false
+      }
+    ComputationNode { behavior: _ } => false
+    TypeNode { connective: _ } => false
+  }
 }
 
 // An application with no callback actual keeps its authored order: every edge is in the first group.

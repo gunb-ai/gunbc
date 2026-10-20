@@ -9,6 +9,7 @@ use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{retires_dissolution, DissolutionCondition};
+pub use crate::std_host_text::chars;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
@@ -84,27 +85,10 @@ pub fn rust_crate_package_ident(package_name: String) -> Rc<PackageIdentOutcome>
     } else {
         if {
             let mut __all = true;
-            for c in Rc::new(
-                package_name
-                    .clone()
-                    .chars()
-                    .map(|c| c as i64)
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            {
+            for c in v1_rt::chars(&package_name).iter().cloned() {
                 if !({
                     let mut __found = false;
-                    for a in Rc::new(
-                        package_ident_alphabet()
-                            .chars()
-                            .map(|c| c as i64)
-                            .collect::<Vec<_>>(),
-                    )
-                    .iter()
-                    .cloned()
-                    {
+                    for a in v1_rt::chars(&package_ident_alphabet()).iter().cloned() {
                         if (a.clone() == c.clone()) {
                             __found = true;
                             break;
