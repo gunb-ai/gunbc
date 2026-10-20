@@ -128,8 +128,51 @@ fn f4(a: Map<String, Int>, b: Map<String, Int>) -> Bool {
 }"#),
     );
 
+    // F6 WARM-WOLF'S EXACT SHAPE, copied verbatim from
+    // dag/test/claim/constructor_tag_route_probe_red.dag (identity
+    // same_arm_one_t_two_coproducts_must_refuse), which Charter 4 enrols as ExpectedRed on the
+    // claim that it ACCEPTS and answers false on main. F3 above is a Map proxy and cannot answer
+    // whether PR-2 flips their rows; only this shape can. Copied rather than paraphrased:
+    //   type Pa = P1 { a: Int } | P2 ; type Pb = Q1 { a: Int } | Q2
+    //   fn tag_of<T>(v: T) -> ConstructorTag<T> { ConstructorTag { name: discriminant(v: v) } }
+    //   fn same_arm<T>(a: T, b: T) -> Bool { tag_of(v: a) == tag_of(v: b) }
+    //   test fn ... { same_arm(a: P1 { a: 1 }, b: Q1 { a: 1 }) }
+    let (f6, f6_ids, f6_arm) = measure(
+        "F6_one_t_two_distinct_coproducts_warm_wolf_shape",
+        &src(r#"type Pa = P1 { a: Int } | P2
+type Pb = Q1 { a: Int } | Q2
+type ConstructorTag<T> = ConstructorTag { name: String }
+fn tag_of<T>(v: T) -> ConstructorTag<T> {
+  ConstructorTag { name: discriminant(v: v) }
+}
+fn same_arm<T>(a: T, b: T) -> Bool {
+  tag_of(v: a) == tag_of(v: b)
+}
+fn f6() -> Bool {
+  same_arm(a: P1 { a: 1 }, b: Q1 { a: 1 })
+}"#),
+    );
+
+    // F7 control for F6: the SAME coproduct twice must not refuse. Without it, an F6 refusal could
+    // be mere over-strictness on any constructor comparison rather than a real tag distinction.
+    let (f7, _f7_ids, f7_arm) = measure(
+        "F7_one_t_same_coproduct_must_accept",
+        &src(r#"type Pa = P1 { a: Int } | P2
+type ConstructorTag<T> = ConstructorTag { name: String }
+fn tag_of<T>(v: T) -> ConstructorTag<T> {
+  ConstructorTag { name: discriminant(v: v) }
+}
+fn same_arm<T>(a: T, b: T) -> Bool {
+  tag_of(v: a) == tag_of(v: b)
+}
+fn f7(x: Pa, y: Pa) -> Bool {
+  same_arm(a: x, b: y)
+}"#),
+    );
+
     // MEASUREMENT FIRST, VERDICT LAST -- every number above is on the record before any assert.
-    println!("FAM SUMMARY F5(accept)={ctl}/{ctl_arm} F1={f1}/{f1_arm} F2(accept)={f2}/{f2_arm} F3(refuse)={f3}/{f3_arm} F4(accept)={f4}/{f4_arm}");
+    println!("FAM SUMMARY F5(accept)={ctl}/{ctl_arm} F1={f1}/{f1_arm} F2(accept)={f2}/{f2_arm} F3(refuse)={f3}/{f3_arm} F4(accept)={f4}/{f4_arm} F6={f6}/{f6_arm} F7(accept)={f7}/{f7_arm}");
+    println!("FAM F6_IDENTITIES {:?}", f6_ids);
     println!("FAM F1_IDENTITIES {:?}", f1_ids);
     println!("FAM F2_IDENTITIES {:?}", f2_ids);
     println!("FAM F3_IDENTITIES {:?}", f3_ids);
@@ -140,6 +183,8 @@ fn f4(a: Map<String, Int>, b: Map<String, Int>) -> Bool {
         || f2_arm != "Observed"
         || f3_arm != "Observed"
         || f4_arm != "Observed"
+        || f6_arm != "Observed"
+        || f7_arm != "Observed"
     {
         verdict.push(format!(
             "UNMEASURABLE(F5={ctl_arm},F1={f1_arm},F2={f2_arm},F3={f3_arm},F4={f4_arm}) -- no family verdict is possible"
@@ -158,6 +203,14 @@ fn f4(a: Map<String, Int>, b: Map<String, Int>) -> Bool {
         if f3 == 0 {
             verdict.push("F3 FAILS TO REFUSE: a genuine two-concrete-Map disagreement is admitted, so the Acc is too LENIENT on this shape -- the family verdict above cannot be (i) for it.".to_string());
         }
+        if f6 > 0 {
+            verdict.push("F6 REFUSES the two-distinct-coproduct shape: Charter 4's ExpectedRed rows for same_arm_one_t_two_coproducts_must_refuse WILL flip under PR-2 and must be deleted in the same change.".to_string());
+        } else {
+            verdict.push("F6 ACCEPTS the two-distinct-coproduct shape: PR-2 will NOT flip Charter 4's ExpectedRed rows; they stay held and must not be deleted.".to_string());
+        }
+        if f7 > 0 {
+            verdict.push("F7 REFUSES the same-coproduct control: the Acc over-refuses constructor comparison generally, which subsumes the F6 reading.".to_string());
+        }
         if f4 > 0 {
             verdict.push("F4 REFUSES: identical concrete Maps are rejected; the Acc is too STRICT everywhere, which subsumes the family verdict.".to_string());
         }
@@ -172,7 +225,9 @@ fn f4(a: Map<String, Int>, b: Map<String, Int>) -> Bool {
             || f1_arm != "Observed"
             || f2_arm != "Observed"
             || f3_arm != "Observed"
-            || f4_arm != "Observed"),
+            || f4_arm != "Observed"
+            || f6_arm != "Observed"
+            || f7_arm != "Observed"),
         "instrument could not measure; FAM VERDICT lines above name which arms refused to measure"
     );
 }
