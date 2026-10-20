@@ -601,6 +601,18 @@ data empty_decl_ref_census: DeclRefCensus = DeclRefCensus { refused_files: [], c
 // ONE FILE'S CONTRIBUTION, reduced at once: the driver tokenizes a file, calls this and drops the
 // tokens, so the census never holds the corpus's token lists (the whole-tree variant exhausted a
 // 28 GiB cgroup). Prose is read only from the files the caller scopes in (the ledgers).
+fn unresolved_site(c: CitedRef, context: ResolutionContext) -> List<String> {
+  site_of_resolution(file: c.file, r: resolve_declaration_ref(ref: c.ref, context: context))
+}
+
+fn site_of_resolution(file: Symbol, r: DeclarationRefResolution) -> List<String> {
+  if resolution_is_unresolved(r: r, refused: []) {
+    [concat(file as String, " cites ", resolution_subject(r: r))]
+  } else {
+    []
+  }
+}
+
 fn decl_ref_census_of_file(
   file: Symbol,
   tokens: List<Token>,
@@ -622,18 +634,7 @@ fn decl_ref_census_of_file(
     } else {
       []
     },
-    sites: fold_list(
-      xs: cited,
-      empty: [],
-      cons: fn(acc, c) {
-        let r = resolve_declaration_ref(ref: c.ref, context: context)
-        if resolution_is_unresolved(r: r, refused: []) {
-          list_snoc_item(xs: acc, item: concat(c.file as String, " cites ", resolution_subject(r: r)))
-        } else {
-          acc
-        }
-      }
-    )
+    sites: fold_list(xs: cited, empty: [], cons: fn(acc, c) { list_append(left: acc, right: unresolved_site(c: c, context: context)) })
   }
 }
 
