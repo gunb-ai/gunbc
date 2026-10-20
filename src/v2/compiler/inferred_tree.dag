@@ -59,33 +59,6 @@ type NotDerivedSite
 // carried the SOURCE NODE as its resolved type. Every literal, binding and operation was typed as
 // itself, and every downstream consumer read that as an established judgment.
 
-// The site's spelling, for a census that groups by cause. Exhaustive over NotDerivedSite, so an arm added to the
-// coproduct refuses here until it is spelled.
-fn not_derived_site_symbol(site: NotDerivedSite) -> Symbol {
-  match site {
-    BinderTypeNodeUnfacted => ^BinderTypeNodeUnfacted
-    BinderTypeUnjudged => ^BinderTypeUnjudged
-    DeclarationWrapperEvidenceEdgesAbsent => ^DeclarationWrapperEvidenceEdgesAbsent
-    ProductEvidenceEdgesAbsent => ^ProductEvidenceEdgesAbsent
-    LexicalReferenceValued => ^LexicalReferenceValued
-    LexicalReferenceUntyped => ^LexicalReferenceUntyped
-    LiteralTypeUnknown => ^LiteralTypeUnknown
-    RosterMemberTypeAbsent => ^RosterMemberTypeAbsent
-    ProjectionReceiverUnderived => ^ProjectionReceiverUnderived
-    ReferenceRejectedGrounding => ^ReferenceRejectedGrounding
-    DeclarationReferenceWithoutPath => ^DeclarationReferenceWithoutPath
-    ReferenceLookupMiss => ^ReferenceLookupMiss
-    VariantArmValueNotDerived => ^VariantArmValueNotDerived
-    CallableEvidenceAbsent => ^CallableEvidenceAbsent
-    MatchFrontier => ^MatchFrontier
-    EqualityNotDerived => ^EqualityNotDerived
-    LiteralPayloadMember => ^LiteralPayloadMember
-    ConstructFieldsUnbound => ^ConstructFieldsUnbound
-    ConstructFormalsAuthored => ^ConstructFormalsAuthored
-    ConstructTypeAbsent => ^ConstructTypeAbsent
-  }
-}
-
 type NodeGrounding
   = DerivedGrounding { grounding: CanonicalGrounding }
   | GroundingNotDerived { node: Node, site: NotDerivedSite }
