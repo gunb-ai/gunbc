@@ -220,6 +220,16 @@ fn deploy_observed_sha256_admitted_command() -> String {
   )
 }
 
+// Reads a staged file back out (a witness observes what the guarded write staged, through the same staged-path word).
+fn deploy_stage_read_command(stage_name: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "cat"),
+      deploy_stage_path_word(stage_name: stage_name),
+    ]),
+  )
+}
+
 fn deploy_stage_write_observed_sha256_env_command(stage_name: String, env_name: String) -> String {
   shell_command_text_of_node(
     stmt: bash_build_with_redir_to_file(

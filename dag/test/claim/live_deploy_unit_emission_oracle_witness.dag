@@ -33,7 +33,8 @@ import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_re
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
-import v2.std.orchestration { PipelineStep, Let, If, Do, ExprCmdSubst }
+import v2.std.orchestration { Pipeline, PipelineStep, Predicate, Let, If, Do, Exit, Not, ExitZero, ExprCmdSubst }
+import gunbc.live_deploy.operations { deploy_observed_sha256_admitted_command }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.live_deploy.emit {
   emit_device_crypto_sidecar_unit_doc, device_crypto_sidecar_install_steps, device_crypto_sidecar_binary_path,
@@ -415,8 +416,29 @@ fn step_is_observed_let(st: PipelineStep) -> Bool {
 
 fn step_is_guard(st: PipelineStep) -> Bool {
   match st {
-    If { cond: c, then_: t, else_: e } => true
+    If { cond: c, then_: t, else_: e } => predicate_refuses_unless_admitted(c: c) && pipeline_exits_one(p: t) && !is_present(o: e)
     _ => false
+  }
+}
+
+fn predicate_refuses_unless_admitted(c: Predicate) -> Bool {
+  match c {
+    Not { inner: ExitZero { run: r } } => r.command == deploy_observed_sha256_admitted_command()
+    _ => false
+  }
+}
+
+fn pipeline_exits_one(p: Pipeline) -> Bool {
+  match p.steps {
+    [Exit { status: s }] => s == "1"
+    _ => false
+  }
+}
+
+fn is_present(o: Pipeline?) -> Bool {
+  match o {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 

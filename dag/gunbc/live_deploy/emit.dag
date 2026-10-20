@@ -1003,15 +1003,14 @@ fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRe
 // is std.content_hash Sha256DigestHex: Let binds the observation (a failing sha256sum fails the line under set -e),
 // If-Not-ExitZero refuses with Exit before anything is staged unless the line is admitted by
 // operations.deploy_observed_sha256_admitted_command, and only then the staged write and the owned install run.
-fn deploy_observed_sha256_env_steps(
-  observed_path: String,
-  env_name: String,
-  stage_name: String,
-  owner: NonEmptyStr,
-  dest: String,
-) -> List<PipelineStep> {
+fn deploy_observed_sha256_let_step(observed_path: String) -> PipelineStep {
+  Let { name: deploy_observed_digest_var, value: ExprCmdSubst { callee: sha256sum_program().invocation as String, args: [observed_path] } }
+}
+
+// The refusal and the staged write, separated from the Let that binds the observation and the install that follows, so
+// a witness can bind the variable to a fixture, render exactly these steps through the bash emitter and execute them.
+fn deploy_observed_sha256_guarded_write_steps(env_name: String, stage_name: String) -> List<PipelineStep> {
   [
-    Let { name: deploy_observed_digest_var, value: ExprCmdSubst { callee: sha256sum_program().invocation as String, args: [observed_path] } },
     If {
       cond: Not { inner: ExitZero { run: Run {
         command: deploy_observed_sha256_admitted_command(),
@@ -1023,14 +1022,31 @@ fn deploy_observed_sha256_env_steps(
       else_: Absent
     },
     deploy_raw(command: deploy_stage_write_observed_sha256_env_command(stage_name: stage_name, env_name: env_name)),
-    deploy_raw(command: deploy_stage_install_owned_command(
-      stage_name: stage_name,
-      mode: install_file_shared_mode,
-      owner: owner,
-      group: owner,
-      dest: dest,
-    )),
   ]
+}
+
+fn deploy_observed_sha256_env_steps(
+  observed_path: String,
+  env_name: String,
+  stage_name: String,
+  owner: NonEmptyStr,
+  dest: String,
+) -> List<PipelineStep> {
+  concat(
+    concat(
+      [deploy_observed_sha256_let_step(observed_path: observed_path)],
+      deploy_observed_sha256_guarded_write_steps(env_name: env_name, stage_name: stage_name),
+    ),
+    [
+      deploy_raw(command: deploy_stage_install_owned_command(
+        stage_name: stage_name,
+        mode: install_file_shared_mode,
+        owner: owner,
+        group: owner,
+        dest: dest,
+      )),
+    ],
+  )
 }
 
 // THE DEPLOYED DIGEST IS READ OFF THE INSTALLED BYTES, never off the packed artifact or a constant: the env file the

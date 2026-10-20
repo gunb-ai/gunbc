@@ -6,35 +6,47 @@ import std.optional { Present, Absent }
 import extdeps.exec.command { LocalExec }
 import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_observe }
-import gunbc.live_deploy.operations {
-  deploy_observed_digest_var, deploy_stage_dir_var, deploy_observed_sha256_admitted_command, deploy_stage_write_observed_sha256_env_command,
+import gunbc.live_deploy.operations { deploy_observed_digest_var, deploy_stage_dir_var, deploy_stage_read_command }
+import gunbc.live_deploy.emit {
+  deploy_stage_cleanup_frame_pipeline, deploy_observed_sha256_guarded_write_steps, emit_pipeline_or_poison, deploy_raw,
 }
+import v2.std.orchestration { Pipeline, Let, ExprLit, FailFast }
+import gunbc.shell_command_text { shell_command_text_of_argv }
 import std.content_hash { lower_hex_64 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE OBSERVED-SHA256 GUARD, BY REAL EXECUTION. The refusal is a fact about what bash does with the
-// rendered guard and write, so this runs the text gunbc.live_deploy.operations renders
-// (deploy_observed_sha256_admitted_command, deploy_stage_write_observed_sha256_env_command) under the
-// deploy's strict line, with the observed line supplied as a fixture value of the variable the Let binds.
-// Each program mirrors the emitted order: guard (If-Not-admitted then Exit 1), then the staged write,
-// then a marker. A refused line must exit nonzero, never reach the marker and leave no staged file.
+// THE OBSERVED-SHA256 GUARD, BY REAL EXECUTION OF THE EMITTED PIPELINE. The refusal is a fact about what bash does
+// with the steps gunbc.live_deploy.emit deploy_observed_sha256_guarded_write_steps emits, so this renders exactly
+// those steps (the If-Not-admitted then Exit 1, and the staged write) through the orchestration-to-bash emitter
+// (emit_pipeline_or_poison) inside the real stage-directory frame (deploy_stage_cleanup_frame_pipeline), with the
+// Let that binds the observation replaced by a fixture ExprLit, and executes that text. Nothing here spells shell:
+// changing the emitted If, its Exit or its guard changes what runs. A refused line must exit nonzero, never reach
+// the marker and print no staged file.
 data write_marker: String = "GUNBC-DIGEST-WRITE-REACHED"
 data stage_file: String = "digest.env"
 data hex64: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
+fn guard_pipeline(observed_line: String) -> Pipeline {
+  let frame = deploy_stage_cleanup_frame_pipeline(bind_vars: [deploy_stage_dir_var], trap_vars: [deploy_stage_dir_var])
+  Pipeline {
+    steps: concat(
+      concat(frame.steps, [Let { name: deploy_observed_digest_var, value: ExprLit { spelling: observed_line } }]),
+      concat(
+        deploy_observed_sha256_guarded_write_steps(env_name: "NAME", stage_name: stage_file),
+        [
+          deploy_raw(command: deploy_stage_read_command(stage_name: stage_file)),
+          deploy_raw(command: shell_command_text_of_argv(argv: ["echo", write_marker])),
+        ],
+      ),
+    ),
+    on_failure: FailFast,
+  }
+}
+
 fn guard_program(observed_line: String) -> String {
-  join([
-    "set -euo pipefail\n",
-    deploy_stage_dir_var, "=\"$(mktemp -d)\"\n",
-    "trap 'rm -rf \"$", deploy_stage_dir_var, "\"' EXIT\n",
-    deploy_observed_digest_var, "='", observed_line, "'\n",
-    "if ! ", deploy_observed_sha256_admitted_command(), " >/dev/null; then exit 1; fi\n",
-    deploy_stage_write_observed_sha256_env_command(stage_name: stage_file, env_name: "NAME"), "\n",
-    "cat \"$", deploy_stage_dir_var, "/", stage_file, "\"\n",
-    "echo ", write_marker, "\n",
-  ], "")
+  emit_pipeline_or_poison(p: guard_pipeline(observed_line: observed_line), refused: "exit 97")
 }
 
 fn refused(observed_line: String) -> Bool {
