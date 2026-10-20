@@ -26,7 +26,9 @@ import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
   ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   deploy_apply_memory_cap_plan, deploy_apply_leg_step, deploy_apply_tree_plan, deploy_apply_executable_plan,
+  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, deploy_apply_unit_plan,
 }
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
@@ -64,6 +66,8 @@ fn ports_serving(command_code: Int, stdin_code: Int, source: ObjectSourceServeAd
     stdin: fn(c, p) { observed(code: stdin_code, err: "stdin-boom") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     helper_grant: fn(r) { grant_boom() },
+    root_helper_grant: fn(g, rc, r) { Present { value: "root-grant-boom" } },
+    broker_tree: fn(r) { Present { value: "broker-tree-boom" } },
   }
 }
 
@@ -114,6 +118,8 @@ test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
         ApplyLegRepairDirectoryEntries { command: _ } => false
         ApplyLegHelperGrant { revision: _ } => false
         ApplyLegObjectSource => false
+        ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => false
+        ApplyLegBrokerTree { revision: _ } => false
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => false
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
       }
@@ -289,6 +295,8 @@ fn ports_command_out(out: RunArgvTransportOutcome) -> DeployApplyPorts {
     stdin: fn(c, p) { observed(code: 0, err: "") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     helper_grant: fn(r) { grant_boom() },
+    root_helper_grant: fn(g, rc, r) { Present { value: "root-grant-boom" } },
+    broker_tree: fn(r) { Present { value: "broker-tree-boom" } },
   }
 }
 
@@ -373,9 +381,62 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
         ApplyLegRepairDirectoryEntries { command: _ } => false
         ApplyLegHelperGrant { revision: _ } => false
         ApplyLegObjectSource => false
+        ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => false
+        ApplyLegBrokerTree { revision: _ } => false
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
       }
     ApplyPlanReady { legs: Empty } => false
+    ApplyPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// THE UNIT FAMILY. The selected attempt-worker sandbox (slice, then the launcher's root-owned grant) is
+// installed before the serve unit, and the restart follows the unit it restarts.
+fn step_index_from(legs: List<DeployApplyLeg>, step: String, i: Int) -> Int {
+  match legs {
+    Empty => 0 - 1
+    Cons { head: h, tail: rest } => if deploy_apply_leg_step(leg: h) == step { i } else { step_index_from(legs: rest, step: step, i: i + 1) }
+  }
+}
+
+fn step_index(legs: List<DeployApplyLeg>, step: String) -> Int {
+  step_index_from(legs: legs, step: step, i: 0)
+}
+
+test fn the_unit_plan_installs_the_sandbox_grant_before_the_unit_and_restarts_after() -> Bool {
+  let spec = deployment_spec_srv1()
+  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent) {
+    ApplyPlanReady { legs: legs } => {
+      let slice = step_index(legs: legs, step: "attempt-worker-slice")
+      let grant = step_index(legs: legs, step: "attempt-launcher-grant")
+      let unit = step_index(legs: legs, step: "serve-unit")
+      let restart = step_index(legs: legs, step: "serve-restart")
+      slice >= 0 && slice < grant && grant < unit && unit < restart
+    }
+    ApplyPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// An OIDC readback that cannot be decided (no observer clock) refuses the plan at the serve unit; it is
+// never read as a unit with nothing to write.
+test fn an_unreadable_oidc_clock_refuses_the_unit_plan() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent) {
+    ApplyPlanRefused { step: s, reason: r } => s == "serve-unit" && string_contains(s: r, pattern: "observer clock unreadable")
+    ApplyPlanReady { legs: _ } => false
+  }
+}
+
+// The launcher grant's port refusal stops the run at that leg, and no later leg is dispatched.
+test fn a_refused_launcher_grant_stops_the_run_before_the_serve_unit() -> Bool {
+  let spec = deployment_spec_srv1()
+  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent) {
+    ApplyPlanReady { legs: legs } =>
+      match deploy_apply_run_legs(legs: legs, ports: ports(command_code: 0, stdin_code: 0)) {
+        ApplyRunFailed { step: s, reason: r, legs_run: n } =>
+          s == "attempt-launcher-grant" && r == "root-grant-boom" && n == step_index(legs: legs, step: "attempt-launcher-grant")
+        ApplyRunOk { legs_run: _, reports: _ } => false
+      }
     ApplyPlanRefused { step: _, reason: _ } => false
   }
 }

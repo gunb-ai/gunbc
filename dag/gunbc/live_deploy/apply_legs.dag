@@ -14,7 +14,8 @@ import gunbc.managed_directory {
   managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
 }
 import gunbc.membership_reconcile { EffectsReady, ApplyRefused, membership_effects }
-import gunbc.live_deploy.lab_host_plan { LabPlanReady, LabPlanRefused, lab_plan_refusal_reason }
+import gunbc.live_deploy.lab_host_plan { LabPlanReady, LabPlanRefused, lab_plan_refusal_reason, SystemManagerLauncherSelected }
+import extdeps.access.posix { FileMode }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan, plan_writes_unit }
 import gunbc.live_deploy.emit { deployment_apply_plan, owned_directory_will_install }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands, deployment_owns_the_host_approval_broker }
@@ -49,7 +50,32 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.host.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc, convergence_receipt_path, convergence_placement_entry_path }
-import gunbc.live_deploy.release_locus { release_revision_execstart_text }
+import gunbc.live_deploy.release_locus { release_revision_execstart_text, HelperGrantSite, HelperRevisionReceipt }
+import std.measure { Second }
+import gunbc.live_deploy.member_identity { plan_reloads_manager, plan_restarts_process }
+import gunbc.live_deploy.emit {
+  live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
+  approval_broker_slice_unit_file, live_deploy_approval_broker_unit_file_on,
+  attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused,
+  attempt_unit_spool_answer_mode, publication_spool_request_mode,
+}
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly }
+import gunbc.host.host_layout {
+  attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_drain_lock_path,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown }
+import gunbc.roadmap.attempt_system_unit_launch {
+  attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus,
+  attempt_system_unit_launcher_revision_receipt_path, attempt_system_unit_sudoers_path,
+  attempt_system_unit_sudoers_body, AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
+  attempt_system_unit_launch_argv_refused_detail,
+}
+import gunbc.live_deploy.spec {
+  deployment_systemd_unit_path, gunbc_attempt_worker_slice_unit_path,
+  gunbc_approval_broker_slice_unit_path, gunbc_approval_broker_unit_path, gunbc_approval_broker_unit_name,
+}
+import extdeps.systemd.systemctl { systemctl_enable_argv }
 
 
 // THE APPLY FOLD'S LEGS AS DATA, replacing the apply bash script the way gunbc.live_deploy.retract_legs
@@ -70,6 +96,8 @@ type DeployApplyLeg
   | ApplyLegObjectSource
   | ApplyLegDigestVerify { step: String, path: String, digest: Digest }
   | ApplyLegDiagnosedCommand { step: String, command: ArgvCommand, diagnosis: ArgvCommand }
+  | ApplyLegRootHelperGrant { site: HelperGrantSite, receipt: HelperRevisionReceipt, revision: ReleaseRevisionBinding }
+  | ApplyLegBrokerTree { revision: ReleaseRevisionBinding }
 
 type DeployApplyPlan
   = ApplyPlanReady { legs: List<DeployApplyLeg> }
@@ -86,6 +114,8 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegObjectSource => "object-source"
     ApplyLegDigestVerify { step: st, path: _, digest: _ } => st
     ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => st
+    ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => "attempt-launcher-grant"
+    ApplyLegBrokerTree { revision: _ } => "approval-broker-tree"
   }
 }
 
@@ -353,14 +383,155 @@ fn deploy_apply_executable_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, s
   }
 }
 
-fn deploy_apply_release_members_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
-  deploy_apply_chain(
-    first: deploy_apply_tree_plan(spec: spec, plan: plan, source_root: source_root),
-    rest: deploy_apply_executable_plan(spec: spec, plan: plan, source_root: source_root),
+// ── THE UNIT FILE AND ITS LIFECYCLE ──────────────────────────────────────────────────────────────
+//
+// The attempt-worker sandbox the lab plan selected (its slice, the per-instance spool, and the launcher's
+// root-owned helper grant), the broker's release tree and units on the host that owns the broker, the
+// serve unit; then the reload, and the enable and restart of the serve unit and the owned broker. A serve
+// unit whose OIDC readback was refused refuses the plan: the script emitted nothing for that member and
+// the run converged without a unit, which read an unknown as nothing to do.
+fn apply_root_directory_leg(step: String, mode: FileMode, group: NonEmptyStr, path: String) -> DeployApplyLeg {
+  apply_root_leg(step: step, argv: coreutils_install_directory_owned_argv(
+    mode: mode, owner: approval_broker_helper_root_principal, group: group, path: path))
+}
+
+fn deploy_apply_attempt_spool_legs(spec: DeploymentSpec) -> List<DeployApplyLeg> {
+  let root = approval_broker_helper_root_principal
+  let service = spec.service.service_user
+  let instance_root = spec.service.instance_root as String
+  [
+    apply_root_directory_leg(step: "attempt-spool-root", mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse), group: root, path: attempt_unit_spool_root(instance_root: instance_root)),
+    apply_root_directory_leg(step: "attempt-spool-staging", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_staging_dir(instance_root: instance_root)),
+    apply_root_directory_leg(step: "attempt-spool-request", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_request_dir(instance_root: instance_root)),
+    apply_root_directory_leg(step: "attempt-spool-claimed", mode: declared_directory_mode(m: DirectoryOwnerOnly), group: root, path: attempt_unit_spool_claimed_dir(instance_root: instance_root)),
+    apply_root_directory_leg(step: "attempt-spool-answer", mode: attempt_unit_spool_answer_mode, group: service, path: attempt_unit_spool_answer_dir(instance_root: instance_root)),
+    apply_staged_leg(step: "attempt-spool-drain-lock", dest: attempt_unit_spool_drain_lock_path(instance_root: instance_root), payload: ""),
+  ]
+}
+
+fn attempt_launcher_grant_site(instance: HostDashboardInstance, sudoers_text: String) -> HelperGrantSite {
+  let locus = attempt_system_unit_launcher_locus(instance: instance)
+  let final_path = attempt_system_unit_sudoers_path(instance: instance)
+  let stage = join(["gunbc-attempt-system-unit-", instance.instance_id as String], "")
+  HelperGrantSite {
+    locus: locus,
+    spine: [attempt_system_unit_launcher_helpers_root, locus.base],
+    sudoers_content: sudoers_text,
+    sudoers_mode: "0440" as NonEmptyStr,
+    sudoers_temp_path: join([final_path, ".new"], ""),
+    sudoers_path: final_path,
+    stage_name: stage,
+    readback_name: join([stage, "-readback"], ""),
+  }
+}
+
+fn deploy_apply_attempt_grant_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+    DashboardInstanceIdUnknown { instance_id: id } =>
+      ApplyPlanRefused { step: "attempt-launcher-grant", reason: join(["live-deploy apply refused: the attempt-system-unit sudoers grant has no HostDashboardInstance for instance ", id, ", so it will not install a host-global file or another instance's grant"], "") }
+    DashboardInstanceForId { instance: instance } =>
+      match attempt_system_unit_sudoers_body(instance: instance, revision: revision) {
+        AttemptSystemUnitSudoersRefused { cause: c } =>
+          ApplyPlanRefused { step: "attempt-launcher-grant", reason: join(["live-deploy apply refused: the attempt-system-unit launcher argument was refused, so it will not pin a false argv: ", attempt_system_unit_launch_argv_refused_detail(cause: c)], "") }
+        AttemptSystemUnitSudoersReady { text: t } =>
+          ApplyPlanReady { legs: list_append(
+            left: deploy_apply_attempt_spool_legs(spec: spec),
+            right: [ApplyLegRootHelperGrant {
+              site: attempt_launcher_grant_site(instance: instance, sudoers_text: t),
+              receipt: HelperRevisionReceipt {
+                path: attempt_system_unit_launcher_revision_receipt_path(instance: instance),
+                text: join([release_revision_execstart_text(binding: revision), "\n"], ""),
+              },
+              revision: revision,
+            }],
+          ) }
+      }
+  }
+}
+
+fn deploy_apply_worker_sandbox_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+  match spec.target.lab_plan {
+    LabPlanRefused { cause: c } =>
+      ApplyPlanRefused { step: "worker-sandbox", reason: join(["live-deploy apply refused: lab plan refused (", lab_plan_refusal_reason(cause: c) as String, ")"], "") }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      match choice {
+        SystemManagerLauncherSelected =>
+          match attempt_worker_slice_unit_file() {
+            AttemptWorkerSliceUnitFileRefused { cause: c } =>
+              ApplyPlanRefused { step: "attempt-worker-slice", reason: join(["live-deploy apply refused: ", c, " (DESIGN 5: refuse, never widen)"], "") }
+            AttemptWorkerSliceUnitFileReady { file: f } =>
+              deploy_apply_chain(
+                first: ApplyPlanReady { legs: [apply_staged_leg(step: "attempt-worker-slice", dest: gunbc_attempt_worker_slice_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))] },
+                rest: deploy_apply_attempt_grant_plan(spec: spec, revision: revision),
+              )
+          }
+      }
+  }
+}
+
+fn deploy_apply_broker_unit_write_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<DeployApplyLeg> {
+  if deployment_owns_the_host_approval_broker(spec: spec) {
+    [
+      ApplyLegBrokerTree { revision: revision },
+      apply_staged_leg(step: "approval-broker-slice-unit", dest: gunbc_approval_broker_slice_unit_path() as String, payload: serialize_systemd_unit_file(file: approval_broker_slice_unit_file())),
+      apply_staged_leg(
+        step: "approval-broker-unit",
+        dest: gunbc_approval_broker_unit_path() as String,
+        payload: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port))),
+    ]
+  } else {
+    []
+  }
+}
+
+fn deploy_apply_lifecycle_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<DeployApplyLeg> {
+  list_append(
+    left: if plan_reloads_manager(plan: plan) { [apply_root_leg(step: "unit-daemon-reload", argv: systemctl_daemon_reload_argv())] } else { [] },
+    right: if !plan_restarts_process(plan: plan) { [] } else { list_append(
+      left: [
+        apply_root_leg(step: "serve-enable", argv: systemctl_enable_argv(unit: plan.target.unit)),
+        apply_root_leg(step: "serve-restart", argv: systemctl_restart_argv(unit: plan.target.unit)),
+      ],
+      right: if deployment_owns_the_host_approval_broker(spec: spec) { [
+        apply_root_leg(step: "approval-broker-enable", argv: systemctl_enable_argv(unit: gunbc_approval_broker_unit_name)),
+        apply_root_leg(step: "approval-broker-restart", argv: systemctl_restart_argv(unit: gunbc_approval_broker_unit_name)),
+      ] } else { [] },
+    ) },
   )
 }
 
-fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String) -> DeployApplyPlan {
+fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?) -> DeployApplyPlan {
+  let revision = RevisionBoundAtEmission { revision: plan.target.revision }
+  match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
+    LiveDeployServeUnitOidcReadbackRefused { cause: c } =>
+      ApplyPlanRefused { step: "serve-unit", reason: join(["live-deploy apply refused: the serve unit's OIDC readback was refused (", c as String, "), so no unit, reload or restart is applied (DESIGN 5: refuse, never widen)"], "") }
+    LiveDeployServeUnitEmitted { file: f } =>
+      deploy_apply_chain(
+        first: if !plan_writes_unit(plan: plan) { ApplyPlanReady { legs: [] } } else {
+          deploy_apply_chain(
+            first: deploy_apply_worker_sandbox_plan(spec: spec, revision: revision),
+            rest: ApplyPlanReady { legs: list_append(
+              left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision),
+              right: [apply_staged_leg(step: "serve-unit", dest: deployment_systemd_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))],
+            ) },
+          )
+        },
+        rest: ApplyPlanReady { legs: deploy_apply_lifecycle_legs(spec: spec, plan: plan) },
+      )
+  }
+}
+
+fn deploy_apply_release_members_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
+  deploy_apply_chain(
+    first: deploy_apply_tree_plan(spec: spec, plan: plan, source_root: source_root),
+    rest: deploy_apply_chain(
+      first: deploy_apply_executable_plan(spec: spec, plan: plan, source_root: source_root),
+      rest: deploy_apply_unit_plan(spec: spec, plan: plan, oidc_now: oidc_now),
+    ),
+  )
+}
+
+fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
   deploy_apply_chain(
     first: deploy_apply_object_source_plan(),
     rest: deploy_apply_chain(
@@ -371,7 +542,7 @@ fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, auth
         first: deploy_apply_slice_control_plan(spec: spec),
         rest: deploy_apply_chain(
           first: deploy_apply_helper_grant_plan(spec: spec, plan: plan),
-          rest: deploy_apply_release_members_plan(spec: spec, plan: plan, source_root: source_root),
+          rest: deploy_apply_release_members_plan(spec: spec, plan: plan, source_root: source_root, oidc_now: oidc_now),
         ),
       ),
     ),
@@ -379,7 +550,7 @@ fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, auth
   )
 }
 
-fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String) -> DeployApplyPlan {
+fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
   match spec.target.lab_plan {
     LabPlanRefused { cause: c } =>
       ApplyPlanRefused {
@@ -393,19 +564,19 @@ fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, authori
             step: "tailscale-client",
             reason: join(["live-deploy apply refused: this target's tailscale client version is UNOBSERVED (", r, "), so whether scoped serve exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)"], ""),
           }
-        ScopedRemovalUnsupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization, source_root: source_root)
-        ScopedRemovalSupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization, source_root: source_root)
+        ScopedRemovalUnsupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization, source_root: source_root, oidc_now: oidc_now)
+        ScopedRemovalSupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization, source_root: source_root, oidc_now: oidc_now)
       }
   }
 }
 
-fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String) -> DeployApplyPlan {
+fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
   match membership_effects(plan: deployment_apply_plan(spec: spec)) {
     ApplyRefused { refusals: rs } =>
       ApplyPlanRefused {
         step: "wholesale",
         reason: join(["live-deploy apply refused WHOLESALE: the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown); the entire fold is refused rather than partially applied. refused-member-count=", to_string(count(rs))], ""),
       }
-    EffectsReady { effects: _ } => deploy_apply_family_plans(spec: spec, plan: plan, authorization: authorization, source_root: source_root)
+    EffectsReady { effects: _ } => deploy_apply_family_plans(spec: spec, plan: plan, authorization: authorization, source_root: source_root, oidc_now: oidc_now)
   }
 }
