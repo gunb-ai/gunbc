@@ -212,6 +212,55 @@ test fn kvn_contextual_pattern_binder_control_holds() -> Bool {
   }
 }
 
+// `none` IS RESERVED THROUGH THE SAME GUARD (dag_grammar_value_name_keyword_terminal reads it beside the
+// keyword token classes; the none_literal production owns the word). It is an identifier token, so these
+// subjects run the text route directly. A field LABEL named none and the name none_value stay legal.
+data kvn_none_param_source: String = "module m.t\nfn f(none: Int) -> Int {\n  0\n}\n"
+
+// a parameter named none refuses at the word: bytes 16..20 of kvn_none_param_source.
+test fn kvn_none_param_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_none_param_source, file: ^probe_kvn_none_param),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_none_param,
+    start: 16,
+    end: 20
+  )
+}
+
+data kvn_none_let_source: String = "module m.t\nfn f() -> Int {\n  let none = 1\n  0\n}\n"
+
+// a let binder named none refuses at the word: bytes 33..37 of kvn_none_let_source.
+test fn kvn_none_let_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_none_let_source, file: ^probe_kvn_none_let),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_none_let,
+    start: 33,
+    end: 37
+  )
+}
+
+data kvn_none_label_source: String = "module m.t\ndata d: R = R { none: 1 }\n"
+
+// Control: a record-init field LABEL named none is a label, not a value name, and stays legal.
+test fn kvn_none_label_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_label_source, file: ^probe_kvn_none_label) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_none_value_name_source: String = "module m.t\nfn f(none_value: Int) -> Int {\n  none_value\n}\n"
+
+// Control: none_value is a different word and stays declarable and referenceable.
+test fn kvn_none_value_name_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_value_name_source, file: ^probe_kvn_none_value_name) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // THE INPUT IS SUPPLIED AT THE PARSE INTERFACE, AND THE TEXT ROUTE STILL RUNS ONCE. Every claim above
 // except kvn_param_refuses_at_the_keyword parses a SUPPLIED token stream (v2.test.claim.parse.supplied_token_stream_support
 // supplied_stream_parse), because its subject is the grammar's binder guard, not the tokenizer: deriving the
