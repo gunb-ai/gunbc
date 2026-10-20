@@ -550,7 +550,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "1".to_string(),
                 default_features: true,
-                features: Rc::new(vec![]),
+                features: Rc::new(vec!["arbitrary_precision".to_string()]),
             }),
         }),
         Rc::new(CargoDependency {
