@@ -2,12 +2,15 @@ module test.claim.fleet.site_pxe_edge_receipts_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, Fnv1a64, Fnv1a64Structural }
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.provisioning.network_boot { ProxyDhcp }
 import std.list { first_where }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
 import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64, BiosX86, HttpBootX86_64, HttpBootArm64, DhcpProcessorArchitecture, dhcp_processor_architecture_code, dhcp_processor_architecture_members, dhcp_processor_architecture_from_code }
 import product.placement_supply { SiteIdentity }
 import gunbc.fleet.site_pxe_edge_receipts {
@@ -23,10 +26,10 @@ import gunbc.fleet.site_pxe_edge_receipts {
   ClientDigestUnobserved, DigestFamiliesIncomparable, DigestDisagrees, AcceptedFilenameDisagrees,
   AcceptedFromNotNextServer, OfferPrecedesRequest, AcceptancePrecedesOffer,
   NoCandidateOfferMatchesAcceptance, AmbiguousOfferCandidates,
-  bind_supplied_edge_offer, bind_supplied_client_exchange, bind_supplied_netboot_exchange, untaken_offers
+  bind_supplied_edge_offer, bind_supplied_client_exchange, bind_supplied_netboot_exchange, untaken_offers, selected_offers
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // EVERY VALUE BELOW IS SYNTHETIC and exists only inside these test functions. The octets, stamps
 // and digests name no real machine, exchange or file; they are the smallest inputs that tell the
@@ -410,4 +413,58 @@ test fn consumer_decodes_through_the_upstream_inverse() -> Bool {
     ClientArchitectureRecognized { architecture: got } => got == UefiArm64
     ClientArchitectureUnrecognized { code: _ } => false
   }
+}
+
+// Two offers that share MAC, xid, server and filename and differ only in digest: nothing in the
+// client's acceptance tells them apart, so the join is ambiguous and NEITHER is marked chosen.
+fn twin_offers() -> List<SuppliedEdgeOffer> {
+  concat(offer_from(server_last: 2, digest: Present { value: synthetic_digest_a() }, at: 20), offer_from(server_last: 2, digest: Present { value: synthetic_digest_b() }, at: 21))
+}
+
+test fn ambiguous_twin_offers_are_both_untaken_and_none_is_chosen() -> Bool {
+  length(selected_offers(edges: twin_offers(), clients: accepting_from_two())) == 0
+    && length(untaken_offers(edges: twin_offers(), clients: accepting_from_two())) == 2
+}
+
+test fn unique_selection_chooses_exactly_the_named_offer() -> Bool {
+  length(selected_offers(edges: concat(offer_from(server_last: 2, digest: none, at: 20), offer_from(server_last: 3, digest: none, at: 20)), clients: accepting_from_two())) == 1
+}
+
+// ---- Outside-call probes: the lower mint chain is admit_callers-sealed --------------------------
+// Each probe is SOURCE HANDED TO THE COMPILER, because an outside call to a sealed helper is
+// unwritable in the accepted corpus and so cannot be a fn here. The control is the lawful entry
+// with the same parameter shapes; the class and subject are named so a probe refused for any other
+// reason does not count. The sources carry no observation: every value is a parameter.
+data probe_header: String = "module probe_site_pxe_edge_receipts\nimport std.types { List }\nimport gunbc.fleet.site_pxe_edge_receipts { SuppliedEdgeOffer, SuppliedClientExchange, SuppliedExchangeBinding, bind_supplied_netboot_exchange, bind_matched_attempt, bind_matched_digests }\n"
+
+data probe_control_source: String = probe_header + "fn lawful(c: SuppliedClientExchange, es: List<SuppliedEdgeOffer>) -> SuppliedExchangeBinding { bind_supplied_netboot_exchange(client: c, edges: es) }\n"
+data probe_attempt_source: String = probe_header + "fn outside(e: SuppliedEdgeOffer, c: SuppliedClientExchange) -> SuppliedExchangeBinding { bind_matched_attempt(edge: e, client: c) }\n"
+data probe_digests_source: String = probe_header + "fn outside(e: SuppliedEdgeOffer, c: SuppliedClientExchange) -> SuppliedExchangeBinding { bind_matched_digests(edge: e, client: c) }\n"
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+test fn the_lawful_entry_is_not_refused_by_any_seal() -> Bool {
+  blocking_count_for_class_and_subject(c: census_of(source: probe_control_source), wanted: "ConstructorCallAdmissionRefused", subject: "bind_supplied_netboot_exchange") == 0
+    && blocking_count_for_class_and_subject(c: census_of(source: probe_control_source), wanted: "ConstructorCallAdmissionRefused", subject: "bind_matched_attempt") == 0
+    && blocking_count_for_class_and_subject(c: census_of(source: probe_control_source), wanted: "ConstructorCallAdmissionRefused", subject: "bind_matched_digests") == 0
+}
+
+test fn an_outside_caller_cannot_reach_the_attempt_check_directly() -> Bool {
+  blocking_count_for_class_and_subject(c: census_of(source: probe_attempt_source), wanted: "ConstructorCallAdmissionRefused", subject: "bind_matched_attempt") >= 1
+}
+
+test fn an_outside_caller_cannot_mint_agreement_from_the_digest_compare_alone() -> Bool {
+  blocking_count_for_class_and_subject(c: census_of(source: probe_digests_source), wanted: "ConstructorCallAdmissionRefused", subject: "bind_matched_digests") >= 1
 }
