@@ -1,6 +1,6 @@
 module v2.compiler.decl_ref_census
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_head, list_append, list_reverse, list_snoc_item, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_head, list_append, list_reverse, list_snoc_item, map_lookup, string_contains }
 import std.decl_ref { DeclField, DeclarationRef, NamedField, WholeDeclaration }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List, NonEmptyStr }
@@ -57,6 +57,7 @@ type ProseSpan {
 }
 
 type DeclRefCensus {
+  refused_files: List<String>
   cited: List<CitedRef>
   resolutions: List<DeclarationRefResolution>
   prose: List<ProseSpan>
@@ -372,9 +373,30 @@ fn prose_spans_of(
 
 // ---- the report ---------------------------------------------------------------------------
 
-fn span_is_refusal(s: ProseSpan) -> Bool {
+// A stale span whose module prefix is a file refused at ingest was never judged (see ref_in_refused_file).
+fn span_in_refused_file(span: String, refused: List<String>) -> Bool {
+  let segs = span.split(delimiter: ".")
+  any(
+    xs: refused,
+    predicate: fn(f) {
+      fold_list(
+        xs: segs,
+        empty: SegmentFold { index: 0, kept: [] },
+        cons: fn(acc, seg) {
+          let kept = list_snoc_item(xs: acc.kept, item: seg)
+          SegmentFold {
+            index: if acc.index == 1 || (length(xs: kept) >= 2 && string_contains(s: f, pattern: concat("/", join_segments_with(segs: kept, sep: "/"), ".dag"))) { 1 } else { 0 },
+            kept: kept
+          }
+        }
+      ).index == 1
+    }
+  )
+}
+
+fn span_is_refusal(s: ProseSpan, refused: List<String>) -> Bool {
   match s.standing {
-    SpanStale => true
+    SpanStale => !span_in_refused_file(span: s.span, refused: refused)
     SpanResolves => false
     SpanOutsideIndex => false
     SpanNotASymbol => false
@@ -409,22 +431,39 @@ fn ref_in_seed_layer(x: DeclarationRef) -> Bool {
   }
 }
 
-fn resolution_is_refusal(r: DeclarationRefResolution) -> Bool {
+// UNCHECKABLE, DISPOSITIONED AS A TYPE RATHER THAN REFUSED. A module the index lacks because its own
+// file was refused at ingest was never judged: the citation is neither resolved nor stale. The file
+// is found by the name-to-path rule (module a.b.c is stored at <root>/a/b/c.dag). Counted per
+// citation and each refused file is printed by the verb. dissolve-on: the native ingest admits every
+// file of the governed trees, so no file is refused and none can hide a module.
+fn ref_in_refused_file(x: DeclarationRef, refused: List<String>) -> Bool {
+  let tail = concat("/", join_segments_with(segs: (x.module_path as String).split(delimiter: "."), sep: "/"), ".dag")
+  any(xs: refused, predicate: fn(f) { string_contains(s: f, pattern: tail) })
+}
+
+fn join_segments_with(segs: List<String>, sep: String) -> String {
+  match segs {
+    Empty => ""
+    Cons { head: h, tail: t } => fold_list(xs: t, empty: h, cons: fn(acc, s) { concat(acc, sep, s) })
+  }
+}
+
+fn resolution_is_refusal(r: DeclarationRefResolution, refused: List<String>) -> Bool {
   match r {
     DeclarationRefResolved { declaration_identity: _ } => false
     DeclarationRefOutsideIndex { reference: _, coverage: _ } => false
-    DeclarationRefModuleAbsent { reference: x } => !ref_in_seed_layer(x: x)
+    DeclarationRefModuleAbsent { reference: x } => !ref_in_seed_layer(x: x) && !ref_in_refused_file(x: x, refused: refused)
     DeclarationRefDeclarationAbsent { reference: _ } => true
     DeclarationRefFieldAbsent { reference: _ } => true
   }
 }
 
-fn count_refused_resolutions(xs: List<DeclarationRefResolution>) -> Int {
-  fold_list(xs: xs, empty: 0, cons: fn(acc, r) { if resolution_is_refusal(r: r) { acc + 1 } else { acc } })
+fn count_refused_resolutions(xs: List<DeclarationRefResolution>, refused: List<String>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, r) { if resolution_is_refusal(r: r, refused: refused) { acc + 1 } else { acc } })
 }
 
-fn count_refused_spans(xs: List<ProseSpan>) -> Int {
-  fold_list(xs: xs, empty: 0, cons: fn(acc, s) { if span_is_refusal(s: s) { acc + 1 } else { acc } })
+fn count_refused_spans(xs: List<ProseSpan>, refused: List<String>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, s) { if span_is_refusal(s: s, refused: refused) { acc + 1 } else { acc } })
 }
 
 fn count_spans_with(xs: List<ProseSpan>, wanted: SpanStanding) -> Int {
@@ -432,17 +471,17 @@ fn count_spans_with(xs: List<ProseSpan>, wanted: SpanStanding) -> Int {
 }
 
 fn decl_ref_census_exit(c: DeclRefCensus) -> Int {
-  if count_refused_resolutions(xs: c.resolutions) + count_refused_spans(xs: c.prose) == 0 {
+  if count_refused_resolutions(xs: c.resolutions, refused: c.refused_files) + count_refused_spans(xs: c.prose, refused: c.refused_files) == 0 {
     0
   } else {
     1
   }
 }
 
-fn resolution_arm_name(r: DeclarationRefResolution) -> String {
+fn resolution_arm_name(r: DeclarationRefResolution, refused: List<String>) -> String {
   match r {
     DeclarationRefResolved { declaration_identity: _ } => "resolved"
-    DeclarationRefModuleAbsent { reference: x } => if ref_in_seed_layer(x: x) { "seed-layer" } else { "module-absent" }
+    DeclarationRefModuleAbsent { reference: x } => if ref_in_seed_layer(x: x) { "seed-layer" } else if ref_in_refused_file(x: x, refused: refused) { "uncheckable" } else { "module-absent" }
     DeclarationRefDeclarationAbsent { reference: _ } => "declaration-absent"
     DeclarationRefFieldAbsent { reference: _ } => "field-absent"
     DeclarationRefOutsideIndex { reference: _, coverage: _ } => "outside-index"
@@ -460,8 +499,8 @@ fn resolution_cited_name(r: DeclarationRefResolution) -> String {
   }
 }
 
-fn count_resolutions_with_arm(xs: List<DeclarationRefResolution>, arm: String) -> Int {
-  fold_list(xs: xs, empty: 0, cons: fn(acc, r) { if resolution_arm_name(r: r) == arm { acc + 1 } else { acc } })
+fn count_resolutions_with_arm(xs: List<DeclarationRefResolution>, arm: String, refused: List<String>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, r) { if resolution_arm_name(r: r, refused: refused) == arm { acc + 1 } else { acc } })
 }
 
 // One located line per refusal: a refused reference by arm and cited name, a stale span by file.
@@ -471,8 +510,8 @@ fn decl_ref_refusal_lines(c: DeclRefCensus) -> List<String> {
       xs: c.resolutions,
       empty: [],
       cons: fn(acc, r) {
-        if resolution_is_refusal(r: r) {
-          list_snoc_item(xs: acc, item: concat("[decl-ref-census] ref ", resolution_arm_name(r: r), " ", resolution_cited_name(r: r)))
+        if resolution_is_refusal(r: r, refused: c.refused_files) {
+          list_snoc_item(xs: acc, item: concat("[decl-ref-census] ref ", resolution_arm_name(r: r, refused: c.refused_files), " ", resolution_cited_name(r: r)))
         } else { acc }
       }
     ),
@@ -480,7 +519,7 @@ fn decl_ref_refusal_lines(c: DeclRefCensus) -> List<String> {
       xs: c.prose,
       empty: [],
       cons: fn(acc, s) {
-        if span_is_refusal(s: s) {
+        if span_is_refusal(s: s, refused: c.refused_files) {
           list_snoc_item(xs: acc, item: concat("[decl-ref-census] span stale ", symbol_lexeme(sym: s.file), " `", s.span, "`"))
         } else { acc }
       }
@@ -491,15 +530,17 @@ fn decl_ref_refusal_lines(c: DeclRefCensus) -> List<String> {
 fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
   list_append(
     left: [
-      concat("[decl-ref-census] refs=", to_string(n: length(xs: c.cited)), " refused=", to_string(n: count_refused_resolutions(xs: c.resolutions)),
-        " module_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "module-absent")),
-        " declaration_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "declaration-absent")),
-        " field_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "field-absent")),
-        " outside_index=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "outside-index")),
-        " seed_layer=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "seed-layer"))),
+      concat("[decl-ref-census] refs=", to_string(n: length(xs: c.cited)), " refused=", to_string(n: count_refused_resolutions(xs: c.resolutions, refused: c.refused_files)),
+        " module_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "module-absent", refused: c.refused_files)),
+        " declaration_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "declaration-absent", refused: c.refused_files)),
+        " field_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "field-absent", refused: c.refused_files)),
+        " outside_index=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "outside-index", refused: c.refused_files)),
+        " seed_layer=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "seed-layer", refused: c.refused_files)),
+        " uncheckable=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "uncheckable", refused: c.refused_files))),
       concat("[decl-ref-census] prose spans=", to_string(n: length(xs: c.prose)),
         " resolves=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanResolves)),
         " stale=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanStale)),
+        " refused=", to_string(n: count_refused_spans(xs: c.prose, refused: c.refused_files)),
         " outside_index=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanOutsideIndex)),
         " not_a_symbol=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanNotASymbol)),
         " unclassified=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanUnclassified)))
@@ -519,7 +560,7 @@ fn top_level_namespaces(all: List<String>) -> List<String> {
   )
 }
 
-data empty_decl_ref_census: DeclRefCensus = DeclRefCensus { cited: [], resolutions: [], prose: [] }
+data empty_decl_ref_census: DeclRefCensus = DeclRefCensus { refused_files: [], cited: [], resolutions: [], prose: [] }
 
 // ONE FILE'S CONTRIBUTION, reduced at once: the driver tokenizes a file, calls this and drops the
 // tokens, so the census never holds the corpus's token lists (the whole-tree variant exhausted a
@@ -533,6 +574,7 @@ fn decl_ref_census_of_file(
 ) -> DeclRefCensus {
   let cited = declaration_ref_citations(file: file, tokens: tokens)
   DeclRefCensus {
+    refused_files: [],
     cited: cited,
     resolutions: fold_list(
       xs: cited,
@@ -549,6 +591,7 @@ fn decl_ref_census_of_file(
 
 fn decl_ref_census_merge(left: DeclRefCensus, right: DeclRefCensus) -> DeclRefCensus {
   DeclRefCensus {
+    refused_files: left.refused_files,
     cited: list_append(left: left.cited, right: right.cited),
     resolutions: list_append(left: left.resolutions, right: right.resolutions),
     prose: list_append(left: left.prose, right: right.prose)
