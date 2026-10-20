@@ -34,6 +34,8 @@ import product.electrical.source_draw {
   LoadNotDistinguished,
   SourceNotEnergized,
   source_draw_standing,
+  SourceSetting,
+  OverCurrentShutoffArmed,
 }
 import product.electrical.bench_session {
   BenchRecord,
@@ -299,7 +301,7 @@ import product.electrical.carrier_phase {
   CarrierPhaseObservation, CarrierPhaseStanding, InputBiasOnly, AuxiliaryDomainActive, SequenceTransient, ControlSteady, BridgeHeld, BridgeReleaseRecovery, PhaseUnclassified,
   PhaseGap, DrawAmbiguous, SettlingUnread, PhaseNotEnergized, DrawUnread,
   ProtectedBusStanding, ProtectedInputBusActive, ProtectedInputBusHeldOff, ProtectedBusUnread, ProtectedBusGap, NoReadingAtDownstream, SourceVoltageUnrecorded, ReadingIsABound,
-  PhaseNodeVoltage, SupplyReading, CurrentRead, SourceModeUnrecorded, SettingUnrecorded, SettledSteady, SettlingUnrecorded, PhaseSettling, SourceSettingStanding,
+  PhaseNodeVoltage, SupplyReading, CurrentRead, SourceModeUnrecorded, SettingUnrecorded, SettingOneOf, SettledSteady, SettlingUnrecorded, PhaseSettling, SourceSettingStanding,
   transition_text, phase_standing_text,
 }
 
@@ -1828,12 +1830,13 @@ fn phase_text_in(layout: CarrierLayoutObservation, key: NonEmptyStr) -> String {
 // control was moved), the S2 domain state AUXILIARY DOMAIN ACTIVE (38 mA, nothing lit), the S1
 // sequence SEQUENCE TRANSIENT, the settled state CONTROL STEADY, each held bridge BRIDGE HELD and each
 // release RELEASE RECOVERY; the first lit state, photographed with its settling and vector unrecorded,
-// is UNCLASSIFIED. The J68 hold's '.7A' renders as typed with both values and picks neither. A
-// finding on the settled phase is established and one on the first lit state is not; no phase by a
-// key not recorded is a finding. Supplied: the domain state's draw lowered to the bias ceiling reads
-// bias only; the settled state with its settling unrecorded is unclassified; a phase not energized is
-// unclassified; and the J68 hold with no bridge recorded falls to its ambiguous draw, so the bridge,
-// not the dark indicators, is what names it.
+// is UNCLASSIFIED. The J68 hold's draw is the confirmed 70 mA; the J30 release's '.94A' renders as
+// typed with both values and picks neither. A finding on the settled phase is established and one on
+// the first lit state is not; no phase by a key not recorded is a finding. Supplied: the domain state's
+// draw lowered to the bias ceiling reads bias only; the settled state with its settling unrecorded is
+// unclassified; a phase not energized is unclassified; and the J68 hold with no bridge recorded would
+// read as a further domain drawing 70 mA with nothing lit, so the bridge, not the dark indicators, is
+// what names it.
 test fn the_carrier_phases_classify_from_their_records() -> Bool {
   let live = p4261_e1_layout
   let arms = phase_arm(layout: live, key: "p0-bias") == 0 && phase_arm(layout: live, key: "p1-s2-domain") == 1
@@ -1851,12 +1854,13 @@ test fn the_carrier_phases_classify_from_their_records() -> Bool {
     && phase_text_in(layout: live, key: "p3-settled").contains("DS5 red or amber lit in a photograph")
     && phase_text_in(layout: live, key: "p3-settled").contains("green blinking by the operator's statement")
     && phase_text_in(layout: live, key: "j68-held").contains("BRIDGE HELD (a direct bridge held between J68 R1 and J68 R2; a logic input pulled low and a rail collapsed read alike until the resistor-coupled test)")
-    && phase_text_in(layout: live, key: "j68-held").contains("'.7A' as typed (70 mA or 700 mA; the decimal is unresolved)")
+    && phase_text_in(layout: live, key: "j68-held").contains("BRIDGE HELD (a direct bridge held between J68 R1 and J68 R2") && phase_text_in(layout: live, key: "j68-held").contains("read 70 mA, the source's mode unrecorded")
     && phase_text_in(layout: live, key: "j30-release").contains("RELEASE RECOVERY (after a direct bridge held between")
     && phase_text_in(layout: live, key: "j30-release").contains("'.94A' as typed (94 mA or 940 mA; the decimal is unresolved)")
     && phase_text_in(layout: live, key: "first-lit-state").contains("UNCLASSIFIED (whether it was passing or settled is unrecorded)")
     && phase_text_in(layout: live, key: "first-lit-state").contains("54 V, 85 mA, the source showing CV")
-    && phase_text_in(layout: live, key: "p0-bias").contains("setting carried forward as 54 V through a 100 mA limit with over-current shutoff armed")
+    && phase_text_in(layout: live, key: "p0-bias").contains("setting one of 48 V through a 100 mA limit with over-current shutoff armed / 48 V through a 600 mA limit with over-current shutoff armed (the operator, asked whether the steps were at 48 V or 54 V")
+    && phase_text_in(layout: live, key: "p0-bias").contains("not above the 13 mA bias draw")
   let findings = finding_holds(layout: live, f: CarrierPhaseObserved { key: "p3-settled" })
     && !finding_holds(layout: live, f: CarrierPhaseObserved { key: "first-lit-state" })
     && !finding_holds(layout: live, f: CarrierPhaseObserved { key: "p9-not-recorded" })
@@ -1872,7 +1876,7 @@ test fn the_carrier_phases_classify_from_their_records() -> Bool {
     && phase_arm(layout: lowered, key: "p1-s2-domain") == 0
     && phase_arm(layout: unsettled, key: "p3-settled") == 6 && phase_gap_is(layout: unsettled, key: "p3-settled", which: 1)
     && phase_arm(layout: unpowered, key: "p0-bias") == 6 && phase_gap_is(layout: unpowered, key: "p0-bias", which: 2)
-    && phase_arm(layout: unbridged, key: "j68-held") == 6 && phase_gap_is(layout: unbridged, key: "j68-held", which: 0)
+    && phase_arm(layout: unbridged, key: "j68-held") == 1
   arms && texts && findings && supplied
 }
 
@@ -1893,6 +1897,11 @@ fn bus_arm(layout: CarrierLayoutObservation, key: NonEmptyStr) -> Nat {
 
 fn bus_volt(t: ElectricalTerminalRef, value: VoltageValue) -> PhaseNodeVoltage {
   PhaseNodeVoltage { at: t, reference: e1_ground_ref, value: value, certainty: StatedPlainly, evidence: supplied_said() }
+}
+
+// Candidate settings that disagree on the voltage establish no source voltage to compare against.
+fn disagreeing_setting() -> SourceSettingStanding {
+  SettingOneOf { candidates: [SourceSetting { voltage: volt(count: 48), current_limit: milliampere(count: 100), protection: OverCurrentShutoffArmed }, SourceSetting { voltage: volt(count: 54), current_limit: milliampere(count: 100), protection: OverCurrentShutoffArmed }], basis: "supplied" }
 }
 
 fn settled_with_bus(value: VoltageValue, setting: SourceSettingStanding) -> CarrierLayoutObservation {
@@ -1926,7 +1935,8 @@ test fn the_protected_bus_is_read_only_at_the_downstream_terminals() -> Bool {
   let bound = settled_with_bus(value: ReadBelow { bound: millivolt(count: 2000) }, setting: e1_phase_setting)
   unread
     && bus_arm(layout: active, key: "p3-settled") == 0 && finding_holds(layout: active, f: ProtectedInputBusInPhase { key: "p3-settled" })
-    && carrier_input_reading(layout: active).contains("the protected input bus is ACTIVE")
+    && carrier_input_reading(layout: active).contains("the protected input bus is ACTIVE") && carrier_input_reading(layout: active).contains("with the source at 48 V")
+    && bus_arm(layout: settled_with_bus(value: about(mv: 53000), setting: disagreeing_setting()), key: "p3-settled") == 3
     && bus_arm(layout: held_off, key: "p3-settled") == 1 && finding_holds(layout: held_off, f: ProtectedInputBusInPhase { key: "p3-settled" })
     && bus_arm(layout: no_source, key: "p3-settled") == 3 && !finding_holds(layout: no_source, f: ProtectedInputBusInPhase { key: "p3-settled" })
     && bus_arm(layout: bound, key: "p3-settled") == 4

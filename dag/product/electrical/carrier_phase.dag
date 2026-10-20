@@ -60,6 +60,7 @@ type CurrentReading
 type SourceSettingStanding
   = SettingRecorded { setting: SourceSetting }
   | SettingCarriedForward { setting: SourceSetting, basis: NonEmptyStr }
+  | SettingOneOf { candidates: List<SourceSetting>, basis: NonEmptyStr }
   | SettingUnrecorded
 
 type SupplyReading {
@@ -299,6 +300,10 @@ fn phase_source_volts(o: CarrierPhaseObservation) -> Volt? {
     Absent => match o.setting {
       SettingRecorded { setting } => Present { value: setting.voltage }
       SettingCarriedForward { setting, basis: _ } => Present { value: setting.voltage }
+      SettingOneOf { candidates, basis: _ } => match candidates.first() {
+        Absent => Absent
+        Present { value: c } => if all(candidates, x => volt_count(v: x.voltage) == volt_count(v: c.voltage)) { Present { value: c.voltage } } else { Absent }
+      }
       SettingUnrecorded => Absent
     }
   }
@@ -402,6 +407,7 @@ fn setting_standing_text(s: SourceSettingStanding) -> String {
   match s {
     SettingRecorded { setting } => join(["set to ", setting_only_text(s: setting)], "")
     SettingCarriedForward { setting, basis } => join(["setting carried forward as ", setting_only_text(s: setting), " (", basis as String, ")"], "")
+    SettingOneOf { candidates, basis } => join(["setting one of ", join(map(candidates, c => setting_only_text(s: c)), " / "), " (", basis as String, ")"], "")
     SettingUnrecorded => "setting unrecorded"
   }
 }
