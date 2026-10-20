@@ -1,0 +1,28 @@
+module test.fixture.alias_lens_probe.specimens
+
+// Three authored shapes measured through the `decl_facts` lens (v2.std.decl_index), side by side so
+// the marshaling difference -- or its absence -- is visible in ONE pool scan. The record and the
+// coproduct are POSITIVE CONTROLS: whatever `decl_facts` marshals for a declaration WITH structure,
+// the alias must be distinguishable from, or the alias reading below proves nothing.
+
+type AliasProbeRecord {
+  first: String
+  second: String
+}
+
+type AliasProbeChoice
+  = AliasProbeLeft { tag: String }
+  | AliasProbeRight { tag: String }
+
+// The shape under guard: a `=`-form container alias, same grammar as std/types'
+// `type List<element> = FreeMonoid<element>`.
+type AliasProbeList<element> = FreeMonoid<element>
+
+// The same `=`-form alias, but bound to a carrier DECLARED IN THIS FIXTURE, so a missing fact here
+// cannot be excused by an unresolved body reference. If the unbound one below ever reads differently
+// from this one, the difference is the finding.
+type AliasProbeCarrier<element> {
+  payload: element
+}
+
+type AliasProbeWrapped<element> = AliasProbeCarrier<element>

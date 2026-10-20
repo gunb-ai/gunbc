@@ -1,0 +1,85 @@
+module test.claim.alias_lens_probe_witness
+
+// MEASURES, does not guard: does the §6 lens (`decl_facts` -> the declaration's Node tree) carry the
+// BODY of a `=`-form alias? Source says concept_decl_node (coproduct_reflection.rs:596-606) marshals
+// Disj to disj, Conj to the variant-arm target, and EVERYTHING ELSE (NoConnective, Arrow -- the alias
+// shape) to unit_type_node, a Conj node with zero children. If measured true, no .dag-callable read
+// of the Node tree can see an alias's carrier, and the §6 "pure reader" route costs a new host
+// callable. Positive controls first: if the record/coproduct controls do not carry children, the
+// harness is broken and nothing here is concluded.
+
+import std.types { Bool, Int, List, String }
+import std.optional { Absent, Present }
+import v2.std.decl_index { DeclFact, decl_facts, decl_facts_at }
+import v2.std.decl_facts_skeleton {
+  DeclFactResolvedUnique,
+  DeclFactResolvedMissing,
+  DeclFactResolvedAmbiguous,
+  resolve_decl_fact_by_qualified_name,
+}
+
+data alias_probe_pool_roots: List<String> = [ "dag/test/fixture/alias_lens_probe" ]
+
+data alias_probe_facts: List<DeclFact> = decl_facts(pool_roots: alias_probe_pool_roots)
+
+data std_types_list_facts: List<DeclFact> =
+  decl_facts_at(pool_roots: [ "dag" ], qualified_name: "std.types.List")
+
+data std_types_record_facts: List<DeclFact> =
+  decl_facts_at(pool_roots: [ "dag" ], qualified_name: "std.types.FilePathParts")
+
+fn fact_child_count(facts: List<DeclFact>, qn: String) -> Int {
+  match resolve_decl_fact_by_qualified_name(facts: facts, qn: qn) {
+    DeclFactResolvedUnique { fact: fact } => length(xs: fact.node.children)
+    DeclFactResolvedMissing { qualified_name: _ } => -1
+    DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => -2
+  }
+}
+
+fn fixture_child_count(qn: String) -> Int {
+  fact_child_count(facts: alias_probe_facts, qn: qn)
+}
+
+// ---- positive controls: the lens marshals structure when structure exists ----
+
+test fn the_record_control_resolves() -> Bool {
+  fixture_child_count(qn: "test.fixture.alias_lens_probe.specimens.AliasProbeRecord") >= 0
+}
+
+test fn the_record_control_carries_children() -> Bool {
+  fixture_child_count(qn: "test.fixture.alias_lens_probe.specimens.AliasProbeRecord") > 0
+}
+
+test fn the_coproduct_control_carries_children() -> Bool {
+  fixture_child_count(qn: "test.fixture.alias_lens_probe.specimens.AliasProbeChoice") > 0
+}
+
+test fn the_real_std_types_record_control_carries_children() -> Bool {
+  fact_child_count(facts: std_types_record_facts, qn: "std.types.FilePathParts") > 0
+}
+
+// ---- the measurement: the alias arm ----
+
+test fn the_local_carrier_alias_resolves() -> Bool {
+  fixture_child_count(qn: "test.fixture.alias_lens_probe.specimens.AliasProbeWrapped") >= 0
+}
+
+test fn the_local_carrier_alias_carries_no_children() -> Bool {
+  fixture_child_count(qn: "test.fixture.alias_lens_probe.specimens.AliasProbeWrapped") == 0
+}
+
+test fn the_free_monoid_alias_resolves() -> Bool {
+  fixture_child_count(qn: "test.fixture.alias_lens_probe.specimens.AliasProbeList") >= 0
+}
+
+test fn the_free_monoid_alias_carries_no_children() -> Bool {
+  fixture_child_count(qn: "test.fixture.alias_lens_probe.specimens.AliasProbeList") == 0
+}
+
+test fn the_guarded_list_fact_resolves() -> Bool {
+  fact_child_count(facts: std_types_list_facts, qn: "std.types.List") >= 0
+}
+
+test fn the_guarded_list_fact_carries_no_children() -> Bool {
+  fact_child_count(facts: std_types_list_facts, qn: "std.types.List") == 0
+}

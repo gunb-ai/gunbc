@@ -667,3 +667,26 @@ alias BODY. Combined with the in-file fixture contract (multi_module_compile_fix
 no corpus roots, and no filesystem read") and the empty .dag parse-lens grep, no executing compile route
 observes the fact this claim guards => the text check over the declared line is the only instrument that
 sees it. NAME binding does come from that file (I1); BODY binding does not (I2).
+
+## 2026-10-20T23:1x dispatch L: §6-lens measurement -- does decl_facts carry the ALIAS rhs? (review 83623 finding 1)
+My earlier "no .dag parse lens exists" was WRONG (crude grep; the pool has decl_facts/decl_facts_at/
+import_resolution_facts). The review says the resolver can answer "which declaration List resolves to"
+directly. Source says: concept_decl_node (coproduct_reflection.rs:596-606) marshals Disj->disj,
+Conj->variant-arm-target, EVERYTHING ELSE (NoConnective, Arrow) -> unit_type_node = a Conj node with
+ZERO children. An alias `type X = C` is a NoConnective item. PRE-REGISTERED PREDICTIONS:
+- L1 (positive controls, must PASS or the harness is broken): a fixture RECORD
+  (type AliasProbeRecord { first: String }) marshals to a fact whose node.children is NONEMPTY, and a
+  fixture COPRODUCT (AliasProbeChoice = A | B) likewise. If these fail, decl_facts marshaling is broken
+  and NOTHING is concluded about the alias arm.
+- L2 (the measurement): fixture alias `type AliasProbeList<element> = FreeMonoid<element>` ->
+  fact.node.children is EMPTY (== unit). PREDICTED PASS = the lens is blind to the alias body.
+- L3 (the guarded fact itself): decl_facts_at(pool_roots: ["dag"], qn: "std.types.List") resolves
+  (facts nonempty) AND its node.children is EMPTY. PREDICTED PASS = no .dag-callable read of the Node
+  tree can see FreeMonoid on the List declaration => the §6 route "costs substrate edits" (a new host
+  callable) => text check kept, review answered by execution.
+- L4: if L2 or L3 flips (children nonempty / carries FreeMonoid), the lens route IS available: I adopt
+  it in the claim and the review's finding 1 stands. Report which child name appears.
+Fixture: dag/test/fixture/alias_lens_probe/specimens.dag; witness:
+dag/test/claim/alias_lens_probe_witness.dag (both on instruments-scratch).
+Sentinels (added): child-count reads return -1 (fact missing), -2 (ambiguous), >=0 (measured).
+"fact resolves" members and "children empty" members are SEPARATE, so missing != blind != carries.
