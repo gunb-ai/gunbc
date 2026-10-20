@@ -738,3 +738,29 @@ test fn the_join_requires_the_fact_to_name_the_path_and_the_module_to_be_emitted
     && !(subject_path_is_emitted(path: join_fixture_path, emitted: emitted, facts: other_module))
     && !(subject_path_is_emitted(path: join_fixture_path, emitted: [], facts: facts))
 }
+
+// ---------------------------------------------------------------------------
+// THE CITATION LIST IS THE WHOLE SET. The resolution claims ask the index about `outside_roots_citations`;
+// if an entry were dropped from that list, every citation still in it would resolve and the census would
+// keep PRINTING four authorities while CHECKING three -- a silent shrink of exactly the kind review 83419
+// is about. The number below is not a tree measurement: `OutsideRootsCause` is a declared product of exactly
+// four fields, plus the scan-dir authority, so five is a property of the type and a rename cannot move it.
+// ---------------------------------------------------------------------------
+
+test fn the_citation_list_covers_every_authority_the_cause_carries() -> Bool {
+  let printed = list_map(xs: outside_roots_citations, f: fn(ref) { declaration_ref_display(ref: ref) })
+  length(xs: printed) == 5
+    && all(xs: [
+         declaration_ref_display(ref: outside_roots_cause.tracked_by),
+         declaration_ref_display(ref: outside_roots_cause.note_subject),
+         declaration_ref_display(ref: outside_roots_cause.emitted_by),
+         declaration_ref_display(ref: outside_roots_cause.layout_authority),
+         declaration_ref_display(ref: scan_dir_authority)
+       ], predicate: fn(citation) {
+         any(xs: printed, predicate: fn(p) { p == citation })
+       })
+    && all(xs: printed, predicate: fn(p) {
+         string_contains(s: p, pattern: ".")
+           && !string_contains(s: p, pattern: " ")
+       })
+}
