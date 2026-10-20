@@ -52,8 +52,11 @@ for side in CONTROL MUTANT; do
       alias_seam_ab_test::alias_seam_a_b > "$D/$side.log" 2>&1
   rc=$?
   echo "${side}_TEST_RC=$rc log_bytes=$(wc -c < "$D/$side.log")"
+  # NO head -N here. An earlier revision cut this band at 70 lines and the caller then read a
+  # half-run as a result: the measurement lines must survive the transport intact, or the run is
+  # unreadable rather than red. Panic lines are printed whole (their MESSAGE is the finding).
   echo "----BEGIN $side----"
-  grep -E "SEAM |test result:|panicked|error\[|error:" "$D/$side.log" | head -70
+  grep -E "^SEAM |test result:|panicked|^error" "$D/$side.log"
   echo "-----END $side----"
   # An absence is not a pass: the row must have produced SEAM lines.
   SEAMS=$(grep -c "^SEAM " "$D/$side.log" || true)
