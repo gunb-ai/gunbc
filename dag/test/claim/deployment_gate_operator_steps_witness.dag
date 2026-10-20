@@ -644,8 +644,8 @@ fn standing_at(
       ),
     ),
     boundary: standing_boundary_for(environment: environment, identity_repo: identity_repo),
-    attempt: attempt,
-    observed_at: observed_at,
+    attempt: attempt as AttemptIdentity,
+    observed_at: observed_at as Timestamp,
   )
 }
 
