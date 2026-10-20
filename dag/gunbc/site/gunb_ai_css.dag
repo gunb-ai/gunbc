@@ -1151,7 +1151,7 @@ data footer_entries: List<SheetEntry> = [
   ]),
 ]
 
-data media_comment_1: List<String> = ["╔══ MEDIA QUERIES ═════════════════════════════════════════════════"]
+data media_comment_0: List<String> = ["╔══ MEDIA QUERIES ═════════════════════════════════════════════════"]
 data media_entries: List<SheetEntry> = [
   EntryComment { lines: media_comment_0 },
   EntryGap { blank_lines: 1 },
