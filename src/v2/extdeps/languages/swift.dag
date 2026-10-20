@@ -81,6 +81,7 @@ import v2.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v2.std.compilers.target_model {
+  PrimitiveRealizationsUnwired,
   ProducedDeclWired, ProducedDeclSupport, ProducedDeclRenderRows, ProducedSignatureFixed, ProducedSignatureDeclName,
   ProducedSignatureParams, ProducedSignatureReturnType, ProducedParamName, ProducedParamFixed, ProducedParamType,
   StatementSequenced, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
@@ -925,6 +926,7 @@ fn swift_produced_decl_support() -> ProducedDeclSupport {
 
 fn swift_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: swift_produced_decl_support(),
     bundle: swift_target_model_node(),
     lex: swift_emit_lex(),
