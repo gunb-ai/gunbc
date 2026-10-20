@@ -1370,15 +1370,22 @@ fn floor_expected_red_chunk_belt_recapture_wet_red() -> List<String> {
 
 // WHO EXECUTS THE ROWS THAT WERE DELETED, said because it is a real consequence of dropping a row
 // from this roster rather than from a schedule. The four identities removed by this PR are absent
-// from the wet-claim schedule (`gunbc.workflow.local_repo_wet_terminal` `local_repo_wet_schedule`)
-// and from the CI layer roots, and DESIGN's "What a green `v2-bootstrap` does not say" states that
-// nothing on the required path evaluates a witness. The lane that was running them was THIS roster
-// — `//gunbc/instruments:known-red-derivation` dispatches every enrolled identity and reads back a
-// verdict line. After this PR they are still ordinary discovered claims: all four files sit under
-// `gunbc.ci.ci_layer_roots` `witness_discovery_scan_dirs`, so discovery still finds and reports
-// them. What is lost is not coverage but the STANDING: a future failure of one of these four can no
-// longer be classified as a held known-red or a stale enrolment, it lands in the instrument's
-// unaccounted population, and the instrument naming it there is the tripwire for re-enrolment.
+// from the wet-claim schedule (`v2.workflow.local_repo_wet_terminal` `local_repo_wet_schedule`), and
+// DESIGN's "What a green `v2-bootstrap` does not say" states that nothing on the required path
+// evaluates a witness. The lane that was running them was THIS roster — the instrument
+// `//gunbc/instruments:known-red-derivation` dispatches every identity `known_red_subjects()` owes,
+// and that population is the union of the wet-scheduled identities and the identities THIS roster
+// enrols as ExpectedRed. So a deleted row leaves the instrument's dispatch set entirely: an identity
+// never dispatched cannot enter the reconciliation, and cannot appear as a held known-red, a stale
+// enrolment, or an unaccounted red.
+// STATED PLAINLY, BECAUSE THE ALTERNATIVE IS A PROMISE NOTHING KEEPS: after this PR these four
+// remain ordinary DISCOVERED claims (all four files sit under `gunbc.ci.ci_layer_roots`
+// `witness_discovery_scan_dirs`, so discovery still finds them and they stay directly runnable), the
+// known-red instrument no longer SELECTS them, and NO AUTOMATIC FUTURE-FAILURE TRIPWIRE EXISTS for
+// them. Required execution of this population stays an outstanding capability under the existing
+// authority `gunbc.rung_drop.v1_required_lanes_withdrawn`, whose restoration trigger is a binary
+// built from an emission of v2 judging the population on the required path with a discriminating red;
+// that row is where the obligation lives, and no duplicate row is added here for these four.
 fn floor_expected_red_chunks() -> List<List<String>> {
 Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_fmt_gate_line(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Cons { head: floor_expected_red_chunk_cursor_dispatch_credential_wet_red(), tail: Cons { head: floor_expected_red_chunk_pair_serving_authority_wet_red(), tail: Cons { head: floor_expected_red_chunk_belt_recapture_wet_red(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } 
 }
