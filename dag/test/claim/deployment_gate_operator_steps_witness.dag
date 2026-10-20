@@ -1057,17 +1057,17 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
          })
 }
 
-// THE PROTECTION READ AS A VALUE THIS FILE CANNOT WRITE. EnvironmentProtectionObservation is
-// sole_constructor over a GitHubEnvironmentProtectionSettings that carries its OWN name, which is what
-// makes "healthy, but for a DIFFERENT environment" expressible -- and refusable. protection_read below
-// stays as the settings-only helper; this is the only way to hold an observation.
+// THE PROTECTION READ AS A VALUE THIS FILE CANNOT WRITE. EnvironmentProtectionRead is produced only by
+// observe_environment_protection -- sole_constructor over a GitHubEnvironmentProtectionSettings that
+// carries its OWN name, which is what makes "healthy, but for a DIFFERENT environment" expressible -- and
+// refusable. protection_read below stays as the settings-only helper; this is the only way to hold a read.
 fn protection_for(
   owner: NonEmptyStr,
   repo: NonEmptyStr,
   environment: NonEmptyStr,
   reviewer_present: Bool,
   main_only: Bool
-) -> EnvironmentProtectionObservation
+) -> EnvironmentProtectionRead
   admit_callers: [
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -1117,14 +1117,13 @@ fn protection_for(
 
 // A PROTECTION READ WHOSE RESPONSE NAMES A DIFFERENT ENVIRONMENT THAN WAS ASKED FOR (round-6 blocker 1a).
 // The upstream response carries its own `name`, so "a read of the sibling" is expressible -- and therefore
-// refusable. Today the mint copies the REQUESTED label beside `settings` and never reads `settings.name`,
-// so this seals successfully and the join then agrees with it: one mismatched response becomes a licence to
-// weaken a boundary it was never a read of. Asserted with the wildcard arm so the claim is red today rather
-// than refusing the index; GREEN names the arm it must be.
+// refusable. It is admitted, not privileged: it goes through the same mint as every other read, so whatever
+// the mint learns to refuse it refuses here too. GREEN makes this return the mint's own refusal arm; the
+// claim asserts the refusal through the wildcard, so this fixture is the door and not the argument.
 fn mismatched_protection_read(
   requested: NonEmptyStr,
   named_in_response: NonEmptyStr,
-) -> EnvironmentProtectionObservation {
+) -> EnvironmentProtectionRead {
   observe_environment_protection(
     owner: gate_owner,
     repo: gate_repo,
@@ -2387,8 +2386,24 @@ test fn a_protection_read_naming_another_environment_never_becomes_a_standing() 
     ProtectionJoinEstablished { protection: p } => p.environment_name == gate_env
     ProtectionJoinRefused { because: _ } => false
   })
-    // THE MUTATION: same owner, same repo, same REQUESTED environment -- but the response body is the
-    // sibling's. The pair must never reach a standing at all.
+    // THE MUTATION, AT THE MINT ITSELF: the read's own answer, before anyone joins it to anything. A
+    // response whose body names the sibling is refused WHERE IT IS READ, and the refusal names both sides
+    // -- which is the difference between "the operator asked for the wrong environment" (a caller bug) and
+    // "the response is mislabelled upstream" (an upstream bug). Asserted here rather than only at the join
+    // because the join is one of the two doors this read can travel through; the mint is the door that has
+    // to close, and this line is what says it did.
+    && (match mismatched_protection_read(
+      requested: gate_env,
+      named_in_response: sibling_env,
+    ) {
+      ProtectionReadRefused { because: because } =>
+        because.requested_environment == gate_env
+          && because.named_in_response == (sibling_env as String)
+      ProtectionReadEstablished { observation: _ } => false
+    })
+    // THE JOIN REFUSES TOO: same owner, same repo, same REQUESTED environment -- but the response body is
+    // the sibling's. The pair must never reach a standing at all, and the join is the sole door to one, so
+    // "refused before any standing exists" is exactly this arm.
     && (match join_protection_to_ownership(
       protection: mismatched_protection_read(
         requested: gate_env,
@@ -2404,10 +2419,6 @@ test fn a_protection_read_naming_another_environment_never_becomes_a_standing() 
       ProtectionJoinRefused { because: _ } => true
       ProtectionJoinEstablished { protection: _ } => false
     })
-    // WHY THE JOIN IS THE RIGHT PLACE TO ASSERT THIS TODAY: the mint has no way to say "this response is
-    // not about the environment I asked for" -- it returns one record and no refusal, so the pair reaches
-    // the join and the join, which compares only repo and environment_name, agrees with a lie it was told.
-    // The model change adds that refusal to the mint; the claim here is the one that is red either way.
 }
 
 test fn a_same_named_repository_in_another_account_is_a_different_subject() -> Bool {

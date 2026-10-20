@@ -359,9 +359,9 @@ data forged_instant: ObservedInstant = ObservedInstant { instant: forged_instant
 // holding a valid ProtectionOwnershipJoin could call the HELPER and obtain a standing, bypassing the
 // confined mint and the clock door together. A mint with an open proxy beside it is a mint with the confine
 // painted on the wall. The instant here is a PARAMETER again: what is under test is whether a stranger can
-// reach the helper at all, not whether it can write a time. (The `.instant` projection is the RED phase's
-// concession: today the helper still takes a raw Timestamp, which is itself the defect. GREEN replaces it
-// with the sealed value and this line loses the projection.)
+// reach the helper at all, not whether it can write a time. GREEN took the RED phase's `.instant`
+// projection out: the helper now takes the sealed value, so a caller that cannot author one cannot call it
+// even if it could reach it -- and it cannot, which is what this function and its census claim are for.
 fn forge_the_standing_via_the_helper(
   joined: ProtectionOwnershipJoin,
   boundary: DeploymentGateBoundary,
@@ -372,6 +372,6 @@ fn forge_the_standing_via_the_helper(
     joined: joined,
     boundary: boundary,
     attempt: attempt,
-    observed_at: observed_at.instant,
+    observed_at: observed_at,
   )
 }
