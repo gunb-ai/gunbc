@@ -704,19 +704,43 @@ pub fn symbol_index_insert(
     qualified_name: String,
     resolved: Rc<Node>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: v1_rt::rc_map_insert(
+    {
+        let __rb_0_0 = v1_rt::rc_map_insert(
             index.entries.clone(),
             qualified_name.clone(),
             resolved.clone(),
-        ),
-        global_bare: index.global_bare.clone(),
-        services: index.services.clone(),
-        transparent_alias_rep: index.transparent_alias_rep.clone(),
-        type_head_exposures: index.type_head_exposures.clone(),
-        file_modules: index.file_modules.clone(),
-        module_named_imports: index.module_named_imports.clone(),
-    })
+        );
+        let __rb_1_0 = index.global_bare.clone();
+        let __rb_2_0 = index.services.clone();
+        let __rb_3_0 = index.transparent_alias_rep.clone();
+        let __rb_4_0 = index.type_head_exposures.clone();
+        let __rb_5_0 = index.file_modules.clone();
+        let __rb_6_0 = index.module_named_imports.clone();
+        let mut __rb_h = index;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.entries = __rb_0_0;
+                __rb_r.global_bare = __rb_1_0;
+                __rb_r.services = __rb_2_0;
+                __rb_r.transparent_alias_rep = __rb_3_0;
+                __rb_r.type_head_exposures = __rb_4_0;
+                __rb_r.file_modules = __rb_5_0;
+                __rb_r.module_named_imports = __rb_6_0;
+            }
+            None => {
+                __rb_h = Rc::new(SymbolIndex {
+                    entries: __rb_0_0,
+                    global_bare: __rb_1_0,
+                    services: __rb_2_0,
+                    transparent_alias_rep: __rb_3_0,
+                    type_head_exposures: __rb_4_0,
+                    file_modules: __rb_5_0,
+                    module_named_imports: __rb_6_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn symbol_index_insert_decl(
@@ -724,26 +748,50 @@ pub fn symbol_index_insert_decl(
     module_path: String,
     binding: Rc<TypeBinding>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: v1_rt::rc_map_insert(
+    {
+        let __rb_0_0 = v1_rt::rc_map_insert(
             index.entries.clone(),
             v1_rt::concat(
                 v1_rt::concat(module_path.clone(), ".".to_string()),
                 binding.name.clone(),
             ),
             binding.resolved.clone(),
-        ),
-        global_bare: symbol_index_track_global_bare(
+        );
+        let __rb_1_0 = symbol_index_track_global_bare(
             index.global_bare.clone(),
             module_path.clone(),
             binding.clone(),
-        ),
-        services: index.services.clone(),
-        transparent_alias_rep: index.transparent_alias_rep.clone(),
-        type_head_exposures: index.type_head_exposures.clone(),
-        file_modules: index.file_modules.clone(),
-        module_named_imports: index.module_named_imports.clone(),
-    })
+        );
+        let __rb_2_0 = index.services.clone();
+        let __rb_3_0 = index.transparent_alias_rep.clone();
+        let __rb_4_0 = index.type_head_exposures.clone();
+        let __rb_5_0 = index.file_modules.clone();
+        let __rb_6_0 = index.module_named_imports.clone();
+        let mut __rb_h = index;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.entries = __rb_0_0;
+                __rb_r.global_bare = __rb_1_0;
+                __rb_r.services = __rb_2_0;
+                __rb_r.transparent_alias_rep = __rb_3_0;
+                __rb_r.type_head_exposures = __rb_4_0;
+                __rb_r.file_modules = __rb_5_0;
+                __rb_r.module_named_imports = __rb_6_0;
+            }
+            None => {
+                __rb_h = Rc::new(SymbolIndex {
+                    entries: __rb_0_0,
+                    global_bare: __rb_1_0,
+                    services: __rb_2_0,
+                    transparent_alias_rep: __rb_3_0,
+                    type_head_exposures: __rb_4_0,
+                    file_modules: __rb_5_0,
+                    module_named_imports: __rb_6_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn symbol_index_insert_service(
@@ -752,22 +800,46 @@ pub fn symbol_index_insert_service(
     module_path: String,
     item: Rc<Node>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: index.entries.clone(),
-        global_bare: index.global_bare.clone(),
-        services: v1_rt::rc_map_insert(
+    {
+        let __rb_0_0 = index.entries.clone();
+        let __rb_1_0 = index.global_bare.clone();
+        let __rb_2_0 = v1_rt::rc_map_insert(
             index.services.clone(),
             name.clone(),
             Rc::new(ServiceCensusEntry {
                 module_path: module_path.clone(),
                 item: item.clone(),
             }),
-        ),
-        transparent_alias_rep: index.transparent_alias_rep.clone(),
-        type_head_exposures: index.type_head_exposures.clone(),
-        file_modules: index.file_modules.clone(),
-        module_named_imports: index.module_named_imports.clone(),
-    })
+        );
+        let __rb_3_0 = index.transparent_alias_rep.clone();
+        let __rb_4_0 = index.type_head_exposures.clone();
+        let __rb_5_0 = index.file_modules.clone();
+        let __rb_6_0 = index.module_named_imports.clone();
+        let mut __rb_h = index;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.entries = __rb_0_0;
+                __rb_r.global_bare = __rb_1_0;
+                __rb_r.services = __rb_2_0;
+                __rb_r.transparent_alias_rep = __rb_3_0;
+                __rb_r.type_head_exposures = __rb_4_0;
+                __rb_r.file_modules = __rb_5_0;
+                __rb_r.module_named_imports = __rb_6_0;
+            }
+            None => {
+                __rb_h = Rc::new(SymbolIndex {
+                    entries: __rb_0_0,
+                    global_bare: __rb_1_0,
+                    services: __rb_2_0,
+                    transparent_alias_rep: __rb_3_0,
+                    type_head_exposures: __rb_4_0,
+                    file_modules: __rb_5_0,
+                    module_named_imports: __rb_6_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn empty_scope() -> Rc<Scope> {
@@ -781,9 +853,20 @@ pub fn scope_lookup(scope: Rc<Scope>, name: String) -> Option<Rc<ScopeBinding>> 
 }
 
 pub fn scope_push(scope: Rc<Scope>, binding: Rc<ScopeBinding>) -> Rc<Scope> {
-    Rc::new(Scope {
-        locals: v1_rt::rc_map_insert(scope.locals.clone(), binding.name.clone(), binding.clone()),
-    })
+    {
+        let __rb_0_0 =
+            v1_rt::rc_map_insert(scope.locals.clone(), binding.name.clone(), binding.clone());
+        let mut __rb_h = scope;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.locals = __rb_0_0;
+            }
+            None => {
+                __rb_h = Rc::new(Scope { locals: __rb_0_0 });
+            }
+        }
+        __rb_h
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1206,18 +1289,32 @@ pub fn merge_type_env_cache_guarded(
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
-    Rc::new(TypeEnvCache {
-        deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
-        str_bindings: v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone()),
-        cycle_set_str: v1_rt::rc_map_merge(
-            base.cycle_set_str.clone(),
-            overlay.cycle_set_str.clone(),
-        ),
-        variant_locals: v1_rt::rc_map_merge(
-            base.variant_locals.clone(),
-            overlay.variant_locals.clone(),
-        ),
-    })
+    {
+        let __rb_0_0 = v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone());
+        let __rb_1_0 = v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone());
+        let __rb_2_0 =
+            v1_rt::rc_map_merge(base.cycle_set_str.clone(), overlay.cycle_set_str.clone());
+        let __rb_3_0 =
+            v1_rt::rc_map_merge(base.variant_locals.clone(), overlay.variant_locals.clone());
+        let mut __rb_h = overlay;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.deps_map = __rb_0_0;
+                __rb_r.str_bindings = __rb_1_0;
+                __rb_r.cycle_set_str = __rb_2_0;
+                __rb_r.variant_locals = __rb_3_0;
+            }
+            None => {
+                __rb_h = Rc::new(TypeEnvCache {
+                    deps_map: __rb_0_0,
+                    str_bindings: __rb_1_0,
+                    cycle_set_str: __rb_2_0,
+                    variant_locals: __rb_3_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
@@ -2968,9 +3065,6 @@ pub enum TypeReferenceDeclarationReading {
     TypeReferenceIsTypeVariable {
         id: String,
     },
-    TypeReferenceUninstantiatedTypeParameter {
-        name: String,
-    },
     TypeReferenceUnidentified {
         authored: Rc<TypeNodeUnidentifiedCause>,
         resolved: Option<Rc<TypeNodeUnidentifiedCause>>,
@@ -3033,13 +3127,6 @@ pub fn type_reference_declaration_reading(
     }
 }
 
-pub fn is_type_variable_name(name: String) -> bool {
-    (((((name.clone() == "T".to_string()) || (name.clone() == "K".to_string()))
-        || (name.clone() == "V".to_string()))
-        || (name.clone() == "MappedElement".to_string()))
-        || (name.clone() == "FoldAccumulator".to_string()))
-}
-
 pub fn kernel_or_unidentified(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3058,23 +3145,10 @@ pub fn kernel_or_unidentified(
                         name: nm.clone(),
                     })
                 } else {
-                    if (is_type_variable_name(nm.clone()) || is_type_variable_name(n.name.clone()))
-                    {
-                        Rc::new(TypeReferenceDeclarationReading::TypeReferenceUninstantiatedTypeParameter {
-    name: nm.clone(),
-})
-                    } else {
-                        if node_is_kernel_mint(n.clone()) {
-                            Rc::new(TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
-                                name: nm.clone(),
-                            })
-                        } else {
-                            Rc::new(TypeReferenceDeclarationReading::TypeReferenceUnidentified {
-                                authored: authored.clone(),
-                                resolved: resolved.clone(),
-                            })
-                        }
-                    }
+                    Rc::new(TypeReferenceDeclarationReading::TypeReferenceUnidentified {
+                        authored: authored.clone(),
+                        resolved: resolved.clone(),
+                    })
                 }
             }
         }
@@ -3232,10 +3306,6 @@ pub fn text_element_is_char(n: Rc<Node>, env: Rc<TypeEnv>) -> TextRepresentation
                 TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => {
                     TextRepresentation::NotText
                 }
-                TypeReferenceDeclarationReading::TypeReferenceUninstantiatedTypeParameter {
-                    name: _,
-                    ..
-                } => TextRepresentation::NotText,
                 TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => {
                     TextRepresentation::TextRepresentationUnidentified
                 }
@@ -3309,74 +3379,140 @@ pub fn text_representation_by_identity_bounded(
                             }
                         }
                     } else {
-                        match (*type_reference_declaration_reading(n.clone(), env.source_indices.clone(), env.clone())).clone() {
-    TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => { if kernel_other.clone() {
-                            break TextRepresentation::NotText;
-} else {
-                            break TextRepresentation::TextRepresentationUnidentified;
-} },
-    TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: k, .. } => { if (k.clone() == "String".to_string()) {
-                            break TextRepresentation::HostText;
-} else {
-                            break TextRepresentation::NotText;
-} },
-    TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => { break TextRepresentation::NotText; },
-    TypeReferenceDeclarationReading::TypeReferenceUninstantiatedTypeParameter { name: _, .. } => { break TextRepresentation::NotText; },
-    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: d, .. } => { if crate::std_decl_ref::declaration_ref_eq(d.clone(), text_identity_std_algebra_free_monoid()) {
-                            break text_element_is_char(n.clone(), env.clone());
-} else {
-                            let key = crate::std_decl_ref::declaration_ref_display_key(d.clone());
-if { let mut __found = false; for v in visited.iter().cloned() { if (v.clone() == key.clone()) { __found = true; break; } } __found } {
-                                break TextRepresentation::TextRepresentationUnidentified;
-} else {
-                                match declaration_binding_of_ref(d.clone(), env.clone()) {
-    std::option::Option::None => { break TextRepresentation::TextRepresentationUnidentified; },
-    Some(b) => { let decl = b.resolved.clone();
-let is_alias = ((decl.connective.clone() == Connective::NoConnective) && ((decl.children.clone().len() as i64) == 0));
-if is_where_refinement_node(decl.clone()) {
-                                    {
-                                        let __tco_0 = decl.clone();
-let __tco_1 = env;
-let __tco_2 = v1_rt::int_sub(fuel, 1);
-let __tco_3 = v1_rt::concat(visited, Rc::new(vec![key.clone()]));
-__tco_loop_n = __tco_0;
-__tco_loop_env = __tco_1;
-__tco_loop_fuel = __tco_2;
-__tco_loop_visited = __tco_3;
-continue;
-}
-} else {
-                                    if !is_alias.clone() {
-                                        break TextRepresentation::NotText;
-} else {
-                                        match decl.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: target, .. }) => { let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.source_indices.clone(), env.clone())).clone() {
+                        match (*type_reference_declaration_reading(
+                            n.clone(),
+                            env.source_indices.clone(),
+                            env.clone(),
+                        ))
+                        .clone()
+                        {
+                            TypeReferenceDeclarationReading::TypeReferenceUnidentified {
+                                ..
+                            } => {
+                                if kernel_other.clone() {
+                                    break TextRepresentation::NotText;
+                                } else {
+                                    break TextRepresentation::TextRepresentationUnidentified;
+                                }
+                            }
+                            TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
+                                name: k,
+                                ..
+                            } => {
+                                if (k.clone() == "String".to_string()) {
+                                    break TextRepresentation::HostText;
+                                } else {
+                                    break TextRepresentation::NotText;
+                                }
+                            }
+                            TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable {
+                                id: _,
+                                ..
+                            } => {
+                                break TextRepresentation::NotText;
+                            }
+                            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                                declaration: d,
+                                ..
+                            } => {
+                                if crate::std_decl_ref::declaration_ref_eq(
+                                    d.clone(),
+                                    text_identity_std_algebra_free_monoid(),
+                                ) {
+                                    break text_element_is_char(n.clone(), env.clone());
+                                } else {
+                                    let key =
+                                        crate::std_decl_ref::declaration_ref_display_key(d.clone());
+                                    if {
+                                        let mut __found = false;
+                                        for v in visited.iter().cloned() {
+                                            if (v.clone() == key.clone()) {
+                                                __found = true;
+                                                break;
+                                            }
+                                        }
+                                        __found
+                                    } {
+                                        break TextRepresentation::TextRepresentationUnidentified;
+                                    } else {
+                                        match declaration_binding_of_ref(d.clone(), env.clone()) {
+                                            std::option::Option::None => {
+                                                break TextRepresentation::TextRepresentationUnidentified;
+                                            }
+                                            Some(b) => {
+                                                let decl = b.resolved.clone();
+                                                let is_alias = ((decl.connective.clone()
+                                                    == Connective::NoConnective)
+                                                    && ((decl.children.clone().len() as i64) == 0));
+                                                if is_where_refinement_node(decl.clone()) {
+                                                    {
+                                                        let __tco_0 = decl.clone();
+                                                        let __tco_1 = env;
+                                                        let __tco_2 = v1_rt::int_sub(fuel, 1);
+                                                        let __tco_3 = v1_rt::concat(
+                                                            visited,
+                                                            Rc::new(vec![key.clone()]),
+                                                        );
+                                                        __tco_loop_n = __tco_0;
+                                                        __tco_loop_env = __tco_1;
+                                                        __tco_loop_fuel = __tco_2;
+                                                        __tco_loop_visited = __tco_3;
+                                                        continue;
+                                                    }
+                                                } else {
+                                                    if !is_alias.clone() {
+                                                        break TextRepresentation::NotText;
+                                                    } else {
+                                                        match decl
+                                                            .inferred
+                                                            .clone()
+                                                            .as_deref()
+                                                            .cloned()
+                                                        {
+                                                            Some(InferredNode::Resolved {
+                                                                node: target,
+                                                                ..
+                                                            }) => {
+                                                                let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.source_indices.clone(), env.clone())).clone() {
     TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: t, .. } => crate::std_decl_ref::declaration_ref_eq(t.clone(), d.clone()),
     _ => false,
 };
-if target_is_itself.clone() {
-                                            break TextRepresentation::NotText;
-} else {
-                                            {
-                                                let __tco_0 = target.clone();
-let __tco_1 = env;
-let __tco_2 = v1_rt::int_sub(fuel, 1);
-let __tco_3 = v1_rt::concat(visited, Rc::new(vec![key.clone()]));
-__tco_loop_n = __tco_0;
-__tco_loop_env = __tco_1;
-__tco_loop_fuel = __tco_2;
-__tco_loop_visited = __tco_3;
-continue;
-}
-} },
-    _ => { break TextRepresentation::NotText; },
-}
-}
-} },
-}
-}
-} },
-}
+                                                                if target_is_itself.clone() {
+                                                                    break TextRepresentation::NotText;
+                                                                } else {
+                                                                    {
+                                                                        let __tco_0 =
+                                                                            target.clone();
+                                                                        let __tco_1 = env;
+                                                                        let __tco_2 =
+                                                                            v1_rt::int_sub(fuel, 1);
+                                                                        let __tco_3 = v1_rt::concat(
+                                                                            visited,
+                                                                            Rc::new(vec![
+                                                                                key.clone()
+                                                                            ]),
+                                                                        );
+                                                                        __tco_loop_n = __tco_0;
+                                                                        __tco_loop_env = __tco_1;
+                                                                        __tco_loop_fuel = __tco_2;
+                                                                        __tco_loop_visited =
+                                                                            __tco_3;
+                                                                        continue;
+                                                                    }
+                                                                }
+                                                            }
+                                                            _ => {
+                                                                break TextRepresentation::NotText;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

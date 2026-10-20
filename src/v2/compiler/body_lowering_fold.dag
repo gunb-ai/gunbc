@@ -19,12 +19,14 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape }
 import v2.compiler.fold_lowering {
-  CallbackAllByAnd,
-  CallbackAnyByOr,
-  CallbackFiltersByCondition,
   CallbackCallOperands,
-  CallbackMapsToCons,
-  CallbackRealization,
+  CallbackStepRow,
+  InitBoolLiteral,
+  InitEmptyCarrier,
+  StepAccBoolJoined,
+  StepConsOfCallbackResult,
+  StepKeepsMemberUnderCondition,
+  callback_step_row,
   FoldCallCallbackLowered,
   FoldCallLowered,
   FunctionValueBinder,
@@ -2347,6 +2349,24 @@ fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
+// A GENERIC ARGUMENT THAT IS A NATURAL LITERAL KEEPS ITS VALUE: `MachineWidth<8>` lowers its `8` to the
+// int-literal atom with its magnitude edge (the shape a value-position literal has), never a childless
+// atom -- the value is the argument, and a bare token class cannot be read back (A0-2 literal admission).
+fn body_lower_type_int_literal_argument_optional(node: Node) -> Optional<Node> {
+  match body_lower_int_literal_with_magnitude_optional(node: node) {
+    Present { value: literal } => optional_present(value: literal)
+    Absent =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: sym } =>
+          match dag_int_literal_node_from_lexeme(lexeme: symbol_lexeme(sym: sym), occurrence_id: node.occurrence_id) {
+            Accepted { value: literal, diagnostics: _ } => optional_present(value: literal)
+            Rejected { diagnostics: _ } => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+  }
+}
+
 fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
@@ -2373,6 +2393,9 @@ fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
         Absent
       }
     Absent =>
+      match body_lower_type_int_literal_argument_optional(node: node) {
+        Present { value: literal } => Present { value: literal }
+        Absent =>
       match dag_binding_branded_atom_identity(node: node) {
         Present { value: binding } =>
           Present { value: body_lower_type_atom_node(sym: binding, source: node) }
@@ -2400,6 +2423,7 @@ fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
                   })
               }
           }
+      }
       }
   }
 }
@@ -3677,29 +3701,33 @@ fn body_lower_callback_operator(token: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: token } }, children: [])
 }
 
-fn body_lower_callback_init(realization: CallbackRealization, source: Node) -> Node {
-  match realization {
-    CallbackMapsToCons => body_lower_algebra_constructor_reference(name: ^Empty, source: source)
-    CallbackAllByAnd => body_lower_param_ref_atom(source: source, identity: ^dag_token_kw_true)
-    CallbackFiltersByCondition => body_lower_algebra_constructor_reference(name: ^Empty, source: source)
-    CallbackAnyByOr => body_lower_param_ref_atom(source: source, identity: ^dag_token_kw_false)
+fn body_lower_callback_init(row: CallbackStepRow, source: Node) -> Node {
+  match row.init {
+    InitEmptyCarrier => body_lower_algebra_constructor_reference(name: ^Empty, source: source)
+    InitBoolLiteral { value: value } => body_lower_param_ref_atom(source: source, identity: value)
   }
 }
 
 // filter's step names the MEMBER as well as the accumulator: the member is the callback's own authored
 // binder, so a reference to it is the same lexical reference the callback body already makes.
-fn body_lower_callback_step_body(realization: CallbackRealization, accumulator: Symbol, member: Symbol, body: Node, source: Node) -> Node {
+// THE BODY IS CONSTRUCTED FROM THE ROW'S SHAPE, one arm per shape (v2.compiler.fold_lowering
+// callback_step_row): each arm builds the body its shape is, so there is no free choice left between
+// what the step does and the direction callback_step_shape_iteration_direction reads off the same shape.
+// The old match was one arm per realization, a second hand-written sibling to the direction reader over
+// the same sum; the contradiction had no constructor, because the direction is now read from the shape
+// and never spelled beside it (DESIGN section 5: the row carries the shape, the direction derives from
+// it, so the contradicted pair has no constructor). A realization with no row never reaches
+// here: the assembly refuses it first (no silent default, DESIGN section 5).
+fn body_lower_callback_step_body(row: CallbackStepRow, accumulator: Symbol, member: Symbol, body: Node, source: Node) -> Node {
   let acc_ref = body_lower_param_ref_atom(source: source, identity: accumulator)
-  match realization {
-    CallbackMapsToCons => body_lower_callback_cons(head: body, tail: acc_ref, source: source)
-    CallbackAllByAnd => lower_binary_infix(left: acc_ref, operator: body_lower_callback_operator(token: ^dag_token_and_and), right: body)
-    CallbackFiltersByCondition =>
-      lower_branch(
-        condition: body,
-        then_arm: body_lower_callback_cons(head: body_lower_param_ref_atom(source: source, identity: member), tail: acc_ref, source: source),
-        else_arm: body_lower_param_ref_atom(source: source, identity: accumulator)
-      )
-    CallbackAnyByOr => lower_binary_infix(left: acc_ref, operator: body_lower_callback_operator(token: ^dag_token_or_or), right: body)
+  match row.step_shape {
+    StepConsOfCallbackResult => body_lower_callback_cons(head: body, tail: acc_ref, source: source)
+    StepKeepsMemberUnderCondition => lower_branch(
+      condition: body,
+      then_arm: body_lower_callback_cons(head: body_lower_param_ref_atom(source: source, identity: member), tail: acc_ref, source: source),
+      else_arm: body_lower_param_ref_atom(source: source, identity: accumulator)
+    )
+    StepAccBoolJoined { operator: operator } => lower_binary_infix(left: acc_ref, operator: body_lower_callback_operator(token: operator), right: body)
   }
 }
 
@@ -3735,11 +3763,18 @@ fn body_lower_callback_encoding_from(operands: CallbackCallOperands, collection:
                           name: accumulator,
                           at: node_synthetic(kind: TypeNode { connective: Atom { identity: accumulator } }, children: [])
                         }
+                        // THE STEP ROW IS RESOLVED ONCE AND EVERYTHING IS BUILT FROM IT -- the init, the
+                        // step body, and (through it) the direction the encoding carries. The row is TOTAL
+                        // (v2.compiler.fold_lowering callback_step_row: a realization without a row is
+                        // refused at compile time by infer_match_non_exhaustive), so there is no absent
+                        // row to refuse at the assembly and no default to fall through to
+                        // (DESIGN section 5: the total match leaves no absent case to default).
+                        let row = callback_step_row(r: operands.realization)
                         match body_lower_function_value_arrow(
                           shell: callback_node,
                           binders: [accumulator_binder, member],
                           codomain: CodomainElided,
-                          body: body_lower_callback_step_body(realization: operands.realization, accumulator: accumulator, member: member.name, body: body, source: callback_node)
+                          body: body_lower_callback_step_body(row: row, accumulator: accumulator, member: member.name, body: body, source: callback_node)
                         ) {
                           Rejected { diagnostics: r } => Rejected { diagnostics: r }
                           Accepted { value: step, diagnostics: ad } =>
@@ -3747,7 +3782,7 @@ fn body_lower_callback_encoding_from(operands: CallbackCallOperands, collection:
                               value: fold_recurrence_encoding(operands: FoldCallOperands {
                                 head: operands.head,
                                 collection: lowered_collection,
-                                init: body_lower_callback_init(realization: operands.realization, source: synthetic),
+                                init: body_lower_callback_init(row: row, source: synthetic),
                                 step: step,
                                 carrier: accumulator
                               }),

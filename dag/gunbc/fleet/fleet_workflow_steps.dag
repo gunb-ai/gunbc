@@ -813,7 +813,9 @@ DISSOLVE-ON: the first successful guest_image_converge on a cold host produces t
 // paying the remote resolve, so this is the budget the verb needs once it actually runs, not a timeout
 // it has already hit.
 // Its own constant for the reason the Spark envelope records: the aux value is multiplied by the
-// step count in the fleet job backstop.
+// step count in the fleet job backstop. The flex pass (gunbc.fleet.flex_pass_run, mode flex_pass) is a
+// consumer for the same reason: its first srv1 run (39197581454) was still typechecking its closure when
+// the aux 5m killed it (workspace discovered 04:11:19, killed 04:16:31), before any Vast call.
 data gunbc_ci_gunbc_run_resolve_step_timeout_minutes: Duration = 15
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
