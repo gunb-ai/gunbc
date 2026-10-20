@@ -5984,7 +5984,6 @@ fn target_value_expr_callable_apply_kind_from_wire(wire: Node) -> Outcome<Target
         TypeNode { connective: Conj } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
         TypeNode { connective: Disj } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
         TypeNode { connective: Arrow } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
-        TypeNode { connective: Occupancy } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
         TypeNode { connective: Instantiation } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
         ComputationNode { behavior: _ } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
       }
