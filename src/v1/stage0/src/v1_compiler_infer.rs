@@ -14051,17 +14051,25 @@ Rc::new(InferResult {
                                 })
                             } else {
                                 {
-                                    let uninstantiated_call_generics = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for g in
-                                            call_sig_split.generic_names.clone().iter().cloned()
-                                        {
-                                            if !v1_rt::map_has(&call_subst, g.clone()) {
-                                                __result.push(g);
+                                    let mint_only_without_actuals =
+                                        ((typed_arg_nodes.clone().len() as i64) == 0);
+                                    let uninstantiated_call_generics = if mint_only_without_actuals
+                                        .clone()
+                                    {
+                                        Rc::new({
+                                            let mut __result = Vec::new();
+                                            for g in
+                                                call_sig_split.generic_names.clone().iter().cloned()
+                                            {
+                                                if !v1_rt::map_has(&call_subst, g.clone()) {
+                                                    __result.push(g);
+                                                }
                                             }
-                                        }
-                                        __result
-                                    });
+                                            __result
+                                        })
+                                    } else {
+                                        Rc::new(vec![])
+                                    };
                                     let fresh_call_variables =
                                         uninstantiated_call_generics.iter().cloned().fold(
                                             v1_rt::rc_empty_map::<String, Rc<Node>>(),
