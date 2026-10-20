@@ -308,8 +308,8 @@ fn stacked_rule(selector: SelectorList, decls: List<SheetDecl>) -> SheetEntry {
   EntryRule { rule: SheetRule { selector: selector, layout: RuleInlineStacked, items: [ItemDecls { decls: decls, alignment: Compact }] } }
 }
 
-fn max_width_media(px: Int, rules: List<SheetRule>) -> SheetEntry {
-  EntryMedia { condition: MediaMaxWidth { max: CssLength { n: px, unit: Px } }, rules: rules }
+fn max_width_media(max: CssLength, rules: List<SheetRule>) -> SheetEntry {
+  EntryMedia { condition: MediaMaxWidth { max: max }, rules: rules }
 }
 
 fn compact_decls(decls: List<SheetDecl>) -> SheetItem {
@@ -1042,7 +1042,7 @@ data deck_entries: List<SheetEntry> = [
       sheet_ident(property: AlignItems, ident: "baseline"),
     ]),
   ]),
-  max_width_media(px: 540, rules: [
+  max_width_media(max: CssLength { n: 540, unit: Px }, rules: [
     inline_sheet_rule(selector: class_list(name: "card-receipt-row"), decls: [sheet_expr(property: GridTemplateColumns, value: ValFlex { milli: 1000 }), sheet_expr(property: Gap, value: sheet_rem(milli: 50))]),
   ]),
   block_rule(selector: class_list(name: "rk"), items: [
