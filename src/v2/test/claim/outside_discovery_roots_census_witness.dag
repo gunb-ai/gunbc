@@ -63,7 +63,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.tokenize { prepare_lex_rules, tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.compiler.test_marker_capture { TestMarkedContent, test_marker_content }
+import v2.compiler.test_marker_capture { test_marker_content }
 import v2.std.node { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.algebra { length, list_map }
@@ -520,7 +520,7 @@ fn parse_marker_names(text: String, path: String) -> ParseMarkers {
         Accepted { value: artifact, diagnostics: _ } => match test_marker_content(tree: artifact.tree) {
           Rejected { diagnostics: _ } => ParseMarkersRefused { cause: concat("marker read refused for ", path) }
           Accepted { value: rows, diagnostics: _ } =>
-            ParseMarkersRead { names: list_map(xs: rows, f: fn(row: TestMarkedContent) { symbol_lexeme(sym: row.name) }) }
+            ParseMarkersRead { names: list_map(xs: rows, f: fn(row) { symbol_lexeme(sym: row.name) }) }
         }
       }
     }
