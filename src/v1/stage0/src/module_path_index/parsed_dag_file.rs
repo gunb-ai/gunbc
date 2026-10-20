@@ -64,7 +64,8 @@ pub fn parse_dag_content(content: &str, filename: &str) -> Option<ParsedDagFile>
         // reported as a bare filename while three dispatches guessed syntax (the RFM row names the
         // case). A resolve-layer error, such as the constructor-admission collision that also cost
         // this cycle, does NOT pass through here: it is emitted located by the resolve layer all
-        // along (v1_compiler_infer renders it; claim_batch prints it under its heading). Do not
+        // along (the seed's v1_compiler_infer constructor_admission_diags_from_lookup renders it;
+        // claim_batch's resolve_timed prints it under its heading). Do not
         // "fix" a missing resolve cause at this line -- check the caller's display filter first.
         let message = crate::v1_std_core::diagnostic_to_message(error.diagnostic.clone());
         let span = crate::v1_std_core::diagnostic_to_span(error.diagnostic.clone());
