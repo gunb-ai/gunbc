@@ -33,6 +33,7 @@ import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWo
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import gunbc.fleet.fleet_workflow_steps { gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
 
 // THE DRAIN BRACKET OVER ONE HOST, AS A PURE STEP MACHINE PLUS THE THREE EFFECTS IT SEQUENCES.
@@ -98,7 +99,7 @@ data runner_host_cap_drain_policy: HostCapDrainPolicy = HostCapDrainPolicy {
   operations_allowance: second(count: 600),
   release_allowance: second(count: 240),
   cancellation_envelope: second(count: 300),
-  release_startup_allowance: second(count: 60),
+  release_startup_allowance: second(count: gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60),
 }
 
 // THE ENVIRONMENT VARIABLE THROUGH WHICH THE ENCLOSING STEP TELLS THE BRACKET ITS OWN DECLARED BUDGET, in
@@ -116,14 +117,28 @@ type BracketBudgetVerdict
   = BudgetCovers
   | BudgetCannotCover { needed: Second, given: Second }
 
-// THE RELEASE STEP RUNS INSIDE THE CANCELLATION ENVELOPE OR IT IS NOT A RELEASE. GitHub Actions gives a
-// cancelled job's always() steps a cancellation timeout of 5 minutes and then force-cancels the job
-// (docs.github.com/en/actions/reference/workflows-and-actions/expressions, status check functions and
-// the cancellation timeout; the figure is the envelope row). The release step must start its runner
-// process, connect over ssh and read back inside it, so the release allowance plus the declared startup
-// allowance must fit the envelope; a policy that does not fit refuses before anything is masked.
-fn release_fits_cancellation_envelope(policy: HostCapDrainPolicy) -> Bool {
-  second_count(s: policy.release_allowance) + second_count(s: policy.release_startup_allowance) <= second_count(s: policy.cancellation_envelope)
+// THE RELEASE IS NOT GUARANTEED TO FIT THE CANCELLATION ENVELOPE, AND SAYS SO. GitHub gives a cancelled job's
+// always() steps a 5-minute cancellation timeout and then force-cancels (docs.github.com/en/actions/reference/
+// workflows-and-actions/expressions, status check functions; the figure is the envelope row). The release
+// step is a gunbc run step: its startup is the workflow's declared resolve budget (one authority,
+// gunbc_ci_gunbc_run_resolve_step_timeout_minutes), and the measured resolve of this closure is minutes, so
+// the declared release does not fit. The standing is a typed residual, not a refusal and not a claim:
+// refusing every bracket would make the cap unconvergeable, and claiming coverage would be false. The harm
+// and the climb are the recurring_failure_mode row runner_host_cap_release_lost_to_cancellation.
+type ReleaseEnvelopeStanding
+  = ReleaseFitsEnvelope
+  | ReleaseMayOutliveCancellation { needed: Second, envelope: Second }
+
+fn release_envelope_standing(policy: HostCapDrainPolicy) -> ReleaseEnvelopeStanding {
+  let needed = second_count(s: policy.release_allowance) + second_count(s: policy.release_startup_allowance)
+  if needed <= second_count(s: policy.cancellation_envelope) { ReleaseFitsEnvelope } else { ReleaseMayOutliveCancellation { needed: second(count: needed), envelope: policy.cancellation_envelope } }
+}
+
+fn release_envelope_wire(policy: HostCapDrainPolicy) -> String {
+  match release_envelope_standing(policy: policy) {
+    ReleaseFitsEnvelope => "release fits the cancellation envelope"
+    ReleaseMayOutliveCancellation { needed: n, envelope: e } => join(["residual: a cancelled job force-cancels the release after ", to_string(second_count(s: e)), "s and the release needs ", to_string(second_count(s: n)), "s, so a cancellation can leave the host masked until a human acts"], "")
+  }
 }
 
 fn bracket_budget_verdict(policy: HostCapDrainPolicy, given: Second) -> BracketBudgetVerdict {
@@ -197,7 +212,6 @@ type HostCapBracketRefusal
   | BracketRefusedBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second }
   | BracketRefusedBudgetCannotCover { needed: Second, given: Second }
   | BracketRefusedClockUnreadable { detail: String }
-  | BracketRefusedReleaseOutsideEnvelope { needed: Second, envelope: Second }
   | BracketRefusedObligationNotRecorded { cause: String }
 
 fn bracket_refusal_wire(r: HostCapBracketRefusal) -> String {
@@ -205,7 +219,6 @@ fn bracket_refusal_wire(r: HostCapBracketRefusal) -> String {
     BracketRefusedAdmissionNotClosed { listeners: ls } => join(["admission is not closed: a running idle listener is not stopped under a mask-only closure, so no cap was written; listeners=", join(map(ls, u => u as String), " ")], "")
     BracketRefusedBoundExceeded { busy: b, unproven: u, waited: w } => join(["the drain bound of ", to_string(second_count(s: w)), "s was exceeded, so no cap was written; busy=", join(map(b, x => x as String), " "), " unproven=", join(map(u, x => x as String), " ")], "")
     BracketRefusedBudgetCannotCover { needed: n, given: g } => join(["the step budget of ", to_string(second_count(s: g)), "s cannot cover the bracket's ", to_string(second_count(s: n)), "s (drain + operations + release), so nothing was masked and no cap was written; the host is untouched"], "")
-    BracketRefusedReleaseOutsideEnvelope { needed: n, envelope: e } => join(["the release (", to_string(second_count(s: n)), "s with its startup) does not fit the ", to_string(second_count(s: e)), "s cancellation envelope, so nothing was masked and no cap was written; the host is untouched"], "")
     BracketRefusedObligationNotRecorded { cause: c } => join(["the release obligation could not be recorded (", c, "), so nothing was masked and no cap was written; the host is untouched"], "")
     BracketRefusedClockUnreadable { detail: d } => join(["the wall clock could not be read (", d, "), so the total elapsed time cannot be bounded: nothing was masked and no cap was written; the host is untouched"], "")
   }
@@ -335,14 +348,10 @@ fn bracket_start_over(policy: HostCapDrainPolicy, given: Second) -> BracketStart
   match bracket_budget_verdict(policy: policy, given: given) {
     BudgetCannotCover { needed: n, given: g } => BracketStartRefused { refusal: BracketRefusedBudgetCannotCover { needed: n, given: g } }
     BudgetCovers =>
-     if !release_fits_cancellation_envelope(policy: policy) {
-      BracketStartRefused { refusal: BracketRefusedReleaseOutsideEnvelope { needed: second(count: second_count(s: policy.release_allowance) + second_count(s: policy.release_startup_allowance)), envelope: policy.cancellation_envelope } }
-     } else {
       match observer_clock_read() {
         ObserverClockUnreadable { detail: d } => BracketStartRefused { refusal: BracketRefusedClockUnreadable { detail: d } }
         ObserverClockObserved { instant: i } => BracketStartAt { started: observer_instant_millis(instant: i) }
       }
-     }
   }
 }
 

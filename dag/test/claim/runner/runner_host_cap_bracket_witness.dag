@@ -49,7 +49,9 @@ import gunbc.runner.runner_host_cap_bracket {
   OwnedSet,
   OwnedSetUnproven,
   release_unit_needs_activation,
-  release_fits_cancellation_envelope,
+  release_envelope_standing,
+  ReleaseFitsEnvelope,
+  ReleaseMayOutliveCancellation,
   HostCapDrainPolicy,
 }
 
@@ -256,7 +258,9 @@ test fn a_never_masked_unit_is_issued_no_activation() -> Bool {
   }
 }
 
-test fn the_declared_release_fits_the_cancellation_envelope() -> Bool {
-  release_fits_cancellation_envelope(policy: runner_host_cap_drain_policy)
-    && !release_fits_cancellation_envelope(policy: HostCapDrainPolicy { wait_bound: runner_host_cap_drain_policy.wait_bound, poll_interval: runner_host_cap_drain_policy.poll_interval, operations_allowance: runner_host_cap_drain_policy.operations_allowance, release_allowance: second(count: 400), cancellation_envelope: runner_host_cap_drain_policy.cancellation_envelope, release_startup_allowance: runner_host_cap_drain_policy.release_startup_allowance })
+// the declared release does NOT fit (startup is the workflow's resolve budget), and the standing says so;
+// a policy whose release fits reports it
+test fn the_declared_release_is_a_typed_residual_against_the_cancellation_envelope() -> Bool {
+  (match release_envelope_standing(policy: runner_host_cap_drain_policy) { ReleaseMayOutliveCancellation { needed: _, envelope: _ } => true ReleaseFitsEnvelope => false })
+    && (match release_envelope_standing(policy: HostCapDrainPolicy { wait_bound: runner_host_cap_drain_policy.wait_bound, poll_interval: runner_host_cap_drain_policy.poll_interval, operations_allowance: runner_host_cap_drain_policy.operations_allowance, release_allowance: second(count: 100), cancellation_envelope: runner_host_cap_drain_policy.cancellation_envelope, release_startup_allowance: second(count: 60) }) { ReleaseFitsEnvelope => true ReleaseMayOutliveCancellation { needed: _, envelope: _ } => false })
 }

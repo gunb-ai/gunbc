@@ -34,7 +34,7 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
-import gunbc.runner.runner_host_cap_bracket { BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, readmit_all_slots_over, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted }
+import gunbc.runner.runner_host_cap_bracket { BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, readmit_all_slots_over, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted }
 import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire }
 import gunbc.ci.ci_runner_placement {
@@ -2356,7 +2356,7 @@ fn withheld_after_readmit(subject: RunnerHostFileSubject, context: FleetSshExecu
   let restored = readmit_all_slots_over(target: subject.target, context: context, units: owned)
   let left = host_left_of_readmit(units: owned, outcomes: restored)
   let discharged = match left { HostAdmitting => write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) HostLeftDrained { units: _ } => Present { value: "not admitting" } }
-  CapPhaseWithheld { cause: join([head, "; ", host_left_wire(l: left), " restored=", join(map(restored, o => slot_actuation_outcome_wire(o: o)), " "), match discharged { Present { value: w } => concat(" obligation-discharge: ", w) Absent => "" }], "") }
+  CapPhaseWithheld { cause: join([head, "; ", host_left_wire(l: left), " restored=", join(map(restored, o => slot_actuation_outcome_wire(o: o)), " "), "; ", release_envelope_wire(policy: runner_host_cap_drain_policy), match discharged { Present { value: w } => concat(" obligation-discharge: ", w) Absent => "" }], "") }
 }
 
 // ORDER: privilege, observe every file, write the ones that need it, read every slot, reload if the
@@ -2712,7 +2712,7 @@ fn runner_host_cap_release_ci_wet() -> ProcessExit
                   let left = host_left_of_readmit(units: owned, outcomes: outcomes)
                   match left {
                     HostAdmitting => ExitSuccess
-                    _ => exit_failure(reason: join(["runner_host_cap_release: ", host_left_wire(l: left), " ", join(map(outcomes, o => slot_actuation_outcome_wire(o: o)), " ")], ""))
+                    _ => exit_failure(reason: join(["runner_host_cap_release: ", host_left_wire(l: left), " ", join(map(outcomes, o => slot_actuation_outcome_wire(o: o)), " "), "; ", release_envelope_wire(policy: runner_host_cap_drain_policy)], ""))
                   }
                 }
               }
