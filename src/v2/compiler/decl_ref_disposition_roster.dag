@@ -13,6 +13,10 @@ module v2.compiler.decl_ref_disposition_roster
 //   DeliberatelyAbsentCapability -- a stamp bound to the name of a capability not yet authored.
 //   BindTargetDeleted            -- a scaffold row whose bind target was deleted with no named successor; re-pointing or retiring it is an operator verdict on the debt (DESIGN 5).
 //   HostBuiltinSeam              -- a bind into the v1 seed's builtin registry, outside the v2 index.
+//   DataRowFieldNotResolvable    -- a NamedField citation into a `data` row's literal value; v2.std.decl_ref_resolution
+//                                   decl_ref_named_field_present reads only the labelled children of a type declaration, so a
+//                                   correct field of a data row reads as FieldAbsent. The citation stays NamedField (never widened
+//                                   to WholeDeclaration). dissolve-on: the resolver reads the fields of a data row's literal.
 //   HistoricalReceipt { commit } -- prose in a receipt naming a symbol that existed at that commit and
 //                                   has since been renamed or deleted; the receipt is a record, not a live citation.
 import std.types { List }
@@ -24,6 +28,7 @@ type DeclRefDispositionReason
   | DeliberatelyAbsentCapability
   | BindTargetDeleted
   | HostBuiltinSeam
+  | DataRowFieldNotResolvable
   | HistoricalReceipt { commit: String }
 
 type DeclRefDisposition {
@@ -32,6 +37,7 @@ type DeclRefDisposition {
 }
 
 data decl_ref_disposition_roster: List<DeclRefDisposition> = [
+  DeclRefDisposition { subject: "gunbc.ci.ci_fleet gunbc_ci_host", reason: DataRowFieldNotResolvable },
   DeclRefDisposition { subject: "synthetic.keyed_read_module_absent_RED anything", reason: DeliberateAbsentFixture },
   DeclRefDisposition { subject: "synthetic.g1_module_absent_RED any", reason: DeliberateAbsentFixture },
   DeclRefDisposition { subject: "test.fixture.decl_facts_reflection.specimens disposition_scaffold", reason: DeliberateAbsentFixture },
