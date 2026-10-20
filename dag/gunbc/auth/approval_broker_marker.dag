@@ -1,6 +1,9 @@
 module gunbc.auth.approval_broker_marker
 
 import std.types { String, NonEmptyStr, List }
+import std.markup { MarkupComment, serialize_fragment_with }
+import extdeps.languages.html { html_markup_medium }
+import std.markup { Serialized, Rejected }
 import extdeps.http.server { MediaType }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess, BrokerProcess }
 
@@ -144,6 +147,40 @@ fn approval_broker_served_token(p: ApprovalServingProcess, m: ApprovalBrokerMark
   ], "") as NonEmptyStr
 }
 
+// The HTML marker, built as the markup it is rather than as the characters around it. Spelling
+// "<!-- " + token + " -->" here put a language's comment delimiters in an auth module (a second copy
+// beside extdeps.languages.html's rows, §3) and interpolated an unvalidated value into the middle of
+// them: a token containing "-->" would close the comment early and the rest would be parsed as markup
+// in a confirmation page. Building a MarkupComment and asking the serializer for the characters takes
+// BOTH the delimiters and that check out of this module: serialize_fragment_with consults the medium's
+// CommentGrammar on the arm that writes a comment, so a fragment route is checked as surely as a
+// document route -- review 82279 on #14351 removed the walk-then-serialize pairing this function used
+// to do by hand. The refusal is therefore not the only thing standing between a bad token and a served
+// page: approval_broker_served_token is a join of three closed token sets (lowercase, digits, "/", "-")
+// so the check cannot fire on it today, and the claim witness_marker_token_never_closes_its_comment
+// establishes that as a checked fact over every inhabitant of both closed sets. If a future marker name ever contained the terminator, this
+// returns the diagnostic instead of shipping a page whose marker is markup.
+// A CLOSED RESULT, not a string that means either thing. Returning the diagnostic as the comment text
+// was a fabricated output (review 82142 on #14351): the caller joined whatever came back into the
+// served body, so a firing hazard would have shipped a page whose marker line was an error message and
+// whose marker was simply absent — an unmarked page that the READING side then calls "the request never
+// reached the broker", which is the one question this marker exists to settle. The refusal has to be
+// un-forgeable at the type, so the caller cannot join it into a body by accident.
+type BrokerMarkerComment
+  = MarkerCommentRendered { text: String }
+  | MarkerCommentRefused { reason: String }
+
+// ONE CALL, NOT A PAIR. This used to run the walk and then the serializer by hand, which is the shape
+// review 82279 on #14351 pointed at: two calls that a caller must remember to make together, and a
+// serializer that would happily write the comment if called alone. The serializer is now the check, so
+// there is nothing to pair and no way to get the bytes without passing it.
+fn approval_broker_marker_comment(body: String) -> BrokerMarkerComment {
+  match serialize_fragment_with(frag: MarkupComment { body: body }, medium: html_markup_medium()) {
+    Serialized { html: text } => MarkerCommentRendered { text: text }
+    Rejected { reason: why } => MarkerCommentRefused { reason: why }
+  }
+}
+
 // ── HOW IT IS CARRIED, WHICH IS A FACT ABOUT THE MEDIA TYPE AND NOT ABOUT THE HANDLER ───────
 // AN HTML COMMENT IN HTML AND A TRAILING LINE IN TEXT. The confirmation page is read by a person on
 // a phone, so the marker must not render; `<!-- ... -->` is invisible there and still a substring of
@@ -162,14 +199,25 @@ fn approval_broker_served_token(p: ApprovalServingProcess, m: ApprovalBrokerMark
 // returning nothing would answer the one question the marker exists to settle, and answer it wrong.
 // The cost is a trailing line in a format that may not want one, paid by that format's own consumer
 // and not by the probe.
-fn approval_broker_marked_body(content_type: MediaType, body: String, m: ApprovalBrokerMarker, process: ApprovalServingProcess) -> String {
+// The CLOSED RESULT of marking. Marked { body } is what a response carries; BrokerMarkerRefused is a
+// construction failure that the serve fold turns into a typed 500 through the same route a page-render
+// refusal already takes (broker_text_response, which is where every response from these folds is built).
+// A caller cannot join a BrokerMarkerRefused into a body: there is no String to join.
+type BrokerMarkedBody
+  = BrokerBodyMarked { body: String }
+  | BrokerMarkerRefused { reason: String }
+
+fn approval_broker_marked_body(content_type: MediaType, body: String, m: ApprovalBrokerMarker, process: ApprovalServingProcess) -> BrokerMarkedBody {
   let token = approval_broker_served_token(p: process, m: m) as String
   if content_type.subtype == "html" {
-    join([body, "\n<!-- ", token, " -->\n"], "")
+    match approval_broker_marker_comment(body: token) {
+      MarkerCommentRendered { text: c } => BrokerBodyMarked { body: join([body, "\n", c, "\n"], "") }
+      MarkerCommentRefused { reason: r } => BrokerMarkerRefused { reason: r }
+    }
   } else if content_type.subtype == "javascript" {
-    join([body, "\n// x-approval-broker: ", token, "\n"], "")
+    BrokerBodyMarked { body: join([body, "\n// x-approval-broker: ", token, "\n"], "") }
   } else {
-    join([body, "x-approval-broker: ", token, "\n"], "")
+    BrokerBodyMarked { body: join([body, "x-approval-broker: ", token, "\n"], "") }
   }
 }
 

@@ -1,0 +1,119 @@
+module test.probe.service_slot_mint_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. Each function below is a route by which a caller outside the service
+// slot controller would mint a JIT registration without the independently read current boot and the sealed
+// population, with a key it did not hold, or for a listener that could read it. The witness
+// test.claim.runner.runner_service_slot_admission_witness hands this source to the compiler and requires
+// each refusal at its subject by name. dag/test/probe/ sits under the whole-tree strict-resolve exclusion.
+
+import gunbc.runner.runner_unit_file { RunnerJobUserUidReading }
+import gunbc.runner.runner_jit_mint_binding { JitMintBinding, JitBoundMint, jit_mint_binding, mint_for_binding, mint_under_observed_group }
+import gunbc.runner.jit_registration_subject { host_unit_registration_subject, JitRegistrationSubjectStanding }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.runner.runner_microvm_slot_controller { attempt_mint_binding, mint_attempt_credential, slot_controller_launch_admitted, LocusBinaries, GuestImageSources, SlotControllerOutcome }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric.fabric_required_build_cell { RequiredBuildCellSnapshot }
+import std.resources { Filesystem, Network }
+import gunbc.runner.runner_microvm_attempt { MicroVmCellBinding, bind_owned_attempt, MicroVmAttempt }
+import gunbc.github_effect_perform { JitMintPerformance }
+import std.types { Int, List, String, NonEmptyStr }
+import extdeps.auth.jws { JwsSigningKeyRef }
+import extdeps.github.actions_jit_runner { EncodedJitConfig }
+import product.host_identity { HostIdentity }
+import gunbc.host.host_control_route { HostControlStanding }
+import gunbc.runner.runner_host_unit_slot { HostUnitSlotBound, HostUnitSlot, ServiceBootId, CurrentServicePopulation, CurrentServicePopulationStanding }
+import gunbc.fleet.host_credential_custody_converge { HostCredentialCustodyRow, CustodyPathMetadata }
+import gunbc.runner.runner_service_slot_controller {
+  ServiceSlotMintAdmission, ServiceSlotKeyHeld, ServiceSlotListenerIsolated, ServiceSlotPass, ServiceSlotAdmission, ServiceSlotKeyStanding, ServiceSlotIsolation,
+  ServiceSlotRebuild, ListenerRun, ServiceSlotPassId, ServiceSlotPassIdReading, service_slot_mint_binding, service_slot_pass_over, service_slot_pass_id_of,
+  service_slot_pass, service_slot_admit, service_slot_key_standing_of, service_slot_isolate_listener_as, run_listener_with,
+}
+
+// (a) A FORGED ADMISSION, a record no admit built. Refuses at ServiceSlotMintAdmission.
+fn forged_admission(slot: HostUnitSlot, boot: ServiceBootId, population: CurrentServicePopulation) -> ServiceSlotMintAdmission {
+  ServiceSlotMintAdmission { slot: slot, boot: boot, population: population }
+}
+
+// (b) A FORGED KEY. Refuses at ServiceSlotKeyHeld.
+fn forged_key(signer: JwsSigningKeyRef) -> ServiceSlotKeyHeld {
+  ServiceSlotKeyHeld { signer: signer }
+}
+
+// (c) A FORGED ISOLATION. Refuses at ServiceSlotListenerIsolated.
+fn forged_isolation(user: NonEmptyStr) -> ServiceSlotListenerIsolated {
+  ServiceSlotListenerIsolated { user: user }
+}
+
+// (d) THE PASS, CALLED FROM OUTSIDE THE ENTRY. Refuses at service_slot_pass.
+fn outside_pass(a: ServiceSlotMintAdmission, k: ServiceSlotKeyHeld, i: ServiceSlotListenerIsolated, p: ServiceSlotPassId) -> ServiceSlotPass {
+  service_slot_pass(admission: a, key: k, isolated: i, pass: p)
+}
+
+// (e) AN ADMISSION BUILT FROM A POPULATION THE CALLER CHOSE. Refuses at service_slot_admit.
+fn outside_admit(boot: ServiceBootId, population: CurrentServicePopulationStanding, rebuilt: ServiceSlotRebuild) -> ServiceSlotAdmission {
+  service_slot_admit(current_boot: boot, population: population, rebuilt: rebuilt, unit: "x")
+}
+
+// (f) A KEY STANDING FROM READINGS THE CALLER SUPPLIED. Refuses at service_slot_key_standing_of.
+fn outside_key(row: HostCredentialCustodyRow, f: CustodyPathMetadata, d: CustodyPathMetadata) -> ServiceSlotKeyStanding {
+  service_slot_key_standing_of(row: row, file: f, dir: d)
+}
+
+// (g) AN ISOLATION FOR A USER THE CALLER CHOSE. Refuses at service_slot_isolate_listener_as.
+fn outside_isolation(row: HostCredentialCustodyRow, user: NonEmptyStr, r: RunnerJobUserUidReading) -> ServiceSlotIsolation {
+  service_slot_isolate_listener_as(row: row, user: user, listener: r, file_owner: r, dir_owner: r)
+}
+
+// (h) THE LISTENER RUN BYPASSING THE PASS. Refuses at run_listener_with.
+fn outside_run(slot: HostUnitSlot, i: ServiceSlotListenerIsolated, p: ServiceSlotPassId, c: EncodedJitConfig) -> ListenerRun {
+  run_listener_with(slot: slot, isolated: i, pass: p, credential: c)
+}
+
+// (i) A FORGED PASS IDENTITY. Refuses at ServiceSlotPassId.
+fn forged_pass_id(invocation: NonEmptyStr) -> ServiceSlotPassId {
+  ServiceSlotPassId { invocation: invocation }
+}
+
+// (j) A PASS IDENTITY FROM A TEXT THE CALLER CHOSE. Refuses at service_slot_pass_id_of.
+fn outside_pass_id(raw: String?) -> ServiceSlotPassIdReading {
+  service_slot_pass_id_of(raw: raw)
+}
+
+// THE INDIRECT ROUTES to the shared dispatch, which the entry's own carriers do not guard on their own:
+// (k) A BINDING FOR A SLOT AND SIGNER THE CALLER CHOSE, through the host-unit subject. A caller holding a slot
+// standing builds the registration subject freely (host_unit_registration_subject) and, with the shared
+// constructor, a binding that mint_for_binding would dispatch -- without the admission or the held key.
+// Refuses at jit_mint_binding.
+fn outside_binding(slot: HostUnitSlot, group: NonEmptyStr, workflow: NonEmptyStr, signer: JwsSigningKeyRef) -> JitMintBinding {
+  jit_mint_binding(subject: host_unit_registration_subject(standing: HostUnitSlotBound { slot: slot }), runner_group_name: group, selected_workflow: workflow, signer: signer)
+}
+
+// (l) THE SERVICE SLOT'S BINDING BUILDER, called from outside the pass. Refuses at service_slot_mint_binding.
+fn outside_service_binding(a: ServiceSlotMintAdmission, k: ServiceSlotKeyHeld) -> JitMintBinding {
+  service_slot_mint_binding(admission: a, key: k)
+}
+
+// (m) A BINDING AS A RECORD, bypassing the constructor. Refuses at JitMintBinding.
+fn forged_binding(subject: JitRegistrationSubjectStanding, group: NonEmptyStr, workflow: NonEmptyStr, signer: JwsSigningKeyRef) -> JitMintBinding {
+  JitMintBinding { subject: subject, runner_group_name: group, selected_workflow: workflow, signer: signer }
+}
+
+// (n) THE MICROVM ATTEMPT'S BINDING BUILDER, called from outside the controller's snapshot-holding launch. A caller can
+// manufacture a VmBoundToOwnedCell (bind_owned_attempt takes a Bool), so the builder is admitted only along the chain
+// that derives its binding from the sealed reservation snapshot. Refuses at attempt_mint_binding.
+fn outside_attempt_binding(attempt: MicroVmAttempt) -> JitMintBinding {
+  attempt_mint_binding(binding: bind_owned_attempt(attempt: attempt, owned: true))
+}
+
+// (o) THE MICROVM ATTEMPT'S MINT WRAPPER, called from outside the same chain. Refuses at mint_attempt_credential.
+fn outside_attempt_mint(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState) -> JitMintPerformance {
+  mint_attempt_credential(binding: binding, state: state)
+}
+
+// (p) THE MICROVM LAUNCH ENTRY, called with a genuine snapshot but not through slot_controller_on_reservation, so the
+// admission gate is skipped. Refuses at slot_controller_launch_admitted.
+fn outside_launch(slot: RunnerSlotIdentity, snapshot: RequiredBuildCellSnapshot, bins: LocusBinaries, image: GuestImageSources, invocation_id: NonEmptyStr) -> SlotControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  slot_controller_launch_admitted(slot: slot, snapshot: snapshot, bins: bins, image: image, invocation_id: invocation_id)
+}

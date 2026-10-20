@@ -1,0 +1,214 @@
+module test.claim.alias_identity_every_check_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ONE alias/expansion pair (`IntBox = Boxed<Int>` against `Boxed<Int>`) pushed through every check that
+// compares types. Each arm must accept: the alias IS its expansion (DESIGN 4: identity by resolved
+// declaration). A refusing arm names a site that still decides alias identity by spelling.
+// gunbc.recurring_failure_mode a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling.
+fn refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch"))
+      + census_total_count(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited"))
+      + census_total_count(rows: census_rows_of_class(rows: rows, wanted: "InternalError"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data if_source: String = "module probe_alias_if\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(c: Bool, a: IntBox, b: Boxed<Int>) -> Boxed<Int> { if c { a } else { b } }\n"
+
+test fn w_alias_and_expansion_agree_at_if() -> Bool {
+  refusal_count(source: if_source) == 0
+}
+
+data match_arm_source: String = "module probe_alias_match_arm\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(c: Bool, a: IntBox, b: Boxed<Int>) -> Boxed<Int> { match c { true => a\n false => b } }\n"
+
+test fn w_alias_and_expansion_agree_at_match_arm() -> Bool {
+  refusal_count(source: match_arm_source) == 0
+}
+
+data argument_source: String = "module probe_alias_argument\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn take(x: IntBox) -> Int { x.v }\nfn p(b: Boxed<Int>) -> Int { take(x: b) }\n"
+
+test fn w_alias_and_expansion_agree_at_argument() -> Bool {
+  refusal_count(source: argument_source) == 0
+}
+
+data record_field_source: String = "module probe_alias_record_field\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\ntype R { f: IntBox }\nfn p(b: Boxed<Int>) -> R { R { f: b } }\n"
+
+test fn w_alias_and_expansion_agree_at_record_field() -> Bool {
+  refusal_count(source: record_field_source) == 0
+}
+
+data return_source: String = "module probe_alias_return\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(b: Boxed<Int>) -> IntBox { b }\n"
+
+test fn w_alias_and_expansion_agree_at_return() -> Bool {
+  refusal_count(source: return_source) == 0
+}
+
+data list_element_source: String = "module probe_alias_list_element\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(b: Boxed<Int>) -> List<IntBox> { [b] }\n"
+
+test fn w_alias_and_expansion_agree_at_list_element() -> Bool {
+  refusal_count(source: list_element_source) == 0
+}
+
+data nested_container_source: String = "module probe_alias_nested_container\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(b: List<List<Boxed<Int>>>) -> List<List<IntBox>> { b }\n"
+
+test fn w_alias_and_expansion_agree_at_nested_container() -> Bool {
+  refusal_count(source: nested_container_source) == 0
+}
+
+data function_type_source: String = "module probe_alias_function_type\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn use(f: fn(IntBox) -> Int, b: Boxed<Int>) -> Int { f(b) }\nfn g(x: Boxed<Int>) -> Int { x.v }\nfn p(b: Boxed<Int>) -> Int { use(f: g, b: b) }\n"
+
+test fn w_alias_and_expansion_agree_at_function_type() -> Bool {
+  refusal_count(source: function_type_source) == 0
+}
+
+// CONTROLS. A zero is only readable beside a nonzero: the first must accept (the probe preamble itself
+// compiles clean) and the second must refuse (a genuine mismatch is counted), or the arms above measure
+// the probe and not the alias.
+data control_clean_source: String = "module probe_alias_ctl_ok\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(b: Boxed<Int>) -> Boxed<Int> { b }\n"
+
+test fn w_control_without_alias_crossing_is_clean() -> Bool {
+  refusal_count(source: control_clean_source) == 0
+}
+
+data control_mismatch_source: String = "module probe_alias_ctl_bad\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\ntype Other { w: Int }\nfn p(b: Boxed<Int>) -> Other { b }\n"
+
+test fn w_control_genuine_mismatch_is_counted() -> Bool {
+  refusal_count(source: control_mismatch_source) >= 1
+}
+
+data bare_if_source: String = "module probe_alias_bare_bare_if\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn p(c: Bool, a: RecAlias, b: Rec) -> Rec { if c { a } else { b } }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_if() -> Bool {
+  refusal_count(source: bare_if_source) == 0
+}
+
+data bare_match_arm_source: String = "module probe_alias_bare_bare_match_arm\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn p(c: Bool, a: RecAlias, b: Rec) -> Rec { match c { true => a\n false => b } }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_match_arm() -> Bool {
+  refusal_count(source: bare_match_arm_source) == 0
+}
+
+data bare_argument_source: String = "module probe_alias_bare_bare_argument\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn take(x: RecAlias) -> Int { x.v }\nfn p(b: Rec) -> Int { take(x: b) }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_argument() -> Bool {
+  refusal_count(source: bare_argument_source) == 0
+}
+
+data bare_record_field_source: String = "module probe_alias_bare_bare_record_field\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\ntype R { f: RecAlias }\nfn p(b: Rec) -> R { R { f: b } }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_record_field() -> Bool {
+  refusal_count(source: bare_record_field_source) == 0
+}
+
+data bare_return_source: String = "module probe_alias_bare_bare_return\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn p(b: Rec) -> RecAlias { b }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_return() -> Bool {
+  refusal_count(source: bare_return_source) == 0
+}
+
+data bare_list_element_source: String = "module probe_alias_bare_bare_list_element\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn p(b: Rec) -> List<RecAlias> { [b] }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_list_element() -> Bool {
+  refusal_count(source: bare_list_element_source) == 0
+}
+
+data bare_nested_container_source: String = "module probe_alias_bare_bare_nested_container\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn p(b: List<List<Rec>>) -> List<List<RecAlias>> { b }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_nested_container() -> Bool {
+  refusal_count(source: bare_nested_container_source) == 0
+}
+
+data bare_function_type_source: String = "module probe_alias_bare_bare_function_type\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn use(f: fn(RecAlias) -> Int, b: Rec) -> Int { f(b) }\nfn g(x: Rec) -> Int { x.v }\nfn p(b: Rec) -> Int { use(f: g, b: b) }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_function_type() -> Bool {
+  refusal_count(source: bare_function_type_source) == 0
+}
+
+data prim_if_source: String = "module probe_alias_prim_if\nimport std.types { Int, Bool }\ntype Count = Int\nfn p(c: Bool, a: Count, b: Int) -> Int { if c { a } else { b } }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_if() -> Bool {
+  refusal_count(source: prim_if_source) == 0
+}
+
+data prim_match_arm_source: String = "module probe_alias_prim_match_arm\nimport std.types { Int, Bool }\ntype Count = Int\nfn p(c: Bool, a: Count, b: Int) -> Int { match c { true => a\n false => b } }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_match_arm() -> Bool {
+  refusal_count(source: prim_match_arm_source) == 0
+}
+
+data prim_argument_source: String = "module probe_alias_prim_argument\nimport std.types { Int, Bool }\ntype Count = Int\nfn take(x: Count) -> Int { x }\nfn p(b: Int) -> Int { take(x: b) }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_argument() -> Bool {
+  refusal_count(source: prim_argument_source) == 0
+}
+
+data prim_record_field_source: String = "module probe_alias_prim_record_field\nimport std.types { Int, Bool }\ntype Count = Int\ntype R { f: Count }\nfn p(b: Int) -> R { R { f: b } }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_record_field() -> Bool {
+  refusal_count(source: prim_record_field_source) == 0
+}
+
+data prim_return_source: String = "module probe_alias_prim_return\nimport std.types { Int, Bool }\ntype Count = Int\nfn p(b: Int) -> Count { b }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_return() -> Bool {
+  refusal_count(source: prim_return_source) == 0
+}
+
+data prim_list_element_source: String = "module probe_alias_prim_list_element\nimport std.types { Int, Bool }\ntype Count = Int\nfn p(b: Int) -> List<Count> { [b] }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_list_element() -> Bool {
+  refusal_count(source: prim_list_element_source) == 0
+}
+
+data prim_function_type_source: String = "module probe_alias_prim_function_type\nimport std.types { Int, Bool }\ntype Count = Int\nfn use(f: fn(Count) -> Int, b: Int) -> Int { f(b) }\nfn g(x: Int) -> Int { x }\nfn p(b: Int) -> Int { use(f: g, b: b) }\n"
+
+test fn w_primitive_alias_and_kernel_agree_at_function_type() -> Bool {
+  refusal_count(source: prim_function_type_source) == 0
+}
+
+// ONE RELATION, SETTLED ARGUMENTS. alias_settled_agree decides alias identity by resolved declaration AND settles
+// applied arguments; the name-level seam that stopped at the head is deleted. Each RED is the refusal of an
+// alias-keyed mismatch (same head, differing argument) on the real acceptance path; each POSITIVE beside it is the
+// accepted pair. Executed revert arm (main mirrors): these REDs are refused on main too, by an independent check, so they are regression controls for the one relation, not discriminators of the name-relation fold.
+data alias_arg_mismatch_if_source: String = "module probe_alias_arg_bad_if\nimport std.types { Int, Bool }\ntype Inner<T> { v: T }\ntype IntInner = Inner<Int>\nfn p(c: Bool, a: IntInner, b: Inner<Bool>) -> Inner<Int> { if c { a } else { b } }\n"
+
+test fn w_alias_keyed_argument_mismatch_is_refused_at_if() -> Bool {
+  refusal_count(source: alias_arg_mismatch_if_source) >= 1
+}
+
+// NAME-LEVEL SITE: a record literal names its type by a bare name; its field mismatch is refused (on main as well).
+data alias_arg_mismatch_lit_source: String = "module probe_alias_arg_bad_lit\nimport std.types { Int, Bool }\ntype Inner<T> { v: T }\ntype IntInner = Inner<Int>\nfn take(x: IntInner) -> Int { 0 }\nfn p() -> Int { take(x: Inner { v: true }) }\n"
+
+test fn w_alias_keyed_argument_mismatch_is_refused_at_literal() -> Bool {
+  refusal_count(source: alias_arg_mismatch_lit_source) >= 1
+}
+
+data alias_arg_agree_lit_source: String = "module probe_alias_arg_ok_lit\nimport std.types { Int, Bool }\ntype Inner<T> { v: T }\ntype IntInner = Inner<Int>\nfn take(x: IntInner) -> Int { 0 }\nfn p() -> Int { take(x: IntInner { v: 1 }) }\n"
+
+test fn w_alias_keyed_argument_agreement_is_accepted_at_literal() -> Bool {
+  refusal_count(source: alias_arg_agree_lit_source) == 0
+}
+
+data applied_alias_argument_mismatch_source: String = "module probe_applied_alias_arg_bad\nimport std.types { Int, Bool }\ntype Inner<T> { v: T }\ntype IntAlias = Int\nfn take(x: Inner<IntAlias>) -> Int { 0 }\nfn p(b: Inner<Bool>) -> Int { take(x: b) }\n"
+
+test fn w_applied_alias_argument_mismatch_is_refused() -> Bool {
+  refusal_count(source: applied_alias_argument_mismatch_source) >= 1
+}
+
+data applied_alias_argument_agree_source: String = "module probe_applied_alias_arg_ok\nimport std.types { Int, Bool }\ntype Inner<T> { v: T }\ntype IntAlias = Int\nfn take(x: Inner<IntAlias>) -> Int { 0 }\nfn p(b: Inner<Int>) -> Int { take(x: b) }\n"
+
+test fn w_applied_alias_argument_agreement_is_accepted() -> Bool {
+  refusal_count(source: applied_alias_argument_agree_source) == 0
+}

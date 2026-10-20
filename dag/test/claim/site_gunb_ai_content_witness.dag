@@ -1,0 +1,159 @@
+module test.claim.site_gunb_ai_content_witness
+
+// §5 — "done means executed" for the gunb.ai content model (gunbc.site.gunb_ai_content). The
+// claim is not "the strings are present in the file" (a grep, which passes on dead code); it is
+// that the rows RENDER into markup carrying the relationships the copy depends on. Where a claim
+// is about rendered output it builds a Fragment with the same helpers the page will use and
+// serializes it through extdeps.languages.html's FAIL-CLOSED emitter, so escaping and ordering
+// are exercised on the route the served page will actually take.
+//
+// Consumer: claim-run —
+//   gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_content_witness.dag --claim-run
+//
+// RED CONTROLS, RUN against the compiler (not asserted — a control that only deletes a field
+// fails to typecheck and proves nothing). The per-control outcome table (which claim reddened,
+// what stayed green, the restored baseline) is in this PR's body, where the run is reported: it is
+// evidence of one execution, so it is not kept here where it would read as a standing fact.
+// Controls, each aimed at the named claim:
+//   - hero_statement_sentence() replaced by a hand-shortened literal (the copy-drift class this
+//     model exists to prevent) -> witness_description_is_generated_from_the_hero_rows;
+//   - the first two hero_examples swapped -> witness_hero_paragraph_joins_examples_in_order
+//     (order is checked by equality against the join, so a set-membership check would miss it);
+//   - the clone line, TWICE-MUTATED, against witness_install_block_reads_the_repository_row. A
+//     single mutation cannot redden a string comparison and the earlier version of this note claimed
+//     otherwise, so the control is the PAIR: (a) install_commands' clone line becomes a hand-typed
+//     literal identical in text to link_repository.href, and (b) link_repository.href is then
+//     changed. Step (a) alone leaves every string equal and reddens nothing — that was the finding;
+//     step (b) alone moves both sides together and also reddens nothing. Together they go red,
+//     because the render keeps the frozen literal while the claim recomputes from the moved row.
+//     That is what makes the claim a check on derivation rather than on text;
+//   - "<em>" injected into tagline_text -> witness_copy_renders_escaped_not_as_markup.
+
+import std.types { Bool, Int, List, String }
+import std.algebra { string_contains }
+import test.fixture.text_scan { index_of, occurrences, occurs_before }
+import std.optional { Optional, Absent, Present }
+import std.markup { Fragment }
+import gunbc.site.markup { txt, el }
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+import gunbc.site.gunb_ai_content {
+  site_wordmark, compiler_name, site_eyebrow, document_title, meta_description_text,
+  headline_text, tagline_text, hero_statement, hero_examples, hero_paragraph_one,
+  hero_emphasis_lead, hero_paragraph_two_tail, hero_paragraph_three,
+  install_label, install_prompt, install_commands, repository_slug,
+  link_repository, link_contact, glyph_middle_dot, meta_description_coherent,
+}
+
+// 1. The title is COMPOSED, not a second copy: it is exactly wordmark + " — " + headline, with
+//    both halves coming from their rows. If someone hard-codes a title on the page, this is the
+//    claim that says so.
+test fn witness_title_is_composed_from_its_two_rows() -> Bool {
+  let t = document_title()
+  string_contains(s: t, pattern: site_wordmark)
+    && string_contains(s: t, pattern: headline_text)
+    && t == join([site_wordmark, " — ", headline_text], "")
+}
+
+// 2. THE DESCRIPTION-DRIFT CONTROL. The description is generated from the hero rows, so it cannot
+//    lag behind them. It must contain the statement and the closing sentence, must contain the
+//    second sentence exactly once, and must NOT carry the colon elaboration or any example from
+//    it — the classic defect this model prevents is a <meta description> that quietly says
+//    something the page does not.
+test fn witness_description_is_generated_from_the_hero_rows() -> Bool {
+  let d = meta_description_text()
+  string_contains(s: d, pattern: hero_statement)
+    && string_contains(s: d, pattern: hero_paragraph_three)
+    && occurrences(s: d, pattern: hero_paragraph_two_tail) == 1
+    && !string_contains(s: d, pattern: ": ")
+    && all(hero_examples, e => !string_contains(s: d, pattern: e))
+    // The content module's own predicate, asserted here so it has a real consumer and so the
+    // model cannot quietly weaken it: the checks below are independent of it, not derived from it.
+    && meta_description_coherent()
+}
+
+// 3. The first hero paragraph is assembled from the claim plus the ORDERED example list: every
+//    example exactly once, joined ", ", with the full stop. Because the whole sentence is compared
+//    to the join, a reordered list is red — "code into tests" before "types into clients" would
+//    survive every presence check.
+test fn witness_hero_paragraph_joins_examples_in_order() -> Bool {
+  let p = hero_paragraph_one()
+  string_contains(s: p, pattern: join([hero_statement, ": "], ""))
+    && all(hero_examples, e => occurrences(s: p, pattern: e) == 1)
+    && p == join([hero_statement, ": ", join(hero_examples, ", "), "."], "")
+}
+
+// 4. RENDERED escaping, on the route the page takes. Copy is data, so a markup character in a copy
+//    row must be escaped by the serializer rather than emitted as a node. Two halves: the emitter
+//    escapes what it is given, AND none of the real copy rows contains markup to begin with — the
+//    second half is the one that keeps HTML out of this layer entirely.
+test fn witness_copy_renders_escaped_not_as_markup() -> Bool {
+  let probe = render(frag: el("p", [txt(join(["a <script>alert(1)</script> ", hero_paragraph_three], ""))]))
+  !string_contains(s: probe, pattern: "<script>")
+    && string_contains(s: probe, pattern: "&lt;script&gt;")
+    && string_contains(s: probe, pattern: hero_paragraph_three)
+    && all(copy_rows(), row => row != ""
+      && !string_contains(s: row, pattern: "<")
+      && !string_contains(s: row, pattern: ">"))
+}
+
+// 5. THE INSTALL BLOCK AND THE LINK ARE ONE FACT. The clone command is generated from the
+//    repository row the masthead links, and "cd" names that URL's own last segment — so the
+//    instructions cannot tell you to clone a repo the site does not link, or cd into a folder the
+//    clone never creates. Order is asserted too (clone, then cd, then build), and the prompt row
+//    appears exactly once per command, which is what catches a join emitting it twice.
+test fn witness_install_block_reads_the_repository_row() -> Bool {
+  let cmds = install_commands()
+  let joined = join(cmds, "\n")
+  occurrences(s: joined, pattern: link_repository.href) == 1
+    && string_contains(s: joined, pattern: join(["git clone ", link_repository.href], ""))
+    && string_contains(s: joined, pattern: join(["cd ", repository_slug()], ""))
+    && repository_slug() != ""
+    && !string_contains(s: repository_slug(), pattern: "/")
+    && occurs_before(haystack: joined, before: "git clone ", after: "cd ")
+    && occurs_before(haystack: joined, before: "cd ", after: "cargo build --release")
+    && occurrences(s: joined, pattern: "cargo build --release") == 1
+    // The prompt is PRESENTATION, not part of a command: the live page wraps it in its own
+    // <span class="command-prompt"> per line. So no command may already contain it — if one did,
+    // the rendered line would read "$ $ git clone". That is the defect class here, and it is
+    // exactly what an earlier draft of this claim got backwards by counting prompts inside the
+    // command list (where they are, correctly, absent).
+    && all(cmds, c => !string_contains(s: c, pattern: install_prompt))
+    && string_length(s: install_prompt) == 2
+    && substring(s: install_prompt, start: 0, end: 1) == "$"
+}
+
+// 6. Shared things are shared, not copied: the eyebrow and the install label each contain the
+//    middle dot exactly once, and the bold hero lead IS the compiler-name row — so the masthead
+//    and the emphasis cannot end up naming different products. The contact link's href is its own
+//    label with the scheme prefixed: a checked relation between the pair, so a label and a target
+//    that disagree is red rather than a mailto to the wrong address.
+test fn witness_shared_glyphs_and_names_are_shared() -> Bool {
+  occurrences(s: site_eyebrow(), pattern: glyph_middle_dot) == 1
+    && occurrences(s: install_label(), pattern: glyph_middle_dot) == 1
+    && string_contains(s: site_eyebrow(), pattern: compiler_name)
+    && hero_emphasis_lead() == compiler_name
+    && string_contains(s: render(frag: el("strong", [txt(hero_emphasis_lead())])), pattern: compiler_name)
+    && link_contact.href == join(["mailto:", link_contact.label], "")
+}
+
+// ── support ──────────────────────────────────────────────────────────────────────────────────
+// Serialize through the FAIL-CLOSED emitter, the route the page writer uses. A refused emission
+// makes the claim false rather than being skipped: an emission that refuses is a defect in the
+// content, not an absence of evidence.
+fn render(frag: Fragment) -> String {
+  match try_serialize_html_source(node: frag) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => "«EMIT REFUSED»"
+  }
+}
+
+// The copy rows the page renders, as a list, so "no markup smuggled into data" quantifies over the
+// content rather than a hand-picked subset. (This language has no reflection over declarations, so
+// the list is written — and it is read only by the claim above, which is why it lives here.)
+fn copy_rows() -> List<String> {
+  [
+    site_wordmark, compiler_name, site_eyebrow(), document_title(), meta_description_text(),
+    headline_text, tagline_text, hero_paragraph_one(), hero_paragraph_two_tail,
+    hero_paragraph_three, install_label(),
+  ]
+}

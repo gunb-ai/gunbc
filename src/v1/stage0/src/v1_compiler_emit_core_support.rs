@@ -240,7 +240,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
             }),
             |acc: Rc<ModuleFilenameOwners>, tm: Rc<TypedModule>| {
                 let module_name = crate::v1_std_core::authored_name_at(
-                    tm.type_env.clone().source_indices.clone(),
+                    tm.type_env.source_indices.clone(),
                     tm.module.clone(),
                 );
                 let filename =
@@ -261,7 +261,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                                                 owner.clone(),
                                                 module_name.clone(),
                                             ]),
-                                            span: tm.module.clone().span.clone(),
+                                            span: tm.module.span.clone(),
                                         }),
                                         module_name.clone(),
                                     ),
@@ -776,7 +776,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                                 if has_mock_prefix(
                                                     crate::v1_std_core::field_init_node_name_at(
                                                         p.clone(),
-                                                        tm.type_env.clone().source_indices.clone(),
+                                                        tm.type_env.source_indices.clone(),
                                                     ),
                                                 ) {
                                                     __found = true;
@@ -795,15 +795,15 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                 {
                                     __result.push(Rc::new(TestProjection {
                                         module_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
+                                            tm.type_env.source_indices.clone(),
                                             tm.module.clone(),
                                         ),
                                         service_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
+                                            tm.type_env.source_indices.clone(),
                                             item.clone(),
                                         ),
                                         operation_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
+                                            tm.type_env.source_indices.clone(),
                                             c.clone(),
                                         ),
                                         inferred: crate::v1_compiler_infer_types::resolved_type(
@@ -816,7 +816,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                                 if has_mock_prefix(
                                                     crate::v1_std_core::field_init_node_name_at(
                                                         p.clone(),
-                                                        tm.type_env.clone().source_indices.clone(),
+                                                        tm.type_env.source_indices.clone(),
                                                     ),
                                                 ) {
                                                     __result.push(p);
@@ -824,7 +824,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                             }
                                             __result
                                         }),
-                                        source_indices: tm.type_env.clone().source_indices.clone(),
+                                        source_indices: tm.type_env.source_indices.clone(),
                                         type_env: tm.type_env.clone(),
                                     }));
                                 }
@@ -934,7 +934,7 @@ pub fn emitted_symbol_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec<
         let mut __result = Vec::new();
         for tm in typed.modules.clone().iter().cloned() {
             __result.extend((*{
-        let source_indices = tm.type_env.clone().source_indices.clone();
+        let source_indices = tm.type_env.source_indices.clone();
 let module_name = crate::v1_std_core::authored_name_at(source_indices.clone(), tm.module.clone());
 let result = tm.items.clone().iter().cloned().fold(Rc::new(EmittedSymbolOwners {
     owners: v1_rt::rc_empty_map::<String, String>(),

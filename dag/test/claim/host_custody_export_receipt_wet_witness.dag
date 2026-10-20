@@ -33,7 +33,7 @@ import gunbc.dispatch_credential_snapshot {
   DispatchSnapshotRefused,
   taken_credential_snapshot_generation,
 }
-import gunbc.typed_remote_file_write {
+import gunbc.typed_remote_file_write { NoValidation,
   TypedRemoteFileWrite,
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
@@ -103,7 +103,7 @@ fn run_step(st: TypedRemoteFileWriteStep) -> Bool {
 }
 
 fn run_pre_compare(write: TypedRemoteFileWrite) -> Bool {
-  let steps = typed_remote_file_pre_compare_steps(write: write, mode: RemoteFileModeOwnerReadWriteGroupRead)
+  let steps = typed_remote_file_pre_compare_steps(write: write, mode: RemoteFileModeOwnerReadWriteGroupRead, validation: NoValidation)
   fold(steps, init: true, f: (ok, st) => ok && run_step(st: st))
     && run_production_argv(argv: typed_remote_file_compare_argv(write: write), stdin_payload: write.content)
 }
@@ -186,6 +186,7 @@ fn fx_pairing_row(path: NonEmptyStr, reader: NonEmptyStr, publisher: NonEmptyStr
     dir_ownership: PosixOwnerNames { user: publisher, group: reader },
     dir_mode: production.dir_mode,
     export_receipt: CustodyExportReceiptOwed,
+    medium: CustodyDiskBacked,
   }
 }
 

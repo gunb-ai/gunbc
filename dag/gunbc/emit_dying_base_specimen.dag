@@ -1,0 +1,76 @@
+module gunbc.emit_dying_base_specimen
+
+import std.types { Bool, Int, List }
+import std.optional { Optional, Present, Absent }
+
+// The shapes the dying-base reuse form (v1.compiler.ownership analyze_dying_base_sites) rebuilds in a
+// parameter's own box, executed by gunbc.instruments.native_allocation_observation: that binary is
+// emitted by the seed, so these fns run the reuse form itself and not a rendering of it. DbInner and
+// DbOptInner carry a List<Int> so both are shared (Rc) types; an all-value record is not.
+
+type DbInner {
+  xs: List<Int>
+  k: Int
+}
+
+type DbOuter {
+  inner: DbInner
+  log: List<Int>
+  n: Int
+}
+
+type DbOptInner {
+  xs: List<Int>
+  k: Int
+}
+
+type DbOptOuter {
+  child: DbOptInner?
+  log: List<Int>
+  n: Int
+}
+
+fn db_init() -> DbOuter {
+  DbOuter { inner: DbInner { xs: [10], k: 5 }, log: [], n: 3 }
+}
+
+// Values computed from the old fields (inner.k into log, inner.xs and n into the new inner) are read
+// before any slot is overwritten.
+fn db_step(o: DbOuter) -> DbOuter {
+  DbOuter {
+    inner: DbInner { xs: list_push(o.inner.xs, o.n), k: o.inner.k + o.n },
+    log: list_push(o.log, o.inner.k),
+    n: o.n + 1
+  }
+}
+
+fn db_opt_absent() -> DbOptOuter {
+  DbOptOuter { child: none, log: [], n: 3 }
+}
+
+fn db_opt_present() -> DbOptOuter {
+  DbOptOuter { child: DbOptInner { xs: [10], k: 5 }, log: [], n: 3 }
+}
+
+// The child slot is optional: the stored value is Some(..), and the slot is never a direct Rc.
+fn db_opt_step(o: DbOptOuter) -> DbOptOuter {
+  DbOptOuter {
+    child: DbOptInner { xs: list_push(o.log, o.n), k: o.n },
+    log: list_push(o.log, o.n),
+    n: o.n + 1
+  }
+}
+
+fn db_opt_child_k(o: DbOptOuter) -> Int {
+  match o.child {
+    Present { value: c } => c.k
+    Absent => 0 - 1
+  }
+}
+
+fn db_opt_child_xs(o: DbOptOuter) -> List<Int> {
+  match o.child {
+    Present { value: c } => c.xs
+    Absent => []
+  }
+}

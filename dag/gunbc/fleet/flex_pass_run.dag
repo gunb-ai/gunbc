@@ -1,0 +1,359 @@
+module gunbc.fleet.flex_pass_run
+
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String, EpochMs }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.integer { int_to_decimal_string }
+import std.measure { money_amount_micro_count, money_per_hour_micros, milliseconds_per_second }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.cloud.vast_ai
+import extdeps.cloud.vast_ai {
+  VastAiOffer, VastAiOfferHostResources, VastAiOfferQuery, VastAiInstances, VastAiCharges, VastAiChargesDayRange,
+  vast_ai_keyset_page_limit, vast_ai_charges_day_filter, vast_ai_instances_unfiltered, vast_ai_wire_mb, vast_ai_wire_mbps,
+}
+import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
+import gunbc.auth.access_token_source { resolve_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused, access_token_upsert_required_reason }
+import gunbc.auth.secret_ref_credential {
+  fetch_secret_ref_credential_with_token, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
+}
+import gunbc.flex_vast_credential { flex_vast_api_key_secret_ref }
+import product.fabric.flex_vast_shadow {
+  FlexInstancesStanding, FlexInstancesUnreadable, FlexInstancesComplete, FlexInstancesPartial, FlexInstancesUnobserved,
+  FlexChargesStanding, FlexChargesUnreadable, FlexChargesComplete, FlexChargesPartial, FlexChargesUnobserved,
+  FlexInstancesPageTurn, FlexChargesPageTurn, flex_fold_instance_pages, flex_fold_charge_pages,
+  FlexShadowFieldEntry, ShadowEntryEstablished, ShadowEntryEstimated, ShadowEntryExcluded,
+  flex_offer_in_shadow_field, flex_offer_quote, flex_offer_admission_unattempted, flex_vast_account,
+  flex_trial_policy, flex_serving_recipe, flex_vast_offer_query, flex_trial_charges_from,
+}
+import product.fabric.serving_recipe { ServingSelectionQuote, SelectionQuoteEstablished, SelectionQuoteRefusedEstimated, SelectionQuoteRefusedUnavailable }
+import product.fabric.flex_vast_loop {
+  FlexPassInput, FlexPassObservation, FlexWetGates, FlexKeyStanding, FlexKeyLive, FlexKeyNotLive, FlexKeyFromSecretManager,
+  FlexCreateIntent, FlexPlacementUnread, FlexPassOutcome, flex_run_pass, flex_vast_template_hashes,
+  flex_pass_outcome_wire, flex_create_walls, flex_wet_gate_wall, FlexCreateRefusal, flex_create_refusal_wire,
+}
+
+// THE SRV1 FLEET-CONVERGE ENTRY OF THE FLEX TIER: ONE PASS of product.fabric.flex_vast_loop flex_run_pass
+// over LIVE Vast reads. It reads the key (Secret Manager, under the run's own federated identity), walks our
+// account's instances and charges to the end, searches interruptible offers under the recipe's query,
+// screens and quotes them, takes the cheapest member as the pass's one intent, and runs the pass under
+// flex_trial_policy, whose actuation is Plan: the receipt records the write the pass WOULD make and every
+// wall in front of it, and no write is performed. The policy is the one switch; this entry passes it whole.
+//
+// The receipt carries no secret: the key is used and dropped, the create request carries none.
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/flex_pass_run.dag --function pass`
+
+data flex_pass_receipt_path: String = "target/flex-pass-receipt.txt"
+
+// The page budget of one walk. A walk that has not ended by then is Partial, which every consumer refuses.
+data flex_walk_page_budget: Int = 40
+
+// ---- THE KEY.
+type FlexVastKey
+  = FlexVastKeyReady { key: Secret, resolved_version: NonEmptyStr }
+  | FlexVastKeyRefused { cause: NonEmptyStr }
+
+fn flex_vast_key() -> FlexVastKey uses net: Network {
+  match resolve_access_token() {
+    AccessTokenUpsertRequired { plan: plan } =>
+      FlexVastKeyRefused { cause: concat("NO GCP ACCESS TOKEN: ", access_token_upsert_required_reason(plan: plan)) as NonEmptyStr }
+    AccessTokenEnsureRefused { reason: reason } =>
+      FlexVastKeyRefused { cause: concat("NO GCP ACCESS TOKEN: ", reason as String) as NonEmptyStr }
+    AccessTokenReady { token: gcp_token } =>
+      match fetch_secret_ref_credential_with_token(secret_ref: flex_vast_api_key_secret_ref, access_token: gcp_token) {
+        SecretCredentialAccessUpsertRequired { plan: _ } =>
+          FlexVastKeyRefused { cause: "THE VAST KEY COULD NOT BE READ: the access ensure requires an interactive authentication this run cannot perform" as NonEmptyStr }
+        SecretCredentialFetchRefused { reason: reason } =>
+          FlexVastKeyRefused { cause: concat("THE VAST KEY COULD NOT BE READ: ", reason as String) as NonEmptyStr }
+        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+          FlexVastKeyRefused { cause: "THE VAST KEY COULD NOT BE READ: the access response did not decode" as NonEmptyStr }
+        SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+          FlexVastKeyRefused { cause: join(["THE VAST KEY READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested, ", answered about ", resolved], "") as NonEmptyStr }
+        SecretCredentialReady { credential: k, resolved_version: v } => FlexVastKeyReady { key: k, resolved_version: v }
+      }
+  }
+}
+
+fn flex_rest_refusal_text(r: RestRefusal) -> String {
+  match r {
+    RestStatusRefused { status: s, body: _ } => concat("status ", int_to_decimal_string(value: s))
+    RestTransportRefused { cause: c } => concat("transport: ", c as String)
+    RestBodyUndecodable { status: s, cause: c } => join(["status ", int_to_decimal_string(value: s), " undecodable: ", c as String], "")
+  }
+}
+
+// ---- THE WALKS. Each page request names the token the previous page returned; the fold judges the chain.
+// A refused page ends the walk with its cause, and the standing is Unreadable (never a partial count).
+type FlexInstanceWalk {
+  pages: List<FlexInstancesPageTurn>
+  refused: String?
+}
+
+fn flex_walk_instances(key: Secret, after: String?, walk: FlexInstanceWalk, budget: Int) -> FlexInstanceWalk uses net: Network {
+  if budget <= 0 {
+    walk
+  } else {
+    match vast_ai.Instances.Show(api_key: key, select_filters: vast_ai_instances_unfiltered, limit: vast_ai_keyset_page_limit, after_token: after) {
+      RestRefused { refusal: r } => FlexInstanceWalk { pages: walk.pages, refused: Present { value: flex_rest_refusal_text(r: r) } }
+      RestAnswered { answer: a } =>
+        let turn = FlexInstancesPageTurn {
+          after_token: after,
+          page: VastAiInstances { success: true, instances_found: length(a.instances), total_instances: a.total_instances, next_token: a.next_token, instances: a.instances },
+        }
+        let next = FlexInstanceWalk { pages: concat(walk.pages, [turn]), refused: none }
+        match a.next_token {
+          Absent => next
+          Present { value: n } => flex_walk_instances(key: key, after: Present { value: n }, walk: next, budget: budget - 1)
+        }
+    }
+  }
+}
+
+fn flex_instances_standing(walk: FlexInstanceWalk) -> FlexInstancesStanding {
+  match walk.refused {
+    Present { value: _ } => FlexInstancesUnreadable
+    Absent => flex_fold_instance_pages(pages: walk.pages)
+  }
+}
+
+type FlexChargeWalk {
+  pages: List<FlexChargesPageTurn>
+  refused: String?
+}
+
+fn flex_walk_charges(key: Secret, filter: String, after: String?, walk: FlexChargeWalk, budget: Int) -> FlexChargeWalk uses net: Network {
+  if budget <= 0 {
+    walk
+  } else {
+    match vast_ai.Charges.Show(api_key: key, select_filters: filter, limit: vast_ai_keyset_page_limit, after_token: after) {
+      RestRefused { refusal: r } => FlexChargeWalk { pages: walk.pages, refused: Present { value: flex_rest_refusal_text(r: r) } }
+      RestAnswered { answer: a } =>
+        let turn = FlexChargesPageTurn {
+          after_token: after,
+          page: VastAiCharges { success: true, count: length(a.results), total: a.total, next_token: a.next_token, results: a.results },
+        }
+        let next = FlexChargeWalk { pages: concat(walk.pages, [turn]), refused: none }
+        match a.next_token {
+          Absent => next
+          Present { value: n } => flex_walk_charges(key: key, filter: filter, after: Present { value: n }, walk: next, budget: budget - 1)
+        }
+    }
+  }
+}
+
+fn flex_charges_standing(walk: FlexChargeWalk) -> FlexChargesStanding {
+  match walk.refused {
+    Present { value: _ } => FlexChargesUnreadable
+    Absent => flex_fold_charge_pages(pages: walk.pages)
+  }
+}
+
+// ---- THE OFFERS. One search under the recipe's query; every offer screened and quoted.
+type FlexOfferSearch
+  = FlexOffersAnswered { offers: List<VastAiOffer>, hosts: List<VastAiOfferHostResources> }
+  | FlexOffersRefused { cause: String }
+
+fn flex_search(key: Secret, q: VastAiOfferQuery) -> FlexOfferSearch uses net: Network {
+  match vast_ai.SearchOffers.Search(
+    api_key: key, search_type: q.search_type, limit: q.limit,
+    gpu_ram_min_mb: vast_ai_wire_mb(b: q.gpu_ram_min), cuda_max_good_min: q.cuda_max_good_min as Int, cpu_ram_min_mb: vast_ai_wire_mb(b: q.cpu_ram_min),
+    inet_down_min_mbps: vast_ai_wire_mbps(b: q.inet_down_min), verified: q.verified, num_gpus: q.num_gpus as Int,
+  ) {
+    RestAnswered { answer: a } => FlexOffersAnswered { offers: a.offers, hosts: a.hosts }
+    RestRefused { refusal: r } => FlexOffersRefused { cause: flex_rest_refusal_text(r: r) }
+  }
+}
+
+type FlexScreenedOffer {
+  offer: VastAiOffer
+  entry: FlexShadowFieldEntry
+  quote: ServingSelectionQuote
+}
+
+fn flex_entry_member(entry: FlexShadowFieldEntry) -> Bool {
+  match entry {
+    ShadowEntryEstablished => true
+    ShadowEntryEstimated { provisional_member: m, standings: _ } => m
+    ShadowEntryExcluded => false
+  }
+}
+
+// The cheapest member by bid floor (min_bid). A tie keeps the earlier offer in the answer's order.
+// ---- NO SELECTION HERE. Choosing which offer to rent is a matching decision, owned by product.fabric.selection
+// select_supply under std.decision (DESIGN 3b, 3d); this entry never ranks members itself. That route is the
+// declared frontier product.fabric.flex_vast_loop flex_select_supply_consumer_frontier: no bid attempt is
+// built and no member's quote is established, so a selection would answer needs-evidence. Until it lands,
+// the pass is run with NO intent and the receipt reports, for EVERY member, the create it would ask for and
+// every wall in front of it (flex_create_walls), so the walls are read without choosing a card.
+type FlexMemberWalls {
+  screened: FlexScreenedOffer
+  admission_built: Bool
+  walls: List<FlexCreateRefusal>
+}
+
+fn flex_member_intent(s: FlexScreenedOffer) -> FlexCreateIntent? {
+  match flex_offer_admission_unattempted(offer: s.offer, account: flex_vast_account) {
+    Absent => none
+    Present { value: admission } =>
+      Present {
+        value: FlexCreateIntent {
+          offer: s.offer,
+          entry: s.entry,
+          quote: s.quote,
+          admission: admission,
+          placement: FlexPlacementUnread { obligation: "the card, host and route of a Vast rental are read from the instance the create yields, never supplied before it" as NonEmptyStr },
+        },
+      }
+  }
+}
+
+fn flex_member_walls(input: FlexPassInput, s: FlexScreenedOffer) -> FlexMemberWalls {
+  match flex_member_intent(s: s) {
+    Absent => FlexMemberWalls { screened: s, admission_built: false, walls: [] }
+    Present { value: intent } =>
+      FlexMemberWalls {
+        screened: s,
+        admission_built: true,
+        walls: concat(
+          flex_create_walls(policy: input.policy, observation: input.observation, intent: intent, recipe: input.recipe, hashes: input.template_hashes),
+          flex_wet_gate_wall(gates: input.gates),
+        ),
+      }
+  }
+}
+
+// ---- THE RECEIPT.
+fn flex_entry_wire(entry: FlexShadowFieldEntry) -> String {
+  match entry {
+    ShadowEntryEstablished => "established"
+    ShadowEntryEstimated { provisional_member: m, standings: ss } => join(["estimated member=", if m { "true" } else { "false" }, " uncited=", int_to_decimal_string(value: length(ss))], "")
+    ShadowEntryExcluded => "excluded"
+  }
+}
+
+fn flex_quote_wire(q: ServingSelectionQuote) -> String {
+  match q {
+    SelectionQuoteEstablished { amount: a, currency: _ } => concat("established micro_usd_per_mtok=", int_to_decimal_string(value: money_amount_micro_count(m: a)))
+    SelectionQuoteRefusedEstimated { standings: ss } => concat("estimated uncited=", int_to_decimal_string(value: length(ss)))
+    SelectionQuoteRefusedUnavailable => "unavailable"
+  }
+}
+
+fn flex_screened_line(s: FlexScreenedOffer) -> String {
+  join([
+    "offer id=", int_to_decimal_string(value: s.offer.id), " machine=", int_to_decimal_string(value: s.offer.machine_id),
+    " gpu=", s.offer.gpu_name, " x", int_to_decimal_string(value: s.offer.num_gpus),
+    " min_bid=", int_to_decimal_string(value: s.offer.min_bid.units), "e-", int_to_decimal_string(value: s.offer.min_bid.fraction_digits),
+    " entry=", flex_entry_wire(entry: s.entry), " quote=", flex_quote_wire(q: s.quote),
+  ], "")
+}
+
+fn flex_walk_refusal_wire(refused: String?) -> String {
+  match refused {
+    Absent => ""
+    Present { value: c } => concat(" refused: ", c)
+  }
+}
+
+fn flex_instances_wire(s: FlexInstancesStanding) -> String {
+  match s {
+    FlexInstancesUnobserved => "instances=unobserved"
+    FlexInstancesUnreadable => "instances=unreadable"
+    FlexInstancesPartial { next_token: _, observed: o, total: t } => join(["instances=partial observed=", int_to_decimal_string(value: length(o)), " total=", int_to_decimal_string(value: t)], "")
+    FlexInstancesComplete { roster: r } => concat("instances=complete total=", int_to_decimal_string(value: r.total))
+  }
+}
+
+fn flex_charges_wire(s: FlexChargesStanding) -> String {
+  match s {
+    FlexChargesUnobserved => "charges=unobserved"
+    FlexChargesUnreadable => "charges=unreadable"
+    FlexChargesPartial { next_token: _, observed: o, total: t } => join(["charges=partial observed=", int_to_decimal_string(value: length(o)), " total=", int_to_decimal_string(value: t)], "")
+    FlexChargesComplete { roster: r } => concat("charges=complete rows=", int_to_decimal_string(value: r.total))
+  }
+}
+
+fn flex_member_line(m: FlexMemberWalls) -> String {
+  join([
+    flex_screened_line(s: m.screened),
+    if m.admission_built {
+      concat(" walls=[", concat(join(map(m.walls, w => flex_create_refusal_wire(r: w)), ", "), "]"))
+    } else {
+      " walls=unbuilt (candidates derived but no bid attempt is built)"
+    },
+  ], "")
+}
+
+// ---- THE PASS.
+fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) -> String uses net: Network {
+  let instance_walk = flex_walk_instances(key: key, after: none, walk: FlexInstanceWalk { pages: [], refused: none }, budget: flex_walk_page_budget)
+  let instances = flex_instances_standing(walk: instance_walk)
+  let filter = vast_ai_charges_day_filter(range: VastAiChargesDayRange { gte: flex_trial_charges_from / milliseconds_per_second(), lte: now / milliseconds_per_second() })
+  let charge_walk = flex_walk_charges(key: key, filter: filter, after: none, walk: FlexChargeWalk { pages: [], refused: none }, budget: flex_walk_page_budget)
+  let charges = flex_charges_standing(walk: charge_walk)
+  match flex_vast_offer_query(recipe: flex_serving_recipe) {
+    Absent =>
+      join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n", flex_charges_wire(s: charges), "\noffers=unsearched (the recipe has no Vast host filters)"], "")
+    Present { value: query } =>
+  match flex_search(key: key, q: query) {
+    FlexOffersRefused { cause: c } =>
+      join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n", flex_charges_wire(s: charges), "\noffers=refused ", c], "")
+    FlexOffersAnswered { offers: offers, hosts: hosts } =>
+      let screened = map(offers, o => FlexScreenedOffer {
+        offer: o,
+        entry: match first_where(hosts, h => h.id == o.id) {
+          Absent => ShadowEntryExcluded
+          Present { value: h } => flex_offer_in_shadow_field(offer: o, host: h, search_type: query.search_type)
+        },
+        quote: flex_offer_quote(offer: o, recipe: flex_serving_recipe),
+      })
+      let input = FlexPassInput {
+          policy: flex_trial_policy,
+          recipe: flex_serving_recipe,
+          gates: FlexWetGates { key: FlexKeyLive { route: FlexKeyFromSecretManager { resolved_version: resolved_version } } },
+          now: now,
+          cooldown: none,
+          observation: FlexPassObservation { roster: instances, charges: charges },
+          cards: [],
+          allocations: [],
+          intent: none,
+          template_hashes: flex_vast_template_hashes,
+          no_room: false,
+          replacement_serving: false,
+        }
+      let members = map(screened |> filter(s => flex_entry_member(entry: s.entry)), s => flex_member_walls(input: input, s: s))
+      let outcome = flex_run_pass(input: input, api_key: key, releasing: none)
+      join([
+        "key=live secret_manager version=", resolved_version as String, "\n",
+        flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n",
+        flex_charges_wire(s: charges), flex_walk_refusal_wire(refused: charge_walk.refused), "\n",
+        "offers=", int_to_decimal_string(value: length(offers)), " members=", int_to_decimal_string(value: length(members)), "\n",
+        join(map(members, m => flex_member_line(m: m)), "\n"), "\n",
+        "selection=needs-evidence (select_supply unwired: product.fabric.flex_vast_loop flex_select_supply_consumer_frontier)\n",
+        "outcome=", flex_pass_outcome_wire(outcome: outcome),
+      ], "")
+  }
+  }
+}
+
+fn pass() -> ProcessExit uses net: Network {
+  match observer_clock_read() {
+    ObserverClockUnreadable { detail: d } => exit_failure(reason: concat("THE CLOCK COULD NOT BE READ: ", d))
+    ObserverClockObserved { instant: at } =>
+      match flex_vast_key() {
+        FlexVastKeyRefused { cause: cause } => exit_failure(reason: cause as String)
+        FlexVastKeyReady { key: key, resolved_version: v } => {
+          let text = flex_pass_with_key(key: key, resolved_version: v, now: observer_instant_millis(instant: at))
+          let written = Filesystem.Write(path: flex_pass_receipt_path, content: text)
+          if !written.success {
+            exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error))
+          } else {
+            ExitSuccess
+          }
+        }
+      }
+  }
+}

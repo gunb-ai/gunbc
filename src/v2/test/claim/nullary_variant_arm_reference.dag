@@ -18,8 +18,8 @@ import v2.std.integer { integer_int_type_node }
 import v2.std.list_introduction { list_introduction_head_path, lower_list_introduction }
 import v2.std.logic { Bool }
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
-import v2.std.node { Authored, Branch, ComputationNode, Conj, Edge, Instantiation, Node, Positional, TypeNode }
-import v2.std.node_query { construct_node, node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Authored, Branch, ComputationNode, Conj, Edge, Instantiation, Node, Positional, TypeNode }
+import v2.std.node_query { construct_node }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
 import v2.std.symbol_index { MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, SymbolIndex, VariantArmPayload, empty_symbol_index, symbol_index_bind_at, symbol_index_declaring_path_of, symbol_index_insert, symbol_index_mark_declared_payload, symbol_index_mark_module_root }
 import v2.std.witness { Holds, Violates }
@@ -207,14 +207,14 @@ fn nvar_list_of(elements: List<Node>, id: Int) -> Node {
 fn nvar_freemonoid_element_path(ty: Node) -> Optional<QualifiedName> {
   match ty.kind {
     TypeNode { connective: Instantiation } =>
-      match list_at_optional(xs: node_positional_child_targets(node: ty), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: ty), index: 0) {
         Absent => optional_absent()
         Present { value: head } =>
           match declaration_reference_path_optional(node: head) {
             Absent => optional_absent()
             Present { value: qn } =>
               if qn == list_introduction_head_path() {
-                match list_at_optional(xs: node_positional_child_targets(node: ty), index: 1) {
+                match list_at_optional(xs: positional_child_target_nodes(node: ty), index: 1) {
                   Absent => optional_absent()
                   Present { value: arg } => declaration_reference_path_optional(node: arg)
                 }

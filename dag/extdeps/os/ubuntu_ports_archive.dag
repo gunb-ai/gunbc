@@ -17,6 +17,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// The keyring that verifies the archive's signed InRelease, at the path the Ubuntu ubuntu-keyring package
+// installs it on an Ubuntu host (dpkg -S confirmed on the srv1 runner host, 2026-10-18). The shared
+// fleet-converge job runs on the self-hosted runner on that host, not in an image.
+data ubuntu_archive_keyring_path: String = "/usr/share/keyrings/ubuntu-archive-keyring.gpg"
+
 data ubuntu_ports_archive_root: String = "https://ports.ubuntu.com/ubuntu-ports/"
 
 type UbuntuArchiveBinaryPackage {
