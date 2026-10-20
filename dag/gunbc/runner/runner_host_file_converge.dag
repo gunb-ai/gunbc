@@ -34,7 +34,7 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
-import gunbc.runner.runner_host_cap_bracket { BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, readmit_all_slots_over, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy }
+import gunbc.runner.runner_host_cap_bracket { BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, readmit_all_slots_over, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted }
 import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire }
 import gunbc.ci.ci_runner_placement {
@@ -2322,36 +2322,41 @@ fn run_runner_host_cap_bracket(
   started: EpochMs,
 ) -> RunnerHostCapPhase
 {
-              match drain_until_quiescent_over(target: subject.target, context: context, units: subject.desired_units, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
-                BracketDrained => {
-                  let files = map(runner_host_cap_files(), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
-                  let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
-                  let written = all(files, r => runner_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
-                  // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
-                  let readmitted = if written { [] } else { readmit_all_slots_over(target: subject.target, context: context, units: subject.desired_units) }
-                  CapPhaseRan {
-                    files: files,
-                    reload: reload,
-                    slots: map(subject.desired_units, u => if written {
-                      activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
-                    } else {
-                      SlotCapsRefused { unit: u, step: "write", reason: join(["the cap drop-ins did not converge or the manager reload did not settle; ", host_left_wire(l: host_left_of_readmit(units: subject.desired_units, outcomes: readmitted)), " re-admission: ", join(map(readmitted, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
-                    }),
-                  }
-                }
-                BracketAdmissionNotClosed { listeners: ls } => {
-                  let restored = readmit_all_slots_over(target: subject.target, context: context, units: subject.desired_units)
-                  CapPhaseWithheld { cause: join([bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls }), "; ", host_left_wire(l: host_left_of_readmit(units: subject.desired_units, outcomes: restored)), " restored=", join(map(restored, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
-                }
-                BracketBoundExceeded { busy: bz, unproven: up } => {
-                  let restored = readmit_all_slots_over(target: subject.target, context: context, units: subject.desired_units)
-                  CapPhaseWithheld { cause: join([bracket_refusal_wire(r: BracketRefusedBoundExceeded { busy: bz, unproven: up, waited: runner_host_cap_drain_policy.wait_bound }), "; ", host_left_wire(l: host_left_of_readmit(units: subject.desired_units, outcomes: restored)), " restored=", join(map(restored, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
-                }
-                BracketWaiting { ticks_left: _ } => {
-                  let restored = readmit_all_slots_over(target: subject.target, context: context, units: subject.desired_units)
-                  CapPhaseWithheld { cause: join(["the drain wait ended mid-wait, so nothing was written; ", host_left_wire(l: host_left_of_readmit(units: subject.desired_units, outcomes: restored)), " restored=", join(map(restored, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
-                }
-              }
+  match acquire_bracket_over(target: subject.target, context: context, host: subject.host as String, units: subject.desired_units) {
+    BracketNotAcquired { refusal: rf } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: ", bracket_refusal_wire(r: rf)], "") }
+    BracketAcquired { owned: owned } =>
+      match drain_until_quiescent_over(target: subject.target, context: context, units: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
+        BracketDrained => {
+          let files = map(runner_host_cap_files(), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
+          let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
+          let written = all(files, r => runner_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
+          // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
+          let readmitted = if written { [] } else { readmit_all_slots_over(target: subject.target, context: context, units: owned) }
+          let slots = map(subject.desired_units, u => if written {
+            activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
+          } else {
+            SlotCapsRefused { unit: u, step: "write", reason: join(["the cap drop-ins did not converge or the manager reload did not settle; ", host_left_wire(l: host_left_of_readmit(units: owned, outcomes: readmitted)), " re-admission: ", join(map(readmitted, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
+          })
+          // DISCHARGED ONLY AFTER A READ-BACK THAT THE HOST ADMITS AGAIN; otherwise the obligation stays held.
+          let admitting = if written { all(slots, o => slot_cap_outcome_settled(o: o)) } else { match host_left_of_readmit(units: owned, outcomes: readmitted) { HostAdmitting => true _ => false } }
+          let discharged = if admitting { write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) } else { Present { value: "host not read back as admitting" } }
+          // A discharge that did not land is reported, not hidden: release would then find the units unmasked and issue no argv.
+          let discharge_note = match discharged { Present { value: w } => if admitting { [SlotCapsRefused { unit: subject.desired_units[0], step: "discharge", reason: w }] } else { [] } Absent => [] }
+          CapPhaseRan { files: files, reload: reload, slots: concat(slots, discharge_note) }
+        }
+        BracketAdmissionNotClosed { listeners: ls } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls }))
+        BracketBoundExceeded { busy: bz, unproven: up } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedBoundExceeded { busy: bz, unproven: up, waited: runner_host_cap_drain_policy.wait_bound }))
+        BracketWaiting { ticks_left: _ } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: "the drain wait ended mid-wait, so nothing was written")
+      }
+  }
+}
+
+fn withheld_after_readmit(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, owned: List<NonEmptyStr>, head: String) -> RunnerHostCapPhase
+{
+  let restored = readmit_all_slots_over(target: subject.target, context: context, units: owned)
+  let left = host_left_of_readmit(units: owned, outcomes: restored)
+  let discharged = match left { HostAdmitting => write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) HostLeftDrained { units: _ } => Present { value: "not admitting" } }
+  CapPhaseWithheld { cause: join([head, "; ", host_left_wire(l: left), " restored=", join(map(restored, o => slot_actuation_outcome_wire(o: o)), " "), match discharged { Present { value: w } => concat(" obligation-discharge: ", w) Absent => "" }], "") }
 }
 
 // ORDER: privilege, observe every file, write the ones that need it, read every slot, reload if the
@@ -2698,11 +2703,18 @@ fn runner_host_cap_release_ci_wet() -> ProcessExit
           match prepare_fleet_ssh_agent_context(attempt_raw: runner_host_file_converge_attempt_raw) {
             FleetSshContextRefused { cause: c } => exit_failure(reason: c)
             FleetSshContextReady { context: context, receipt: _ } => {
-              let outcomes = readmit_all_slots_over(target: subject.target, context: context, units: subject.desired_units)
-              let left = host_left_of_readmit(units: subject.desired_units, outcomes: outcomes)
-              match left {
-                HostAdmitting => ExitSuccess
-                _ => exit_failure(reason: join(["runner_host_cap_release: ", host_left_wire(l: left), " ", join(map(outcomes, o => slot_actuation_outcome_wire(o: o)), " ")], ""))
+              match release_decision_of(reading: read_bracket_obligation(host: subject.host as String)) {
+                ReleaseNothingOwed => ExitSuccess
+                ReleaseAlreadyDischarged => ExitSuccess
+                ReleaseObligationUntrusted { cause: c } => exit_failure(reason: concat("runner_host_cap_release: ", c))
+                ReleaseOwes { units: owned } => {
+                  let outcomes = release_owned_slots_over(target: subject.target, context: context, units: owned)
+                  let left = host_left_of_readmit(units: owned, outcomes: outcomes)
+                  match left {
+                    HostAdmitting => ExitSuccess
+                    _ => exit_failure(reason: join(["runner_host_cap_release: ", host_left_wire(l: left), " ", join(map(outcomes, o => slot_actuation_outcome_wire(o: o)), " ")], ""))
+                  }
+                }
               }
             }
           }
