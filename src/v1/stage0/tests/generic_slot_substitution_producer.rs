@@ -8,7 +8,9 @@ use v1_compiler::v1_std_core::{make_named_expr_node, no_span, ExprData, Inferred
 // Producer-level control for the slot substitution in src/v1/04_infer.dag: it builds the type nodes
 // resolve_node_bounded hands the substitution and calls the exact function the repair edits, so a
 // slot's payload and its slot boundary are observed directly. The route-level behavior is stated by
-// test.claim.generic_slot_substitution_witness.
+// test.claim.generic_slot_substitution_witness, which stays as the through-the-route claim; this test is the
+// only observation of the slot's type through child_type_node, which no .dag claim can read today. It is
+// retired when a .dag claim can assert a Node's resolved payload (trigger: that capability).
 
 fn node(name: &str, children: Vec<Rc<Node>>, inferred: Option<InferredNode>) -> Rc<Node> {
     make_named_expr_node(
