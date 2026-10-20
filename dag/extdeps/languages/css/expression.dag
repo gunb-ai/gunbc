@@ -4,9 +4,8 @@ import std.types { String, Int, List, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.css.values {
-  CssVarRef, CssHsl, CssDecimalLength, css_decimal_length_wire, css_number_fraction_digits, css_var_ref_wire, css_hsl_wire,
+  CssVarRef, CssHsl, CssDecimalLength, css_decimal_length_wire, css_number_wire, css_var_ref_wire, css_hsl_wire,
 }
-import std.decimal { fixed_point_trimmed_wire }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -94,11 +93,11 @@ fn css_value_wire(v: CssValue) -> String {
   match v {
     ValIdent { ident: i } => i
     ValString { text: t } => join(["\"", t, "\""], "")
-    ValNumber { milli: m } => fixed_point_trimmed_wire(value: m, decimals: css_number_fraction_digits)
+    ValNumber { milli: m } => css_number_wire(milli: m)
     ValLength { length: l } => css_decimal_length_wire(l: l)
-    ValTime { milli: m, unit: u } => join([fixed_point_trimmed_wire(value: m, decimals: css_number_fraction_digits), css_time_unit_token(u: u)], "")
-    ValAngle { milli: m, unit: u } => join([fixed_point_trimmed_wire(value: m, decimals: css_number_fraction_digits), css_angle_unit_token(u: u)], "")
-    ValFlex { milli: m } => join([fixed_point_trimmed_wire(value: m, decimals: css_number_fraction_digits), "fr"], "")
+    ValTime { milli: m, unit: u } => join([css_number_wire(milli: m), css_time_unit_token(u: u)], "")
+    ValAngle { milli: m, unit: u } => join([css_number_wire(milli: m), css_angle_unit_token(u: u)], "")
+    ValFlex { milli: m } => join([css_number_wire(milli: m), "fr"], "")
     ValVar { reference: r } => css_var_ref_wire(v: r)
     ValHsl { color: c } => css_hsl_wire(c: c)
     ValCall { function: f, args: a } => join([css_function_name_token(f: f), "(", join(map(a, x => css_value_wire(v: x)), ", "), ")"], "")
