@@ -13555,27 +13555,19 @@ pub fn is_emittable_parametric_type_alias_item(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ImportNameClassification {
-    pub is_graph_type: bool,
-    pub local_parent: Option<String>,
-    pub reexport_parent: Option<String>,
-    pub variant_parent: String,
-}
-
-pub fn classify_import_name(
+pub fn import_variant_parent_for_name(
     n: String,
     import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     type_summaries: Rc<TypeSummaryIndex>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-    variant_to_enum: Rc<HashMap<String, String>>,
     imported_enums: Rc<Vec<String>>,
     import_module_enums: Rc<Vec<String>>,
-) -> Rc<ImportNameClassification> {
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> String {
     if is_import_graph_type_name(
         n.clone(),
         import_module.clone(),
@@ -13587,12 +13579,7 @@ pub fn classify_import_name(
         module_index.clone(),
         variant_to_enum.clone(),
     ) {
-        Rc::new(ImportNameClassification {
-            is_graph_type: true,
-            local_parent: std::option::Option::None,
-            reexport_parent: std::option::Option::None,
-            variant_parent: "".to_string(),
-        })
+        "".to_string()
     } else {
         if {
             let mut __found = false;
@@ -13604,343 +13591,49 @@ pub fn classify_import_name(
             }
             __found
         } {
-            Rc::new(ImportNameClassification {
-                is_graph_type: false,
-                local_parent: std::option::Option::None,
-                reexport_parent: std::option::Option::None,
-                variant_parent: "".to_string(),
-            })
+            "".to_string()
         } else {
-            {
-                let local_parent = find_variant_parent_in_module(
+            match find_variant_parent_in_module(
+                n.clone(),
+                import_module.clone(),
+                typed_modules.clone(),
+                source_indices.clone(),
+                module_index.clone(),
+            ) {
+                Some(parent) => parent.clone(),
+                std::option::Option::None => match reexport_variant_parent_in_import_module(
                     n.clone(),
                     import_module.clone(),
+                    registry.clone(),
+                    type_summaries.clone(),
                     typed_modules.clone(),
+                    export_sets.clone(),
                     source_indices.clone(),
                     module_index.clone(),
-                );
-                let reexport_parent = match local_parent.clone() {
-                    Some(_) => std::option::Option::None,
-                    std::option::Option::None => reexport_variant_parent_in_import_module(
-                        n.clone(),
-                        import_module.clone(),
-                        registry.clone(),
-                        type_summaries.clone(),
-                        typed_modules.clone(),
-                        export_sets.clone(),
-                        source_indices.clone(),
-                        module_index.clone(),
-                    ),
-                };
-                let variant_parent = match local_parent.clone() {
+                ) {
                     Some(parent) => parent.clone(),
-                    std::option::Option::None => match reexport_parent.clone() {
-                        Some(parent) => parent.clone(),
-                        std::option::Option::None => {
-                            match crate::v1_compiler_infer_emit_info::find_variant_parent(
-                                type_summaries.clone(),
-                                n.clone(),
-                                imported_enums.clone(),
-                            ) {
-                                Some(parent) => parent.clone(),
-                                std::option::Option::None => {
-                                    match crate::v1_compiler_infer_emit_info::find_variant_parent(
-                                        type_summaries.clone(),
-                                        n.clone(),
-                                        import_module_enums.clone(),
-                                    ) {
-                                        Some(parent) => parent.clone(),
-                                        std::option::Option::None => "".to_string(),
-                                    }
+                    std::option::Option::None => {
+                        match crate::v1_compiler_infer_emit_info::find_variant_parent(
+                            type_summaries.clone(),
+                            n.clone(),
+                            imported_enums.clone(),
+                        ) {
+                            Some(parent) => parent.clone(),
+                            std::option::Option::None => {
+                                match crate::v1_compiler_infer_emit_info::find_variant_parent(
+                                    type_summaries.clone(),
+                                    n.clone(),
+                                    import_module_enums.clone(),
+                                ) {
+                                    Some(parent) => parent.clone(),
+                                    std::option::Option::None => "".to_string(),
                                 }
                             }
                         }
-                    },
-                };
-                Rc::new(ImportNameClassification {
-                    is_graph_type: false,
-                    local_parent: local_parent.clone(),
-                    reexport_parent: reexport_parent.clone(),
-                    variant_parent: variant_parent.clone(),
-                })
+                    }
+                },
             }
         }
-    }
-}
-
-pub fn extend_import_name_walks(
-    row: Rc<ImportNameClassification>,
-    n: String,
-    import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    type_summaries: Rc<TypeSummaryIndex>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Rc<ImportNameClassification> {
-    {
-        let local_parent = find_variant_parent_in_module(
-            n.clone(),
-            import_module.clone(),
-            typed_modules.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-        );
-        let reexport_parent = match local_parent.clone() {
-            Some(_) => std::option::Option::None,
-            std::option::Option::None => reexport_variant_parent_in_import_module(
-                n.clone(),
-                import_module.clone(),
-                registry.clone(),
-                type_summaries.clone(),
-                typed_modules.clone(),
-                export_sets.clone(),
-                source_indices.clone(),
-                module_index.clone(),
-            ),
-        };
-        {
-            let __rb_0_0 = row.is_graph_type.clone();
-            let __rb_1_0 = local_parent.clone();
-            let __rb_2_0 = reexport_parent.clone();
-            let __rb_3_0 = row.variant_parent.clone();
-            let mut __rb_h = row;
-            match Rc::get_mut(&mut __rb_h) {
-                Some(__rb_r) => {
-                    __rb_r.is_graph_type = __rb_0_0;
-                    __rb_r.local_parent = __rb_1_0;
-                    __rb_r.reexport_parent = __rb_2_0;
-                    __rb_r.variant_parent = __rb_3_0;
-                }
-                None => {
-                    __rb_h = Rc::new(ImportNameClassification {
-                        is_graph_type: __rb_0_0,
-                        local_parent: __rb_1_0,
-                        reexport_parent: __rb_2_0,
-                        variant_parent: __rb_3_0,
-                    });
-                }
-            }
-            __rb_h
-        }
-    }
-}
-
-pub fn import_name_is_graph_type(
-    n: String,
-    classifications: Rc<HashMap<String, Rc<ImportNameClassification>>>,
-    import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    type_summaries: Rc<TypeSummaryIndex>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    imported_enums: Rc<Vec<String>>,
-    import_module_enums: Rc<Vec<String>>,
-) -> bool {
-    match v1_rt::map_get(&classifications, n.clone()) {
-        Some(row) => row.is_graph_type.clone(),
-        std::option::Option::None => classify_import_name(
-            n.clone(),
-            import_module.clone(),
-            typed_modules.clone(),
-            registry.clone(),
-            type_summaries.clone(),
-            export_sets.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-            variant_to_enum.clone(),
-            imported_enums.clone(),
-            import_module_enums.clone(),
-        )
-        .is_graph_type
-        .clone(),
-    }
-}
-
-pub fn import_name_variant_parent(
-    n: String,
-    classifications: Rc<HashMap<String, Rc<ImportNameClassification>>>,
-    import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    type_summaries: Rc<TypeSummaryIndex>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    imported_enums: Rc<Vec<String>>,
-    import_module_enums: Rc<Vec<String>>,
-) -> String {
-    match v1_rt::map_get(&classifications, n.clone()) {
-        Some(row) => row.variant_parent.clone(),
-        std::option::Option::None => classify_import_name(
-            n.clone(),
-            import_module.clone(),
-            typed_modules.clone(),
-            registry.clone(),
-            type_summaries.clone(),
-            export_sets.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-            variant_to_enum.clone(),
-            imported_enums.clone(),
-            import_module_enums.clone(),
-        )
-        .variant_parent
-        .clone(),
-    }
-}
-
-pub fn import_name_local_parent(
-    n: String,
-    parent_walks: Rc<HashMap<String, Rc<ImportNameClassification>>>,
-    import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    type_summaries: Rc<TypeSummaryIndex>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    imported_enums: Rc<Vec<String>>,
-    import_module_enums: Rc<Vec<String>>,
-) -> Option<String> {
-    match v1_rt::map_get(&parent_walks, n.clone()) {
-        Some(row) => row.local_parent.clone(),
-        std::option::Option::None => extend_import_name_walks(
-            classify_import_name(
-                n.clone(),
-                import_module.clone(),
-                typed_modules.clone(),
-                registry.clone(),
-                type_summaries.clone(),
-                export_sets.clone(),
-                source_indices.clone(),
-                module_index.clone(),
-                variant_to_enum.clone(),
-                imported_enums.clone(),
-                import_module_enums.clone(),
-            ),
-            n.clone(),
-            import_module.clone(),
-            typed_modules.clone(),
-            registry.clone(),
-            type_summaries.clone(),
-            export_sets.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-        )
-        .local_parent
-        .clone(),
-    }
-}
-
-pub fn import_name_reexport_parent(
-    n: String,
-    parent_walks: Rc<HashMap<String, Rc<ImportNameClassification>>>,
-    import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    type_summaries: Rc<TypeSummaryIndex>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    imported_enums: Rc<Vec<String>>,
-    import_module_enums: Rc<Vec<String>>,
-) -> Option<String> {
-    match v1_rt::map_get(&parent_walks, n.clone()) {
-        Some(row) => row.reexport_parent.clone(),
-        std::option::Option::None => extend_import_name_walks(
-            classify_import_name(
-                n.clone(),
-                import_module.clone(),
-                typed_modules.clone(),
-                registry.clone(),
-                type_summaries.clone(),
-                export_sets.clone(),
-                source_indices.clone(),
-                module_index.clone(),
-                variant_to_enum.clone(),
-                imported_enums.clone(),
-                import_module_enums.clone(),
-            ),
-            n.clone(),
-            import_module.clone(),
-            typed_modules.clone(),
-            registry.clone(),
-            type_summaries.clone(),
-            export_sets.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-        )
-        .reexport_parent
-        .clone(),
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ImportNameRendering {
-    pub defining_filename: String,
-    pub owner_path: String,
-}
-
-pub fn classify_import_name_rendering(
-    n: String,
-    import_module: String,
-    mod_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Rc<ImportNameRendering> {
-    Rc::new(ImportNameRendering {
-        defining_filename: graph_type_import_module_filename(
-            n.clone(),
-            import_module.clone(),
-            mod_name.clone(),
-            typed_modules.clone(),
-            export_sets.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-        ),
-        owner_path: graph_type_import_module_path(
-            n.clone(),
-            import_module.clone(),
-            mod_name.clone(),
-            typed_modules.clone(),
-            export_sets.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-        ),
-    })
-}
-
-pub fn import_name_rendering(
-    n: String,
-    renderings: Rc<HashMap<String, Rc<ImportNameRendering>>>,
-    import_module: String,
-    mod_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Rc<ImportNameRendering> {
-    match v1_rt::map_get(&renderings, n.clone()) {
-        Some(row) => row.clone(),
-        std::option::Option::None => classify_import_name_rendering(
-            n.clone(),
-            import_module.clone(),
-            mod_name.clone(),
-            typed_modules.clone(),
-            export_sets.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-        ),
     }
 }
 
@@ -14449,62 +14142,19 @@ pub fn emit_specific_import_use_lines(
                     module_index.clone(),
                     emit_info.variant_to_enum.clone(),
                 );
-                let imported_enums = Rc::new({
-                    let mut __result = Vec::new();
-                    for n in non_marker_names.iter().cloned() {
-                        if {
-                            let mut __found = false;
-                            for e in import_module_enums.iter().cloned() {
-                                if (e.clone() == n.clone()) {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        } {
-                            __result.push(n);
-                        }
-                    }
-                    __result
-                });
-                let classifications = deduped_names.iter().cloned().fold(
-                    v1_rt::rc_empty_map::<String, Rc<ImportNameClassification>>(),
-                    |acc: Rc<HashMap<String, Rc<ImportNameClassification>>>, n: String| {
-                        v1_rt::rc_map_insert(
-                            acc,
-                            n.clone(),
-                            classify_import_name(
-                                n.clone(),
-                                import_module.clone(),
-                                typed_modules.clone(),
-                                registry.clone(),
-                                type_summaries.clone(),
-                                export_sets.clone(),
-                                source_indices.clone(),
-                                module_index.clone(),
-                                emit_info.variant_to_enum.clone(),
-                                imported_enums.clone(),
-                                import_module_enums.clone(),
-                            ),
-                        )
-                    },
-                );
                 let top_level = Rc::new({
                     let mut __result = Vec::new();
                     for n in non_marker_names.iter().cloned() {
-                        if if import_name_is_graph_type(
+                        if if is_import_graph_type_name(
                             n.clone(),
-                            classifications.clone(),
                             import_module.clone(),
                             typed_modules.clone(),
                             registry.clone(),
-                            type_summaries.clone(),
                             export_sets.clone(),
+                            type_summaries.clone(),
                             source_indices.clone(),
                             module_index.clone(),
                             emit_info.variant_to_enum.clone(),
-                            imported_enums.clone(),
-                            import_module_enums.clone(),
                         ) {
                             true
                         } else {
@@ -14547,24 +14197,41 @@ pub fn emit_specific_import_use_lines(
                     }
                     __result
                 });
+                let imported_enums = Rc::new({
+                    let mut __result = Vec::new();
+                    for n in non_marker_names.iter().cloned() {
+                        if {
+                            let mut __found = false;
+                            for e in import_module_enums.iter().cloned() {
+                                if (e.clone() == n.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
+                            __result.push(n);
+                        }
+                    }
+                    __result
+                });
                 let all_parents = Rc::new({
                     let mut __result = Vec::new();
                     for p in Rc::new({
                         let mut __result = Vec::new();
                         for n in non_marker_names.iter().cloned() {
-                            __result.push(import_name_variant_parent(
+                            __result.push(import_variant_parent_for_name(
                                 n.clone(),
-                                classifications.clone(),
                                 import_module.clone(),
-                                typed_modules.clone(),
                                 registry.clone(),
                                 type_summaries.clone(),
+                                typed_modules.clone(),
                                 export_sets.clone(),
                                 source_indices.clone(),
                                 module_index.clone(),
-                                emit_info.variant_to_enum.clone(),
                                 imported_enums.clone(),
                                 import_module_enums.clone(),
+                                emit_info.variant_to_enum.clone(),
                             ));
                         }
                         __result
@@ -14580,58 +14247,21 @@ pub fn emit_specific_import_use_lines(
                 });
                 let parent_list =
                     crate::v1_compiler_emit_core_support::unique_strings(all_parents.clone());
-                let parent_walks = if ((parent_list.clone().len() as i64) == 0) {
-                    v1_rt::rc_empty_map::<String, Rc<ImportNameClassification>>()
-                } else {
-                    deduped_names.iter().cloned().fold(
-                        v1_rt::rc_empty_map::<String, Rc<ImportNameClassification>>(),
-                        |acc: Rc<HashMap<String, Rc<ImportNameClassification>>>, n: String| {
-                            v1_rt::rc_map_insert(
-                                acc,
-                                n.clone(),
-                                extend_import_name_walks(
-                                    classify_import_name(
-                                        n.clone(),
-                                        import_module.clone(),
-                                        typed_modules.clone(),
-                                        registry.clone(),
-                                        type_summaries.clone(),
-                                        export_sets.clone(),
-                                        source_indices.clone(),
-                                        module_index.clone(),
-                                        emit_info.variant_to_enum.clone(),
-                                        imported_enums.clone(),
-                                        import_module_enums.clone(),
-                                    ),
-                                    n.clone(),
-                                    import_module.clone(),
-                                    typed_modules.clone(),
-                                    registry.clone(),
-                                    type_summaries.clone(),
-                                    export_sets.clone(),
-                                    source_indices.clone(),
-                                    module_index.clone(),
-                                ),
-                            )
-                        },
-                    )
-                };
                 let non_variant_top = Rc::new({
                     let mut __result = Vec::new();
                     for n in top_level.iter().cloned() {
-                        if if (import_name_variant_parent(
+                        if if (import_variant_parent_for_name(
                             n.clone(),
-                            classifications.clone(),
                             import_module.clone(),
-                            typed_modules.clone(),
                             registry.clone(),
                             type_summaries.clone(),
+                            typed_modules.clone(),
                             export_sets.clone(),
                             source_indices.clone(),
                             module_index.clone(),
-                            emit_info.variant_to_enum.clone(),
                             imported_enums.clone(),
                             import_module_enums.clone(),
+                            emit_info.variant_to_enum.clone(),
                         ) != "".to_string())
                         {
                             false
@@ -14701,19 +14331,12 @@ pub fn emit_specific_import_use_lines(
                         if {
                             let mut __found = false;
                             for n in deduped_names.iter().cloned() {
-                                if match import_name_local_parent(
+                                if match find_variant_parent_in_module(
                                     n.clone(),
-                                    parent_walks.clone(),
                                     import_module.clone(),
                                     typed_modules.clone(),
-                                    registry.clone(),
-                                    type_summaries.clone(),
-                                    export_sets.clone(),
                                     source_indices.clone(),
                                     module_index.clone(),
-                                    emit_info.variant_to_enum.clone(),
-                                    imported_enums.clone(),
-                                    import_module_enums.clone(),
                                 ) {
                                     Some(found) => (found.clone() == p.clone()),
                                     std::option::Option::None => false,
@@ -14755,19 +14378,12 @@ pub fn emit_specific_import_use_lines(
                         if ({
                             let mut __found = false;
                             for n in deduped_names.iter().cloned() {
-                                if match import_name_local_parent(
+                                if match find_variant_parent_in_module(
                                     n.clone(),
-                                    parent_walks.clone(),
                                     import_module.clone(),
                                     typed_modules.clone(),
-                                    registry.clone(),
-                                    type_summaries.clone(),
-                                    export_sets.clone(),
                                     source_indices.clone(),
                                     module_index.clone(),
-                                    emit_info.variant_to_enum.clone(),
-                                    imported_enums.clone(),
-                                    import_module_enums.clone(),
                                 ) {
                                     Some(found) => (found.clone() == p.clone()),
                                     std::option::Option::None => false,
@@ -14787,41 +14403,18 @@ pub fn emit_specific_import_use_lines(
                 let merged_direct_names = crate::v1_compiler_emit_core_support::unique_strings(
                     v1_rt::concat(direct_names.clone(), local_parent_names.clone()),
                 );
-                let renderings = merged_direct_names.iter().cloned().fold(
-                    v1_rt::rc_empty_map::<String, Rc<ImportNameRendering>>(),
-                    |acc: Rc<HashMap<String, Rc<ImportNameRendering>>>, n: String| {
-                        v1_rt::rc_map_insert(
-                            acc,
-                            n.clone(),
-                            classify_import_name_rendering(
-                                n.clone(),
-                                import_module.clone(),
-                                mod_name.clone(),
-                                typed_modules.clone(),
-                                export_sets.clone(),
-                                source_indices.clone(),
-                                module_index.clone(),
-                            ),
-                        )
-                    },
-                );
                 let direct_mods = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
                     let mut __result = Vec::new();
                     for n in merged_direct_names.iter().cloned() {
-                        __result.push(
-                            import_name_rendering(
-                                n.clone(),
-                                renderings.clone(),
-                                import_module.clone(),
-                                mod_name.clone(),
-                                typed_modules.clone(),
-                                export_sets.clone(),
-                                source_indices.clone(),
-                                module_index.clone(),
-                            )
-                            .defining_filename
-                            .clone(),
-                        );
+                        __result.push(graph_type_import_module_filename(
+                            n.clone(),
+                            import_module.clone(),
+                            mod_name.clone(),
+                            typed_modules.clone(),
+                            export_sets.clone(),
+                            source_indices.clone(),
+                            module_index.clone(),
+                        ));
                     }
                     __result
                 }));
@@ -14833,19 +14426,15 @@ pub fn emit_specific_import_use_lines(
                                 let group = Rc::new({
                                     let mut __result = Vec::new();
                                     for n in merged_direct_names.iter().cloned() {
-                                        if (import_name_rendering(
+                                        if (graph_type_import_module_filename(
                                             n.clone(),
-                                            renderings.clone(),
                                             import_module.clone(),
                                             mod_name.clone(),
                                             typed_modules.clone(),
                                             export_sets.clone(),
                                             source_indices.clone(),
                                             module_index.clone(),
-                                        )
-                                        .defining_filename
-                                        .clone()
-                                            == def_mod.clone())
+                                        ) == def_mod.clone())
                                         {
                                             __result.push(n);
                                         }
@@ -14858,18 +14447,15 @@ pub fn emit_specific_import_use_lines(
                                             let mut __result = Vec::new();
                                             for n in group.iter().cloned() {
                                                 __result.push(emit_import_name(
-                                                    import_name_rendering(
+                                                    graph_type_import_module_path(
                                                         n.clone(),
-                                                        renderings.clone(),
                                                         import_module.clone(),
                                                         mod_name.clone(),
                                                         typed_modules.clone(),
                                                         export_sets.clone(),
                                                         source_indices.clone(),
                                                         module_index.clone(),
-                                                    )
-                                                    .owner_path
-                                                    .clone(),
+                                                    ),
                                                     n.clone(),
                                                     registry.clone(),
                                                 ));
@@ -14915,35 +14501,24 @@ pub fn emit_specific_import_use_lines(
                                 let rep_variant = Rc::new({
                                     let mut __result = Vec::new();
                                     for n in deduped_names.iter().cloned() {
-                                        if match import_name_local_parent(
+                                        if match find_variant_parent_in_module(
                                             n.clone(),
-                                            parent_walks.clone(),
                                             import_module.clone(),
                                             typed_modules.clone(),
-                                            registry.clone(),
-                                            type_summaries.clone(),
-                                            export_sets.clone(),
                                             source_indices.clone(),
                                             module_index.clone(),
-                                            emit_info.variant_to_enum.clone(),
-                                            imported_enums.clone(),
-                                            import_module_enums.clone(),
                                         ) {
                                             Some(found) => (found.clone() == p.clone()),
                                             std::option::Option::None => {
-                                                match import_name_reexport_parent(
+                                                match reexport_variant_parent_in_import_module(
                                                     n.clone(),
-                                                    parent_walks.clone(),
                                                     import_module.clone(),
-                                                    typed_modules.clone(),
                                                     registry.clone(),
                                                     type_summaries.clone(),
+                                                    typed_modules.clone(),
                                                     export_sets.clone(),
                                                     source_indices.clone(),
                                                     module_index.clone(),
-                                                    emit_info.variant_to_enum.clone(),
-                                                    imported_enums.clone(),
-                                                    import_module_enums.clone(),
                                                 ) {
                                                     Some(found) => (found.clone() == p.clone()),
                                                     std::option::Option::None => false,
@@ -14982,117 +14557,32 @@ pub fn emit_specific_import_use_lines(
                 let parent_main_lines = Rc::new({
                     let mut __result = Vec::new();
                     for def_mod in parent_defining_mods.iter().cloned() {
-                        __result.extend(
-                            (*{
-                                let group = Rc::new({
-                                    let mut __result = Vec::new();
-                                    for p in remote_parent_list.iter().cloned() {
-                                        if {
-                                            let rep_variant = Rc::new({
-                                                let mut __result = Vec::new();
-                                                for n in deduped_names.iter().cloned() {
-                                                    if match import_name_local_parent(
-                                                        n.clone(),
-                                                        parent_walks.clone(),
-                                                        import_module.clone(),
-                                                        typed_modules.clone(),
-                                                        registry.clone(),
-                                                        type_summaries.clone(),
-                                                        export_sets.clone(),
-                                                        source_indices.clone(),
-                                                        module_index.clone(),
-                                                        emit_info.variant_to_enum.clone(),
-                                                        imported_enums.clone(),
-                                                        import_module_enums.clone(),
-                                                    ) {
-                                                        Some(found) => (found.clone() == p.clone()),
-                                                        std::option::Option::None => {
-                                                            match import_name_reexport_parent(
-                                                                n.clone(),
-                                                                parent_walks.clone(),
-                                                                import_module.clone(),
-                                                                typed_modules.clone(),
-                                                                registry.clone(),
-                                                                type_summaries.clone(),
-                                                                export_sets.clone(),
-                                                                source_indices.clone(),
-                                                                module_index.clone(),
-                                                                emit_info.variant_to_enum.clone(),
-                                                                imported_enums.clone(),
-                                                                import_module_enums.clone(),
-                                                            ) {
-                                                                Some(found) => {
-                                                                    (found.clone() == p.clone())
-                                                                }
-                                                                std::option::Option::None => false,
-                                                            }
-                                                        }
-                                                    } {
-                                                        __result.push(n);
-                                                    }
-                                                }
-                                                __result
-                                            })
-                                            .first()
-                                            .cloned();
-                                            match rep_variant.clone() {
-                                                Some(v) => {
-                                                    (variant_parent_defining_module_filename(
-                                                        p.clone(),
-                                                        v.clone(),
-                                                        import_module.clone(),
-                                                        typed_modules.clone(),
-                                                        export_sets.clone(),
-                                                        source_indices.clone(),
-                                                        registry.clone(),
-                                                        mod_name.clone(),
-                                                        module_index.clone(),
-                                                    ) == def_mod.clone())
-                                                }
-                                                std::option::Option::None => {
-                                                    (item_defining_module_filename(
-                                                        p.clone(),
-                                                        module_index.clone(),
-                                                        mod_name.clone(),
-                                                    ) == def_mod.clone())
-                                                }
-                                            }
-                                        } {
-                                            __result.push(p);
-                                        }
-                                    }
-                                    __result
-                                });
-                                if ((group.clone().len() as i64) > 0) {
-                                    {
-                                        let names_str = group.clone().join(&", ".to_string());
-                                        Rc::new(vec![Rc::new(RustUseLine {
-                                            target_module: def_mod.clone(),
-                                            text: v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                rust_visibility_prefix(),
-                                                                "use crate::".to_string(),
-                                                            ),
-                                                            def_mod.clone(),
-                                                        ),
-                                                        "::{".to_string(),
-                                                    ),
-                                                    names_str.clone(),
-                                                ),
-                                                "};".to_string(),
-                                            ),
-                                        })])
-                                    }
-                                } else {
-                                    Rc::new(vec![])
-                                }
-                            })
-                            .iter()
-                            .cloned(),
-                        );
+                        __result.extend((*{
+                    let group = Rc::new({ let mut __result = Vec::new(); for p in remote_parent_list.iter().cloned() { if {
+                        let rep_variant = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.iter().cloned() { if match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
+    Some(found) => (found.clone() == p.clone()),
+    std::option::Option::None => match reexport_variant_parent_in_import_module(n.clone(), import_module.clone(), registry.clone(), type_summaries.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), module_index.clone()) {
+    Some(found) => (found.clone() == p.clone()),
+    std::option::Option::None => false,
+},
+} { __result.push(n); } } __result }).first().cloned();
+match rep_variant.clone() {
+    Some(v) => (variant_parent_defining_module_filename(p.clone(), v.clone(), import_module.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), registry.clone(), mod_name.clone(), module_index.clone()) == def_mod.clone()),
+    std::option::Option::None => (item_defining_module_filename(p.clone(), module_index.clone(), mod_name.clone()) == def_mod.clone()),
+}
+} { __result.push(p); } } __result });
+if ((group.clone().len() as i64) > 0) {
+                        {
+                            let names_str = group.clone().join(&", ".to_string());
+Rc::new(vec![Rc::new(RustUseLine {
+    target_module: def_mod.clone(),
+    text: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), "use crate::".to_string()), def_mod.clone()), "::{".to_string()), names_str.clone()), "};".to_string()),
+})])
+}
+                    } else {
+                        Rc::new(vec![])
+                    }
+}).iter().cloned());
                     }
                     __result
                 });
@@ -15107,15 +14597,15 @@ pub fn emit_specific_import_use_lines(
                         let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.iter().cloned() { if if ((n.clone() == "None".to_string()) || (n.clone() == "Some".to_string())) {
                             false
                         } else {
-                            if import_name_is_graph_type(n.clone(), classifications.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), type_summaries.clone(), export_sets.clone(), source_indices.clone(), module_index.clone(), emit_info.variant_to_enum.clone(), imported_enums.clone(), import_module_enums.clone()) {
+                            if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone(), emit_info.variant_to_enum.clone()) {
                                 false
                             } else {
                                 if { let mut __found = false; for e in import_module_enums.iter().cloned() { if (e.clone() == n.clone()) { __found = true; break; } } __found } {
                                     false
                                 } else {
-                                    match import_name_local_parent(n.clone(), parent_walks.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), type_summaries.clone(), export_sets.clone(), source_indices.clone(), module_index.clone(), emit_info.variant_to_enum.clone(), imported_enums.clone(), import_module_enums.clone()) {
+                                    match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
     Some(found) => (found.clone() == parent.clone()),
-    std::option::Option::None => match import_name_reexport_parent(n.clone(), parent_walks.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), type_summaries.clone(), export_sets.clone(), source_indices.clone(), module_index.clone(), emit_info.variant_to_enum.clone(), imported_enums.clone(), import_module_enums.clone()) {
+    std::option::Option::None => match reexport_variant_parent_in_import_module(n.clone(), import_module.clone(), registry.clone(), type_summaries.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), module_index.clone()) {
     Some(found) => (found.clone() == parent.clone()),
     std::option::Option::None => match crate::v1_compiler_infer_emit_info::find_variant_parent(type_summaries.clone(), n.clone(), Rc::new(vec![parent.clone()])) {
     Some(_) => true,
@@ -25876,6 +25366,75 @@ pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
     }
 }
 
+pub fn type_node_carries_applicationless_parametric_head(
+    n: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let mut __found = false;
+        for c in n.children.clone().iter().cloned() {
+            if {
+                let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
+                (((n.connective.clone() != Connective::Disj)
+                    && rust_type_renders_bare_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    || type_node_carries_applicationless_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
+pub fn rust_type_renders_bare_parametric_head(
+    t: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    if !type_node_declares_parameters(t.clone(), emit_info.fn_type_env.clone()) {
+        false
+    } else {
+        {
+            let head = crate::v1_std_core::qualified_last_segment(
+                crate::v1_std_core::authored_name_at(source_indices.clone(), t.clone()),
+            );
+            let rendered = render_rust_type(
+                t.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            );
+            ((rendered.clone() == head.clone())
+                || (rendered.clone()
+                    == v1_rt::concat(
+                        v1_rt::concat("Rc<".to_string(), head.clone()),
+                        ">".to_string(),
+                    )))
+        }
+    }
+}
+
+pub fn type_node_declares_parameters(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+        Some(binding) => ((binding.params.clone().len() as i64) > 0),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn rust_empty_map_init_expr(
     map_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
@@ -25894,13 +25453,19 @@ pub fn rust_empty_map_init_expr(
                 "HashMap::new() /* BRIDGE: empty_map value type unresolved */".to_string(),
             )
         } else {
-            if ((rust_fold_rendered_type_has_any_spurious_generic(
+            if (((rust_fold_rendered_type_has_any_spurious_generic(
                 v1_rt::concat(
                     v1_rt::concat("<".to_string(), kv_type_str.clone()),
                     ">".to_string(),
                 ),
                 emit_info.fn_generic_param_names.clone(),
             ) || type_node_carries_erased_type_argument(map_type.clone()))
+                || type_node_carries_applicationless_parametric_head(
+                    map_type.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                ))
                 || {
                     let mut __found = false;
                     for c in map_type.children.clone().iter().cloned() {
@@ -30052,12 +29617,19 @@ pub fn emit_rust_fold_method_call(
         );
         let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
             && crate::std_types::is_container_type(acc_type_name.clone()));
-        let lambda_acc_type_str = if (((((is_bare_container.clone()
+        let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(
+            acc_type_node.clone(),
+            shared_types.clone(),
+            scope.type_env.source_indices.clone(),
+            fold_emit_info.clone(),
+        );
+        let lambda_acc_type_str = if ((((((is_bare_container.clone()
             || acc_type_is_type_var.clone())
             || acc_child_is_type_var.clone())
             || acc_has_unbound_type_var.clone())
             || acc_has_closure_unbound_generic.clone())
             || acc_render_has_spurious_generic.clone())
+            || acc_carries_bare_parametric_head.clone())
         {
             "_".to_string()
         } else {
@@ -36265,6 +35837,7 @@ pub fn dying_literal_plan(
                         __result.push({
                 let f_name = crate::v1_std_core::field_init_node_name_at(f.clone(), si.clone());
 let f_value = crate::v1_std_core::field_init_node_value(f.clone());
+let stored = emit_stored_record_field(f.clone(), rt.clone(), Some(tn.clone()), tn.clone(), tn.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone());
 let direct_rc = match record_field_storage(f_name.clone(), f_value.clone(), tn.clone(), tn.clone(), scope.clone(), shared_types.clone(), emit_info.clone()) {
     FieldStorage::StoredDirectRc => true,
     FieldStorage::StoredPromotedToSome => false,
@@ -36294,7 +35867,7 @@ Rc::new(DyingLitField {
     std::option::Option::None => Rc::new(DyingLitField {
     name: f_name.clone(),
     shape: Rc::new(DyingLitShape::DyingPlain {
-    stored: emit_stored_record_field(f.clone(), rt.clone(), Some(tn.clone()), tn.clone(), tn.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone()),
+    stored: stored.clone(),
 }),
 }),
 }
