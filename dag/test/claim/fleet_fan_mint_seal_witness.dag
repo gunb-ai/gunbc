@@ -26,6 +26,10 @@ data evidence_literal_source: String = "module probe_fan_evidence_literal\nimpor
 
 data evidence_mint_source: String = "module probe_fan_evidence_mint\nimport product.host_identity { HostIdentity }\nimport product.fleet_fan_policy { FleetFanControl }\nimport gunbc.fleet.fleet_fan_converge { FleetFanConvergedEvidence, FleetFanReadReceipt, fleet_fan_converged_evidence }\nfn forged(h: HostIdentity, c: FleetFanControl, r: FleetFanReadReceipt) -> FleetFanConvergedEvidence {\n  fleet_fan_converged_evidence(host: h, control: c, readback: r)\n}\n"
 
+data legal_baseline_source: String = "module probe_fan_legal\nimport std.types { Int }\nimport gunbc.fleet.fleet_fan_converge { FleetFanReadReceipt }\n"
+
+data broken_outside_source: String = "module probe_fan_legal\nimport std.types { Int }\nimport gunbc.fleet.fleet_fan_converge { FleetFanReadReceipt }\nfn takes(r: FleetFanReadReceipt) -> Int { r.no_such_field + undefined_name }\n"
+
 data legal_outside_source: String = "module probe_fan_legal\nimport std.types { Int }\nimport gunbc.fleet.fleet_fan_converge { FleetFanReadReceipt }\nfn takes(r: FleetFanReadReceipt) -> Int { r.attempt }\n"
 
 fn fan_census_of(source: String) -> CompileDiagnosticCensus {
@@ -39,10 +43,25 @@ fn blocked_with(source: String, class: String) -> Bool {
   }
 }
 
-fn clean(source: String) -> Bool {
+fn blocking_total(source: String) -> Int? {
   match fan_census_of(source: source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
-    CensusNotRunnable { cause: _ } => false
+    CensusObserved { rows: rows } => Present { value: census_total_count(rows: census_blocking_rows(rows: rows)) }
+    CensusNotRunnable { cause: _ } => Absent
+  }
+}
+
+// THE CENSUS COUNTS THE WHOLE COMPILE, closure included (gunbc.compile_diagnostic_census), so an
+// absolute zero is permanently false for a fixture that imports anything. The exact form is a
+// DIFFERENTIAL over two sources that differ on one axis: the legal module adds one function to the
+// same imports, and its TOTAL blocking count (any class - an undefined name or a type error included)
+// must equal the baseline's, both censuses observed.
+fn clean(source: String) -> Bool {
+  match blocking_total(source: legal_baseline_source) {
+    Present { value: base } => match blocking_total(source: source) {
+      Present { value: with_fn } => with_fn == base
+      Absent => false
+    }
+    Absent => false
   }
 }
 
@@ -72,4 +91,8 @@ test fn witness_converged_evidence_literal_is_refused() -> Bool {
 
 test fn witness_converged_evidence_mint_call_is_refused() -> Bool {
   blocked_with(source: evidence_mint_source, class: "ConstructorCallAdmissionRefused")
+}
+
+test fn witness_a_broken_outside_module_is_not_clean() -> Bool {
+  !clean(source: broken_outside_source)
 }
