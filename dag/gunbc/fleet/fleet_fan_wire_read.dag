@@ -5,6 +5,7 @@ import std.optional { Absent, Present }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, bound_dissolution }
 import std.content_hash { ContentHash, content_hash_of_value }
+import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { percent }
 import extdeps.bmc.megarac_fan_policy {
@@ -42,22 +43,28 @@ import gunbc.fleet.fleet_fan_converge { FleetFanControlObserved, FleetFanControl
 // (an absent header still lists at pwm 0), so a mixed list cannot be read as one duty without the
 // SDR join, and an unreadable standing restores automatic rather than being believed.
 
-fn megarac_fan_pwm_rows(fan_info_body: String) -> List<Int>? {
+// NONEMPTINESS IS CONSTRUCTED: an empty row list has no FreeSemigroup, so the caller reads the lead
+// duty from the head and has no empty arm.
+fn megarac_fan_pwm_rows(fan_info_body: String) -> FreeSemigroup<Int>? {
   match parse_json_document(s: fan_info_body) {
     JsonDocumentUnreadable { gap: _ } => none
     JsonDocumentParsed { value: v } =>
       match images_array_elements(doc: v) {
         Absent => none
-        Present { value: rows } =>
-          if (rows |> count) == 0 {
+        Present { value: rows } => {
+          let pwms = rows |> flat_map(r => match json_number_member(doc: r, key: "fan_pwm") {
+            Present { value: w } => match parse_int(s: w) { Present { value: n } => [n]  Absent => [] }
+            Absent => []
+          })
+          if (pwms |> count) < (rows |> count) {
             none
           } else {
-            let pwms = rows |> flat_map(r => match json_number_member(doc: r, key: "fan_pwm") {
-              Present { value: w } => match parse_int(s: w) { Present { value: n } => [n]  Absent => [] }
-              Absent => []
-            })
-            if (pwms |> count) < (rows |> count) { none } else { Present { value: pwms } }
+            match pwms {
+              Empty => none
+              Cons { head: h, tail: t } => Present { value: FreeSemigroup { head: h, tail: t } }
+            }
           }
+        }
       }
   }
 }
@@ -96,25 +103,22 @@ fn megarac_manager_read(manager_body: String) -> MegaRacManagerRead {
 fn megarac_manual_duty_reading(fan_info_body: String) -> FleetFanReading {
   match megarac_fan_pwm_rows(fan_info_body: fan_info_body) {
     Absent => FleetFanControlUnobservable { cause: "get_fan_info is not a nonempty list of rows with integer fan_pwm" as NonEmptyStr }
-    Present { value: pwms } =>
-      match pwms.first() {
-        // unreachable: megarac_fan_pwm_rows returns none for an empty list; kept so the match is total
-        Absent => FleetFanControlUnobservable { cause: "get_fan_info is empty" as NonEmptyStr }
-        Present { value: lead } =>
-          if (pwms |> filter(p => p != lead) |> count) > 0 {
-            FleetFanControlUnobservable { cause: "manual mode but fan_info rows report different fan_pwm" as NonEmptyStr }
-          } else {
-            match checked_int_to_nat(n: lead) {
-              Absent => FleetFanControlUnobservable { cause: "fan_pwm is negative" as NonEmptyStr }
-              Present { value: n } =>
-                if lead > 100 {
-                  FleetFanControlUnobservable { cause: "fan_pwm exceeds 100, the percentage the UI labels it as (megarac_fan_policy contract_note)" as NonEmptyStr }
-                } else {
-                  FleetFanControlObserved { control: HeldAtDutyFloor { floor: percent(n) } }
-                }
+    Present { value: pwms } => {
+      let lead = pwms.head
+      if (non_empty_to_list(xs: pwms) |> filter(p => p != lead) |> count) > 0 {
+        FleetFanControlUnobservable { cause: "manual mode but fan_info rows report different fan_pwm" as NonEmptyStr }
+      } else {
+        match checked_int_to_nat(n: lead) {
+          Absent => FleetFanControlUnobservable { cause: "fan_pwm is negative" as NonEmptyStr }
+          Present { value: n } =>
+            if lead > 100 {
+              FleetFanControlUnobservable { cause: "fan_pwm exceeds 100, the percentage the UI labels it as (megarac_fan_policy contract_note)" as NonEmptyStr }
+            } else {
+              FleetFanControlObserved { control: HeldAtDutyFloor { floor: percent(n) } }
             }
-          }
+        }
       }
+    }
   }
 }
 
