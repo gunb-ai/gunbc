@@ -252,29 +252,14 @@ fn debconf_flag_record(
 // as content — it SPLITS the record, and the tail is read as a separate record whose owner is whatever text
 // follows. That is an answer smuggled in as a continuation, and it is invisible in the record list, where there
 // is exactly one record. A SPACE, by contrast, is legal content ("English (US)" is a real answer), which is why
-// this check refuses exactly the newline and nothing else in that direction; the second refusal is the
-// selects-nothing case below.
+// this check refuses exactly the newline and nothing else in that direction. NO THIRD REFUSAL IS WRITTEN FOR A
+// VALUE THAT IS A LONE SPACE: the walker it delegates to refuses any string made entirely of separators, and a
+// lone space is exactly that string. A branch written for the special case would be a second copy of a rule the
+// walker already holds, and a mutation of the walker would still have to defeat it — which is how two checks for
+// one fact quietly become one check nobody tests.
 fn value_is_well_formed(text: String) -> Bool {
   match text.contains(needle: "\n") {
     True => false
-    False => value_selects_something(text: text)
-  }
-}
-
-// NO ZERO-LENGTH ARM HERE, DELIBERATELY. The value is a NonEmptyStr, so the type already refuses the empty
-// string before this function can be entered; adding a `0 => false` arm would be a second representation of a
-// guarantee the model carries once, and a mutation of a dead arm cannot go RED — which is how an untested check
-// hides behind a tested-looking one. What this function owns is the case the refinement CANNOT see: a
-// whitespace-only value, which is non-empty as text and selects nothing.
-fn value_selects_something(text: String) -> Bool {
-  match text.contains(needle: " ") {
-    True => match text.length() == 1 {
-      // A SINGLE SPACE SELECTS NOTHING. One character, and it is a separator, so there is no candidate left.
-      True => false
-      // A space inside a longer value is normal ("English (US)") and is not this check's business; the separator
-      // rule is about the FIELD's own delimiting, which key_field_is_well_formed already holds.
-      False => value_has_a_character_that_is_not_a_separator(text: text)
-    }
     False => value_has_a_character_that_is_not_a_separator(text: text)
   }
 }
@@ -309,23 +294,23 @@ fn value_has_a_character_that_is_not_a_separator(text: String) -> Bool {
   }
 }
 
-// A KEY FIELD: non-empty, with no space or tab in it. Written against substring and length because this language
-// exposes no character-indexing builtin for a String; the scan stops at the first separator it finds.
+// A KEY FIELD: no space, no tab, no newline in it. Upstream splits the first three fields as (\S+) runs, so any
+// of the three ends the field early and re-aligns every field after it; the scan is written with `contains`
+// because all three refusals are "does this character appear anywhere", which is what \S+ means for one field.
+// NO ZERO-LENGTH ARM HERE, DELIBERATELY, for the reason given at value_is_well_formed: every caller passes a
+// NonEmptyStr, so the empty string cannot be named at the door, and an arm written for it can never go RED.
 fn key_field_is_well_formed(text: String) -> Bool {
-  match text.length() {
-    0 => false
-    _ => match text.contains(needle: " ") {
+  match text.contains(needle: " ") {
+    True => false
+    False => match text.contains(needle: "\t") {
       True => false
-      False => match text.contains(needle: "\t") {
+      // A record is one line. A newline inside a field would render two lines out of one record, and the second
+      // would be read by upstream as a separate record whose owner is whatever follows — an answer smuggled in
+      // as a continuation. The regex has no such concept because its reader is line-based; the record must not
+      // grow one either.
+      False => match text.contains(needle: "\n") {
         True => false
-        // A record is one line. A newline inside a field would render two lines out of one record, and the second
-        // would be read by upstream as a separate record whose owner is whatever follows — an answer smuggled in
-        // as a continuation. The regex has no such concept because its reader is line-based; the record must not
-        // grow one either.
-        False => match text.contains(needle: "\n") {
-          True => false
-          False => true
-        }
+        False => true
       }
     }
   }

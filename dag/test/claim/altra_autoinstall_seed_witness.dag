@@ -4607,7 +4607,7 @@ test fn an_answer_whose_owner_carries_a_space_closes_nothing_and_the_seed_is_ref
 
 // A RECORD THAT COULD NOT SURVIVE THE TRIP IS NEVER WRITTEN, field by field, and the refusals are each
 // separately load-bearing (mutation: key_field_is_well_formed returning true unconditionally, or
-// value_selects_something returning true unconditionally). The three reasons come from upstream's reader rather
+// value_is_well_formed returning true unconditionally). The three reasons come from upstream's reader rather
 // than from taste. A SPACE OR NEWLINE IN A KEY FIELD re-aligns every field after it — upstream splits the first
 // three as (\S+) runs, so the answer lands on a package nobody meant to configure while tzdata's own question
 // stays live. A NEWLINE IN A VALUE renders one record as two lines, and the second line is read as a separate
