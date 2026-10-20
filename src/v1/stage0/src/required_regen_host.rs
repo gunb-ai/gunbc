@@ -3501,6 +3501,18 @@ fn rebuild_scope_decision(
     function: &str,
     args: Vec<(Option<String>, ModelValue)>,
 ) -> Result<ModelValue, String> {
+    rebuild_scope_decision_with(source_roots, function, |_| Ok(args))
+}
+
+/// `rebuild_scope_decision` for arguments that are typed model records, which carry symbols of the
+/// evaluation context and so can only be built once it exists.
+fn rebuild_scope_decision_with(
+    source_roots: &[String],
+    function: &str,
+    args: impl FnOnce(
+        &crate::v1_interpreter::InterpContext,
+    ) -> Result<Vec<(Option<String>, ModelValue)>, String>,
+) -> Result<ModelValue, String> {
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
@@ -3508,6 +3520,7 @@ fn rebuild_scope_decision(
         format!("refusal: {entry} did not resolve, so {function} has no decider: {e}")
     })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let args = args(&ctx)?;
     v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
     })
@@ -4553,9 +4566,10 @@ fn partition_rebuild_actuation(
 
 /// A partition move is ADMITTED only when it is DERIVED, never asserted (no flag, no input, no
 /// allow-list). Two conjuncts, both read from the tree and the change, neither from the mirror:
-///   1. the partition authority the rows are decoded from is among THIS change's typed changed
-///      paths (the decision is `stage0_partition_move_explained_by_changed_paths`), so the mirror
-///      moved because its authority moved and not because something drifted;
+///   1. a changed input of the partition-generation mirrors is among THIS change's edits: the
+///      decision is `stage0_partition_move_explained_by_affected_inputs`, over the arm and members
+///      of the `gunbc.regen_affected_set` bound for the diff (plus the authority path), so the
+///      mirror moved because an input moved and not because something drifted;
 ///   2. the boundary files the move needs are RENDERED FROM THE CANDIDATE TREE'S ROWS, not the
 ///      predecessor's compiled-in ones.
 /// The converse equality (the built seed's own compiled-in rows project to these same bytes) is
@@ -4572,26 +4586,52 @@ fn admit_derived_partition_move(
                  could not be read, so the move cannot be derived from it: {e}"
             )
         })?;
-    let explained = match rebuild_scope_decision(
+    let diff_text = super::required_floor_runner::floor_git_diff_range().map_err(|e| {
+        format!(
+            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the change's diff \
+             could not be read, so the move cannot be derived from it: {e}"
+        )
+    })?;
+    let unexplainable = |e: String| {
+        format!(
+            "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the affected-set \
+             bound could not be derived, so the move cannot be explained: {e}"
+        )
+    };
+    let population = edited_population_from_diff(workspace, &diff_text);
+    let (edges, modules) = regen_module_edges(workspace).map_err(unexplainable)?;
+    let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
+        .map_err(unexplainable)?;
+    let explained = match rebuild_scope_decision_with(
         source_roots,
-        "stage0_partition_move_explained_by_changed_paths",
-        vec![(
-            Some("changed_paths".to_string()),
-            model_string_list(&changed),
-        )],
+        "stage0_partition_move_explained_by_affected_inputs",
+        |ctx| {
+            let mut args = affected_set_model_args(
+                ctx,
+                &population.edited_modules,
+                &population.unlocatable,
+                &edges,
+                &compared,
+            );
+            args.push((
+                Some("changed_paths".to_string()),
+                model_string_list(&changed),
+            ));
+            Ok(args)
+        },
     )? {
         ModelValue::Bool(value) => value,
         other => {
             return Err(format!(
-            "refusal: stage0_partition_move_explained_by_changed_paths returned {} instead of Bool",
-            other.type_label_public()
-        ))
+                "refusal: stage0_partition_move_explained_by_affected_inputs returned {} instead of Bool",
+                other.type_label_public()
+            ))
         }
     };
     if !explained {
         return Err(
             "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the partition mirror \
-             moved but its authority is not among this change's changed paths"
+             moved but no changed input of it (gunbc.regen_affected_set) explains it"
                 .to_string(),
         );
     }
@@ -7441,25 +7481,16 @@ fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
         })
 }
 
-/// Ask the model. The edges handed over are those whose target the host's walk reached -- the
-/// subgraph on which the model's bounded fold re-derives the same closure at interpreter cost --
-/// and `modules` is that reached set, which bounds the fold (a path among n modules has at most
-/// n-1 edges). The bootstrap rows are the model's own declaration; nothing is passed for them.
-pub fn render_affected_set_bound(
-    source_roots: &[String],
+/// The arguments `gunbc.regen_affected_set regen_affected_set` is asked with, one construction for
+/// the bound's own run and for the partition-move decision that consumes the typed bound.
+fn affected_set_model_args(
+    ctx: &crate::v1_interpreter::InterpContext,
     edited: &[String],
     unlocatable: &[String],
     edges: &[(String, String)],
     compared: &[(String, String)],
-) -> Result<AffectedSetBound, String> {
-    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    let entry = affected_set_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
-        format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
-    })?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-
+) -> Vec<(Option<String>, crate::v1_interpreter::Value)> {
+    use crate::v1_interpreter::{str_value, Value};
     let reached = regen_reverse_closure_host(edited, edges);
     let edge_values: Vec<Value> = edges
         .iter()
@@ -7500,6 +7531,29 @@ pub fn render_affected_set_bound(
         ),
         (Some("modules".to_string()), strs(&reached_list)),
     ];
+    args
+}
+
+/// Ask the model. The edges handed over are those whose target the host's walk reached -- the
+/// subgraph on which the model's bounded fold re-derives the same closure at interpreter cost --
+/// and `modules` is that reached set, which bounds the fold (a path among n modules has at most
+/// n-1 edges). The bootstrap rows are the model's own declaration; nothing is passed for them.
+pub fn render_affected_set_bound(
+    source_roots: &[String],
+    edited: &[String],
+    unlocatable: &[String],
+    edges: &[(String, String)],
+    compared: &[(String, String)],
+) -> Result<AffectedSetBound, String> {
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
+    let entry = affected_set_entry(source_roots)?;
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
+    })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+    let args = affected_set_model_args(&ctx, edited, unlocatable, edges, compared);
     let bound = v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(&ctx, "regen_affected_set", &args, false)
     })
@@ -7559,6 +7613,7 @@ pub fn render_affected_set_bound(
     // reached modules joined to the compared rows. Either side alone could be wrong; agreement is
     // the evidence, and disagreement stops the line rather than electing a side.
     if arm == "AffectedMirrors" {
+        let reached = regen_reverse_closure_host(edited, edges);
         let host_mirrors: BTreeSet<String> = compared
             .iter()
             .filter(|(module, _)| reached.contains(module))

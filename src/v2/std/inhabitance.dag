@@ -25,7 +25,6 @@ import v2.std.node { positional_child_target_nodes,
   Arrow,
   Atom,
   Instantiation,
-  Occupancy,
   ComputationNode,
   Conj,
   Edge,
@@ -38,7 +37,7 @@ import v2.std.node { positional_child_target_nodes,
   node_subtree_nodes,
   node_synthetic
 }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, empty_map, list_at_optional, map_insert, map_lookup, collection_count_shape }
+import std.algebra { Empty, list_append, list_snoc_item, empty_map, list_at_optional, map_insert, map_lookup, collection_count_shape }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 import std.nat { Succ, Zero }
@@ -51,7 +50,7 @@ import v2.std.arrow_signature {
   arrow_declared_parameter_order
 }
 import v2.std.node_query { declared_field_from_edge }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, declaration_denotation_of_type, optional_declaration_identity }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, declaration_denotation_is_optional, declaration_denotation_of_type, optional_declaration_identity }
 import v2.std.type_binder { edge_is_type_params }
 import v2.std.optional_layers {
   OccupancyWrapperMalformed,
@@ -85,7 +84,6 @@ fn inhabitance_formal_declaration(declared: Node, type_params: List<Symbol>) -> 
     TypeNode { connective: Conj } => DeclaredType { declared: declared }
     TypeNode { connective: Disj } => DeclaredType { declared: declared }
     TypeNode { connective: Arrow } => DeclaredType { declared: declared }
-    TypeNode { connective: Occupancy } => DeclaredType { declared: declared }
     TypeNode { connective: Instantiation } => DeclaredType { declared: declared }
     ComputationNode { behavior: _ } => DeclaredType { declared: declared }
   }
@@ -143,7 +141,6 @@ type InhabitanceFormal {
 
 type InhabitanceUndecidableReason
   = UndecidableGenericFormal
-  | UndecidableOptionalCarrier
   | UndecidableFormalUnresolved
   | UndecidableArgumentTypeNotDerived
   | UndecidableWherePredicateSubjectUnmodelled
@@ -218,15 +215,6 @@ fn inhabitance_declared_singleton(declared: Node) -> CandidateSet {
       evidence: declared
     }
   }
-}
-
-fn inhabitance_occupancy_type(inner: Node) -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Occupancy },
-    children: [
-      Edge { label: Positional, target: inner }
-    ]
-  )
 }
 
 // A TYPE MENTIONS A TYPE VARIABLE WHEN ANY ATOM IN IT IS SPELLED AS ONE. v2.compiler.resolve refuses
@@ -308,20 +296,7 @@ fn inhabitance_pair_undecidable_reason(
     || inhabitance_node_mentions_type_variable(n: produced, type_variables: type_variables) {
     inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
   } else {
-    match declared.kind {
-      TypeNode { connective: Occupancy } =>
-        match produced.kind {
-          TypeNode { connective: Occupancy } => Absent
-          TypeNode { connective: _ } =>
-            inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
-          ComputationNode { behavior: _ } =>
-            inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
-        }
-      TypeNode { connective: _ } =>
-        inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
-      ComputationNode { behavior: _ } =>
-        inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
-    }
+    inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
   }
 }
 
@@ -340,7 +315,7 @@ fn inhabitance_pair_undecidable_reason(
 // Rung, ceiling, and next-rung triggers live in
 // gunbc.recurring_failure_mode.argument_type_obligation_absent_while_the_route_advances.
 // AN OPTIONAL PRODUCED AT A REQUIRED DECLARED TYPE IS DECIDED: IT DOES NOT INHABIT. `T?` admits
-// absence and a required type admits no absent value, so a produced Occupancy type node (the type
+// absence and a required type admits no absent value, so a produced std.optional Instantiation (the type
 // `T?` lowers to; v2.std.node_query declared_field_cardinality_of_target reads the same node as
 // Optional) inhabits no required declared type, whatever T is. UndecidableOptionalCarrier was
 // written for the LIFT direction -- a produced `T` at a declared `T?` -- and, read off either side,
@@ -360,15 +335,16 @@ fn inhabitance_optional_produced_at_required_declared(
   produced: Node,
   type_variables: List<Symbol>
 ) -> Bool {
-  match produced.kind {
-    TypeNode { connective: Occupancy } =>
-      match declared.kind {
-        TypeNode { connective: Atom { identity: _ } } =>
-          (count(declared.children) == 0)
-            && !inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
-        _ => false
-      }
-    _ => false
+  match declaration_denotation_of_type(t: produced) {
+    Present { value: denotation } =>
+      declaration_denotation_is_optional(denotation: denotation)
+        && (match declared.kind {
+          TypeNode { connective: Atom { identity: _ } } =>
+            (count(declared.children) == 0)
+              && !inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
+          _ => false
+        })
+    Absent => false
   }
 }
 
@@ -427,7 +403,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
         InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
       OptionalLayerWrapperMalformed =>
         InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_wrapper_malformed_reason() }
-      OptionalLayerInhabitanceHolds => declared_type_inhabitance_optional(obligation: obligation)
+      OptionalLayerInhabitanceHolds => declared_type_inhabitance_structural(obligation: obligation)
     }
   }
 }
@@ -500,67 +476,6 @@ fn inhabitance_signature_holds_arrow(domain_types: List<Node>, codomain: Node) -
     || fold(domain_types, init: false, f: fn(acc, t) {
       acc || fold(node_subtree_nodes(root: t), init: false, f: fn(a, m) { a || node_is_arrow(n: m) })
     })
-}
-
-// AN OPTIONAL IS JUDGED AS THE std.optional INSTANCE IT DENOTES, SO ITS PAYLOAD IS JUDGED. `T?` (Occupancy)
-// and an applied `Optional<T>` (Instantiation) are two spellings of one declaration, and
-// v2.std.qualified_name declaration_denotation_of_type reads both as optional_declaration_identity()
-// applied to one payload. The relation therefore peels the optional layer on the declared side by
-// declaration identity and judges the payload at the payload: an optional produced at an optional
-// compares payloads (`Optional<String>` at `Int?` refuses on String against Int), and a value that is
-// not an optional is the lift, judged against the declared payload. A produced optional layer
-// against a declared payload that is not an optional is the optional-at-required refusal; a declared
-// payload that is an optional against a produced payload that is not one is a depth mismatch
-// (only the lift from a non-optional spans several layers). This replaces the former
-// UndecidableOptionalCarrier route, which accepted any optional pair with an advisory and so never
-// judged the payload (gunbc.recurring_failure_mode optional_payload_never_judged_against_declared_carrier).
-fn inhabitance_optional_payload(t: Node) -> Optional<Node> {
-  match declaration_denotation_of_type(t: t) {
-    Absent => Absent
-    Present { value: denotation } =>
-      if denotation.declaration == optional_declaration_identity() {
-        match denotation.type_arguments {
-          Cons { head: payload, tail: Empty } => Present { value: payload }
-          _ => Absent
-        }
-      } else {
-        Absent
-      }
-  }
-}
-
-fn inhabitance_with_payloads(obligation: DeclaredTypeObligation, declared: Node, produced: Node, carrier: Optional<Node>) -> DeclaredTypeObligation {
-  DeclaredTypeObligation {
-    position: obligation.position,
-    parameter_identity: obligation.parameter_identity,
-    declared: declared,
-    produced: produced,
-    produced_declared_carrier: carrier,
-    application: obligation.application,
-    type_variables: obligation.type_variables
-  }
-}
-
-fn declared_type_inhabitance_optional(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
-  match inhabitance_optional_payload(t: obligation.declared) {
-    Absent => declared_type_inhabitance_structural(obligation: obligation)
-    Present { value: declared_payload } =>
-      match inhabitance_optional_payload(t: obligation.produced) {
-        Present { value: produced_payload } =>
-          match inhabitance_optional_payload(t: declared_payload) {
-            Present { value: _ } =>
-              match inhabitance_optional_payload(t: produced_payload) {
-                Absent => InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
-                Present { value: _ } =>
-                  declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: produced_payload, carrier: Absent))
-              }
-            Absent =>
-              declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: produced_payload, carrier: Absent))
-          }
-        Absent =>
-          declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: obligation.produced, carrier: obligation.produced_declared_carrier))
-      }
-  }
 }
 
 fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
@@ -739,7 +654,6 @@ fn inhabitance_undecidable_reason_symbol(
 ) -> Symbol {
   match reason {
     UndecidableGenericFormal => ^inhabitance_undecidable_generic_formal
-    UndecidableOptionalCarrier => ^inhabitance_undecidable_optional_carrier
     UndecidableFormalUnresolved => ^inhabitance_undecidable_formal_unresolved
     UndecidableArgumentTypeNotDerived => ^inhabitance_undecidable_argument_type_not_derived
     UndecidableWherePredicateSubjectUnmodelled => ^inhabitance_undecidable_where_predicate_subject_unmodelled

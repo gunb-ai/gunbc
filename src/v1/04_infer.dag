@@ -231,7 +231,7 @@ import v1.compiler.infer_patterns {
   node_is_never_declaration,
   constructor_roster_for,
   ConstructorRoster, ConstructorsClosed, ConstructorsOpen,
-  expand_scrut_type_for_variant_lookup,
+  expand_scrut_type_for_variant_lookup, instantiate_scrutinee_expansion,
   pattern_matches_constructor,
   constructor_fields
 }
@@ -3688,6 +3688,24 @@ fn equality_admission_refusal_diag(r: EqualityAdmissionRefusal, span: SourceSpan
   }
 }
 
+// TWO RESOLVED OPERANDS OF AN == THAT NO VALUE CAN INHABIT AT ONCE. `a == b` is a question about ONE type; operands that are
+// distinct nominal products, or a product against a coproduct, are never equal, so the site answers false for every input
+// (gunbc.recurring_failure_mode cross_type_comparison_answers_instead_of_refusing; specimen
+// extdeps.cpu.types soc_family_architecture `m.architecture == lead`). It reuses the product-versus-coproduct head judgment
+// that declared_type_conformance_diags_core consults and consumes nominal_product_inhabitance_refusal for the product-versus-product case, so == and a declared-type position give one answer about one product pair. A head that is not a
+// nominal product or coproduct (a parameter, a kernel type, an unresolved operand) yields "" and is not judged here, so a
+// generic or unresolved operand behaves as before.
+fn equality_operands_never_inhabit_together(left: Node, right: Node, scope: InferScope) -> Bool {
+  if product_versus_coproduct_head_mismatch(declared: left, produced: right, scope: scope) {
+    true
+  } else {
+    match nominal_product_inhabitance_refusal(declared: left, produced: right, scope: scope) {
+      Present { value: _ } => true
+      Absent => false
+    }
+  }
+}
+
 fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scope: InferScope, span: SourceSpan) -> List<ErrorNode> {
   let judged_op = match op {
     Eq => true
@@ -3723,6 +3741,13 @@ fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scop
     } else if equality_operand_is_optional(n: left_typed, source_indices: source_indices) != equality_operand_is_optional(n: right_typed, source_indices: source_indices) {
       let side = if equality_operand_is_optional(n: left_typed, source_indices: source_indices) { "left" } else { "right" }
       [make_error_node(diagnostic: EqualityOptionalityMismatch { optional_side: side, span: span }, module_name: scope.module_name)]
+    } else if equality_operands_never_inhabit_together(left: lt, right: rt, scope: scope) {
+      [type_mismatch_error(
+        expected: node_type_shape(n: lt, source_indices: source_indices),
+        got: node_type_shape(n: rt, source_indices: source_indices),
+        span: span,
+        module_name: scope.module_name
+      )]
     } else {
       match equality_operand_admission(n: lt, scope: scope, visited: empty_map(), depth: 0) {
         Present { value: r } => [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)]
@@ -7407,7 +7432,7 @@ fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_s
 fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject) -> PatternSubject {
   match scrutinee_subject {
     PatternResolved { node: scrutinee_type } =>
-      pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)))
+      pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: instantiate_scrutinee_expansion(use_site: scrutinee_type, expanded: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type), env: scope.type_env)))
     PatternDynamic { span: dynamic_span } =>
       PatternDynamic { span: dynamic_span }
     PatternLookupBlocked =>

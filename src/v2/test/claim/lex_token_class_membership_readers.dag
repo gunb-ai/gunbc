@@ -1,0 +1,47 @@
+module v2.test.claim.lex_token_class_membership_readers
+
+import v2.extdeps.languages.ecmascript { ecmascript_lex_token_symbol }
+import v2.extdeps.languages.go { go_lex_token_symbol }
+import v2.extdeps.languages.java { java_canonical_symbols }
+import v2.extdeps.languages.kotlin { kotlin_lex_token_symbol }
+import v2.extdeps.languages.lean { lean_lex_token_symbol }
+import v2.extdeps.languages.python { python_lex_token_symbol }
+import v2.extdeps.languages.rust { rust_canonical_symbols, rust_fn_add_lex_token_symbol }
+import v2.extdeps.languages.swift { swift_lex_token_symbol }
+import v2.extdeps.languages.typescript { ts_lex_token_symbol }
+import v2.extdeps.languages.wasm { wasm_lex_token_symbol }
+
+// THE READERS OF THE CARRIED TOKEN-CLASS MAPS, exercised at runtime. Each language model's token
+// membership now answers from a per-module data built by ONE fold over its rule set
+// (lex_rule_set_token_class_map; the per-query rebuild and linear scan were authored duplication
+// -- gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists). A carried
+// map that was never READ proves nothing (DESIGN section 4: a claim that never ran proves nothing),
+// so this claim calls every rewritten reader through its public API. The POSITIVES are symbols
+// these modules' own literal rule sets mint as token_class -- the map keys on the same field the
+// deleted scan compared, so each positive is a symbol the old linear scan answered true for. The
+// NEGATIVE is a marker no rule set anywhere names: the map answers Absent, and had a reader been
+// rewired to a map of the wrong module, the positives would already betray it.
+test fn lex_token_class_membership_readers_hold() -> Bool {
+  ecmascript_lex_token_symbol(sym: ^ecmascript_token_ident) &&
+    go_lex_token_symbol(sym: ^go_token_kw_func) &&
+    java_canonical_symbols().member(^java_token_semicolon) &&
+    kotlin_lex_token_symbol(sym: ^kotlin_token_rparen) &&
+    lean_lex_token_symbol(sym: ^lean_token_rparen) &&
+    python_lex_token_symbol(sym: ^python_token_plus) &&
+    rust_canonical_symbols().member(^rust_token_ty_i32) &&
+    rust_fn_add_lex_token_symbol(sym: ^rust_token_comma) &&
+    swift_lex_token_symbol(sym: ^swift_token_colon) &&
+    ts_lex_token_symbol(sym: ^ts_token_colon) &&
+    wasm_lex_token_symbol(sym: ^wasm_token_lparen) &&
+    !ecmascript_lex_token_symbol(sym: ^zz_probe_token_class_absent_everywhere) &&
+    !go_lex_token_symbol(sym: ^zz_probe_token_class_absent_everywhere) &&
+    !java_canonical_symbols().member(^zz_probe_token_class_absent_everywhere) &&
+    !kotlin_lex_token_symbol(sym: ^zz_probe_token_class_absent_everywhere) &&
+    !lean_lex_token_symbol(sym: ^zz_probe_token_class_absent_everywhere) &&
+    !python_lex_token_symbol(sym: ^zz_probe_token_class_absent_everywhere) &&
+    !rust_canonical_symbols().member(^zz_probe_token_class_absent_everywhere) &&
+    !rust_fn_add_lex_token_symbol(sym: ^zz_probe_token_class_absent_everywhere) &&
+    !swift_lex_token_symbol(sym: ^zz_probe_token_class_absent_everywhere) &&
+    !ts_lex_token_symbol(sym: ^zz_probe_token_class_absent_everywhere) &&
+    !wasm_lex_token_symbol(sym: ^zz_probe_token_class_absent_everywhere)
+}

@@ -2,7 +2,7 @@ module test.claim.gha_expression_logical_not_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
-import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, LogicalAnd, LogicalNot, FunctionCall, Cancelled, serialize_expression, evaluate_expression, ExpressionValue, ExpressionEvaluationRefused, GithubPathUnmodeled, GithubPathResolution }
+import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, LogicalAnd, LogicalNot, FunctionCall, Cancelled, serialize_expression, evaluate_expression, ExpressionValue, ExpressionEvaluationRefused, GithubPathUnmodeled, GithubPathResolution, Format, UnmodeledFormat, FormatTemplateNotLiteral }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -26,4 +26,11 @@ test fn logical_not_evaluates_by_truthiness() -> Bool {
   (match evaluate_expression(expression: LogicalNot { operand: StringLiteral { value: "" } }, github_path: none_modeled) { ExpressionValue { value: v } => v == "true"  ExpressionEvaluationRefused { cause: _ } => false })
     && (match evaluate_expression(expression: LogicalNot { operand: StringLiteral { value: "x" } }, github_path: none_modeled) { ExpressionValue { value: v } => v == ""  ExpressionEvaluationRefused { cause: _ } => false })
     && (match evaluate_expression(expression: LogicalNot { operand: ContextAccess { context: Github, path: ["sha"] } }, github_path: none_modeled) { ExpressionEvaluationRefused { cause: _ } => true  ExpressionValue { value: _ } => false })
+}
+
+// `format()` TEMPLATE: a `!` template is not a string literal, so the evaluator refuses it as
+// FormatTemplateNotLiteral (the sibling arms' cause) while it still serializes as the spec writes `!`.
+test fn logical_not_format_template_refuses_not_literal() -> Bool {
+  (match evaluate_expression(expression: FunctionCall { function: Format, args: [LogicalNot { operand: StringLiteral { value: "x" } }, StringLiteral { value: "a" }] }, github_path: none_modeled) { ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } } => true  ExpressionEvaluationRefused { cause: _ } => false  ExpressionValue { value: _ } => false })
+    && serialize_expression(expression: FunctionCall { function: Format, args: [LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } }, StringLiteral { value: "a" }] }) == "format(!cancelled(), 'a')"
 }
