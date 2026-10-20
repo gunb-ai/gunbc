@@ -49,13 +49,17 @@ import gunbc.host.verified_binary_install {
   VerifiedBinaryInstallRefusal,
   Unverifiable,
   DigestMismatch,
+  MemberPathUnsound,
   verified_binary_install_admission,
   verified_binary_install_admitted_plan,
   verified_binary_install_destination_present,
   verified_binary_install_install_steps,
+  verified_binary_install_member_gate,
   verified_binary_install_plan_refusal,
   verified_binary_install_plan_refusal_message,
   verified_binary_install_shell,
+  verified_binary_install_staged_path,
+  verified_binary_install_staged_root,
   verified_binary_install_verify_line,
 }
 import gunbc.host.sccache_verified_install { sccache_verified_install_params, sccache_verified_install_script }
@@ -87,8 +91,6 @@ fn other_product_params() -> VerifiedBinaryInstallParams {
     url: "https://example.invalid/tools/thing-9.9.9.tar.gz" as NonEmptyStr,
     digest: sccache_release_0_15_0.digest_x86_64,
     archive_member: "thing-9.9.9/bin/thing",
-    staged_root: "/tmp/thing-9.9.9",
-    staged_binary_path: "/tmp/thing-9.9.9/bin/thing",
     download_path: "/tmp/thing.tar.gz" as NonEmptyStr,
     extract_root: "/tmp",
     dest_path: "/opt/tools/bin/thing" as NonEmptyStr,
@@ -223,6 +225,12 @@ test fn red_a_digest_mismatch_refuses_and_nothing_is_installed() -> Bool {
          RefusedToInstall { refusal: DigestMismatch { observed: o, expected: e }, dest_path: d, source_url: u } =>
            e == p.digest && o == sccache_release_0_15_0.digest_aarch64
            && d == p.dest_path && u == p.url
+         // A member this specimen does not have must never arrive here: its params are built from the
+         // release row, whose member is a clean relative path. Carrying the arm anyway is what
+         // exhaustiveness asks for, and returning false keeps the digest RED honest -- a refusal that
+         // shows up wearing the parameter world's clothes did not prove the digest check.
+         RefusedToInstall { refusal: MemberPathUnsound { member: _, extract_root: _ }, dest_path: _, source_url: _ } =>
+           false
        }
 }
 
@@ -264,6 +272,10 @@ test fn an_unreadable_line_refuses_and_says_the_line_was_unreadable() -> Bool {
          Absent => false
          Present { value: Unverifiable { observed_line: seen } } => seen == "<html>404 Not Found</html>"
          Present { value: DigestMismatch { observed: _, expected: _ } } => false
+         // This specimen's member comes from the release row and is sound, so the parameter world cannot
+         // be the cause; a refusal arriving as MemberPathUnsound would mean an unreadable mirror was
+         // explained as a caller defect, which is the wrong diagnosis and must not pass.
+         Present { value: MemberPathUnsound { member: _, extract_root: _ } } => false
        }
     // The derived report quotes the unreadable line verbatim.
     && match verified_binary_install_plan_refusal_message(plan: plan) {
@@ -295,6 +307,9 @@ test fn the_two_refusal_causes_are_distinguishable_as_types() -> Bool {
     Present { value: DigestMismatch { observed: o, expected: e } } =>
       o == sccache_release_0_15_0.digest_x86_64 && e == sccache_release_0_15_0.digest_aarch64
     Present { value: Unverifiable { observed_line: _ } } => false
+    // The member here is sound (the release row builds it), so this arm can only be reached if the gate
+    // misfired on valid input -- which must fail this claim, not ride through it.
+    Present { value: MemberPathUnsound { member: _, extract_root: _ } } => false
     Absent => false
   }
     // The outage: nothing was measured, so there is no observed digest to carry.
@@ -302,6 +317,7 @@ test fn the_two_refusal_causes_are_distinguishable_as_types() -> Bool {
          Present { value: Unverifiable { observed_line: seen } } =>
            seen == "<html>404 Not Found</html>"
          Present { value: DigestMismatch { observed: _, expected: _ } } => false
+         Present { value: MemberPathUnsound { member: _, extract_root: _ } } => false
          Absent => false
        }
     // And the two derived reports do not agree with each other's incident: each names only its own world.
@@ -328,9 +344,200 @@ test fn the_sccache_adapter_supplies_the_release_row_values() -> Bool {
     && p.digest == sccache_release_0_15_0.digest_aarch64
     && (p.dest_path as String) == sccache_installed_binary_path
     && p.archive_member == "sccache-v0.15.0-aarch64-unknown-linux-musl/sccache"
-    && p.staged_binary_path == "/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache"
-    && p.staged_root == "/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl"
+    && verified_binary_install_staged_path(p: p)
+        == "/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache"
+    && verified_binary_install_staged_root(p: p)
+        == "/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl"
     && p.exec_mode == "+x" as NonEmptyStr
+}
+
+// --------------------------------------------------------------------------------
+// THE MEMBER IS THE ONE AUTHORITY FOR BOTH PATHS THE EFFECT TOUCHES.
+//
+// WHAT THIS SET EXISTS TO REFUSE: the shape review 82296 found, where `archive_member` named a file the
+// effect never read and the fold moved a SEPARATELY AUTHORED path instead. Two independent fields is two
+// authorities, and "member A, move path B" was admissible: extraction could unpack anything and the move
+// could relocate an unrelated file into the destination. Both fields are gone; every path the effect
+// touches is derived from (extract_root, archive_member). These claims observe the ACTUAL move step and
+// the ACTUAL cleanup step of the produced plan (rendered argv, not a field), so:
+//   - removing the derivation (re-adding an independent path field) reddens
+//     control_changing_the_member_moves_exactly_the_member_and_cleans_only_the_extracted_tree, because
+//     the rendered move stops tracking the member; and
+//   - changing only `archive_member` reddens it unless the move AND the cleanup follow, while the three
+//     steps that never mention a member (extract, chmod, archive cleanup) must not move.
+// `the_digest_world_still_decides_when_the_member_is_sound` pins the gate's ORDER: it must not swallow
+// the digest verdicts that already lived here.
+// --------------------------------------------------------------------------------
+
+// Params with a caller-chosen member and root, everything else the second product's values. Used to vary
+// EXACTLY the member (or exactly the root) so a control's delta is attributable to one field.
+fn params_with_member(member: String, root: String) -> VerifiedBinaryInstallParams {
+  VerifiedBinaryInstallParams {
+    url: "https://example.invalid/tools/thing-9.9.9.tar.gz" as NonEmptyStr,
+    digest: sccache_release_0_15_0.digest_x86_64,
+    archive_member: member,
+    download_path: "/tmp/thing.tar.gz" as NonEmptyStr,
+    extract_root: root,
+    dest_path: "/opt/tools/bin/thing" as NonEmptyStr,
+    exec_mode: "0755" as NonEmptyStr,
+    elevated: false,
+  }
+}
+
+// The renderer quotes every argv token ('mv' '-T' ...), so a quoted path is a WHOLE token: searching for
+// `'path'` cannot accidentally match a longer path that merely starts with it.
+fn quoted_token(s: String) -> String {
+  join(["'", s, "'"], "")
+}
+
+// Two plans agree at one index: both steps exist and render identically. Absent on either side is FALSE,
+// never "both missing, so equal" — a plan that dropped a step must not pass an agreement claim.
+fn steps_agree_at(a: List<ArgvCommand>, b: List<ArgvCommand>, index: Int) -> Bool {
+  match get(xs: a, index: index) {
+    Absent => false
+    Present { value: x } => match get(xs: b, index: index) {
+      Absent => false
+      Present { value: y } => shell_command_render(command: x) == shell_command_render(command: y)
+    }
+  }
+}
+
+fn steps_differ_at(a: List<ArgvCommand>, b: List<ArgvCommand>, index: Int) -> Bool {
+  match get(xs: a, index: index) {
+    Absent => false
+    Present { value: x } => match get(xs: b, index: index) {
+      Absent => false
+      Present { value: y } => shell_command_render(command: x) != shell_command_render(command: y)
+    }
+  }
+}
+
+// THE DERIVATION, OBSERVED WHERE IT IS ACTUATED: step 1 is the move and step 4 the staging cleanup, and
+// what a member names must appear in the RENDERED argv of exactly those two steps.
+test fn control_changing_the_member_moves_exactly_the_member_and_cleans_only_the_extracted_tree() -> Bool {
+  let a = params_with_member(member: "thing-9.9.9/bin/thing", root: "/tmp")
+  // Differs from `a` in EXACTLY ONE field: the member. The first segment differs too, so the move and the
+  // staging cleanup must both follow, and nothing else may.
+  let b = params_with_member(member: "other-1.0/bin/thing", root: "/tmp")
+  let sa = verified_binary_install_install_steps(p: a)
+  let sb = verified_binary_install_install_steps(p: b)
+  // (1) the move reads what the member names, derived from the root, as a whole argv token.
+  rendered_step_at_exists_and_contains(steps: sa, index: 1, pattern: quoted_token("/tmp/thing-9.9.9/bin/thing"))
+    && rendered_step_at_exists_and_contains(steps: sb, index: 1, pattern: quoted_token("/tmp/other-1.0/bin/thing"))
+    // (2) the staging cleanup deletes the first segment of the member under the root, never the root's
+    // siblings and never a field the caller could author beside the member.
+    && rendered_step_at_exists_and_contains(steps: sa, index: 4, pattern: quoted_token("/tmp/thing-9.9.9"))
+    && rendered_step_at_exists_and_contains(steps: sb, index: 4, pattern: quoted_token("/tmp/other-1.0"))
+    // (3) the member-free steps are untouched by the member: extract into the root, chmod of the
+    // destination, cleanup of the download. If any of these moved, the member had a second authority.
+    && steps_agree_at(a: sa, b: sb, index: 0)
+    && steps_agree_at(a: sa, b: sb, index: 2)
+    && steps_agree_at(a: sa, b: sb, index: 3)
+    // (4) and the two that ARE member-dependent demonstrably moved — an implementation that ignored the
+    // member entirely (the old independent-field shape) fails here while passing every containment check
+    // above, because its rendered move would be the same for a and b.
+    && steps_differ_at(a: sa, b: sb, index: 1)
+    && steps_differ_at(a: sa, b: sb, index: 4)
+}
+
+// A top-level member (no `/` — the build-cache consumer's own shape) degenerates correctly: the moved
+// file sits directly under the root and the staging cleanup IS the root, never a stray "/".
+test fn a_top_level_member_degenerates_to_the_root_itself() -> Bool {
+  let p = params_with_member(member: "sccache", root: "/opt/stage")
+  let s = verified_binary_install_install_steps(p: p)
+  rendered_step_at_exists_and_contains(steps: s, index: 1, pattern: quoted_token("/opt/stage/sccache"))
+    && rendered_step_at_exists_and_contains(steps: s, index: 4, pattern: quoted_token("/opt/stage"))
+    && verified_binary_install_staged_root(p: p) == "/opt/stage"
+    // No double slash anywhere in either derived path, whatever the root looks like.
+    && !string_contains(s: verified_binary_install_staged_path(p: p), pattern: "//")
+}
+
+// THE GATE, SUPPLIED ITS BOUNDARY VALUES: four members/roots with no admissible path under them. Each
+// must be refused with the member and root CARRIED, and each refusal must name both in its message. An
+// implementation that joined them anyway — which is what removing the gate looks like — passes nothing
+// here: the plan would be Planned, not refused.
+test fn an_unsound_member_is_refused_with_member_and_root_carried() -> Bool {
+  let escaping = params_with_member(member: "../etc/passwd", root: "/tmp")
+  let absolute = params_with_member(member: "/absolute/bin", root: "/tmp")
+  let empty = params_with_member(member: "", root: "/tmp")
+  // Empty ROOT with a sound member: the join degenerates to an ABSOLUTE path with no root at all, which
+  // a `//` scan cannot see — this specimen pins the explicit root check.
+  let no_root = params_with_member(member: "bin/thing", root: "")
+  // TRAILING-SLASH ROOT with a sound member: the join produces a doubled separator, which is the shape the
+  // `//` scan exists to catch. Without this specimen the scan has NO input that can fire it in any claim,
+  // and a check whose forbidden state is expressible nowhere it runs is a decoration -- DESIGN §4b.
+  let doubled = params_with_member(member: "bin/thing", root: "/tmp/")
+  let good_line =
+    observed_line_for(hex: sccache_release_0_15_0.digest_x86_64.hex as String, path: "/tmp/thing.tar.gz")
+  refuses_for_unsound_member(p: escaping, good_line: good_line, member: "../etc/passwd", root: "/tmp")
+    && refuses_for_unsound_member(p: absolute, good_line: good_line, member: "/absolute/bin", root: "/tmp")
+    && refuses_for_unsound_member(p: empty, good_line: good_line, member: "", root: "/tmp")
+    && refuses_for_unsound_member(p: no_root, good_line: good_line, member: "bin/thing", root: "")
+    && refuses_for_unsound_member(p: doubled, good_line: good_line, member: "bin/thing", root: "/tmp/")
+}
+
+// ONE unsound input, checked the long way round: the gate itself, the plan's ARM, and the message — with
+// the digest line being the ADMITTING one, so the only thing that can refuse here is the member gate.
+fn refuses_for_unsound_member(p: VerifiedBinaryInstallParams, good_line: String, member: String, root: String) -> Bool {
+  let plan = verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: good_line)
+  // The gate refuses directly, carrying the caller's own member and root back to them...
+  let gate_refuses =
+    match verified_binary_install_member_gate(p: p) {
+      Absent => false
+      Present { value: MemberPathUnsound { member: m, extract_root: r } } => m == member && r == root
+      Present { value: _ } => false
+    }
+  // ...the plan carries the refusal as its OWN arm (not a digest refusal, not a shorter plan)...
+  let plan_carries_it =
+    match plan {
+      Planned { steps: _ } => false
+      RefusedToInstall { refusal: MemberPathUnsound { member: m2, extract_root: r2 }, dest_path: _, source_url: _ } =>
+        m2 == member && r2 == root
+      RefusedToInstall { refusal: Unverifiable { observed_line: _ }, dest_path: _, source_url: _ } => false
+      RefusedToInstall { refusal: DigestMismatch { observed: _, expected: _ }, dest_path: _, source_url: _ } => false
+    }
+  // ...and nothing installs: no actuated steps travel with a RefusedToInstall, by the shape of the sum,
+  // while the message names both the member and the root it could not be joined onto. DISCLOSED: the
+  // empty-root and empty-member specimens each carry an EMPTY pattern into one of the two message conjuncts,
+  // and an empty pattern is contained in every string -- those two specimens are falsified by the ARM
+  // equalities above (which compare the empty value exactly) and not by their prose. The other three
+  // specimens exercise the message with two non-empty names. Stated rather than left for a reader to
+  // discover, per DESIGN §4b on checks that cannot fail.
+  let message_names_both =
+    match verified_binary_install_plan_refusal_message(plan: plan) {
+      Absent => false
+      Present { value: why } =>
+        string_contains(s: why, pattern: "nothing was installed")
+        && string_contains(s: why, pattern: member)
+        && string_contains(s: why, pattern: root)
+    }
+  gate_refuses && plan_carries_it && message_names_both
+}
+
+// THE GATE MUST NOT SWALLOW WHAT ALREADY LIVED HERE. With a sound member, the digest verdicts must come
+// back exactly as before the gate was wired in front of them: admitted plans plan, mismatches refuse with
+// the digest arm. This is the ORDER pin — the gate runs first, but only ever fires on inputs the old code
+// would have joined into nonsense.
+test fn the_digest_world_still_decides_when_the_member_is_sound() -> Bool {
+  let p = params_with_member(member: "thing-9.9.9/bin/thing", root: "/tmp")
+  let good_line =
+    observed_line_for(hex: sccache_release_0_15_0.digest_x86_64.hex as String, path: "/tmp/thing.tar.gz")
+  let swap_line =
+    observed_line_for(hex: sccache_release_0_15_0.digest_aarch64.hex as String, path: "/tmp/thing.tar.gz")
+  match verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: good_line) {
+    Planned { steps: steps } => count(steps) == 5
+    RefusedToInstall { refusal: _, dest_path: _, source_url: _ } => false
+  }
+    && match verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: swap_line) {
+         Planned { steps: _ } => false
+         RefusedToInstall {
+           refusal: DigestMismatch { observed: _, expected: _ },
+           dest_path: _,
+           source_url: _,
+         } => true
+         RefusedToInstall { refusal: MemberPathUnsound { member: _, extract_root: _ }, dest_path: _, source_url: _ } => false
+         RefusedToInstall { refusal: Unverifiable { observed_line: _ }, dest_path: _, source_url: _ } => false
+       }
 }
 
 // ORDERING THAT ONLY THE SHELL CAN ENFORCE. `set -e` is what stops an install after a failed download
@@ -473,7 +680,7 @@ test fn control_the_privileged_arms_are_the_authority_argv_prefixed_with_sudo() 
   let priv_mode = get(xs: priv_steps, index: 2)
   // The unprivileged rendering of the same two operations, from the same authorities, is the baseline.
   let plain_move = shell_command_render(
-    command: mv_exact_destination_command(source: p.staged_binary_path, destination: p.dest_path as String),
+    command: mv_exact_destination_command(source: verified_binary_install_staged_path(p: p), destination: p.dest_path as String),
   )
   let plain_mode = shell_command_render(
     command: chmod_set_mode_command(chmod_program: chmod_binary_path, mode: p.exec_mode,
@@ -497,7 +704,7 @@ test fn control_the_privileged_arms_are_the_authority_argv_prefixed_with_sudo() 
           // sudo_elevate_command over argv_words is the only shape that puts -n before the program.
           && shell_command_render(
                command: sudo_elevate_command(command: argv_words(command: mv_exact_destination_command(
-                 source: p.staged_binary_path,
+                 source: verified_binary_install_staged_path(p: p),
                  destination: p.dest_path as String,
                ))),
              )

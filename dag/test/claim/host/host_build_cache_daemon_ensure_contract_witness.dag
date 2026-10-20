@@ -836,6 +836,11 @@ fn build_cache_digest_refusal_names(refusal: VerifiedBinaryInstallRefusal, expec
       string_contains(s: e.hex as String, pattern: expected)
         && string_contains(s: o.hex as String, pattern: observed)
         && string_contains(s: reason_of(refusal: refusal), pattern: "digest")
+    // THE PARAMETER REFUSAL IS NOT A DIGEST REFUSAL. A caller asking "does this refusal name the pinned
+    // and observed digests" must get `false` for an unsound member rather than a match on prose that
+    // happens to contain the word "digest" -- the member refusal carries neither digest, and conflating
+    // the two worlds is how a swapped archive once hid behind a mirror-outage caption.
+    MemberPathUnsound { member: _, extract_root: _ } => false
   }
 }
 
