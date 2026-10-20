@@ -374,10 +374,7 @@ type AccountId = Refined<String>
         .modules
         .iter()
         .find(|m| {
-            v1_compiler::v1_std_core::authored_name_at(
-                result.source_indices.clone(),
-                m.module.clone(),
-            ) == "m1.brand_twins"
+            v1_compiler::v1_std_core::node_authored_text(m.module.clone()) == "m1.brand_twins"
         })
         .expect("m1.brand_twins module");
 
@@ -444,10 +441,7 @@ type AccountId = Refined<String>
         .modules
         .iter()
         .find(|m| {
-            v1_compiler::v1_std_core::authored_name_at(
-                result.source_indices.clone(),
-                m.module.clone(),
-            ) == "pd3.brand_relation"
+            v1_compiler::v1_std_core::node_authored_text(m.module.clone()) == "pd3.brand_relation"
         })
         .expect("pd3.brand_relation module");
 
@@ -460,7 +454,6 @@ type AccountId = Refined<String>
         !node_type_compatible(
             user_id.clone(),
             account_id,
-            result.source_indices.clone(),
             Rc::new(
                 v1_compiler::v1_compiler_infer_types::TextJudgment::TextJudgedIn {
                     env: module.type_env.clone()
@@ -473,7 +466,6 @@ type AccountId = Refined<String>
         node_type_compatible(
             user_id.clone(),
             user_id,
-            result.source_indices.clone(),
             Rc::new(
                 v1_compiler::v1_compiler_infer_types::TextJudgment::TextJudgedIn {
                     env: module.type_env.clone()
@@ -560,7 +552,6 @@ fn list_int_index_returns_optional_element_type() {
         leaf_node("Int".to_string()),
         zero_span(),
         "test".to_string(),
-        empty_source_indices(),
         Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
@@ -581,7 +572,6 @@ fn malformed_map_index_returns_compiler_error_type() {
         leaf_node("String".to_string()),
         zero_span(),
         "test".to_string(),
-        empty_source_indices(),
         Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
@@ -605,7 +595,6 @@ fn invalid_slice_returns_compiler_error_type() {
         leaf_node("Int".to_string()),
         zero_span(),
         "test".to_string(),
-        empty_source_indices(),
         Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
@@ -624,7 +613,6 @@ fn valid_list_slice_preserves_list_type() {
         leaf_node("Int".to_string()),
         zero_span(),
         "test".to_string(),
-        empty_source_indices(),
         Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
@@ -651,7 +639,6 @@ fn valid_map_index_preserves_optional_value_type() {
         leaf_node("String".to_string()),
         zero_span(),
         "test".to_string(),
-        empty_source_indices(),
         Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
@@ -1314,7 +1301,6 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
             v1_compiler_infer_lookup::lookup_structural_method(
                 list_int.clone(),
                 method_name.to_string(),
-                empty_source_indices(),
             )
             .resolution
             .is_some(),
@@ -1326,15 +1312,12 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
 
 fn structural_method_any_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v1_compiler_infer_lookup::lookup_structural_method(
-        list_int.clone(),
-        "any".to_string(),
-        empty_source_indices(),
-    )
-    .resolution
-    .as_ref()
-    .expect("any must resolve on List<Int>")
-    .clone();
+    let result =
+        v1_compiler_infer_lookup::lookup_structural_method(list_int.clone(), "any".to_string())
+            .resolution
+            .as_ref()
+            .expect("any must resolve on List<Int>")
+            .clone();
     assert_eq!(
         result.result_type.name, "Bool",
         "any on List<Int> should return Bool"
@@ -1343,15 +1326,12 @@ fn structural_method_any_on_list_returns_bool() {
 
 fn structural_method_all_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v1_compiler_infer_lookup::lookup_structural_method(
-        list_int.clone(),
-        "all".to_string(),
-        empty_source_indices(),
-    )
-    .resolution
-    .as_ref()
-    .expect("all must resolve on List<Int>")
-    .clone();
+    let result =
+        v1_compiler_infer_lookup::lookup_structural_method(list_int.clone(), "all".to_string())
+            .resolution
+            .as_ref()
+            .expect("all must resolve on List<Int>")
+            .clone();
     assert_eq!(
         result.result_type.name, "Bool",
         "all on List<Int> should return Bool"
@@ -1360,15 +1340,12 @@ fn structural_method_all_on_list_returns_bool() {
 
 fn structural_method_sort_by_on_list_returns_self() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v1_compiler_infer_lookup::lookup_structural_method(
-        list_int.clone(),
-        "sort_by".to_string(),
-        empty_source_indices(),
-    )
-    .resolution
-    .as_ref()
-    .expect("sort_by must resolve on List<Int>")
-    .clone();
+    let result =
+        v1_compiler_infer_lookup::lookup_structural_method(list_int.clone(), "sort_by".to_string())
+            .resolution
+            .as_ref()
+            .expect("sort_by must resolve on List<Int>")
+            .clone();
     assert_eq!(
         result.result_type.name, "List",
         "sort_by on List<Int> should return List (ReceiverSelf)"
@@ -1377,15 +1354,12 @@ fn structural_method_sort_by_on_list_returns_self() {
 
 fn structural_method_first_on_list_returns_optional_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let result = v1_compiler_infer_lookup::lookup_structural_method(
-        list_int.clone(),
-        "first".to_string(),
-        empty_source_indices(),
-    )
-    .resolution
-    .as_ref()
-    .expect("first must resolve on List<Int>")
-    .clone();
+    let result =
+        v1_compiler_infer_lookup::lookup_structural_method(list_int.clone(), "first".to_string())
+            .resolution
+            .as_ref()
+            .expect("first must resolve on List<Int>")
+            .clone();
     assert_eq!(
         result.result_type.name, "Int",
         "first on List<Int> should return Int"
@@ -1401,15 +1375,12 @@ fn structural_method_first_on_list_returns_optional_element() {
 
 fn structural_method_count_on_list_returns_nat() {
     let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
-    let result = v1_compiler_infer_lookup::lookup_structural_method(
-        list_string,
-        "count".to_string(),
-        empty_source_indices(),
-    )
-    .resolution
-    .as_ref()
-    .expect("count must resolve on List<String>")
-    .clone();
+    let result =
+        v1_compiler_infer_lookup::lookup_structural_method(list_string, "count".to_string())
+            .resolution
+            .as_ref()
+            .expect("count must resolve on List<String>")
+            .clone();
     // A count is never negative, so it returns std.nat.Nat by its declarer (#12227); an Int
     // here would mean the refinement regressed to the unrefined carrier.
     assert_eq!(
@@ -1426,7 +1397,6 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
             v1_compiler_infer_lookup::lookup_structural_method(
                 int_node.clone(),
                 method_name.to_string(),
-                empty_source_indices(),
             )
             .resolution
             .is_some(),
@@ -1438,15 +1408,12 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
 
 fn structural_method_compare_on_int_returns_ordering() {
     let int_node = leaf_node("Int".to_string());
-    let result = v1_compiler_infer_lookup::lookup_structural_method(
-        int_node,
-        "compare".to_string(),
-        empty_source_indices(),
-    )
-    .resolution
-    .as_ref()
-    .expect("compare must resolve on Int")
-    .clone();
+    let result =
+        v1_compiler_infer_lookup::lookup_structural_method(int_node, "compare".to_string())
+            .resolution
+            .as_ref()
+            .expect("compare must resolve on Int")
+            .clone();
     assert_eq!(
         result.result_type.name, "Ordering",
         "compare on Int should return Ordering"
@@ -1472,13 +1439,9 @@ fn structural_method_lookup_resolves_all_map_partial_function_methods() {
     ];
     for method_name in &expected_methods {
         assert!(
-            v1_compiler_infer_lookup::lookup_structural_method(
-                m.clone(),
-                method_name.to_string(),
-                empty_source_indices(),
-            )
-            .resolution
-            .is_some(),
+            v1_compiler_infer_lookup::lookup_structural_method(m.clone(), method_name.to_string(),)
+                .resolution
+                .is_some(),
             "lookup_structural_method should resolve '{}' on Map<String,Int>",
             method_name
         );
@@ -1490,15 +1453,11 @@ fn structural_method_get_on_map_returns_optional_value() {
         leaf_node("String".to_string()),
         leaf_node("Int".to_string()),
     );
-    let result = v1_compiler_infer_lookup::lookup_structural_method(
-        m.clone(),
-        "get".to_string(),
-        empty_source_indices(),
-    )
-    .resolution
-    .as_ref()
-    .expect("get must resolve on Map<String,Int>")
-    .clone();
+    let result = v1_compiler_infer_lookup::lookup_structural_method(m.clone(), "get".to_string())
+        .resolution
+        .as_ref()
+        .expect("get must resolve on Map<String,Int>")
+        .clone();
     assert_eq!(
         result.result_type.name, "Int",
         "get on Map<String,Int> should return Int"
@@ -1517,15 +1476,11 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         leaf_node("String".to_string()),
         leaf_node("Int".to_string()),
     );
-    let result = v1_compiler_infer_lookup::lookup_structural_method(
-        m,
-        "map_keys".to_string(),
-        empty_source_indices(),
-    )
-    .resolution
-    .as_ref()
-    .expect("map_keys must resolve on Map<String,Int>")
-    .clone();
+    let result = v1_compiler_infer_lookup::lookup_structural_method(m, "map_keys".to_string())
+        .resolution
+        .as_ref()
+        .expect("map_keys must resolve on Map<String,Int>")
+        .clone();
     assert_eq!(
         result.result_type.name, "List",
         "map_keys should return List"
@@ -1546,13 +1501,9 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
 fn structural_method_lookup_returns_none_for_unknown_type() {
     let custom = leaf_node("MyType".to_string());
     assert!(
-        v1_compiler_infer_lookup::lookup_structural_method(
-            custom,
-            "add".to_string(),
-            empty_source_indices()
-        )
-        .resolution
-        .is_none(),
+        v1_compiler_infer_lookup::lookup_structural_method(custom, "add".to_string())
+            .resolution
+            .is_none(),
         "custom types without algebra should not have structural methods"
     );
 }
@@ -1562,7 +1513,7 @@ fn keyed_collection_parts_extracts_key_and_value() {
         leaf_node("String".to_string()),
         leaf_node("Int".to_string()),
     );
-    let parts = v1_compiler_infer_access::keyed_collection_parts(m, empty_source_indices());
+    let parts = v1_compiler_infer_access::keyed_collection_parts(m);
     let parts = parts.expect("Map<String,Int> should decompose to keyed parts");
     assert_eq!(parts.key_type.name, "String");
     assert_eq!(parts.value_type.name, "Int");
@@ -1570,7 +1521,7 @@ fn keyed_collection_parts_extracts_key_and_value() {
 
 fn keyed_collection_parts_returns_none_for_element_collection() {
     let list = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let parts = v1_compiler_infer_access::keyed_collection_parts(list, empty_source_indices());
+    let parts = v1_compiler_infer_access::keyed_collection_parts(list);
     assert!(
         parts.is_none(),
         "List<Int> is not a keyed collection, should return None"
@@ -1579,7 +1530,7 @@ fn keyed_collection_parts_returns_none_for_element_collection() {
 
 fn keyed_collection_parts_returns_type_variables_for_bare_map() {
     let bare = bare_map_node().expect("Map kernel container profile");
-    let parts = v1_compiler_infer_access::keyed_collection_parts(bare, empty_source_indices());
+    let parts = v1_compiler_infer_access::keyed_collection_parts(bare);
     assert!(
         parts.is_some(),
         "bare Map has K/V children (TypeVariable inferred)"
@@ -1591,17 +1542,17 @@ fn node_is_keyed_collection_true_for_map() {
         leaf_node("String".to_string()),
         leaf_node("Bool".to_string()),
     );
-    assert!(node_is_keyed_collection(m, empty_source_indices()));
+    assert!(node_is_keyed_collection(m));
 }
 
 fn node_is_keyed_collection_false_for_list() {
     let list = container_node("List".to_string(), leaf_node("Int".to_string()));
-    assert!(!node_is_keyed_collection(list, empty_source_indices()));
+    assert!(!node_is_keyed_collection(list));
 }
 
 fn node_is_keyed_collection_false_for_leaf() {
     let leaf = leaf_node("String".to_string());
-    assert!(!node_is_keyed_collection(leaf, empty_source_indices()));
+    assert!(!node_is_keyed_collection(leaf));
 }
 
 fn is_fully_resolved_rejects_under_parameterized_container() {
@@ -1820,7 +1771,6 @@ fn map_index_with_correct_key_type_succeeds() {
         leaf_node("String".to_string()),
         zero_span(),
         "test".to_string(),
-        empty_source_indices(),
         Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
     assert!(
@@ -1847,7 +1797,6 @@ fn map_index_with_wrong_key_type_reports_error() {
         leaf_node("Int".to_string()),
         zero_span(),
         "test".to_string(),
-        empty_source_indices(),
         Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
     assert_eq!(
@@ -1905,7 +1854,7 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         ..(*leaf_node("".to_string())).clone()
     });
 
-    let outputs = v1_compiler_parse::node_inferred_to_outputs(conj_node, empty_source_indices());
+    let outputs = v1_compiler_parse::node_inferred_to_outputs(conj_node);
     assert!(
         outputs.is_empty(),
         "fail-closed gate: Conj with error child must produce 0 outputs, got {}",
@@ -1917,7 +1866,7 @@ fn list_and_freemonoid_compatible_same_element() {
     let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
     let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
     assert!(
-        node_type_compatible(list_sym, fm_sym, empty_source_indices(), Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
+        node_type_compatible(list_sym, fm_sym, Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
         "List<Symbol> and FreeMonoid<Symbol> are declared aliases — must be compatible at type-comparison"
     );
 }
@@ -1926,7 +1875,7 @@ fn list_and_freemonoid_incompatible_different_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let fm_string = container_node("FreeMonoid".to_string(), leaf_node("String".to_string()));
     assert!(
-        !node_type_compatible(list_int, fm_string, empty_source_indices(), Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
+        !node_type_compatible(list_int, fm_string, Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
         "List<Int> vs FreeMonoid<String> differ in element type — must stay incompatible"
     );
 }
@@ -1935,7 +1884,7 @@ fn list_freemonoid_compat_is_symmetric() {
     let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
     let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
     assert!(
-        node_type_compatible(fm_sym, list_sym, empty_source_indices(), Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
+        node_type_compatible(fm_sym, list_sym, Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
         "alias compatibility must hold in both argument orders"
     );
 }
@@ -2049,7 +1998,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         Connective::Conj,
         "scrutinee expansion should reach Conj, got {resolved:?}"
     );
-    let field = lookup_field_type_node(resolved, "value".to_string(), empty_source_indices());
+    let field = lookup_field_type_node(resolved, "value".to_string());
     assert!(
         field.is_some(),
         "field lookup should find value on expanded struct"
@@ -2160,8 +2109,36 @@ fn with_authored_identity_keeps_structural_name_and_identity_text() {
     assert_eq!(carried, "Alias");
 }
 
+fn carried_text(n: &Rc<Node>) -> String {
+    n.ident_span.as_ref().expect("carried ident").text.clone()
+}
+
+// The rebuilds that re-form a node around its children, params or inference must hand the authored
+// text on: node_authored_text is the sole reader of it, so a rebuild that dropped the field would
+// answer "" for every rebuilt node.
+fn node_rebuilds_keep_the_carried_authored_text() {
+    let n = leaf_node("Alias".to_string());
+    let kids = Rc::new(Vec::new());
+    let by_children =
+        v1_compiler::v1_compiler_infer_env::node_with_children(n.clone(), kids.clone());
+    let by_inferred = v1_compiler::v1_compiler_infer_env::node_with_inferred(n.clone(), None);
+    let by_cpi = v1_compiler::v1_compiler_infer_resolve::node_with_children_params_inferred(
+        n.clone(),
+        kids.clone(),
+        kids,
+        None,
+    );
+    for rebuilt in [by_children, by_inferred, by_cpi] {
+        assert_eq!(carried_text(&rebuilt), "Alias");
+    }
+}
+
 fn main() -> ExitCode {
     let tests: &[(&str, fn())] = &[
+        (
+            "node_rebuilds_keep_the_carried_authored_text",
+            node_rebuilds_keep_the_carried_authored_text,
+        ),
         (
             "with_authored_identity_keeps_structural_name_and_identity_text",
             with_authored_identity_keeps_structural_name_and_identity_text,

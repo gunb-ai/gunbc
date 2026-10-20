@@ -70,13 +70,13 @@ use crate::v1_interpreter::str_value;
 use crate::v1_interpreter::Value;
 use crate::v1_rt;
 use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_pattern, authored_name_at, block_stmts,
-    build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
-    empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
-    field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    arg_name_at, arg_value, arm_body, arm_pattern, block_stmts, build_newline_index,
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
+    empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
+    field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
+    inferred_to_node, intern, is_error_diagnostic, is_interpreter_blocking_diagnostic,
+    let_binding_name_at, let_value, make_error_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_items, no_span, node_authored_text,
     param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
     ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
     Node,
@@ -108,13 +108,7 @@ fn nfr_observing_layer_home_exception(host: &str) -> bool {
 fn nfr_parse_module_from_source(
     module_rel_path: &str,
     content: &str,
-) -> Result<
-    (
-        std::rc::Rc<crate::v1_compiler_parse::ParseResult>,
-        std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
-    ),
-    String,
-> {
+) -> Result<std::rc::Rc<crate::v1_compiler_parse::ParseResult>, String> {
     let filename = module_rel_path.to_string();
     let tokens = crate::v1_compiler_tokenize::tokenize(
         content.to_string(),
@@ -133,7 +127,7 @@ fn nfr_parse_module_from_source(
             crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
         ));
     }
-    Ok((result, source_indices))
+    Ok(result)
 }
 
 fn nfr_join_site_key(module_rel_path: &str, authored_path: &str) -> String {
@@ -146,14 +140,13 @@ fn nfr_join_site_key(module_rel_path: &str, authored_path: &str) -> String {
 
 fn nfr_expr_ident(
     value: std::rc::Rc<crate::v1_std_core::Node>,
-    source_indices: std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
     field: &str,
     module_rel_path: &str,
 ) -> Result<String, String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
     match value.expr_data.as_ref() {
         ExprData::ExprVar { .. } | ExprData::ExprCall { .. } => {
-            Ok(crate::v1_std_core::authored_name_at(source_indices, value))
+            Ok(crate::v1_std_core::node_authored_text(value))
         }
         ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
             LiteralValue::LitStr { value: s } => Ok(s.clone()),
@@ -214,7 +207,7 @@ fn non_fold_residue_units_from_parse_source(
 ) -> Result<Vec<NfrFrontierTriple>, String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
 
-    let (result, source_indices) = nfr_parse_module_from_source(module_rel_path, content)?;
+    let result = nfr_parse_module_from_source(module_rel_path, content)?;
     let module = result
         .module
         .as_ref()
@@ -262,25 +255,14 @@ fn non_fold_residue_units_from_parse_source(
         let mut reason: Option<String> = None;
         let mut dissolution: Option<String> = None;
         for field in el.children.iter() {
-            let fname =
-                crate::v1_std_core::field_init_node_name_at(field.clone(), source_indices.clone());
+            let fname = crate::v1_std_core::field_init_node_name_at(field.clone());
             let value = crate::v1_std_core::field_init_node_value(field.clone());
             if fname == "reason" {
-                reason = Some(nfr_expr_ident(
-                    value,
-                    source_indices.clone(),
-                    "reason",
-                    module_rel_path,
-                )?);
+                reason = Some(nfr_expr_ident(value, "reason", module_rel_path)?);
                 continue;
             }
             if fname == "dissolution" {
-                dissolution = Some(nfr_expr_ident(
-                    value,
-                    source_indices.clone(),
-                    "dissolution",
-                    module_rel_path,
-                )?);
+                dissolution = Some(nfr_expr_ident(value, "dissolution", module_rel_path)?);
                 continue;
             }
             if fname != "subject" {
@@ -288,8 +270,7 @@ fn non_fold_residue_units_from_parse_source(
             }
             match value.expr_data.as_ref() {
                 ExprData::ExprRecordLit { .. } => {
-                    let variant_name =
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), value.clone());
+                    let variant_name = crate::v1_std_core::node_authored_text(value.clone());
                     if variant_name != "PathSubject" {
                         return Err(format!(
                             "nfr frontier reader: `subject` in a `{data_name}` row of \
@@ -298,10 +279,7 @@ fn non_fold_residue_units_from_parse_source(
                     }
                     let mut row_path: Option<String> = None;
                     for subfield in value.children.iter() {
-                        let subname = crate::v1_std_core::field_init_node_name_at(
-                            subfield.clone(),
-                            source_indices.clone(),
-                        );
+                        let subname = crate::v1_std_core::field_init_node_name_at(subfield.clone());
                         if subname != "path" {
                             continue;
                         }

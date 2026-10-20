@@ -374,7 +374,7 @@ fn carried_ident_text_equals_span_slice() {
     });
     assert_ne!(
         tampered.ident_span.as_ref().unwrap().text,
-        v1_compiler::v1_std_core::authored_name_at(indices.clone(), tampered.clone()),
+        v1_compiler::v1_std_core::node_authored_text(tampered.clone()),
         "RED control did not discriminate"
     );
 }

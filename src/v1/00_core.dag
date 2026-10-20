@@ -1432,9 +1432,8 @@ fn generic_param_name_at(n: Node) -> String { node_authored_text(node: n) }
 
 // THE SPELLING THE SOURCE HAS AT A SPAN: the slice of the tokenized source when the span's file is
 // indexed, the kernel name a `<kernel:N>` pseudo-file spells, and `fallback` for any other file
-// (`no_span`, `<synthetic>`). authored_ident_at carries this value at construction; authored_name_at
-// still re-derives it per call until lane H2 PR 2 (v1 cull, brief ead5158ad23a section 9.8) moves its callers to
-// the carried text and deletes it.
+// (`no_span`, `<synthetic>`). authored_ident_at carries this value at construction; node_authored_text
+// reads it back, so no caller re-slices the source per call (v1 cull lane H2, brief ead5158ad23a section 9.8).
 fn authored_text_at(source_indices: Map<String, NewlineIndex>, span: SourceSpan, fallback: String) -> String {
   match map_get(source_indices, span.file) {
     Present { value: index } => source_text_at(index: index, span: span)

@@ -112,8 +112,8 @@ use std::rc::Rc;
 use crate::std_occurrence_identity::{OccurrenceCategory, OccurrenceTransport};
 use crate::v1_rt::VecCompat;
 use crate::v1_std_core::{
-    authored_name_at, expr_literal_string_optional, import_is_all, import_specific_names_at,
-    module_imports, module_items, Connective, ExprData, MatchPattern, NewlineIndex, Node,
+    expr_literal_string_optional, import_is_all, import_specific_names_at, module_imports,
+    module_items, node_authored_text, Connective, ExprData, MatchPattern, NewlineIndex, Node,
     SourceSpan,
 };
 
@@ -459,7 +459,7 @@ fn dotted_chain(
     if !matches!(&*node.expr_data, ExprData::ExprFieldAccess { .. }) {
         return None;
     }
-    let field = authored_name_at(source_indices.clone(), node.clone());
+    let field = node_authored_text(node.clone());
     if field.is_empty() {
         return None;
     }
@@ -467,7 +467,7 @@ fn dotted_chain(
     let prefix = match &*receiver.expr_data {
         ExprData::ExprFieldAccess { .. } => dotted_chain(receiver, source_indices)?,
         ExprData::ExprVar { .. } => {
-            let name = authored_name_at(source_indices.clone(), receiver.clone());
+            let name = node_authored_text(receiver.clone());
             if name.is_empty() {
                 return None;
             }
@@ -583,10 +583,7 @@ fn citation_from_constructor_call(node: &Rc<Node>, in_declaration: &str) -> Opti
 /// the module and declaration arms are exact. Next rung: a field lookup descending the
 /// declared TYPE rather than the declaration's text, which needs the inferred tree this
 /// ingestion walk deliberately does not build.
-fn declaration_field_names(
-    item: &Rc<Node>,
-    source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
-) -> BTreeSet<String> {
+fn declaration_field_names(item: &Rc<Node>) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for_each_node(item, &mut |node| {
         // A record literal's field initializers and a `type`'s declared fields are both named
@@ -598,7 +595,7 @@ fn declaration_field_names(
             if !child.name.is_empty() {
                 out.insert(child.name.clone());
             }
-            let authored = authored_name_at(source_indices.clone(), child.clone());
+            let authored = node_authored_text(child.clone());
             if !authored.is_empty() {
                 out.insert(authored);
             }
@@ -674,7 +671,7 @@ fn collect_reference_occurrences(
             && node.connective == Connective::NoConnective
             && node.ident_span.is_some();
         if !ident_is_a_binder_or_label && !is_projection_member && !is_declared_field_label {
-            let name = authored_name_at(source_indices.clone(), node.clone());
+            let name = node_authored_text(node.clone());
             if !name.is_empty() {
                 out.insert((in_declaration.to_string(), name));
             }
@@ -944,11 +941,8 @@ fn is_admit_callers_property(property: &Rc<Node>) -> bool {
 /// The callers a function's `admit_callers:` roster admits, as `(module_path, decl_name)`. An
 /// entry the compiler cannot interpret is refused there (`AdmitCallersEntryNotDeclRef`) and
 /// contributes nothing here.
-fn admitted_callers_of(
-    item: &Rc<Node>,
-    source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<BTreeSet<(String, String)>> {
-    let entries = crate::v1_std_core::fn_admit_callers(item.clone(), source_indices.clone())?;
+fn admitted_callers_of(item: &Rc<Node>) -> Option<BTreeSet<(String, String)>> {
+    let entries = crate::v1_std_core::fn_admit_callers(item.clone())?;
     Some(
         entries
             .iter()
@@ -1403,7 +1397,7 @@ pub fn record_from_module(
     rel_path: &str,
     transport: &Rc<OccurrenceTransport>,
 ) -> ModuleDeclarationRecord {
-    let module_path = authored_name_at(source_indices.clone(), module.clone());
+    let module_path = node_authored_text(module.clone());
     let mut declared = BTreeSet::new();
     let mut variants = BTreeSet::new();
     let mut coproduct_arms: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
@@ -1416,7 +1410,7 @@ pub fn record_from_module(
     let mut output_extents: BTreeMap<String, (String, i64, i64)> = BTreeMap::new();
     let mut data_decl_types: Vec<(String, String)> = Vec::new();
     for item in module_items(module.clone()).iter() {
-        let name = authored_name_at(source_indices.clone(), item.clone());
+        let name = node_authored_text(item.clone());
         if name.is_empty() {
             continue;
         }
@@ -1425,7 +1419,7 @@ pub fn record_from_module(
         {
             data_decl_types.push((
                 name.clone(),
-                crate::coproduct_reflection::data_item_declared_type_name(item, source_indices),
+                crate::coproduct_reflection::data_item_declared_type_name(item),
             ));
         }
         interface_regions.push(interface_region(item, &name));
@@ -1437,7 +1431,7 @@ pub fn record_from_module(
         if let Some(extent) = function_output_extent(item) {
             output_extents.insert(name.clone(), extent);
         }
-        if let Some(admitted) = admitted_callers_of(item, source_indices) {
+        if let Some(admitted) = admitted_callers_of(item) {
             admitted_callers.insert(name.clone(), admitted);
         }
         if item.connective == Connective::Disj {
@@ -1456,7 +1450,7 @@ pub fn record_from_module(
             coproduct_residuals.insert(name.clone(), interface_text(&residual, source_indices));
             let arms = coproduct_arms.entry(name.clone()).or_default();
             for v in item.children.iter() {
-                let vname = authored_name_at(source_indices.clone(), v.clone());
+                let vname = node_authored_text(v.clone());
                 if !vname.is_empty() {
                     variants.insert(vname.clone());
                     let mut region = interface_region(v, &vname);
@@ -1469,7 +1463,7 @@ pub fn record_from_module(
                 }
             }
         }
-        decl_fields.insert(name.clone(), declaration_field_names(item, source_indices));
+        decl_fields.insert(name.clone(), declaration_field_names(item));
         declared.insert(name);
     }
 
@@ -1506,7 +1500,7 @@ pub fn record_from_module(
     let mut reexported = BTreeSet::new();
     let mut imports = Vec::new();
     for imp in module_imports(module.clone()).iter() {
-        let target = authored_name_at(source_indices.clone(), imp.clone());
+        let target = node_authored_text(imp.clone());
         if import_is_all(imp.clone()) {
             imports.push(ImportClaim {
                 target,
@@ -1516,10 +1510,7 @@ pub fn record_from_module(
             continue;
         }
         let mut members = Vec::new();
-        for (i, name) in import_specific_names_at(imp.clone(), source_indices.clone())
-            .iter()
-            .enumerate()
-        {
+        for (i, name) in import_specific_names_at(imp.clone()).iter().enumerate() {
             if name.is_empty() {
                 continue;
             }
@@ -1543,7 +1534,7 @@ pub fn record_from_module(
         // The enclosing declaration is known HERE and nowhere deeper: carrying its name into
         // the subtree walk costs one string and closes the "two citations in one module share
         // one row" residue.
-        let in_declaration = authored_name_at(source_indices.clone(), item.clone());
+        let in_declaration = node_authored_text(item.clone());
         for_each_node(item, &mut |node| {
             if let Some(c) = citation_from_record_literal(node, &in_declaration)
                 .or_else(|| citation_from_constructor_call(node, &in_declaration))
@@ -1557,7 +1548,7 @@ pub fn record_from_module(
     let mut matched_arms = BTreeSet::new();
     let mut called = BTreeSet::new();
     for item in module_items(module.clone()).iter() {
-        let in_declaration = authored_name_at(source_indices.clone(), item.clone());
+        let in_declaration = node_authored_text(item.clone());
         collect_reference_occurrences(
             item,
             source_indices,

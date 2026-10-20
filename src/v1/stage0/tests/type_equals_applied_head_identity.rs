@@ -70,7 +70,6 @@ fn equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     node_type_equals(
         left,
         right,
-        Rc::new(im::HashMap::new()),
         Rc::new(TextJudgment::TextNotAsked {
             reason: TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes,
         }),

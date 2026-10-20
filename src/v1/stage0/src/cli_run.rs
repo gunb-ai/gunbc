@@ -71,13 +71,13 @@ use crate::v1_interpreter::str_value;
 use crate::v1_interpreter::Value;
 use crate::v1_rt;
 use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_pattern, authored_name_at, block_stmts,
-    build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
-    empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
-    field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    arg_name_at, arg_value, arm_body, arm_pattern, block_stmts, build_newline_index,
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
+    empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
+    field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
+    inferred_to_node, intern, is_error_diagnostic, is_interpreter_blocking_diagnostic,
+    let_binding_name_at, let_value, make_error_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_items, no_span, node_authored_text,
     param_node_name_at, param_node_type_expr, type_reference_identity, Cardinality,
     CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
     LeafOwner, MatchPattern, NewlineIndex, Node, TypeDeclarationProvenance, TypeReferenceIdentity,
@@ -13486,8 +13486,7 @@ fn finish_resolved_graph_assembly(
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
     let rewire3_started = std::time::Instant::now();
-    let modules =
-        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+    let modules = v1_compiler_infer::rewire_func_env_parent_links(modules.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     // NO EmitGraphInfo IS BUILT HERE (v1.compiler.infer_items ResolvedGraph): emission builds its
@@ -14133,7 +14132,7 @@ fn reconcile_with_typed_cache(
         graph.modules.iter().cloned().collect();
     let closure_names: Vec<String> = closure_modules
         .iter()
-        .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
+        .map(|m| node_authored_text(m.module.clone()))
         .collect();
     resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
     let schedule_started = std::time::Instant::now();
@@ -14172,10 +14171,8 @@ fn reconcile_with_typed_cache(
     // once here for the closure index, once per composed per-root index below —
     // instead of rescanning the census inside every module's build_module_context.
     let variant_base_started = std::time::Instant::now();
-    let closure_variant_base = v1_compiler_infer::build_global_bare_variant_locals(
-        symbol_index.global_bare.clone(),
-        source_indices.clone(),
-    );
+    let closure_variant_base =
+        v1_compiler_infer::build_global_bare_variant_locals(symbol_index.global_bare.clone());
     resolve_stage_slot_add(|s| {
         s.assembly_variant_base += variant_base_started.elapsed().as_nanos()
     });
@@ -14251,7 +14248,6 @@ fn reconcile_with_typed_cache(
                     let parent_result = v1_compiler_infer::collect_parent_envs(
                         resolved.clone(),
                         module_index.clone(),
-                        source_indices.clone(),
                     );
                     resolve_stage_slot_add(|s| {
                         s.parent_envs += parent_envs_started.elapsed().as_nanos()
@@ -14319,7 +14315,6 @@ fn reconcile_with_typed_cache(
                                                 let base =
                                             v1_compiler_infer::build_global_bare_variant_locals(
                                                 composed.global_bare.clone(),
-                                                source_indices.clone(),
                                             );
                                                 resolve_stage_slot_add(|s| {
                                                     s.assembly_root_variant_base +=
@@ -14377,11 +14372,10 @@ fn reconcile_with_typed_cache(
                 let environment_started = std::time::Instant::now();
                 note_interface_hash(&mut interface_hash_by_name, &mod_name, &tc_result);
                 let typed = tc_result.typed.clone();
-                let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
+                let typed_path = node_authored_text(typed.module.clone());
                 let variant_surface = v1_compiler_infer::build_variant_export_surface(
                     typed.clone(),
                     variant_surfaces.clone(),
-                    source_indices.clone(),
                 );
                 variant_surfaces =
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
@@ -15753,7 +15747,7 @@ fn type_annotation_names_in(
     ty: &Rc<Node>,
     target: &str,
 ) -> bool {
-    if ty.name == target || authored_name_at(si.clone(), ty.clone()) == target {
+    if ty.name == target || node_authored_text(ty.clone()) == target {
         return true;
     }
     ty.children
@@ -16797,14 +16791,11 @@ fn std_types_nonempty_str_item(ctx: &v1_interpreter::InterpContext) -> Option<Rc
     let tm = ctx.typed_module_for_authored_path("std.types")?;
     tm.items
         .iter()
-        .find(|item| authored_name_at(ctx.source_indices.clone(), (*item).clone()) == "NonEmptyStr")
+        .find(|item| node_authored_text((*item).clone()) == "NonEmptyStr")
         .cloned()
 }
 
-fn nonempty_str_predicates_from_decl(
-    ctx: &v1_interpreter::InterpContext,
-    decl: &Rc<Node>,
-) -> Option<Vec<String>> {
+fn nonempty_str_predicates_from_decl(decl: &Rc<Node>) -> Option<Vec<String>> {
     let mut ty = v1_interpreter::type_declaration_rhs(decl)?;
     let mut preds = Vec::new();
     for _ in 0..8 {
@@ -16815,10 +16806,7 @@ fn nonempty_str_predicates_from_decl(
             .iter()
             .cloned()
         {
-            let pname = v1_compiler_infer::where_predicate_name_at(
-                pred.clone(),
-                ctx.source_indices.clone(),
-            );
+            let pname = v1_compiler_infer::where_predicate_name_at(pred.clone());
             if pname.is_empty()
                 || v1_compiler_infer::where_refinement_is_deferred_predicate(pname.clone())
                 || !v1_compiler_infer::where_refinement_is_string_literal_predicate(pname.clone())
@@ -16854,7 +16842,7 @@ fn cli_arg_admission_from_type_expr(
     ctx: &v1_interpreter::InterpContext,
     type_expr: Rc<Node>,
 ) -> CliArgAdmission {
-    let display = v1_compiler_infer::type_node_label(type_expr.clone(), ctx.source_indices.clone());
+    let display = v1_compiler_infer::type_node_label(type_expr.clone());
     match type_reference_identity(type_expr.clone()).as_ref() {
         TypeReferenceIdentity::ReferenceResolvedToDeclaration { provenance }
         | TypeReferenceIdentity::ReferenceIsTheDeclaration { provenance } => {
@@ -16881,7 +16869,7 @@ fn refers_to_std_types_nonempty_str(
     if type_nodes_name_the_same_declaration(&resolved, decl) {
         return true;
     }
-    let decl_id = node_declaration_identity(decl.clone(), ctx.source_indices.clone());
+    let decl_id = node_declaration_identity(decl.clone());
     let ref_id = v1_compiler_infer::type_reference_identity(type_expr, ctx.source_indices.clone());
     !decl_id.is_empty() && ref_id == decl_id
 }
@@ -16897,7 +16885,7 @@ fn std_types_nonempty_str_admission(
     if !refers_to_std_types_nonempty_str(ctx, type_expr, &decl) {
         return CliArgAdmission::Unsupported { display };
     }
-    match nonempty_str_predicates_from_decl(ctx, &decl) {
+    match nonempty_str_predicates_from_decl(&decl) {
         Some(predicates) => CliArgAdmission::RefinedString {
             display,
             predicates,
@@ -22225,7 +22213,7 @@ fn data_item_declared_in_file(
         module.items.iter().any(|item| {
             item_kind(item.clone()) == ItemKind::DataItem
                 && span_file_matches(&item.span.file, file_norm)
-                && authored_name_at(ctx.source_indices.clone(), item.clone()) == name
+                && node_authored_text(item.clone()) == name
         })
     })
 }
@@ -22338,7 +22326,7 @@ mod floor_skip_frontier_tests {
     };
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
-    use crate::v1_std_core::{authored_name_at, byte_to_line_col};
+    use crate::v1_std_core::{byte_to_line_col, node_authored_text};
     use im::HashMap;
     use std::collections::HashSet;
     use std::path::PathBuf;
@@ -22437,7 +22425,7 @@ mod floor_skip_frontier_tests {
                 if item_kind(item.clone()) != ItemKind::DataItem {
                     continue;
                 }
-                if authored_name_at(source_indices.clone(), item.clone()) != name {
+                if node_authored_text(item.clone()) != name {
                     continue;
                 }
                 let span = &item.span;
@@ -25923,7 +25911,6 @@ impl ExprVarClassification<'_> {
 /// the child list is walked.
 fn binder_names_of(
     node: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     classify: &mut ExprVarClassification<'_>,
 ) -> Vec<(String, ExprVarClass)> {
     use crate::v1_std_core::{ExprData, MatchPattern};
@@ -25941,7 +25928,7 @@ fn binder_names_of(
     // the shape.
     if matches!(&*node.expr_data, ExprData::ExprLambda) {
         for n in node.children.iter().skip(1) {
-            let name = authored_name_at(source_indices.clone(), n.clone());
+            let name = node_authored_text(n.clone());
             if name.is_empty() {
                 classify.refuse_binder(
                     "lambda parameter",
@@ -26052,7 +26039,7 @@ fn collect_node_refs_inner(
     }
     // This node's own binder — parameters and match-pattern bindings — is in scope for
     // everything below it and is popped on the way out.
-    let introduced = binder_names_of(node, source_indices, classify);
+    let introduced = binder_names_of(node, classify);
     let restore_to = bound.len();
     bound.extend(introduced);
     if !skip_bare_name {
@@ -27426,24 +27413,21 @@ fn cla_is_wildcard_arm(arm: &Rc<Node>) -> bool {
     matches!(arm_pattern(arm.clone()).as_ref(), MatchPattern::Wildcard)
 }
 
-fn cla_type_expr_head(ty: Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    let name = authored_name_at(si.clone(), ty);
+fn cla_type_expr_head(ty: Rc<Node>) -> String {
+    let name = node_authored_text(ty);
     name.chars()
         .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
         .collect()
 }
 
-fn cla_fn_param_type_heads(
-    item: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> BTreeMap<String, String> {
+fn cla_fn_param_type_heads(item: &Rc<Node>) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     for param in item.params.iter() {
-        let pname = param_node_name_at(param.clone(), si.clone());
+        let pname = param_node_name_at(param.clone());
         if pname.is_empty() {
             continue;
         }
-        let head = cla_type_expr_head(param_node_type_expr(param.clone()), si);
+        let head = cla_type_expr_head(param_node_type_expr(param.clone()));
         if !head.is_empty() {
             out.insert(pname, head);
         }
@@ -27480,7 +27464,7 @@ fn cla_walk_expr(
     if let ExprData::ExprMatch = node.expr_data.as_ref() {
         stats.match_count += 1;
         let scrutinee = match_scrutinee(node.clone());
-        let scrutinee_name = expr_var_name_at(scrutinee, si.clone());
+        let scrutinee_name = expr_var_name_at(scrutinee);
         let has_wildcard = match_arm_nodes(node.clone())
             .iter()
             .any(|arm| cla_is_wildcard_arm(arm));
@@ -27577,7 +27561,7 @@ fn cla_audit_decl_fact(
     let Some(body) = fact.node.body.as_ref() else {
         return Vec::new();
     };
-    let param_types = cla_fn_param_type_heads(&fact.node, si);
+    let param_types = cla_fn_param_type_heads(&fact.node);
     cla_audit_function_body(&fact.rel_path, &fact.name, body, si, &param_types)
 }
 
@@ -27622,7 +27606,7 @@ fn cla_compute_wildcard_facts(
         let Some(body) = fact.node.body.as_ref() else {
             continue;
         };
-        let param_types = cla_fn_param_type_heads(&fact.node, &fact.source_indices);
+        let param_types = cla_fn_param_type_heads(&fact.node);
         let mut stats = ClaFnBodyStats::default();
         cla_walk_expr(body, &fact.source_indices, &param_types, closed, &mut stats);
         if stats.wildcard_matches > 0 {
@@ -27681,18 +27665,14 @@ fn fac_name_is_answer(name: &str) -> bool {
         || name == "True"
 }
 
-fn fac_walk_body_marks(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    marks: &mut FacBodyMarks,
-) {
+fn fac_walk_body_marks(node: &Rc<Node>, marks: &mut FacBodyMarks) {
     // Explicit worklist: body depth is corpus-shaped (the #10610 class), and the marks are
     // order-insensitive booleans.
     let mut pending: Vec<&Rc<Node>> = vec![node];
     while let Some(node) = pending.pop() {
         match node.expr_data.as_ref() {
             ExprData::ExprCall { .. } => {
-                let fname = expr_call_func_at(node.clone(), si.clone());
+                let fname = expr_call_func_at(node.clone());
                 if fac_name_is_refuse(&fname) {
                     marks.refuses = true;
                 }
@@ -27701,7 +27681,7 @@ fn fac_walk_body_marks(
                 }
             }
             ExprData::ExprVar { binding_kind: _ } => {
-                let name = authored_name_at(si.clone(), node.clone());
+                let name = node_authored_text(node.clone());
                 if fac_name_is_refuse(&name) {
                     marks.refuses = true;
                 }
@@ -27741,7 +27721,6 @@ fn fac_owning_lane(rel_path: &str) -> &'static str {
 
 fn fac_classify_arm(
     body: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     closed_scrutinee: bool,
     interim_declared: bool,
 ) -> &'static str {
@@ -27749,7 +27728,7 @@ fn fac_classify_arm(
         return "declared_interim";
     }
     let mut marks = FacBodyMarks::default();
-    fac_walk_body_marks(body, si, &mut marks);
+    fac_walk_body_marks(body, &mut marks);
     // Refuse wins when both marks fire (mirrors classify_fallback_arm in
     // v2.lens.fallback_arm_census — a propagating refusal is not AnswersOnOpen).
     if marks.refuses {
@@ -27777,7 +27756,7 @@ fn fac_collect_wildcard_arms(
 ) {
     if let ExprData::ExprMatch = node.expr_data.as_ref() {
         let scrutinee = match_scrutinee(node.clone());
-        let scrutinee_name = expr_var_name_at(scrutinee, si.clone());
+        let scrutinee_name = expr_var_name_at(scrutinee);
         let closed_scrutinee = !scrutinee_name.is_empty()
             && cla_is_closed_coproduct_param_scrutinee(&scrutinee_name, param_types, closed);
         for (arm_idx, arm) in match_arm_nodes(node.clone()).iter().enumerate() {
@@ -27785,7 +27764,7 @@ fn fac_collect_wildcard_arms(
                 continue;
             }
             let body = arm_body(arm.clone());
-            let class = fac_classify_arm(&body, si, closed_scrutinee, interim_declared);
+            let class = fac_classify_arm(&body, closed_scrutinee, interim_declared);
             out.push(FallbackArmCensusFactRaw {
                 site: format!("{rel_path}::{fn_name}#arm{arm_idx}"),
                 fn_name: fn_name.to_string(),
@@ -27821,7 +27800,7 @@ fn fac_compute_census_facts(roots: &[String]) -> Vec<FallbackArmCensusFactRaw> {
         let Some(body) = fact.node.body.as_ref() else {
             continue;
         };
-        let param_types = cla_fn_param_type_heads(&fact.node, &fact.source_indices);
+        let param_types = cla_fn_param_type_heads(&fact.node);
         // DeclaredInterim requires a dissolve_on / FrontierRow marker beside the arm.
         // Host cannot yet pair arms to FrontierRows reliably — leave false here; the
         // planted DeclaredInterim fixture covers the class, and Unknown absorbs the
@@ -29190,7 +29169,6 @@ fn literal_string_value_transport_script(node: &Rc<Node>) -> bool {
 fn classify_transport_script_arg(
     node: &Rc<Node>,
     let_literal_bindings: &HashMap<String, bool>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> TransportScriptArgShape {
     if literal_string_value_transport_script(node) {
         return TransportScriptArgShape::BareStringLiteral;
@@ -29205,7 +29183,7 @@ fn classify_transport_script_arg(
                         }
                     }
                     ExprData::ExprVar { .. } => {
-                        let name = expr_var_name_at(child.clone(), source_indices.clone());
+                        let name = expr_var_name_at(child.clone());
                         if !let_literal_bindings.get(&name).copied().unwrap_or(false) {
                             return TransportScriptArgShape::ComputedApplication;
                         }
@@ -29216,7 +29194,7 @@ fn classify_transport_script_arg(
             TransportScriptArgShape::StringInterpLiteralsOnly
         }
         ExprData::ExprVar { .. } => {
-            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            let name = expr_var_name_at(node.clone());
             if let_literal_bindings.get(&name).copied().unwrap_or(false) {
                 TransportScriptArgShape::LetBoundStringLiteral
             } else {
@@ -29227,26 +29205,21 @@ fn classify_transport_script_arg(
     }
 }
 
-fn is_shell_exec_run_transport_script(
-    node: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
+fn is_shell_exec_run_transport_script(node: &Rc<Node>) -> bool {
     match node.expr_data.as_ref() {
         ExprData::ExprMethodCall { .. } => {
-            if expr_method_name_at(node.clone(), source_indices.clone()) != "Run" {
+            if expr_method_name_at(node.clone()) != "Run" {
                 return false;
             }
             let recv = method_receiver(node.clone());
             match recv.expr_data.as_ref() {
                 ExprData::ExprFieldAccess { .. } => {
-                    if field_access_field_at(recv.clone(), source_indices.clone()) != "Exec" {
+                    if field_access_field_at(recv.clone()) != "Exec" {
                         return false;
                     }
                     let base = field_access_base(recv.clone());
                     match base.expr_data.as_ref() {
-                        ExprData::ExprVar { .. } => {
-                            expr_var_name_at(base.clone(), source_indices.clone()) == "shell"
-                        }
+                        ExprData::ExprVar { .. } => expr_var_name_at(base.clone()) == "shell",
                         _ => false,
                     }
                 }
@@ -29257,21 +29230,14 @@ fn is_shell_exec_run_transport_script(
     }
 }
 
-fn is_transport_script_from_body_call(
-    node: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
+fn is_transport_script_from_body_call(node: &Rc<Node>) -> bool {
     matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. })
-        && expr_call_func_at(node.clone(), source_indices.clone()) == "transport_script_from_body"
+        && expr_call_func_at(node.clone()) == "transport_script_from_body"
 }
 
-fn effective_transport_script_source(
-    script_node: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    if is_transport_script_from_body_call(script_node, source_indices) {
-        transport_script_body_arg_node(script_node, source_indices)
-            .unwrap_or_else(|| script_node.clone())
+fn effective_transport_script_source(script_node: &Rc<Node>) -> Rc<Node> {
+    if is_transport_script_from_body_call(script_node) {
+        transport_script_body_arg_node(script_node).unwrap_or_else(|| script_node.clone())
     } else {
         script_node.clone()
     }
@@ -29280,10 +29246,9 @@ fn effective_transport_script_source(
 fn binding_is_literal_shaped_transport_script(
     node: &Rc<Node>,
     bindings: &HashMap<String, bool>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     matches!(
-        classify_transport_script_arg(node, bindings, source_indices),
+        classify_transport_script_arg(node, bindings),
         TransportScriptArgShape::BareStringLiteral
             | TransportScriptArgShape::LetBoundStringLiteral
             | TransportScriptArgShape::StringInterpLiteralsOnly
@@ -29298,10 +29263,9 @@ fn collect_let_bindings_in_block_transport_script(
     for stmt in block_stmts(block.clone()).iter() {
         match stmt.expr_data.as_ref() {
             ExprData::ExprLet { .. } => {
-                let name = let_binding_name_at(stmt.clone(), source_indices.clone());
+                let name = let_binding_name_at(stmt.clone());
                 let val = let_value(stmt.clone());
-                let literal_shaped =
-                    binding_is_literal_shaped_transport_script(&val, bindings, source_indices);
+                let literal_shaped = binding_is_literal_shaped_transport_script(&val, bindings);
                 bindings.insert(name, literal_shaped);
             }
             _ => walk_transport_script_expr(stmt, bindings, source_indices, &mut |_| {}),
@@ -29315,14 +29279,10 @@ fn walk_transport_script_expr(
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     on_run: &mut dyn FnMut(TransportScriptArgShape),
 ) {
-    if is_shell_exec_run_transport_script(node, source_indices) {
-        if let Some(script_node) = transport_script_arg_node(node, source_indices) {
-            let source = effective_transport_script_source(&script_node, source_indices);
-            on_run(classify_transport_script_arg(
-                &source,
-                let_bindings,
-                source_indices,
-            ));
+    if is_shell_exec_run_transport_script(node) {
+        if let Some(script_node) = transport_script_arg_node(node) {
+            let source = effective_transport_script_source(&script_node);
+            on_run(classify_transport_script_arg(&source, let_bindings));
         }
     }
     for child in node.children.iter() {
@@ -29908,12 +29868,11 @@ pub struct OperationArgvDeclaration {
 
 fn operation_declared_inputs(
     op: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Vec<(String, Option<Rc<crate::v1_std_core::Node>>)> {
     op.params
         .iter()
         .map(|p| {
-            let name = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
+            let name = crate::v1_std_core::param_node_name_at(p.clone());
             // `make_param_node` lays children out as [type_expr] or [type_expr, default].
             let default = p.children.get(1).cloned();
             (name, default)
@@ -29957,7 +29916,7 @@ pub fn shell_transport_operation_declaration(
             }
             return Some(OperationArgvDeclaration {
                 argv: eff.children.clone(),
-                declared_inputs: operation_declared_inputs(op, &source_indices),
+                declared_inputs: operation_declared_inputs(op),
                 source_indices,
             });
         }
@@ -29985,7 +29944,7 @@ fn collect_argv_input_refs(
     use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
     match node.expr_data.as_ref() {
         ExprData::ExprVar { .. } => {
-            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            let name = expr_var_name_at(node.clone());
             if !name.is_empty() && !out.contains(&name) {
                 out.push(name);
             }
@@ -30079,7 +30038,7 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                     path: rel.clone(),
                     service: item.name.clone(),
                     operation: op.name.clone(),
-                    declared_inputs: operation_declared_inputs(op, &source_indices)
+                    declared_inputs: operation_declared_inputs(op)
                         .into_iter()
                         .map(|(name, _)| name)
                         .collect(),
@@ -30151,7 +30110,7 @@ fn extdeps_argv_expr_token(
             }
         },
         ExprData::ExprVar { .. } => {
-            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            let name = expr_var_name_at(node.clone());
             if name.is_empty() {
                 node.name.clone()
             } else {
@@ -30195,14 +30154,13 @@ fn extdeps_literal_string_value(node: &Rc<crate::v1_std_core::Node>) -> Option<S
 fn extdeps_record_field_value(
     record: &Rc<crate::v1_std_core::Node>,
     field_name: &str,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Option<Rc<crate::v1_std_core::Node>> {
     use crate::v1_std_core::{field_init_node_name_at, field_init_node_value, ExprData};
     if !matches!(record.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
         return None;
     }
     for field_init in record.children.iter() {
-        let name = field_init_node_name_at(field_init.clone(), source_indices.clone());
+        let name = field_init_node_name_at(field_init.clone());
         if name == field_name {
             return Some(field_init_node_value(field_init.clone()));
         }
@@ -30237,7 +30195,6 @@ fn extdeps_module_source_nickname_count_in_node(
 
 fn extdeps_gist_create_declares_filename_for_items(
     items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::param_node_name_at;
     for item in items.iter() {
@@ -30249,7 +30206,7 @@ fn extdeps_gist_create_declares_filename_for_items(
                 continue;
             }
             for param in op.params.iter() {
-                let name = param_node_name_at(param.clone(), source_indices.clone());
+                let name = param_node_name_at(param.clone());
                 if name == "filename" {
                     return true;
                 }
@@ -30259,10 +30216,7 @@ fn extdeps_gist_create_declares_filename_for_items(
     false
 }
 
-fn extdeps_gist_map_keys_use_filename(
-    map_node: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> bool {
+fn extdeps_gist_map_keys_use_filename(map_node: &Rc<crate::v1_std_core::Node>) -> bool {
     use crate::v1_std_core::{field_init_node_name_at, ExprData};
     if !matches!(map_node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
         return false;
@@ -30271,7 +30225,7 @@ fn extdeps_gist_map_keys_use_filename(
         return false;
     }
     for entry in map_node.children.iter() {
-        let key = field_init_node_name_at(entry.clone(), source_indices.clone());
+        let key = field_init_node_name_at(entry.clone());
         if !(key == "filename" || key.contains("{filename}")) {
             return false;
         }
@@ -30281,7 +30235,6 @@ fn extdeps_gist_map_keys_use_filename(
 
 fn extdeps_gist_create_files_keyed_by_filename_for_items(
     items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::{is_rest_transport, transport_request_body};
     for item in items.iter() {
@@ -30295,17 +30248,16 @@ fn extdeps_gist_create_files_keyed_by_filename_for_items(
             let Some(transport) = op.transport.as_ref() else {
                 return false;
             };
-            if !is_rest_transport(transport.clone(), source_indices.clone()) {
+            if !is_rest_transport(transport.clone()) {
                 return false;
             }
-            let Some(body) = transport_request_body(transport.clone(), source_indices.clone())
-            else {
+            let Some(body) = transport_request_body(transport.clone()) else {
                 return false;
             };
-            let Some(files) = extdeps_record_field_value(&body, "files", source_indices) else {
+            let Some(files) = extdeps_record_field_value(&body, "files") else {
                 return false;
             };
-            return extdeps_gist_map_keys_use_filename(&files, source_indices);
+            return extdeps_gist_map_keys_use_filename(&files);
         }
     }
     false
@@ -30344,12 +30296,11 @@ pub fn extdeps_shape_transport_policy_module_facts(
                 continue;
             }
             let eff = effective_operation_transport(op.clone(), fallback_transport.clone());
-            let transport_kind =
-                if crate::v1_std_core::is_rest_transport(eff.clone(), source_indices.clone()) {
-                    "Rest"
-                } else {
-                    "Shell"
-                };
+            let transport_kind = if crate::v1_std_core::is_rest_transport(eff.clone()) {
+                "Rest"
+            } else {
+                "Shell"
+            };
             for (idx, arg) in eff.children.iter().enumerate() {
                 let token = extdeps_argv_expr_token(
                     arg,
@@ -30366,7 +30317,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
                 });
             }
             for param in op.params.iter() {
-                let name = param_node_name_at(param.clone(), source_indices.clone());
+                let name = param_node_name_at(param.clone());
                 if !name.is_empty() {
                     input_facts.push(ExtdepsInputFactRaw {
                         module_path: module_path.to_string(),
@@ -30410,7 +30361,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
             continue;
         }
         for field_init in body.children.iter() {
-            let field_name = field_init_node_name_at(field_init.clone(), source_indices.clone());
+            let field_name = field_init_node_name_at(field_init.clone());
             let value_node = field_init_node_value(field_init.clone());
             if let Some(literal) = extdeps_literal_string_value(&value_node) {
                 embedded_facts.push(ExtdepsEmbeddedFactRaw {
@@ -30432,9 +30383,9 @@ pub fn extdeps_shape_transport_policy_module_facts(
     }
 
     let gist_create_declares_filename_input =
-        extdeps_gist_create_declares_filename_for_items(&items, &source_indices);
+        extdeps_gist_create_declares_filename_for_items(&items);
     let gist_create_files_keyed_by_filename =
-        extdeps_gist_create_files_keyed_by_filename_for_items(&items, &source_indices);
+        extdeps_gist_create_files_keyed_by_filename_for_items(&items);
 
     ExtdepsShapeTransportPolicyModuleFacts {
         argv_facts,
@@ -30485,9 +30436,8 @@ pub(crate) enum ExternalAuthorityAnchorProjection {
 fn extdeps_import_home_for_symbol(
     module: &Rc<crate::v1_std_core::Node>,
     symbol: &str,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Option<String> {
-    use crate::v1_std_core::{authored_name_at, expr_var_name_at, module_imports, ExprData};
+    use crate::v1_std_core::{expr_var_name_at, module_imports, node_authored_text, ExprData};
     for imp in module_imports(module.clone()).iter() {
         if imp.body.is_some() {
             continue;
@@ -30496,14 +30446,14 @@ fn extdeps_import_home_for_symbol(
         for name_node in imp.children.iter() {
             let imported = match name_node.expr_data.as_ref() {
                 ExprData::ExprVar { .. } => {
-                    let name = expr_var_name_at(name_node.clone(), source_indices.clone());
+                    let name = expr_var_name_at(name_node.clone());
                     if name.is_empty() {
                         name_node.name.clone()
                     } else {
                         name
                     }
                 }
-                _ => authored_name_at(source_indices.clone(), name_node.clone()),
+                _ => node_authored_text(name_node.clone()),
             };
             if imported == symbol {
                 return Some(home);
@@ -30524,7 +30474,7 @@ fn project_external_authority_named_data(
             cause: format!("aliased anchor home {module_path} has no source file at {path}"),
         };
     }
-    let (module, items, source_indices) = parse_extdeps_module_items(&path);
+    let (module, items, _) = parse_extdeps_module_items(&path);
     for item in items.iter() {
         if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
             || item.name != data_name
@@ -30534,13 +30484,7 @@ fn project_external_authority_named_data(
         let Some(body) = item.body.as_ref() else {
             return ExternalAuthorityAnchorProjection::Absent;
         };
-        return external_authority_anchor_from_data_body(
-            body,
-            &module,
-            module_path,
-            &source_indices,
-            visited,
-        );
+        return external_authority_anchor_from_data_body(body, &module, module_path, visited);
     }
     ExternalAuthorityAnchorProjection::Absent
 }
@@ -30549,7 +30493,6 @@ fn read_external_authority_anchor_from_items(
     items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     module: &Rc<crate::v1_std_core::Node>,
     module_path: &str,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
     for item in items.iter() {
@@ -30561,29 +30504,17 @@ fn read_external_authority_anchor_from_items(
         let Some(body) = item.body.as_ref() else {
             return ExternalAuthorityAnchorProjection::Absent;
         };
-        return external_authority_anchor_from_data_body(
-            body,
-            module,
-            module_path,
-            source_indices,
-            visited,
-        );
+        return external_authority_anchor_from_data_body(body, module, module_path, visited);
     }
     ExternalAuthorityAnchorProjection::Absent
 }
 
 fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnchorProjection {
     let path = source_path_for_module_path(module_path.to_string());
-    let (module, items, source_indices) = parse_extdeps_module_items(&path);
+    let (module, items, _) = parse_extdeps_module_items(&path);
     let mut visited = std::collections::HashSet::new();
     visited.insert(module_path.to_string());
-    read_external_authority_anchor_from_items(
-        &items,
-        &module,
-        module_path,
-        &source_indices,
-        &mut visited,
-    )
+    read_external_authority_anchor_from_items(&items, &module, module_path, &mut visited)
 }
 
 pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
@@ -30769,14 +30700,13 @@ pub struct RestTransportCollectResult {
 fn rest_transport_field_string(
     props: Rc<im::Vector<Rc<Node>>>,
     prop_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     use crate::v1_std_core::{find_property, find_property_string, ExprData};
-    find_property_string(props.clone(), prop_name.clone(), source_indices.clone()).or_else(|| {
-        let n = find_property(props, prop_name, source_indices.clone())?;
+    find_property_string(props.clone(), prop_name.clone()).or_else(|| {
+        let n = find_property(props, prop_name)?;
         match (*n.expr_data).clone() {
             ExprData::ExprVar { .. } => {
-                let s = authored_name_at(source_indices, n);
+                let s = node_authored_text(n);
                 if s.is_empty() {
                     None
                 } else {
@@ -30805,16 +30735,12 @@ pub fn collect_rest_transport_operations(
         errors: &mut Vec<RestTransportFactError>,
     ) {
         let ctx_for_children = match &n.transport {
-            Some(t)
-                if !is_rest_transport(t.clone(), source_indices.clone()) && !n.name.is_empty() =>
-            {
-                Some(n.name.clone())
-            }
+            Some(t) if !is_rest_transport(t.clone()) && !n.name.is_empty() => Some(n.name.clone()),
             _ => service_ctx.clone(),
         };
 
         if let Some(t) = &n.transport {
-            if is_rest_transport(t.clone(), source_indices.clone()) {
+            if is_rest_transport(t.clone()) {
                 let Some(svc) = service_ctx.clone() else {
                     errors.push(RestTransportFactError::MissingServiceScope {
                         operation: n.name.clone(),
@@ -30830,11 +30756,8 @@ pub fn collect_rest_transport_operations(
                     }
                     return;
                 };
-                let method = rest_transport_field_string(
-                    t.properties.clone(),
-                    transport_method_key(),
-                    source_indices.clone(),
-                );
+                let method =
+                    rest_transport_field_string(t.properties.clone(), transport_method_key());
                 let Some(method) = method else {
                     errors.push(RestTransportFactError::MissingMethodProperty {
                         service: svc.clone(),
@@ -30854,7 +30777,6 @@ pub fn collect_rest_transport_operations(
                 let path = rest_transport_field_string(
                     t.properties.clone(),
                     transport_path_template_key(),
-                    source_indices.clone(),
                 );
                 let Some(path) = path else {
                     errors.push(RestTransportFactError::MissingPathProperty {
@@ -30903,11 +30825,9 @@ type WireSerializeResult<T> = Result<T, String>;
 pub fn resolve_coproduct_wire_policy(
     coproduct_name: &str,
     modules: &[Rc<TypedModule>],
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
 ) -> Option<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> {
     use crate::v1_compiler_emit_rust::resolve_local_coproduct_wire_policy;
     use crate::v1_std_core::module_imports;
-    let si = Rc::new(source_indices.clone());
     let mut matches: Vec<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> = Vec::new();
     for tm in modules {
         let imports = module_imports(tm.module.clone());
@@ -30916,7 +30836,6 @@ pub fn resolve_coproduct_wire_policy(
             false,
             tm.items.clone(),
             imports,
-            si.clone(),
         ) {
             if local.error_message.is_none() {
                 matches.push(local);
@@ -31077,7 +30996,6 @@ fn serialize_variant_to_wire_json(
     let policy = resolve_coproduct_wire_policy(
         type_name,
         &ctx.modules.iter().cloned().collect::<std::vec::Vec<_>>(),
-        ctx.source_indices.as_ref(),
     )
     .unwrap_or_else(|| rust_tagged_object_policy());
 
@@ -31744,7 +31662,6 @@ mod sigs_env_flat_parents {
             Rc::new([b, c].into_iter().collect()),
             Rc::new(im::vector![]),
             "top.module".to_string(),
-            crate::v1_rt::rc_empty_map(),
         );
         assert_eq!(result.func_env.name, "top.module");
         let flat_names: Vec<String> = result

@@ -34,7 +34,7 @@ use crate::v1_compiler_infer_items::ResolvedGraph;
 /// The prepared subject's source text index, as `v1_std_core` reads names through it.
 type SourceIndices = im::HashMap<String, Rc<NewlineIndex>>;
 use crate::v1_std_core::{
-    arg_value, authored_name_at, source_text_at, CallTargetIdentity, ExprData, LeafOwner,
+    arg_value, node_authored_text, source_text_at, CallTargetIdentity, ExprData, LeafOwner,
     NewlineIndex, Node, VarBindingKind,
 };
 
@@ -95,10 +95,7 @@ pub(crate) fn site_key_of(node: &Node) -> SiteKey {
 /// Immediate projection (or typed Unread) for each call that is a field-access base.
 /// A field access whose base is not a readable call still marks every call child `Unread`
 /// (`ProjectionBaseUnreadable`) so the call cannot later default to `WholeValue`.
-pub(crate) fn immediate_consumer_projections(
-    nodes: &[Rc<Node>],
-    source_indices: Rc<SourceIndices>,
-) -> HashMap<SiteKey, ConsumerRead> {
+pub(crate) fn immediate_consumer_projections(nodes: &[Rc<Node>]) -> HashMap<SiteKey, ConsumerRead> {
     let mut projections: HashMap<SiteKey, ConsumerRead> = HashMap::new();
     for n in nodes {
         if !matches!(n.expr_data.as_ref(), ExprData::ExprFieldAccess { .. }) {
@@ -125,7 +122,7 @@ pub(crate) fn immediate_consumer_projections(
             continue;
         }
         let field = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::v1_std_core::field_access_field_at(n.clone(), source_indices.clone())
+            crate::v1_std_core::field_access_field_at(n.clone())
         }));
         let read = match field {
             Err(_) => ConsumerRead::Unread(ConsumerReadCause::ProjectionFieldNameUnreadable),
@@ -368,7 +365,7 @@ impl<'a> CallSiteDemandObserver<'a> {
     }
 
     fn name_of(&self, node: &Rc<Node>) -> String {
-        let authored = authored_name_at(self.source_indices.clone(), node.clone());
+        let authored = node_authored_text(node.clone());
         if authored.is_empty() {
             node.name.clone()
         } else {
@@ -451,8 +448,7 @@ impl<'a> CallSiteDemandObserver<'a> {
                 CallTargetIdentity::CallableTargetUndetermined => {}
             }
         }
-        let spelling =
-            crate::v1_std_core::expr_call_func_at(call.clone(), self.source_indices.clone());
+        let spelling = crate::v1_std_core::expr_call_func_at(call.clone());
         self.resolve(module, &spelling)
             .ok_or(CallSiteDemandCause::CalleeUnresolved)
     }
@@ -485,7 +481,7 @@ impl<'a> CallSiteDemandObserver<'a> {
             nodes.push(n);
         }
         // Immediate projection, or Unread when the base cannot be read as a call.
-        let projections = immediate_consumer_projections(&nodes, self.source_indices.clone());
+        let projections = immediate_consumer_projections(&nodes);
         let mut reads: BTreeSet<(String, String)> = BTreeSet::new();
         let mut sites: Vec<(SiteKey, SiteFact)> = Vec::new();
         for n in &nodes {
@@ -584,7 +580,7 @@ impl<'a> CallSiteDemandObserver<'a> {
     ) -> Option<String> {
         let mut parts = Vec::new();
         for arg in call.children.iter().filter(|a| !a.children.is_empty()) {
-            let name = authored_name_at(self.source_indices.clone(), arg.clone());
+            let name = node_authored_text(arg.clone());
             let value = self.closed_expression(module, &arg_value(arg.clone()), binders)?;
             parts.push(format!("{name}={value}"));
         }
@@ -913,8 +909,7 @@ mod tests {
             None,
             span(1, 30),
         );
-        let projections =
-            immediate_consumer_projections(&[access, call.clone()], Rc::new(im::HashMap::new()));
+        let projections = immediate_consumer_projections(&[access, call.clone()]);
         let read = projections
             .get(&site_key_of(&call))
             .cloned()

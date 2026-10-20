@@ -20,7 +20,7 @@
 
 use crate::cli_run::pool_acquire;
 use crate::v1_std_core::{
-    authored_name_at, byte_to_line_col, diagnostic_to_message, diagnostic_to_span, module_items,
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, module_items, node_authored_text,
     CompilerDiagnostic, DeclarationMarker,
 };
 use im::HashMap;
@@ -65,14 +65,6 @@ pub(crate) fn test_marked_decls(source: &str, file: &str) -> Result<Vec<TestMark
             "{file}: the parse produced no module, so its test-marked declarations cannot be read"
         ));
     };
-    let source_indices = Rc::new({
-        let mut m = HashMap::new();
-        m.insert(
-            file.to_string(),
-            pool_acquire::newline_index_for(file, source),
-        );
-        m
-    });
     let items = module_items(module.clone());
     let mut heads: Vec<i64> = items.iter().map(|item| item.span.start).collect();
     heads.sort_unstable();
@@ -81,7 +73,7 @@ pub(crate) fn test_marked_decls(source: &str, file: &str) -> Result<Vec<TestMark
         .iter()
         .filter(|item| item.declaration_marker == DeclarationMarker::TestMarked)
         .map(|item| TestMarkedDecl {
-            name: authored_name_at(source_indices.clone(), item.clone()),
+            name: node_authored_text(item.clone()),
             span_start: item.span.start,
             span_end: heads
                 .get(heads.partition_point(|head| *head <= item.span.start))

@@ -59,20 +59,20 @@ use crate::v1_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
 };
 use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, block_stmts, cast_expr, cast_target, expr_call_func_at, expr_field_access_summary,
+    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, binop_left, binop_right, block_stmts,
+    cast_expr, cast_target, expr_call_func_at, expr_field_access_summary,
     expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
     field_init_node_value, find_property, foreach_body, foreach_collection, foreach_variable_at,
     if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
     index_base, index_expr, is_file_transport, is_rest_transport, is_shell_transport, lambda_body,
     lambda_param_names_at, let_binding_name_at, let_body, let_value, match_arm_nodes,
-    match_scrutinee, method_arg_nodes, method_receiver, param_node_default_value,
-    param_node_name_at, param_node_type_expr, qualified_last_segment, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
-    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
+    match_scrutinee, method_arg_nodes, method_receiver, node_authored_text,
+    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
+    record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_stdin,
+    type_name_compatible, unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode,
+    ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -378,7 +378,7 @@ fn coproduct_disj_node(ctx: &InterpContext, item: &Rc<Node>) -> Option<Rc<Node>>
             return Some(node.clone());
         }
     }
-    if let Some(rhs) = type_item_alias_rhs_name(ctx, item) {
+    if let Some(rhs) = type_item_alias_rhs_name(item) {
         return resolve_coproduct_type_node(ctx, &rhs);
     }
     None
@@ -450,8 +450,8 @@ fn coproduct_parent_spellings_match(
             if Rc::ptr_eq(&value_coproduct, &pattern_coproduct) {
                 return true;
             }
-            let value_authored = authored_name_at(ctx.si(), value_coproduct);
-            let pattern_authored = authored_name_at(ctx.si(), pattern_coproduct);
+            let value_authored = node_authored_text(value_coproduct);
+            let pattern_authored = node_authored_text(pattern_coproduct);
             if value_authored == pattern_authored {
                 return true;
             }
@@ -460,7 +460,7 @@ fn coproduct_parent_spellings_match(
     let coproduct = resolve_coproduct_type_node(ctx, pattern_parent);
     match coproduct {
         Some(coproduct_node) => {
-            let authored = authored_name_at(ctx.si(), coproduct_node.clone());
+            let authored = node_authored_text(coproduct_node.clone());
             authored == value_parent
                 || qualified_last_segment(authored) == qualified_last_segment(value_parent.clone())
         }
@@ -482,7 +482,7 @@ fn variant_arm_is_declared_in_coproduct(
     }
     let variant_last = qualified_last_segment(resolve_sym(variant_name));
     for child in coproduct.children.iter() {
-        if qualified_last_segment(authored_name_at(ctx.si(), child.clone())) == variant_last {
+        if qualified_last_segment(node_authored_text(child.clone())) == variant_last {
             return true;
         }
     }
@@ -535,7 +535,7 @@ fn record_nominal_is_declared_variant_of_coproduct(
     }
     let record_last = qualified_last_segment(record_nominal.clone());
     for child in coproduct.children.iter() {
-        let child_name = authored_name_at(ctx.si(), child.clone());
+        let child_name = node_authored_text(child.clone());
         if child_name == record_nominal || qualified_last_segment(child_name) == record_last {
             return true;
         }
@@ -6109,7 +6109,7 @@ impl ExecutionMode {
 ///
 /// WHY THIS EXISTS. `build_scope_indexes_with_module_order` used to re-read every item of
 /// every module of every scope: on the required floor that is 660 scopes over a mean of 427
-/// modules each, and the derivation per item — `authored_name_at`, `item_kind`, the import
+/// modules each, and the derivation per item — `node_authored_text`, `item_kind`, the import
 /// list, a `format!` per qualified name — was repaid once per scope the module appeared in.
 /// The measured cost was 44.5s of a 75.3s scope-construction total (`[floor-scope-split]`).
 ///
@@ -6155,7 +6155,6 @@ pub type ScopeFragmentCache = std::cell::RefCell<HashMap<String, Rc<ModuleScopeF
 
 fn module_scope_fragment(
     module: &Rc<TypedModule>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     cache: Option<&ScopeFragmentCache>,
 ) -> Rc<ModuleScopeFragment> {
     if let Some(cache) = cache {
@@ -6163,7 +6162,7 @@ fn module_scope_fragment(
             return hit.clone();
         }
     }
-    let built = Rc::new(derive_module_scope_fragment(module, source_indices));
+    let built = Rc::new(derive_module_scope_fragment(module));
     if let Some(cache) = cache {
         cache
             .borrow_mut()
@@ -6173,11 +6172,8 @@ fn module_scope_fragment(
 }
 
 /// The module-local derivation, lifted VERBATIM out of the per-scope walk it used to sit in.
-fn derive_module_scope_fragment(
-    module: &Rc<TypedModule>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> ModuleScopeFragment {
-    let module_path = authored_name_at(source_indices.clone(), module.module.clone());
+fn derive_module_scope_fragment(module: &Rc<TypedModule>) -> ModuleScopeFragment {
+    let module_path = node_authored_text(module.module.clone());
     let mut fn_entries: Vec<FragmentFnEntry> = Vec::new();
     let mut file_module_paths: Vec<(String, String)> = Vec::new();
     let mut file_import_bindings: Vec<((String, String), String)> = Vec::new();
@@ -6193,11 +6189,11 @@ fn derive_module_scope_fragment(
         if import_is_all(imp.clone()) {
             continue;
         }
-        let source_module = authored_name_at(source_indices.clone(), imp.clone());
+        let source_module = node_authored_text(imp.clone());
         if source_module.is_empty() {
             continue;
         }
-        for imported in import_specific_names_at(imp.clone(), source_indices.clone()).iter() {
+        for imported in import_specific_names_at(imp.clone()).iter() {
             if imported.is_empty() || module.module.span.file.is_empty() {
                 continue;
             }
@@ -6208,7 +6204,7 @@ fn derive_module_scope_fragment(
         }
     }
     for item in module.items.iter() {
-        let name = authored_name_at(source_indices.clone(), item.clone());
+        let name = node_authored_text(item.clone());
         if !module_path.is_empty() && !item.span.file.is_empty() {
             file_module_paths.push((item.span.file.to_string(), module_path.clone()));
         }
@@ -6233,7 +6229,7 @@ fn derive_module_scope_fragment(
         // conservative direction) rather than silently excusing it.
         if let Some(disj) = fragment_coproduct_disj_node(item) {
             for arm in disj.children.iter() {
-                let arm_name = authored_name_at(source_indices.clone(), arm.clone());
+                let arm_name = node_authored_text(arm.clone());
                 if arm_name.is_empty() || module_path.is_empty() {
                     continue;
                 }
@@ -6249,7 +6245,7 @@ fn derive_module_scope_fragment(
         // service's operations (-> "unknown service operation" at runtime).
         if item_kind(item.clone()) == ItemKind::ServiceItem {
             for op in item.children.iter() {
-                let op_name = authored_name_at(source_indices.clone(), op.clone());
+                let op_name = node_authored_text(op.clone());
                 if op_name.is_empty() {
                     continue;
                 }
@@ -6516,7 +6512,7 @@ pub struct InterpContext {
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
     // Module lookup BY AUTHORED PATH, built once per ctx. `ctx.modules` is a vector, so the only
     // way to answer "which TypedModule is `v2.lens.cost`?" was a linear scan that re-sliced every
-    // module's name out of its source span (authored_name_at). One `decl_facts` marshal asks that
+    // module's name out of its source span (node_authored_text). One `decl_facts` marshal asks that
     // question once per DataItem row, so the whole-corpus inventory was a PRODUCT of the two
     // populations -- a cost-shape defect (DESIGN section 6, bare minimum cost), not a large
     // constant. Same discipline as param_name_cache above: derived from ctx-owned Rc handles,
@@ -6538,7 +6534,7 @@ pub struct InterpContext {
     // coproduct-typed field; see `decode_json_by_declared_type`.
     coproduct_wire_contract_index: std::cell::RefCell<Option<Rc<CoproductWireContractIndex>>>,
     // Parameter-name derivation is invariant per fn_node but was re-sliced from source spans
-    // per call (authored_name_at). Memoized per fn_node pointer. The pointer alone is unsound:
+    // per call (node_authored_text). Memoized per fn_node pointer. The pointer alone is unsound:
     // the ctx does not own fn_nodes (borrowed `Rc<Node>`s droppable while the ctx lives), so a
     // freed address can be reused and collide. keepalive_fns retains the `Rc<Node>` behind each
     // key for the ctx's lifetime (as PureCallMemo.keepalive_fns / EvalRecomputeTrace.keepalive_fns
@@ -6558,7 +6554,7 @@ pub struct InterpContext {
     /// instead of falling through to the next arm.
     variant_realization_refusal: std::cell::RefCell<Option<String>>,
     // Same chokepoint, ExprCall callee name: eval_call re-sliced the callee name from its source
-    // span (expr_call_func_at -> authored_name_at) on every call. Memoize the decoded name per
+    // span (expr_call_func_at -> node_authored_text) on every call. Memoize the decoded name per
     // call node — keyed by node pointer, kept alive via call_func_name_cache_keepalive as above.
     call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     call_func_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
@@ -6676,12 +6672,10 @@ impl InterpContext {
                 None => {
                     self.typed_module_by_path_fills
                         .set(self.typed_module_by_path_fills.get() + 1);
-                    let si = self.source_indices.clone();
                     let mut built: std::collections::HashMap<String, Rc<TypedModule>> =
                         std::collections::HashMap::with_capacity(self.modules.len());
                     for tm in self.modules.iter() {
-                        let name =
-                            crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
+                        let name = crate::v1_std_core::node_authored_text(tm.module.clone());
                         built.entry(name).or_insert_with(|| tm.clone());
                     }
                     let built = Rc::new(built);
@@ -6858,7 +6852,7 @@ impl InterpContext {
             .modules
             .iter()
             .map(|module| {
-                let fragment = module_scope_fragment(module, &source_indices, fragments);
+                let fragment = module_scope_fragment(module, fragments);
                 for entry in &fragment.fn_entries {
                     if let FragmentFnEntry::Bare { name, item } = entry {
                         type_items
@@ -7333,7 +7327,7 @@ impl InterpContext {
         let module_path = selected_module_path(file, module_path_index)?;
         Some(SelectedFunctionIdentity {
             module_path,
-            decl_name: authored_name_at(self.source_indices.clone(), node.clone()),
+            decl_name: node_authored_text(node.clone()),
             bare_name_ambiguous: !name.contains('.')
                 && self.indexes.ambiguous_bare_function_names.contains(name),
         })
@@ -7413,7 +7407,7 @@ pub fn declared_parameter_names(ctx: &InterpContext, entry_fn: &str) -> Option<V
         fn_node
             .params
             .iter()
-            .map(|p| authored_name_at(ctx.si(), p.clone()))
+            .map(|p| node_authored_text(p.clone()))
             .collect(),
     )
 }
@@ -7430,7 +7424,7 @@ pub fn declared_parameter_type_exprs(
             .iter()
             .map(|p| {
                 (
-                    authored_name_at(ctx.si(), p.clone()),
+                    node_authored_text(p.clone()),
                     param_node_type_expr(p.clone()),
                 )
             })
@@ -7723,14 +7717,14 @@ fn call_function_inner(
             let all: Vec<String> = fn_node
                 .params
                 .iter()
-                .map(|p| authored_name_at(ctx.si(), p.clone()))
+                .map(|p| node_authored_text(p.clone()))
                 .collect();
             let filtered: Vec<String> = fn_node
                 .params
                 .iter()
                 .enumerate()
                 .filter(|(i, p)| match p.children.first() {
-                    Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != all[*i],
+                    Some(type_expr) => node_authored_text(type_expr.clone()) != all[*i],
                     None => false,
                 })
                 .map(|(i, _)| all[i].clone())
@@ -7862,9 +7856,7 @@ fn call_function_inner(
         .filter(|(i, p)| {
             param_node_default_value((*p).clone()).is_none()
                 && match p.children.first() {
-                    Some(type_expr) => {
-                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
-                    }
+                    Some(type_expr) => node_authored_text(type_expr.clone()) != all_param_names[*i],
                     None => false,
                 }
         })
@@ -7876,9 +7868,7 @@ fn call_function_inner(
         .filter(|(i, p)| {
             param_node_default_value((*p).clone()).is_none()
                 && match p.children.first() {
-                    Some(type_expr) => {
-                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
-                    }
+                    Some(type_expr) => node_authored_text(type_expr.clone()) != all_param_names[*i],
                     None => false,
                 }
                 && param_supplied_at_call(&all_param_names[*i])
@@ -7887,7 +7877,7 @@ fn call_function_inner(
     for (i, param) in fn_node.params.iter().enumerate() {
         let pname = &all_param_names[i];
         let is_value_param = match param.children.first() {
-            Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != *pname,
+            Some(type_expr) => node_authored_text(type_expr.clone()) != *pname,
             None => false,
         };
         if is_value_param
@@ -8401,7 +8391,6 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
 }
 
 fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let si = ctx.si();
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
 
@@ -8502,7 +8491,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
         }
 
         ExprData::ExprLambda => {
-            let param_names: Vec<Symbol> = lambda_param_names_at(node.clone(), si)
+            let param_names: Vec<Symbol> = lambda_param_names_at(node.clone())
                 .iter()
                 .map(|name| ctx.sym(name))
                 .collect();
@@ -8544,7 +8533,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                 Some(InferredNode::Resolved { node: t, .. }) => t.clone(),
                 _ => node.clone(),
             };
-            if crate::v1_compiler_infer_types::node_is_element_collection(ty, ctx.si()) {
+            if crate::v1_compiler_infer_types::node_is_element_collection(ty) {
                 Err(InterpError::TypeError {
                     msg: "type node used as a value (empty list must remain ExprListLit)"
                         .to_string(),
@@ -8586,7 +8575,7 @@ fn eval_var(
         if let Some(s) = existing {
             s
         } else {
-            let name = expr_var_name_at(node.clone(), ctx.si());
+            let name = expr_var_name_at(node.clone());
             let fresh = ctx.sym(&name);
             ctx.var_sym_cache_keepalive.borrow_mut().push(node.clone());
             ctx.var_sym_cache.borrow_mut().insert(key, fresh);
@@ -8652,7 +8641,7 @@ fn eval_var(
             ItemKind::DataItem => {
                 if let Some(ref body) = fn_node.body {
                     if let ExprData::ExprVar { .. } = &*body.expr_data {
-                        if expr_var_name_at(body.clone(), ctx.si()) == name {
+                        if expr_var_name_at(body.clone()) == name {
                             return Ok(str_value(name));
                         }
                     }
@@ -8723,10 +8712,10 @@ fn eval_var(
                     let arm = ty
                         .children
                         .iter()
-                        .find(|c| authored_name_at(ctx.si(), (*c).clone()) == last);
+                        .find(|c| node_authored_text((*c).clone()) == last);
                     if let Some(arm) = arm {
                         if arm.children.is_empty() {
-                            let ty_name = authored_name_at(ctx.si(), ty.clone());
+                            let ty_name = node_authored_text(ty.clone());
                             return Ok(Value::Variant {
                                 type_name: ctx.sym(&ty_name),
                                 variant_name: ctx.sym(&last),
@@ -9352,7 +9341,7 @@ fn eval_if(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<
 }
 
 fn eval_let(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let name = let_binding_name_at(node.clone(), ctx.si());
+    let name = let_binding_name_at(node.clone());
     let val = eval_expr(&let_value(node.clone()), env, ctx)?;
     let new_env = Env::with_binding(env, ctx.sym(&name), val);
     match let_body(node.clone()) {
@@ -9369,7 +9358,7 @@ fn eval_block(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     for stmt in stmts.iter() {
         match (*stmt.expr_data).clone() {
             ExprData::ExprLet => {
-                let name = let_binding_name_at(stmt.clone(), ctx.si());
+                let name = let_binding_name_at(stmt.clone());
                 let val = eval_expr(&let_value(stmt.clone()), &current_env, ctx)?;
                 current_env = Env::with_binding(&current_env, ctx.sym(&name), val.clone());
                 last_val = val;
@@ -9931,10 +9920,10 @@ fn admit_modeled_realization(
     }))
 }
 
-fn op_declared_readonly(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
+fn op_declared_readonly(op_node: &Rc<Node>) -> bool {
     op_node.properties.iter().any(|p| {
         matches!(
-            crate::v1_std_core::field_init_operation_modifier(p.clone(), ctx.si()),
+            crate::v1_std_core::field_init_operation_modifier(p.clone()),
             Some(crate::v1_std_core::OperationModifier::Readonly)
         )
     })
@@ -9952,7 +9941,7 @@ fn bound_operation_invocation_value(
     let at = operation_ref_value(&op_node.span.file, service_name, op_name, ctx);
     let mut bindings = Vec::new();
     for p in op_node.params.iter() {
-        let name = param_node_name_at(p.clone(), ctx.si());
+        let name = param_node_name_at(p.clone());
         let Some(value) = param_env.lookup(ctx.sym(&name)) else {
             continue;
         };
@@ -10074,7 +10063,7 @@ fn dispatch_modeled_operation(
             });
             record
         };
-    let readonly = op_declared_readonly(op_node, ctx);
+    let readonly = op_declared_readonly(op_node);
     let selection_key = format!(
         "{}#{}.{}#{}",
         op_node.span.file, service_name, op_name, readonly
@@ -10154,7 +10143,7 @@ fn dispatch_modeled_operation(
         modeled_refused(&key, format!("harness fault: {reason}"))
     };
     let shell_operation = is_shell_transport(transport.clone());
-    if !shell_operation && !is_file_transport(transport.clone(), ctx.si()) {
+    if !shell_operation && !is_file_transport(transport.clone()) {
         return Err(harness_fault(
             "a modeled realization supplies shell and file transport observations only; this operation's transport is neither".to_string(),
         ));
@@ -10755,8 +10744,7 @@ fn match_pattern(
                         }
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
-                            let field_name =
-                                field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                            let field_name = field_binding_name_at(fb.clone());
                             let fb_pat = field_binding_pattern(fb.clone());
                             let field_val = fields_get(fields, ctx.sym(&field_name))
                                 .cloned()
@@ -10777,8 +10765,7 @@ fn match_pattern(
                         }
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
-                            let field_name =
-                                field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                            let field_name = field_binding_name_at(fb.clone());
                             let fb_pat = field_binding_pattern(fb.clone());
                             let field_val = fields_get(fields, ctx.sym(&field_name))
                                 .cloned()
@@ -10803,10 +10790,7 @@ fn match_pattern(
                                 let head = items[0].clone();
                                 let mut bindings = HashMap::new();
                                 for fb in field_bindings.iter() {
-                                    let field_name = field_binding_name_at(
-                                        fb.clone(),
-                                        ctx.source_indices.clone(),
-                                    );
+                                    let field_name = field_binding_name_at(fb.clone());
                                     let fb_pat = field_binding_pattern(fb.clone());
                                     // THE TAIL IS BUILT ONLY FOR A PATTERN THAT CONSUMES IT. A
                                     // wildcard binds nothing, so skipping it changes no binding;
@@ -10852,10 +10836,7 @@ fn match_pattern(
                                     let head = char_value(c);
                                     let mut bindings = HashMap::new();
                                     for fb in field_bindings.iter() {
-                                        let field_name = field_binding_name_at(
-                                            fb.clone(),
-                                            ctx.source_indices.clone(),
-                                        );
+                                        let field_name = field_binding_name_at(fb.clone());
                                         let fb_pat = field_binding_pattern(fb.clone());
                                         // The same laziness as the native-list arm above: the
                                         // rest of the string is copied only for a pattern that
@@ -10890,8 +10871,7 @@ fn match_pattern(
                     {
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
-                            let field_name =
-                                field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                            let field_name = field_binding_name_at(fb.clone());
                             let fb_pat = field_binding_pattern(fb.clone());
                             let field_val = match field_name.as_str() {
                                 "diagnostic" => native_map_absent_diagnostic_value(ctx),
@@ -11261,7 +11241,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         if let Some(s) = existing {
             s
         } else {
-            let fresh = expr_call_func_at(node.clone(), ctx.si());
+            let fresh = expr_call_func_at(node.clone());
             ctx.call_func_name_cache_keepalive
                 .borrow_mut()
                 .push(node.clone());
@@ -11279,7 +11259,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         .iter()
         .filter(|arg_node| !arg_node.children.is_empty())
         .map(|arg_node| {
-            let name = arg_name_at(arg_node.clone(), ctx.si());
+            let name = arg_name_at(arg_node.clone());
             let val = eval_expr(&arg_value(arg_node.clone()), env, ctx)?;
             Ok((name, val))
         })
@@ -13073,7 +13053,7 @@ fn pure_call_memo_put(
 }
 
 fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let method_name = expr_method_name_at(node.clone(), ctx.si());
+    let method_name = expr_method_name_at(node.clone());
     let semantics = expr_method_call_semantics(node.clone());
 
     if let Some(MethodSemantics::ServiceMethodSemantics { service_name, .. }) = semantics.as_deref()
@@ -13085,7 +13065,7 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
         let mut named_args: Vec<(Option<String>, Value)> = Vec::new();
         let mut declared_expectation: Option<ExpectedOutcome> = None;
         for a in extra_args.iter() {
-            let name = arg_name_at(a.clone(), ctx.si());
+            let name = arg_name_at(a.clone());
             let val = eval_expr(&arg_value(a.clone()), env, ctx)?;
             if name.as_deref() == Some(EFFECT_EXPECTATION_ARG) {
                 declared_expectation = Some(expectation_from_declared_arg(&val)?);
@@ -13141,7 +13121,7 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
 
     match semantics.as_deref() {
         Some(MethodSemantics::AlgebraMethodSemantics { method_def, .. }) => {
-            let mn = authored_name_at(ctx.si(), method_def.clone());
+            let mn = node_authored_text(method_def.clone());
             eval_algebra_method(&mn, receiver_val, &args, env, ctx)
         }
         _ => eval_algebra_method(&method_name, receiver_val, &args, env, ctx),
@@ -13155,7 +13135,7 @@ fn eval_field_access(
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let base_val = eval_expr(&field_access_base(node.clone()), env, ctx)?;
-    let field_name = field_access_field_at(node.clone(), ctx.si());
+    let field_name = field_access_field_at(node.clone());
 
     let access_style = summary.map(|s| &s.access_style);
 
@@ -13264,10 +13244,9 @@ fn eval_map_lit(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    if !crate::v1_compiler_emit_rust::map_literal_key_is_string(map_type.clone(), ctx.si()) {
+    if !crate::v1_compiler_emit_rust::map_literal_key_is_string(map_type.clone()) {
         let key_name = match map_type.children.iter().next() {
-            Some(key_type) => authored_name_at(
-                ctx.si(),
+            Some(key_type) => node_authored_text(
                 crate::v1_compiler_infer_types::normalize_access_type_node(key_type.clone()),
             ),
             None => String::new(),
@@ -13282,7 +13261,7 @@ fn eval_map_lit(
     }
     let mut entries = HamtMap::new();
     for child in node.children.iter() {
-        let fname = field_init_node_name_at(child.clone(), ctx.si());
+        let fname = field_init_node_name_at(child.clone());
         let fval = eval_expr(&field_init_node_value(child.clone()), env, ctx)?;
         match CanonKey::new(str_value(fname.clone())) {
             Some(ck) => {
@@ -13304,7 +13283,7 @@ fn eval_record_lit(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    let type_name = record_lit_type_name_at(node.clone(), ctx.si()).unwrap_or_default();
+    let type_name = record_lit_type_name_at(node.clone()).unwrap_or_default();
 
     // A brace literal in a keyed-collection position IS a map; the single authority is the
     // literal's inferred type — the `node_is_keyed_collection` relation `05_emit_rust` reads
@@ -13315,7 +13294,7 @@ fn eval_record_lit(
     // the whole ordinary front end unreachable from interpreted `.dag`.
     if type_name.is_empty() {
         if let Some(InferredNode::Resolved { node: ty, .. }) = node.inferred.as_deref() {
-            if crate::v1_compiler_infer_types::node_is_keyed_collection(ty.clone(), ctx.si()) {
+            if crate::v1_compiler_infer_types::node_is_keyed_collection(ty.clone()) {
                 return eval_map_lit(node, ty, env, ctx);
             }
         }
@@ -13323,7 +13302,7 @@ fn eval_record_lit(
 
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in node.children.iter() {
-        let fname = field_init_node_name_at(child.clone(), ctx.si());
+        let fname = field_init_node_name_at(child.clone());
         let fval = eval_expr(&field_init_node_value(child.clone()), env, ctx)?;
         fields.push((ctx.sym(&fname), fval));
     }
@@ -13375,8 +13354,8 @@ pub(crate) fn record_field_wire_key(ctx: &InterpContext, type_name: &str, field:
         .and_then(|ty| {
             ty.children
                 .iter()
-                .find(|f| authored_name_at(ctx.si(), (*f).clone()) == field)
-                .and_then(|f| extract_from_key(f, ctx))
+                .find(|f| node_authored_text((*f).clone()) == field)
+                .and_then(|f| extract_from_key(f))
         })
         .unwrap_or_else(|| field.to_string())
 }
@@ -13471,7 +13450,7 @@ mod cast_scope_index_tests {
         for module in ctx.modules.iter() {
             for item in module.items.iter() {
                 visited += 1;
-                let name = authored_name_at(ctx.si(), item.clone());
+                let name = node_authored_text(item.clone());
                 if !name.is_empty() {
                     legacy.entry(name).or_insert_with(|| item.clone());
                 }
@@ -13492,14 +13471,14 @@ mod cast_scope_index_tests {
     }
 }
 
-fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
-    let direct = authored_name_at(ctx.si(), rhs.clone());
+fn alias_rhs_next_name(rhs: Rc<Node>) -> Option<String> {
+    let direct = node_authored_text(rhs.clone());
     if !direct.is_empty() {
         return Some(direct);
     }
     if rhs.connective == Connective::Conj {
         for child in rhs.children.iter() {
-            let base = authored_name_at(ctx.si(), child.clone());
+            let base = node_authored_text(child.clone());
             if !base.is_empty() {
                 return Some(base);
             }
@@ -13507,7 +13486,7 @@ fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
     }
     match rhs.inferred.as_deref() {
         Some(InferredNode::Resolved { node }) => {
-            let inner = authored_name_at(ctx.si(), node.clone());
+            let inner = node_authored_text(node.clone());
             if inner.is_empty() {
                 None
             } else {
@@ -13518,12 +13497,12 @@ fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
     }
 }
 
-fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<String> {
+fn type_item_alias_rhs_name(item: &Rc<Node>) -> Option<String> {
     let rhs = match item.inferred.as_deref()? {
         InferredNode::Resolved { node } => node.clone(),
         _ => return None,
     };
-    alias_rhs_next_name(ctx, rhs)
+    alias_rhs_next_name(rhs)
 }
 
 /// Both authored names a cast needs for its target, resolved once per target node.
@@ -13546,7 +13525,7 @@ fn cast_target_names(ctx: &InterpContext, target: Rc<Node>) -> Rc<CastTargetName
         // GUNBC_MEMO_VERIFY=1 recomputes on every hit and REFUSES on divergence, so the class is
         // checked by execution over the real corpus.
         if memo_verify_enabled() {
-            let recomputed_seed = cast_target_seed_name_uncached(ctx, target.clone());
+            let recomputed_seed = cast_target_seed_name_uncached(target.clone());
             if recomputed_seed != hit.seed {
                 panic!(
                     "cast memo divergence at key {key:#x}: cached seed {:?} != recomputed {:?} \
@@ -13557,7 +13536,7 @@ fn cast_target_names(ctx: &InterpContext, target: Rc<Node>) -> Rc<CastTargetName
         }
         return hit;
     }
-    let seed = cast_target_seed_name_uncached(ctx, target.clone());
+    let seed = cast_target_seed_name_uncached(target.clone());
     let kernel = cast_target_underlying_kernel_uncached(ctx, seed.clone());
     let fresh = Rc::new(CastTargetNames { seed, kernel });
     // DEGENERATE RESOLUTIONS ARE NEVER CACHED, and the bound is load-bearing. expr_child_at
@@ -13588,26 +13567,26 @@ fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> Strin
     cast_target_names(ctx, target).kernel.clone()
 }
 
-fn cast_target_seed_name_uncached(ctx: &InterpContext, target: Rc<Node>) -> String {
-    let from_span = authored_name_at(ctx.si(), target.clone());
+fn cast_target_seed_name_uncached(target: Rc<Node>) -> String {
+    let from_span = node_authored_text(target.clone());
     if !from_span.is_empty() {
         return from_span;
     }
     if !target.name.is_empty() {
         return target.name.clone();
     }
-    if let Some(name) = alias_rhs_next_name(ctx, target.clone()) {
+    if let Some(name) = alias_rhs_next_name(target.clone()) {
         return name;
     }
     if let Some(InferredNode::Resolved { node }) = target.inferred.as_deref() {
-        let from_inferred = authored_name_at(ctx.si(), node.clone());
+        let from_inferred = node_authored_text(node.clone());
         if !from_inferred.is_empty() {
             return from_inferred;
         }
         if !node.name.is_empty() {
             return node.name.clone();
         }
-        if let Some(name) = alias_rhs_next_name(ctx, node.clone()) {
+        if let Some(name) = alias_rhs_next_name(node.clone()) {
             return name;
         }
     }
@@ -13636,7 +13615,7 @@ fn cast_target_underlying_kernel_uncached(ctx: &InterpContext, seed: String) -> 
             return current;
         };
 
-        let Some(rhs_name) = type_item_alias_rhs_name(ctx, &item) else {
+        let Some(rhs_name) = type_item_alias_rhs_name(&item) else {
             return current;
         };
 
@@ -13652,14 +13631,14 @@ fn cast_target_underlying_kernel_uncached(ctx: &InterpContext, seed: String) -> 
 /// The cast's SOURCE type name. Same defect and repair as the target side: a pure function of
 /// the expression node that re-extracted source text per evaluation. One daily-page render:
 /// +27.1ms across 59,858 casts (~452ns each, ExprCast 42.8ms -> 69.9ms) once #8098 added this
-/// second `authored_name_at`. Memoized per node under the same pointer-key + keepalive
+/// second `node_authored_text`. Memoized per node under the same pointer-key + keepalive
 /// discipline as `cast_kernel_cache`.
 fn cast_expr_inferred_type_name(ctx: &InterpContext, expr: Rc<Node>) -> String {
     let key = Rc::as_ptr(&expr) as usize;
     let existing = ctx.cast_source_name_cache.borrow().get(&key).cloned();
     if let Some(hit) = existing {
         if memo_verify_enabled() {
-            let recomputed = cast_expr_inferred_type_name_uncached(ctx, expr.clone());
+            let recomputed = cast_expr_inferred_type_name_uncached(expr.clone());
             if recomputed != hit {
                 panic!(
                     "cast source-name memo divergence at key {key:#x}: cached {:?} != recomputed {:?} \
@@ -13670,7 +13649,7 @@ fn cast_expr_inferred_type_name(ctx: &InterpContext, expr: Rc<Node>) -> String {
         }
         return hit;
     }
-    let fresh = cast_expr_inferred_type_name_uncached(ctx, expr.clone());
+    let fresh = cast_expr_inferred_type_name_uncached(expr.clone());
     // Same unbounded-growth bound as cast_target_names: an error node's inferred is
     // CompilerError rather than Resolved, so it yields "" — never cache it, or a malformed
     // cast in a loop grows this keepalive without bound on freshly allocated nodes.
@@ -13686,9 +13665,9 @@ fn cast_expr_inferred_type_name(ctx: &InterpContext, expr: Rc<Node>) -> String {
     fresh
 }
 
-fn cast_expr_inferred_type_name_uncached(ctx: &InterpContext, expr: Rc<Node>) -> String {
+fn cast_expr_inferred_type_name_uncached(expr: Rc<Node>) -> String {
     match expr.inferred.as_deref() {
-        Some(InferredNode::Resolved { node }) => authored_name_at(ctx.si(), node.clone()),
+        Some(InferredNode::Resolved { node }) => node_authored_text(node.clone()),
         _ => String::new(),
     }
 }
@@ -13876,7 +13855,7 @@ fn cast_refusal_message(declared_source: &str, carrier: &str, target: &str) -> S
 }
 
 fn eval_for_each(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let var_name = foreach_variable_at(node.clone(), ctx.si());
+    let var_name = foreach_variable_at(node.clone());
     let collection = eval_expr(&foreach_collection(node.clone()), env, ctx)?;
     let body_node = foreach_body(node.clone());
 
@@ -14928,9 +14907,7 @@ fn eval_service_call(
         // it — that witness is this arm's regression control, not merely the frame's, and reds
         // if the mock layer ever preempts a replay frame again.
         if current_witness_evaluation_frame().is_some() {
-            if is_shell_transport(transport.clone())
-                || is_file_transport(transport.clone(), ctx.si())
-            {
+            if is_shell_transport(transport.clone()) || is_file_transport(transport.clone()) {
                 return Err(InterpError::TypeError {
                     msg: format!(
                         "witness replay frame is active for {key}, but its transport has no \
@@ -14957,7 +14934,7 @@ fn eval_service_call(
         // A REST operation's mock is its decoded-200 body, so it reaches the caller in the
         // answered arm of the same coproduct a wet exchange yields.
         let mocked = eval_mock_response(op_node, ctx)?;
-        return Ok(if is_rest_transport(transport.clone(), ctx.si()) {
+        return Ok(if is_rest_transport(transport.clone()) {
             rest_answered_value(ctx, mocked)
         } else {
             mocked
@@ -15036,7 +15013,7 @@ fn dispatch_service_wet(
         );
     }
 
-    if is_file_transport(transport.clone(), ctx.si()) {
+    if is_file_transport(transport.clone()) {
         let result = dispatch_file(op_node, transport, param_env, ctx)?;
         return map_file_outputs(&result, op_node, ctx);
     }
@@ -15052,7 +15029,7 @@ fn shell_result_projection(
     op_node: &Rc<Node>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    let outcome_field = transport_outcome_output_field(op_node, ctx, "ShellOutcome");
+    let outcome_field = transport_outcome_output_field(op_node, "ShellOutcome");
     match (dispatched, outcome_field) {
         (Ok(result), None) => map_shell_outputs(&result, op_node, ctx),
         (Ok(result), Some(field)) => {
@@ -15111,7 +15088,7 @@ fn dispatch_env_get_native(
         None => Value::Null,
     };
     Ok(Value::Record {
-        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        type_name: ctx.sym(&node_authored_text(op_node.clone())),
         fields: Rc::new(vec![(ctx.sym("value"), value)]),
     })
 }
@@ -15128,7 +15105,7 @@ fn build_service_param_env(
     let all_param_names: Vec<String> = op_node
         .params
         .iter()
-        .map(|p| param_node_name_at(p.clone(), ctx.si()))
+        .map(|p| param_node_name_at(p.clone()))
         .collect();
 
     for (opt_name, val) in args {
@@ -15167,7 +15144,7 @@ fn build_service_param_env(
         .map(|(_, v)| v)
         .collect();
     for param in op_node.params.iter() {
-        let name = param_node_name_at(param.clone(), ctx.si());
+        let name = param_node_name_at(param.clone());
         if !bindings.contains_key(&ctx.sym(&name)) {
             if positional_idx < positional_args.len() {
                 bindings.insert(ctx.sym(&name), positional_args[positional_idx].clone());
@@ -15177,7 +15154,7 @@ fn build_service_param_env(
     }
 
     for param in op_node.params.iter() {
-        let name = param_node_name_at(param.clone(), ctx.si());
+        let name = param_node_name_at(param.clone());
         if !bindings.contains_key(&ctx.sym(&name)) {
             if let Some(default_node) = param_node_default_value(param.clone()) {
                 let default_val = eval_expr(&default_node, env, ctx)?;
@@ -15654,7 +15631,7 @@ fn bind_argv_expr(
             ))),
         },
         ExprData::ExprVar { .. } => {
-            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            let name = expr_var_name_at(node.clone());
             env.get(&name)
                 .cloned()
                 .ok_or(ArgvRefusalCause::DeclaredInputUnbound(name))
@@ -15670,7 +15647,7 @@ fn bind_argv_expr(
                         match &val {
                             Value::List(_) => {
                                 return Err(ArgvRefusalCause::TokenListInStringPosition(
-                                    expr_var_name_at(expr.clone(), source_indices.clone()),
+                                    expr_var_name_at(expr.clone()),
                                 ))
                             }
                             _ => result.push_str(&value_to_host_string(&val)),
@@ -18207,7 +18184,7 @@ fn dispatch_shell(
         },
     };
 
-    let capture = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
+    let capture = if let Some(stdin_node) = transport_stdin(transport.clone()) {
         use std::io::Write;
         use std::process::Stdio;
 
@@ -18335,7 +18312,7 @@ fn map_detached_outputs(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult
     };
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in return_type.children.iter() {
-        let field_name = authored_name_at(ctx.si(), child.clone());
+        let field_name = node_authored_text(child.clone());
         let short = field_name.rsplit('.').next().unwrap_or(&field_name);
         if short == "spawn" {
             continue;
@@ -18344,7 +18321,7 @@ fn map_detached_outputs(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
     Ok(Value::Record {
-        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        type_name: ctx.sym(&node_authored_text(op_node.clone())),
         fields: Rc::new(fields),
     })
 }
@@ -18478,7 +18455,7 @@ fn dispatch_start_detached_native(
     spawn_shell_detached(&argv, &stdout_path, &stderr_path, ctx, intent)
         .and_then(|pid| {
             let mapped = map_detached_outputs(op_node, ctx)?;
-            let field = transport_outcome_output_field(op_node, ctx, "ProcessSpawnOutcome")
+            let field = transport_outcome_output_field(op_node, "ProcessSpawnOutcome")
                 .ok_or_else(|| InterpError::TypeError {
                     msg: format!(
                         "posix.Process.StartDetached detached a child (pid {pid}) but the operation declares no `ProcessSpawnOutcome` field to answer with"
@@ -18498,7 +18475,7 @@ fn dispatch_start_detached_native(
         })
         .or_else(|err| match err {
             InterpError::ShellSpawnRefused { argv0, cause } => {
-                let field = transport_outcome_output_field(op_node, ctx, "ProcessSpawnOutcome")
+                let field = transport_outcome_output_field(op_node, "ProcessSpawnOutcome")
                     .ok_or_else(|| InterpError::TypeError {
                         msg: format!(
                             "posix.Process.StartDetached spawn refused ({cause}) but the operation declares no `ProcessSpawnOutcome` field to answer with"
@@ -18640,9 +18617,11 @@ fn dispatch_process_reap_native(
             vec![(ctx.sym("cause"), str_value(cause))],
         ),
     };
-    let outcome_field = transport_outcome_output_field(op_node, ctx, "ProcessReapOutcome")
-        .ok_or_else(|| InterpError::TypeError {
-            msg: "posix.Process.Reap declares no ProcessReapOutcome output field".to_string(),
+    let outcome_field =
+        transport_outcome_output_field(op_node, "ProcessReapOutcome").ok_or_else(|| {
+            InterpError::TypeError {
+                msg: "posix.Process.Reap declares no ProcessReapOutcome output field".to_string(),
+            }
         })?;
     Ok(attach_transport_outcome(
         None,
@@ -18713,8 +18692,8 @@ fn map_shell_outputs(
 
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
-        let field_name = authored_name_at(ctx.si(), child.clone());
-        let from_key = extract_from_key(child, ctx);
+        let field_name = node_authored_text(child.clone());
+        let from_key = extract_from_key(child);
         let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
         if is_optional_field
             && result.exit_code != 0
@@ -18758,7 +18737,7 @@ fn map_shell_outputs(
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
     Ok(Value::Record {
-        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        type_name: ctx.sym(&node_authored_text(op_node.clone())),
         fields: Rc::new(fields),
     })
 }
@@ -18769,9 +18748,9 @@ fn map_shell_outputs(
 // is span-derived and therefore never matched: the two directions of one
 // procedure disagreed and nothing went red. Accepting both here is what kept the
 // nickname alive, so the lenient arm is gone rather than mirrored (DESIGN §3).
-fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
+fn extract_from_key(field_node: &Rc<Node>) -> Option<String> {
     for prop in field_node.properties.iter() {
-        let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
+        let prop_name = field_init_node_name_at(prop.clone());
         if prop_name == crate::v1_std_core::field_from_key_property_name() {
             let val_node = field_init_node_value(prop.clone());
             if let ExprData::ExprLiteral { ref value } = *val_node.expr_data {
@@ -19581,11 +19560,7 @@ fn file_transport_path(
     param_env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<String> {
-    let path = match find_property(
-        transport.properties.clone(),
-        "base_path".to_string(),
-        ctx.si(),
-    ) {
+    let path = match find_property(transport.properties.clone(), "base_path".to_string()) {
         Some(path_node) => {
             let path_val = eval_expr(&path_node, param_env, ctx)?;
             substitute_template(&format!("{}", path_val), param_env, ctx)
@@ -19610,15 +19585,13 @@ fn dispatch_file(
     param_env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<FileResult> {
-    let si = ctx.si();
-
     let path = file_transport_path(transport, param_env, ctx)?;
 
     // Optional explicit verb on the transport row (`transport file { path: ..., verb: "delete" }`).
     // Delete/List are structurally indistinguishable from Read (path-only inputs), so the
     // transport declares its own action; absent verb keeps the content-param convention
     // (write iff a `content` param exists, else read).
-    let verb = find_property(transport.properties.clone(), "verb".to_string(), si.clone())
+    let verb = find_property(transport.properties.clone(), "verb".to_string())
         .map(|verb_node| eval_expr(&verb_node, param_env, ctx).map(|v| format!("{}", v)))
         .transpose()?;
 
@@ -19897,7 +19870,7 @@ fn dispatch_file(
     let has_content = op_node
         .params
         .iter()
-        .any(|p| param_node_name_at(p.clone(), si.clone()) == "content");
+        .any(|p| param_node_name_at(p.clone()) == "content");
 
     if has_content {
         let content = match param_env.lookup(ctx.sym("content")) {
@@ -19987,8 +19960,8 @@ fn map_file_outputs(
 
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
-        let field_name = authored_name_at(ctx.si(), child.clone());
-        let from_key = extract_from_key(child, ctx);
+        let field_name = node_authored_text(child.clone());
+        let from_key = extract_from_key(child);
         let key = from_key.as_deref().unwrap_or(field_name.as_str());
         let value = match key {
             "write_success" | "read_success" | "delete_success" | "list_success" | "success" => {
@@ -20006,7 +19979,7 @@ fn map_file_outputs(
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
     Ok(Value::Record {
-        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        type_name: ctx.sym(&node_authored_text(op_node.clone())),
         fields: Rc::new(fields),
     })
 }
@@ -20103,11 +20076,7 @@ fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
 /// ShellOutcome; one without it keeps raise-on-failure. Inspect the field's TYPE, not its
 /// spelling. REST no longer has this seam: every REST operation yields `RestResult` over its
 /// declared output, so there is no field to detect and no raise to fall back to.
-fn transport_outcome_output_field(
-    op_node: &Rc<Node>,
-    ctx: &InterpContext,
-    outcome_type: &str,
-) -> Option<String> {
+fn transport_outcome_output_field(op_node: &Rc<Node>, outcome_type: &str) -> Option<String> {
     let return_type = match op_node.inferred.as_deref()? {
         InferredNode::Resolved { node } => node,
         _ => return None,
@@ -20117,9 +20086,9 @@ fn transport_outcome_output_field(
             InferredNode::Resolved { node } => node,
             _ => return None,
         };
-        let type_name = authored_name_at(ctx.si(), field_type.clone());
+        let type_name = node_authored_text(field_type.clone());
         (type_name.rsplit('.').next() == Some(outcome_type))
-            .then(|| authored_name_at(ctx.si(), field.clone()))
+            .then(|| node_authored_text(field.clone()))
     })
 }
 
@@ -20331,8 +20300,8 @@ fn rest_bound_invocation_value(
     basic_header: Option<&str>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    let service = authored_name_at(ctx.si(), service_node.clone());
-    let operation = authored_name_at(ctx.si(), op_node.clone());
+    let service = node_authored_text(service_node.clone());
+    let operation = node_authored_text(op_node.clone());
     let at = operation_ref_value(&op_node.span.file, &service, &operation, ctx);
     let input_digest =
         crate::recorded_fixture::content_hash_service_inputs(op_node, param_env, ctx);
@@ -20620,12 +20589,7 @@ fn attach_transport_outcome(
                 return_type
                     .children
                     .iter()
-                    .map(|field| {
-                        (
-                            ctx.sym(&authored_name_at(ctx.si(), field.clone())),
-                            Value::Null,
-                        )
-                    })
+                    .map(|field| (ctx.sym(&node_authored_text(field.clone())), Value::Null))
                     .collect()
             })
             .unwrap_or_default(),
@@ -20637,7 +20601,7 @@ fn attach_transport_outcome(
     }
     fields.sort_unstable_by_key(|(name, _)| name.0);
     Value::Record {
-        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        type_name: ctx.sym(&node_authored_text(op_node.clone())),
         fields: Rc::new(fields),
     }
 }
@@ -20649,30 +20613,27 @@ fn dispatch_rest(
     param_env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    let si = ctx.si();
-
     // An unresolvable endpoint REFUSES rather than defaulting to "": an empty base fails with
     // the same `RelativeUrlWithoutBase` as a garbage one, so `unwrap_or_default()` was a
     // second unlocated route for one defect. An ABSENT key is its own refusal: "declared
     // nothing" and "declared something unreadable" are different mistakes with different fixes.
-    let base_url =
-        match find_service_config_string(service_node, "svc_endpoint", &si, param_env, ctx) {
-            Some(Ok(url)) => url,
-            Some(Err(spelled)) => {
-                return Err(InterpError::ServiceConfigUnresolved {
-                    key: "endpoint".to_string(),
-                    spelled,
-                })
-            }
-            None => {
-                return Err(InterpError::ServiceConfigMissing {
-                    key: "endpoint".to_string(),
-                    service: service_node.name.clone(),
-                })
-            }
-        };
+    let base_url = match find_service_config_string(service_node, "svc_endpoint", param_env, ctx) {
+        Some(Ok(url)) => url,
+        Some(Err(spelled)) => {
+            return Err(InterpError::ServiceConfigUnresolved {
+                key: "endpoint".to_string(),
+                spelled,
+            })
+        }
+        None => {
+            return Err(InterpError::ServiceConfigMissing {
+                key: "endpoint".to_string(),
+                service: service_node.name.clone(),
+            })
+        }
+    };
 
-    let path = match find_property(transport.properties.clone(), "path".to_string(), si.clone()) {
+    let path = match find_property(transport.properties.clone(), "path".to_string()) {
         Some(path_node) => {
             let path_val = eval_expr(&path_node, param_env, ctx)?;
             let path_str = format!("{}", path_val);
@@ -20687,35 +20648,26 @@ fn dispatch_rest(
         format!("{}{}", base_url, path)
     };
 
-    let method = match find_property(
-        transport.properties.clone(),
-        "method".to_string(),
-        si.clone(),
-    ) {
+    let method = match find_property(transport.properties.clone(), "method".to_string()) {
         Some(m_node) => {
             if let ExprData::ExprLiteral { ref value } = *m_node.expr_data {
                 if let LiteralValue::LitStr { value: s } = value.as_ref() {
                     s.clone().to_uppercase()
                 } else {
-                    authored_name_at(si.clone(), m_node).to_uppercase()
+                    node_authored_text(m_node).to_uppercase()
                 }
             } else {
-                authored_name_at(si.clone(), m_node).to_uppercase()
+                node_authored_text(m_node).to_uppercase()
             }
         }
         None => "GET".to_string(),
     };
 
-    let auth = resolve_auth(service_node, transport, param_env, &si, ctx);
+    let auth = resolve_auth(service_node, transport, param_env, ctx);
     if let AuthResolution::DeclaredButUnwired { ref reason } = auth {
         return Err(InterpError::AuthDeclaredButUnwired {
-            service: match find_service_config_string(
-                service_node,
-                "svc_endpoint",
-                &si,
-                param_env,
-                ctx,
-            ) {
+            service: match find_service_config_string(service_node, "svc_endpoint", param_env, ctx)
+            {
                 Some(Ok(url)) => url,
                 Some(Err(spelled)) => format!("<unresolved: {}>", spelled),
                 None => "<unknown>".to_string(),
@@ -20739,7 +20691,7 @@ fn dispatch_rest(
     ];
     let mut headers: Vec<(String, String)> = Vec::new();
     for prop in transport.properties.iter() {
-        let pname = field_init_node_name_at(prop.clone(), si.clone());
+        let pname = field_init_node_name_at(prop.clone());
         if !reserved_props.contains(&pname.as_str()) {
             let pval = eval_expr(&field_init_node_value(prop.clone()), param_env, ctx)?;
             headers.push((pname, format!("{}", pval)));
@@ -20747,13 +20699,9 @@ fn dispatch_rest(
     }
 
     let mut query_params: Vec<(String, String)> = Vec::new();
-    if let Some(query_record) = find_property(
-        transport.properties.clone(),
-        "query".to_string(),
-        si.clone(),
-    ) {
+    if let Some(query_record) = find_property(transport.properties.clone(), "query".to_string()) {
         for child in query_record.children.iter() {
-            let qname = field_init_node_name_at(child.clone(), si.clone());
+            let qname = field_init_node_name_at(child.clone());
             let qval = eval_expr(&field_init_node_value(child.clone()), param_env, ctx)?;
             match &qval {
                 Value::Null => {}
@@ -20762,34 +20710,27 @@ fn dispatch_rest(
         }
     }
 
-    let body_json =
-        match find_property(transport.properties.clone(), "body".to_string(), si.clone()) {
-            Some(body_node) => {
-                let body_val = eval_expr(&body_node, param_env, ctx)?;
-                Some(
-                    value_to_wire_json(&body_val, ctx)
-                        .map_err(|msg| InterpError::TypeError { msg })?,
-                )
-            }
-            None => None,
-        };
+    let body_json = match find_property(transport.properties.clone(), "body".to_string()) {
+        Some(body_node) => {
+            let body_val = eval_expr(&body_node, param_env, ctx)?;
+            Some(value_to_wire_json(&body_val, ctx).map_err(|msg| InterpError::TypeError { msg })?)
+        }
+        None => None,
+    };
 
     // THE RESPONSE FORMAT IS THE AUTHORED std.serialization WireFormat VARIANT, READ THE WAY THE
     // EMITTER READS IT (v1.compiler.emit_rust emit_plain_response_body: transport_response_format,
-    // then authored_name_at), so the interpreter and emitted code cannot disagree on one
+    // then node_authored_text), so the interpreter and emitted code cannot disagree on one
     // declaration. This site used to read only a string literal and default every other spelling
     // to Json, so `response_format: Text` -- the typed spelling github.Pulls.Diff writes -- was
     // silently JSON-decoded here while emitted code read it as text
     // (gunbc.recurring_failure_mode response_format_variant_silently_read_as_json). Absent is
     // Json, as before; a present value that is not a WireFormat variant refuses rather than
     // defaulting.
-    let response_format = match crate::v1_std_core::transport_response_format(
-        transport.clone(),
-        si.clone(),
-    ) {
+    let response_format = match crate::v1_std_core::transport_response_format(transport.clone()) {
         None => "Json".to_string(),
         Some(node) => {
-            let authored = crate::v1_std_core::authored_name_at(si.clone(), node.clone());
+            let authored = crate::v1_std_core::node_authored_text(node.clone());
             if authored == "Text" || authored == "Json" {
                 authored
             } else {
@@ -20812,10 +20753,8 @@ fn dispatch_rest(
     // InsecureAcceptAnyCert is a typed refusal here (redfish etc. run through emitted code) —
     // never a silent no-op sending under VerifyPeer while the row asked for insecure. An
     // unrecognized posture also refuses.
-    if let Some(tls_node) =
-        find_property(transport.properties.clone(), "tls".to_string(), si.clone())
-    {
-        let posture = authored_name_at(si.clone(), tls_node);
+    if let Some(tls_node) = find_property(transport.properties.clone(), "tls".to_string()) {
+        let posture = node_authored_text(tls_node);
         if let Err(msg) = rest_tls_posture_interp_disposition(&posture) {
             return Err(InterpError::TypeError { msg });
         }
@@ -20861,11 +20800,8 @@ fn dispatch_rest(
     // a missing username/password field, or a non-Str credential is a typed refusal, never an
     // unauthenticated send or a stringified-debug header.
     let mut basic_auth_header: Option<String> = None;
-    if let Some(basic_node) = find_property(
-        transport.properties.clone(),
-        "auth_basic".to_string(),
-        si.clone(),
-    ) {
+    if let Some(basic_node) = find_property(transport.properties.clone(), "auth_basic".to_string())
+    {
         if rest_auth_authority_conflict(matches!(auth, AuthResolution::Resolved { .. }), true) {
             return Err(InterpError::TypeError {
                 msg: "rest transport declares both config-level auth and auth_basic — one auth \
@@ -20876,7 +20812,7 @@ fn dispatch_rest(
         let mut username: Option<String> = None;
         let mut password: Option<String> = None;
         for child in basic_node.children.iter() {
-            let fname = field_init_node_name_at(child.clone(), si.clone());
+            let fname = field_init_node_name_at(child.clone());
             let fval = eval_expr(&field_init_node_value(child.clone()), param_env, ctx)?;
             match (fname.as_str(), &fval) {
                 ("username", Value::Str(s)) => username = Some(s.to_string()),
@@ -20941,7 +20877,6 @@ pub fn resolve_auth(
     service_node: &Rc<Node>,
     _transport: &Rc<Node>,
     param_env: &Rc<Env>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     ctx: &InterpContext,
 ) -> AuthResolution {
     let mut header_name = "Authorization".to_string();
@@ -20953,13 +20888,13 @@ pub fn resolve_auth(
     let mut auth_declared = false;
 
     for prop in service_node.properties.iter() {
-        let name = field_init_node_name_at(prop.clone(), si.clone());
+        let name = field_init_node_name_at(prop.clone());
         let val_node = field_init_node_value(prop.clone());
 
         match name.as_str() {
             "svc_auth" => {
                 auth_declared = true;
-                let scheme = authored_name_at(si.clone(), val_node.clone());
+                let scheme = node_authored_text(val_node.clone());
                 if scheme == "Bearer" {
                     header_name = "Authorization".to_string();
                 } else if scheme == "Header" || val_node.name == "Header" {
@@ -20979,7 +20914,7 @@ pub fn resolve_auth(
             "svc_auth_input" => {
                 auth_declared = true;
                 // `auth_input: access_token` — the value node is the input field name (an identifier).
-                let field = authored_name_at(si.clone(), val_node.clone());
+                let field = node_authored_text(val_node.clone());
                 if !field.is_empty() {
                     input_field_name = Some(field);
                 } else {
@@ -20989,7 +20924,7 @@ pub fn resolve_auth(
             "svc_auth_source" => {
                 auth_declared = true;
                 for child in val_node.children.iter() {
-                    let field_name = field_init_node_name_at(child.clone(), si.clone());
+                    let field_name = field_init_node_name_at(child.clone());
                     if field_name == "name" {
                         let field_val = field_init_node_value(child.clone());
                         env_var_name = extract_string_value(&field_val);
@@ -21047,7 +20982,7 @@ fn extract_string_value(node: &Rc<Node>) -> Option<String> {
 
 // A service-config value is EVALUATED, like the `path` template two lines below its only
 // caller — one authority for "what does this config entry say". The previous reading had a
-// literal fast-path plus a fallback returning `authored_name_at`, the SOURCE TEXT of the
+// literal fast-path plus a fallback returning `node_authored_text`, the SOURCE TEXT of the
 // identifier: `endpoint: default_api_base` became the string "default_api_base", a plausible
 // non-empty value and a nonsense base URL. Every `github.Pulls` caller in the corpus failed
 // on it with `RelativeUrlWithoutBase` — modeled, cited, mock-covered, with production
@@ -21059,15 +20994,14 @@ fn extract_string_value(node: &Rc<Node>) -> Option<String> {
 fn find_service_config_string(
     service_node: &Rc<Node>,
     key: &str,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> Option<Result<String, String>> {
     for prop in service_node.properties.iter() {
-        let name = field_init_node_name_at(prop.clone(), si.clone());
+        let name = field_init_node_name_at(prop.clone());
         if name == key {
             let val_node = field_init_node_value(prop.clone());
-            let spelled = authored_name_at(si.clone(), val_node.clone());
+            let spelled = node_authored_text(val_node.clone());
             // Narrowed to Str as the deleted branch narrowed to LitStr: Display renders every
             // Value, so `format!` would turn Null into "null" and Int into digits, and the
             // non-empty check would pass both as a base URL — the original defect one layer down.
@@ -21117,29 +21051,29 @@ fn map_response_to_value(text: &str, op_node: &Rc<Node>, ctx: &InterpContext) ->
     }
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
-        let field_name = authored_name_at(ctx.si(), child.clone());
+        let field_name = node_authored_text(child.clone());
         fields.push((ctx.sym(&field_name), str_value(text.to_string())));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
     Value::Record {
-        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        type_name: ctx.sym(&node_authored_text(op_node.clone())),
         fields: Rc::new(fields),
     }
 }
 
-fn rest_output_child_is_list(child: &Rc<Node>, ctx: &InterpContext) -> bool {
+fn rest_output_child_is_list(child: &Rc<Node>) -> bool {
     let Some(crate::v1_std_core::InferredNode::Resolved { node }) = child.inferred.as_deref()
     else {
         return false;
     };
-    authored_name_at(ctx.si(), node.clone()).rsplit('.').next() == Some("List")
+    node_authored_text(node.clone()).rsplit('.').next() == Some("List")
 }
 
 fn rest_output_child_is_optional(child: &Rc<Node>) -> bool {
     child.return_cardinality == Cardinality::CardOptional
 }
 
-fn rest_optional_output_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> BTreeSet<String> {
+fn rest_optional_output_field_names(op_node: &Rc<Node>) -> BTreeSet<String> {
     op_node
         .inferred
         .as_deref()
@@ -21152,7 +21086,7 @@ fn rest_optional_output_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> 
                 .children
                 .iter()
                 .filter(|child| rest_output_child_is_optional(child))
-                .map(|child| authored_name_at(ctx.si(), child.clone()))
+                .map(|child| node_authored_text(child.clone()))
                 .collect()
         })
         .unwrap_or_default()
@@ -21163,7 +21097,7 @@ fn rest_payload_null_fields(
     op_node: &Rc<Node>,
     ctx: &InterpContext,
 ) -> Option<String> {
-    let optional = rest_optional_output_field_names(op_node, ctx);
+    let optional = rest_optional_output_field_names(op_node);
     match mapped {
         Value::Record { fields, .. } => {
             let missing: Vec<String> = fields
@@ -21190,7 +21124,7 @@ fn map_response_root_into_payload_field(
     child: &Rc<Node>,
     ctx: &InterpContext,
 ) -> Result<Value, RestResponseDecodeRefusal> {
-    if rest_output_child_is_list(child, ctx) {
+    if rest_output_child_is_list(child) {
         if json.is_array() {
             decode_json_by_declared_field(json, child, ctx)
         } else {
@@ -21220,8 +21154,8 @@ fn map_response_to_value_json(
     let payload_count = children.len();
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
-        let field_name = authored_name_at(ctx.si(), child.clone());
-        let from_key = extract_from_key(child, ctx);
+        let field_name = node_authored_text(child.clone());
+        let from_key = extract_from_key(child);
         let val = match from_key {
             Some(path) => {
                 let pointer = format!("/{}", path);
@@ -21243,7 +21177,7 @@ fn map_response_to_value_json(
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
     Ok(Value::Record {
-        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        type_name: ctx.sym(&node_authored_text(op_node.clone())),
         fields: Rc::new(fields),
     })
 }
@@ -21384,10 +21318,9 @@ fn resolve_module_encoding(
         )));
     }
     let tm = modules.get(module_path)?;
-    let si = ctx.si();
     for item in tm.items.iter() {
         if item_kind(Rc::clone(item)) != ItemKind::DataItem
-            || authored_name_at(si.clone(), Rc::clone(item)) != name
+            || node_authored_text(Rc::clone(item)) != name
         {
             continue;
         }
@@ -21395,7 +21328,7 @@ fn resolve_module_encoding(
             return Some(Err(format!("{}.{} has no initializer", module_path, name)));
         };
         if let ExprData::ExprVar { .. } = &*body.expr_data {
-            let alias = crate::v1_std_core::expr_var_name_at(body.clone(), si.clone());
+            let alias = crate::v1_std_core::expr_var_name_at(body.clone());
             return Some(
                 resolve_module_encoding(modules, module_path, &alias, fuel - 1, ctx)
                     .unwrap_or_else(|| {
@@ -21412,11 +21345,11 @@ fn resolve_module_encoding(
         if import_is_all(imp.clone()) {
             continue;
         }
-        if import_specific_names_at(imp.clone(), si.clone())
+        if import_specific_names_at(imp.clone())
             .iter()
             .any(|imported| imported == name)
         {
-            let source = authored_name_at(si.clone(), imp.clone());
+            let source = node_authored_text(imp.clone());
             return Some(
                 resolve_module_encoding(modules, &source, name, fuel - 1, ctx).unwrap_or_else(
                     || {
@@ -21442,33 +21375,26 @@ fn build_coproduct_wire_contract_index(ctx: &InterpContext) -> CoproductWireCont
         coproduct_decl_ref_decl_name, coproduct_wire_contract_encoding, field_value_by_name,
         is_coproduct_wire_contract_row, record_string_field,
     };
-    let si = ctx.si();
     let mut encodings: std::collections::HashMap<(String, String), Vec<Rc<Node>>> =
         std::collections::HashMap::new();
     for tm in ctx.modules.iter() {
         let imports = crate::v1_std_core::module_imports(tm.module.clone());
         for item in tm.items.iter() {
-            if !is_coproduct_wire_contract_row(
-                Rc::clone(item),
-                tm.items.clone(),
-                imports.clone(),
-                si.clone(),
-            ) {
+            if !is_coproduct_wire_contract_row(Rc::clone(item), tm.items.clone(), imports.clone()) {
                 continue;
             }
             let Some(body) = item.body.clone() else {
                 continue;
             };
-            let Some(decl_name) = coproduct_decl_ref_decl_name(body.clone(), si.clone()) else {
+            let Some(decl_name) = coproduct_decl_ref_decl_name(body.clone()) else {
                 continue;
             };
-            let Some(module_path) = field_value_by_name(body, "coproduct".to_string(), si.clone())
-                .and_then(|r| record_string_field(r, "module_path".to_string(), si.clone()))
+            let Some(module_path) = field_value_by_name(body, "coproduct".to_string())
+                .and_then(|r| record_string_field(r, "module_path".to_string()))
             else {
                 continue;
             };
-            let Some(encoding) = coproduct_wire_contract_encoding(Rc::clone(item), si.clone())
-            else {
+            let Some(encoding) = coproduct_wire_contract_encoding(Rc::clone(item)) else {
                 continue;
             };
             encodings
@@ -21480,12 +21406,7 @@ fn build_coproduct_wire_contract_index(ctx: &InterpContext) -> CoproductWireCont
     let modules: std::collections::HashMap<String, Rc<TypedModule>> = ctx
         .modules
         .iter()
-        .map(|tm| {
-            (
-                authored_name_at(si.clone(), tm.module.clone()),
-                Rc::clone(tm),
-            )
-        })
+        .map(|tm| (node_authored_text(tm.module.clone()), Rc::clone(tm)))
         .collect();
     let module_defaults = modules
         .keys()
@@ -21529,7 +21450,7 @@ fn decode_json_by_declared_field(
     field: &Rc<Node>,
     ctx: &InterpContext,
 ) -> Result<Value, RestResponseDecodeRefusal> {
-    let path = authored_name_at(ctx.si(), field.clone());
+    let path = node_authored_text(field.clone());
     decode_json_by_declared_field_at(json, field, &path, ctx)
 }
 
@@ -21556,7 +21477,7 @@ fn decode_json_by_declared_type(
     if json.is_null() {
         return Ok(Value::Null);
     }
-    let name = authored_name_at(ctx.si(), ty.clone());
+    let name = node_authored_text(ty.clone());
     if name.rsplit('.').next() == Some("List") {
         return match (json, ty.children.first()) {
             (serde_json::Value::Array(items), Some(element)) => {
@@ -21643,8 +21564,8 @@ fn decode_json_by_declared_type(
             // decode, and a body carrying both spellings refuses rather than letting iteration
             // order choose.
             for f in ty.children.iter() {
-                if let Some(wire) = extract_from_key(f, ctx) {
-                    let authored = authored_name_at(ctx.si(), f.clone());
+                if let Some(wire) = extract_from_key(f) {
+                    let authored = node_authored_text(f.clone());
                     if authored != wire && obj.contains_key(&authored) {
                         let cause = if obj.contains_key(&wire) {
                             RestResponseDecodeCause::AmbiguousWireSpelling {
@@ -21667,13 +21588,11 @@ fn decode_json_by_declared_type(
             }
             for (key, value) in obj.iter() {
                 let declared = ty.children.iter().find(|f| {
-                    extract_from_key(f, ctx)
-                        .unwrap_or_else(|| authored_name_at(ctx.si(), (*f).clone()))
-                        == *key
+                    extract_from_key(f).unwrap_or_else(|| node_authored_text((*f).clone())) == *key
                 });
                 let (stored, decoded) = match declared {
                     Some(f) => (
-                        authored_name_at(ctx.si(), f.clone()),
+                        node_authored_text(f.clone()),
                         decode_json_by_declared_field_at(
                             value,
                             f,
@@ -21739,17 +21658,17 @@ fn decode_nullary_coproduct(
             }))
         }
     };
-    let encoding_name = authored_name_at(ctx.si(), encoding.clone());
+    let encoding_name = node_authored_text(encoding.clone());
     if encoding_name != "StringVariant" {
         return Err(refuse(RestResponseDecodeCause::UnsupportedEncoding {
             encoding: encoding_name,
         }));
     }
-    let naming = naming_policy_node(encoding, ctx.si())
-        .map(|n| authored_name_at(ctx.si(), n))
+    let naming = naming_policy_node(encoding)
+        .map(|n| node_authored_text(n))
         .unwrap_or_default();
     for arm in ty.children.iter() {
-        let arm_name = authored_name_at(ctx.si(), arm.clone());
+        let arm_name = node_authored_text(arm.clone());
         let Some(wire) = variant_wire_spelling(&naming, &arm_name) else {
             return Err(refuse(RestResponseDecodeCause::UnsupportedNaming {
                 naming,
@@ -21947,7 +21866,7 @@ fn json_to_value(json: &serde_json::Value) -> Value {
 }
 
 fn type_annotation_names(ctx: &InterpContext, ty: &Rc<Node>, target: &str) -> bool {
-    if ty.name == target || authored_name_at(ctx.si(), ty.clone()) == target {
+    if ty.name == target || node_authored_text(ty.clone()) == target {
         return true;
     }
     ty.children
@@ -22014,13 +21933,13 @@ fn published_case_operation_key(ctx: &InterpContext, fields: &[(Symbol, Value)])
 
 fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
     for prop in op_node.properties.iter() {
-        let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
+        let prop_name = field_init_node_name_at(prop.clone());
         if has_mock_prefix(prop_name) {
             let val_node = field_init_node_value(prop.clone());
             return eval_expr(&val_node, &Env::empty(), ctx);
         }
     }
-    let op_name = authored_name_at(ctx.si(), op_node.clone());
+    let op_name = node_authored_text(op_node.clone());
     Err(InterpError::HermeticHostEffectRefused {
         operation: op_name.to_string(),
         ground: HermeticEffectGround::NoMockResponse,

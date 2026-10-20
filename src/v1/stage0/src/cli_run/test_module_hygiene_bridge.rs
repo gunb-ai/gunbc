@@ -45,7 +45,7 @@
 use crate::module_path_index::parsed_dag_file::parse_dag_file;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{self, sorted_fields, str_value, ExecutionMode, InterpContext, Value};
-use crate::v1_std_core::{authored_name_at, expr_call_func_at, expr_var_name_at, ExprData, Node};
+use crate::v1_std_core::{expr_call_func_at, expr_var_name_at, node_authored_text, ExprData, Node};
 use im::HashMap;
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};

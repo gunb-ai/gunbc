@@ -29,8 +29,8 @@ use crate::v1_interpreter::{
     sorted_fields, str_value, InterpContext, InterpError, InterpResult, Value,
 };
 use crate::v1_std_core::{
-    authored_name_at, field_init_node_name_at, field_init_node_value, field_node_name_at,
-    field_node_type_expr, find_child_named, inferred_to_node, Connective, ExprData, InferredNode,
+    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
+    find_child_named, inferred_to_node, node_authored_text, Connective, ExprData, InferredNode,
     NewlineIndex, Node, VarBindingKind,
 };
 
@@ -41,7 +41,7 @@ fn bare_symbol_tail(name: &str) -> &str {
 }
 
 fn local_symbol_name(si: &SourceIndices, node: &Rc<Node>) -> String {
-    bare_symbol_tail(&authored_name_at(si.clone(), node.clone())).to_string()
+    bare_symbol_tail(&node_authored_text(node.clone())).to_string()
 }
 
 fn coproduct_record_lit_variant_name(si: &SourceIndices, body: &Rc<Node>) -> String {
@@ -63,12 +63,12 @@ fn coproduct_variant_arm_by_name(
     if variant_name.is_empty() {
         return None;
     }
-    if let Some(arm) = find_child_named(coproduct.clone(), variant_name.to_string(), si.clone()) {
+    if let Some(arm) = find_child_named(coproduct.clone(), variant_name.to_string()) {
         return Some(arm);
     }
     let bare = bare_symbol_tail(variant_name);
     if bare != variant_name {
-        if let Some(arm) = find_child_named(coproduct.clone(), bare.to_string(), si.clone()) {
+        if let Some(arm) = find_child_named(coproduct.clone(), bare.to_string()) {
             return Some(arm);
         }
     }
@@ -107,7 +107,7 @@ fn type_expr_bare_name(si: &SourceIndices, type_expr: &Rc<Node>) -> Option<Strin
         .as_ref()
         .and_then(|inf| inferred_to_node(inf.clone()))
     {
-        let inferred_name = authored_name_at(si.clone(), inferred.clone());
+        let inferred_name = node_authored_text(inferred.clone());
         if !inferred_name.is_empty() {
             return Some(bare_symbol_tail(&inferred_name).to_string());
         }
@@ -115,7 +115,7 @@ fn type_expr_bare_name(si: &SourceIndices, type_expr: &Rc<Node>) -> Option<Strin
             return Some(bare_symbol_tail(&inferred.name).to_string());
         }
     }
-    let name = authored_name_at(si.clone(), ty.clone());
+    let name = node_authored_text(ty.clone());
     if name.is_empty() {
         if ty.name.is_empty() {
             None
@@ -142,8 +142,8 @@ fn field_type_bare_on_record_fields(
 ) -> Option<String> {
     let bare_field = bare_symbol_tail(field_name);
     for child in node.children.iter() {
-        let authored = authored_name_at(si.clone(), child.clone());
-        let declared = field_node_name_at(child.clone(), si.clone());
+        let authored = node_authored_text(child.clone());
+        let declared = field_node_name_at(child.clone());
         if authored != field_name
             && authored != bare_field
             && declared != field_name
@@ -257,7 +257,7 @@ fn rel_path_from_node(node: &Rc<Node>) -> String {
 
 fn declared_type_bare_name(item: &Rc<Node>, si: &SourceIndices) -> Option<String> {
     let ann = item.type_annotation.as_ref()?;
-    let name = authored_name_at(si.clone(), ann.clone());
+    let name = node_authored_text(ann.clone());
     if name.is_empty() {
         None
     } else {
@@ -286,7 +286,7 @@ fn type_item_from_importing_module_type_env(
     if item_kind(node.clone()) != ItemKind::TypeItem {
         return None;
     }
-    let name = authored_name_at(si.clone(), node.clone());
+    let name = node_authored_text(node.clone());
     if bare_symbol_tail(&name) != bare_name {
         return None;
     }
@@ -303,7 +303,7 @@ fn coproduct_type_item_with_variant_children(
     if node.connective != Connective::Disj {
         return None;
     }
-    let importing_module = authored_name_at(si.clone(), tm.module.clone());
+    let importing_module = node_authored_text(tm.module.clone());
     Some((node, importing_module))
 }
 
@@ -314,7 +314,7 @@ pub(crate) fn module_path_for_type_decl_node(
 ) -> Option<String> {
     let key = (
         type_item.span.file.to_string(),
-        authored_name_at(si.clone(), type_item.clone()),
+        node_authored_text(type_item.clone()),
     );
     ctx.type_decl_index()
         .module_by_file_and_type_name
@@ -346,12 +346,12 @@ pub fn build_type_decl_index(
     let mut coproduct_by_bare_name = std::collections::HashMap::new();
     let mut module_by_file_and_type_name = std::collections::HashMap::new();
     for tm in modules.iter() {
-        let mod_name = authored_name_at(si.clone(), tm.module.clone());
+        let mod_name = node_authored_text(tm.module.clone());
         for item in tm.items.iter() {
             if item_kind(Rc::clone(item)) != ItemKind::TypeItem {
                 continue;
             }
-            let authored = authored_name_at(si.clone(), Rc::clone(item));
+            let authored = node_authored_text(Rc::clone(item));
             module_by_file_and_type_name
                 .entry((item.span.file.to_string(), authored.clone()))
                 .or_insert_with(|| mod_name.clone());
@@ -376,7 +376,7 @@ fn declaration_identity_for_type_item(
 ) -> ResolvedDeclarationLocator {
     let module_path = module_path_for_type_decl_node(ctx, type_item, si)
         .unwrap_or_else(|| fallback_module_path.to_string());
-    let name = authored_name_at(si.clone(), type_item.clone());
+    let name = node_authored_text(type_item.clone());
     ResolvedDeclarationLocator {
         qualified_name: decl_logical_qualified_name(&module_path, &name),
         name,
@@ -395,7 +395,7 @@ fn declaration_identity_for_variant_arm(
     let arm = coproduct_variant_arm_by_name(coproduct, variant_name, si)?;
     let parent = declaration_identity_for_type_item(ctx, coproduct, si, fallback_module_path);
     let arm_name = {
-        let authored = authored_name_at(si.clone(), arm.clone());
+        let authored = node_authored_text(arm.clone());
         if authored.is_empty() {
             variant_name.to_string()
         } else {
@@ -446,7 +446,7 @@ fn coproduct_from_variant_value_binding(
     if node.connective != Connective::Disj {
         return None;
     }
-    let importing_module = authored_name_at(si.clone(), tm.module.clone());
+    let importing_module = node_authored_text(tm.module.clone());
     Some((node, importing_module))
 }
 
@@ -482,7 +482,7 @@ fn variant_value_from_typechecked_expr(
         if !from_inferred.is_empty() {
             from_inferred
         } else {
-            authored_name_at(si.clone(), inferred_node.clone())
+            node_authored_text(inferred_node.clone())
         }
     };
     if variant_name.is_empty() {
@@ -490,7 +490,7 @@ fn variant_value_from_typechecked_expr(
     }
 
     let expr_variant_name = {
-        let bare = crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone());
+        let bare = crate::v1_std_core::expr_var_name_at(expr.clone());
         if bare.is_empty() {
             variant_name.clone()
         } else {
@@ -874,7 +874,7 @@ fn marshal_value_identity_node(
 fn inferred_field_type_bare(si: &SourceIndices, field_init: &Rc<Node>) -> Option<String> {
     match field_init.inferred.as_deref() {
         Some(InferredNode::Resolved { node: ty, .. }) => {
-            let name = authored_name_at(si.clone(), normalize_access_type_node(ty.clone()));
+            let name = node_authored_text(normalize_access_type_node(ty.clone()));
             if name.is_empty() {
                 None
             } else {
@@ -1014,7 +1014,7 @@ fn marshal_plain_record_projection(
     )];
 
     for child in body.children.iter() {
-        let field_name = field_init_node_name_at(child.clone(), si.clone());
+        let field_name = field_init_node_name_at(child.clone());
         if field_name.is_empty() {
             continue;
         }
@@ -1075,7 +1075,7 @@ fn marshal_coproduct_record_projection(
     )];
 
     for child in body.children.iter() {
-        let field_name = field_init_node_name_at(child.clone(), si.clone());
+        let field_name = field_init_node_name_at(child.clone());
         if field_name.is_empty() {
             continue;
         }
@@ -1121,7 +1121,7 @@ pub fn marshal_data_initializer_projection_for_item(
 ) -> InterpResult<Value> {
     let si = ctx.source_indices.clone();
     let importing_module = {
-        let decl_name = authored_name_at(si.clone(), item.clone());
+        let decl_name = node_authored_text(item.clone());
         let suffix = format!(".{decl_name}");
         if qualified_name.ends_with(&suffix) {
             qualified_name[..qualified_name.len() - suffix.len()].to_string()

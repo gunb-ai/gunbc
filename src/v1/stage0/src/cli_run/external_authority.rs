@@ -70,13 +70,13 @@ use crate::v1_interpreter::str_value;
 use crate::v1_interpreter::Value;
 use crate::v1_rt;
 use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_pattern, authored_name_at, block_stmts,
-    build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
-    empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
-    field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    arg_name_at, arg_value, arm_body, arm_pattern, block_stmts, build_newline_index,
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
+    empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
+    field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
+    inferred_to_node, intern, is_error_diagnostic, is_interpreter_blocking_diagnostic,
+    let_binding_name_at, let_value, make_error_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_items, no_span, node_authored_text,
     param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
     ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
     Node,
@@ -86,11 +86,10 @@ use serde::Serialize;
 pub(crate) fn external_authority_uri_record_from_anchor_body(
     body: &Rc<crate::v1_std_core::Node>,
     variant: &str,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Option<Rc<crate::v1_std_core::Node>> {
     match variant {
         "ExternalAuthority" | "StableAuthority" | "ExternalUri" => {
-            extdeps_record_field_value(body, "uri", source_indices)
+            extdeps_record_field_value(body, "uri")
         }
         _ => None,
     }
@@ -98,20 +97,18 @@ pub(crate) fn external_authority_uri_record_from_anchor_body(
 
 pub(crate) fn external_authority_scheme_identity_from_value_node(
     node: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> String {
-    use crate::v1_std_core::authored_name_at;
-    authored_name_at(source_indices.clone(), node.clone())
+    use crate::v1_std_core::node_authored_text;
+    node_authored_text(node.clone())
 }
 
 pub(crate) fn external_authority_alias_symbol_name(
     body: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Option<String> {
-    use crate::v1_std_core::{authored_name_at, expr_var_name_at, ExprData};
+    use crate::v1_std_core::{expr_var_name_at, node_authored_text, ExprData};
     match body.expr_data.as_ref() {
         ExprData::ExprVar { .. } => {
-            let name = expr_var_name_at(body.clone(), source_indices.clone());
+            let name = expr_var_name_at(body.clone());
             if !name.is_empty() {
                 Some(name)
             } else if !body.name.is_empty() {
@@ -121,7 +118,7 @@ pub(crate) fn external_authority_alias_symbol_name(
             }
         }
         _ => {
-            let variant = authored_name_at(source_indices.clone(), body.clone());
+            let variant = node_authored_text(body.clone());
             if variant.is_empty() {
                 None
             } else {
@@ -135,22 +132,19 @@ pub(crate) fn external_authority_anchor_from_data_body(
     body: &Rc<crate::v1_std_core::Node>,
     module: &Rc<crate::v1_std_core::Node>,
     module_path: &str,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
-    use crate::v1_std_core::authored_name_at;
-    let variant = authored_name_at(source_indices.clone(), body.clone());
-    if let Some(uri_node) =
-        external_authority_uri_record_from_anchor_body(body, variant.as_str(), source_indices)
-    {
-        let Some(scheme) = extdeps_record_field_value(&uri_node, "scheme", source_indices)
-            .map(|n| external_authority_scheme_identity_from_value_node(&n, source_indices))
+    use crate::v1_std_core::node_authored_text;
+    let variant = node_authored_text(body.clone());
+    if let Some(uri_node) = external_authority_uri_record_from_anchor_body(body, variant.as_str()) {
+        let Some(scheme) = extdeps_record_field_value(&uri_node, "scheme")
+            .map(|n| external_authority_scheme_identity_from_value_node(&n))
         else {
             return ExternalAuthorityAnchorProjection::Refused {
                 cause: format!("anchor uri record has no `scheme` field in {variant}"),
             };
         };
-        let Some(locator) = extdeps_record_field_value(&uri_node, "locator", source_indices)
+        let Some(locator) = extdeps_record_field_value(&uri_node, "locator")
             .and_then(|n| extdeps_literal_string_value(&n))
         else {
             return ExternalAuthorityAnchorProjection::Refused {
@@ -167,10 +161,10 @@ pub(crate) fn external_authority_anchor_from_data_body(
             locator,
         };
     }
-    let Some(symbol) = external_authority_alias_symbol_name(body, source_indices) else {
+    let Some(symbol) = external_authority_alias_symbol_name(body) else {
         return ExternalAuthorityAnchorProjection::Absent;
     };
-    if let Some(home) = extdeps_import_home_for_symbol(module, symbol.as_str(), source_indices) {
+    if let Some(home) = extdeps_import_home_for_symbol(module, symbol.as_str()) {
         if !visited.insert(home.clone()) {
             return ExternalAuthorityAnchorProjection::Refused {
                 cause: format!("alias cycle revisiting {home} for symbol {symbol}"),
