@@ -1,0 +1,104 @@
+module gunbc.provisioning.network_boot_actuation
+
+import std.types { List, NonEmptyStr }
+import gunbc.boot_artifact_delivery {
+  BootArtifactDelivery,
+  BootControlTarget,
+  RedfishVirtualMediaPull,
+  MegaRacRestRemoteMedia,
+  OpenBmcNbdProxyWebsocket,
+  OpenBmcConfigfsUsbGadget,
+  UefiHttpBoot,
+  PxeChainBoot,
+  boot_artifact_delivery_boot_control,
+}
+import gunbc.firmware_network_boot_standing {
+  FirmwareNetworkBootStanding,
+  FirmwareNetworkBootPreparationRoute,
+  FirmwareNetworkBootRefusal,
+  UnansweredAxis,
+  Ready,
+  NeedsPreparation,
+  Unobserved,
+  Refused,
+  AdmittedPreparation,
+}
+
+// CUT 6 / S9: THE NETWORK-BOOT ARM ACTUATION, a pure derivation of the ordered steps one
+// delivery strategy needs. It performs no effect and is enrolled for no host: a step is a
+// description an executor would realize, and realizing it is a wet step gated outside this module.
+//
+// ONE DELIVERY IN, ONE STEP LIST OUT. The function takes a single BootArtifactDelivery -- the
+// strategy the solver already chose from evidence -- so there is no parameter through which a
+// second strategy could be offered, and no arm that retries another when this one is held. A held
+// attempt is reported as held; choosing again is a new attempt with new evidence (operator policy:
+// no attempt-time fallback). No host name or row is an input, so none can select.
+//
+// WHICH STANDING GATES WHICH DELIVERY. Network delivery (UEFI-HTTP, PXE chain) boots through the
+// unit's firmware network stack, so it is gated on the S0 standing. Virtual media boots a removable
+// device the BMC presents and never touches the firmware network stack, so the network standing is
+// not its precondition and is not read for it. USB gadget delivery is not an admitted strategy
+// (operator policy: no USB interim) and is held, not actuated.
+type ArmStep
+  = ArmPrepareFirmware { route: FirmwareNetworkBootPreparationRoute }
+  | ArmStageDelivery { delivery: BootArtifactDelivery }
+  | ArmSetBootControl { target: BootControlTarget }
+  | ArmResetUnit
+
+type ArmHeldCause
+  = HeldFirmwareUnobserved { unanswered: List<UnansweredAxis> }
+  | HeldFirmwareRefused { cause: FirmwareNetworkBootRefusal }
+  | HeldUsbGadgetNotAdmitted { why: NonEmptyStr }
+
+type ArmActuation
+  = ArmSteps { steps: List<ArmStep> }
+  | ArmHeld { cause: ArmHeldCause }
+
+// NeedsPreparation yields ONLY the preparation: boot control and reset follow a re-observation that
+// shows Ready, because resetting a unit whose firmware was just changed is acting on a reading that
+// no longer holds.
+fn network_boot_arm_actuator_steps(
+  delivery: BootArtifactDelivery,
+  standing: FirmwareNetworkBootStanding
+) -> ArmActuation {
+  match delivery {
+    RedfishVirtualMediaPull { params: _ } => removable_media_steps(delivery: delivery)
+    MegaRacRestRemoteMedia { params: _ } => removable_media_steps(delivery: delivery)
+    OpenBmcNbdProxyWebsocket { params: _ } => removable_media_steps(delivery: delivery)
+    OpenBmcConfigfsUsbGadget { params: _ } =>
+      ArmHeld {
+        cause: HeldUsbGadgetNotAdmitted {
+          why: "USB gadget delivery is a USB interim; operator policy admits network delivery or virtual media only",
+        },
+      }
+    UefiHttpBoot { params: _ } => network_steps(delivery: delivery, standing: standing)
+    PxeChainBoot { evidence: _ } => network_steps(delivery: delivery, standing: standing)
+  }
+}
+
+fn removable_media_steps(delivery: BootArtifactDelivery) -> ArmActuation {
+  ArmSteps {
+    steps: [
+      ArmStageDelivery { delivery: delivery },
+      ArmSetBootControl { target: boot_artifact_delivery_boot_control(delivery: delivery) },
+      ArmResetUnit,
+    ],
+  }
+}
+
+fn network_steps(delivery: BootArtifactDelivery, standing: FirmwareNetworkBootStanding) -> ArmActuation {
+  match standing {
+    Ready { conclusion: _ } =>
+      ArmSteps {
+        steps: [
+          ArmStageDelivery { delivery: delivery },
+          ArmSetBootControl { target: boot_artifact_delivery_boot_control(delivery: delivery) },
+          ArmResetUnit,
+        ],
+      }
+    NeedsPreparation { admitted: AdmittedPreparation { route: route, blocking: _ } } =>
+      ArmSteps { steps: [ArmPrepareFirmware { route: route }] }
+    Unobserved { unanswered: gaps } => ArmHeld { cause: HeldFirmwareUnobserved { unanswered: gaps } }
+    Refused { cause: cause, gaps: _ } => ArmHeld { cause: HeldFirmwareRefused { cause: cause } }
+  }
+}
