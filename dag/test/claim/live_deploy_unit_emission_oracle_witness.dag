@@ -34,7 +34,6 @@ import test.claim.live_deploy.apply_emission_projection { claim_oidc_now }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 import v2.std.orchestration { PipelineStep, Let, If, Do, ExprCmdSubst }
-import gunbc.live_deploy.operations { deploy_observed_sha256_admitted_command, deploy_stage_write_observed_sha256_env_command, deploy_observed_sha256_line_ere }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.live_deploy.emit {
   emit_device_crypto_sidecar_unit_doc, device_crypto_sidecar_install_steps, device_crypto_sidecar_binary_path,
@@ -449,17 +448,12 @@ fn step_writes_env(st: PipelineStep) -> Bool {
   }
 }
 
-// RED: an empty or invalid digest is refused BEFORE any write. The guard step (If-Not-admitted, Exit 1) must sit after the
-// observation and before the only step that names the env variable; reorder them and the write precedes the refusal.
-// The admission pattern is the Sha256DigestHex shape: exactly 64 lowercase hex digits, then the sha256sum separator, so an
-// empty line, a 63-digit line and an uppercase/non-hex line all fail it.
-test fn an_empty_or_invalid_digest_is_refused_before_any_write() -> Bool {
+// ORDER: the guard sits after the observation and before the only step that names the env variable. The refusal itself is
+// exercised by real execution in test.claim.live_deploy.observed_sha256_guard_real_execution.
+test fn the_digest_guard_precedes_the_env_write() -> Bool {
   let steps = device_crypto_sidecar_install_steps(spec: live_spec(), revision: live_revision())
   step_at_is_observed_let(steps: steps, index: 1) && step_at_is_guard(steps: steps, index: 2) && step_at_writes_env(steps: steps, index: 3)
     && !step_at_writes_env(steps: steps, index: 0) && !step_at_writes_env(steps: steps, index: 1) && !step_at_writes_env(steps: steps, index: 2)
-    && deploy_observed_sha256_line_ere == "^[0-9a-f]{64}  "
-    && string_contains(s: deploy_observed_sha256_admitted_command(), pattern: "grep -Eq")
-    && string_contains(s: deploy_stage_write_observed_sha256_env_command(stage_name: "x", env_name: "N"), pattern: "%.64s")
 }
 
 // THE BROKER INHERITS THE ROADMAP'S EVALUATION CAPS, and that is a stated divergence rather than a

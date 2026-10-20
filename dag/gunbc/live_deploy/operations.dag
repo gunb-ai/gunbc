@@ -25,6 +25,7 @@ import extdeps.tools.gnu_coreutils {
 }
 import extdeps.tools.diffutils { diffutils_cmp_program }
 import extdeps.tools.grep { grep_program }
+import std.content_hash { lower_hex_prefix_ere, sha256_hex_digit_count }
 import extdeps.tools.gnu_coreutils { printf_program }
 import gunbc.fleet.fleet_posix_accounts { fleet_visudo_binary_path, fleet_cp_binary_path, fleet_mv_binary_path }
 import extdeps.sudo.elevation { sudo_elevate_argv }
@@ -204,7 +205,7 @@ fn deploy_stage_write_command(stage_name: String, content: String) -> String {
 // ONE spelling of that pattern; the write takes exactly its first 64 characters (%.64s), so what is
 // written is what the guard admitted.
 data deploy_observed_digest_var: String = "_gunbc_observed_digest"
-data deploy_observed_sha256_line_ere: String = "^[0-9a-f]{64}  "
+data deploy_observed_sha256_line_ere: String = concat(lower_hex_prefix_ere(expected_hex_digits: sha256_hex_digit_count), "  ")
 
 fn deploy_observed_sha256_admitted_command() -> String {
   shell_command_text_of_node(

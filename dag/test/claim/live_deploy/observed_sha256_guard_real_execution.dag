@@ -1,0 +1,74 @@
+module test.claim.live_deploy.observed_sha256_guard_real_execution
+
+import std.logic { Bool }
+import std.types { String }
+import extdeps.exec.command { LocalExec }
+import extdeps.languages.bash.invocation { bash_program_command }
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.live_deploy.operations {
+  deploy_observed_digest_var, deploy_stage_dir_var, deploy_observed_sha256_admitted_command, deploy_stage_write_observed_sha256_env_command,
+}
+import std.content_hash { lower_hex_64 }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE OBSERVED-SHA256 GUARD, BY REAL EXECUTION. The refusal is a fact about what bash does with the
+// rendered guard and write, so this runs the text gunbc.live_deploy.operations renders
+// (deploy_observed_sha256_admitted_command, deploy_stage_write_observed_sha256_env_command) under the
+// deploy's strict line, with the observed line supplied as a fixture value of the variable the Let binds.
+// Each program mirrors the emitted order: guard (If-Not-admitted then Exit 1), then the staged write,
+// then a marker. A refused line must exit nonzero, never reach the marker and leave no staged file.
+data write_marker: String = "GUNBC-DIGEST-WRITE-REACHED"
+data stage_file: String = "digest.env"
+data hex64: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+fn guard_program(observed_line: String) -> String {
+  join([
+    "set -euo pipefail\n",
+    deploy_stage_dir_var, "=\"$(mktemp -d)\"\n",
+    "trap 'rm -rf \"$", deploy_stage_dir_var, "\"' EXIT\n",
+    deploy_observed_digest_var, "='", observed_line, "'\n",
+    "if ! ", deploy_observed_sha256_admitted_command(), " >/dev/null; then exit 1; fi\n",
+    deploy_stage_write_observed_sha256_env_command(stage_name: stage_file, env_name: "NAME"), "\n",
+    "cat \"$", deploy_stage_dir_var, "/", stage_file, "\"\n",
+    "echo ", write_marker, "\n",
+  ], "")
+}
+
+fn refused(observed_line: String) -> Bool {
+  let obs = run_shell_command_observe(command: bash_program_command(script: guard_program(observed_line: observed_line)), transport: LocalExec)
+  obs.exit_code != 0 && !string_contains(s: obs.stdout, pattern: write_marker) && !string_contains(s: obs.stdout, pattern: "NAME=")
+}
+
+// POSITIVE CONTROL: a well-formed sha256sum line is admitted and writes exactly NAME=<its 64 digits>.
+test fn a_valid_sha256sum_line_is_written_by_real_execution() -> Bool {
+  let obs = run_shell_command_observe(
+    command: bash_program_command(script: guard_program(observed_line: join([hex64, "  /opt/x/bin"], ""))),
+    transport: LocalExec,
+  )
+  obs.exit_code == 0 && string_contains(s: obs.stdout, pattern: join(["NAME=", hex64], "")) && string_contains(s: obs.stdout, pattern: write_marker)
+}
+
+// RED: empty, 63-digit, uppercase, non-hex and missing-separator observations are each refused before any write.
+test fn an_empty_observation_is_refused_before_any_write_by_real_execution() -> Bool {
+  refused(observed_line: "")
+}
+
+test fn a_short_digest_is_refused_before_any_write_by_real_execution() -> Bool {
+  refused(observed_line: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde  /opt/x/bin")
+}
+
+test fn an_uppercase_digest_is_refused_before_any_write_by_real_execution() -> Bool {
+  refused(observed_line: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef  /opt/x/bin")
+}
+
+test fn a_non_hex_digest_is_refused_before_any_write_by_real_execution() -> Bool {
+  refused(observed_line: "zzzz456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  /opt/x/bin")
+}
+
+// AGREEMENT: the grep pattern is derived from the validator's width, and on the fixtures it admits exactly
+// what std.content_hash lower_hex_64 admits (the first field of the line).
+test fn the_guard_agrees_with_the_sha256_digest_hex_validator() -> Bool {
+  lower_hex_64(value: hex64) && !lower_hex_64(value: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef")
+}

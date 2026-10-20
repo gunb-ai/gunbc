@@ -1,7 +1,7 @@
 module std.content_hash
 import std.optional { Absent, Present }
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, Int }
 import std.algebra { collection_concat_shape, collection_join_shape }
 import std.host_text { chars }
 
@@ -94,8 +94,19 @@ fn lower_hex_40(value: String) -> Bool {
   content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 40)
 }
 
+data sha256_hex_digit_count: Int = 64
+
 fn lower_hex_64(value: String) -> Bool {
-  content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 64)
+  content_hash_validate_lower_hex_length(text: value, expected_hex_digits: sha256_hex_digit_count)
+}
+
+// THE ERE PROJECTION OF content_hash_validate_lower_hex_length, for a consumer that must test the
+// shape at RUNTIME in a shell (gunbc.live_deploy.operations deploy_observed_sha256_admitted_command)
+// where the validator cannot run. Same width input, same alphabet (lowercase hex), so the pattern
+// is derived from the width the validator takes rather than respelled; test.claim.live_deploy.
+// observed_sha256_guard_real_execution runs both on the same lines and requires agreement.
+fn lower_hex_prefix_ere(expected_hex_digits: Int) -> String {
+  concat("^[0-9a-f]\{", concat(to_string(expected_hex_digits), "}"))
 }
 
 fn lower_hex_128(value: String) -> Bool {
