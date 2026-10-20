@@ -8,7 +8,8 @@ module test.claim.machine_word_witness
 //
 // AN `import std.integer` HERE WOULD BREAK EVERY CLAIM IN THE FILE, which is why the line is absent
 // rather than merely unnecessary, and why the qualified spelling is worth its length. std.integer
-// declares `type Int = AbelianGroup<GroupCompletion<Nat>>`, and importing the module rebinds bare
+// declared `type Int = AbelianGroup<GroupCompletion<Nat>>` when this was measured (it is now the signed
+// carrier NonNegative { n: Nat } | Negative { pred: Nat }), and importing the module rebinds bare
 // Int in THIS module to that type, which an integer literal does not inhabit -- so
 // `word_of_int(width: Width32, value: 5)` stops typechecking and every vector below it goes with it.
 // Measured, not reasoned: two probe modules differing ONLY by that import line, the one without it
