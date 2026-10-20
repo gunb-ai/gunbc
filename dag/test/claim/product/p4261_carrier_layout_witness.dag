@@ -2228,7 +2228,7 @@ test fn u500_meets_the_gate_network_at_one_contact() -> Bool {
     && !one_node(net: live, a: e1_u500_contact(n: "right contact 2"), b: e1_ground_ref)
     && any(rs, o => reads_pair(o: o, a: e1_u500_contact(n: "right contact 2"), b: e1_ground_ref) && is_reported_zero(o: o))
     && all(component_of(layout: p4261_e1_layout, c: e1_u500), c => count(c.terminals) == 8 && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
-    && all(component_of(layout: p4261_e1_layout, c: e1_u43), c => count(c.terminals) == 6)
+    && all(component_of(layout: p4261_e1_layout, c: e1_u43), c => count(c.terminals) == 6 && match c.identification { MarkingUnresolved { marking, discriminator: _ } => match marking { Present { value: m } => (m.text as String).contains("WEJ"), Absent => false }, _ => false })
     && all(component_of(layout: p4261_e1_layout, c: e1_y50), c => count(c.terminals) == 4)
     && count(component_of(layout: p4261_e1_layout, c: e1_u500)) == 1
     && carrier_input_reading(layout: p4261_e1_layout).contains("On the front, 1 of U500's contacts read at or below 500 ohm from Q300 lead b on the 2k range (upper-right contact), against 800 ohm to its ground contact")
