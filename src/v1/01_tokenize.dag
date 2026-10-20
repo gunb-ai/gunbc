@@ -220,7 +220,8 @@ fn tokenize_artifact(source: String, file: String, env: ParseEnvironment) -> V1L
     // marker then sits at the start of input, which is the honest offset for a zero-width boundary
     // when nothing was lexed: an offset is not a LOCATION, and nothing here claims one. The fact
     // 'this file has no lexemes' is a fact about the STREAM, decided once by
-    // `token_stream_has_no_lexemes` in v1.std.core from the token shapes, and said by
+    // `token_stream_has_no_lexemes` in THIS module (v1.compiler.tokenize, beside `is_trivia_shape`
+    // whose shapes it reads) from the token shapes, and said by
     // `render_span_location_in_stream` as `<file>: (no position: file has no lexemes)`. A sentinel
     // number in the span would put that fact in band, where every future reader of `span.start`
     // has to know it (DESIGN 5), so there is none.
