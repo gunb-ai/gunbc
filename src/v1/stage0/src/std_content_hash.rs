@@ -129,8 +129,19 @@ pub fn lower_hex_40(value: String) -> bool {
     content_hash_validate_lower_hex_length(value.clone(), 40)
 }
 
+pub fn sha256_hex_digit_count() -> i64 {
+    64
+}
+
 pub fn lower_hex_64(value: String) -> bool {
-    content_hash_validate_lower_hex_length(value.clone(), 64)
+    content_hash_validate_lower_hex_length(value.clone(), sha256_hex_digit_count())
+}
+
+pub fn lower_hex_prefix_ere(expected_hex_digits: i64) -> String {
+    v1_rt::concat(
+        "^[0-9a-f]{".to_string(),
+        v1_rt::concat((expected_hex_digits.clone()).to_string(), "}".to_string()),
+    )
 }
 
 pub fn lower_hex_128(value: String) -> bool {
