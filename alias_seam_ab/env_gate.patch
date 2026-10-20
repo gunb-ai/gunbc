@@ -1,0 +1,13 @@
+diff --git a/src/v1/stage0/src/v1_compiler_infer_env.rs b/src/v1/stage0/src/v1_compiler_infer_env.rs
+index dd3ee5f8f0b..c8139d310e3 100644
+--- a/src/v1/stage0/src/v1_compiler_infer_env.rs
++++ b/src/v1/stage0/src/v1_compiler_infer_env.rs
+@@ -3771,7 +3771,7 @@ pub fn settled_rhs(
+ 
+ pub fn transparent_alias_rhs(pre: Rc<Node>) -> Option<Rc<Node>> {
+     if (((((pre.connective.clone() != Connective::NoConnective)
+-        || ((pre.params.clone().len() as i64) > 0))
++        || ((if std::env::var("GUNBC_ALIAS_GUARD_OFF").is_ok() { 0i64 } else { pre.params.clone().len() as i64 }) > 0))
+         || (pre.type_annotation.clone() != std::option::Option::None))
+         || ((pre.children.clone().len() as i64) > 0))
+         || (pre.return_cardinality.clone() != Cardinality::Required))

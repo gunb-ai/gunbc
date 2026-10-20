@@ -1,0 +1,26 @@
+diff --git a/src/v1/04_env.dag b/src/v1/04_env.dag
+index d9d68e3a0b0..8f181718d1d 100644
+--- a/src/v1/04_env.dag
++++ b/src/v1/04_env.dag
+@@ -2169,7 +2169,7 @@ fn settled_rhs(rhs: Node, head: DeclarationRef, source_indices: Map<String, Newl
+ // `inferred` is its authored RHS. Every other item answers none. The one predicate both the env binding writer and the index
+ // reader use.
+ fn transparent_alias_rhs(pre: Node) -> Node? {
+-  if pre.connective != NoConnective || (pre.params |> count) > 0 || pre.type_annotation != none
++  if pre.connective != NoConnective || (0 > 0) || pre.type_annotation != none
+     || (pre.children |> count) > 0 || pre.return_cardinality != Required {
+     none
+   } else {
+diff --git a/src/v1/stage0/src/v1_compiler_infer_env.rs b/src/v1/stage0/src/v1_compiler_infer_env.rs
+index dd3ee5f8f0b..fb766b6db4c 100644
+--- a/src/v1/stage0/src/v1_compiler_infer_env.rs
++++ b/src/v1/stage0/src/v1_compiler_infer_env.rs
+@@ -3771,7 +3771,7 @@ pub fn settled_rhs(
+ 
+ pub fn transparent_alias_rhs(pre: Rc<Node>) -> Option<Rc<Node>> {
+     if (((((pre.connective.clone() != Connective::NoConnective)
+-        || ((pre.params.clone().len() as i64) > 0))
++        || ((0 as i64) > 0))
+         || (pre.type_annotation.clone() != std::option::Option::None))
+         || ((pre.children.clone().len() as i64) > 0))
+         || (pre.return_cardinality.clone() != Cardinality::Required))
