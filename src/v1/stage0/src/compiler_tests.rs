@@ -996,7 +996,7 @@ mod compiler_tests {
                     Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.clone(),
                     other => panic!("mk body untyped: {other:?}"),
                 };
-                let decl_file = ty.ident_span.as_ref().map(|s| s.span.file.clone()).unwrap_or_default();
+                let decl_file = ty.ident_span.as_ref().map(|s| s.file.clone()).unwrap_or_default();
                 assert_eq!(decl_file, "probe_user_opt.dag", "a user-declared Optional keeps its own declaration, not std.optional's; typed as {} from {}", ty.name, decl_file);
                 assert!((ty.children.len() as i64) == 2, "user Optional keeps its own two fields, got {}", ty.children.len());
             })
@@ -4335,7 +4335,7 @@ mod compiler_tests {
             name: name.to_string(),
             ident: None,
             span: span.clone(),
-            ident_span: Some(crate::v1_std_core::authored_ident(span, name.to_string())),
+            ident_span: Some(span),
             children: std::rc::Rc::new(children.into()),
             connective: crate::v1_std_core::Connective::NoConnective,
             params: std::rc::Rc::new(im::Vector::new()),
@@ -4848,7 +4848,7 @@ mod compiler_tests {
                 name: name.to_string(),
                 ident: None,
                 span: span.clone(),
-                ident_span: Some(crate::v1_std_core::authored_ident(span, name.to_string())),
+                ident_span: Some(span),
                 children: std::rc::Rc::new(im::Vector::new()),
                 connective: crate::v1_std_core::Connective::NoConnective,
                 params: std::rc::Rc::new(im::Vector::new()),
@@ -5082,14 +5082,11 @@ mod compiler_tests {
         ) -> std::rc::Rc<crate::v1_std_core::Node> {
             let base = shaped_type_node(name, Vec::new());
             std::rc::Rc::new(crate::v1_std_core::Node {
-                ident_span: Some(crate::v1_std_core::authored_ident(
-                    std::rc::Rc::new(crate::v1_std_core::SourceSpan {
-                        file: ident_file,
-                        start: 0,
-                        end: 0,
-                    }),
-                    name.to_string(),
-                )),
+                ident_span: Some(std::rc::Rc::new(crate::v1_std_core::SourceSpan {
+                    file: ident_file,
+                    start: 0,
+                    end: 0,
+                })),
                 ..(*base).clone()
             })
         }
@@ -5222,14 +5219,11 @@ mod compiler_tests {
         ) -> std::rc::Rc<crate::v1_std_core::Node> {
             let base = shaped_type_node(name, Vec::new());
             std::rc::Rc::new(crate::v1_std_core::Node {
-                ident_span: Some(crate::v1_std_core::authored_ident(
-                    std::rc::Rc::new(crate::v1_std_core::SourceSpan {
-                        file: file.to_string(),
-                        start: 0,
-                        end: 0,
-                    }),
-                    name.to_string(),
-                )),
+                ident_span: Some(std::rc::Rc::new(crate::v1_std_core::SourceSpan {
+                    file: file.to_string(),
+                    start: 0,
+                    end: 0,
+                })),
                 module_item_kind: kind,
                 inferred: resolved.map(|rt| {
                     std::rc::Rc::new(crate::v1_std_core::InferredNode::Resolved { node: rt })
