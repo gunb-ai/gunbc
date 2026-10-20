@@ -12074,12 +12074,51 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
+// A PARAMETRIC DECLARATION NAMED WITHOUT ITS ARGUMENTS IS NOT A RENDERABLE TURBOFISH ARGUMENT. child_type_node
+// projects an alias reference to its resolved declaration node, and the env-resolved alias binding's
+// resolved_type drops the RHS type argument, so `Map<Symbol, QualifiedName>` (QualifiedName = FreeMonoid<Symbol>)
+// reached the renderer as the childless head `FreeMonoid` and emitted `rc_empty_map::<Symbol, Rc<FreeMonoid>>()`,
+// rustc E0107 (v2.compiler.resolve type_param_value_binders, #14084). The fact asked is the declaration's own
+// parameter count from the env binding, not a name: a node whose binding declares parameters but renders as its bare
+// head has lost its application, so the position defers to the target's inference exactly as an erased argument does.
+// The children of a Disj node are its ARMS, not type arguments: lookup_type_for resolves an arm's name to the
+// owning parametric declaration, so an arm such as std.list FirstDuplicateNotFound read as the declaration named
+// without its arguments, the fold lambda's accumulator widened to `_` beside the `_` seed, and rustc E0282 had
+// nothing to infer from. A bare head is a type REFERENCE (a Map argument, a field), never an arm; the arms'
+// own children are still searched. Dissolution: adhoc-65526d74-43f, with the rest of this compensation.
+fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
+  n.children |> any(c =>
+    let t = child_type_node(ch: c)
+    (n.connective != Disj && rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+      || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+}
+
+// The declaration's parameter count is read from the env binding; the render is bare when it is the head name
+// alone, with or without the shared wrap, whatever children the projected node still carries.
+fn rust_type_renders_bare_parametric_head(t: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
+  if !type_node_declares_parameters(n: t, env: emit_info.fn_type_env) {
+    false
+  } else {
+    let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: t))
+    let rendered = render_rust_type(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    rendered == head || rendered == concat("Rc<", head, ">")
+  }
+}
+
+fn type_node_declares_parameters(n: Node, env: TypeEnv) -> Bool {
+  match lookup_type_for(env: env, node: n) {
+    Present { value: binding } => (binding.params |> count) > 0
+    Absent => false
+  }
+}
+
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
   } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
     || type_node_carries_erased_type_argument(n: map_type)
+    || type_node_carries_applicationless_parametric_head(n: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     || map_type.children |> any(c => type_node_child_is_type_variable(c: c)) {
     "v1_rt::rc_empty_map::<_, _>()"
   } else {
@@ -13914,7 +13953,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic { "_" } else { acc_type_str }
+  let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic || acc_carries_bare_parametric_head { "_" } else { acc_type_str }
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {

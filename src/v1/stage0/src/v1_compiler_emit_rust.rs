@@ -8176,21 +8176,27 @@ pub fn anonymous_record_lit_surface_name(
             type_summaries.clone(),
         ) {
             Some(sn) => sn.clone(),
-            std::option::Option::None => {
-                let rt = crate::v1_compiler_infer_types::resolved_type(n.clone());
-                let rt_name =
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone());
-                if ((rt.ident_span.clone() != std::option::Option::None)
-                    && (crate::v1_compiler_infer_emit_info::type_summary_decided(
-                        type_summaries.clone(),
-                        rt_name.clone(),
-                    ) != std::option::Option::None))
-                {
-                    rt_name.clone()
-                } else {
-                    "".to_string()
+            std::option::Option::None => match find_unique_struct_name_by_fields(
+                lit_field_names.clone(),
+                type_summaries.clone(),
+            ) {
+                Some(sn) => sn.clone(),
+                std::option::Option::None => {
+                    let rt = crate::v1_compiler_infer_types::resolved_type(n.clone());
+                    let rt_name =
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone());
+                    if ((rt.ident_span.clone() != std::option::Option::None)
+                        && (crate::v1_compiler_infer_emit_info::type_summary_decided(
+                            type_summaries.clone(),
+                            rt_name.clone(),
+                        ) != std::option::Option::None))
+                    {
+                        rt_name.clone()
+                    } else {
+                        "".to_string()
+                    }
                 }
-            }
+            },
         }
     }
 }
@@ -8318,7 +8324,20 @@ pub fn record_lit_resolved_ctor_import_names(
                             Rc::new(vec![])
                         }
                     }
-                    std::option::Option::None => Rc::new(vec![]),
+                    std::option::Option::None => match find_unique_struct_name_by_fields(
+                        lit_field_names.clone(),
+                        type_summaries.clone(),
+                    ) {
+                        Some(sn) => {
+                            if ((sn.clone() != "".to_string()) && (sn.clone() != type_name.clone()))
+                            {
+                                Rc::new(vec![sn.clone()])
+                            } else {
+                                Rc::new(vec![])
+                            }
+                        }
+                        std::option::Option::None => Rc::new(vec![]),
+                    },
                 }
             }
         } else {
@@ -25347,6 +25366,75 @@ pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
     }
 }
 
+pub fn type_node_carries_applicationless_parametric_head(
+    n: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let mut __found = false;
+        for c in n.children.clone().iter().cloned() {
+            if {
+                let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
+                (((n.connective.clone() != Connective::Disj)
+                    && rust_type_renders_bare_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    || type_node_carries_applicationless_parametric_head(
+                        t.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
+pub fn rust_type_renders_bare_parametric_head(
+    t: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    if !type_node_declares_parameters(t.clone(), emit_info.fn_type_env.clone()) {
+        false
+    } else {
+        {
+            let head = crate::v1_std_core::qualified_last_segment(
+                crate::v1_std_core::authored_name_at(source_indices.clone(), t.clone()),
+            );
+            let rendered = render_rust_type(
+                t.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            );
+            ((rendered.clone() == head.clone())
+                || (rendered.clone()
+                    == v1_rt::concat(
+                        v1_rt::concat("Rc<".to_string(), head.clone()),
+                        ">".to_string(),
+                    )))
+        }
+    }
+}
+
+pub fn type_node_declares_parameters(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+        Some(binding) => ((binding.params.clone().len() as i64) > 0),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn rust_empty_map_init_expr(
     map_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
@@ -25365,13 +25453,19 @@ pub fn rust_empty_map_init_expr(
                 "HashMap::new() /* BRIDGE: empty_map value type unresolved */".to_string(),
             )
         } else {
-            if ((rust_fold_rendered_type_has_any_spurious_generic(
+            if (((rust_fold_rendered_type_has_any_spurious_generic(
                 v1_rt::concat(
                     v1_rt::concat("<".to_string(), kv_type_str.clone()),
                     ">".to_string(),
                 ),
                 emit_info.fn_generic_param_names.clone(),
             ) || type_node_carries_erased_type_argument(map_type.clone()))
+                || type_node_carries_applicationless_parametric_head(
+                    map_type.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                ))
                 || {
                     let mut __found = false;
                     for c in map_type.children.clone().iter().cloned() {
@@ -29523,12 +29617,19 @@ pub fn emit_rust_fold_method_call(
         );
         let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
             && crate::std_types::is_container_type(acc_type_name.clone()));
-        let lambda_acc_type_str = if (((((is_bare_container.clone()
+        let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(
+            acc_type_node.clone(),
+            shared_types.clone(),
+            scope.type_env.source_indices.clone(),
+            fold_emit_info.clone(),
+        );
+        let lambda_acc_type_str = if ((((((is_bare_container.clone()
             || acc_type_is_type_var.clone())
             || acc_child_is_type_var.clone())
             || acc_has_unbound_type_var.clone())
             || acc_has_closure_unbound_generic.clone())
             || acc_render_has_spurious_generic.clone())
+            || acc_carries_bare_parametric_head.clone())
         {
             "_".to_string()
         } else {
@@ -34775,43 +34876,72 @@ pub fn emit_typed_record_lit(
                                     }
                                     __result
                                 });
-                                let single_candidates = anonymous_record_struct_candidates(
+                                match find_unique_struct_name_by_fields(
                                     single_field_names.clone(),
-                                    v1_rt::rc_empty_map::<String, String>(),
                                     emit_info.type_summaries.clone(),
-                                );
-                                if ((single_candidates.clone().len() as i64) == 1) {
-                                    match single_candidates.clone().first().cloned() {
-                                        Some(cand) => {
-                                            let r_sn = cand.name.clone();
-                                            if rust_record_field_needs_fn_rc(
-                                                scope.clone(),
-                                                r_sn.clone(),
-                                                fname0.clone(),
-                                            ) {
+                                ) {
+                                    Some(r_sn) => {
+                                        if rust_record_field_needs_fn_rc(
+                                            scope.clone(),
+                                            r_sn.clone(),
+                                            fname0.clone(),
+                                        ) {
+                                            {
+                                                let wrapped_val = wrap_rust_record_field_value(
+                                                    fval0.clone(),
+                                                    Some(
+                                                        crate::v1_std_core::field_init_node_value(
+                                                            f.clone(),
+                                                        ),
+                                                    ),
+                                                    scope.clone(),
+                                                    emit_info.clone(),
+                                                    shared_types.clone(),
+                                                    r_sn.clone(),
+                                                    fname0.clone(),
+                                                );
+                                                let struct_lit = v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                v1_rt::concat(
+                                                                    r_sn.clone(),
+                                                                    " {\n    ".to_string(),
+                                                                ),
+                                                                crate::v1_compiler_emit::emit_ident(
+                                                                    fname0.clone(),
+                                                                    RenderTarget::Rust,
+                                                                ),
+                                                            ),
+                                                            ": ".to_string(),
+                                                        ),
+                                                        wrapped_val.clone(),
+                                                    ),
+                                                    ",\n}".to_string(),
+                                                );
+                                                if v1_rt::set_contains(&shared_types, r_sn.clone())
                                                 {
-                                                    let wrapped_val = wrap_rust_record_field_value(fval0.clone(), Some(crate::v1_std_core::field_init_node_value(f.clone())), scope.clone(), emit_info.clone(), shared_types.clone(), r_sn.clone(), fname0.clone());
-                                                    let struct_lit = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(r_sn.clone(), " {\n    ".to_string()), crate::v1_compiler_emit::emit_ident(fname0.clone(), RenderTarget::Rust)), ": ".to_string()), wrapped_val.clone()), ",\n}".to_string());
-                                                    if v1_rt::set_contains(
-                                                        &shared_types,
-                                                        r_sn.clone(),
-                                                    ) {
-                                                        rust_shared_wrap_ctor(struct_lit.clone())
-                                                    } else {
-                                                        struct_lit.clone()
-                                                    }
+                                                    rust_shared_wrap_ctor(struct_lit.clone())
+                                                } else {
+                                                    struct_lit.clone()
                                                 }
-                                            } else {
-                                                fval0.clone()
                                             }
+                                        } else {
+                                            fval0.clone()
                                         }
-                                        std::option::Option::None => fval0.clone(),
                                     }
-                                } else {
-                                    if ((single_candidates.clone().len() as i64) > 1) {
-                                        "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")".to_string()
-                                    } else {
-                                        fval0.clone()
+                                    std::option::Option::None => {
+                                        if ((struct_candidates_by_field_names(
+                                            single_field_names.clone(),
+                                            emit_info.type_summaries.clone(),
+                                        )
+                                        .len() as i64)
+                                            > 1)
+                                        {
+                                            "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")".to_string()
+                                        } else {
+                                            fval0.clone()
+                                        }
                                     }
                                 }
                             }
@@ -34854,48 +34984,22 @@ pub fn emit_typed_record_lit(
                                     }
                                 },
                             );
-                            let resolution_candidates = anonymous_record_struct_candidates(
+                            match find_struct_name_by_fields(
                                 lit_field_names.clone(),
                                 field_type_hints.clone(),
                                 emit_info.type_summaries.clone(),
-                            );
-                            if ((resolution_candidates.clone().len() as i64) == 1) {
-                                match resolution_candidates.clone().first().cloned() {
-                                    Some(cand) => {
-                                        let resolved_sn = cand.name.clone();
-                                        let field_strs = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for f in fields.iter().cloned() {
-                                                __result.push({
-                                    let fname = crate::v1_std_core::field_init_node_name_at(f.clone(), scope.type_env.source_indices.clone());
-let fval = emit_typed_expr(crate::v1_std_core::field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
-v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), crate::v1_compiler_emit::emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), fval.clone()), ",".to_string())
-});
-                                            }
-                                            __result
-                                        });
-                                        let body = field_strs.clone().join(&"\n".to_string());
-                                        let struct_lit = v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    resolved_sn.clone(),
-                                                    " {\n".to_string(),
-                                                ),
-                                                body.clone(),
-                                            ),
-                                            "\n}".to_string(),
-                                        );
-                                        if v1_rt::set_contains(&shared_types, resolved_sn.clone()) {
-                                            rust_shared_wrap_ctor(struct_lit.clone())
-                                        } else {
-                                            struct_lit.clone()
-                                        }
-                                    }
-                                    std::option::Option::None => {
-                                        let vals = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for f in fields.iter().cloned() {
-                                                __result.push(emit_typed_expr(
+                            ) {
+                                Some(resolved_sn) => {
+                                    let field_strs = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for f in fields.iter().cloned() {
+                                            __result.push({
+                                                let fname =
+                                                    crate::v1_std_core::field_init_node_name_at(
+                                                        f.clone(),
+                                                        scope.type_env.source_indices.clone(),
+                                                    );
+                                                let fval = emit_typed_expr(
                                                     crate::v1_std_core::field_init_node_value(
                                                         f.clone(),
                                                     ),
@@ -34905,48 +35009,76 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), crat
                                                     shared_types.clone(),
                                                     emit_info.clone(),
                                                     1024,
-                                                ));
-                                            }
-                                            __result
-                                        });
+                                                );
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                "    ".to_string(),
+                                                                crate::v1_compiler_emit::emit_ident(
+                                                                    fname.clone(),
+                                                                    RenderTarget::Rust,
+                                                                ),
+                                                            ),
+                                                            ": ".to_string(),
+                                                        ),
+                                                        fval.clone(),
+                                                    ),
+                                                    ",".to_string(),
+                                                )
+                                            });
+                                        }
+                                        __result
+                                    });
+                                    let body = field_strs.clone().join(&"\n".to_string());
+                                    let struct_lit = v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(
-                                                "(".to_string(),
-                                                vals.clone().join(&", ".to_string()),
-                                            ),
-                                            ")".to_string(),
-                                        )
+                                            v1_rt::concat(resolved_sn.clone(), " {\n".to_string()),
+                                            body.clone(),
+                                        ),
+                                        "\n}".to_string(),
+                                    );
+                                    if v1_rt::set_contains(&shared_types, resolved_sn.clone()) {
+                                        rust_shared_wrap_ctor(struct_lit.clone())
+                                    } else {
+                                        struct_lit.clone()
                                     }
                                 }
-                            } else {
-                                if ((resolution_candidates.clone().len() as i64) > 1) {
-                                    "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")".to_string()
-                                } else {
-                                    {
-                                        let vals = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for f in fields.iter().cloned() {
-                                                __result.push(emit_typed_expr(
-                                                    crate::v1_std_core::field_init_node_value(
-                                                        f.clone(),
-                                                    ),
-                                                    registry.clone(),
-                                                    scope.clone(),
-                                                    depth.clone(),
-                                                    shared_types.clone(),
-                                                    emit_info.clone(),
-                                                    1024,
-                                                ));
-                                            }
-                                            __result
-                                        });
-                                        v1_rt::concat(
+                                std::option::Option::None => {
+                                    let resolution_candidates = anonymous_record_struct_candidates(
+                                        lit_field_names.clone(),
+                                        field_type_hints.clone(),
+                                        emit_info.type_summaries.clone(),
+                                    );
+                                    if ((resolution_candidates.clone().len() as i64) > 1) {
+                                        "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")".to_string()
+                                    } else {
+                                        {
+                                            let vals = Rc::new({
+                                                let mut __result = Vec::new();
+                                                for f in fields.iter().cloned() {
+                                                    __result.push(emit_typed_expr(
+                                                        crate::v1_std_core::field_init_node_value(
+                                                            f.clone(),
+                                                        ),
+                                                        registry.clone(),
+                                                        scope.clone(),
+                                                        depth.clone(),
+                                                        shared_types.clone(),
+                                                        emit_info.clone(),
+                                                        1024,
+                                                    ));
+                                                }
+                                                __result
+                                            });
                                             v1_rt::concat(
-                                                "(".to_string(),
-                                                vals.clone().join(&", ".to_string()),
-                                            ),
-                                            ")".to_string(),
-                                        )
+                                                v1_rt::concat(
+                                                    "(".to_string(),
+                                                    vals.clone().join(&", ".to_string()),
+                                                ),
+                                                ")".to_string(),
+                                            )
+                                        }
                                     }
                                 }
                             }
