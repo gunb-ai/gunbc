@@ -6,14 +6,7 @@ use self::CallArgumentFormalSelection::*;
 use self::CarrierMatch::*;
 use self::DeclaredTypePosition::*;
 use self::DescentSizeExpr::*;
-use self::GroundedArmReading::*;
-use self::GroundedBinding::*;
-use self::GroundedBound::*;
 use self::GroundedCarrierState::*;
-use self::GroundedShapeRefusal::*;
-use self::GroundedTest::*;
-use self::GroundedViewMatch::*;
-use self::GroundedViewShape::*;
 use self::InhabitanceRefusalReason::*;
 use self::InhabitanceUndecidableReason::*;
 use self::InhabitanceVerdict::*;
@@ -77,17 +70,8 @@ use crate::std_kernel_type_name::KernelTypeNameAdmission::{
     KernelTypeNameAdmitted, NotAKernelTypeName,
 };
 pub use crate::std_kernel_type_name::{kernel_type_name, KernelTypeNameAdmission};
-use crate::std_literal_elaboration::GroundedDeclaredForm::{
-    DeclaredCoproduct, DeclaredNotACoproduct,
-};
-use crate::std_literal_elaboration::GroundedFieldDeclaration::{
-    FieldAtGroundedNatural, FieldNotAtGroundedNatural,
-};
 use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
-};
-use crate::std_literal_elaboration::KernelGroundingView::{
-    PeanoGroundingView, SignedGroundingView,
 };
 use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
     KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
@@ -97,16 +81,11 @@ use crate::std_literal_elaboration::LiteralElaborationOutcome::{
 };
 use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
 use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
-use crate::std_literal_elaboration::SignedViewDisagreement::*;
-use crate::std_literal_elaboration::SignedViewReading::{SignedViewAgrees, SignedViewDisagrees};
 pub use crate::std_literal_elaboration::{
-    declaration_is_grounded_natural, elaborate_literal_at, kernel_grounding_for,
-    kernel_mint_declaration_for, literal_elaboration_refusal_message, literal_source_kind_of,
-    signed_view_disagreement_message, signed_view_reading, GroundedConstructorShape,
-    GroundedDeclaredForm, GroundedFieldDeclaration, GroundedFieldShape, KernelGrounding,
-    KernelGroundingArm, KernelGroundingLookup, KernelGroundingView, KernelMintDeclarationLookup,
-    LiteralElaboration, LiteralElaborationOutcome, LiteralHomomorphism, LiteralSourceKind,
-    LiteralUnfolding, SignedViewDisagreement, SignedViewReading,
+    elaborate_literal_at, kernel_grounding_for, kernel_mint_declaration_for,
+    literal_elaboration_refusal_message, literal_source_kind_of, KernelGrounding,
+    KernelGroundingLookup, KernelMintDeclarationLookup, LiteralElaboration,
+    LiteralElaborationOutcome, LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
 };
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -355,9 +334,9 @@ use crate::v1_std_core::VarBindingKind::{
 };
 pub use crate::v1_std_core::{
     admit_callers_entry_coords, admit_callers_entry_uninterpretable_spans, arg_name_at, arg_value,
-    arm_body, arm_guard, arm_pattern, authored_name_at, binop_left, binop_right, bool_type,
-    build_newline_index, call_semantics_target, callable_identity, cast_expr, cast_target,
-    decl_ref_coords_label, declaration_provenance_of, default_ident_span,
+    arm_body, arm_guard, arm_pattern, authored_ident, authored_name_at, binop_left, binop_right,
+    bool_type, build_newline_index, call_semantics_target, callable_identity, cast_expr,
+    cast_target, decl_ref_coords_label, declaration_provenance_of,
     diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table, error_type,
     expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_is_any_literal,
     expr_literal_int_optional, expr_literal_string_optional, expr_method_name_at, expr_var_name_at,
@@ -369,26 +348,26 @@ pub use crate::v1_std_core::{
     import_specific_names_at, index_base, index_expr, int_type, intern, intern_str,
     is_child_accessor_in_model, is_compiler_error, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, is_property_contraction, is_shell_transport,
-    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
-    let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    is_tree_size_reducing, kernel_ident, lambda_body, lambda_param_names_at, let_binding_name_at,
+    let_body, let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
     make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
     make_interp_part_node, make_named_expr_node, make_param_node, make_text_part_node,
     make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
-    param_node_default_value, param_node_name_at, param_node_type_expr,
+    method_receiver, module_imports, module_items, module_node, no_span, node_ident,
+    node_name_span, none_type, param_node_default_value, param_node_name_at, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
     record_lit_named_field_value_optional, record_lit_type_name_at,
     resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
     return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
     string_type, type_name_compatible, type_reference_provenance, type_variable_binder_name,
     unaryop_operand, unit_type, variant_node_fields, with_optional_cardinality,
-    with_required_cardinality, AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality,
-    CompilerDiagnostic, Connective, DeclRefCoords, DeclarationMarker, DeclaredCallableIdentity,
-    DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
-    FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
-    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
-    ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart, UnaryOpKind,
-    VarBindingKind,
+    with_required_cardinality, AdmitCallersEntry, AuthoredIdent, CallSemantics, CallTargetIdentity,
+    Cardinality, CompilerDiagnostic, Connective, DeclRefCoords, DeclarationMarker,
+    DeclaredCallableIdentity, DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind,
+    FieldAccessSpine, FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey,
+    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    ParsedModuleItemKind, ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -899,7 +878,7 @@ pub fn build_item_inductive_fields(
 pub fn nominal_ref_node(
     name: String,
     span: Rc<SourceSpan>,
-    ident_span: Option<Rc<SourceSpan>>,
+    ident_span: Option<Rc<AuthoredIdent>>,
 ) -> Rc<Node> {
     {
         let declared_leaf = Rc::new(Node {
@@ -1278,7 +1257,7 @@ pub fn expected_decided_variant_value(
                     ),
                 })),
                 texpr.span.clone(),
-                texpr.span.clone(),
+                crate::v1_std_core::authored_ident(texpr.span.clone(), name.clone()),
             ),
             diagnostics: variant_value_reference_diagnostics(
                 scope.clone(),
@@ -4052,8 +4031,8 @@ pub fn where_refinement_brand_declaration_site(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match ty.ident_span.clone() {
-        Some(span) => Some(v1_rt::concat(
-            v1_rt::concat(span.file.clone(), "#".to_string()),
+        Some(ident) => Some(v1_rt::concat(
+            v1_rt::concat(ident.span.file.clone(), "#".to_string()),
             crate::v1_std_core::authored_name_at(source_indices.clone(), ty.clone()),
         )),
         std::option::Option::None => std::option::Option::None,
@@ -11025,7 +11004,7 @@ pub fn annotate_pattern_parent_enums(
                                     scope.clone(),
                                 ),
                                 binding.span.clone(),
-                                crate::v1_std_core::node_name_span(binding.clone()),
+                                crate::v1_std_core::node_ident(binding.clone()),
                             )
                         });
                     }
@@ -11163,7 +11142,9 @@ pub fn rest_operation_result_type(
                         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: "RestResult".to_string(),
                         span: kernel_span("RestResult".to_string()),
-                        ident_span: Some(kernel_span("RestResult".to_string())),
+                        ident_span: Some(crate::v1_std_core::kernel_ident(
+                            "RestResult".to_string(),
+                        )),
                         children: Rc::new(vec![body.clone()]),
                         connective: Connective::NoConnective,
                         params: Rc::new(vec![]),
@@ -11720,7 +11701,7 @@ pub fn extract_fold_init_info(
                                 ),
                                 init_result.typed.clone(),
                                 ia.span.clone(),
-                                ia.span.clone(),
+                                crate::v1_std_core::node_ident(ia.clone()),
                             ),
                             diagnostics: init_result.diagnostics.clone(),
                         }))
@@ -11825,7 +11806,7 @@ if ((is_fold.clone() && (fold_info.clone() != std::option::Option::None)) && is_
                 if ((is_fold.clone() && (fold_info.clone() != std::option::Option::None)) && (fold_acc_type.clone() != std::option::Option::None)) {
                     match fold_acc_type.clone() {
     Some(fold_acc) => {
-                        let fold_params = Rc::new(vec![crate::v1_std_core::make_param_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "acc".to_string(), fold_acc.clone(), std::option::Option::None, crate::v1_std_core::no_span(), crate::v1_std_core::no_span()), crate::v1_std_core::make_param_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "elem".to_string(), element_type.clone(), std::option::Option::None, crate::v1_std_core::no_span(), crate::v1_std_core::no_span())]);
+                        let fold_params = Rc::new(vec![crate::v1_std_core::make_param_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "acc".to_string(), fold_acc.clone(), std::option::Option::None, crate::v1_std_core::no_span(), crate::v1_std_core::authored_ident(crate::v1_std_core::no_span(), "acc".to_string())), crate::v1_std_core::make_param_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "elem".to_string(), element_type.clone(), std::option::Option::None, crate::v1_std_core::no_span(), crate::v1_std_core::authored_ident(crate::v1_std_core::no_span(), "elem".to_string()))]);
 let fold_callable = Rc::new(Node {
     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     name: "".to_string(),
@@ -11873,7 +11854,7 @@ let fold_scope = Rc::new(InferScope {
 });
 let ar = infer_expr(lam_value.clone(), fold_scope.clone(), Some(fold_callable.clone()));
 Rc::new(ArgInferResult {
-    typed_arg: crate::v1_std_core::make_arg_node(a.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()), ar.typed.clone(), a.span.clone(), a.span.clone()),
+    typed_arg: crate::v1_std_core::make_arg_node(a.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()), ar.typed.clone(), a.span.clone(), crate::v1_std_core::node_ident(a.clone())),
     diagnostics: ar.diagnostics.clone(),
 })
 },
@@ -11910,7 +11891,7 @@ match (*arg_contract.clone()).clone() {
                             let ar = infer_expr(nf_lam_value.clone(), nf_scope.clone(), std::option::Option::None);
 let contract_diag = categorized_error("no declared argument contract is available for this method call; refusing rather than substituting the receiver element type".to_string(), a.span.clone(), nf_scope.module_name.clone(), "method-arg-contract-unavailable".to_string());
 Rc::new(ArgInferResult {
-    typed_arg: crate::v1_std_core::make_arg_node(a.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(a.clone(), nf_scope.type_env.source_indices.clone()), ar.typed.clone(), a.span.clone(), a.span.clone()),
+    typed_arg: crate::v1_std_core::make_arg_node(a.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(a.clone(), nf_scope.type_env.source_indices.clone()), ar.typed.clone(), a.span.clone(), crate::v1_std_core::node_ident(a.clone())),
     diagnostics: v1_rt::concat(ar.diagnostics.clone(), Rc::new(vec![contract_diag.clone()])),
 })
 },
@@ -11920,7 +11901,7 @@ Rc::new(ArgInferResult {
                             let ar = infer_expr(nf_lam_value.clone(), nf_scope.clone(), std::option::Option::None);
 let contract_diag = categorized_error("no declared argument contract is available at this parameter position; refusing rather than substituting the receiver element type".to_string(), a.span.clone(), nf_scope.module_name.clone(), "method-arg-contract-unavailable".to_string());
 Rc::new(ArgInferResult {
-    typed_arg: crate::v1_std_core::make_arg_node(a.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(a.clone(), nf_scope.type_env.source_indices.clone()), ar.typed.clone(), a.span.clone(), a.span.clone()),
+    typed_arg: crate::v1_std_core::make_arg_node(a.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(a.clone(), nf_scope.type_env.source_indices.clone()), ar.typed.clone(), a.span.clone(), crate::v1_std_core::node_ident(a.clone())),
     diagnostics: v1_rt::concat(ar.diagnostics.clone(), Rc::new(vec![contract_diag.clone()])),
 })
 },
@@ -12089,7 +12070,10 @@ pub fn host_text_unfolded_at_code_point_boundary(
                                 node: destination_type.clone(),
                             })),
                             value.span.clone(),
-                            elaborated_span("chars".to_string()),
+                            crate::v1_std_core::authored_ident(
+                                elaborated_span("chars".to_string()),
+                                "chars".to_string(),
+                            ),
                         )
                     } else {
                         value.clone()
@@ -12350,7 +12334,7 @@ pub fn infer_call_arguments_generic_pass(
                             ),
                             ar.typed.clone(),
                             a.span.clone(),
-                            a.span.clone(),
+                            crate::v1_std_core::node_ident(a.clone()),
                         ),
                         diagnostics: ar.diagnostics.clone(),
                     })]),
@@ -12395,7 +12379,7 @@ pub fn infer_arg_with_element_type(
                 crate::v1_std_core::arg_name_at(arg.clone(), scope.type_env.source_indices.clone()),
                 ar.typed.clone(),
                 arg.span.clone(),
-                arg.span.clone(),
+                crate::v1_std_core::node_ident(arg.clone()),
             ),
             diagnostics: ar.diagnostics.clone(),
         })
@@ -12463,7 +12447,10 @@ pub fn qualified_value_projection(
                             node: value_type.clone(),
                         })),
                         span.clone(),
-                        kernel_span(spine.dotted.clone()),
+                        crate::v1_std_core::authored_ident(
+                            kernel_span(spine.dotted.clone()),
+                            spine.dotted.clone(),
+                        ),
                     )))
                 }
             },
@@ -12516,7 +12503,10 @@ pub fn qualified_or_service_projection(
                         node: svc_type.clone(),
                     })),
                     span.clone(),
-                    kernel_span(svc_name.clone()),
+                    crate::v1_std_core::authored_ident(
+                        kernel_span(svc_name.clone()),
+                        svc_name.clone(),
+                    ),
                 )))
             }
         },
@@ -12660,7 +12650,10 @@ pub fn elaborated_expr_node(
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: name.clone(),
         span: span.clone(),
-        ident_span: Some(elaborated_span(name.clone())),
+        ident_span: Some(crate::v1_std_core::authored_ident(
+            elaborated_span(name.clone()),
+            name.clone(),
+        )),
         children: children.clone(),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -12725,7 +12718,10 @@ pub fn unfold_peano_image(
                     prev_field.clone(),
                     prev.clone(),
                     span.clone(),
-                    elaborated_span(prev_field.clone()),
+                    crate::v1_std_core::authored_ident(
+                        elaborated_span(prev_field.clone()),
+                        prev_field.clone(),
+                    ),
                 );
                 elaborated_expr_node(
                     succ.clone(),
@@ -13352,7 +13348,7 @@ match scope_parent.clone() {
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), binding.resolved.clone()),
-})), span.clone(), span.clone()),
+})), span.clone(), crate::v1_std_core::authored_ident(span.clone(), name.clone())),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
 }),
     std::option::Option::None => if name_is_enclosing_declared_type_parameter(name.clone(), scope.clone()) {
@@ -13361,7 +13357,7 @@ match scope_parent.clone() {
     binding_kind: std::option::Option::None,
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: error_type(),
-})), span.clone(), span.clone()),
+})), span.clone(), crate::v1_std_core::authored_ident(span.clone(), name.clone())),
     diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeParameterInValuePosition {
     name: name.clone(),
     span: span.clone(),
@@ -13374,7 +13370,7 @@ ok_infer(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clon
     binding_kind: Some(binding_kind.clone()),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: binding.resolved.clone(),
-})), span.clone(), span.clone()))
+})), span.clone(), crate::v1_std_core::authored_ident(span.clone(), name.clone())))
 }
                 },
 }
@@ -13388,12 +13384,12 @@ ok_infer(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clon
     descent_evidence: std::option::Option::None,
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: fsig.inferred.clone(),
-})), span.clone(), span.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(span.clone(), name.clone()))),
     false => ok_infer(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(Rc::new(VarBindingKind::FunctionValueBinding)),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: resolved_callable_type(fsig.params.clone(), fsig.inferred.clone()),
-})), span.clone(), span.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(span.clone(), name.clone()))),
 },
     FuncSigLookup::FuncSigAmbiguous { candidates: ambiguous_fn_candidates, .. } => ambiguous_reference_refusal(name.clone(), crate::v1_compiler_infer_sigs::callable_candidate_labels(ambiguous_fn_candidates.clone()), span.clone(), scope.clone()),
     FuncSigLookup::FuncSigUnresolved => match crate::v1_compiler_infer_env::lookup_binding_by_name(scope.type_env.clone(), name.clone()) {
@@ -13408,7 +13404,7 @@ match scope_parent.clone() {
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), gbinding.resolved.clone()),
-})), span.clone(), span.clone()),
+})), span.clone(), crate::v1_std_core::authored_ident(span.clone(), name.clone())),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
 }),
     std::option::Option::None => match expected_variant_owner_instantiation(expected.clone(), name.clone(), scope.clone()) {
@@ -13420,7 +13416,7 @@ match scope_parent.clone() {
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: exp_enum.clone(),
-})), span.clone(), span.clone()),
+})), span.clone(), crate::v1_std_core::authored_ident(span.clone(), name.clone())),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
 }),
     std::option::Option::None => if name_is_enclosing_declared_type_parameter(name.clone(), scope.clone()) {
@@ -13429,7 +13425,7 @@ match scope_parent.clone() {
     binding_kind: std::option::Option::None,
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: error_type(),
-})), span.clone(), span.clone()),
+})), span.clone(), crate::v1_std_core::authored_ident(span.clone(), name.clone())),
     diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeParameterInValuePosition {
     name: name.clone(),
     span: span.clone(),
@@ -13446,7 +13442,7 @@ Rc::new(InferResult {
     binding_kind: Some(binding_kind.clone()),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: gbinding.resolved.clone(),
-})), span.clone(), span.clone()),
+})), span.clone(), crate::v1_std_core::authored_ident(span.clone(), name.clone())),
     diagnostics: bare_product_reference_missing_field_diagnostics(scope.clone(), name.clone(), span.clone()),
 })
 }
@@ -13466,7 +13462,7 @@ match expected_variant_enum.clone() {
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: exp_enum.clone(),
-})), span.clone(), span.clone()),
+})), span.clone(), crate::v1_std_core::authored_ident(span.clone(), name.clone())),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
 }),
     std::option::Option::None => {
@@ -13479,7 +13475,7 @@ if ((var_ambiguity_cands.clone().len() as i64) > 0) {
     binding_kind: std::option::Option::None,
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: error_type(),
-})), span.clone(), span.clone());
+})), span.clone(), crate::v1_std_core::authored_ident(span.clone(), name.clone()));
 Rc::new(InferResult {
     typed: err_texpr.clone(),
     diagnostics: Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat("undefined variable '".to_string(), name.clone()), "'".to_string()), span.clone(), scope.module_name.clone())]),
@@ -13583,7 +13579,10 @@ Rc::new(InferResult {
                                             node: field_type.clone(),
                                         })),
                                         span.clone(),
-                                        crate::v1_std_core::node_name_span(texpr.clone()),
+                                        crate::v1_std_core::authored_ident(
+                                            crate::v1_std_core::node_name_span(texpr.clone()),
+                                            field_name.clone(),
+                                        ),
                                     );
                                     Rc::new(InferResult {
                                         typed: fa_texpr.clone(),
@@ -13619,7 +13618,12 @@ Rc::new(InferResult {
                                                     id: "field_of_type_var".to_string(),
                                                 })),
                                                 span.clone(),
-                                                crate::v1_std_core::node_name_span(texpr.clone()),
+                                                crate::v1_std_core::authored_ident(
+                                                    crate::v1_std_core::node_name_span(
+                                                        texpr.clone(),
+                                                    ),
+                                                    field_name.clone(),
+                                                ),
                                             );
                                             Rc::new(InferResult {
                                                 typed: fa_texpr.clone(),
@@ -13639,7 +13643,7 @@ Rc::new(InferResult {
 })),
 }), Rc::new(vec![base_typed.clone()]), Some(Rc::new(InferredNode::Resolved {
     node: svc_type.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone()));
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), field_name.clone()));
 Rc::new(InferResult {
     typed: fa_texpr.clone(),
     diagnostics: v1_rt::concat(base_diags.clone(), resolved_base_diags.clone()),
@@ -13845,7 +13849,7 @@ Rc::new(InferResult {
                                                         ),
                                                         ar.typed.clone(),
                                                         a.span.clone(),
-                                                        a.span.clone(),
+                                                        crate::v1_std_core::node_ident(a.clone()),
                                                     ),
                                                     diagnostics: ar.diagnostics.clone(),
                                                 })]),
@@ -13900,7 +13904,9 @@ Rc::new(InferResult {
                                                         ),
                                                         first_result.typed.clone(),
                                                         first_arg.span.clone(),
-                                                        first_arg.span.clone(),
+                                                        crate::v1_std_core::node_ident(
+                                                            first_arg.clone(),
+                                                        ),
                                                     ),
                                                     diagnostics: first_result.diagnostics.clone(),
                                                 })]),
@@ -14063,7 +14069,10 @@ Rc::new(InferResult {
                                             node: error_type(),
                                         })),
                                         span.clone(),
-                                        crate::v1_std_core::node_name_span(texpr.clone()),
+                                        crate::v1_std_core::authored_ident(
+                                            crate::v1_std_core::node_name_span(texpr.clone()),
+                                            func_name.clone(),
+                                        ),
                                     ),
                                     diagnostics: v1_rt::concat(
                                         formal_authority_diags.clone(),
@@ -14138,7 +14147,7 @@ Rc::new(InferResult {
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: v1_rt::concat(formal_authority_diags.clone(), v1_rt::concat(arg_diags.clone(), v1_rt::concat(arg_shape_diags.clone(), v1_rt::concat(arg_compat_diags.clone(), v1_rt::concat(structured_arg_diags.clone(), v1_rt::concat(inhabitance_arg_diags.clone(), v1_rt::concat(generic_type_argument_inhabitance_diags.clone(), sibling_effect_order_arg_diags.clone()))))))),
 })
                                 }
@@ -14342,7 +14351,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                     ),
                                                     crate::v1_std_core::arg_value(ta.clone()),
                                                     span.clone(),
-                                                    span.clone(),
+                                                    crate::v1_std_core::node_ident(ta.clone()),
                                                 ));
                                             }
                                             __result
@@ -14364,7 +14373,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                     node: bridge_result_type.clone(),
                                                 })),
                                                 span.clone(),
-                                                crate::v1_std_core::node_name_span(texpr.clone()),
+                                                crate::v1_std_core::authored_ident(
+                                                    crate::v1_std_core::node_name_span(
+                                                        texpr.clone(),
+                                                    ),
+                                                    func_name.clone(),
+                                                ),
                                             ),
                                             diagnostics: v1_rt::concat(
                                                 arg_diags.clone(),
@@ -14409,7 +14423,7 @@ Rc::new(InferResult {
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: inhabit.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: arg_diags.clone(),
 })
 }
@@ -14428,7 +14442,7 @@ match bare_m.clone() {
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: map_t.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: empty_map_diags.clone(),
 }),
     std::option::Option::None => Rc::new(InferResult {
@@ -14443,7 +14457,7 @@ match bare_m.clone() {
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_map(): Map kernel container profile missing (compiler misconfigured)".to_string(),
     span: span.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: v1_rt::concat(empty_map_diags.clone(), Rc::new(vec![inference_error("empty_map(): Map kernel container profile missing".to_string(), span.clone(), scope.module_name.clone())])),
 }),
 }
@@ -14461,7 +14475,7 @@ match bare_m.clone() {
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: map_t.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: arg_diags.clone(),
 }),
     std::option::Option::None => Rc::new(InferResult {
@@ -14476,7 +14490,7 @@ match bare_m.clone() {
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_map(): Map kernel container profile missing (compiler misconfigured)".to_string(),
     span: span.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: v1_rt::concat(arg_diags.clone(), Rc::new(vec![inference_error("empty_map(): Map kernel container profile missing".to_string(), span.clone(), scope.module_name.clone())])),
 }),
 },
@@ -14509,7 +14523,7 @@ Rc::new(InferResult {
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: inhabit.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: arg_diags.clone(),
 })
 }
@@ -14525,7 +14539,7 @@ match bare_s.clone() {
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: set_t.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: empty_set_diags.clone(),
 }),
     std::option::Option::None => Rc::new(InferResult {
@@ -14537,7 +14551,7 @@ match bare_s.clone() {
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_set(): Set kernel container profile missing (compiler misconfigured)".to_string(),
     span: span.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: v1_rt::concat(empty_set_diags.clone(), Rc::new(vec![inference_error("empty_set(): Set kernel container profile missing".to_string(), span.clone(), scope.module_name.clone())])),
 }),
 }
@@ -14552,7 +14566,7 @@ match bare_s.clone() {
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: set_t.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: arg_diags.clone(),
 }),
     std::option::Option::None => Rc::new(InferResult {
@@ -14564,7 +14578,7 @@ match bare_s.clone() {
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::CompilerError {
     message: "empty_set(): Set kernel container profile missing (compiler misconfigured)".to_string(),
     span: span.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: v1_rt::concat(arg_diags.clone(), Rc::new(vec![inference_error("empty_set(): Set kernel container profile missing".to_string(), span.clone(), scope.module_name.clone())])),
 }),
 },
@@ -14593,7 +14607,7 @@ Rc::new(InferResult {
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: bt.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: v1_rt::concat(v1_rt::concat(arg_diags.clone(), tier2b.kernel_diags.clone()), builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone())),
 })
 }
@@ -14636,7 +14650,7 @@ Rc::new(InferResult {
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: arg_diags.clone(),
 })
 }
@@ -14696,7 +14710,7 @@ Rc::new(InferResult {
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+})), span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(texpr.clone()), func_name.clone())),
     diagnostics: v1_rt::concat(arg_diags.clone(), call_diags.clone()),
 })
 },
@@ -14746,7 +14760,7 @@ Rc::new(InferResult {
     target: Rc::new(CallTargetIdentity::CallableTargetUndetermined),
 })),
     descent_evidence: std::option::Option::None,
-}), mc_args.clone(), std::option::Option::None, span.clone(), kernel_span(dotted.clone())), scope.clone(), expected.clone())),
+}), mc_args.clone(), std::option::Option::None, span.clone(), crate::v1_std_core::authored_ident(kernel_span(dotted.clone()), dotted.clone())), scope.clone(), expected.clone())),
 },
 }
                         }
@@ -14948,7 +14962,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             node: result_type.clone(),
                         })),
                         span.clone(),
-                        crate::v1_std_core::node_name_span(texpr.clone()),
+                        crate::v1_std_core::authored_ident(
+                            crate::v1_std_core::node_name_span(texpr.clone()),
+                            method_name.clone(),
+                        ),
                     );
                     Rc::new(InferResult {
                         typed: mc_texpr.clone(),
@@ -15641,7 +15658,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             node: bound_type.clone(),
                         })),
                         span.clone(),
-                        crate::v1_std_core::node_name_span(texpr.clone()),
+                        crate::v1_std_core::authored_ident(
+                            crate::v1_std_core::node_name_span(texpr.clone()),
+                            let_name.clone(),
+                        ),
                     );
                     Rc::new(InferResult {
                         typed: let_texpr.clone(),
@@ -15670,7 +15690,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         Rc::new(vec![val_typed.clone(), body_typed.clone()]),
                         body_typed.inferred.clone(),
                         span.clone(),
-                        crate::v1_std_core::node_name_span(texpr.clone()),
+                        crate::v1_std_core::authored_ident(
+                            crate::v1_std_core::node_name_span(texpr.clone()),
+                            let_name.clone(),
+                        ),
                     );
                     Rc::new(InferResult {
                         typed: let_texpr2.clone(),
@@ -16421,7 +16444,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 Rc::new(vec![coll_typed.clone(), body_typed.clone()]),
                 body_typed.inferred.clone(),
                 span.clone(),
-                crate::v1_std_core::node_name_span(texpr.clone()),
+                crate::v1_std_core::authored_ident(
+                    crate::v1_std_core::node_name_span(texpr.clone()),
+                    variable.clone(),
+                ),
             );
             Rc::new(InferResult {
                 typed: fe_texpr.clone(),
@@ -16665,7 +16691,10 @@ pub fn infer_variant_constructor_call(
                                                         "0".to_string(),
                                                         payload_expr.clone(),
                                                         payload_expr.span.clone(),
-                                                        kernel_span("0".to_string()),
+                                                        crate::v1_std_core::authored_ident(
+                                                            kernel_span("0".to_string()),
+                                                            "0".to_string(),
+                                                        ),
                                                     );
                                                 Some(infer_record_lit(
                                                     occurrence_identity.clone(),
@@ -17650,7 +17679,7 @@ pub fn infer_map_literal(
                             ),
                             ar.typed.clone(),
                             fi.span.clone(),
-                            crate::v1_std_core::node_name_span(fi.clone()),
+                            crate::v1_std_core::node_ident(fi.clone()),
                         ),
                         infer_result: ar.clone(),
                         diagnostics: ar.diagnostics.clone(),
@@ -18775,7 +18804,7 @@ if product_versus_coproduct_head_mismatch(payload_declared.clone(), payload_prod
     std::option::Option::None => Rc::new(vec![]),
 };
 Rc::new(FieldInferResult {
-    typed_field: crate::v1_std_core::make_field_init_node(fi.occurrence_identity.clone(), fi_name.clone(), ar_typed.clone(), fi.span.clone(), crate::v1_std_core::node_name_span(fi.clone())),
+    typed_field: crate::v1_std_core::make_field_init_node(fi.occurrence_identity.clone(), fi_name.clone(), ar_typed.clone(), fi.span.clone(), crate::v1_std_core::authored_ident(crate::v1_std_core::node_name_span(fi.clone()), fi_name.clone())),
     infer_result: ar.clone(),
     diagnostics: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(ar_diags.clone(), field_type_diags.clone()), present_payload_diags.clone()), unknown_field_diags.clone()), bare_none_field_construction_diags(fi.clone(), fi_name.clone(), field_declared_type.clone(), tn_str.clone(), scope.clone())),
 })
@@ -19185,7 +19214,7 @@ Rc::new(FieldInferResult {
                         node: resolved_node.clone(),
                     })),
                     span.clone(),
-                    name_span.clone(),
+                    crate::v1_std_core::authored_ident(name_span.clone(), rl_name.clone()),
                 );
                 let presence_ambiguity_diags = if ((type_diags.clone().len() as i64) > 0) {
                     Rc::new(vec![])
@@ -21377,12 +21406,12 @@ if (p2.clone() != "".to_string()) {
     per_field_vars: ctx.per_field_vars.clone(),
     body_locals: ctx.body_locals.clone(),
 });
-crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(child.clone(), ctx.type_env.source_indices.clone()), annotate_descent(arg_val.clone(), lambda_ctx.clone()), child.span.clone(), child.span.clone())
+crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(child.clone(), ctx.type_env.source_indices.clone()), annotate_descent(arg_val.clone(), lambda_ctx.clone()), child.span.clone(), crate::v1_std_core::node_ident(child.clone()))
 }
                 } else {
-                    crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(child.clone(), ctx.type_env.source_indices.clone()), annotate_descent(arg_val.clone(), ctx.clone()), child.span.clone(), child.span.clone())
+                    crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(child.clone(), ctx.type_env.source_indices.clone()), annotate_descent(arg_val.clone(), ctx.clone()), child.span.clone(), crate::v1_std_core::node_ident(child.clone()))
                 },
-    _ => crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(child.clone(), ctx.type_env.source_indices.clone()), annotate_descent(arg_val.clone(), ctx.clone()), child.span.clone(), child.span.clone()),
+    _ => crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(child.clone(), ctx.type_env.source_indices.clone()), annotate_descent(arg_val.clone(), ctx.clone()), child.span.clone(), crate::v1_std_core::node_ident(child.clone())),
 }
 });
                     }
@@ -22175,7 +22204,7 @@ Rc::new(BlockAnnotateAcc {
                                             },
                                             annotate_descent(arg_val.clone(), inner_ctx.clone()),
                                             arg_node.span.clone(),
-                                            arg_node.span.clone(),
+                                            crate::v1_std_core::node_ident(arg_node.clone()),
                                         )
                                     } else {
                                         crate::v1_std_core::make_arg_node(
@@ -22191,7 +22220,7 @@ Rc::new(BlockAnnotateAcc {
                                             },
                                             annotate_descent(arg_val.clone(), ctx.clone()),
                                             arg_node.span.clone(),
-                                            arg_node.span.clone(),
+                                            crate::v1_std_core::node_ident(arg_node.clone()),
                                         )
                                     }
                                 });
@@ -25435,242 +25464,120 @@ pub fn substitute_generics(
     }
 }
 
-pub fn generic_leaf_replacement(
-    n: Rc<Node>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
-            match v1_rt::map_get(&subst, tv_id.clone()) {
-                Some(c) => {
-                    if (type_node_label(c.clone(), source_indices.clone()) == tv_id.clone()) {
-                        std::option::Option::None
-                    } else {
-                        Some(crate::v1_std_core::preserve_outer_optional_cardinality(
-                            n.clone(),
-                            c.clone(),
-                        ))
-                    }
-                }
-                std::option::Option::None => std::option::Option::None,
-            }
-        }
-        _ => {
-            if ((((n.children.clone().len() as i64) == 0)
-                && (n.connective.clone() == Connective::NoConnective))
-                && ((n.params.clone().len() as i64) == 0))
-            {
-                match v1_rt::map_get(&subst, type_node_label(n.clone(), source_indices.clone())) {
-                    Some(c) => Some(crate::v1_std_core::preserve_outer_optional_cardinality(
-                        n.clone(),
-                        c.clone(),
-                    )),
-                    std::option::Option::None => std::option::Option::None,
-                }
-            } else {
-                std::option::Option::None
-            }
-        }
-    }
-}
-
-pub fn generic_slot_holding(slot: Rc<Node>, ty: Rc<Node>) -> Rc<Node> {
-    {
-        let held = generic_type_held(ty.clone());
-        match held.inferred.clone() {
-            std::option::Option::None => held.clone(),
-            Some(_) => generic_slot_around(slot.clone(), held.clone()),
-        }
-    }
-}
-
-pub fn generic_slot_around(slot: Rc<Node>, held: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: slot.occurrence_identity.clone(),
-        name: slot.name.clone(),
-        span: slot.span.clone(),
-        ident_span: slot.ident_span.clone(),
-        children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::Resolved { node: held.clone() })),
-        return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
-        body: std::option::Option::None,
-        transport: std::option::Option::None,
-        properties: Rc::new(vec![]),
-        type_annotation: std::option::Option::None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-        declaration_marker: DeclarationMarker::Unmarked,
-        declaration: std::option::Option::None,
-        expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
-    })
-}
-
-pub fn generic_type_held(ty: Rc<Node>) -> Rc<Node> {
-    match ty.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: _, .. }) => {
-            if generic_node_is_bare(ty.clone()) {
-                crate::v1_compiler_infer_types::child_type_node(ty.clone())
-            } else {
-                ty.clone()
-            }
-        }
-        _ => ty.clone(),
-    }
-}
-
-pub fn generic_node_is_bare(n: Rc<Node>) -> bool {
-    ((((n.children.clone().len() as i64) == 0)
-        && (n.connective.clone() == Connective::NoConnective))
-        && ((n.params.clone().len() as i64) == 0))
-}
-
-pub fn substitute_generics_child(
-    c: Rc<Node>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    match generic_leaf_replacement(c.clone(), subst.clone(), source_indices.clone()) {
-        Some(ty) => match c.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: _, .. }) => {
-                generic_slot_holding(c.clone(), ty.clone())
-            }
-            _ => ty.clone(),
-        },
-        std::option::Option::None => match c.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => {
-                if generic_node_is_bare(c.clone()) {
-                    {
-                        let new_rt = substitute_generics_apply(
-                            rt.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        );
-                        if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
-                            c.clone()
-                        } else {
-                            generic_slot_around(c.clone(), generic_type_held(new_rt.clone()))
-                        }
-                    }
-                } else {
-                    substitute_generics_apply(c.clone(), subst.clone(), source_indices.clone())
-                }
-            }
-            _ => substitute_generics_apply(c.clone(), subst.clone(), source_indices.clone()),
-        },
-    }
-}
-
 pub fn substitute_generics_apply(
     n: Rc<Node>,
     subst: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    match generic_leaf_replacement(n.clone(), subst.clone(), source_indices.clone()) {
-        Some(ty) => ty.clone(),
-        std::option::Option::None => {
-            if generic_node_is_bare(n.clone()) {
-                n.clone()
-            } else {
-                substitute_generics_walk(n.clone(), subst.clone(), source_indices.clone())
-            }
-        }
-    }
-}
-
-pub fn substitute_generics_walk(
-    n: Rc<Node>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    {
-        let is_type_variable_node = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: _, .. }) => true,
-            _ => false,
-        };
-        if is_type_variable_node.clone() {
-            n.clone()
-        } else {
-            {
-                let new_children = Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.children.clone().iter().cloned() {
-                        __result.push(substitute_generics_child(
-                            c.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        ));
-                    }
-                    __result
-                });
-                let new_params = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in n.params.clone().iter().cloned() {
-                        __result.push(substitute_generics_apply(
-                            p.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        ));
-                    }
-                    __result
-                });
-                let new_inferred = match n.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: rt, .. }) => {
-                        let new_rt = substitute_generics_apply(
-                            rt.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        );
-                        if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
-                            n.inferred.clone()
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
+                match v1_rt::map_get(&subst, tv_id.clone()) {
+                    Some(c) => {
+                        if (type_node_label(c.clone(), source_indices.clone()) == tv_id.clone()) {
+                            n.clone()
                         } else {
-                            Some(Rc::new(InferredNode::Resolved {
-                                node: new_rt.clone(),
-                            }))
+                            crate::v1_std_core::preserve_outer_optional_cardinality(
+                                n.clone(),
+                                c.clone(),
+                            )
                         }
                     }
-                    _ => n.inferred.clone(),
-                };
-                if ((v1_rt::rc_vec_ptr_eq(new_children.clone(), n.children.clone())
-                    && v1_rt::rc_vec_ptr_eq(new_params.clone(), n.params.clone()))
-                    && (new_inferred.clone() == n.inferred.clone()))
-                {
-                    n.clone()
+                    std::option::Option::None => n.clone(),
+                }
+            }
+            _ => {
+                let nm = type_node_label(n.clone(), source_indices.clone());
+                let is_bare = ((((n.children.clone().len() as i64) == 0)
+                    && (n.connective.clone() == Connective::NoConnective))
+                    && ((n.params.clone().len() as i64) == 0));
+                if is_bare.clone() {
+                    match v1_rt::map_get(&subst, nm.clone()) {
+                        Some(c) => crate::v1_std_core::preserve_outer_optional_cardinality(
+                            n.clone(),
+                            c.clone(),
+                        ),
+                        std::option::Option::None => n.clone(),
+                    }
                 } else {
-                    Rc::new(Node {
-                        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                        name: n.name.clone(),
-                        span: n.span.clone(),
-                        ident_span: n.ident_span.clone(),
-                        children: new_children.clone(),
-                        connective: n.connective.clone(),
-                        params: new_params.clone(),
-                        inferred: new_inferred.clone(),
-                        return_cardinality: n.return_cardinality.clone(),
-                        uses: n.uses.clone(),
-                        body: n.body.clone(),
-                        transport: n.transport.clone(),
-                        properties: n.properties.clone(),
-                        type_annotation: n.type_annotation.clone(),
-                        is_self_recursive: n.is_self_recursive.clone(),
-                        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                        match_pattern: n.match_pattern.clone(),
-                        module_item_kind: n.module_item_kind.clone(),
-                        declaration_marker: n.declaration_marker.clone(),
-                        declaration: n.declaration.clone(),
-                        expr_data: n.expr_data.clone(),
-                        ident: None,
-                    })
+                    {
+                        let new_children = Rc::new({
+                            let mut __result = Vec::new();
+                            for c in n.children.clone().iter().cloned() {
+                                __result.push(substitute_generics_apply(
+                                    c.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        });
+                        let new_params = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in n.params.clone().iter().cloned() {
+                                __result.push(substitute_generics_apply(
+                                    p.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        });
+                        let new_inferred = match n.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: rt, .. }) => {
+                                let new_rt = substitute_generics_apply(
+                                    rt.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                );
+                                if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
+                                    n.inferred.clone()
+                                } else {
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: new_rt.clone(),
+                                    }))
+                                }
+                            }
+                            _ => n.inferred.clone(),
+                        };
+                        if ((v1_rt::rc_vec_ptr_eq(new_children.clone(), n.children.clone())
+                            && v1_rt::rc_vec_ptr_eq(new_params.clone(), n.params.clone()))
+                            && (new_inferred.clone() == n.inferred.clone()))
+                        {
+                            n.clone()
+                        } else {
+                            Rc::new(Node {
+                                occurrence_identity: Rc::new(
+                                    NodeOccurrenceIdentity::OccurrenceSynthetic,
+                                ),
+                                name: n.name.clone(),
+                                span: n.span.clone(),
+                                ident_span: n.ident_span.clone(),
+                                children: new_children.clone(),
+                                connective: n.connective.clone(),
+                                params: new_params.clone(),
+                                inferred: new_inferred.clone(),
+                                return_cardinality: n.return_cardinality.clone(),
+                                uses: n.uses.clone(),
+                                body: n.body.clone(),
+                                transport: n.transport.clone(),
+                                properties: n.properties.clone(),
+                                type_annotation: n.type_annotation.clone(),
+                                is_self_recursive: n.is_self_recursive.clone(),
+                                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                                match_pattern: n.match_pattern.clone(),
+                                module_item_kind: n.module_item_kind.clone(),
+                                declaration_marker: n.declaration_marker.clone(),
+                                declaration: n.declaration.clone(),
+                                expr_data: n.expr_data.clone(),
+                                ident: None,
+                            })
+                        }
+                    }
                 }
             }
         }
-    }
+    })
 }
 
 pub fn kernel_span(name: String) -> Rc<SourceSpan> {
@@ -28216,7 +28123,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "True".to_string(),
             span: kernel_span("True".to_string()),
-            ident_span: Some(kernel_span("True".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_ident("True".to_string())),
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -28240,7 +28147,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "False".to_string(),
             span: kernel_span("False".to_string()),
-            ident_span: Some(kernel_span("False".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_ident("False".to_string())),
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -28264,7 +28171,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Bool".to_string(),
             span: kernel_span("Bool".to_string()),
-            ident_span: Some(kernel_span("Bool".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_ident("Bool".to_string())),
             children: Rc::new(vec![
                 kernel_true_variant.clone(),
                 kernel_false_variant.clone(),
@@ -28320,7 +28227,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
-            ident_span: Some(kernel_span("value".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_ident("value".to_string())),
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -28346,7 +28253,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Present".to_string(),
             span: kernel_span("Present".to_string()),
-            ident_span: Some(kernel_span("Present".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_ident("Present".to_string())),
             children: Rc::new(vec![present_value_field.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -28370,7 +28277,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Absent".to_string(),
             span: kernel_span("Absent".to_string()),
-            ident_span: Some(kernel_span("Absent".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_ident("Absent".to_string())),
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -28394,7 +28301,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
-            ident_span: Some(kernel_span("Optional".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_ident("Optional".to_string())),
             children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
             connective: Connective::Disj,
             params: Rc::new(vec![]),
@@ -28498,7 +28405,7 @@ pub fn build_type_env(
                                 ),
                                 name: name.clone(),
                                 span: kernel_span(name.clone()),
-                                ident_span: Some(kernel_span(name.clone())),
+                                ident_span: Some(crate::v1_std_core::kernel_ident(name.clone())),
                                 children: Rc::new(vec![]),
                                 connective: Connective::NoConnective,
                                 params: Rc::new(vec![]),
@@ -28536,7 +28443,10 @@ pub fn build_type_env(
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "Unit".to_string(),
                     span: unit_span.clone(),
-                    ident_span: Some(unit_span.clone()),
+                    ident_span: Some(crate::v1_std_core::authored_ident(
+                        unit_span.clone(),
+                        "Unit".to_string(),
+                    )),
                     children: Rc::new(vec![]),
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
@@ -29162,7 +29072,7 @@ pub fn build_type_env_unresolved(
                                 ),
                                 name: name.clone(),
                                 span: kernel_span(name.clone()),
-                                ident_span: Some(kernel_span(name.clone())),
+                                ident_span: Some(crate::v1_std_core::kernel_ident(name.clone())),
                                 children: Rc::new(vec![]),
                                 connective: Connective::NoConnective,
                                 params: Rc::new(vec![]),
@@ -30661,30 +30571,10 @@ pub struct TypecheckModuleResult {
 pub struct GroundedView {
     pub carrier: Rc<DeclarationRef>,
     pub carrier_name: String,
-    pub shape: Rc<GroundedViewShape>,
-    pub operand: Rc<OperandDeclaration>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum GroundedViewShape {
-    GroundedPeano {
-        constructors: Rc<PeanoConstructors>,
-    },
-    GroundedSigned {
-        nonnegative: String,
-        nonnegative_payload: String,
-        negative: String,
-        negative_payload: String,
-        natural: Rc<DeclarationRef>,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PeanoConstructors {
     pub zero: String,
     pub succ: String,
     pub prev_field: String,
+    pub operand: Rc<OperandDeclaration>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -30697,40 +30587,7 @@ pub enum GroundedCarrierState {
     GroundedCarrierShapeRefused {
         carrier: Rc<DeclarationRef>,
         span: Rc<SourceSpan>,
-        reason: Rc<GroundedShapeRefusal>,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum GroundedShapeRefusal {
-    PeanoShapeMismatch,
-    SignedViewRefused { reason: Rc<SignedViewDisagreement> },
-}
-impl GroundedShapeRefusal {
-    pub fn reason(&self) -> Rc<SignedViewDisagreement> {
-        match self {
-            GroundedShapeRefusal::PeanoShapeMismatch => panic!("no reason on unit variant"),
-            GroundedShapeRefusal::SignedViewRefused { reason: __val, .. } => __val.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum GroundedViewMatch {
-    NoGroundedView,
-    GroundedViewFound { view: Rc<GroundedView> },
-    GroundedViewUnidentified { view: Rc<GroundedView> },
-}
-impl GroundedViewMatch {
-    pub fn view(&self) -> Rc<GroundedView> {
-        match self {
-            GroundedViewMatch::NoGroundedView => panic!("no view on unit variant"),
-            GroundedViewMatch::GroundedViewFound { view: __val, .. } => __val.clone(),
-            GroundedViewMatch::GroundedViewUnidentified { view: __val, .. } => __val.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -30781,93 +30638,6 @@ impl PeanoPatternReading {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum GroundedTest {
-    GroundedAlways,
-    GroundedCompare { op: BinOp, k: i64 },
-}
-impl GroundedTest {
-    pub fn op(&self) -> BinOp {
-        match self {
-            GroundedTest::GroundedAlways => panic!("no op on unit variant"),
-            GroundedTest::GroundedCompare { op: __val, .. } => __val.clone(),
-        }
-    }
-    pub fn k(&self) -> i64 {
-        match self {
-            GroundedTest::GroundedAlways => panic!("no k on unit variant"),
-            GroundedTest::GroundedCompare { k: __val, .. } => __val.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum GroundedBound {
-    SubjectMinus { k: i64 },
-    ConstantMinusSubject { c: i64 },
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum GroundedBinding {
-    GroundedNoBinder,
-    GroundedBinder {
-        declaration: Rc<Node>,
-        value: Rc<GroundedBound>,
-        binder_type: Rc<Node>,
-    },
-}
-impl GroundedBinding {
-    pub fn declaration(&self) -> Rc<Node> {
-        match self {
-            GroundedBinding::GroundedNoBinder => panic!("no declaration on unit variant"),
-            GroundedBinding::GroundedBinder {
-                declaration: __val, ..
-            } => __val.clone(),
-        }
-    }
-    pub fn value(&self) -> Rc<GroundedBound> {
-        match self {
-            GroundedBinding::GroundedNoBinder => panic!("no value on unit variant"),
-            GroundedBinding::GroundedBinder { value: __val, .. } => __val.clone(),
-        }
-    }
-    pub fn binder_type(&self) -> Rc<Node> {
-        match self {
-            GroundedBinding::GroundedNoBinder => panic!("no binder_type on unit variant"),
-            GroundedBinding::GroundedBinder {
-                binder_type: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum GroundedArmReading {
-    GroundedArmPlan {
-        test: Rc<GroundedTest>,
-        binding: Rc<GroundedBinding>,
-    },
-    GroundedArmUnreadable,
-}
-impl GroundedArmReading {
-    pub fn test(&self) -> Rc<GroundedTest> {
-        match self {
-            GroundedArmReading::GroundedArmPlan { test: __val, .. } => __val.clone(),
-            GroundedArmReading::GroundedArmUnreadable => panic!("no test on unit variant"),
-        }
-    }
-    pub fn binding(&self) -> Rc<GroundedBinding> {
-        match self {
-            GroundedArmReading::GroundedArmPlan { binding: __val, .. } => __val.clone(),
-            GroundedArmReading::GroundedArmUnreadable => panic!("no binding on unit variant"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GroundedPattern {
     pub pattern: Rc<MatchPattern>,
     pub changed: bool,
@@ -30875,29 +30645,6 @@ pub struct GroundedPattern {
 }
 
 pub fn grounded_carrier_state(
-    row: Rc<KernelGrounding>,
-    decl: Rc<Node>,
-    env: Rc<TypeEnv>,
-) -> Rc<GroundedCarrierState> {
-    match (*row.view.clone()).clone() {
-        KernelGroundingView::PeanoGroundingView => {
-            peano_grounded_carrier_state(row.clone(), decl.clone(), env.clone())
-        }
-        KernelGroundingView::SignedGroundingView {
-            nonnegative: nn,
-            negative: ng,
-            ..
-        } => signed_grounded_carrier_state(
-            row.clone(),
-            decl.clone(),
-            nn.clone(),
-            ng.clone(),
-            env.clone(),
-        ),
-    }
-}
-
-pub fn peano_grounded_carrier_state(
     row: Rc<KernelGrounding>,
     decl: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -30912,7 +30659,6 @@ pub fn peano_grounded_carrier_state(
                 let refused = Rc::new(GroundedCarrierState::GroundedCarrierShapeRefused {
                     carrier: row.carrier.clone(),
                     span: decl.span.clone(),
-                    reason: Rc::new(GroundedShapeRefusal::PeanoShapeMismatch),
                 });
                 let nullary = Rc::new({
                     let mut __result = Vec::new();
@@ -30953,13 +30699,9 @@ pub fn peano_grounded_carrier_state(
     view: Rc::new(GroundedView {
     carrier: row.carrier.clone(),
     carrier_name: row.carrier.decl_name.clone(),
-    shape: Rc::new(GroundedViewShape::GroundedPeano {
-    constructors: Rc::new(PeanoConstructors {
     zero: crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(si.clone(), z.clone())),
     succ: crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(si.clone(), s.clone())),
     prev_field: crate::v1_std_core::authored_name_at(si.clone(), f.clone()),
-}),
-}),
     operand: Rc::new(OperandDeclaration {
     declaration: row.carrier.clone(),
     provenance: crate::v1_compiler_infer_env::declaration_provenance_of_ref(row.carrier.clone(), env.clone()),
@@ -30980,100 +30722,6 @@ pub fn peano_grounded_carrier_state(
             }
         }
     }
-}
-
-pub fn grounded_constructor_shapes(
-    variants: Rc<Vec<Rc<Node>>>,
-    env: Rc<TypeEnv>,
-) -> Rc<Vec<Rc<GroundedConstructorShape>>> {
-    {
-        let si = env.source_indices.clone();
-        Rc::new({
-            let mut __result = Vec::new();
-            for v in variants.iter().cloned() {
-                __result.push(Rc::new(GroundedConstructorShape {
-    constructor: crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(si.clone(), v.clone())),
-    fields: Rc::new({ let mut __result = Vec::new(); for f in crate::v1_std_core::variant_node_fields(v.clone()).iter().cloned() { __result.push(Rc::new(GroundedFieldShape {
-    field: crate::v1_std_core::authored_name_at(si.clone(), f.clone()),
-    declared_at: match crate::v1_compiler_infer_env::type_reference_declaration_ref(crate::v1_compiler_infer_types::child_type_node(f.clone()), si.clone(), env.clone()) {
-    Some(fd) => if crate::std_literal_elaboration::declaration_is_grounded_natural(kernel_grounding_rows(), fd.clone()) {
-            Rc::new(GroundedFieldDeclaration::FieldAtGroundedNatural {
-    natural: fd.clone(),
-})
-        } else {
-            Rc::new(GroundedFieldDeclaration::FieldNotAtGroundedNatural)
-        },
-    std::option::Option::None => Rc::new(GroundedFieldDeclaration::FieldNotAtGroundedNatural),
-},
-})); } __result }),
-}));
-            }
-            __result
-        })
-    }
-}
-
-pub fn grounded_declared_form(decl: Rc<Node>, env: Rc<TypeEnv>) -> Rc<GroundedDeclaredForm> {
-    if (decl.connective.clone() == Connective::Disj) {
-        Rc::new(GroundedDeclaredForm::DeclaredCoproduct {
-            constructors: grounded_constructor_shapes(decl.children.clone(), env.clone()),
-        })
-    } else {
-        Rc::new(GroundedDeclaredForm::DeclaredNotACoproduct)
-    }
-}
-
-pub fn signed_grounded_carrier_state(
-    row: Rc<KernelGrounding>,
-    decl: Rc<Node>,
-    nonnegative: Rc<KernelGroundingArm>,
-    negative: Rc<KernelGroundingArm>,
-    env: Rc<TypeEnv>,
-) -> Rc<GroundedCarrierState> {
-    match (*crate::std_literal_elaboration::signed_view_reading(
-        nonnegative.clone(),
-        negative.clone(),
-        grounded_declared_form(decl.clone(), env.clone()),
-    ))
-    .clone()
-    {
-        SignedViewReading::SignedViewDisagrees { reason: r, .. } => {
-            Rc::new(GroundedCarrierState::GroundedCarrierShapeRefused {
-                carrier: row.carrier.clone(),
-                span: decl.span.clone(),
-                reason: Rc::new(GroundedShapeRefusal::SignedViewRefused { reason: r.clone() }),
-            })
-        }
-        SignedViewReading::SignedViewAgrees {
-            natural: natural, ..
-        } => Rc::new(GroundedCarrierState::GroundedViewReadable {
-            view: Rc::new(GroundedView {
-                carrier: row.carrier.clone(),
-                carrier_name: row.carrier.decl_name.clone(),
-                shape: Rc::new(GroundedViewShape::GroundedSigned {
-                    nonnegative: nonnegative.constructor.clone(),
-                    nonnegative_payload: nonnegative.payload.clone(),
-                    negative: negative.constructor.clone(),
-                    negative_payload: negative.payload.clone(),
-                    natural: natural.clone(),
-                }),
-                operand: Rc::new(OperandDeclaration {
-                    declaration: row.carrier.clone(),
-                    provenance: crate::v1_compiler_infer_env::declaration_provenance_of_ref(
-                        row.carrier.clone(),
-                        env.clone(),
-                    ),
-                }),
-            }),
-        }),
-    }
-}
-
-pub fn grounded_shape_refusal_message(reason: Rc<GroundedShapeRefusal>) -> String {
-    match (*reason.clone()).clone() {
-    GroundedShapeRefusal::PeanoShapeMismatch => "its declaration is not the inductive shape the row folds (exactly one constructor with no field and one with a single field of the carrier's own type)".to_string(),
-    GroundedShapeRefusal::SignedViewRefused { reason: r, .. } => crate::std_literal_elaboration::signed_view_disagreement_message(r.clone()),
-}
 }
 
 pub fn grounded_carrier_states(env: Rc<TypeEnv>) -> Rc<Vec<Rc<GroundedCarrierState>>> {
@@ -31153,89 +30801,18 @@ pub fn ground_refused(n: Rc<Node>, message: String, ctx: Rc<GroundCtx>) -> Rc<Gr
     })
 }
 
-pub fn grounded_view_spells(view: Rc<GroundedView>, name: String) -> bool {
-    match (*view.shape.clone()).clone() {
-        GroundedViewShape::GroundedPeano {
-            constructors: c, ..
-        } => ((c.zero.clone() == name.clone()) || (c.succ.clone() == name.clone())),
-        GroundedViewShape::GroundedSigned {
-            nonnegative: nn,
-            negative: ng,
-            ..
-        } => ((nn.clone() == name.clone()) || (ng.clone() == name.clone())),
-    }
-}
-
-pub fn carrier_match_grounded(m: CarrierMatch) -> bool {
-    match m.clone() {
-        CarrierMatch::GroundedCarrier => true,
-        _ => false,
-    }
-}
-
-pub fn carrier_match_unidentified(m: CarrierMatch) -> bool {
-    match m.clone() {
-        CarrierMatch::GroundedCarrierUnidentified => true,
-        _ => false,
-    }
-}
-
-pub fn grounded_view_match(
-    name: String,
-    rt: Rc<Node>,
-    parent_enum: Option<String>,
-    ctx: Rc<GroundCtx>,
-) -> Rc<GroundedViewMatch> {
-    {
-        let spelled = Rc::new({
-            let mut __result = Vec::new();
-            for v in ctx.views.clone().iter().cloned() {
-                if grounded_view_spells(v.clone(), name.clone()) {
-                    __result.push(v);
-                }
+pub fn grounded_view_for_constructor(name: String, ctx: Rc<GroundCtx>) -> Option<Rc<GroundedView>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for v in ctx.views.clone().iter().cloned() {
+            if ((v.zero.clone() == name.clone()) || (v.succ.clone() == name.clone())) {
+                __result.push(v);
             }
-            __result
-        });
-        match Rc::new({
-            let mut __result = Vec::new();
-            for v in spelled.iter().cloned() {
-                if carrier_match_grounded(grounded_carrier_match(
-                    rt.clone(),
-                    parent_enum.clone(),
-                    v.clone(),
-                    ctx.clone(),
-                )) {
-                    __result.push(v);
-                }
-            }
-            __result
-        })
-        .first()
-        .cloned()
-        {
-            Some(v) => Rc::new(GroundedViewMatch::GroundedViewFound { view: v.clone() }),
-            std::option::Option::None => match Rc::new({
-                let mut __result = Vec::new();
-                for v in spelled.iter().cloned() {
-                    if carrier_match_unidentified(grounded_carrier_match(
-                        rt.clone(),
-                        parent_enum.clone(),
-                        v.clone(),
-                        ctx.clone(),
-                    )) {
-                        __result.push(v);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned()
-            {
-                Some(v) => Rc::new(GroundedViewMatch::GroundedViewUnidentified { view: v.clone() }),
-                std::option::Option::None => Rc::new(GroundedViewMatch::NoGroundedView),
-            },
         }
-    }
+        __result
+    })
+    .first()
+    .cloned()
 }
 
 pub fn grounded_carrier_match(
@@ -31333,99 +30910,6 @@ pub fn grounded_binop(
     }
 }
 
-pub fn grounded_reflect(
-    c: i64,
-    subject: Rc<Node>,
-    carrier_type: Rc<Node>,
-    result_type: Rc<Node>,
-    occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    span: Rc<SourceSpan>,
-    view: Rc<GroundedView>,
-    ctx: Rc<GroundCtx>,
-) -> Rc<Node> {
-    {
-        let info = crate::v1_compiler_infer_types::infer_binop_type_node(
-            BinOp::Sub,
-            carrier_type.clone(),
-            ctx.env.source_indices.clone(),
-            ctx.env.clone(),
-        );
-        crate::v1_std_core::make_expr_node(
-            occurrence_identity.clone(),
-            Rc::new(ExprData::ExprBinOp {
-                op: BinOp::Sub,
-                algebra_field: info.algebra_field.clone(),
-                operand: Some(view.operand.clone()),
-            }),
-            Rc::new(vec![
-                grounded_int_literal(
-                    c.clone(),
-                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                    span.clone(),
-                ),
-                subject.clone(),
-            ]),
-            Some(Rc::new(InferredNode::Resolved {
-                node: result_type.clone(),
-            })),
-            span.clone(),
-        )
-    }
-}
-
-pub fn grounded_signed_construct(
-    payload: Rc<Node>,
-    negative: bool,
-    carrier_type: Rc<Node>,
-    occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    span: Rc<SourceSpan>,
-    view: Rc<GroundedView>,
-    ctx: Rc<GroundCtx>,
-) -> Rc<Node> {
-    match (*payload.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
-        {
-            let LiteralValue::LitInt { value: j, .. } = value.as_ref() else {
-                unreachable!()
-            };
-            grounded_int_literal(
-                if negative.clone() {
-                    v1_rt::int_sub(v1_rt::int_sub(0, 1), j.clone())
-                } else {
-                    j.clone()
-                },
-                occurrence_identity.clone(),
-                span.clone(),
-            )
-        }
-        _ => {
-            if negative.clone() {
-                grounded_reflect(
-                    v1_rt::int_neg(1),
-                    payload.clone(),
-                    carrier_type.clone(),
-                    carrier_type.clone(),
-                    occurrence_identity.clone(),
-                    span.clone(),
-                    view.clone(),
-                    ctx.clone(),
-                )
-            } else {
-                crate::v1_std_core::make_expr_node(
-                    occurrence_identity.clone(),
-                    Rc::new(ExprData::ExprBlock),
-                    Rc::new(vec![payload.clone()]),
-                    Some(Rc::new(InferredNode::Resolved {
-                        node: carrier_type.clone(),
-                    })),
-                    span.clone(),
-                )
-            }
-        }
-    }
-}
-
 pub fn grounded_successor(
     prev: Rc<Node>,
     carrier_type: Rc<Node>,
@@ -31460,10 +30944,6 @@ pub fn grounded_successor(
     }
 }
 
-pub fn grounded_unidentified_message(name: String, view: Rc<GroundedView>) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the constructor `".to_string(), name.clone()), "` is spelled as a constructor of the kernel-grounded carrier ".to_string()), view.carrier.module_path.clone()), ".".to_string()), view.carrier_name.clone()), " but the declaration this occurrence is typed at could not be read, so whether it folds to a kernel integer is undecided".to_string())
-}
-
 pub fn ground_record_lit(
     n: Rc<Node>,
     parent_enum: Option<String>,
@@ -31475,145 +30955,31 @@ pub fn ground_record_lit(
             Some(t) => crate::v1_std_core::qualified_last_segment(t.clone()),
             std::option::Option::None => "".to_string(),
         };
-        let carrier_type = crate::v1_compiler_infer_types::resolved_type(n.clone());
-        match (*grounded_view_match(
-            name.clone(),
-            carrier_type.clone(),
-            parent_enum.clone(),
-            ctx.clone(),
-        ))
-        .clone()
-        {
-            GroundedViewMatch::NoGroundedView => ground_unchanged(n.clone()),
-            GroundedViewMatch::GroundedViewUnidentified { view: view, .. } => ground_refused(
-                n.clone(),
-                grounded_unidentified_message(name.clone(), view.clone()),
-                ctx.clone(),
-            ),
-            GroundedViewMatch::GroundedViewFound { view: view, .. } => match (*view.shape.clone())
-                .clone()
-            {
-                GroundedViewShape::GroundedPeano {
-                    constructors: c, ..
-                } => {
-                    if (name.clone() == c.zero.clone()) {
-                        Rc::new(GroundOut {
-                            node: grounded_int_literal(
-                                0,
-                                n.occurrence_identity.clone(),
-                                n.span.clone(),
-                            ),
-                            changed: true,
-                            diagnostics: Rc::new(vec![]),
-                        })
-                    } else {
-                        match Rc::new({
-                            let mut __result = Vec::new();
-                            for ch in n.children.clone().iter().cloned() {
-                                if (crate::v1_std_core::field_init_node_name_at(
-                                    ch.clone(),
-                                    si.clone(),
-                                ) == c.prev_field.clone())
-                                {
-                                    __result.push(ch);
-                                }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned()
-                        {
-                            Some(fi) => Rc::new(GroundOut {
-                                node: grounded_successor(
-                                    crate::v1_std_core::field_init_node_value(fi.clone()),
-                                    carrier_type.clone(),
-                                    n.occurrence_identity.clone(),
-                                    n.span.clone(),
-                                    view.clone(),
-                                    ctx.clone(),
-                                ),
-                                changed: true,
-                                diagnostics: Rc::new(vec![]),
-                            }),
-                            std::option::Option::None => ground_refused(
-                                n.clone(),
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                "the successor constructor `".to_string(),
-                                                name.clone(),
-                                            ),
-                                            "` carries no `".to_string(),
-                                        ),
-                                        c.prev_field.clone(),
-                                    ),
-                                    "` field to fold".to_string(),
-                                ),
-                                ctx.clone(),
-                            ),
-                        }
-                    }
-                }
-                GroundedViewShape::GroundedSigned {
-                    nonnegative_payload: nnp,
-                    negative: ng,
-                    negative_payload: ngp,
-                    ..
-                } => {
-                    let negative = (name.clone() == ng.clone());
-                    let payload_name = if negative.clone() {
-                        ngp.clone()
-                    } else {
-                        nnp.clone()
-                    };
-                    match Rc::new({
-                        let mut __result = Vec::new();
-                        for ch in n.children.clone().iter().cloned() {
-                            if (crate::v1_std_core::field_init_node_name_at(ch.clone(), si.clone())
-                                == payload_name.clone())
-                            {
-                                __result.push(ch);
-                            }
-                        }
-                        __result
-                    })
-                    .first()
-                    .cloned()
-                    {
-                        Some(fi) => Rc::new(GroundOut {
-                            node: grounded_signed_construct(
-                                crate::v1_std_core::field_init_node_value(fi.clone()),
-                                negative.clone(),
-                                carrier_type.clone(),
-                                n.occurrence_identity.clone(),
-                                n.span.clone(),
-                                view.clone(),
-                                ctx.clone(),
-                            ),
-                            changed: true,
-                            diagnostics: Rc::new(vec![]),
-                        }),
-                        std::option::Option::None => ground_refused(
-                            n.clone(),
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "the signed constructor `".to_string(),
-                                            name.clone(),
-                                        ),
-                                        "` carries no `".to_string(),
-                                    ),
-                                    payload_name.clone(),
-                                ),
-                                "` field to fold".to_string(),
-                            ),
-                            ctx.clone(),
-                        ),
-                    }
-                }
+        match grounded_view_for_constructor(name.clone(), ctx.clone()) {
+            std::option::Option::None => ground_unchanged(n.clone()),
+            Some(view) => {
+                let carrier_type = crate::v1_compiler_infer_types::resolved_type(n.clone());
+                match grounded_carrier_match(carrier_type.clone(), parent_enum.clone(), view.clone(), ctx.clone()) {
+    CarrierMatch::NotGroundedCarrier => ground_unchanged(n.clone()),
+    CarrierMatch::GroundedCarrierUnidentified => ground_refused(n.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the constructor `".to_string(), name.clone()), "` is spelled as a constructor of the kernel-grounded carrier ".to_string()), view.carrier.module_path.clone()), ".".to_string()), view.carrier_name.clone()), " but the declaration this occurrence is typed at could not be read, so whether it folds to a kernel integer is undecided".to_string()), ctx.clone()),
+    CarrierMatch::GroundedCarrier => if (name.clone() == view.zero.clone()) {
+                Rc::new(GroundOut {
+    node: grounded_int_literal(0, n.occurrence_identity.clone(), n.span.clone()),
+    changed: true,
+    diagnostics: Rc::new(vec![]),
+})
+            } else {
+                match Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if (crate::v1_std_core::field_init_node_name_at(c.clone(), si.clone()) == view.prev_field.clone()) { __result.push(c); } } __result }).first().cloned() {
+    Some(fi) => Rc::new(GroundOut {
+    node: grounded_successor(crate::v1_std_core::field_init_node_value(fi.clone()), carrier_type.clone(), n.occurrence_identity.clone(), n.span.clone(), view.clone(), ctx.clone()),
+    changed: true,
+    diagnostics: Rc::new(vec![]),
+}),
+    std::option::Option::None => ground_refused(n.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the successor constructor `".to_string(), name.clone()), "` carries no `".to_string()), view.prev_field.clone()), "` field to fold".to_string()), ctx.clone()),
+}
             },
+}
+            }
         }
     }
 }
@@ -31624,24 +30990,20 @@ pub fn ground_variant_value(n: Rc<Node>, parent_enum: String, ctx: Rc<GroundCtx>
         let name = crate::v1_std_core::qualified_last_segment(
             crate::v1_std_core::expr_var_name_at(n.clone(), si.clone()),
         );
-        match (*grounded_view_match(name.clone(), crate::v1_compiler_infer_types::resolved_type(n.clone()), Some(parent_enum.clone()), ctx.clone())).clone() {
-    GroundedViewMatch::NoGroundedView => ground_unchanged(n.clone()),
-    GroundedViewMatch::GroundedViewUnidentified { view: view, .. } => ground_refused(n.clone(), grounded_unidentified_message(name.clone(), view.clone()), ctx.clone()),
-    GroundedViewMatch::GroundedViewFound { view: view, .. } => match (*view.shape.clone()).clone() {
-    GroundedViewShape::GroundedPeano { constructors: c, .. } => if (name.clone() == c.zero.clone()) {
+        match grounded_view_for_constructor(name.clone(), ctx.clone()) {
+    std::option::Option::None => ground_unchanged(n.clone()),
+    Some(view) => match grounded_carrier_match(crate::v1_compiler_infer_types::resolved_type(n.clone()), Some(parent_enum.clone()), view.clone(), ctx.clone()) {
+    CarrierMatch::NotGroundedCarrier => ground_unchanged(n.clone()),
+    CarrierMatch::GroundedCarrierUnidentified => ground_refused(n.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the constructor `".to_string(), name.clone()), "` is spelled as a constructor of the kernel-grounded carrier ".to_string()), view.carrier.module_path.clone()), ".".to_string()), view.carrier_name.clone()), " but the declaration this occurrence is typed at could not be read, so whether it folds to a kernel integer is undecided".to_string()), ctx.clone()),
+    CarrierMatch::GroundedCarrier => if (name.clone() == view.zero.clone()) {
             Rc::new(GroundOut {
     node: grounded_int_literal(0, n.occurrence_identity.clone(), n.span.clone()),
     changed: true,
     diagnostics: Rc::new(vec![]),
 })
         } else {
-            ground_refused(n.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the successor constructor `".to_string(), name.clone()), "` is used as a value; a kernel-grounded successor is folded only where it is applied to its `".to_string()), c.prev_field.clone()), "` field".to_string()), ctx.clone())
+            ground_refused(n.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the successor constructor `".to_string(), name.clone()), "` is used as a value; a kernel-grounded successor is folded only where it is applied to its `".to_string()), view.prev_field.clone()), "` field".to_string()), ctx.clone())
         },
-    GroundedViewShape::GroundedSigned { nonnegative_payload: nnp, negative: ng, negative_payload: ngp, .. } => ground_refused(n.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the signed constructor `".to_string(), name.clone()), "` is used as a value; a kernel-grounded signed constructor is folded only where it is applied to its `".to_string()), if (name.clone() == ng.clone()) {
-            ngp.clone()
-        } else {
-            nnp.clone()
-        }), "` field".to_string()), ctx.clone()),
 },
 }
     }
@@ -31649,7 +31011,7 @@ pub fn ground_variant_value(n: Rc<Node>, parent_enum: String, ctx: Rc<GroundCtx>
 
 pub fn peano_pattern_reading(
     p: Rc<MatchPattern>,
-    c: Rc<PeanoConstructors>,
+    view: Rc<GroundedView>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<PeanoPatternReading> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*p.clone()).clone() {
@@ -31673,10 +31035,10 @@ pub fn peano_pattern_reading(
             ..
         } => {
             let leaf = crate::v1_std_core::qualified_last_segment(n.clone());
-            if (leaf.clone() == c.zero.clone()) {
+            if (leaf.clone() == view.zero.clone()) {
                 Rc::new(PeanoPatternReading::PeanoExact { k: 0 })
             } else {
-                if (leaf.clone() == c.succ.clone()) {
+                if (leaf.clone() == view.succ.clone()) {
                     {
                         let inner = match Rc::new({
                             let mut __result = Vec::new();
@@ -31684,7 +31046,7 @@ pub fn peano_pattern_reading(
                                 if (crate::v1_std_core::field_binding_name_at(
                                     fb.clone(),
                                     si.clone(),
-                                ) == c.prev_field.clone())
+                                ) == view.prev_field.clone())
                                 {
                                     __result.push(fb);
                                 }
@@ -31696,7 +31058,7 @@ pub fn peano_pattern_reading(
                         {
                             Some(fb) => peano_pattern_reading(
                                 crate::v1_std_core::field_binding_pattern(fb.clone()),
-                                c.clone(),
+                                view.clone(),
                                 si.clone(),
                             ),
                             std::option::Option::None => {
@@ -31731,274 +31093,6 @@ pub fn peano_pattern_reading(
     })
 }
 
-pub fn peano_arm_reading(
-    r: Rc<PeanoPatternReading>,
-    carrier_type: Rc<Node>,
-) -> Rc<GroundedArmReading> {
-    match (*r.clone()).clone() {
-        PeanoPatternReading::PeanoExact { k: k, .. } => {
-            Rc::new(GroundedArmReading::GroundedArmPlan {
-                test: Rc::new(GroundedTest::GroundedCompare {
-                    op: BinOp::Eq,
-                    k: k.clone(),
-                }),
-                binding: Rc::new(GroundedBinding::GroundedNoBinder),
-            })
-        }
-        PeanoPatternReading::PeanoAtLeast { k, binder: b, .. } => {
-            Rc::new(GroundedArmReading::GroundedArmPlan {
-                test: if (k.clone() == 0) {
-                    Rc::new(GroundedTest::GroundedAlways)
-                } else {
-                    Rc::new(GroundedTest::GroundedCompare {
-                        op: BinOp::Ge,
-                        k: k.clone(),
-                    })
-                },
-                binding: match b.clone() {
-                    Some(d) => Rc::new(GroundedBinding::GroundedBinder {
-                        declaration: d.clone(),
-                        value: Rc::new(GroundedBound::SubjectMinus { k: k.clone() }),
-                        binder_type: carrier_type.clone(),
-                    }),
-                    std::option::Option::None => Rc::new(GroundedBinding::GroundedNoBinder),
-                },
-            })
-        }
-        PeanoPatternReading::PeanoPatternUnreadable => {
-            Rc::new(GroundedArmReading::GroundedArmUnreadable)
-        }
-    }
-}
-
-pub fn natural_pattern_reading(
-    p: Rc<MatchPattern>,
-    natural: Rc<DeclarationRef>,
-    ctx: Rc<GroundCtx>,
-) -> Rc<PeanoPatternReading> {
-    {
-        let constructors = Rc::new({
-            let mut __result = Vec::new();
-            for v in ctx.views.clone().iter().cloned() {
-                __result.extend((*if crate::std_decl_ref::declaration_ref_eq(v.carrier.clone(), natural.clone()) {
-            match (*v.shape.clone()).clone() {
-    GroundedViewShape::GroundedPeano { constructors: c, .. } => Rc::new(vec![c.clone()]),
-    GroundedViewShape::GroundedSigned { .. } => Rc::new(vec![]),
-}
-        } else {
-            Rc::new(vec![])
-        }).iter().cloned());
-            }
-            __result
-        });
-        match constructors.clone().first().cloned() {
-            Some(c) => peano_pattern_reading(p.clone(), c.clone(), ctx.env.source_indices.clone()),
-            std::option::Option::None => Rc::new(PeanoPatternReading::PeanoPatternUnreadable),
-        }
-    }
-}
-
-pub fn signed_payload_plan(
-    negative: bool,
-    r: Rc<PeanoPatternReading>,
-    payload_type: Rc<Node>,
-) -> Rc<GroundedArmReading> {
-    match (*r.clone()).clone() {
-        PeanoPatternReading::PeanoExact { k: k, .. } => {
-            Rc::new(GroundedArmReading::GroundedArmPlan {
-                test: Rc::new(GroundedTest::GroundedCompare {
-                    op: BinOp::Eq,
-                    k: if negative.clone() {
-                        v1_rt::int_sub(v1_rt::int_sub(0, 1), k.clone())
-                    } else {
-                        k.clone()
-                    },
-                }),
-                binding: Rc::new(GroundedBinding::GroundedNoBinder),
-            })
-        }
-        PeanoPatternReading::PeanoAtLeast { k, binder: b, .. } => {
-            let c = v1_rt::int_sub(v1_rt::int_sub(0, 1), k.clone());
-            Rc::new(GroundedArmReading::GroundedArmPlan {
-                test: if negative.clone() {
-                    Rc::new(GroundedTest::GroundedCompare {
-                        op: BinOp::Le,
-                        k: c.clone(),
-                    })
-                } else {
-                    Rc::new(GroundedTest::GroundedCompare {
-                        op: BinOp::Ge,
-                        k: k.clone(),
-                    })
-                },
-                binding: match b.clone() {
-                    Some(d) => Rc::new(GroundedBinding::GroundedBinder {
-                        declaration: d.clone(),
-                        value: if negative.clone() {
-                            Rc::new(GroundedBound::ConstantMinusSubject { c: c.clone() })
-                        } else {
-                            Rc::new(GroundedBound::SubjectMinus { k: k.clone() })
-                        },
-                        binder_type: payload_type.clone(),
-                    }),
-                    std::option::Option::None => Rc::new(GroundedBinding::GroundedNoBinder),
-                },
-            })
-        }
-        PeanoPatternReading::PeanoPatternUnreadable => {
-            Rc::new(GroundedArmReading::GroundedArmUnreadable)
-        }
-    }
-}
-
-pub fn signed_arm_reading(
-    p: Rc<MatchPattern>,
-    view: Rc<GroundedView>,
-    carrier_type: Rc<Node>,
-    ctx: Rc<GroundCtx>,
-) -> Rc<GroundedArmReading> {
-    {
-        let si = ctx.env.source_indices.clone();
-        match (*view.shape.clone()).clone() {
-            GroundedViewShape::GroundedPeano {
-                constructors: _, ..
-            } => Rc::new(GroundedArmReading::GroundedArmUnreadable),
-            GroundedViewShape::GroundedSigned {
-                nonnegative: nn,
-                nonnegative_payload: nnp,
-                negative: ng,
-                negative_payload: ngp,
-                natural,
-                ..
-            } => match (*p.clone()).clone() {
-                MatchPattern::Wildcard => Rc::new(GroundedArmReading::GroundedArmPlan {
-                    test: Rc::new(GroundedTest::GroundedAlways),
-                    binding: Rc::new(GroundedBinding::GroundedNoBinder),
-                }),
-                MatchPattern::Bind { declaration: d, .. } => {
-                    Rc::new(GroundedArmReading::GroundedArmPlan {
-                        test: Rc::new(GroundedTest::GroundedAlways),
-                        binding: Rc::new(GroundedBinding::GroundedBinder {
-                            declaration: d.clone(),
-                            value: Rc::new(GroundedBound::SubjectMinus { k: 0 }),
-                            binder_type: carrier_type.clone(),
-                        }),
-                    })
-                }
-                MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
-                    LiteralValue::LitInt { value: k, .. } => {
-                        Rc::new(GroundedArmReading::GroundedArmPlan {
-                            test: Rc::new(GroundedTest::GroundedCompare {
-                                op: BinOp::Eq,
-                                k: k.clone(),
-                            }),
-                            binding: Rc::new(GroundedBinding::GroundedNoBinder),
-                        })
-                    }
-                    _ => Rc::new(GroundedArmReading::GroundedArmUnreadable),
-                },
-                MatchPattern::VariantPattern {
-                    name: n,
-                    field_bindings: fbs,
-                    ..
-                } => {
-                    let leaf = crate::v1_std_core::qualified_last_segment(n.clone());
-                    if ((leaf.clone() != nn.clone()) && (leaf.clone() != ng.clone())) {
-                        Rc::new(GroundedArmReading::GroundedArmUnreadable)
-                    } else {
-                        {
-                            let negative = (leaf.clone() == ng.clone());
-                            let payload_name = if negative.clone() {
-                                ngp.clone()
-                            } else {
-                                nnp.clone()
-                            };
-                            match Rc::new({
-                                let mut __result = Vec::new();
-                                for f in crate::v1_compiler_infer_patterns::constructor_fields(
-                                    carrier_type.clone(),
-                                    leaf.clone(),
-                                    ctx.env.clone(),
-                                    ctx.module_name.clone(),
-                                )
-                                .iter()
-                                .cloned()
-                                {
-                                    if (f.name.clone() == payload_name.clone()) {
-                                        __result.push(f);
-                                    }
-                                }
-                                __result
-                            })
-                            .first()
-                            .cloned()
-                            {
-                                std::option::Option::None => {
-                                    Rc::new(GroundedArmReading::GroundedArmUnreadable)
-                                }
-                                Some(field) => {
-                                    let reading = match Rc::new({
-                                        let mut __result = Vec::new();
-                                        for fb in fbs.iter().cloned() {
-                                            if (crate::v1_std_core::field_binding_name_at(
-                                                fb.clone(),
-                                                si.clone(),
-                                            ) == payload_name.clone())
-                                            {
-                                                __result.push(fb);
-                                            }
-                                        }
-                                        __result
-                                    })
-                                    .first()
-                                    .cloned()
-                                    {
-                                        Some(fb) => natural_pattern_reading(
-                                            crate::v1_std_core::field_binding_pattern(fb.clone()),
-                                            natural.clone(),
-                                            ctx.clone(),
-                                        ),
-                                        std::option::Option::None => {
-                                            Rc::new(PeanoPatternReading::PeanoAtLeast {
-                                                k: 0,
-                                                binder: std::option::Option::None,
-                                            })
-                                        }
-                                    };
-                                    signed_payload_plan(
-                                        negative.clone(),
-                                        reading.clone(),
-                                        field.type_node.clone(),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-        }
-    }
-}
-
-pub fn grounded_arm_reading(
-    p: Rc<MatchPattern>,
-    view: Rc<GroundedView>,
-    carrier_type: Rc<Node>,
-    ctx: Rc<GroundCtx>,
-) -> Rc<GroundedArmReading> {
-    match (*view.shape.clone()).clone() {
-        GroundedViewShape::GroundedPeano {
-            constructors: c, ..
-        } => peano_arm_reading(
-            peano_pattern_reading(p.clone(), c.clone(), ctx.env.source_indices.clone()),
-            carrier_type.clone(),
-        ),
-        GroundedViewShape::GroundedSigned { .. } => {
-            signed_arm_reading(p.clone(), view.clone(), carrier_type.clone(), ctx.clone())
-        }
-    }
-}
-
 pub fn pattern_spells_grounded_constructor(p: Rc<MatchPattern>, ctx: Rc<GroundCtx>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*p.clone()).clone() {
         MatchPattern::VariantPattern {
@@ -32006,31 +31100,23 @@ pub fn pattern_spells_grounded_constructor(p: Rc<MatchPattern>, ctx: Rc<GroundCt
             field_bindings: fbs,
             ..
         } => {
-            ({
-                let mut __found = false;
-                for v in ctx.views.clone().iter().cloned() {
-                    if grounded_view_spells(
-                        v.clone(),
-                        crate::v1_std_core::qualified_last_segment(n.clone()),
-                    ) {
-                        __found = true;
-                        break;
+            ((grounded_view_for_constructor(
+                crate::v1_std_core::qualified_last_segment(n.clone()),
+                ctx.clone(),
+            ) != std::option::Option::None)
+                || {
+                    let mut __found = false;
+                    for fb in fbs.iter().cloned() {
+                        if pattern_spells_grounded_constructor(
+                            crate::v1_std_core::field_binding_pattern(fb.clone()),
+                            ctx.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
                     }
-                }
-                __found
-            } || {
-                let mut __found = false;
-                for fb in fbs.iter().cloned() {
-                    if pattern_spells_grounded_constructor(
-                        crate::v1_std_core::field_binding_pattern(fb.clone()),
-                        ctx.clone(),
-                    ) {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            })
+                    __found
+                })
         }
         _ => false,
     })
@@ -32082,11 +31168,10 @@ pub fn ground_nested_pattern(
                 } else {
                     {
                         let leaf = crate::v1_std_core::qualified_last_segment(n.clone());
-                        let head = match (*grounded_view_match(leaf.clone(), subject_type.clone(), pe.clone(), ctx.clone())).clone() {
-    GroundedViewMatch::GroundedViewFound { view: view, .. } => match (*grounded_arm_reading(p.clone(), view.clone(), subject_type.clone(), ctx.clone())).clone() {
-    GroundedArmReading::GroundedArmPlan { test: t, binding: b, .. } => match (*t.clone()).clone() {
-    GroundedTest::GroundedCompare { op: BinOp::Eq, k, .. } => match (*b.clone()).clone() {
-    GroundedBinding::GroundedNoBinder => Some(Rc::new(GroundedPattern {
+                        let head = match grounded_view_for_constructor(leaf.clone(), ctx.clone()) {
+    Some(view) => match grounded_carrier_match(subject_type.clone(), pe.clone(), view.clone(), ctx.clone()) {
+    CarrierMatch::GroundedCarrier => match (*peano_pattern_reading(p.clone(), view.clone(), si.clone())).clone() {
+    PeanoPatternReading::PeanoExact { k: k, .. } => Some(Rc::new(GroundedPattern {
     pattern: Rc::new(MatchPattern::LitPattern {
     value: Rc::new(LiteralValue::LitInt {
     value: k.clone(),
@@ -32095,14 +31180,13 @@ pub fn ground_nested_pattern(
     changed: true,
     diagnostics: Rc::new(vec![]),
 })),
-    GroundedBinding::GroundedBinder { .. } => Some(grounded_pattern_refused(p.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("an exact pattern of the kernel-grounded carrier ".to_string(), view.carrier.module_path.clone()), ".".to_string()), view.carrier_name.clone()), " that binds a name is nested inside another pattern; bind the field and match it in its own match".to_string()), span.clone(), ctx.clone())),
+    PeanoPatternReading::PeanoAtLeast { k, .. } => Some(grounded_pattern_refused(p.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("an open successor pattern (at least ".to_string(), (k.clone()).to_string()), ") of the kernel-grounded carrier ".to_string()), view.carrier.module_path.clone()), ".".to_string()), view.carrier_name.clone()), " is nested inside another pattern; bind the field and match it in its own match".to_string()), span.clone(), ctx.clone())),
+    PeanoPatternReading::PeanoPatternUnreadable => Some(grounded_pattern_refused(p.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("a pattern over the kernel-grounded carrier ".to_string(), view.carrier.module_path.clone()), ".".to_string()), view.carrier_name.clone()), " is neither a numeral nor a successor of a binder".to_string()), span.clone(), ctx.clone())),
 },
-    _ => Some(grounded_pattern_refused(p.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("an open pattern of the kernel-grounded carrier ".to_string(), view.carrier.module_path.clone()), ".".to_string()), view.carrier_name.clone()), " is nested inside another pattern; bind the field and match it in its own match".to_string()), span.clone(), ctx.clone())),
+    CarrierMatch::GroundedCarrierUnidentified => Some(grounded_pattern_refused(p.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the pattern `".to_string(), leaf.clone()), "` is spelled as a constructor of the kernel-grounded carrier ".to_string()), view.carrier.module_path.clone()), ".".to_string()), view.carrier_name.clone()), " but the declaration its subject is typed at could not be read".to_string()), span.clone(), ctx.clone())),
+    CarrierMatch::NotGroundedCarrier => std::option::Option::None,
 },
-    GroundedArmReading::GroundedArmUnreadable => Some(grounded_pattern_refused(p.clone(), grounded_unreadable_arm_message(view.clone()), span.clone(), ctx.clone())),
-},
-    GroundedViewMatch::GroundedViewUnidentified { view: view, .. } => Some(grounded_pattern_refused(p.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the pattern `".to_string(), leaf.clone()), "` is spelled as a constructor of the kernel-grounded carrier ".to_string()), view.carrier.module_path.clone()), ".".to_string()), view.carrier_name.clone()), " but the declaration its subject is typed at could not be read".to_string()), span.clone(), ctx.clone())),
-    GroundedViewMatch::NoGroundedView => std::option::Option::None,
+    std::option::Option::None => std::option::Option::None,
 };
                         match head.clone() {
                             Some(g) => g.clone(),
@@ -32245,58 +31329,9 @@ pub fn grounded_comparison(
     )
 }
 
-pub fn grounded_unreadable_arm_message(view: Rc<GroundedView>) -> String {
-    match (*view.shape.clone()).clone() {
-        GroundedViewShape::GroundedPeano {
-            constructors: _, ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        "a pattern over the kernel-grounded carrier ".to_string(),
-                        view.carrier.module_path.clone(),
-                    ),
-                    ".".to_string(),
-                ),
-                view.carrier_name.clone(),
-            ),
-            " is neither a numeral nor a successor of a binder".to_string(),
-        ),
-        GroundedViewShape::GroundedSigned {
-            nonnegative: nn,
-            negative: ng,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        "a pattern over the kernel-grounded carrier ".to_string(),
-                                        view.carrier.module_path.clone(),
-                                    ),
-                                    ".".to_string(),
-                                ),
-                                view.carrier_name.clone(),
-                            ),
-                            " is neither a numeral, a binder, nor `".to_string(),
-                        ),
-                        nn.clone(),
-                    ),
-                    "` or `".to_string(),
-                ),
-                ng.clone(),
-            ),
-            "` over a natural pattern".to_string(),
-        ),
-    }
-}
-
 pub fn grounded_arm_body(
     arm: Rc<Node>,
-    reading: Rc<GroundedArmReading>,
+    reading: Rc<PeanoPatternReading>,
     subject: Rc<Node>,
     carrier_type: Rc<Node>,
     view: Rc<GroundedView>,
@@ -32305,68 +31340,47 @@ pub fn grounded_arm_body(
     {
         let body = crate::v1_std_core::arm_body(arm.clone());
         match (*reading.clone()).clone() {
-            GroundedArmReading::GroundedArmPlan { ref binding, .. }
-                if matches!(binding.as_ref(), GroundedBinding::GroundedBinder { .. }) =>
-            {
-                let GroundedBinding::GroundedBinder {
-                    declaration: decl,
-                    value: bound,
-                    binder_type: bt,
-                    ..
-                } = binding.as_ref()
-                else {
-                    unreachable!()
-                };
-                {
-                    let name = crate::v1_std_core::authored_name_at(
-                        ctx.env.source_indices.clone(),
-                        decl.clone(),
-                    );
-                    let value = match (*bound.clone()).clone() {
-                        GroundedBound::SubjectMinus { k: k, .. } => {
-                            if (k.clone() == 0) {
-                                subject.clone()
-                            } else {
-                                grounded_binop(
-                                    BinOp::Sub,
-                                    subject.clone(),
-                                    k.clone(),
-                                    Some(bt.clone()),
-                                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                                    arm.span.clone(),
-                                    view.clone(),
-                                    ctx.clone(),
-                                )
-                            }
-                        }
-                        GroundedBound::ConstantMinusSubject { c: c, .. } => grounded_reflect(
-                            c.clone(),
-                            subject.clone(),
-                            carrier_type.clone(),
-                            bt.clone(),
-                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            arm.span.clone(),
-                            view.clone(),
-                            ctx.clone(),
-                        ),
-                    };
-                    let let_node = crate::v1_std_core::make_named_expr_node(
+            PeanoPatternReading::PeanoAtLeast {
+                k,
+                binder: Some(decl),
+                ..
+            } => {
+                let name = crate::v1_std_core::authored_name_at(
+                    ctx.env.source_indices.clone(),
+                    decl.clone(),
+                );
+                let value = if (k.clone() == 0) {
+                    subject.clone()
+                } else {
+                    grounded_binop(
+                        BinOp::Sub,
+                        subject.clone(),
+                        k.clone(),
+                        Some(carrier_type.clone()),
                         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                        name.clone(),
-                        Rc::new(ExprData::ExprLet),
-                        Rc::new(vec![value.clone()]),
-                        Some(Rc::new(InferredNode::Resolved { node: bt.clone() })),
                         arm.span.clone(),
-                        elaborated_span(name.clone()),
-                    );
-                    crate::v1_std_core::make_expr_node(
-                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                        Rc::new(ExprData::ExprBlock),
-                        Rc::new(vec![let_node.clone(), body.clone()]),
-                        body.inferred.clone(),
-                        arm.span.clone(),
+                        view.clone(),
+                        ctx.clone(),
                     )
-                }
+                };
+                let let_node = crate::v1_std_core::make_named_expr_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                    name.clone(),
+                    Rc::new(ExprData::ExprLet),
+                    Rc::new(vec![value.clone()]),
+                    Some(Rc::new(InferredNode::Resolved {
+                        node: carrier_type.clone(),
+                    })),
+                    arm.span.clone(),
+                    crate::v1_std_core::authored_ident(elaborated_span(name.clone()), name.clone()),
+                );
+                crate::v1_std_core::make_expr_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                    Rc::new(ExprData::ExprBlock),
+                    Rc::new(vec![let_node.clone(), body.clone()]),
+                    body.inferred.clone(),
+                    arm.span.clone(),
+                )
             }
             _ => body.clone(),
         }
@@ -32376,7 +31390,7 @@ pub fn grounded_arm_body(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GroundedArm {
     pub arm: Rc<Node>,
-    pub reading: Rc<GroundedArmReading>,
+    pub reading: Rc<PeanoPatternReading>,
 }
 
 pub fn grounded_arm_chain(
@@ -32402,32 +31416,51 @@ pub fn grounded_arm_chain(
             match rest.clone() {
                 std::option::Option::None => Some(body.clone()),
                 Some(tail) => match (*a.reading.clone()).clone() {
-                    GroundedArmReading::GroundedArmPlan { test: t, .. } => {
-                        match (*t.clone()).clone() {
-                            GroundedTest::GroundedAlways => Some(body.clone()),
-                            GroundedTest::GroundedCompare { op, k, .. } => {
-                                Some(crate::v1_std_core::make_expr_node(
-                                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                                    Rc::new(ExprData::ExprIf),
-                                    Rc::new(vec![
-                                        grounded_comparison(
-                                            op.clone(),
-                                            subject.clone(),
-                                            k.clone(),
-                                            a.arm.span.clone(),
-                                            view.clone(),
-                                            ctx.clone(),
-                                        ),
-                                        body.clone(),
-                                        tail.clone(),
-                                    ]),
-                                    result.clone(),
-                                    span.clone(),
-                                ))
-                            }
+                    PeanoPatternReading::PeanoExact { k: k, .. } => {
+                        Some(crate::v1_std_core::make_expr_node(
+                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                            Rc::new(ExprData::ExprIf),
+                            Rc::new(vec![
+                                grounded_comparison(
+                                    BinOp::Eq,
+                                    subject.clone(),
+                                    k.clone(),
+                                    a.arm.span.clone(),
+                                    view.clone(),
+                                    ctx.clone(),
+                                ),
+                                body.clone(),
+                                tail.clone(),
+                            ]),
+                            result.clone(),
+                            span.clone(),
+                        ))
+                    }
+                    PeanoPatternReading::PeanoAtLeast { k, .. } => {
+                        if (k.clone() == 0) {
+                            Some(body.clone())
+                        } else {
+                            Some(crate::v1_std_core::make_expr_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                Rc::new(ExprData::ExprIf),
+                                Rc::new(vec![
+                                    grounded_comparison(
+                                        BinOp::Ge,
+                                        subject.clone(),
+                                        k.clone(),
+                                        a.arm.span.clone(),
+                                        view.clone(),
+                                        ctx.clone(),
+                                    ),
+                                    body.clone(),
+                                    tail.clone(),
+                                ]),
+                                result.clone(),
+                                span.clone(),
+                            ))
                         }
                     }
-                    GroundedArmReading::GroundedArmUnreadable => Some(tail.clone()),
+                    PeanoPatternReading::PeanoPatternUnreadable => Some(tail.clone()),
                 },
             }
         },
@@ -32458,11 +31491,10 @@ pub fn ground_grounded_match(
             for arm in arms.iter().cloned() {
                 __result.push(Rc::new(GroundedArm {
                     arm: arm.clone(),
-                    reading: grounded_arm_reading(
+                    reading: peano_pattern_reading(
                         crate::v1_std_core::arm_pattern(arm.clone()),
                         view.clone(),
-                        carrier_type.clone(),
-                        ctx.clone(),
+                        si.clone(),
                     ),
                 }));
             }
@@ -32484,7 +31516,7 @@ pub fn ground_grounded_match(
                 let mut __found = false;
                 for a in read.iter().cloned() {
                     if match (*a.reading.clone()).clone() {
-                        GroundedArmReading::GroundedArmUnreadable => true,
+                        PeanoPatternReading::PeanoPatternUnreadable => true,
                         _ => false,
                     } {
                         __found = true;
@@ -32499,17 +31531,15 @@ pub fn ground_grounded_match(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(
-                                        "a match over the kernel-grounded carrier ".to_string(),
-                                        view.carrier.module_path.clone(),
-                                    ),
-                                    ".".to_string(),
+                                    "a match over the kernel-grounded carrier ".to_string(),
+                                    view.carrier.module_path.clone(),
                                 ),
-                                view.carrier_name.clone(),
+                                ".".to_string(),
                             ),
-                            " has an arm it cannot fold: ".to_string(),
+                            view.carrier_name.clone(),
                         ),
-                        grounded_unreadable_arm_message(view.clone()),
+                        " has an arm that is neither a numeral nor a successor of a binder"
+                            .to_string(),
                     ),
                     ctx.clone(),
                 )
@@ -32533,7 +31563,10 @@ pub fn ground_grounded_match(
                             Rc::new(vec![]),
                             scrut.inferred.clone(),
                             scrut.span.clone(),
-                            elaborated_span(grounded_scrutinee_binder()),
+                            crate::v1_std_core::authored_ident(
+                                elaborated_span(grounded_scrutinee_binder()),
+                                grounded_scrutinee_binder(),
+                            ),
                         )
                     };
                     match grounded_arm_chain(
@@ -32572,7 +31605,10 @@ pub fn ground_grounded_match(
                                         Rc::new(vec![scrut.clone()]),
                                         scrut.inferred.clone(),
                                         scrut.span.clone(),
-                                        elaborated_span(grounded_scrutinee_binder()),
+                                        crate::v1_std_core::authored_ident(
+                                            elaborated_span(grounded_scrutinee_binder()),
+                                            grounded_scrutinee_binder(),
+                                        ),
                                     );
                                     Rc::new(GroundOut {
                                         node: crate::v1_std_core::make_expr_node(
@@ -33106,8 +32142,8 @@ pub fn ground_kernel_views(
             let mut __result = Vec::new();
             for s in states.iter().cloned() {
                 __result.extend((*match (*s.clone()).clone() {
-    GroundedCarrierState::GroundedCarrierShapeRefused { carrier: c, span: sp, reason: r, .. } => if (c.module_path.clone() == module_name.clone()) {
-            Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("kernel grounding: ".to_string(), c.module_path.clone()), ".".to_string()), c.decl_name.clone()), " carries a gunbc.structural_realization_bindings kernel_grounding_rows row but ".to_string()), grounded_shape_refusal_message(r.clone())), sp.clone(), module_name.clone())])
+    GroundedCarrierState::GroundedCarrierShapeRefused { carrier: c, span: sp, .. } => if (c.module_path.clone() == module_name.clone()) {
+            Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("kernel grounding: ".to_string(), c.module_path.clone()), ".".to_string()), c.decl_name.clone()), " carries a gunbc.structural_realization_bindings kernel_grounding_rows row but its declaration is not the inductive shape the row folds (exactly one constructor with no field and one with a single field of the carrier's own type)".to_string()), sp.clone(), module_name.clone())])
         } else {
             Rc::new(vec![])
         },
@@ -34027,9 +33063,10 @@ pub fn same_declaration_site(a: Rc<Node>, b: Rc<Node>) -> bool {
     match a.ident_span.clone() {
         Some(sa) => match b.ident_span.clone() {
             Some(sb) => {
-                ((((sa.file.clone() == sb.file.clone()) && (sa.start.clone() == sb.start.clone()))
-                    && (sa.end.clone() == sb.end.clone()))
-                    && (sa.file.clone() != "".to_string()))
+                ((((sa.span.file.clone() == sb.span.file.clone())
+                    && (sa.span.start.clone() == sb.span.start.clone()))
+                    && (sa.span.end.clone() == sb.span.end.clone()))
+                    && (sa.span.file.clone() != "".to_string()))
             }
             std::option::Option::None => false,
         },
@@ -34449,7 +33486,7 @@ pub fn compiler_kernel_type_env(
                                 ),
                                 name: name.clone(),
                                 span: kernel_span(name.clone()),
-                                ident_span: Some(kernel_span(name.clone())),
+                                ident_span: Some(crate::v1_std_core::kernel_ident(name.clone())),
                                 children: Rc::new(vec![]),
                                 connective: Connective::NoConnective,
                                 params: Rc::new(vec![]),
@@ -34487,7 +33524,10 @@ pub fn compiler_kernel_type_env(
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "Unit".to_string(),
                     span: unit_span.clone(),
-                    ident_span: Some(unit_span.clone()),
+                    ident_span: Some(crate::v1_std_core::authored_ident(
+                        unit_span.clone(),
+                        "Unit".to_string(),
+                    )),
                     children: Rc::new(vec![]),
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
