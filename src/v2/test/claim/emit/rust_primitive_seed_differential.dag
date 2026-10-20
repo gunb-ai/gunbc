@@ -7,7 +7,6 @@ import v2.extdeps.languages.rust { rust_primitive_realization_rows }
 import v2.std.compilers.target_model {
   PrimitiveFreeCall,
   PrimitiveMethodCall,
-  PrimitiveMemberPath,
   PrimitivePassBySharedReference,
   PrimitivePassByValue,
   PrimitiveResultAsReturned,
@@ -64,7 +63,6 @@ fn rust_primitive_agrees_with_registry(name: String) -> Bool {
                 && (rust_primitive_first_arg_by_shared_reference(row: row) == entry.passes_by_ref)
                 && (rust_primitive_result_wraps(row: row) == entry.wraps_result)
               PrimitiveMethodCall { method: _ } => false
-              PrimitiveMemberPath { members: _ } => false
             }
           Absent => false
         }
@@ -88,7 +86,6 @@ fn rust_primitive_agrees_with_method_spec(name: String) -> Bool {
                 && (string_contains(s: spec.template, pattern: "&\{arg\}") == rust_primitive_first_arg_by_shared_reference(row: row))
                 && (rust_primitive_result_wraps(row: row) == spec.wraps_result)
               PrimitiveFreeCall { callee: _ } => false
-              PrimitiveMemberPath { members: _ } => false
             }
           Absent => false
         }
