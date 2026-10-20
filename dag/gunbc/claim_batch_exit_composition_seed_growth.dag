@@ -5,9 +5,10 @@ import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // FORWARD-FREEZE RECEIPT for the exit composition claim_batch gained with SubjectUnresolved.
-// HAND-ITEM DELTA: +1 citable declaration in v1_compiler.bin.claim_batch (batch_exit_code, three
-// lines of code). The existing ResolveTimings, report_outcome and the two resolve-failure sites
-// were MODIFIED, not added, and no deletion is netted against the one new item.
+// HAND-ITEM DELTA: +5 citable declarations, all new: batch_exit_code and report_unresolved_group and
+// RunWitnessesRefusal in v1_compiler.bin.claim_batch, EntryResolveRefusal and
+// resolve_entry_with_index_typed in v1_compiler.cli_run.entry_resolve. ResolveTimings, report_outcome
+// and the resolve-failure sites were MODIFIED, not added; no deletion is netted against the new items.
 data claim_batch_exit_composition_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.bin.claim_batch", decl_name: "batch_exit_code", field: WholeDeclaration },
