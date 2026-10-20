@@ -430,3 +430,52 @@ itself demonstrates that path — it calls unify_generics directly on hand-built
 and TextNotAsked text (src/v1/tests/claim/generic_identity_census.dag, bound_from_basis /
 bound_by_name_alone), touching no corpus. That is the input for the three-head discriminator parent named
 (main / Acc head / Acc head minus the alias machinery), and it costs one test binary, not a corpus build.
+
+### STRIP RESULT (executed). Pins: strip=406dc6d43f7 (Acc head + reverted widening, mirrors = emitter
+### output, fixed point round 2 installed=0), compared side = Acc head 97e47f8e562. Instrument
+### gate_two_closures_14152.sh, both closures, fresh clones, CI's verbatim invocation.
+self-host      strip rc=2 type-mismatch=234 ids=60 emitted=0 | Acc head rc=2 tm=76 ids=17 emitted=0
+v2-native-cli  strip rc=2 type-mismatch=228 ids=56 emitted=0 | Acc head rc=2 tm=67 ids=18 emitted=0
+BUILDS rc=0/errors=0 both sides, so these are refusals, not compile failures.
+S1 HELD (fixed point). S2 HELD (mirror type_heads_agree occurrences 3 -> 1, the surviving def only).
+S3 FALSIFIED. S4 FIRED: the widening has a large consumer, so PR-2a is NOT droppable.
+S5 not triggered as framed: the GATE path completes at the strip head (it produced numbers); the 200s
+   non-return was on the census BUILTIN, whose path is corpus-scale (see correction above) — so the
+   three-head F5 discriminator cannot locate a fold hang and was not run.
+
+SUPPRESSION IS PURE: occurrences in strip and absent from the Acc head = 319 (96 distinct); occurrences
+in the Acc head and absent from strip = 0. The widening NEVER creates a refusal; it only removes them.
+So the Acc alone is 234/228 and the widening is what brings it to 76/67 — the widening is load-bearing
+for PR-2's own number, and PR-2a is entangled with PR-2, not separable from it.
+
+WHAT THE WIDENING ADMITS (classified from each row's OWN two printed sides, not by reading code):
+  286 (89%)  both sides print IDENTICALLY, e.g.
+             expected 'type variable T bound as Node(String<Product(Char<Primitive(Int)>)>) (first
+             argument)', got 'Node(String<Product(Char<Primitive(Int)>)>) (later argument)'
+             (src/v2/std/text.dag:310-320)
+   33 (10%)  sides print DIFFERENTLY, dominated by Container(FreeMonoid,X) vs FreeMonoid<X> — 27 of the
+             33 sit in dag/std/algebra.dag, 4 in dag/std/types.dag, e.g.
+             expected 'type variable A bound as Container(FreeMonoid,Coproduct(LexRule))', got
+             'Node(FreeMonoid<Coproduct(LexRule)>)' (dag/std/algebra.dag:4733-4743)
+BY MODULE (suppressed rows): diagnostic 73, dag/std/algebra 47, qualified_name 43, fold_assembly 22,
+dependency_demand 20, name_resolve 18, text 16, target_model 14, dependency_demand_census 12,
+target_serialize 8.
+
+ON THE §3 "HARDCODED TABLE" PREMISE — measured, and it needs one correction. The widening's carrier arm
+does not read a hand-typed List -> FreeMonoid literal. carrier_container_algebra_rows() and
+carrier_container_alias_rows() are BOTH derived: they fold algebra_carriers() (dag/std/algebra.dag) and
+read each spelling's container_alias_row / container_algebra_row, so "List" arrives via
+pascal_alias_spelling(text: "List") declared on the FreeMonoid carrier. The §3 objection still holds in
+substance — std/algebra's carrier roster is a SECOND authority next to std/types' declared
+`type List<element> = FreeMonoid<element>` — but the fix is not "replace a table with the declaration",
+it is "make one authority cite the other", which is a different change and a smaller one.
+
+WHAT THIS DOES NOT SETTLE (stated so the number is not over-read): the 89% identical-print class cannot
+be assigned to (i) true disagreement or (ii) Acc-too-strict from shape alone, because identical printing
+is exactly what the renderer defect produces — node_type_shape never prints a Disj's children, so two
+nodes that differ only there print alike. The discriminator is structural, not textual: build the pair at
+the fold and compare printed shape against structural equality. The head already ships that harness
+(src/v1/tests/src/cross_coproduct_generic_locate_test.rs, fold_leaf/fold_tv_leaf/fold_app/fold_disj), and
+that file's own header records a fold-level assertion that measured FAILED on the shipped seed — so a
+fold-level check there can be RED, which is what makes it usable. It is an INSTRUMENT, not a PR-2 carrier:
+parent's ruling (d) keeps PR-2's discriminators in dag/test/claim.
