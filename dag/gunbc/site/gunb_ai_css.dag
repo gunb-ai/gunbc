@@ -9,18 +9,20 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.site.markup { page_render_refusal_prefix }
 import extdeps.languages.css.values {
   CssLengthUnit, Px, Rem, Ch, Em, Vw, Percent, CssDecimalLength, css_decimal_length_wire, css_hsl_wire,
-  CssFontStack, CssFontFamily, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif,
+  CssLength, CssFontStack, CssFontFamily, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif,
   GenericMonospace, css_font_stack_wire, DoubleQuote, CssVarRef,
 }
 import extdeps.languages.css.properties { CssPropertyName, CustomProperty, css_property_wire, BoxSizing, Background, Color, FontFamily, FontSize, LineHeight, WebkitFontSmoothing, ColorScheme, Margin,
   AlignItems, BorderBottom, BorderBottomColor, Display, Flex, FlexWrap, FontWeight, Gap, GridTemplateColumns, Height, LetterSpacing,
   MarginBottom, MarginInline, MarginLeft, MarginTop, MaxWidth, Opacity, PaddingBlock, PaddingTop, TextDecoration, TextTransform, TextWrap, Transition, Width,
   Border, BorderLeft, BorderRadius, BorderTop, Content, OverflowX, Padding, Transform, UserSelect, WhiteSpace,
-  Outline, Overflow }
+  Outline, Overflow, JustifyContent, MaxHeight, PaddingBottom, PaddingLeft,
+  ScrollSnapAlign, ScrollSnapType, ScrollbarWidth, WebkitOverflowScrolling, FlexBasis, BorderColor, Cursor, Fill, FillOpacity, OutlineOffset, Stroke, StrokeDasharray, StrokeLinecap, StrokeLinejoin, StrokeOpacity, StrokeWidth }
 import extdeps.languages.css.complex_selector {
   SelectorList, ComplexSelector, CompoundSelector, TypeSelector, SimpleSelector, UniversalType, ElementType, ClassPart, PseudoClassPart, PseudoElementPart,
-  selector_list_wire, element_compound, class_compound,
+  selector_list_wire, complex_selector_wire, compound_selector_wire, element_compound, class_compound,
 }
+import extdeps.languages.css.media_queries { MediaCondition, MediaMaxWidth, media_condition_wire }
 import extdeps.languages.css.expression {
   CssValue, ValIdent, ValNumber, ValLength, ValTime, ValVar, ValCall, ValOperator, ValSpaceList, ValCommaList, ValFlex,
   FnClamp, FnMin, FnCalc, FnMinmax, FnRotate, FnCubicBezier, OpSub, Seconds, Degrees, ValString, ValAngle, css_value_wire,
@@ -81,19 +83,37 @@ type SheetItem
   | ItemBlank
 
 // A rule is written either one declaration per line between braces or whole on one line.
-type RuleLayout = RuleBlock | RuleInline
+// RuleInlineStacked is RuleInline with a multi-selector list written one selector per line.
+type RuleLayout = RuleBlock | RuleInline | RuleInlineStacked
 
-// Rules written one per line with the `{` of each in one column (the longest selector + 1 space), the
-// column derived like declaration alignment.
+// Rules written one per line with the `{` of each in one column (the longest selector plus the group's
+// own gap), the column derived like declaration alignment. The served sheet separates one rule's
+// declarations with a double space after the first exactly once (.ck-line.ck-diff-rm), so the separator is
+// data.
+type DeclSeparator = SingleSpace | DoubleSpaceAfterFirst
+
+// The served sheet also writes `.ck-diff-rm  .ck-diff-sign` with two spaces at the combinator, so the
+// descendant column lines up with `.ck-diff-add .ck-diff-sign` beside it; that is a layout fact of the rule.
+type CombinatorSpacing = SingleSpaceCombinator | DoubleSpaceCombinator
+
 type AlignedRule {
   selector: SelectorList
   decls: List<SheetDecl>
+  separator: DeclSeparator
+  combinator: CombinatorSpacing
+}
+
+type SheetRule {
+  selector: SelectorList
+  layout: RuleLayout
+  items: List<SheetItem>
 }
 
 type SheetEntry
   = EntryComment { lines: List<String> }
-  | EntryAlignedRules { rules: List<AlignedRule> }
-  | EntryRule { selector: SelectorList, layout: RuleLayout, items: List<SheetItem> }
+  | EntryAlignedRules { rules: List<AlignedRule>, spaces_after_longest: Int }
+  | EntryRule { rule: SheetRule }
+  | EntryMedia { condition: MediaCondition, rules: List<SheetRule> }
   | EntryGap { blank_lines: Int }
 
 fn sheet_hue(hue: HueDegrees) -> SheetDecl {
@@ -225,7 +245,7 @@ fn universal_compound(parts: List<SimpleSelector>) -> CompoundSelector {
 }
 
 fn inline_rule(selector: SelectorList, decls: List<SheetDecl>) -> SheetEntry {
-  EntryRule { selector: selector, layout: RuleInline, items: [ItemDecls { decls: decls, alignment: Compact }] }
+  EntryRule { rule: inline_sheet_rule(selector: selector, decls: decls) }
 }
 
 data reset_banner: List<String> = ["╔══ RESET + BASE ══════════════════════════════════════════════════"]
@@ -272,8 +292,24 @@ fn descendant_list(ancestor: CompoundSelector, descendant: CompoundSelector) -> 
   SelectorList { selectors: [ComplexSelector { compounds: [ancestor, descendant] }] }
 }
 
+fn block_sheet_rule(selector: SelectorList, items: List<SheetItem>) -> SheetRule {
+  SheetRule { selector: selector, layout: RuleBlock, items: items }
+}
+
 fn block_rule(selector: SelectorList, items: List<SheetItem>) -> SheetEntry {
-  EntryRule { selector: selector, layout: RuleBlock, items: items }
+  EntryRule { rule: block_sheet_rule(selector: selector, items: items) }
+}
+
+fn inline_sheet_rule(selector: SelectorList, decls: List<SheetDecl>) -> SheetRule {
+  SheetRule { selector: selector, layout: RuleInline, items: [ItemDecls { decls: decls, alignment: Compact }] }
+}
+
+fn stacked_rule(selector: SelectorList, decls: List<SheetDecl>) -> SheetEntry {
+  EntryRule { rule: SheetRule { selector: selector, layout: RuleInlineStacked, items: [ItemDecls { decls: decls, alignment: Compact }] } }
+}
+
+fn max_width_media(max: CssLength, rules: List<SheetRule>) -> SheetEntry {
+  EntryMedia { condition: MediaMaxWidth { max: max }, rules: rules }
 }
 
 fn compact_decls(decls: List<SheetDecl>) -> SheetItem {
@@ -481,7 +517,7 @@ fn class_element(ancestor: String, tag: String) -> SelectorList {
 }
 
 fn colour_rule(name: String, colour: String) -> AlignedRule {
-  AlignedRule { selector: class_list(name: name), decls: [sheet_expr(property: Color, value: sheet_var(name: colour))] }
+  AlignedRule { selector: class_list(name: name), decls: [sheet_expr(property: Color, value: sheet_var(name: colour))], separator: SingleSpace, combinator: SingleSpaceCombinator }
 }
 
 data prose_entries: List<SheetEntry> = [
@@ -510,10 +546,10 @@ data prose_entries: List<SheetEntry> = [
 data measure_entries: List<SheetEntry> = [
   EntryComment { lines: measure_banner },
   EntryGap { blank_lines: 1 },
-  EntryAlignedRules { rules: [
-    AlignedRule { selector: class_list(name: "measure-prose"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-prose"))] },
-    AlignedRule { selector: class_list(name: "measure-page"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-page"))] },
-    AlignedRule { selector: class_list(name: "measure-wide"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-wide"))] },
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
+    AlignedRule { selector: class_list(name: "measure-prose"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-prose"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: class_list(name: "measure-page"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-page"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: class_list(name: "measure-wide"), decls: [sheet_expr(property: MaxWidth, value: sheet_var(name: "measure-wide"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
   ] },
 ]
 
@@ -525,13 +561,17 @@ data carved_rule_pseudo_list: SelectorList = SelectorList { selectors: [
 data carved_entries: List<SheetEntry> = [
   EntryComment { lines: carved_banner },
   EntryGap { blank_lines: 1 },
-  block_rule(selector: class_list(name: "carved-rule"), items: [compact_decls(decls: [
-    sheet_ident(property: Display, ident: "flex"),
-    sheet_ident(property: AlignItems, ident: "center"),
-    sheet_expr(property: Gap, value: sheet_rem(milli: 700)),
-    sheet_expr(property: Width, value: sheet_len(milli: 100000, unit: Percent)),
-    sheet_expr(property: Margin, value: sheet_space(items: [sheet_rem(milli: 2750), ValNumber { milli: 0 }])),
-  ])]),
+  block_rule(selector: class_list(name: "carved-rule"), items: [
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: AlignItems, ident: "center"),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 700)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Width, value: sheet_len(milli: 100000, unit: Percent)),
+      sheet_expr(property: Margin, value: sheet_space(items: [sheet_rem(milli: 2750), ValNumber { milli: 0 }])),
+    ]),
+  ]),
   block_rule(selector: carved_rule_pseudo_list, items: [
     ItemDeclLine { decls: [
       sheet_expr(property: Content, value: ValString { text: "" }),
@@ -604,7 +644,7 @@ data invariant_entries: List<SheetEntry> = [
 data role_entries: List<SheetEntry> = [
   EntryComment { lines: roles_banner },
   EntryGap { blank_lines: 1 },
-  EntryAlignedRules { rules: [
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
     colour_rule(name: "map-stable", colour: "warm-white"),
     colour_rule(name: "map-focus", colour: "brass"),
     colour_rule(name: "map-derived", colour: "moss"),
@@ -624,6 +664,15 @@ data roles_banner: List<String> = ["╔══ ROLE TOKENS — shared between cod
 
 data deck_comment_0: List<String> = ["╔══ STORY DECK — one progressive example, four accreting stages ═══", "Rendered by assets/cards.js. Each stage shares the same base graph;", "the visual story builds up layer by layer (lasso, dots, artifacts).", "Navigate via prev/next buttons or ← / → keys."]
 data deck_comment_1: List<String> = ["Vertical stack: code and graph each get the full card width. The", "richer system (with the Sessions parallel domain) makes the graph", "wider than the code pane can accommodate when split 50/50; the", "stacked layout keeps the SVG text readable."]
+data deck_comment_2: List<String> = ["Code pane — no horizontal scroll. If a line would overflow it", "gets clipped at the panel edge; specs must keep lines short."]
+data deck_comment_3: List<String> = ["Graph pane — SVG fills available width, capped at a reasonable", "max-height so a tall viewBox does not push card height to absurd."]
+data deck_comment_4: List<String> = ["Nodes are filled with the card-graph background so edges", "underneath are masked at crossings."]
+data deck_comment_5: List<String> = ["Artifact (cut-corner) — warm-white so artifacts read as the", "system's terminal bookends, distinct from moss derived nodes.", "Shape and color both carry the structural distinction.", "For artifacts that are present in the model but NOT in this card's", "affected set (e.g. parallel-domain outputs in card 02), apply the", "context role so they render as grey pentagons."]
+data deck_comment_6: List<String> = ["Default stroke = stone so an edge with no matching role rule", "is still visible (defensive: failing visibly beats failing silent)."]
+data deck_comment_7: List<String> = ["Cost-area cells — per-cell coloring so a single panel can hold both", "budget and overage. Bottom-aligned panels with the budget row at the", "same Y in both: declared (1×n, all budget) sits as the bottom row", "of the observed grid (n×n, with the n-1 rows above as overage).", "The visual claim: observed extends UP past the declared ceiling."]
+data deck_comment_8: List<String> = ["Receipt — structured label/value rows.", "The receipt is the card's stamp, not a prose recap. Each row pairs", "a small mono key (stone-faint) with a colored value carried by the", "\{role:text} token system. Card 03's receipt also embeds a code", "block (the suggested replacement shape) — the \"diagnostic\" is just", "another row of the receipt, not a separate panel."]
+data deck_comment_9: List<String> = ["Nav (prev/next buttons)"]
+data deck_comment_10: List<String> = ["Lasso (dashed moss polygon) and dot markers for accreted layers"]
 data deck_entries: List<SheetEntry> = [
   EntryComment { lines: deck_comment_0 },
   EntryGap { blank_lines: 1 },
@@ -780,6 +829,371 @@ data deck_entries: List<SheetEntry> = [
       sheet_expr(property: Gap, value: sheet_rem(milli: 850)),
     ]),
   ]),
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: deck_comment_2 },
+  block_rule(selector: class_list(name: "card-code"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Background, value: sheet_var(name: "void-up")),
+      sheet_expr(property: Border, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, sheet_var(name: "border-dark")])),
+      sheet_expr(property: BorderRadius, value: sheet_px(milli: 4000)),
+      sheet_expr(property: Padding, value: sheet_space(items: [sheet_rem(milli: 750), sheet_rem(milli: 900), sheet_rem(milli: 850)])),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 680)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
+      sheet_expr(property: LineHeight, value: ValNumber { milli: 1600 }),
+      sheet_ident(property: Overflow, ident: "hidden"),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "card-code-head"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 580)),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 160, unit: Em)),
+      sheet_ident(property: TextTransform, ident: "uppercase"),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "stone-faint")),
+      sheet_expr(property: PaddingBottom, value: sheet_rem(milli: 550)),
+      sheet_expr(property: BorderBottom, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "dashed" }, sheet_var(name: "border-dark")])),
+      sheet_expr(property: MarginBottom, value: sheet_rem(milli: 600)),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: AlignItems, ident: "center"),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 450)),
+    ] },
+  ]),
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "card-code-head"), descendant: class_compound(name: "ck-dot")), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss")), sheet_expr(property: FontSize, value: sheet_rem(milli: 550))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "card-code-head"), descendant: class_compound(name: "ck-file")), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: LetterSpacing, value: sheet_len(milli: 40, unit: Em)), sheet_ident(property: TextTransform, ident: "none"), sheet_expr(property: FontSize, value: sheet_rem(milli: 660))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+  ] },
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "ck-line"), items: [
+    compact_decls(decls: [
+      sheet_ident(property: WhiteSpace, ident: "pre"),
+      sheet_ident(property: Display, ident: "block"),
+    ]),
+  ]),
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["ck-line", "ck-diff-rm"])), decls: [sheet_expr(property: Background, value: sheet_var(name: "clay-subtle")), sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_rem(milli: -250)])), sheet_expr(property: PaddingLeft, value: sheet_rem(milli: 250))], separator: DoubleSpaceAfterFirst, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["ck-line", "ck-diff-add"])), decls: [sheet_expr(property: Background, value: sheet_var(name: "moss-subtle")), sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_rem(milli: -250)])), sheet_expr(property: PaddingLeft, value: sheet_rem(milli: 250))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+  ] },
+  EntryAlignedRules { spaces_after_longest: 3, rules: [
+    AlignedRule { selector: class_list(name: "ck-ln"), decls: [sheet_expr(property: Color, value: sheet_var(name: "stone-faint")), sheet_ident(property: UserSelect, ident: "none")], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: class_list(name: "ck-kw"), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: class_list(name: "ck-ty"), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: class_list(name: "ck-com"), decls: [sheet_expr(property: Color, value: sheet_var(name: "stone-faint"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+  ] },
+  inline_rule(selector: class_list(name: "ck-diff-sign"), decls: [sheet_expr(property: FontWeight, value: ValNumber { milli: 600000 })]),
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "ck-diff-rm"), descendant: class_compound(name: "ck-diff-sign")), decls: [sheet_expr(property: Color, value: sheet_var(name: "clay"))], separator: SingleSpace, combinator: DoubleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "ck-diff-add"), descendant: class_compound(name: "ck-diff-sign")), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+  ] },
+  inline_rule(selector: class_list(name: "ck-ref"), decls: [sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })]),
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: deck_comment_3 },
+  block_rule(selector: class_list(name: "card-graph"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Background, value: sheet_var(name: "void-up")),
+      sheet_expr(property: Border, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, sheet_var(name: "border-dark")])),
+      sheet_expr(property: BorderRadius, value: sheet_px(milli: 4000)),
+      sheet_expr(property: Padding, value: sheet_space(items: [sheet_rem(milli: 700), sheet_rem(milli: 850)])),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: AlignItems, ident: "center"),
+      sheet_ident(property: JustifyContent, ident: "center"),
+    ] },
+    compact_decls(decls: [
+      sheet_ident(property: Overflow, ident: "hidden"),
+    ]),
+  ]),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "card-graph"), descendant: element_compound(tag: "svg")), items: [
+    compact_decls(decls: [
+      sheet_ident(property: Display, ident: "block"),
+      sheet_expr(property: MaxWidth, value: sheet_len(milli: 100000, unit: Percent)),
+      sheet_expr(property: MaxHeight, value: sheet_rem(milli: 22000)),
+      sheet_expr(property: Width, value: sheet_len(milli: 100000, unit: Percent)),
+      sheet_ident(property: Height, ident: "auto"),
+      sheet_expr(property: Color, value: sheet_var(name: "stone")),
+      sheet_ident(property: Overflow, ident: "visible"),
+    ]),
+  ]),
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "graph-node"), descendant: element_compound(tag: "text")), items: [
+    compact_decls(decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_px(milli: 9000)),
+      sheet_expr(property: Fill, value: sheet_var(name: "warm-white-dim")),
+    ]),
+  ]),
+  EntryComment { lines: deck_comment_4 },
+  stacked_rule(selector: SelectorList { selectors: [ComplexSelector { compounds: [class_compound(name: "graph-node"), element_compound(tag: "rect")] }, ComplexSelector { compounds: [classes_compound(names: ["graph-node", "map-artifact"]), element_compound(tag: "path")] }] }, decls: [sheet_expr(property: Fill, value: sheet_var(name: "void"))]),
+  EntryGap { blank_lines: 1 },
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-stable"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 2000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-stable"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white")), sheet_expr(property: FontWeight, value: ValNumber { milli: 600000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-focus"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "brass")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 2000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-focus"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "brass")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-derived"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "moss")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1500 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-derived"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "moss"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-transitive"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1200 }), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 750 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-transitive"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white-dim"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-removed"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1500 }), sheet_expr(property: StrokeDasharray, value: sheet_space(items: [ValNumber { milli: 4000 }, ValNumber { milli: 3000 }]))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-removed"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-boundary"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 2000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-boundary"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay")), sheet_expr(property: FontWeight, value: ValNumber { milli: 500000 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-context"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone-faint")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1000 }), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 550 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-context"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "stone-dim"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-skipped"]), descendant: element_compound(tag: "rect")), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1000 }), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 320 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-skipped"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "stone-dim")), sheet_expr(property: FillOpacity, value: ValNumber { milli: 400 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+  ] },
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: deck_comment_5 },
+  stacked_rule(selector: SelectorList { selectors: [ComplexSelector { compounds: [classes_compound(names: ["graph-node", "map-artifact"]), element_compound(tag: "path")] }, ComplexSelector { compounds: [classes_compound(names: ["graph-node", "map-artifact"]), element_compound(tag: "line")] }] }, decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1500 })]),
+  inline_rule(selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-artifact"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white"))]),
+  stacked_rule(selector: SelectorList { selectors: [ComplexSelector { compounds: [classes_compound(names: ["graph-node", "map-context"]), element_compound(tag: "path")] }, ComplexSelector { compounds: [classes_compound(names: ["graph-node", "map-context"]), element_compound(tag: "line")] }] }, decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone-faint")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1000 }), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 550 })]),
+  inline_rule(selector: descendant_list(ancestor: classes_compound(names: ["graph-node", "map-context"]), descendant: element_compound(tag: "text")), decls: [sheet_expr(property: Fill, value: sheet_var(name: "stone-dim"))]),
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: deck_comment_6 },
+  inline_rule(selector: class_list(name: "graph-edge"), decls: [sheet_ident(property: Fill, ident: "none"), sheet_expr(property: Stroke, value: sheet_var(name: "stone")), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1500 }), sheet_ident(property: StrokeLinecap, ident: "round")]),
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-stable"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-focus"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "brass"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-derived"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "moss"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-transitive"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 700 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-artifact"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "warm-white"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-removed"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: StrokeDasharray, value: sheet_space(items: [ValNumber { milli: 4000 }, ValNumber { milli: 3000 }]))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-boundary"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-context"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone-faint")), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 500 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge", "map-skipped"])), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "stone")), sheet_expr(property: StrokeOpacity, value: ValNumber { milli: 320 })], separator: SingleSpace, combinator: SingleSpaceCombinator },
+  ] },
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "graph-edge-label"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_px(milli: 7000)),
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 50, unit: Em)),
+    ]),
+  ]),
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-stable"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-focus"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "brass"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-derived"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "moss-dim"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-transitive"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white-dim"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-artifact"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "warm-white"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-removed"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-boundary"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "clay"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: classes_compound(names: ["graph-edge-label", "map-context"])), decls: [sheet_expr(property: Fill, value: sheet_var(name: "stone-faint"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+  ] },
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: deck_comment_7 },
+  inline_rule(selector: descendant_list(ancestor: class_compound(name: "cost-area"), descendant: element_compound(tag: "rect")), decls: [sheet_ident(property: Fill, ident: "none"), sheet_expr(property: StrokeWidth, value: ValNumber { milli: 1000 })]),
+  EntryAlignedRules { spaces_after_longest: 1, rules: [
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "cost-area"), descendant: CompoundSelector { type_selector: Present { value: ElementType { tag: "rect" } }, parts: [ClassPart { name: "cost-cell-budget" }] }), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "moss")), sheet_expr(property: Fill, value: sheet_var(name: "moss-subtle"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: descendant_list(ancestor: class_compound(name: "cost-area"), descendant: CompoundSelector { type_selector: Present { value: ElementType { tag: "rect" } }, parts: [ClassPart { name: "cost-cell-overage" }] }), decls: [sheet_expr(property: Stroke, value: sheet_var(name: "clay")), sheet_expr(property: Fill, value: sheet_var(name: "clay-subtle"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+  ] },
+  block_rule(selector: class_list(name: "cost-area-label"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_px(milli: 8000)),
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 50, unit: Em)),
+      sheet_expr(property: Fill, value: sheet_var(name: "warm-white-dim")),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "cost-area-sublabel"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_px(milli: 7000)),
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 50, unit: Em)),
+      sheet_expr(property: Fill, value: sheet_var(name: "stone-faint")),
+    ]),
+  ]),
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: deck_comment_8 },
+  block_rule(selector: class_list(name: "card-receipt"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: MarginTop, value: sheet_rem(milli: 1000)),
+      sheet_expr(property: Padding, value: sheet_space(items: [sheet_rem(milli: 700), sheet_rem(milli: 950)])),
+      sheet_expr(property: Background, value: sheet_var(name: "void-up")),
+      sheet_expr(property: Border, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, sheet_var(name: "border-dark")])),
+      sheet_expr(property: BorderLeft, value: sheet_space(items: [sheet_px(milli: 2000), ValIdent { ident: "solid" }, sheet_var(name: "moss-dim")])),
+      sheet_expr(property: BorderRadius, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_px(milli: 3000), sheet_px(milli: 3000), ValNumber { milli: 0 }])),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 700)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: LineHeight, value: ValNumber { milli: 1650 }),
+      sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "grid"),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 250)),
+    ] },
+  ]),
+  block_rule(selector: class_list(name: "card-receipt-row"), items: [
+    compact_decls(decls: [
+      sheet_ident(property: Display, ident: "grid"),
+      sheet_expr(property: GridTemplateColumns, value: sheet_space(items: [sheet_rem(milli: 9000), ValFlex { milli: 1000 }])),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 500)),
+      sheet_ident(property: AlignItems, ident: "baseline"),
+    ]),
+  ]),
+  max_width_media(max: CssLength { n: 540, unit: Px }, rules: [
+    inline_sheet_rule(selector: class_list(name: "card-receipt-row"), decls: [sheet_expr(property: GridTemplateColumns, value: ValFlex { milli: 1000 }), sheet_expr(property: Gap, value: sheet_rem(milli: 50))]),
+  ]),
+  block_rule(selector: class_list(name: "rk"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "stone-faint")),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 620)),
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 60, unit: Em)),
+      sheet_ident(property: TextTransform, ident: "lowercase"),
+    ]),
+  ]),
+  inline_rule(selector: class_list(name: "rv"), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim"))]),
+  block_rule(selector: class_list(name: "card-receipt-code"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: MarginTop, value: sheet_rem(milli: 100)),
+      sheet_expr(property: Padding, value: sheet_space(items: [sheet_rem(milli: 550), sheet_rem(milli: 700)])),
+      sheet_expr(property: Background, value: sheet_var(name: "void")),
+      sheet_expr(property: BorderRadius, value: sheet_px(milli: 3000)),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 660)),
+      sheet_expr(property: Color, value: sheet_var(name: "moss")),
+      sheet_ident(property: WhiteSpace, ident: "pre"),
+      sheet_ident(property: OverflowX, ident: "hidden"),
+    ]),
+  ]),
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: deck_comment_9 },
+  block_rule(selector: class_list(name: "deck-nav"), items: [
+    ItemDeclLine { decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: AlignItems, ident: "center"),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 1000)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: MarginTop, value: sheet_rem(milli: 1000)),
+    ]),
+  ]),
+  block_rule(selector: class_list(name: "deck-btn"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Background, value: sheet_var(name: "void")),
+      sheet_expr(property: Border, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, sheet_var(name: "border-dark")])),
+      sheet_expr(property: BorderRadius, value: sheet_px(milli: 3000)),
+      sheet_expr(property: Padding, value: sheet_space(items: [sheet_rem(milli: 500), sheet_rem(milli: 950)])),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 680)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
+      sheet_ident(property: Cursor, ident: "pointer"),
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 40, unit: Em)),
+      sheet_expr(property: Transition, value: ValCommaList { items: [sheet_space(items: [ValIdent { ident: "border-color" }, ValTime { milli: 150, unit: Seconds }]), sheet_space(items: [ValIdent { ident: "color" }, ValTime { milli: 150, unit: Seconds }])] }),
+    ]),
+  ]),
+  EntryAlignedRules { spaces_after_longest: 2, rules: [
+    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "hover" }] }), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss")), sheet_expr(property: BorderColor, value: sheet_var(name: "moss-dim"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "focus-visible" }] }), decls: [sheet_expr(property: Outline, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, sheet_var(name: "moss")])), sheet_expr(property: OutlineOffset, value: sheet_px(milli: 2000))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "disabled" }] }), decls: [sheet_expr(property: Opacity, value: ValNumber { milli: 300 }), sheet_ident(property: Cursor, ident: "not-allowed")], separator: SingleSpace, combinator: SingleSpaceCombinator },
+    AlignedRule { selector: single_compound_selector(c: CompoundSelector { type_selector: Absent, parts: [ClassPart { name: "deck-btn" }, PseudoClassPart { name: "disabled" }, PseudoClassPart { name: "hover" }] }), decls: [sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")), sheet_expr(property: BorderColor, value: sheet_var(name: "border-dark"))], separator: SingleSpace, combinator: SingleSpaceCombinator },
+  ] },
+  EntryGap { blank_lines: 1 },
+  EntryComment { lines: deck_comment_10 },
+  block_rule(selector: class_list(name: "graph-lasso"), items: [
+    compact_decls(decls: [
+      sheet_ident(property: Fill, ident: "none"),
+      sheet_expr(property: Stroke, value: sheet_var(name: "moss")),
+      sheet_expr(property: StrokeWidth, value: ValNumber { milli: 2000 }),
+      sheet_expr(property: StrokeDasharray, value: sheet_space(items: [ValNumber { milli: 5000 }, ValNumber { milli: 3000 }])),
+      sheet_ident(property: StrokeLinejoin, ident: "round"),
+    ]),
+  ]),
+  inline_rule(selector: class_list(name: "graph-dot"), decls: [sheet_expr(property: Fill, value: sheet_var(name: "moss")), sheet_ident(property: Stroke, ident: "none")]),
+]
+
+data footer_comment_0: List<String> = ["╔══ FOOTER ════════════════════════════════════════════════════════"]
+data footer_entries: List<SheetEntry> = [
+  EntryComment { lines: footer_comment_0 },
+  EntryGap { blank_lines: 1 },
+  block_rule(selector: class_list(name: "foot"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: MarginTop, value: sheet_rem(milli: 3000)),
+    ]),
+    ItemDeclLine { decls: [
+      sheet_expr(property: FontFamily, value: sheet_var(name: "font-mono")),
+      sheet_expr(property: FontSize, value: sheet_rem(milli: 720)),
+    ] },
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "stone-faint")),
+      sheet_expr(property: LetterSpacing, value: sheet_len(milli: 40, unit: Em)),
+    ]),
+  ]),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "foot"), descendant: element_compound(tag: "a")), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Color, value: sheet_var(name: "warm-white-dim")),
+      sheet_ident(property: TextDecoration, ident: "none"),
+      sheet_expr(property: BorderBottom, value: sheet_space(items: [sheet_px(milli: 1000), ValIdent { ident: "solid" }, ValIdent { ident: "transparent" }])),
+      sheet_expr(property: Transition, value: ValCommaList { items: [sheet_space(items: [ValIdent { ident: "border-color" }, ValTime { milli: 150, unit: Seconds }]), sheet_space(items: [ValIdent { ident: "color" }, ValTime { milli: 150, unit: Seconds }])] }),
+    ]),
+  ]),
+  inline_rule(selector: descendant_list(ancestor: class_compound(name: "foot"), descendant: CompoundSelector { type_selector: Present { value: ElementType { tag: "a" } }, parts: [PseudoClassPart { name: "hover" }] }), decls: [sheet_expr(property: Color, value: sheet_var(name: "moss")), sheet_ident(property: BorderBottomColor, ident: "currentColor")]),
+  block_rule(selector: descendant_list(ancestor: class_compound(name: "foot"), descendant: class_compound(name: "sep")), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Margin, value: sheet_space(items: [ValNumber { milli: 0 }, sheet_rem(milli: 550)])),
+      sheet_expr(property: Color, value: sheet_var(name: "stone-faint")),
+      sheet_expr(property: Opacity, value: ValNumber { milli: 550 }),
+    ]),
+  ]),
+]
+
+data media_comment_0: List<String> = ["╔══ MEDIA QUERIES ═════════════════════════════════════════════════"]
+data media_entries: List<SheetEntry> = [
+  EntryComment { lines: media_comment_0 },
+  EntryGap { blank_lines: 1 },
+  max_width_media(max: CssLength { n: 760, unit: Px }, rules: [
+    block_sheet_rule(selector: class_list(name: "hero-spine"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: GridTemplateColumns, value: ValFlex { milli: 1000 }),
+      sheet_expr(property: Gap, value: sheet_rem(milli: 1500)),
+    ]),
+  ]),
+    inline_sheet_rule(selector: descendant_list(ancestor: class_compound(name: "hero-left"), descendant: element_compound(tag: "h1")), decls: [sheet_expr(property: MaxWidth, value: sheet_len(milli: 18000, unit: Ch))]),
+  ]),
+  EntryGap { blank_lines: 1 },
+  max_width_media(max: CssLength { n: 700, unit: Px }, rules: [
+    inline_sheet_rule(selector: class_list(name: "specimen-body"), decls: [sheet_expr(property: GridTemplateColumns, value: ValFlex { milli: 1000 })]),
+    block_sheet_rule(selector: class_list(name: "story-ledger"), items: [
+    compact_decls(decls: [
+      sheet_ident(property: Display, ident: "flex"),
+      sheet_ident(property: OverflowX, ident: "auto"),
+      sheet_expr(property: ScrollSnapType, value: sheet_space(items: [ValIdent { ident: "x" }, ValIdent { ident: "mandatory" }])),
+      sheet_expr(property: PaddingBottom, value: sheet_rem(milli: 850)),
+      sheet_ident(property: ScrollbarWidth, ident: "thin"),
+      sheet_ident(property: WebkitOverflowScrolling, ident: "touch"),
+    ]),
+  ]),
+    block_sheet_rule(selector: class_list(name: "specimen"), items: [
+    compact_decls(decls: [
+      sheet_expr(property: Flex, value: sheet_space(items: [ValNumber { milli: 0 }, ValNumber { milli: 0 }, sheet_len(milli: 88000, unit: Vw)])),
+      sheet_ident(property: ScrollSnapAlign, ident: "start"),
+    ]),
+  ]),
+  ]),
+  EntryGap { blank_lines: 1 },
+  max_width_media(max: CssLength { n: 480, unit: Px }, rules: [
+    inline_sheet_rule(selector: class_list(name: "masthead"), decls: [sheet_expr(property: MarginBottom, value: sheet_rem(milli: 2500))]),
+    inline_sheet_rule(selector: descendant_list(ancestor: class_compound(name: "masthead"), descendant: class_compound(name: "eyebrow")), decls: [sheet_expr(property: MarginLeft, value: ValNumber { milli: 0 }), sheet_expr(property: FlexBasis, value: sheet_len(milli: 100000, unit: Percent))]),
+    inline_sheet_rule(selector: class_list(name: "carved-rule"), decls: [sheet_expr(property: Margin, value: sheet_space(items: [sheet_rem(milli: 2000), ValNumber { milli: 0 }]))]),
+  ]),
 ]
 
 data reset_base_entries: List<SheetEntry> = [
@@ -787,13 +1201,13 @@ data reset_base_entries: List<SheetEntry> = [
   EntryGap { blank_lines: 2 },
   EntryComment { lines: tokens_banner },
   EntryGap { blank_lines: 1 },
-  EntryRule { selector: root_list(), layout: RuleBlock, items: tokens_items },
+  EntryRule { rule: SheetRule { selector: root_list(), layout: RuleBlock, items: tokens_items } },
   EntryGap { blank_lines: 2 },
   EntryComment { lines: reset_banner },
   EntryGap { blank_lines: 1 },
   inline_rule(selector: reset_universal_selector, decls: [sheet_ident(property: BoxSizing, ident: "border-box")]),
   EntryGap { blank_lines: 1 },
-  EntryRule { selector: single_compound_selector(c: element_compound(tag: "html")), layout: RuleBlock, items: html_items },
+  EntryRule { rule: SheetRule { selector: single_compound_selector(c: element_compound(tag: "html")), layout: RuleBlock, items: html_items } },
   inline_rule(selector: single_compound_selector(c: element_compound(tag: "body")), decls: [sheet_expr(property: Margin, value: ValNumber { milli: 0 })]),
   inline_rule(selector: single_compound_selector(c: element_compound(tag: "a")), decls: [sheet_ident(property: Color, ident: "inherit")]),
   EntryGap { blank_lines: 2 },
@@ -802,6 +1216,7 @@ data reset_base_entries: List<SheetEntry> = [
 data later_sections: List<List<SheetEntry>> = [
   masthead_entries, text_roles_entries, hero_entries, prose_entries, measure_entries,
   carved_entries, command_entries, invariant_entries, role_entries, deck_entries,
+  footer_entries, media_entries,
 ]
 
 data sheet_entries: List<SheetEntry> = concat(concat(reset_base_entries, layout_entries), fold(later_sections, init: [], f: (acc, section) => concat(acc, concat([EntryGap { blank_lines: 2 }], section))))
@@ -870,12 +1285,12 @@ fn comment_wire(lines: List<String>, indent: Int) -> String {
   concat(folded.text, " */")
 }
 
-fn item_wire(item: SheetItem) -> String {
+fn item_wire(item: SheetItem, indent: Int) -> String {
   match item {
     ItemBlank => ""
-    ItemComment { lines: ls } => comment_wire(lines: ls, indent: 2)
-    ItemDecls { decls: ds, alignment: a } => join(map(ds, d => decl_line(d: d, name_column: longest_name(decls: ds), alignment: a, indent: 2)), "\n")
-    ItemDeclLine { decls: ds } => concat(repeat_string(s: " ", n: 2), join(map(ds, d => decl_text(d: d, name_column: 0, alignment: Compact)), " "))
+    ItemComment { lines: ls } => comment_wire(lines: ls, indent: indent)
+    ItemDecls { decls: ds, alignment: a } => join(map(ds, d => decl_line(d: d, name_column: longest_name(decls: ds), alignment: a, indent: indent)), "\n")
+    ItemDeclLine { decls: ds } => concat(repeat_string(s: " ", n: indent), join(map(ds, d => decl_text(d: d, name_column: 0, alignment: Compact)), " "))
   }
 }
 
@@ -888,30 +1303,68 @@ fn inline_item_wire(item: SheetItem) -> String {
   }
 }
 
-fn rule_wire(selector: SelectorList, layout: RuleLayout, items: List<SheetItem>) -> String {
-  match layout {
-    RuleBlock => join([selector_list_wire(l: selector), " {\n", join(map(items, i => item_wire(item: i)), "\n"), "\n}\n"], "")
-    RuleInline => join([selector_list_wire(l: selector), " { ", join(map(items, i => inline_item_wire(item: i)), " "), " }\n"], "")
+fn stacked_selector_wire(l: SelectorList, indent: Int) -> String {
+  join(map(l.selectors, c => complex_selector_wire(c: c)), concat(",\n", repeat_string(s: " ", n: indent)))
+}
+
+fn rule_wire(rule: SheetRule, indent: Int) -> String {
+  let pad = repeat_string(s: " ", n: indent)
+  match rule.layout {
+    RuleBlock => join([pad, selector_list_wire(l: rule.selector), " {\n", join(map(rule.items, i => item_wire(item: i, indent: indent + 2)), "\n"), "\n", pad, "}\n"], "")
+    RuleInline => join([pad, selector_list_wire(l: rule.selector), " { ", join(map(rule.items, i => inline_item_wire(item: i)), " "), " }\n"], "")
+    RuleInlineStacked => join([pad, stacked_selector_wire(l: rule.selector, indent: indent), " { ", join(map(rule.items, i => inline_item_wire(item: i)), " "), " }\n"], "")
+  }
+}
+
+fn media_wire(condition: MediaCondition, rules: List<SheetRule>) -> String {
+  join(["@media ", media_condition_wire(c: condition), " {\n", join(map(rules, r => rule_wire(rule: r, indent: 2)), ""), "}\n"], "")
+}
+
+fn aligned_selector_wire(r: AlignedRule) -> String {
+  match r.combinator {
+    SingleSpaceCombinator => selector_list_wire(l: r.selector)
+    DoubleSpaceCombinator => join(map(r.selector.selectors, c => join(map(c.compounds, k => compound_selector_wire(c: k)), "  ")), ", ")
   }
 }
 
 fn selector_width(r: AlignedRule) -> Int {
-  0 + selector_list_wire(l: r.selector).length()
+  0 + aligned_selector_wire(r: r).length()
 }
 
 fn longest_selector(rules: List<AlignedRule>) -> Int {
   fold(rules, init: 0, f: (acc, r) => if selector_width(r: r) > acc { selector_width(r: r) } else { acc })
 }
 
-fn aligned_rule_wire(r: AlignedRule, column: Int) -> String {
-  join([selector_list_wire(l: r.selector), repeat_string(s: " ", n: column + 1 - selector_width(r: r)), "{ ", join(map(r.decls, d => decl_text(d: d, name_column: 0, alignment: Compact)), " "), " }\n"], "")
+type AlignedDeclsAcc {
+  text: String
+  index: Int
+}
+
+fn decl_gap_before(sep: DeclSeparator, index: Int) -> String {
+  match sep {
+    SingleSpace => if index == 0 { "" } else { " " }
+    DoubleSpaceAfterFirst => if index == 0 { "" } else if index == 1 { "  " } else { " " }
+  }
+}
+
+fn aligned_decls_wire(r: AlignedRule) -> String {
+  let folded = fold(r.decls, init: AlignedDeclsAcc { text: "", index: 0 }, f: (acc, d) => AlignedDeclsAcc {
+    text: join([acc.text, decl_gap_before(sep: r.separator, index: acc.index), decl_text(d: d, name_column: 0, alignment: Compact)], ""),
+    index: acc.index + 1,
+  })
+  folded.text
+}
+
+fn aligned_rule_wire(r: AlignedRule, rules: List<AlignedRule>, spaces_after_longest: Int) -> String {
+  join([aligned_selector_wire(r: r), repeat_string(s: " ", n: longest_selector(rules: rules) + spaces_after_longest - selector_width(r: r)), "{ ", aligned_decls_wire(r: r), " }\n"], "")
 }
 
 fn entry_wire(e: SheetEntry) -> String {
   match e {
     EntryComment { lines: ls } => concat(comment_wire(lines: ls, indent: 0), "\n")
-    EntryRule { selector: s, layout: l, items: is } => rule_wire(selector: s, layout: l, items: is)
-    EntryAlignedRules { rules: rs } => join(map(rs, r => aligned_rule_wire(r: r, column: longest_selector(rules: rs))), "")
+    EntryRule { rule: r } => rule_wire(rule: r, indent: 0)
+    EntryMedia { condition: c, rules: rs } => media_wire(condition: c, rules: rs)
+    EntryAlignedRules { rules: rs, spaces_after_longest: g } => join(map(rs, r => aligned_rule_wire(r: r, rules: rs, spaces_after_longest: g)), "")
     EntryGap { blank_lines: n } => repeat_string(s: "\n", n: n)
   }
 }
