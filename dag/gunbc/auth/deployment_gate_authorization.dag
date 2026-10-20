@@ -1540,7 +1540,7 @@ fn observe_removal_boundary_standing(
   joined: ProtectionOwnershipJoin,
   boundary: DeploymentGateBoundary,
   attempt: AttemptIdentity,
-  observed_at: Timestamp,
+  observed_at: String,
 ) -> RemovalBoundaryStandingObservation
   admit_callers: [
     // THE PRODUCTION CALLER IS THE STAGE-5 READ, NOT THE STAGE-2 ANSWER ROUTE (side chat round 4,
@@ -1581,7 +1581,7 @@ fn observe_removal_boundary_standing(
       joined: joined,
       boundary: boundary,
       attempt: attempt,
-      observed_at: observed_at,
+      observed_at: observed_at as Timestamp,
     )
   }
 }
@@ -1823,7 +1823,7 @@ type ReviewerRemovalCompletionRefusal
 fn observe_reviewer_removal(
   boundary: DeploymentGateBoundary,
   after: EnvironmentProtectionObservation,
-  observed_at: Timestamp,
+  observed_at: String,
 ) -> ReviewerRemovalCompletion {
   if !utc_instant_is_canonical(t: observed_at) {
     ReviewerRemovalCompletionRefused {
@@ -1863,7 +1863,7 @@ fn observe_reviewer_removal(
         boundary: boundary,
         reviewer_removed: true,
         main_only_policy_present: true,
-        observed_at: observed_at,
+        observed_at: observed_at as Timestamp,
       },
     }
   }
