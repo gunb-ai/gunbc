@@ -95,6 +95,23 @@ data tpb_artifact: Artifact = Artifact {
 
 data tpb_language: Outcome<PreparedLanguage> = prepare_language(lm: dag_language_model())
 
+data tpb_std_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^type_param_binder_frame_std_artifact,
+  file_path: "src/v2/pilot/type_param_binder_frame_std_pilot.dag"
+}
+
+// A peer std.optional root: a `T?` lowers to the marked reference to that declaration, so a tree whose
+// closure lacks it refuses (ResolveGeneratedReferenceDeclarationAbsent) before the specimen's own claim.
+fn tpb_std_optional_witness() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n", fidelity: Lossless },
+    artifact: tpb_std_artifact,
+    compilation_unit: ^type_param_binder_frame_cu,
+    source_root: V2Tree
+  }
+}
+
 fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
   match tpb_language {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
@@ -105,13 +122,16 @@ fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
 fn tpb_assemble_over(src: String, prep: PreparedLanguage) -> Outcome<ResolvedTree> {
   assemble_program_from_prepared_ingest(
     ingest: Cons {
-      head: DagSourceReadWitness {
-        source: Medium { carried: src, fidelity: Lossless },
-        artifact: tpb_artifact,
-        compilation_unit: ^type_param_binder_frame_cu,
-        source_root: V2Tree
-      },
-      tail: Empty
+      head: tpb_std_optional_witness(),
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: src, fidelity: Lossless },
+          artifact: tpb_artifact,
+          compilation_unit: ^type_param_binder_frame_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
     },
     admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
     prep: prep
