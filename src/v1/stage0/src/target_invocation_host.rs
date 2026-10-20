@@ -1092,10 +1092,16 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
-        TargetProducer::DependencyDemandCensus => {
-            run_dependency_demand_census(&self_host_source_roots())
-        }
-        TargetProducer::DeclRefCensus => run_decl_ref_census(&self_host_source_roots()),
+        TargetProducer::DependencyDemandCensus => run_census_verb(
+            "demand-census",
+            "dependency-demand-census",
+            &self_host_source_roots(),
+        ),
+        TargetProducer::DeclRefCensus => run_census_verb(
+            "decl-ref-census",
+            "decl-ref-census",
+            &self_host_source_roots(),
+        ),
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
         }
@@ -5481,39 +5487,17 @@ fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
-fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
-    match cli_run::run_v2_demand_census(source_roots) {
+/// A census verb of the emitted compiler, spawned by `cli_run::run_v2_census_verb`. Every line and
+/// the exit are decided by the emitted verb; the host adds no verdict.
+fn run_census_verb(verb: &str, label: &str, source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_census_verb(verb, source_roots) {
         Ok(code) => InvocationOutcome {
             termination: match code {
                 0 => Termination::ObservationHeld,
                 1 => Termination::ObservationDidNotHold,
                 _ => Termination::SubjectUnreached,
             },
-            message: format!(
-                "dependency-demand-census: exit {code}; the [demand-census] lines above are the census"
-            ),
-        },
-        Err(cause) => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
-            message: cause,
-        },
-    }
-}
-
-/// `gunbc test //gunbc/instruments:decl-ref-census`: the emitted compiler's `decl-ref-census` verb,
-/// spawned exactly as `demand-census` is. Every line and the exit are decided by
-/// `v2.compiler.source_root_eval` `native_decl_ref_census_output`; the host adds no verdict.
-fn run_decl_ref_census(source_roots: &[String]) -> InvocationOutcome {
-    match cli_run::run_v2_decl_ref_census(source_roots) {
-        Ok(code) => InvocationOutcome {
-            termination: match code {
-                0 => Termination::ObservationHeld,
-                1 => Termination::ObservationDidNotHold,
-                _ => Termination::SubjectUnreached,
-            },
-            message: format!(
-                "decl-ref-census: exit {code}; the [decl-ref-census] lines above are the census"
-            ),
+            message: format!("{label}: exit {code}; the [{verb}] lines above are the census"),
         },
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
