@@ -1,0 +1,264 @@
+module gunbc.instruments.normalize_fold_ladder
+// THE NORMALIZE-PATH FOLD LADDER: a named corpus and its measurements for the authored-duplication
+// repair of the DAG lex token-class query (v2.extdeps.languages.dag dag_lex_token_symbol /
+// dag_lex_keyword_symbol, DESIGN.md §2: the per-call rebuild of dag_lex_rules() behind every
+// membership query was authored duplication, repaired by carrying the first value once as data, not
+// by caching a later request). WHAT IT IS: a fold-heavy DAG module -- record literals with named
+// fields and named-argument calls, the two shapes v2.compiler.body_lowering_fold answers with those
+// queries (body_lower_record_literal_tag_optional, body_lower_call_callee_read) -- generated to an
+// exact byte layout and replicated 1x/2x/4x, plus the normalize pipeline rung that reads it:
+// tokenize (v2.compiler.tokenize tokenize_prepared) -> parse (v2.compiler.parse
+// parse_module_prepared) -> normalize (v2.compiler.normalize normalize), and the digest is
+// content_hash of the normalized tree's root (the
+// substrate's structural identity: v2.std.node content_hash, every edge label and atom Symbol folded
+// through content_hash_atom, so two byte-different trees cannot agree on it). THE CORPUS IS BUILT IN
+// DAG, not read from a committed file, for the ladder's reason (json_parse_ladder.dag): a committed
+// fixture re-differs wherever a byte drifted; a builder re-derives the same bytes on every clone.
+// WHAT THE RUNGS OWE: every rung refuses loudly -- a refused tokenize, parse or normalize returns a
+// sentinel through digest reads and the ProcessExit rungs fail with the reason; empty text, a refused
+// pipeline, or a node count under its owed floor all fail the rung. The measurement entries run the
+// pipeline once per call so the interpreter's per-name call census (GUNBC_CALL_CENSUS_FNS, counted
+// at v1.stage0 call_function entry, printed at witness-frame exit) counts exactly one pipeline's
+// calls at GUNBC_EVAL_MEMO=0.
+import std.types { Int, List, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { content_hash, node_subtree_nodes, symbol_intern_lexeme }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.normalize { normalize }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// THE CORPUS SHAPE. Each unit is one fn whose body is `rows` record literals (the tag-optional
+// caller: every let of a tagged construction runs body_lower_record_literal_tag_optional) and `calls`
+// named-argument calls (body_lower_call_callee_read), followed by a returned 0. Replication k adds k
+// units with disjoint identifier namespaces, so 2x is 1x's bytes plus the same bytes again under a
+// second namespace -- size doubles, the fold path per byte does not change. The builder never
+// threads a growing value through a deep recursion (the ladder's rule): lines accumulate in chunks.
+fn nfl_row_width() -> Int { 150 }
+
+fn nfl_record_row(tag: String, i: Int) -> String {
+  join([
+    "  let ", tag, "r", to_string(value: i),
+    " = CorpusPoint { x: ", to_string(value: i),
+    ", label: \"p", to_string(value: i), "\", ok: ",
+    if i - (i / 2) * 2 == 0 { "true" } else { "false" },
+    " }\n",
+  ], "")
+}
+
+fn nfl_call_row(tag: String, rows: Int, i: Int) -> String {
+  let m = i * 7
+  let j = m - (m / rows) * rows
+  join([
+    "  let ", tag, "c", to_string(value: i),
+    " = corpus_step(a: ", tag, "r", to_string(value: i),
+    ", b: ", tag, "r", to_string(value: j), ")\n",
+  ], "")
+}
+
+fn nfl_body_entries(tag: String, rows: Int, calls: Int, i: Int, hi: Int, acc: List<String>) -> List<String> {
+  if i >= hi {
+    acc
+  } else if i < rows {
+    nfl_body_entries(tag: tag, rows: rows, calls: calls, i: i + 1, hi: hi, acc: acc |> list_push(nfl_record_row(tag: tag, i: i)))
+  } else {
+    nfl_body_entries(tag: tag, rows: rows, calls: calls, i: i + 1, hi: hi, acc: acc |> list_push(nfl_call_row(tag: tag, rows: rows, i: i - rows)))
+  }
+}
+
+fn nfl_body_chunk(tag: String, rows: Int, calls: Int, lo: Int, hi: Int, acc: List<String>) -> List<String> {
+  if lo >= rows + calls {
+    acc
+  } else {
+    let top = if lo + nfl_row_width() > rows + calls { rows + calls } else { lo + nfl_row_width() }
+    nfl_body_chunk(tag: tag, rows: rows, calls: calls, lo: top, hi: hi, acc: acc |> list_push(join(nfl_body_entries(tag: tag, rows: rows, calls: calls, i: lo, hi: top, acc: []), "")))
+  }
+}
+
+fn nfl_unit(tag: String, rows: Int, calls: Int) -> String {
+  join([
+    "fn corpus_step_", tag, "(a: CorpusPoint, b: CorpusPoint) -> Int {\n",
+    join(nfl_body_chunk(tag: tag, rows: rows, calls: calls, lo: 0, hi: rows + calls, acc: []), ""),
+    "  0\n}\n",
+  ], "")
+}
+
+fn nfl_units(k: Int, acc: List<String>) -> List<String> {
+  if k <= 0 { acc } else { nfl_units(k: k - 1, acc: acc |> list_push(nfl_unit(tag: concat("u", to_string(value: k - 1)), rows: 192, calls: 96))) }
+}
+
+fn nfl_module(replications: Int) -> String {
+  join([
+    "module zz.fold_ladder.corpus\n",
+    "import std.types { Int, Bool, String }\n\n",
+    "type CorpusPoint {\n  x: Int\n  label: String\n  ok: Bool\n}\n\n",
+    "data corpus_seeds: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8]\n\n",
+    join(nfl_units(k: replications, acc: []), "\n"),
+    "\n",
+  ], "")
+}
+
+fn nfl_1x_text() -> String { nfl_module(replications: 1) }
+fn nfl_2x_text() -> String { nfl_module(replications: 2) }
+fn nfl_4x_text() -> String { nfl_module(replications: 4) }
+
+// THE PIPELINE RUNG: text -> tokens -> parse tree -> normalized tree -> structural digest. Every
+// refusal is a distinct sentinel string, so a rung that reports a digest never mistakes a refusal
+// for a tree. The occurrence allocator is normalize's isolated one (v2.compiler.normalize normalize,
+// the unseeded door), so the digest depends on the text and the compiler, on nothing else.
+fn nfl_normalize_digest(text: String) -> String {
+  match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: "corpus.dag"), prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
+    Accepted { value: tokens, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: _ } => "GRAMMAR_REFUSED"
+        Accepted { value: grammar, diagnostics: _ } =>
+          match parse_module_prepared(tokens: tokens, prepared: grammar) {
+            Rejected { diagnostics: _ } => "PARSE_REFUSED"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: _ } => "NORMALIZE_REFUSED"
+                Accepted { value: tree, diagnostics: _ } => content_hash(n: tree.root).digest as String
+              }
+          }
+      }
+  }
+}
+
+fn nfl_normalize_node_count(text: String) -> Int {
+  match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: "corpus.dag"), prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: tokens, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: _ } => 0 - 2
+        Accepted { value: grammar, diagnostics: _ } =>
+          match parse_module_prepared(tokens: tokens, prepared: grammar) {
+            Rejected { diagnostics: _ } => 0 - 3
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: _ } => 0 - 4
+                Accepted { value: tree, diagnostics: _ } => count(node_subtree_nodes(root: tree.root))
+              }
+          }
+      }
+  }
+}
+
+fn rung_digest(tag: String, text: String) -> ProcessExit {
+  let d = nfl_normalize_digest(text: text)
+  if d == "TOKENIZE_REFUSED" {
+    exit_failure(reason: concat(tag, ": tokenize refused the corpus"))
+  } else if d == "GRAMMAR_REFUSED" {
+    exit_failure(reason: concat(tag, ": the prepared grammar was refused"))
+  } else if d == "PARSE_REFUSED" {
+    exit_failure(reason: concat(tag, ": parse refused the corpus"))
+  } else if d == "NORMALIZE_REFUSED" {
+    exit_failure(reason: concat(tag, ": normalize refused the corpus parse"))
+  } else if d.length() == 16 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(concat(tag, ": digest read came back odd: "), d))
+  }
+}
+
+fn rung_node_floor(tag: String, text: String, floor: Int) -> ProcessExit {
+  let n = nfl_normalize_node_count(text: text)
+  if n < floor {
+    exit_failure(reason: concat(concat(concat(tag, ": normalized node count "), to_string(value: n)), " is under its owed floor"))
+  } else {
+    ExitSuccess
+  }
+}
+
+fn rung_size(tag: String, text: String, floor: Int) -> ProcessExit {
+  let n = text.length()
+  if n < floor {
+    exit_failure(reason: concat(concat(concat(tag, ": corpus bytes "), to_string(value: n)), " are under their owed floor"))
+  } else {
+    ExitSuccess
+  }
+}
+
+fn rung_written(path: String, content: String) -> ProcessExit {
+  let w = Filesystem.Write(path: path, content: content)
+  if !w.success {
+    exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
+  } else if Filesystem.Read(path: path).content != content {
+    exit_failure(reason: concat("the corpus read back different from what it was written: ", path))
+  } else {
+    ExitSuccess
+  }
+}
+
+// SELF-CHECK RUNGS. These are what make the measurement rows mean what they say: the corpus built,
+// parsed, normalized, and named on disk before any count is read from it.
+fn ladder_self_check_1x() -> ProcessExit {
+  let t = nfl_1x_text()
+  let s = rung_size(tag: "1x", text: t, floor: 12000)
+  if s != ExitSuccess { s } else {
+    let d = rung_digest(tag: "1x", text: t)
+    if d != ExitSuccess { d } else { rung_node_floor(tag: "1x", text: t, floor: 3000) }
+  }
+}
+
+fn ladder_self_check_2x() -> ProcessExit {
+  let t = nfl_2x_text()
+  let s = rung_size(tag: "2x", text: t, floor: 24000)
+  if s != ExitSuccess { s } else {
+    let d = rung_digest(tag: "2x", text: t)
+    if d != ExitSuccess { d } else { rung_node_floor(tag: "2x", text: t, floor: 6000) }
+  }
+}
+
+fn ladder_self_check_4x() -> ProcessExit {
+  let t = nfl_4x_text()
+  let s = rung_size(tag: "4x", text: t, floor: 48000)
+  if s != ExitSuccess { s } else {
+    let d = rung_digest(tag: "4x", text: t)
+    if d != ExitSuccess { d } else { rung_node_floor(tag: "4x", text: t, floor: 12000) }
+  }
+}
+
+// THE WRITER (wet): the named corpus lands on disk for the measurement dispatch, and read back
+// byte-for-byte -- rung_written refuses unless Filesystem.Read returns exactly what was written.
+fn ladder_write_corpus() -> ProcessExit {
+  let a = rung_written(path: "/tmp/nfl_corpus_1x.dag", content: nfl_1x_text())
+  if a != ExitSuccess { a } else {
+    let b = rung_written(path: "/tmp/nfl_corpus_2x.dag", content: nfl_2x_text())
+    if b != ExitSuccess { b } else {
+      rung_written(path: "/tmp/nfl_corpus_4x.dag", content: nfl_4x_text())
+    }
+  }
+}
+
+// THE MEASUREMENT ENTRIES. Each runs the pipeline exactly once over its rung's corpus, so the
+// per-name call census is one pipeline's calls. Run with
+// GUNBC_EVAL_MEMO=0 GUNBC_CALL_CENSUS_FNS=<the queried names>. The memo setting is part of the
+// contract, not a control: the pure-call memo's hit rate falls as the input grows, so memo-on
+// counts of a before/after pair are not comparable across the rungs; at 0 every census line is a
+// recorded execution.
+fn measure_normalize_fold_1x() -> ProcessExit { rung_digest(tag: "measure_1x", text: nfl_1x_text()) }
+fn measure_normalize_fold_2x() -> ProcessExit { rung_digest(tag: "measure_2x", text: nfl_2x_text()) }
+fn measure_normalize_fold_4x() -> ProcessExit { rung_digest(tag: "measure_4x", text: nfl_4x_text()) }
+
+// THE BYTE-IDENTITY CARRIER (wet): the three rungs' structural digests land on disk, one line each.
+// Two binaries over the same instrument owe the same file; a line that differs is normalize
+// producing a different tree, not a rendering that drifted -- content_hash folds every edge label
+// and atom through content_hash_atom (v2.std.node), so no two byte-different trees share a digest.
+fn ladder_emit_digests() -> ProcessExit {
+  let lines = join([
+    "1x ", nfl_normalize_digest(text: nfl_1x_text()), "\n",
+    "2x ", nfl_normalize_digest(text: nfl_2x_text()), "\n",
+    "4x ", nfl_normalize_digest(text: nfl_4x_text()), "\n",
+  ], "")
+  let w = Filesystem.Write(path: "/tmp/nfl_digests.txt", content: lines)
+  if !w.success {
+    exit_failure(reason: concat("digest write failed: ", w.error))
+  } else if Filesystem.Read(path: "/tmp/nfl_digests.txt").content != lines {
+    exit_failure(reason: "the digest file read back different from what it was written")
+  } else {
+    ExitSuccess
+  }
+}

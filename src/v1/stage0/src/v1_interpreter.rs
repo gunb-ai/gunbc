@@ -7615,12 +7615,82 @@ pub fn take_raise_path() -> RaisePath {
 /// lives under `stacker::maybe_grow`; 100_000 frames is far past any legitimate corpus chain.
 const CALL_DEPTH_LIMIT: u32 = 100_000;
 
+// THE PER-NAME CALL CENSUS (GUNBC_CALL_CENSUS_FNS, comma-separated names). A repair's before/after
+// pair needs a function's CALL COUNT, and the recompute-trace ledger's ranked views answer a
+// different question (what wasted the most time) at a cost this census deliberately does not pay:
+// the trace keys and times every pure call (argument hashing, per-key rows), which on a fold-heavy
+// corpus multiplies the run's wall time by an order of magnitude. This counts names only: at
+// `call_function` entry, the declared name, an increment. It sits at that point on purpose — every
+// memo tier that could serve a call without executing it sits ABOVE it, so with the memo realization
+// switched off (GUNBC_EVAL_MEMO=0, the only comparable setting; its hit rate falls with input size,
+// which is why memo-on counts of a REPAIR are not comparable) a counted line is one execution. A
+// name the census does not carry pays one empty-set check. Report-only, like the trace: the map is
+// read and cleared at witness-frame exit and never touches the outcome.
+static CALL_CENSUS_SET: std::sync::OnceLock<std::collections::HashSet<String>> =
+    std::sync::OnceLock::new();
+static CALL_CENSUS_TOTALS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, u64>>,
+> = std::sync::OnceLock::new();
+
+fn call_census_set() -> &'static std::collections::HashSet<String> {
+    CALL_CENSUS_SET.get_or_init(|| {
+        std::env::var("GUNBC_CALL_CENSUS_FNS")
+            .map(|v| {
+                v.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
+}
+
+fn call_census_record(name: &str) {
+    let set = call_census_set();
+    if set.is_empty() || !set.contains(name) {
+        return;
+    }
+    let map =
+        CALL_CENSUS_TOTALS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Ok(mut map) = map.lock() {
+        *map.entry(name.to_string()).or_insert(0) += 1;
+    }
+}
+
+/// Print the per-name census. Pairs with `print_eval_recompute_trace` at witness-frame exit;
+/// empty when the census was not asked for, so ordinary runs print nothing.
+pub fn print_call_census() {
+    let rows: Vec<(u64, String)> = {
+        let map = CALL_CENSUS_TOTALS
+            .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+        let mut guard = match map.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        let rows = guard
+            .iter()
+            .map(|(k, v)| (*v, k.clone()))
+            .collect::<Vec<_>>();
+        guard.clear();
+        rows
+    };
+    if rows.is_empty() {
+        return;
+    }
+    let mut rows = rows;
+    rows.sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    for (calls, name) in rows {
+        eprintln!("[call-census] fn={} calls={}", name, calls);
+    }
+}
+
 fn call_function(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
+    call_census_record(&fn_node.name);
     let depth = CALL_DEPTH.with(|d| {
         let v = d.get() + 1;
         d.set(v);

@@ -588,6 +588,7 @@ fn run_witnesses(
         // shared per-entry ctx — ctx-lifetime retention of argument+result
         // values across witnesses is byte-unbounded (20GiB-class kills).
         v1_compiler::v1_interpreter::print_eval_recompute_trace(&ctx);
+        v1_compiler::v1_interpreter::print_call_census();
         v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
     }
     Ok(())
@@ -885,6 +886,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
             // the exact path the 6-witness 20GiB-kill recipe runs (the memo
             // must not retain values across witnesses sharing this ctx).
             v1_compiler::v1_interpreter::print_eval_recompute_trace(&ctx);
+            v1_compiler::v1_interpreter::print_call_census();
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
         }
         if stats_requested {
