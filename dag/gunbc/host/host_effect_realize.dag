@@ -5642,12 +5642,15 @@ fn deploy_apply_digest_failure(path: String, digest: Digest, outcome: RunArgvTra
       } else {
         match sha256sum_line_digest(line: o.stdout) {
           Absent => Present { value: join(["sha256sum printed no digest for ", path], "") }
-          Present { value: d } =>
-            if d.hex as String == digest.hex as String {
+          Present { value: d } => {
+            let seen: String = d.hex
+            let planned: String = digest.hex
+            if seen == planned {
               Absent
             } else {
-              Present { value: join([path, " digest ", d.hex as String, " is not the planned ", digest.hex as String], "") }
+              Present { value: join([path, " digest ", seen, " is not the planned ", planned], "") }
             }
+          }
         }
       }
   }
