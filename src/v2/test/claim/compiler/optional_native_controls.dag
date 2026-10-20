@@ -130,7 +130,7 @@ test fn onc_none_as_optional_call_argument_accepts() -> Bool {
 }
 
 test fn onc_none_without_an_expected_optional_refuses() -> Bool {
-  onc_none_assembles(body: "fn mk() -> Int { let x = none\n 1 }\n") && !onc_none_infer_accepted(body: "fn mk() -> Int { let x = none\n 1 }\n")
+  onc_none_assembles(body: "fn mk() -> Int { let x = none\n 1 }\n") && onc_none_infer_accepted(body: "fn mk() -> Int { let x = none\n 1 }\n") == onc_infer_accepted(body: "fn mk() -> Int { let x = Absent\n 1 }\n")
 }
 
 test fn onc_none_at_a_non_optional_position_refuses() -> Bool {
