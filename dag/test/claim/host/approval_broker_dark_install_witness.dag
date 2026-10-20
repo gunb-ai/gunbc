@@ -149,13 +149,16 @@ data refusing_transport: HostEffectTransport = EmitArtifactThenThinRun {
   invocation: ThinInvocation { argv: ["true"] },
 }
 
+fn refused_step(l: DarkLeg) -> DarkInstallStep? {
+  step_of(s: dark_run_leg(state: DarkOk, leg: l, transport: refusing_transport))
+}
+
 test fn dark_run_leg_routes_each_leg_through_the_transport_to_its_own_step() -> Bool {
   let cmd = find_untrusted_entries_command(roots: ["/nonexistent-w6b/none"], top_only: true, owner: "root")
-  let at = (l: DarkLeg) => step_of(s: dark_run_leg(state: DarkOk, leg: l, transport: refusing_transport))
-  at(l: DarkLegArgv { step: DarkStepEnable, command: cmd }) == Present { value: DarkStepEnable }
-    && at(l: DarkLegStdin { step: DarkStepSudoersStage, command: cmd, payload: "x" }) == Present { value: DarkStepSudoersStage }
-    && at(l: DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: cmd }) == Present { value: DarkStepSnapshotReadback }
-    && at(l: DarkLegSameHash { step: DarkStepSudoersCompare, left: "a", right: "b" }) == Present { value: DarkStepSudoersCompare }
+  refused_step(l: DarkLegArgv { step: DarkStepEnable, command: cmd }) == Present { value: DarkStepEnable }
+    && refused_step(l: DarkLegStdin { step: DarkStepSudoersStage, command: cmd, payload: "x" }) == Present { value: DarkStepSudoersStage }
+    && refused_step(l: DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: cmd }) == Present { value: DarkStepSnapshotReadback }
+    && refused_step(l: DarkLegSameHash { step: DarkStepSudoersCompare, left: "a", right: "b" }) == Present { value: DarkStepSudoersCompare }
 }
 
 test fn an_empty_leg_list_is_ok() -> Bool {
