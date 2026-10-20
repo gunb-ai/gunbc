@@ -26,14 +26,12 @@ fn is_atom_identity(n: Node) -> Optional<Symbol> {
 fn is_head_is_kw(n: Node) -> Bool {
   match n.kind {
     ComputationNode { behavior: Transform } =>
-      match n.children {
-        [first, _, _] =>
-          match is_atom_identity(n: first.target) {
-            Present { value: id } => id == ^dag_token_kw_is
-            Absent => false
-          }
-        _ => false
-      }
+      fold(n.children, init: false, f: fn(acc, e) {
+        acc || match is_atom_identity(n: e.target) {
+          Present { value: id } => id == ^dag_token_kw_is
+          Absent => false
+        }
+      })
     _ => false
   }
 }
