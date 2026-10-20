@@ -28,8 +28,8 @@ use v1_compiler::v1_compiler_parse;
 use v1_compiler::v1_compiler_trait_derive_emit::{v1_type_expr_keyed_map_verdict, KeyedMapVerdict};
 use v1_compiler::v1_std_core::NewlineIndex;
 use v1_compiler::v1_std_core::{
-    authored_container_spelling_verdict, build_newline_index, default_ident_span,
-    leaf_node_with_span, make_arm_node, no_span, with_optional_cardinality, Cardinality,
+    authored_container_spelling_verdict, authored_ident, build_newline_index, leaf_node_with_span,
+    make_arm_node, named_ident, no_span, with_optional_cardinality, AuthoredIdent, Cardinality,
     CompilerDiagnostic, Connective, ContainerSpellingVerdict, ExprData, InferredNode, MatchPattern,
     Node, SourceSpan,
 };
@@ -93,6 +93,11 @@ fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
         .collect()
 }
 
+// An ident_span for a synthetic probe node: its spelling is the name it was built from.
+fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<AuthoredIdent>> {
+    named_ident(name.clone(), authored_ident(span, name))
+}
+
 fn empty_source_indices() -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     Rc::new(im::HashMap::new())
 }
@@ -100,8 +105,9 @@ fn empty_source_indices() -> Rc<HashMap<String, Rc<NewlineIndex>>> {
 fn leaf_node(name: String) -> Rc<Node> {
     leaf_node_with_span(
         Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name,
+        name.clone(),
         no_span(),
+        authored_ident(no_span(), name),
     )
 }
 
@@ -1656,6 +1662,7 @@ fn authored_leaf_node(name: &str, text: &str) -> Rc<Node> {
         Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
         name.to_string(),
         span,
+        authored_ident(span.clone(), name.to_string()),
     )
 }
 

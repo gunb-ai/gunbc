@@ -76,7 +76,8 @@ import v1.std.core { Unmarked, expr_literal_int_optional,
   binop_left, binop_right, no_span, with_required_cardinality, Connective, Conj, Disj,
   NoConnective, Arrow, Cardinality, Required, CardOptional, is_rest_transport,
   transport_base_path, empty_intern_table,
-  LeafOwner, SingleOwner, LeafAmbiguous
+  LeafOwner, SingleOwner, LeafAmbiguous,
+  authored_ident, optional_string_or_empty
 }
 
 import std.compiler_entry { NativeEffectDenominator, native_compiler_route_denominator, native_service_route_denominator, native_claim_route_denominator }
@@ -13633,7 +13634,7 @@ fn fill_default_args(ordered: List<Node>, callee: ItemInfo?, registry: Map<Strin
         else { param_node_default_value(n: p) != none }
       )
       let default_args = missing_with_defaults |> map(p =>
-        make_arg_node(occurrence_identity: OccurrenceSynthetic, name: Present { value: param_node_name_at(n: p, source_indices: scope.type_env.source_indices) }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)
+        make_arg_node(occurrence_identity: OccurrenceSynthetic, name: Present { value: param_node_name_at(n: p, source_indices: scope.type_env.source_indices) }, value: param_node_default_value(n: p).value, span: p.span, ident: authored_ident(span: p.span, text: optional_string_or_empty(s: Present { value: param_node_name_at(n: p, source_indices: scope.type_env.source_indices) })))
       )
       concat(ordered, default_args)
     Absent => ordered
@@ -13655,7 +13656,7 @@ fn fill_op_default_args(ordered: List<Node>, op_params: List<Node>, registry: Ma
       Present { value: arg } => [arg]
       Absent =>
         if param_node_default_value(n: p) != none {
-          [make_arg_node(occurrence_identity: OccurrenceSynthetic, name: Present { value: pname }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)]
+          [make_arg_node(occurrence_identity: OccurrenceSynthetic, name: Present { value: pname }, value: param_node_default_value(n: p).value, span: p.span, ident: authored_ident(span: p.span, text: optional_string_or_empty(s: Present { value: pname })))]
         } else { [] }
     }
   )
