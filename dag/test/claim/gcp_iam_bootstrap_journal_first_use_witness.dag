@@ -11,8 +11,10 @@ import gunbc.auth.gcp_iam_bootstrap {
   IamBootstrapStage, BootstrapServices, BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapJournalBucket,
   iam_bootstrap_stages, iam_bootstrap_stage_admitted, iam_bootstrap_stage_wire,
   JournalBucketIdentity, JournalBucketAdmitted, JournalBucketMismatch, journal_bucket_identity,
+  iam_bootstrap_journal_bucket_services, iam_bootstrap_required_services,
 }
 import gunbc.auth.gcp_iam_bootstrap_journal { journal_answer_names_request }
+import extdeps.cloud.gcp.gcp { gcp_service_api_id }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -63,4 +65,13 @@ test fn a_journal_answer_naming_another_slot_refuses() -> Bool {
   journal_answer_names_request(requested_bucket: b, requested_object: o, answered_bucket: b as String, answered_object: o as String)
     && !journal_answer_names_request(requested_bucket: b, requested_object: o, answered_bucket: b as String, answered_object: "pool-first-publication--y--once--election")
     && !journal_answer_names_request(requested_bucket: b, requested_object: o, answered_bucket: "another-bucket", answered_object: o as String)
+}
+
+// THE ROOT BOOTSTRAP ENABLES EVERY SERVICE THE JOURNAL-BUCKET STAGE CALLS, so first use needs no manual
+// enablement; the stage's other services stay admitted beside it.
+test fn the_root_bootstrap_enables_the_journal_buckets_services() -> Bool {
+  count(iam_bootstrap_journal_bucket_services) > 0
+    && all(iam_bootstrap_journal_bucket_services, svc => any(iam_bootstrap_required_services, r => r == gcp_service_api_id(service: svc)))
+    && any(iam_bootstrap_required_services, r => r == "iam.googleapis.com")
+    && any(iam_bootstrap_required_services, r => r == "secretmanager.googleapis.com")
 }
