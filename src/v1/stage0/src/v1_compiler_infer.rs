@@ -14077,25 +14077,7 @@ Rc::new(InferResult {
                                                 v1_rt::rc_map_insert(
                                                     acc,
                                                     g.clone(),
-                                                    type_variable_node(v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                v1_rt::concat(
-                                                                    v1_rt::concat(
-                                                                        v1_rt::concat(
-                                                                            g.clone(),
-                                                                            "@".to_string(),
-                                                                        ),
-                                                                        span.file.clone(),
-                                                                    ),
-                                                                    ":".to_string(),
-                                                                ),
-                                                                (span.start.clone()).to_string(),
-                                                            ),
-                                                            "-".to_string(),
-                                                        ),
-                                                        (span.end.clone()).to_string(),
-                                                    )),
+                                                    type_variable_node(g.clone()),
                                                 )
                                             },
                                         );
