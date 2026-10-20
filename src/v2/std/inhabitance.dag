@@ -563,11 +563,37 @@ fn declared_type_inhabitance_optional(obligation: DeclaredTypeObligation) -> Inh
   }
 }
 
+// A RIGID TYPE VARIABLE IS DECIDED AGAINST A TYPE THAT MENTIONS NONE. Inside the declaring Arrow a type
+// parameter names exactly one unknown type, so no concrete declared type is inhabited by a produced type
+// that mentions it: `fn r<T>(x: T) -> Int? { Present { value: x } }` produces T at a declared `Int`, and
+// that refuses by the structural comparison like any other mismatch. Only a call argument position keeps
+// the variables flexible (the callee's formals, instantiated or not yet instantiated at that call), so
+// only there does a mention stay UndecidableGenericFormal.
+fn inhabitance_position_variables_are_flexible(position: DeclaredTypePosition) -> Bool {
+  match position {
+    PositionDirectCallArgument => true
+    PositionDeclaredReturn => false
+    PositionRecordField { record: _ } => false
+    PositionLetAnnotation { bound: _ } => false
+    PositionBinderDefault { default: _ } => false
+    PositionMatchCoverage { match_node: _, scrutinee: _ } => false
+  }
+}
+
+fn inhabitance_judged_type_variables(obligation: DeclaredTypeObligation) -> List<Symbol> {
+  if !inhabitance_position_variables_are_flexible(position: obligation.position)
+    && !inhabitance_node_mentions_type_variable(n: obligation.declared, type_variables: obligation.type_variables) {
+    []
+  } else {
+    obligation.type_variables
+  }
+}
+
 fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   match inhabitance_pair_undecidable_reason(
     declared: obligation.declared,
     produced: obligation.produced,
-    type_variables: obligation.type_variables
+    type_variables: inhabitance_judged_type_variables(obligation: obligation)
   ) {
     Present { value: reason } => InhabitanceUndecidable { reason: reason }
     Absent =>
@@ -603,7 +629,7 @@ fn declared_type_inhabitance_exact(obligation: DeclaredTypeObligation) -> Inhabi
   match inhabitance_pair_undecidable_reason(
     declared: obligation.declared,
     produced: obligation.produced,
-    type_variables: obligation.type_variables
+    type_variables: inhabitance_judged_type_variables(obligation: obligation)
   ) {
     Present { value: reason } => InhabitanceUndecidable { reason: reason }
     Absent =>
