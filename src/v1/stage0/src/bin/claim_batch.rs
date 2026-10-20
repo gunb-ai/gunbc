@@ -32,13 +32,16 @@ struct ResolveTimings {
     any_unobserved: bool,
 }
 
-/// Exit composition, 2 (no observation) > 1 (a finding) > 0 (clean): a batch with any unresolved
-/// group exits 2 even when other groups ran and failed, while every group's lines still print.
+/// Exit composition, 1 (a finding) > 2 (no observation) > 0 (clean): the batch verdict is a
+/// conjunction over its claims, and under Kleene logic false AND unknown is false, so a claim
+/// that definitely failed makes the answer "did not hold" even when another group was never
+/// evaluated. Only nothing-failed with something unobserved is "no observation". Every group's
+/// lines print either way.
 fn batch_exit_code(any_unobserved: bool, any_failed: bool) -> u8 {
-    if any_unobserved {
-        2
-    } else if any_failed {
+    if any_failed {
         1
+    } else if any_unobserved {
+        2
     } else {
         0
     }
@@ -1157,11 +1160,11 @@ mod cli_path_resolution_wiring_tests {
 
     /// Absolute existing paths pass parse_args unchanged (resolution applied, no rewrite).
     #[test]
-    fn exit_composition_is_unobserved_over_failed_over_clean() {
+    fn exit_composition_is_failed_over_unobserved_over_clean() {
         assert_eq!(batch_exit_code(false, false), 0);
         assert_eq!(batch_exit_code(false, true), 1);
         assert_eq!(batch_exit_code(true, false), 2);
-        assert_eq!(batch_exit_code(true, true), 2);
+        assert_eq!(batch_exit_code(true, true), 1);
     }
 
     #[test]
