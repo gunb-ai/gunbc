@@ -36,11 +36,18 @@ module v2.test.claim.outside_discovery_roots_census_real_execution
 // the pure file's fixtures either, because those inject listings rather than performing reads.
 
 import std.types { String, Bool, List }
-import std.algebra { is_empty }
+import std.algebra { is_empty, length }
+
+import std.decl_ref { decl_ref }
+import v2.std.decl_ref_resolution { declaration_ref_resolution_census_live }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 
 import v2.workflow.outside_discovery_roots_census {
   emitted_entry_for_module,
-  subject_path_is_emitted
+  subject_path_is_emitted,
+  outside_roots_citations,
+  outside_roots_cause,
+  declaration_ref_display
 }
 
 import v2.workflow.outside_discovery_roots_census_live {
@@ -143,4 +150,66 @@ test fn every_expected_subject_path_is_emitted_by_its_declared_module_by_real_ex
     && all(xs: population, predicate: fn(path) {
       subject_path_is_emitted(path: path, emitted: emitted, facts: facts)
     })
+}
+
+// ---------------------------------------------------------------------------
+// THE CITATIONS RESOLVE. Review 83419: the census used to name its authorities as free strings -- a note
+// name, a module path, even a Rust file path baked into a `cause: String`. A claim that checks the printed
+// line contains that string checks the census against its own text: rename the note or delete the layout
+// function and every claim stays green. The authorities are DeclarationRefs now, and this is the claim that
+// makes a rename RED -- it asks the live index, for each citation the census prints, whether the symbol is
+// actually there.
+//
+// WHY IT IS ON THE WET LANE AND NOT WITH THE HERMETIC WITNESS. Resolving a reference means reading the tree
+// the reference points at (`decl_facts_at` over the witness layer roots). A hermetic claim that answered from
+// a hand-minted DeclFact list would be checking the census against facts I authored, which is the
+// measure()==measure() failure this file exists to avoid. So the facts come from the tree, and the lane is
+// the one that allows the read.
+// ---------------------------------------------------------------------------
+
+// Every citation the census can print resolves to a real declaration, and no citation is refused for any of
+// the four typed reasons. A count rather than a boolean, so a failure names how many broke rather than only
+// that one did.
+test fn every_printed_citation_resolves_against_the_live_index_by_real_execution() -> Bool {
+  let census = declaration_ref_resolution_census_live(
+    refs: outside_roots_citations,
+    pool_roots: witness_layer_roots
+  )
+  census.resolved_count == length(xs: outside_roots_citations)
+    && census.module_absent_count == 0
+    && census.declaration_absent_count == 0
+    && census.field_absent_count == 0
+    && census.ambiguous_count == 0
+}
+
+// THE CONTROL, and it is the claim that makes the one above mean anything. If resolution could not fail --
+// if the reader answered "resolved" for a symbol that does not exist -- the claim above would be a tautology
+// wearing a check. This mints a reference to a symbol that is not in the tree and requires the resolver to
+// REFUSE it. It is also what distinguishes "the resolver ran and said no" from "the resolver never ran": a
+// broken or vacuous resolution route makes this red while the positive claim stays green, which is the
+// asymmetry that tells the two apart.
+test fn a_citation_to_a_symbol_that_does_not_exist_is_refused_by_real_execution() -> Bool {
+  let census = declaration_ref_resolution_census_live(
+    refs: [decl_ref(module_path: "v2.cli.repository_layout", decl_name: "repository_module_file_of_path_definitely_not_renamed")],
+    pool_roots: witness_layer_roots
+  )
+  census.resolved_count == 0
+    && census.module_absent_count + census.declaration_absent_count
+         + census.field_absent_count + census.ambiguous_count == 1
+}
+
+// The printed form is the citation, not a paraphrase of it. The receipt the operator reads and the reference
+// the resolver checks are the same two fields of the same record, so a receipt cannot keep flattering a
+// symbol that has already been renamed away.
+test fn every_citation_the_receipt_prints_is_a_citation_the_resolver_checks_by_real_execution() -> Bool {
+  let census = declaration_ref_resolution_census_live(
+    refs: outside_roots_citations,
+    pool_roots: witness_layer_roots
+  )
+  census.resolved_count == length(xs: outside_roots_citations)
+    && all(xs: outside_roots_citations, predicate: fn(ref) {
+      declaration_ref_display(ref: ref) == concat(ref.module_path as String, concat(":", ref.decl_name as String))
+    })
+    && declaration_ref_display(ref: outside_roots_cause.note_subject)
+         == "gunbc.ci.ci_layer_roots:v1_claim_scoped_witness_batch_deleted_note"
 }

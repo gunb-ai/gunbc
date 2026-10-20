@@ -44,6 +44,7 @@ module v2.workflow.outside_discovery_roots_census
 import std.types { String, Bool, List }
 import std.optional { Optional, Absent, Present }
 import std.algebra { Cons, Empty, list_map, list_reverse }
+import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.rust_emitted_edge { module_to_filename }
 import gunbc.stage0.stage0_cargo_manifest { stage0_package_root, stage0_source_dir_relative_to_package }
 import v2.lens.module_graph { ModuleDeclarationFact }
@@ -58,21 +59,48 @@ import v2.cli.repository_layout { repository_module_file_of_path, repository_tre
 //                            "nothing to report": it refuses, and it outranks an empty census (§5).
 type OutsideRootsStanding
   = InsideGovernedTree { path: String, tree_directory: String }
-  | OutsideDiscoveryRoots { path: String, cause: String }
+  | OutsideDiscoveryRoots { path: String, cause: OutsideRootsCause }
   | NotAClaimFile { path: String }
   | ListingUnread { cause: String }
 
-// THE NOTE, cited at identity rather than paraphrased: the population is declared there and the trigger
-// that retires it is that note's own restoration clause. The census reports what the note declared.
-data v1_claim_note_identity: String = "v1_claim_scoped_witness_batch_deleted_note"
-data v1_claim_note_location: String = "gunbc.ci.ci_layer_roots"
-// Three authorities, each named at the grain it actually holds (§5: no per-item authority claimed from a
-// source that carries only a coarser one). The index says TRACKED. The note says the SUBJECT -- its body
-// names `src/v1/tests/claim` as having no executing consumer and names no file. The emitted population
-// registry says this FILE was emitted, which is the only per-file statement available in-tree.
-data outside_roots_cause: String = "tracked by the index; within the subject the note declares; emitted per src/v1/stage0/src/emitted_population.rs; under no governed tree per v2.cli.repository_layout"
+// THE CAUSE, AS CITATIONS AND NOT AS PROSE. A finding's cause used to be one sentence naming its three
+// authorities; a sentence cannot be checked, so a rename or deletion of any of them would have left every
+// claim green (review 83419, DESIGN 3 "cite the symbol, not the position", 4c "a String declaration whose
+// only purpose is commentary is misplaced"). Each authority is now a DeclarationRef over (module, decl),
+// which the witness resolves through v2.std.decl_ref_resolution against the live index: the claim fails the
+// moment the named symbol stops existing, which is the whole point of a citation.
+//
+// The emitted-population authority is deliberately a REFERENCE TO A FUNCTION and not a file path. The old
+// string carried `src/v1/stage0/src/emitted_population.rs` -- a position, in a frozen tree, that no index
+// resolves and that rots on any rename. The registry's identity is the fn that reads it.
+type OutsideRootsCause {
+  tracked_by: DeclarationRef
+  note_subject: DeclarationRef
+  emitted_by: DeclarationRef
+  layout_authority: DeclarationRef
+}
+
+// THE AUTHORITIES, each at the grain it actually holds (§5: no per-item authority claimed from a source
+// that carries only a coarser one). The index says TRACKED. The note says the SUBJECT -- its body names
+// `src/v1/tests/claim` as having no executing consumer and names no file. The emitted registry says this
+// FILE was emitted, the only per-file statement available in-tree. The layout says NO GOVERNED TREE admits
+// the path, which is the finding itself.
+data outside_roots_cause: OutsideRootsCause = OutsideRootsCause {
+  tracked_by: decl_ref(module_path: "extdeps.git", decl_name: "git_ls_files_command"),
+  note_subject: decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "v1_claim_scoped_witness_batch_deleted_note"),
+  emitted_by: decl_ref(module_path: "gunbc.stage0.stage0_rust_host_observation", decl_name: "emitted_population_repo_paths"),
+  layout_authority: decl_ref(module_path: "v2.cli.repository_layout", decl_name: "repository_module_file_of_path")
+}
 data listing_unread_cause: String = "the tracked listing could not be obtained from the index"
-data layout_authority_identity: String = "v2.cli.repository_layout.repository_module_file_of_path"
+
+// HOW A CITATION IS PRINTED: `module:decl`, read off the carrier. Every printed citation in this module --
+// header and receipt alike -- goes through here, so the string a reader sees and the reference the witness
+// resolves are ONE datum. There is deliberately no `data note_identity: String = "..."` beside it: a second
+// spelling is what a rename makes stale, which is the defect review 83419 named.
+fn declaration_ref_display(ref: DeclarationRef) -> String {
+  concat(ref.module_path as String, concat(":", ref.decl_name as String))
+}
+
 
 // THE POPULATION PREDICATE, spelled from the note rather than from a snapshot. The note's subject is claim
 // files under the v1 test tree; this is the one path fact the census states outright, because it is the
@@ -276,7 +304,7 @@ data claim_marker_grain_token: String = "claim-marker: pattern-grain (text match
 
 fn outside_roots_receipt_line(path: String, vouched_by_note: Bool) -> String {
   let head = concat("OUTSIDE-DISCOVERY-ROOTS ", path)
-  let attribution = concat(v1_claim_note_location, concat(":", v1_claim_note_identity))
+  let attribution = declaration_ref_display(ref: outside_roots_cause.note_subject)
   let grain = concat(" | ", claim_marker_grain_token)
   // "within the subject <note> declares", never "declared by <note>": the note's own body names the subject
   // directory and zero files, so a per-path "declared by" would credit it with an authority it does not hold.
@@ -310,8 +338,23 @@ fn outside_roots_receipt_lines(findings: List<String>, vouched_by_note: Bool) ->
 // in at most one of the two -- so the note's `src/v1/tests/claim` population is kept out of the standing-less
 // population by the ruling it already has, not by a second exclusion bolted on here. A filter that could not
 // change the answer would be dead code with a comment claiming it was load-bearing.
-data scan_dir_authority_location: String = "gunbc.ci.ci_layer_roots"
-data scan_dir_authority_identity: String = "witness_discovery_scan_dirs"
+// Cited as a DeclarationRef and printed through `declaration_ref_display`, like every other citation here:
+// a (location, identity) string pair is two free strings that a rename leaves green.
+data scan_dir_authority: DeclarationRef = decl_ref(
+  module_path: "gunbc.ci.ci_layer_roots",
+  decl_name: "witness_discovery_scan_dirs"
+)
+// EVERY CITATION THIS CENSUS PRINTS, in one list, so a claim can ask of each one whether the symbol still
+// exists. The list is derived from the carriers rather than restating their (module, name) pairs: a citation
+// added to a carrier and not to this list shows up as a count mismatch, which is decidable, whereas a second
+// spelling would only go stale silently.
+data outside_roots_citations: List<DeclarationRef> = [
+  outside_roots_cause.tracked_by,
+  outside_roots_cause.note_subject,
+  outside_roots_cause.emitted_by,
+  outside_roots_cause.layout_authority,
+  scan_dir_authority
+]
 
 // The gap is reported at PATH grain because that is the grain the marker read answers at: `git grep -l`
 // prints a path, not a number of claims. Printing a claim count here would transcribe a figure this
@@ -363,7 +406,7 @@ fn scan_dir_gap_header_lines() -> List<String> {
   [
     concat(
       "OUTSIDE-SCAN-DIRS census: lane authority ",
-      concat(scan_dir_authority_location, concat(":", scan_dir_authority_identity))
+      declaration_ref_display(ref: scan_dir_authority)
     )
   ]
 }
@@ -371,9 +414,19 @@ fn scan_dir_gap_header_lines() -> List<String> {
 
 // THE LOCATOR IS NOT AN INPUT. Like the S1 census, this census is a pure function of the listing handed
 // to it; the revision it describes is stamped beside the output by whoever ran it.
+//
+// EVERY AUTHORITY PRINTED IS READ OFF THE CARRIER. These lines are built by `declaration_ref_display` from
+// the same DeclarationRef values the cause carries and the witness resolves, so the printed citation and the
+// checked citation are one datum -- there is no second spelling here for a rename to make stale.
 fn outside_roots_header_lines() -> List<String> {
   [
-    concat("OUTSIDE-DISCOVERY-ROOTS census: ownership authority ", layout_authority_identity),
-    concat("OUTSIDE-DISCOVERY-ROOTS census: subject declared by ", concat(v1_claim_note_location, concat(":", v1_claim_note_identity)))
+    concat("OUTSIDE-DISCOVERY-ROOTS census: tracked by ",
+      declaration_ref_display(ref: outside_roots_cause.tracked_by)),
+    concat("OUTSIDE-DISCOVERY-ROOTS census: subject declared by ",
+      declaration_ref_display(ref: outside_roots_cause.note_subject)),
+    concat("OUTSIDE-DISCOVERY-ROOTS census: emitted population per ",
+      declaration_ref_display(ref: outside_roots_cause.emitted_by)),
+    concat("OUTSIDE-DISCOVERY-ROOTS census: ownership authority ",
+      declaration_ref_display(ref: outside_roots_cause.layout_authority))
   ]
 }

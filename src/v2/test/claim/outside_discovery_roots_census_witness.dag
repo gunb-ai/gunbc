@@ -50,13 +50,13 @@ import v2.workflow.outside_discovery_roots_census {
   outside_roots_header_lines,
   path_is_claim_file,
   path_is_under_note_subject,
-  v1_claim_note_identity,
-  v1_claim_note_location,
+  outside_roots_cause,
+  scan_dir_authority,
+  declaration_ref_display,
   scan_dir_gap_population,
   scan_dir_gap_receipt_lines,
   scan_dir_gap_header_lines,
   is_census_visible,
-  scan_dir_authority_identity,
   emitted_entry_for_module,
   subject_path_is_emitted
 }
@@ -127,7 +127,8 @@ test fn a_claim_file_under_no_governed_tree_is_the_finding_with_a_cause() -> Boo
   ) {
     OutsideDiscoveryRoots { path: reported, cause: cause } =>
       reported == "src/v1/tests/claim/annotation_gap_round_trip_test.dag"
-        && string_contains(s: cause, pattern: "v2.cli.repository_layout")
+        && cause.layout_authority.module_path == "v2.cli.repository_layout"
+        && cause.layout_authority.decl_name == "repository_module_file_of_path"
     InsideGovernedTree { path: _, tree_directory: _ } => false
     NotAClaimFile { path: _ } => false
     ListingUnread { cause: _ } => false
@@ -237,8 +238,7 @@ test fn the_receipt_names_the_note_at_identity_rather_than_a_count() -> Bool {
     vouched_by_note: true
   )
   any(xs: lines, predicate: fn(line) {
-    string_contains(s: line, pattern: v1_claim_note_identity)
-      && string_contains(s: line, pattern: v1_claim_note_location)
+    string_contains(s: line, pattern: declaration_ref_display(ref: outside_roots_cause.note_subject))
       && string_contains(s: line, pattern: "OUTSIDE-DISCOVERY-ROOTS")
   })
 }
@@ -254,7 +254,7 @@ fn head_path(paths: List<String>) -> String {
 test fn the_header_cites_the_layout_authority() -> Bool {
   let lines = outside_roots_header_lines()
   any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: "repository_module_file_of_path") })
-    && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: v1_claim_note_identity) })
+    && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: declaration_ref_display(ref: outside_roots_cause.note_subject)) })
 }
 
 // ---------------------------------------------------------------------------
@@ -409,7 +409,7 @@ test fn the_receipt_credits_the_note_only_at_the_grain_it_holds() -> Bool {
   )
   all(xs: vouched, predicate: fn(line) {
     string_contains(s: line, pattern: "within the subject")
-      && string_contains(s: line, pattern: v1_claim_note_identity)
+      && string_contains(s: line, pattern: declaration_ref_display(ref: outside_roots_cause.note_subject))
       && !(string_contains(s: line, pattern: "declared by"))
   })
     && any(xs: not_vouched, predicate: fn(line) { string_contains(s: line, pattern: "OUTSIDE the subject") })
@@ -639,7 +639,7 @@ test fn the_gap_receipt_says_it_rules_no_standing_and_names_the_lane_authority()
   let lines = concat(scan_dir_gap_header_lines(), scan_dir_gap_receipt_lines(paths: [note_declared_first_path]))
   all(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: "OUTSIDE-SCAN-DIRS") })
     && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: "no standing is ruled") })
-    && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: scan_dir_authority_identity) })
+    && any(xs: lines, predicate: fn(line) { string_contains(s: line, pattern: declaration_ref_display(ref: scan_dir_authority)) })
 }
 
 // ---------------------------------------------------------------------------
