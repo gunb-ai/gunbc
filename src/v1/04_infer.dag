@@ -8694,9 +8694,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       match literal_type {
         Absent =>
+          let none_refusal = match expected {
+            Present { value: exp } => concat("`none` at expected type ", node_type_shape(n: exp, source_indices: scope.type_env.source_indices), ": that type is not an Optional<T>, so it has no Absent arm to lower to")
+            Absent => "`none` has no expected Optional<T> to lower to: its position supplies no optional type, and it never defaults"
+          }
           InferResult {
             typed: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: CompilerError { message: "`none` has no expected Optional<T> to lower to", span: span } }, span: span),
-            diagnostics: [inference_error(message: "`none` has no expected Optional<T> to lower to: its position supplies no optional type, and it never defaults", span: span, module_name: scope.module_name)]
+            diagnostics: [inference_error(message: none_refusal, span: span, module_name: scope.module_name)]
           }
         Present { value: literal_type } =>
       let plain = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: Resolved { node: literal_type } }, span: span)
@@ -9514,7 +9518,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         } else if !callee_is_body_binding && infer_builtin_call_type(name: func_name) != none {
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
           let bt = tier2b.bt
-          let call_semantics: CallSemantics? = if func_name == "lookup" {
+          let call_semantics = if func_name == "lookup" {
             Present { value: LookupCallSemantics { target: RuntimePrimitiveCall { primitive_name: func_name, projected_from: none } } }
           } else {
             Present { value: PlainCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target) } }
@@ -11505,6 +11509,9 @@ fn present_value_expected_from_optional(type_name: String, field_name: String, v
 // declares no fields, so `SingleAuthority { reason: "..." }` supplies one that does not exist. The
 // ambiguity guard is shared with MissingField for the same reason it exists there -- an ambiguous
 // name has not been resolved to a type, so neither half may judge its fields.
+//
+// The same roster declares each field's type: it was once a second derivation (struct_fields) that did not
+// resolve a bare variant name, so such a literal's fields went unjudged and a `none` in one unelaborated.
 fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let instantiated_struct_fields = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
   let expected_struct_fields = if instantiated_struct_fields == none {
@@ -11523,41 +11530,6 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       } else { none }
     Absent => none
   }
-  let struct_fields = match type_name {
-    Present { value: _ } =>
-      match instantiated_struct_fields {
-        Present { value: fields } => fields
-        Absent =>
-          match expected_struct_fields {
-            Present { value: fields } => fields
-            Absent =>
-              match expected_variant_node {
-                Present { value: variant_node } => variant_node.children
-                Absent =>
-              match expected {
-                Present { value: _ } => record_lit_expected_fields(type_name: type_name, scope: scope)
-                Absent =>
-                  match alias_struct_expansion {
-                    Present { value: expansion } =>
-                      if expansion.resolved.connective == Conj && expansion.resolved.children |> count > 0 {
-                        expansion.resolved.children
-                      } else { record_lit_expected_fields(type_name: type_name, scope: scope) }
-                    Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
-                  }
-              }
-              }
-          }
-      }
-    Absent =>
-      match instantiated_struct_fields {
-        Present { value: fields } => fields
-        Absent =>
-          match expected_struct_fields {
-            Present { value: fields } => fields
-            Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
-          }
-      }
-  }
   let alias_struct_diags = match alias_struct_expansion {
     Present { value: expansion } => expansion.diagnostics
     Absent => []
@@ -11569,7 +11541,14 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
   let si_presence = scope.type_env.source_indices
   let presence_variant_owner = variant_owner_node(scope: scope, name: tn_str)
   let presence_fields = if tn_str == "" {
-    []
+    match instantiated_struct_fields {
+      Present { value: inst_fields } => inst_fields
+      Absent =>
+        match expected_struct_fields {
+          Present { value: expected_fields } => expected_fields
+          Absent => []
+        }
+    }
   } else {
     match presence_variant_owner {
       Present { value: variant_owner } =>
@@ -11584,6 +11563,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         match instantiated_struct_fields {
           Present { value: inst_fields } => inst_fields
           Absent =>
+          match expected_struct_fields {
+          Present { value: expected_fields } => expected_fields
+          Absent =>
+          match alias_struct_expansion {
+          Present { value: expansion } =>
+            if expansion.resolved.connective == Conj && expansion.resolved.children |> count > 0 { expansion.resolved.children } else {
             match lookup_type_by_name(env: scope.type_env, name: tn_str) {
               Present { value: decl } =>
                 if decl.connective == Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
@@ -11593,6 +11578,19 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
                 }
               Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
             }
+            }
+          Absent =>
+            match lookup_type_by_name(env: scope.type_env, name: tn_str) {
+              Present { value: decl } =>
+                if decl.connective == Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
+                  decl.children
+                } else {
+                  []
+                }
+              Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
+            }
+          }
+          }
         }
         }
     }
@@ -11700,7 +11698,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         }
       Absent => []
     }
-    let field_declared_type = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
+    let field_declared_type = match presence_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Present { value: sf } =>
         let ft = match sf.inferred {
           Present { value: Resolved { node: rt } } => preserve_outer_optional(outer: sf, inner: rt)
@@ -11727,7 +11725,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             let ft = if instantiated_struct_fields == none && type_node_mentions_any_name(n: declared_ft, names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, fuel: 16) {
               substitute_generics(n: declared_ft, subst: unbound_owner_param_variables, source_indices: scope.type_env.source_indices)
             } else { declared_ft }
-            if ft.ident_span != none || type_node_is_callable(n: ft) || type_is_optional(n: ft) || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
+            if ft.ident_span != none || type_node_is_callable(n: ft) || type_is_optional(n: ft) || node_is_std_optional(n: ft, scope: scope) || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
               Present { value: ft }
             } else { none }
           Absent => none
@@ -11739,7 +11737,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let field_type_diags = match field_declared_type {
       Present { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
-        let field_cardinality_diags = if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
+        let field_cardinality_diags = if (direct_call_formal_has_unbound_type_variable(n: field_conformance_type) || (instantiated_struct_fields == none && type_node_mentions_any_name(n: expected_node, names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, fuel: 16))) {
           []
         } else {
           optional_at_required_obligation_diags(
@@ -11752,7 +11750,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             },
             scope: scope)
         }
-        if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
+        if (direct_call_formal_has_unbound_type_variable(n: field_conformance_type) || (instantiated_struct_fields == none && type_node_mentions_any_name(n: expected_node, names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, fuel: 16))) {
           []
         } else if (field_cardinality_diags |> count) > 0 {
           field_cardinality_diags
@@ -17429,7 +17427,7 @@ fn peano_pattern_reading(p: MatchPattern, view: GroundedView, si: Map<String, Ne
       if leaf == view.zero {
         PeanoExact { k: 0 }
       } else if leaf == view.succ {
-        let inner: PeanoPatternReading = match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: si) == view.prev_field) |> first {
+        let inner = match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: si) == view.prev_field) |> first {
           Present { value: fb } => peano_pattern_reading(p: field_binding_pattern(n: fb), view: view, si: si)
           Absent => PeanoAtLeast { k: 0, binder: none }
         }
