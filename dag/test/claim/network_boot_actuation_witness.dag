@@ -21,6 +21,11 @@ import gunbc.provisioning.provisioning_arm {
   FirmwareAlreadyReady,
   ArmedPxeOrUefiHttp,
   provisioning_arm_consumer_ref,
+  AttemptBinding,
+  ProvisioningArm,
+  VirtualMediaStanding,
+  VirtualMediaAvailable,
+  provisioning_arm_derive,
 }
 import gunbc.provisioning.network_boot_actuation {
   NetworkBootActuation,
@@ -30,17 +35,157 @@ import gunbc.provisioning.network_boot_actuation {
   network_boot_arm_actuator_steps,
 }
 import gunbc.firmware_network_boot_standing { Unobserved }
-import test.claim.provisioning_arm_witness {
-  arm_for,
-  full_evidence,
-  evidence_with,
-  fixture_firmware_needs_boot_next,
-  fixture_firmware_ready,
-  pinned,
-  media_available,
+import std.types { EpochMs, List, NonEmptyStr }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import std.optional { Present, Absent }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }
+import extdeps.bmc.types { BootTargetHdd, BootTargetUefiHttp }
+import extdeps.provisioning.network_boot { UefiHttpBoot }
+import extdeps.uri { uri_https }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
+import gunbc.machine_intake.subject { UnitKey }
+import gunbc.fleet.site_pxe_edge_converge {
+  SitePxeEdgeChainloaderPin,
+  SitePxeEdgeChainloaderPinned,
+  SitePxeEdgeSecureBootStanding,
+  SecureBootObserved,
+  SecureBootVerdictBooted,
+  site_pxe_edge_chainloader_build_receipt,
 }
+import gunbc.firmware_network_boot_standing {
+  FirmwareNetworkBootStanding,
+  FirmwareBootObservation,
+  BootOption,
+  BootOrderEntry,
+  BootOrderObserved,
+  BootOptionsObserved,
+  NicsObserved,
+  SecureBootDisabled,
+  BiosVersionObserved,
+  firmware_boot_observation,
+  firmware_network_boot_standing,
+  boot_option,
+  boot_order_entry,
+}
+import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
+import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
+// REMAINING COUPLING, owed to #14306: the seed binding is sole_constructor, so the only honest fixture is
+// the one its own producer builds. Every other fixture below is owned by this witness.
+import test.claim.altra_autoinstall_seed_witness { built_seed_and_binding }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_origin() -> UbuntuNetworkOrigin? {
+  ubuntu_noble_arm64_network_origin()
+}
+
+fn fixture_seed() -> AltraAutoinstallSeedBinding? {
+  match built_seed_and_binding() {
+    Present { value: built } => Present { value: built.binding }
+    Absent => Absent
+  }
+}
+
+// FIRMWARE STANDINGS COME FROM S0'S REAL PRODUCER. NeedsPreparation and Ready are sealed (their payload
+// records are call-walled to S0's own entries), so a witness here cannot spell them by hand; the only
+// honest fixture is a supplied BMC observation run through firmware_network_boot_standing, and the
+// inhabitance test below owes the claim that each observation really yields the shape its name says.
+data fixture_authority: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority { uri: uri_https(locator: "example.invalid/witness-fixture-not-fleet-fact") },
+}
+
+data fixture_epoch: EpochMs = 1765000000000
+
+fn observation_of(options: List<BootOption>, order: List<BootOrderEntry>) -> FirmwareBootObservation {
+  firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: order },
+    boot_options: BootOptionsObserved { options: options },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+}
+
+fn standing_of(observation: FirmwareBootObservation) -> FirmwareNetworkBootStanding {
+  firmware_network_boot_standing(
+    observation: observation,
+    authority: fixture_authority,
+    observed_at: fixture_epoch,
+    boot_mode: UefiHttpBoot,
+  )
+}
+
+fn disk_option() -> BootOption { boot_option(reference: "0003", kind: BootTargetHdd, label: "NVMe0", enabled: true) }
+fn http_option() -> BootOption { boot_option(reference: "0001", kind: BootTargetUefiHttp, label: "UEFI IPv4 HTTP", enabled: true) }
+fn disk_entry() -> BootOrderEntry { boot_order_entry(reference: "0003", label: "NVMe0") }
+fn http_entry() -> BootOrderEntry { boot_order_entry(reference: "0001", label: "UEFI IPv4 HTTP") }
+
+// An enabled network option exists but the order heads with the disk: S0 answers a redirect.
+fn fixture_firmware_needs_boot_next() -> FirmwareNetworkBootStanding {
+  standing_of(observation_of(options: [disk_option(), http_option()], order: [disk_entry()]))
+}
+
+// A different unit enumerating its network option under another reference: S0 binds the redirect to THAT
+// reference, so the standing differs in the route payload. (A unit with no network option at all is a
+// Refused standing in S0 -- the stack attribute is not bindable -- so it cannot serve as a second
+// NeedsPreparation.)
+fn fixture_firmware_needs_other() -> FirmwareNetworkBootStanding {
+  standing_of(observation_of(
+    options: [disk_option(), boot_option(reference: "0002", kind: BootTargetUefiHttp, label: "UEFI IPv4 HTTP", enabled: true)],
+    order: [disk_entry()],
+  ))
+}
+
+fn fixture_firmware_ready() -> FirmwareNetworkBootStanding {
+  standing_of(observation_of(options: [http_option(), disk_option()], order: [http_entry(), disk_entry()]))
+}
+
+data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })
+
+fn pin_with(secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeChainloaderPin {
+  SitePxeEdgeChainloaderPinned {
+    build: site_pxe_edge_chainloader_build_receipt(
+      embedded_revision: "ipxe-fixture-revision",
+      built_from_commit: "fixture-commit",
+      build_target: ipxe_arm64_efi_snponly,
+      architecture: Aarch64,
+      digest: digest_a,
+      installed_filename: "snponly.efi",
+      secure_boot: secure_boot,
+    )
+  }
+}
+
+fn pinned() -> SitePxeEdgeChainloaderPin {
+  pin_with(secure_boot: SecureBootObserved { verdict: SecureBootVerdictBooted, evidence: "fixture: booted" })
+}
+
+fn media_available() -> VirtualMediaStanding {
+  VirtualMediaAvailable { capability_observation: decl_ref(module_path: "fixture.bmc", decl_name: "virtual_media") }
+}
+
+fn evidence_with(firmware: FirmwareNetworkBootStanding, chainloader: SitePxeEdgeChainloaderPin, virtual_media: VirtualMediaStanding) -> DeliveryEvidence {
+  DeliveryEvidence {
+    firmware: firmware,
+    chainloader: chainloader,
+    virtual_media: virtual_media,
+    origin: fixture_origin(),
+    seed: fixture_seed(),
+  }
+}
+
+fn full_evidence() -> DeliveryEvidence {
+  evidence_with(firmware: fixture_firmware_needs_boot_next(), chainloader: pinned(), virtual_media: media_available())
+}
+
+fn attempt(unit: String) -> AttemptBinding {
+  AttemptBinding { unit: unit as UnitKey, attempt: "attempt-1" }
+}
+
+fn arm_for(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> ProvisioningArm {
+  provisioning_arm_derive(strategy: strategy, evidence: evidence, attempt: attempt(unit: unit))
+}
 
 fn actuate(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> NetworkBootActuation {
   network_boot_arm_actuator_steps(arm: arm_for(strategy: strategy, evidence: evidence, unit: unit), export: srv3_nbd_proxy_export_placeholder)
