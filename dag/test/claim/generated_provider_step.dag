@@ -11,7 +11,9 @@ import std.generated_provider {
   UnavailableModuleAbsent, UnavailableModuleUnreadable, UnavailableModuleAmbiguous,
   UnavailableDeclarationAbsent, UnavailableDeclarationRefused, AcquisitionMadeNoProgress,
   AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused,
-  generated_provider_demand, group_provider_demands, provider_acquisition_step
+  generated_provider_demand, group_provider_demands, provider_acquisition_step,
+  GeneratedProviderUnavailable, ModuleInClosure, ModuleInPool, ModuleNotInPool,
+  observe_provider_demand, render_generated_provider_unavailable
 }
 
 // Supplied inputs at the std.generated_provider interface (DESIGN section 3, a witness discriminates
@@ -139,4 +141,27 @@ test fn demand_order_does_not_change_the_step() -> Bool {
   let backward = modules_of(step: provider_acquisition_step(observed: [b, a], closure_modules: []))
   (forward |> count) == 2 && (backward |> count) == 2
     && (forward |> all(m => backward |> any(n => n == m)))
+}
+
+// The builder reports a fact; the decision of what a missing declaration means is the model's.
+test fn module_in_closure_without_the_declaration_is_declaration_absent_not_module_absent() -> Bool {
+  let d = generated_provider_demand(declaration: unfold_ref(), site: site(start: 1))
+  observe_provider_demand(demand: d, fact: ModuleInClosure { declarations: ["unicode_scalar_fold" as NonEmptyStr], refused: [] }).observation == ProviderDeclarationAbsent
+    && observe_provider_demand(demand: d, fact: ModuleInClosure { declarations: ["unicode_scalar_unfold" as NonEmptyStr], refused: [] }).observation == ProviderSatisfied
+    && observe_provider_demand(demand: d, fact: ModuleInClosure { declarations: ["unicode_scalar_unfold" as NonEmptyStr], refused: ["unicode_scalar_unfold" as NonEmptyStr] }).observation == ProviderDeclarationRefused
+    && observe_provider_demand(demand: d, fact: ModuleInPool).observation == ProviderModuleAvailable
+    && observe_provider_demand(demand: d, fact: ModuleNotInPool).observation == ProviderModuleAbsent
+}
+
+test fn refusal_rendering_names_the_declaration_the_cause_and_every_site() -> Bool {
+  let d = group_provider_demands(demands: [
+    generated_provider_demand(declaration: unfold_ref(), site: site(start: 10)),
+    generated_provider_demand(declaration: unfold_ref(), site: site(start: 20))
+  ])
+  match d |> first {
+    Present { value: g } =>
+      render_generated_provider_unavailable(u: GeneratedProviderUnavailable { demand: g, cause: UnavailableDeclarationAbsent })
+        == "generated provider unavailable: std.coercion.unicode_scalar_unfold -- its module does not declare it; demanded by conversion route at fixture.dag:10..11, conversion route at fixture.dag:20..21"
+    Absent => false
+  }
 }

@@ -1,6 +1,6 @@
 module std.generated_provider
 
-import std.types { Bool, List, NonEmptyStr, SourceSpan }
+import std.types { Bool, List, NonEmptyStr, SourceSpan, String }
 import std.optional { Present, Absent }
 import std.algebra { FreeSemigroup, non_empty_singleton, non_empty_append }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
@@ -168,4 +168,68 @@ fn provider_acquisition_step(observed: List<ObservedProviderDemand>, closure_mod
         Absent => AcquisitionComplete
       }
   }
+}
+
+// WHAT A BUILDER KNOWS ABOUT ONE DEMANDED DECLARATION'S MODULE, before any policy: whether the module
+// is in the current closure (and which declarations it has there), or how its pool answered. The
+// builder reports this fact; observe_provider_demand turns it into the observation the step judges,
+// so no builder decides what a missing declaration or a missing module means.
+type ProviderModuleFact
+  = ModuleInClosure { declarations: List<NonEmptyStr>, refused: List<NonEmptyStr> }
+  | ModuleInPool
+  | ModuleNotInPool
+  | ModuleUnreadableInPool
+  | ModuleAmbiguousInPool
+
+fn observe_provider_demand(demand: GeneratedProviderDemand, fact: ProviderModuleFact) -> ObservedProviderDemand {
+  let wanted = demand.declaration.decl_name
+  ObservedProviderDemand {
+    demand: demand,
+    observation: match fact {
+      ModuleInClosure { declarations: ds, refused: rs } =>
+        if rs |> any(r => r == wanted) {
+          ProviderDeclarationRefused
+        } else if ds |> any(d => d == wanted) {
+          ProviderSatisfied
+        } else {
+          ProviderDeclarationAbsent
+        }
+      ModuleInPool => ProviderModuleAvailable
+      ModuleNotInPool => ProviderModuleAbsent
+      ModuleUnreadableInPool => ProviderModuleUnreadable
+      ModuleAmbiguousInPool => ProviderModuleAmbiguous
+    }
+  }
+}
+
+fn generated_provider_cause_label(c: GeneratedProviderCause) -> String {
+  match c {
+    GeneratedConversionRoute => "conversion route"
+    GeneratedListHead => "list head"
+    GeneratedMapHead => "map head"
+    GeneratedTemplateHead => "string template head"
+  }
+}
+
+fn generated_provider_unavailable_cause_label(c: GeneratedProviderUnavailableCause) -> String {
+  match c {
+    UnavailableModuleAbsent => "its module is not in the source pool"
+    UnavailableModuleUnreadable => "its module could not be read"
+    UnavailableModuleAmbiguous => "its module has several candidates in the pool and none is selected"
+    UnavailableDeclarationAbsent => "its module does not declare it"
+    UnavailableDeclarationRefused => "its declaration was refused"
+    AcquisitionMadeNoProgress => "acquisition made no progress: the module is already in the closure"
+  }
+}
+
+// ONE RENDERING OF THE REFUSAL, shared by every builder: the declaration, why it is unavailable, and
+// every site that demanded it, at the authored boundary each site names.
+fn render_generated_provider_unavailable(u: GeneratedProviderUnavailable) -> String {
+  let d = u.demand.declaration
+  let sites = [u.demand.sites.head] |> concat(u.demand.sites.tail)
+  concat(
+    "generated provider unavailable: ", d.module_path, ".", d.decl_name, " -- ",
+    generated_provider_unavailable_cause_label(c: u.cause), "; demanded by ",
+    join(sites |> map(s => concat(generated_provider_cause_label(c: s.cause), " at ", s.at.file, ":", to_string(s.at.start), "..", to_string(s.at.end))), ", ")
+  )
 }
