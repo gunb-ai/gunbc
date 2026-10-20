@@ -30,7 +30,7 @@ import v2.extdeps.languages.dag {
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
-import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 import std.types { List, Bool, GitRef }
 import extdeps.git
@@ -138,6 +138,7 @@ type RosterRefusalReason
   | RefusalImportClosesCycle { home: String, module: String }
   | RefusalHomeClosureUnread { home: String }
   | RefusalModuleNameUnread
+  | RefusalApplyNeedsOneHome
 
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
@@ -171,6 +172,7 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalImportClosesCycle { home: h, module: m } => "import-closes-cycle home=" + h + " module=" + m
     RefusalHomeClosureUnread { home: h } => "home-closure-unread home=" + h
     RefusalModuleNameUnread => "module-name-unread"
+    RefusalApplyNeedsOneHome => "apply-needs-one-home"
   }
 }
 
@@ -296,7 +298,7 @@ fn roster_import_sweep_home_exit(paths_csv: String, home: String) -> ProcessExit
 }
 
 fn roster_import_sweep_apply_home_exit(root_dir: String, paths_csv: String, home: String) -> ProcessExit {
-  let report = roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, scope: OneHome { home: qualified_name_from_dotted_string(dotted: home) })
+  let report = roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, home: qualified_name_from_dotted_string(dotted: home))
   if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
 }
 
@@ -340,9 +342,13 @@ fn roster_sweep_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRu
 // the extent required to hold what the parsed decl said it holds, and only then written with
 // Filesystem.Write. Anything else is a REFUSE row and the file is untouched. Success is silent, so the
 // exit reason is exactly the refusals.
+// ONE HOME PER MUTATING RUN, BY CONSTRUCTION (side chat on #14513). The cycle verdict reads each home's closure once, at
+// the start of the run; two homes applied in one run could each be admitted against that snapshot (H1 -> H2 and H2 -> H1)
+// and together close a cycle. The apply path therefore takes exactly one home (roster_apply_for_paths), so a multi-home
+// mutation has no construction, and this home-less entry refuses, typed. A wave is one home; AllHomes stays a read-and-
+// report scope (roster_import_sweep_for_paths), whose rows no route applies.
 fn roster_import_sweep_apply_exit(root_dir: String, paths_csv: String) -> ProcessExit {
-  let report = roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, scope: AllHomes)
-  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+  exit_failure(reason: roster_refuse_row(path: "*", reason: RefusalApplyNeedsOneHome))
 }
 
 // THE LOCK IDENTITY is derived from the worktree root the caller names (an absolute path with no `.`, `..` or empty
@@ -519,7 +525,8 @@ fn roster_lock_release(held: RosterHeldLock) -> Bool {
   roster_lock_still_held(held: held) && Filesystem.Delete(path: roster_lock_file(root: held.root)).success
 }
 
-fn roster_apply_for_paths(root_dir: String, paths_csv: String, scope: RosterHomeScope) -> String {
+fn roster_apply_for_paths(root_dir: String, paths_csv: String, home: QualifiedName) -> String {
+  let scope = OneHome { home: home }
   match roster_lock_acquire(root_dir: root_dir) {
     RosterLockRefused { reason: reason } => roster_refuse_row(path: "*", reason: reason)
     RosterLockAcquired { held: held } => {
@@ -1385,6 +1392,7 @@ fn roster_controls_report() -> String {
         + roster_control_no_import_anchor(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_import_closes_cycle(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_closure_inhabited()
+        + roster_control_apply_needs_one_home()
         + roster_control_label_local_call(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_method_spelling(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_bound_occurrence(prepared: prepared, lex: dag_prepared_lex())
@@ -1575,6 +1583,22 @@ fn roster_control_import_closes_cycle(prepared: PreparedGrammar, lex: PreparedLe
     _ => "CONTROL-FAIL import-closes-cycle: a home with no closure was assumed acyclic\n"
   }
   inside + outside + unread
+}
+
+// AN ALL-HOMES MUTATION REFUSES, TYPED, before any lock, read or write: the home-less apply entry has no scope to apply.
+fn roster_control_apply_needs_one_home() -> String {
+  match roster_import_sweep_apply_exit(root_dir: "/nonexistent-roster-control-root", paths_csv: "dag/std/types.dag") {
+    ExitSuccess => "CONTROL-FAIL apply-needs-one-home: an all-homes apply succeeded\n"
+    ExitFailure { code: c, reason: r } =>
+      if roster_exit_reason_is(exit: ExitFailure { code: c, reason: r }, reason: roster_refuse_row(path: "*", reason: RefusalApplyNeedsOneHome)) { "" } else { "CONTROL-FAIL apply-needs-one-home: refused for another reason\n" }
+  }
+}
+
+fn roster_exit_reason_is(exit: ProcessExit, reason: String) -> Bool {
+  match exit {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } => r == reason
+  }
 }
 
 // THE INHABITANCE CLAIM for the supplied closures: the real producer, through the compiler's acquisition door, reads
