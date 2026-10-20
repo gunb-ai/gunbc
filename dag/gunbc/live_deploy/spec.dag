@@ -82,7 +82,7 @@ import extdeps.http.server { HttpServerListenConfig }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_confirm_front_door }
 import gunbc.auth.approval_broker_cutover { approval_front_door_mounts_installed, approval_broker_front_door_endpoints }
 import product.network_topology { NetworkEndpoint }
-import gunbc.live_deploy.serve_binary { ServeBinarySource, FixedServeBinary, PerReleaseBinary }
+import gunbc.live_deploy.serve_binary { ServeBinarySource, AdmittedFixedServeBinary, admit_fixed_serve_path, PerReleaseBinary }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
 // Belt B membership: the service is `gunbc
@@ -281,9 +281,9 @@ type DeploymentHostTarget {
 // unlikely: the emitter has no literal to reach for, because the field it needs is only obtainable
 // from the instance.
 
-type DeploymentServiceConfig {
+type DeploymentServiceConfig<Binary> {
   unit_name: NonEmptyStr
-  serve_binary: ServeBinarySource
+  serve_binary: Binary
   serve_entry: NonEmptyStr
   provider_state_root: NonEmptyStr
   serve_function: NonEmptyStr
@@ -560,7 +560,7 @@ fn gunbc_attempt_worker_slice_unit_path() -> NonEmptyStr {
 // would have started, refused and restart-looped (review 69066, operator ruling 2026-09-20). A refusal marker
 // stood in the field until the type could hold the per-release arm; the type holds it now and the marker is gone.
 
-fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -> DeploymentServiceConfig {
+fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -> DeploymentServiceConfig<ServeBinarySource> {
   DeploymentServiceConfig {
     unit_name: gunbc_approval_broker_unit_name,
     serve_binary: PerReleaseBinary,
@@ -1044,8 +1044,8 @@ fn tree_sync_unit_path(names: DeploymentNames) -> NonEmptyStr {
 type DeploymentSpec {
   target: DeploymentHostTarget
   steps: List<DeploymentStep>
-  service: DeploymentServiceConfig
-  approval_broker: DeploymentServiceConfig
+  service: DeploymentServiceConfig<AdmittedFixedServeBinary>
+  approval_broker: DeploymentServiceConfig<ServeBinarySource>
   names: DeploymentNames
   instance_id: NonEmptyStr
   directories: List<OwnedDirectoryTarget>
@@ -1384,10 +1384,10 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
 fn deployment_service_config(
   instance: HostDashboardInstance,
   names: DeploymentNames,
-) -> DeploymentServiceConfig {
+) -> DeploymentServiceConfig<AdmittedFixedServeBinary> {
   DeploymentServiceConfig {
     unit_name: names.unit_name,
-    serve_binary: FixedServeBinary { path: instance.serve_binary as String as NonEmptyStr },
+    serve_binary: admit_fixed_serve_path(path: instance.serve_binary as String as NonEmptyStr),
     serve_entry: roadmap_serve_entry_file,
     provider_state_root: dashboard_instance_provider_state_root(instance: instance) as String as NonEmptyStr,
     serve_function: instance.serve_function,

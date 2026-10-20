@@ -131,7 +131,7 @@ import extdeps.systemd.unit_file {
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { deployment_directory_demands }
-import gunbc.live_deploy.serve_binary { ServeBinarySource, FixedServeBinary, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path, admit_fixed_serve_binary, FixedServeAdmitted, FixedServeRefused }
+import gunbc.live_deploy.serve_binary { ServeBinarySource, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path, admit_fixed_serve_path, FixedServeBinary }
 import gunbc.live_deploy.spec { deployment_belt_credential_recovery_timer_unit_name }
 import gunbc.live_deploy.emit { live_deploy_belt_credential_recovery_timer_unit_file }
 import gunbc.live_deploy.emit {
@@ -147,6 +147,8 @@ import gunbc.live_deploy.emit {
   approval_broker_lifecycle_steps,
   live_deploy_approval_broker_unit_file,
   live_deploy_fabric_storage_unit_file,
+  live_deploy_belt_service_unit_file,
+  live_deploy_publication_service_unit_file,
   deployment_serve_route_command,
   emit_release_member_effects,
   deploy_retract_frame_comments,
@@ -2258,28 +2260,28 @@ test fn the_broker_serve_binary_is_the_per_release_arm_over_the_bound_revision()
 }
 
 test fn a_fixed_serve_binary_resolves_to_its_own_path_whatever_the_revision() -> Bool {
-  let fixed = FixedServeBinary { path: "/opt/gunbc/bin/gunbc" as NonEmptyStr }
-  fixed_serve_binary_path(binary: fixed) == "/opt/gunbc/bin/gunbc"
+  let admitted = admit_fixed_serve_path(path: "/opt/gunbc/bin/gunbc" as NonEmptyStr)
+  let fixed = FixedServeBinary { binary: admitted }
+  fixed_serve_binary_path(binary: admitted) == "/opt/gunbc/bin/gunbc"
     && serve_binary_path(binary: fixed, release_root: "/x", revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }) == "/opt/gunbc/bin/gunbc"
-    && fixed_serve_binary_path(binary: deployment_spec_srv1().service.serve_binary) != fixed_serve_binary_path(binary: PerReleaseBinary)
 }
 
-// RED: a per-release serve binary handed to the fixed-only admission is a typed refusal, the cause names no marker,
-// and the admitted production row's fixed-rendered fabric-storage unit carries none either. The apply boundary
-// (gunbc.live_deploy.apply desired_apply_host_checked) turns this refusal into DesiredApplyRefused before any
-// SystemdUnitFile, ExecStart, install or verify command is built.
-test fn a_per_release_serve_binary_is_refused_by_the_fixed_only_admission_and_emits_no_marker() -> Bool {
+// A per-release serve binary cannot be handed to a fixed-only renderer: DeploymentSpec.service is typed over
+// AdmittedFixedServeBinary, which only admit_fixed_serve_path mints, so the state is unwritable (a compile refusal, no
+// runtime fixture). What executes here is the other half: every fixed-only renderer, reached by a non-apply route
+// (the belt, publication and fabric-storage unit files, not desired_apply_host_checked), emits a production spec with no marker, while the
+// broker's per-release unit resolves its own locus path.
+test fn the_fixed_only_renderers_emit_no_unbound_marker_off_the_apply_route() -> Bool {
   let marker = "__GUNBC_DEPLOY_UNREACHABLE__"
-  let refused = match admit_fixed_serve_binary(binary: PerReleaseBinary) {
-    FixedServeRefused { cause } => !string_contains(s: cause as String, pattern: marker)
-    FixedServeAdmitted { binary: _ } => false
-  }
-  let admitted = match admit_fixed_serve_binary(binary: deployment_spec_srv1().service.serve_binary) {
-    FixedServeAdmitted { binary: b } => (b.path as String) == fixed_serve_binary_path(binary: deployment_spec_srv1().service.serve_binary)
-    FixedServeRefused { cause: _ } => false
-  }
-  let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, door_socket: fabric_storage_door_socket(instance: srv1_live_dashboard_instance())))
-  refused && admitted && !string_contains(s: unit, pattern: marker)
+  let spec = deployment_spec_srv1()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  let fabric = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: spec, revision: rev, door_socket: fabric_storage_door_socket(instance: srv1_live_dashboard_instance())))
+  let belt = serialize_systemd_unit_file(file: live_deploy_belt_service_unit_file(spec: spec))
+  let publication = serialize_systemd_unit_file(file: live_deploy_publication_service_unit_file(spec: spec))
+  !string_contains(s: fabric, pattern: marker)
+    && !string_contains(s: belt, pattern: marker)
+    && !string_contains(s: publication, pattern: marker)
+    && string_contains(s: belt, pattern: fixed_serve_binary_path(binary: spec.service.serve_binary))
 }
 
 // THE FABRIC DB ENDPOINT IS ITS DOOR SOCKET AND IS ROUTED BY TAILSCALE: its unit runs the fabric DB
