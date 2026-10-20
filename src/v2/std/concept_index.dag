@@ -76,7 +76,6 @@ fn field_refs_from_node(node: Node) -> List<FieldRef> {
       })
     TypeNode { connective: Atom { identity: _ } } => Empty
     TypeNode { connective: Arrow } => Empty
-    TypeNode { connective: Occupancy } => Empty
     TypeNode { connective: Instantiation } => Empty
     ComputationNode { behavior: _ } => Empty
   }
