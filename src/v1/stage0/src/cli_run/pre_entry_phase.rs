@@ -38,33 +38,37 @@ impl PhaseScale {
     }
 }
 
-/// One phase's receipt row.
-///
-/// `nested` is the time this row's span CONTAINED from other phase rows, measured mechanically by
-/// `timed` rather than declared by the author. `raw` marks time a producer measured and `record`ed
-/// itself (e.g. `pool_acquire`'s tokenize rows): its span boundaries are not visible here, so it
-/// cannot be netted and is reported as `attribution=recorded` rather than guessed at. §4 P0.1
-/// requires the receipt to say inclusive or exclusive before a reader sums rows; a row claiming an
-/// exclusivity it cannot show makes the sum a fiction, which is why only `timed` spans get an
-/// `excl_ms` at all.
+/// One phase's receipt row. Every row is INCLUSIVE and printed as such: `elapsed` is the whole
+/// span (or, for a producer-`record`ed row, the whole time it handed in); nothing is netted.
+/// `parent`/`depth` carry the place in the containment tree (nearest enclosing `timed` span at
+/// first entry), so a reader computes exclusive time as `parent.ms - Σ children.ms` from figures
+/// that are each individually true — see `three_level_nesting_prints_inclusive_rows_with_parent_links`
+/// for why a netted figure printed here was wrong (§4 P0.1: say which a row is, never pretend the
+/// other). `raw` marks a producer-`record`ed row: its span boundaries are not visible here, so it
+/// is labelled `recorded` and never counted as cover.
 struct PhaseRow {
     name: &'static str,
     scale: PhaseScale,
     elapsed: Duration,
-    nested: u128,
+    /// Nearest enclosing `timed` span at FIRST entry; `None` at top level.
+    parent: Option<&'static str>,
+    depth: usize,
+    /// True once ANY accumulation of this name happened inside a `timed` span: a name seen both
+    /// at top level and nested cannot count as a disjoint root in the transaction cover.
+    nested_seen: bool,
     raw: bool,
-    /// When this row FIRST got time, so the transaction receipt can tell rows that began inside
-    /// the compile transaction from rows a predecessor recorded before it started (only the
-    /// former may be netted against the transaction total — netting a predecessor's row against
-    /// a total it never contributed to would fabricate a floor below zero).
+    /// When this row FIRST got time, so the transaction receipt excludes rows a predecessor
+    /// recorded before it started — counting one against a total it never contributed to would
+    /// fabricate a floor below zero.
     first_recorded_at: std::time::Instant,
 }
 
 thread_local! {
     static PHASES: RefCell<Vec<PhaseRow>> = const { RefCell::new(Vec::new()) };
-    /// Nanos recorded by any row so far on this thread; `timed` takes the delta across `f` to get
-    /// this span's contained time.
-    static RECORDED_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+    /// Names of the `timed` spans open on this thread, outermost first: a row's parent/depth
+    /// come from its length at the row's start, and rows started with the stack EMPTY are
+    /// provably disjoint from each other.
+    static ACTIVE: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Add `elapsed` to the named phase (first record fixes its position in the receipt).
@@ -72,11 +76,16 @@ thread_local! {
 /// demand-acquired set must not stay labelled `tree` because the first lex happened
 /// before `mark_demand_acquired_path`.
 pub fn record(name: &'static str, scale: PhaseScale, elapsed: Duration) {
+    let (parent, depth, under_span) = ACTIVE.with(|a| {
+        let a = a.borrow();
+        (a.last().copied(), a.len(), !a.is_empty())
+    });
     PHASES.with(|p| {
         let mut p = p.borrow_mut();
         if let Some(row) = p.iter_mut().find(|r| r.name == name) {
             row.elapsed += elapsed;
             row.raw = true;
+            row.nested_seen |= under_span;
             if scale == PhaseScale::Closure {
                 row.scale = PhaseScale::Closure;
             }
@@ -85,29 +94,45 @@ pub fn record(name: &'static str, scale: PhaseScale, elapsed: Duration) {
                 name,
                 scale,
                 elapsed,
-                nested: 0,
+                parent,
+                depth,
+                nested_seen: under_span,
                 raw: true,
                 first_recorded_at: std::time::Instant::now(),
             });
         }
     });
-    RECORDED_NANOS.with(|t| t.set(t.get() + elapsed.as_nanos()));
 }
 
-/// Time `f` into the named phase. The row's `ms` is INCLUSIVE of any phase row recorded inside
-/// `f`; the contained time is subtracted to print `excl_ms`, so rows can be summed without
-/// double-counting (§4 P0.1: "Check whether each row is inclusive or exclusive before summing").
+/// Time `f` into the named phase. The row's `ms` is INCLUSIVE of anything that ran inside `f`,
+/// and is printed as such with its `parent` and `depth`, so a reader can subtract the children
+/// themselves (§4 P0.1: "Check whether each row is inclusive or exclusive before summing").
 pub fn timed<T>(name: &'static str, scale: PhaseScale, f: impl FnOnce() -> T) -> T {
+    // The parent/depth are read BEFORE the push: this row sits where it was entered, and its own
+    // name must not become its parent.
+    let (parent, depth) = ACTIVE.with(|a| {
+        let a = a.borrow();
+        (a.last().copied(), a.len())
+    });
+    ACTIVE.with(|a| a.borrow_mut().push(name));
     let started = std::time::Instant::now();
-    let recorded_before = RECORDED_NANOS.with(|t| t.get());
     let out = f();
     let elapsed = started.elapsed();
-    let nested = RECORDED_NANOS.with(|t| t.get().saturating_sub(recorded_before));
+    ACTIVE.with(|a| {
+        let mut a = a.borrow_mut();
+        // `f` may panic through a nested span; pop the name we pushed even if the stack shape was
+        // disturbed, so a later row is not orphaned under a span that already closed.
+        if a.last() == Some(&name) {
+            a.pop();
+        }
+    });
     PHASES.with(|p| {
         let mut p = p.borrow_mut();
         if let Some(row) = p.iter_mut().find(|r| r.name == name) {
             row.elapsed += elapsed;
-            row.nested += nested;
+            // This occurrence is nested, so the row cannot count as a disjoint root even though
+            // its FIRST occurrence was at top level (`parent` keeps that first value).
+            row.nested_seen |= depth > 0;
             if scale == PhaseScale::Closure {
                 row.scale = PhaseScale::Closure;
             }
@@ -116,13 +141,14 @@ pub fn timed<T>(name: &'static str, scale: PhaseScale, f: impl FnOnce() -> T) ->
                 name,
                 scale,
                 elapsed,
-                nested,
+                parent,
+                depth,
+                nested_seen: depth > 0,
                 raw: false,
                 first_recorded_at: std::time::Instant::now(),
             });
         }
     });
-    RECORDED_NANOS.with(|t| t.set(t.get() + elapsed.as_nanos()));
     out
 }
 
@@ -145,32 +171,24 @@ pub fn take_lines() -> Vec<String> {
         .collect()
 }
 
-/// Drain the receipt with the inclusive/exclusive attribution §4 P0.1 asks for:
-/// `attribution=exclusive` (this row's span contained no other row; `ms` may be summed with the
-/// other rows' `excl_ms`), `attribution=inclusive` (it contained other rows; their recorded time
-/// is subtracted into `excl_ms`), `attribution=recorded` (the producer measured and `record`ed
-/// this row itself, so its span boundaries are not visible and it is reported unnetted).
+/// Drain the receipt with the attribution §4 P0.1 asks for. Every row is printed INCLUSIVE
+/// (`attribution=inclusive`, or `attribution=recorded` when a producer measured it itself) with
+/// its `parent=` link and `depth=`, so a reader computes exclusive time as
+/// `parent.ms - Σ children.ms` rather than trusting a subtraction made here. `parent=none` marks
+/// a top-level row. No row is netted: see `PhaseRow`'s doc for why the netting that used to live
+/// here was wrong.
 pub fn take_rows_with_attribution() -> Vec<String> {
     drain_rows()
         .into_iter()
         .map(|row| {
-            let (attribution, excl) = if row.raw {
-                ("recorded", row.elapsed.as_nanos())
-            } else if row.nested > 0 {
-                (
-                    "inclusive",
-                    row.elapsed.as_nanos().saturating_sub(row.nested),
-                )
-            } else {
-                ("exclusive", row.elapsed.as_nanos())
-            };
             format!(
-                "[pre-entry] phase={} ms={} excl_ms={} scale={} attribution={}",
+                "[pre-entry] phase={} ms={} scale={} attribution={} parent={} depth={}",
                 row.name,
                 row.elapsed.as_millis(),
-                Duration::from_nanos(u64::try_from(excl).unwrap_or(u64::MAX),).as_millis(),
                 row.scale.wire(),
-                attribution
+                if row.raw { "recorded" } else { "inclusive" },
+                row.parent.unwrap_or("none"),
+                row.depth
             )
         })
         .collect()
@@ -227,31 +245,32 @@ fn invocation_elapsed() -> Option<Duration> {
 /// excluded from the netting. Staging on EVERY disposition is what lets
 /// `invocation_receipt_lines` tell "a verb that never compiled" (print nothing) apart from
 /// "a compile that failed" (print everything the rows explain).
-pub fn print_compile_transaction_receipt(subject: &str, transaction_started: std::time::Instant) {
-    let total = transaction_started.elapsed();
-    // The transaction's time that NO row explains, as a FLOOR: total minus the disjoint cover of
-    // the transaction's OWN timed rows (for a containment tree, a parent's `excl_ms` plus its
-    // children's `excl_ms` equals the parent's span, so summing those `excl_ms` is the covered
-    // time). Three honesty rules, each pushing the reported hidden time UP rather than down —
-    // a floor may over-report, never conceal (§4d):
-    // - rows first recorded before `transaction_started` are excluded: they are a predecessor's
-    //   cost and were never part of this total (netting them would understate the floor);
-    // - rows a producer `record`ed itself are excluded (their span boundaries are invisible
-    //   here, so they cannot be shown disjoint) and printed as `raw_ms=` for a reader to judge;
-    // - a raw record inside a timed span was already netted out of that span's `excl_ms` by
-    //   `timed`, so excluding raw rows loses nothing.
-    let (attributed, raw_nanos): (u128, u128) = PHASES.with(|p| {
+/// The time the transaction's rows can PROVABLY account for, and the non-nettable raw total.
+/// Cover = timed rows entered with an empty `ACTIVE` stack (`parent=none`), never seen nested,
+/// first recorded inside the transaction: two such roots cannot contain each other, so summing
+/// them cannot double-count. Predecessor rows, nested rows, and raw rows never cover — each
+/// exclusion only raises the reported floor, and a floor may over-report but never conceal (§4d).
+fn disjoint_root_cover(transaction_started: std::time::Instant) -> (u128, u128) {
+    PHASES.with(|p| {
         let mut attributed = 0u128;
         let mut raw = 0u128;
         for r in p.borrow().iter() {
             if r.raw {
                 raw += r.elapsed.as_nanos();
-            } else if r.first_recorded_at >= transaction_started {
-                attributed += r.elapsed.as_nanos().saturating_sub(r.nested);
+            } else if r.parent.is_none()
+                && !r.nested_seen
+                && r.first_recorded_at >= transaction_started
+            {
+                attributed += r.elapsed.as_nanos();
             }
         }
         (attributed, raw)
-    });
+    })
+}
+
+pub fn print_compile_transaction_receipt(subject: &str, transaction_started: std::time::Instant) {
+    let total = transaction_started.elapsed();
+    let (attributed, raw_nanos) = disjoint_root_cover(transaction_started);
     for line in take_rows_with_attribution() {
         eprintln!("{line}");
     }
@@ -282,7 +301,7 @@ fn compile_transaction_lines(
         // is where a hidden phase shows up: it cannot be concealed, because it is computed over
         // the same accumulator the rows above drain.
         format!(
-            "[pre-entry] phase=compile_transaction_unattributed ms={} scale={scale} attribution=exclusive raw_ms={}",
+            "[pre-entry] phase=compile_transaction_unattributed ms={} scale={scale} attribution=floor raw_ms={}",
             Duration::from_nanos(
                 total
                     .as_nanos()
@@ -345,7 +364,7 @@ fn invocation_receipt_lines(
         // rendering, teardown. This is the §5a-A figure; it is visible precisely so that a hidden
         // cost cannot be read as `wall_ms`'s rounding error.
         format!(
-            "[pre-entry] phase=process_unattributed ms={} scale={scale} attribution=exclusive",
+            "[pre-entry] phase=process_unattributed ms={} scale={scale} attribution=floor",
             elapsed
                 .as_millis()
                 .saturating_sub(transactions_total_ms)
@@ -480,8 +499,8 @@ mod tests {
     /// under-report: total minus the netted timed cover.
     #[test]
     fn transaction_rows_price_the_unexplained_time() {
-        // `attributed` is the netted COVER and `raw_nanos` the non-nettable total, both in
-        // nanos (what `print_compile_transaction_receipt` computes).
+        // `attributed` is the provably-disjoint root cover and `raw_nanos` the non-nettable
+        // total, both in nanos (what `print_compile_transaction_receipt` computes).
         let lines = compile_transaction_lines(
             "src/main.dag",
             Duration::from_millis(90),
@@ -504,58 +523,126 @@ mod tests {
         );
     }
 
-    /// `timed` measures the inclusive/exclusive attribution MECHANICALLY (§4 P0.1): a parent's
-    /// `ms` is its span, `excl_ms` is that span minus what the nested rows recorded inside it,
-    /// and a producer-`record`ed row is reported `recorded` rather than netted.
+    /// The counter-example that killed the netting, as a RED: A⊃B⊃C at 100/60/40ms, where B's
+    /// own work is 20ms and A's own work is 40ms. The removed implementation subtracted a
+    /// CUMULATIVE counter of all inclusive durations, so A paid for C twice (through B and
+    /// through itself) and reported exclusive 0 where 40 is correct. No row is netted anymore;
+    /// every row prints INCLUSIVE with its parent link, and exclusive time is
+    /// `parent.ms - Σ children.ms` for the reader.
     #[test]
-    fn timed_rows_are_netted_against_nested_rows_by_construction() {
+    fn three_level_nesting_prints_inclusive_rows_with_parent_links() {
         let _ = take_lines();
-        timed("probe_parent", PhaseScale::Tree, || {
-            timed("probe_child", PhaseScale::Tree, || {
-                std::thread::sleep(Duration::from_millis(30));
+        timed("probe_grandparent", PhaseScale::Tree, || {
+            record(
+                "probe_grandparent_leaf",
+                PhaseScale::Tree,
+                Duration::from_millis(5),
+            );
+            timed("probe_parent", PhaseScale::Tree, || {
+                timed("probe_child", PhaseScale::Tree, || {
+                    std::thread::sleep(Duration::from_millis(40));
+                });
+                // 20ms of B's own work: B.ms - C.ms = 20 is B's exclusive part.
+                std::thread::sleep(Duration::from_millis(20));
             });
-            // 20ms of the parent's span belongs to no row: that is its exclusive part.
-            std::thread::sleep(Duration::from_millis(20));
+            // 40ms of A's own work: A.ms - B.ms = 40 is A's exclusive part — the figure the
+            // removed netting reported as 0.
+            std::thread::sleep(Duration::from_millis(40));
         });
-        record("probe_raw", PhaseScale::Tree, Duration::from_millis(5));
         let lines = take_rows_with_attribution();
-        let parent = lines
-            .iter()
-            .find(|l| l.contains("phase=probe_parent"))
-            .expect("parent row");
-        let child = lines
-            .iter()
-            .find(|l| l.contains("phase=probe_child"))
-            .expect("child row");
-        let raw = lines
-            .iter()
-            .find(|l| l.contains("phase=probe_raw"))
-            .expect("raw row");
+        let row = |name: &str| {
+            lines
+                .iter()
+                .find(|l| l.contains(&format!("phase={name} ")))
+                .unwrap_or_else(|| panic!("no row for {name} in {lines:?}"))
+                .clone()
+        };
+        let ms_of = |l: &str| -> u128 {
+            l.split("ms=")
+                .nth(1)
+                .unwrap()
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .parse()
+                .unwrap()
+        };
+        let grandparent = row("probe_grandparent");
+        let parent = row("probe_parent");
+        let child = row("probe_child");
+        let leaf = row("probe_grandparent_leaf");
+        // The printed parent links, asserted per level: depth 0 has none, each level below
+        // names its container and deepens.
         assert!(
-            parent.contains("attribution=inclusive"),
-            "parent contains a timed child: {parent}"
+            grandparent.contains("parent=none depth=0")
+                && grandparent.contains("attribution=inclusive"),
+            "{grandparent}"
         );
-        let excl: u128 = parent
-            .split("excl_ms=")
-            .nth(1)
-            .and_then(|s| s.split_whitespace().next())
-            .and_then(|s| s.parse().ok())
-            .expect("excl_ms on parent row");
-        // The parent spanned ~50ms; its exclusive part must exclude the child's ~30ms but the
-        // floor is generous to scheduler noise: netting must be visible, not borderline.
-        assert!(exl_usable(excl), "parent excl_ms={excl}: {parent}");
         assert!(
-            child.contains("attribution=exclusive"),
-            "child timed nothing: {child}"
+            parent.contains("parent=probe_grandparent depth=1")
+                && parent.contains("attribution=inclusive"),
+            "{parent}"
         );
         assert!(
-            raw.contains("attribution=recorded"),
-            "producer-recorded rows are not netted: {raw}"
+            child.contains("parent=probe_parent depth=2")
+                && child.contains("attribution=inclusive"),
+            "{child}"
+        );
+        // A raw row nested inside spans is labelled recorded, and still names its parent.
+        assert!(
+            leaf.contains("parent=probe_grandparent depth=1")
+                && leaf.contains("attribution=recorded"),
+            "{leaf}"
+        );
+        // No row carries a netted figure: nothing to sum wrongly, nothing double-subtracted.
+        assert!(
+            lines.iter().all(|l| !l.contains("excl_ms=")),
+            "a netted figure came back: {lines:?}"
+        );
+        // And the reader's arithmetic lands where the removed netting was wrong: A's only timed
+        // child is B, so A.ms - B.ms is A's exclusive part — ~40ms, and under the removed
+        // implementation's netting it printed as 0.
+        let a_exclusive = ms_of(&grandparent) - ms_of(&parent);
+        let b_exclusive = ms_of(&parent) - ms_of(&child);
+        assert!(
+            (30..=70).contains(&a_exclusive),
+            "reader-computed A-exclusive from {grandparent} | {parent}"
+        );
+        assert!(
+            (10..=40).contains(&b_exclusive),
+            "reader-computed B-exclusive from {parent} | {child}"
         );
     }
 
-    fn exl_usable(excl: u128) -> bool {
-        (15..=45).contains(&excl)
+    /// The transaction floor covers ONLY provably-disjoint roots: a nested row is excluded even
+    /// though its inclusive `ms` fits inside its root (summing both would double-count and
+    /// UNDERSTATE the hidden time — the concealment direction the floor must never go, §4d), and
+    /// a raw record never covers anything.
+    #[test]
+    fn the_transaction_floor_covers_disjoint_roots_only() {
+        let _ = take_lines();
+        let started = std::time::Instant::now();
+        timed("floor_root_a", PhaseScale::Tree, || {
+            std::thread::sleep(Duration::from_millis(60));
+        });
+        timed("floor_root_b", PhaseScale::Tree, || {
+            record("floor_raw", PhaseScale::Tree, Duration::from_millis(4));
+            timed("floor_nested", PhaseScale::Tree, || {
+                std::thread::sleep(Duration::from_millis(60));
+            });
+        });
+        let wall = started.elapsed().as_nanos();
+        let (attributed, raw) = disjoint_root_cover(started);
+        assert_eq!(raw, 4_000_000, "raw total is reported, never netted");
+        // Disjoint roots are spans inside [started, now], so their sum can never exceed the
+        // measured wall — true by construction, for any scheduler. Counting a nested child in
+        // addition to its root is what breaks it: B already contains the child, so B+C lands
+        // ~50% ABOVE the wall. Both sides measure the same run, so this is noise-proof.
+        assert!(
+            attributed <= wall,
+            "cover {attributed} exceeds measured wall {wall}: a nested row was counted twice \
+             (understating hidden time, the one direction §4d forbids)"
+        );
     }
 
     /// "Check the instrument reads real data before it is called a receipt": the invocation
