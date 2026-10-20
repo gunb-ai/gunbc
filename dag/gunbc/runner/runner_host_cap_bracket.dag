@@ -3,6 +3,7 @@ module gunbc.runner.runner_host_cap_bracket
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
 import std.measure { Second, second, second_count }
+import extdeps.github.actions { cancelled_job_always_step_timeout }
 import std.types { EpochMs }
 import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -100,7 +101,7 @@ data runner_host_cap_drain_policy: HostCapDrainPolicy = HostCapDrainPolicy {
   poll_interval: second(count: 15),
   operations_allowance: second(count: 600),
   release_allowance: second(count: 240),
-  cancellation_envelope: second(count: 300),
+  cancellation_envelope: cancelled_job_always_step_timeout,
   release_startup_allowance: second(count: gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60),
 }
 
@@ -121,7 +122,7 @@ type BracketBudgetVerdict
 
 // THE RELEASE IS NOT GUARANTEED TO FIT THE CANCELLATION ENVELOPE, AND SAYS SO. GitHub gives a cancelled job's
 // always() steps a 5-minute cancellation timeout and then force-cancels (docs.github.com/en/actions/reference/
-// workflows-and-actions/expressions, status check functions; the figure is the envelope row). The release
+// workflows-and-actions/expressions, status check functions; the figure is extdeps.github.actions cancelled_job_always_step_timeout). The release
 // step is a gunbc run step: its startup is the workflow's declared resolve budget (one authority,
 // gunbc_ci_gunbc_run_resolve_step_timeout_minutes), and the measured resolve of this closure is minutes, so
 // the declared release does not fit. The standing is a typed residual, not a refusal and not a claim:
