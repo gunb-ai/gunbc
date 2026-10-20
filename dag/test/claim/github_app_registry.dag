@@ -73,7 +73,7 @@ import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit,
 import gunbc.runner.runner_jit_deregistration { JitRegistration, JitDeregistrationSubject, AuthorizedDispatchRegistration, jit_registration_of, readback_subject_refusal, DeregistrationReadbackForAnotherSubject }
 import gunbc.host.host_control_route { bmc_controlled_host, BmcRouteNotBound }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotHostNotControlled, host_unit_slot_for, AttemptSlot, host_unit_slot_listener_argv,
+  HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotHostNotControlled, host_unit_slot_for, AttemptSlot, host_unit_slot_listener_argv, host_unit_slot_root,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -1391,7 +1391,7 @@ test fn witness_jit_mint_authorizes_a_managed_host_unit_slot_under_the_routes_ow
           && runner_label_sets_equal(a: map(req.labels, l => l.value as String), b: ephemeral_slot_labels(host: h.host, attempt: "q-1"))
           && match host_unit_slot(h: h) {
             HostUnitSlotBound { slot: u } =>
-              match ephemeral_slot_command(unit: u.unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()) {
+              match ephemeral_slot_command(unit: u.unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv(root: host_unit_slot_root(unit: u.unit))) {
                 SystemdRunCommandReady { command: c } => u.argv == c
                 SystemdRunCommandRefused { cause: _ } => false
               }

@@ -568,3 +568,9 @@ fn mv_exact_destination_command(source: String, destination: String) -> ArgvComm
 fn sort_in_place_command(path: String) -> ArgvCommand {
   argv_command(program: sort_program(), arguments: ["-o", path, path])
 }
+
+// cat(1): the contents of ONE file on stdout (`cat -- PATH`). `--` ends options, so a path beginning with `-`
+// is a file and never a flag.
+fn cat_file_command(path: String) -> ArgvCommand {
+  argv_command(program: cat_program(), arguments: ["--", path])
+}

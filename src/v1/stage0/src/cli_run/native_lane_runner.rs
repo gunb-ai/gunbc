@@ -3994,6 +3994,17 @@ pub struct NativeServeProgramRun {
     pub stderr: String,
 }
 
+/// WHICH PHASES A RUN PERFORMS, as the binding row declares them (`gunbc.native_serve_probe_plan`
+/// `NativeServePhase`). The host reads the three answers off the row and holds no per-binding
+/// branch: a phase that is not declared is not run, and its observation reaches the reader as the
+/// absent value (no announcement, port -1, status -1).
+#[derive(Clone, Copy)]
+pub struct NativeServePhases {
+    pub peer_instance: bool,
+    pub refused_launch: bool,
+    pub stuck_ceiling_exit: bool,
+}
+
 /// How long a launch, an announcement or one exchange may take before the run stops waiting. A
 /// deadline here is the instrument refusing to hang, not a budget the service is judged by.
 const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
@@ -4079,6 +4090,7 @@ pub fn run_native_serve_program(
     release_revision: &str,
     refused_revision: &str,
     request_deadline_ms: &str,
+    phases: NativeServePhases,
     requests_for_peer_port: &dyn Fn(i64) -> Result<Vec<String>, String>,
 ) -> Result<NativeServeProgramRun, String> {
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
@@ -4087,37 +4099,49 @@ pub fn run_native_serve_program(
         prepared.closure_identity,
         prepared.binary_path.display()
     );
-    let (refused_status, refused_stderr) =
-        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?;
+    let (refused_status, refused_stderr) = if phases.refused_launch {
+        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?
+    } else {
+        (None, String::new())
+    };
     // The PEER is a second instance of the same entry: the local server the entry's bound REST
     // handler is pointed at, so the answered arm is produced by a real exchange. Its port is the
     // one fact only it can publish, so the reader module is asked for the requests only after it.
-    let mut peer = native_serve_start(
-        &prepared.binary_path,
-        entry,
-        release_revision,
-        request_deadline_ms,
-    )?;
-    let peer_port = match peer
-        .address
-        .as_deref()
-        .and_then(|address| address.rsplit(':').next())
-        .and_then(|port| port.parse::<i64>().ok())
-    {
-        Some(port) => port,
-        None => {
-            let peer_stderr = peer.stop();
-            return Err(format!(
-                "NATIVE-SERVE REFUSAL cause=PeerUnannounced entry={entry} announcement={:?} — the peer instance printed no bound address, so no request can name its port{}",
-                peer.announcement,
-                if peer_stderr.is_empty() { String::new() } else { format!(" (stderr: {})", peer_stderr.trim_end()) }
-            ));
-        }
+    let mut peer = if phases.peer_instance {
+        Some(native_serve_start(
+            &prepared.binary_path,
+            entry,
+            release_revision,
+            request_deadline_ms,
+        )?)
+    } else {
+        None
+    };
+    let peer_port = match &mut peer {
+        None => -1,
+        Some(instance) => match instance
+            .address
+            .as_deref()
+            .and_then(|address| address.rsplit(':').next())
+            .and_then(|port| port.parse::<i64>().ok())
+        {
+            Some(port) => port,
+            None => {
+                let peer_stderr = instance.stop();
+                return Err(format!(
+                    "NATIVE-SERVE REFUSAL cause=PeerUnannounced entry={entry} announcement={:?} — the peer instance printed no bound address, so no request can name its port{}",
+                    instance.announcement,
+                    if peer_stderr.is_empty() { String::new() } else { format!(" (stderr: {})", peer_stderr.trim_end()) }
+                ));
+            }
+        },
     };
     let requests = match requests_for_peer_port(peer_port) {
         Ok(requests) => requests,
         Err(cause) => {
-            peer.stop();
+            if let Some(instance) = &mut peer {
+                instance.stop();
+            }
             return Err(cause);
         }
     };
@@ -4129,7 +4153,9 @@ pub fn run_native_serve_program(
     ) {
         Ok(subject) => subject,
         Err(cause) => {
-            peer.stop();
+            if let Some(instance) = &mut peer {
+                instance.stop();
+            }
             return Err(cause);
         }
     };
@@ -4144,15 +4170,22 @@ pub fn run_native_serve_program(
     // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
     // still running at the deadline is killed, and it reports no status. The peer serves no budget
     // case and is stopped.
-    let (served_exit_status, stderr) = subject.await_exit();
-    let peer_stderr = peer.stop();
+    let (served_exit_status, stderr) = if phases.stuck_ceiling_exit {
+        subject.await_exit()
+    } else {
+        (None, subject.stop())
+    };
+    let (peer_announcement, peer_stderr) = match &mut peer {
+        Some(instance) => (instance.announcement.clone(), instance.stop()),
+        None => (String::new(), String::new()),
+    };
     Ok(NativeServeProgramRun {
         closure_identity: prepared.closure_identity,
         binary_identity: prepared.binary_identity,
         seed_identity: prepared.seed_identity,
         warning_count: prepared.build.warning_count,
         announcement: subject.announcement,
-        peer_announcement: peer.announcement,
+        peer_announcement,
         peer_port,
         responses,
         refused_status,

@@ -14,7 +14,7 @@ import v2.extdeps.languages.swift.syntax {
   sw_id, sw_dot, sw_mem, sw_path, sw_chain, sw_call, sw_calln, sw_callt, sw_sub, sw_arg, sw_pos,
   sw_str, sw_raw, sw_interp, sw_st, sw_si, sw_bool, sw_arr, sw_strs, sw_dict, sw_kv, sw_tuple, sw_cloe,
   sw_try, sw_tryq, sw_not, sw_op, sw_add, sw_eq,
-  sw_expr, sw_ret, sw_let, sw_var, sw_let_typed, sw_for, sw_assign, sw_cmt_stmt,
+  sw_expr, sw_ret, sw_do_catch, sw_let, sw_var, sw_let_typed, sw_for, sw_assign, sw_cmt_stmt,
   sw_field, sw_p_, sw_func, sw_struct, sw_doc, sw_cmt, sw_import
 }
 import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
@@ -70,6 +70,7 @@ fn at_vectors() -> SwiftDecl {
     at_named_vector(n: "Enrolment", input: at_string_fields(names: ["code", "platform", "point_b64url"])),
     at_named_vector(n: "Read", input: at_string_fields(names: ["path", "enrollment_id", "requested_at"])),
     at_decodable(n: "Envelope", m: at_string_fields(names: ["name", "body"])),
+    at_decodable(n: "Refusal", m: at_string_fields(names: ["name", "body", "at", "cause"])),
     at_decodable(n: "PathSegment", m: at_string_fields(names: ["input", "encoded"])),
     at_decodable(n: "Surface", m: at_string_fields(names: ["name", "value"])),
     at_decodable(n: "StoredRequest", m: [
@@ -83,6 +84,7 @@ fn at_vectors() -> SwiftDecl {
     sw_field(n: "enrolment", t: sw_tarr(e: sw_t(n: "Enrolment"))),
     sw_field(n: "read", t: sw_tarr(e: sw_t(n: "Read"))),
     sw_field(n: "envelope", t: sw_tarr(e: sw_t(n: "Envelope"))),
+    sw_doc(c: ["refusal: malformed push-update bodies with the location and cause the server's decoder gives them."], d: sw_field(n: "refusal", t: sw_tarr(e: sw_t(n: "Refusal")))),
     sw_doc(c: ["path_segment: input -> encoded, emitted by the .dag path_segment fold."], d: sw_field(n: "path_segment", t: sw_tarr(e: sw_t(n: "PathSegment")))),
     sw_doc(c: ["surface: the one method, and the route paths, by name."], d: sw_field(n: "surface", t: sw_tarr(e: sw_t(n: "Surface")))),
     sw_doc(
@@ -113,6 +115,7 @@ fn at_load_fn() -> SwiftDecl {
     at_nonempty(section: "enrolment", message: "no enrolment vectors"),
     at_nonempty(section: "read", message: "no read vectors"),
     at_nonempty(section: "envelope", message: "no envelope vectors"),
+    at_nonempty(section: "refusal", message: "no refusal vectors"),
     at_nonempty(section: "path_segment", message: "no path_segment vectors"),
     at_nonempty(section: "surface", message: "no surface vectors"),
     sw_ret(e: sw_id(n: "v")),
@@ -265,6 +268,51 @@ fn at_tests() -> List<SwiftDecl> {
       at_assert(n: "XCTAssertEqual", a: [sw_mem(b: at_decode(decoder: "redemptionResponse", e: at_data_utf8(e: at_envelope(name: "redemption_response_enrollment_revoked"))), m: "outcome"), sw_path(b: "OutcomeName", m: "enrollmentRevoked")]),
       at_assert(n: "XCTAssertEqual", a: [sw_mem(b: at_decode(decoder: "redemptionResponse", e: at_data_utf8(e: at_envelope(name: "redemption_response_enrollment_unknown"))), m: "outcome"), sw_path(b: "OutcomeName", m: "enrollmentUnknown")]),
     ]),
+    at_test(
+      doc: [
+        "A malformed push-update body is refused at the location and with the cause the SERVER's decoder",
+        "gives it (refusal vectors are decode_push_update's own answers), so a cause or a path root the",
+        "transcription restates differently reds here.",
+      ],
+      n: "testPushUpdateRefusalsMatchTheServer", th: true,
+      b: [
+        at_each(section: "refusal", b: [
+          sw_do_catch(
+            s: [
+              sw_assign(l: SwiftWildcardExpr, r: at_decode(decoder: "pushUpdate", e: at_data_utf8(e: sw_path(b: "v", m: "body")))),
+              at_assert(n: "XCTFail", a: [sw_interp(p: [sw_st(s: "refusal vector "), sw_si(e: sw_path(b: "v", m: "name")), sw_st(s: " was accepted")])]),
+            ],
+            c: [
+              at_assert(n: "XCTAssertEqual", a: [
+                sw_mem(b: sw_id(n: "error"), m: "localizedDescription"),
+                sw_mem(b: sw_call(f: sw_path(b: "WireError", m: "refused"), a: [sw_arg(l: "at", v: sw_path(b: "v", m: "at")), sw_arg(l: "cause", v: sw_path(b: "v", m: "cause"))]), m: "localizedDescription"),
+                sw_path(b: "v", m: "name"),
+              ]),
+            ]
+          ),
+        ]),
+      ]
+    ),
+    at_test(
+      doc: [
+        "One envelope per arm of the enrol route's typed refusal (enrolment_refusal_<label>): the arms the",
+        "vectors cover are exactly the arms the app spells, and each decodes to the arm its name carries, so an",
+        "arm added to the wire without a vector (or renamed) reds here.",
+      ],
+      n: "testEveryEnrolmentRefusalArmDecodes", th: true,
+      b: [
+        sw_let(n: "prefix", e: sw_str(s: "enrolment_refusal_")),
+        sw_let(n: "arms", e: sw_callt(f: sw_mem(b: sw_mem(b: at_load(), m: "envelope"), m: "filter"), a: [], c: sw_cloe(e: sw_call(f: sw_mem(b: sw_path(b: "$0", m: "name"), m: "hasPrefix"), a: [sw_pos(v: sw_id(n: "prefix"))])))),
+        at_assert(n: "XCTAssertEqual", a: [
+          sw_calln(f: "Set", a: [sw_pos(v: sw_callt(f: sw_path(b: "arms", m: "map"), a: [], c: sw_cloe(e: sw_calln(f: "String", a: [sw_pos(v: sw_call(f: sw_mem(b: sw_path(b: "$0", m: "name"), m: "dropFirst"), a: [sw_pos(v: sw_mem(b: sw_id(n: "prefix"), m: "count"))]))]))))]),
+          sw_calln(f: "Set", a: [sw_pos(v: sw_callt(f: sw_mem(b: sw_path(b: "EnrolmentRefusalKind", m: "allCases"), m: "map"), a: [], c: sw_cloe(e: sw_path(b: "$0", m: "rawValue"))))]),
+        ]),
+        sw_for(n: "a", e: sw_id(n: "arms"), s: [
+          sw_let(n: "kind", e: at_decode(decoder: "enrolmentRefusal", e: at_data_utf8(e: sw_path(b: "a", m: "body")))),
+          at_assert(n: "XCTAssertEqual", a: [sw_add(l: sw_id(n: "prefix"), r: sw_path(b: "kind", m: "rawValue")), sw_path(b: "a", m: "name")]),
+        ]),
+      ]
+    ),
     at_test(
       doc: [
         "The detail screen's strict read, joined to the store's own rendering: every stored_request",
