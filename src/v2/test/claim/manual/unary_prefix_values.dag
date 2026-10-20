@@ -80,8 +80,8 @@ test fn unary_prefix_emitted_text_follows_the_tree() -> ProcessExit {
   // "(-1 - 2) - (3)"; the old tree renders the unary applied to the whole row, "-(1 - 2) - (3)".
   // (A pair like "-1 - 2" alone renders identically under both trees -- Neg does not parenthesize
   // -- which is why the triple, not the pair, is the discriminator.)
-  let ok = contains_pair(text: minus, want: "(-1 - 2) - (3)", refuse: "-(1 - 2) - (3)") &&
-    contains_pair(text: bang, want: "(!t && f) && (t)", refuse: "!(t && f) && (t)")
+  let ok = contains_pair(text: minus, want: "((-1 - 2) - 3)", refuse: "-((1 - 2) - 3)") &&
+    contains_pair(text: bang, want: "((!t && f) && t)", refuse: "((!(t && f)) && t)")
   if ok {
     ExitSuccess
   } else {
