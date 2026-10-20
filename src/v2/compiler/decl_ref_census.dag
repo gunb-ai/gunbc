@@ -392,11 +392,28 @@ fn span_has_standing(s: ProseSpan, wanted: SpanStanding) -> Bool {
   }
 }
 
+// THE SEED LAYER, DISPOSITIONED AS A TYPE RATHER THAN REFUSED. `v1_compiler` and `v1_compiler_tests`
+// name the seed's Rust crates (no .dag module exists to resolve), and `v1.*` names the seed's own .dag
+// sources, which gunbc.source_layout holds outside the governed trees by design (the native ingest
+// refuses src/v1 as a source root, and ci_layer_roots records its last-segment collisions with v2).
+// A module-absent citation into one of these namespaces is counted, never resolved and never a
+// refusal. dissolve-on: source_layout admits src/v1 (the namespace cut, gunbc#8282) and the seed's
+// Rust layer is retired.
+data seed_layer_namespaces: List<String> = ["v1", "v1_compiler", "v1_compiler_tests"]
+
+fn ref_in_seed_layer(x: DeclarationRef) -> Bool {
+  let first = list_head(xs: (x.module_path as String).split(delimiter: "."))
+  match first {
+    Present { value: head } => contains_text(xs: seed_layer_namespaces, item: head)
+    Absent => false
+  }
+}
+
 fn resolution_is_refusal(r: DeclarationRefResolution) -> Bool {
   match r {
     DeclarationRefResolved { declaration_identity: _ } => false
     DeclarationRefOutsideIndex { reference: _, coverage: _ } => false
-    DeclarationRefModuleAbsent { reference: _ } => true
+    DeclarationRefModuleAbsent { reference: x } => !ref_in_seed_layer(x: x)
     DeclarationRefDeclarationAbsent { reference: _ } => true
     DeclarationRefFieldAbsent { reference: _ } => true
   }
@@ -425,7 +442,7 @@ fn decl_ref_census_exit(c: DeclRefCensus) -> Int {
 fn resolution_arm_name(r: DeclarationRefResolution) -> String {
   match r {
     DeclarationRefResolved { declaration_identity: _ } => "resolved"
-    DeclarationRefModuleAbsent { reference: _ } => "module-absent"
+    DeclarationRefModuleAbsent { reference: x } => if ref_in_seed_layer(x: x) { "seed-layer" } else { "module-absent" }
     DeclarationRefDeclarationAbsent { reference: _ } => "declaration-absent"
     DeclarationRefFieldAbsent { reference: _ } => "field-absent"
     DeclarationRefOutsideIndex { reference: _, coverage: _ } => "outside-index"
@@ -478,7 +495,8 @@ fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
         " module_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "module-absent")),
         " declaration_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "declaration-absent")),
         " field_absent=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "field-absent")),
-        " outside_index=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "outside-index"))),
+        " outside_index=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "outside-index")),
+        " seed_layer=", to_string(n: count_resolutions_with_arm(xs: c.resolutions, arm: "seed-layer"))),
       concat("[decl-ref-census] prose spans=", to_string(n: length(xs: c.prose)),
         " resolves=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanResolves)),
         " stale=", to_string(n: count_spans_with(xs: c.prose, wanted: SpanStale)),
