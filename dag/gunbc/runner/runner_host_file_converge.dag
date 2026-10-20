@@ -2166,6 +2166,27 @@ fn runner_host_cap_phase_settled(phase: RunnerHostCapPhase) -> Bool {
   }
 }
 
+// THE OBSERVE VERDICT ON THE CAP PHASE: observe succeeds only if the phase IS an observation and one
+// that was fully READ. Withheld (could not look at the population) and any Unread reading (could not
+// look at a slot) refuse -- a cap observation that could not be completed is not a success (section 5:
+// loud, never a pass). CapPhaseNotOwed refuses in observe too: production's observe arm cannot produce
+// it since P4, so one arriving on an observe run record was hand-fabricated -- the base defect, the
+// two-valued answer that hides "could not look". CapPhaseRan is the APPLY arm; a Ran phase riding an
+// observe run is from another route's run and says nothing about what THIS mode looked at.
+// At-desired is NOT required: Owed, Drifted/ReadingsDisagree and Stopped are all fully read, and the
+// READING is what observe came for -- a host that owes caps is observed, not failed.
+fn runner_host_cap_phase_observed_verdict(phase: RunnerHostCapPhase) -> Bool {
+  match phase {
+    // An EMPTY readings list observed nothing either -- all([]) is vacuously true, and a zero-reading
+    // "observation" is the same hiding as the base's two-valued answer. The featured observation has
+    // at least the featured unit; nothing to read is a subject refusal upstream, not a phase.
+    CapPhaseObserved { readings: rs } => length(rs) > 0 && runner_host_cap_phase_observed_settled(readings: rs)
+    CapPhaseNotOwed => false
+    CapPhaseWithheld { cause: _ } => false
+    CapPhaseRan { files: _, reload: _, slots: _ } => false
+  }
+}
+
 fn runner_host_cap_phase_text(phase: RunnerHostCapPhase) -> String {
   match phase {
     CapPhaseNotOwed => ""
@@ -2571,6 +2592,10 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         && !any(run.results, r => runner_host_file_planned_refused(p: r.planned))
         && retired_residue_observed(result: run.residue)
         && runner_slot_population_read_completely(population: run.slots)
+        // THE CAP PHASE IS CONSUMED HERE (manager ruling, review 5588645431): the phase is the last
+        // thing observe came for, so a run whose cap observation was withheld or any of it unread
+        // REFUSES -- it must not print OBSERVED-UNREAD and still exit success.
+        && runner_host_cap_phase_observed_verdict(phase: run.cap_phase)
     RunnerHostFilesApply =>
       all(run.results, r => runner_host_file_outcome_settled(outcome: r.outcome))
         && length(run.withheld) == 0

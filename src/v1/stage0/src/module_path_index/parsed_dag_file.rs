@@ -61,9 +61,13 @@ pub fn parse_dag_content(content: &str, filename: &str) -> Option<ParsedDagFile>
         // above could only report the file NAME it was handed. Render the message with its
         // position before the collapse, the same located-render the parse sweep carries (span
         // matched to this file, char offsets through the newline index; a synthetic span renders
-        // as the file alone rather than a fabricated 1:1). Three dispatches of v1-compiler
-        // rebuilds were spent guessing syntax while this line was dropping a
-        // constructor-admission error naming the real file and offset.
+        // as the file alone rather than a fabricated 1:1). What this line drops is a PARSE
+        // diagnostic only -- tokenize->parse runs here, no resolve -- and it is the one claim_batch
+        // reported as a bare filename while three dispatches guessed syntax (the RFM row names the
+        // case). A resolve-layer error, such as the constructor-admission collision that also cost
+        // this cycle, does NOT pass through here: it is emitted located by the resolve layer all
+        // along (v1_compiler_infer renders it; claim_batch prints it under its heading). Do not
+        // "fix" a missing resolve cause at this line -- check the caller's display filter first.
         let message = crate::v1_std_core::diagnostic_to_message(error.diagnostic.clone());
         let span = crate::v1_std_core::diagnostic_to_span(error.diagnostic.clone());
         let located = if span.file == filename {
