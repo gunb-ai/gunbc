@@ -4,7 +4,7 @@ import std.types { Bool, String, List, NonEmptyStr }
 import std.optional { Absent, Present }
 import std.measure { second, second_count }
 import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
-import gunbc.runner.runner_slot_actuation { SlotActuationOutcome, SlotActivated, SlotActuationRefused }
+import gunbc.runner.runner_slot_actuation { SlotActuationOutcome, SlotActivated, SlotActuationRefused, slot_read_outcome_of, slot_activity_of_listing }
 import gunbc.runner.runner_host_cap_bracket {
   AdmissionMaskOnly,
   SlotDrainReading,
@@ -17,6 +17,8 @@ import gunbc.runner.runner_host_cap_bracket {
   HostLeftState,
   HostLeftDrained,
   host_left_of_readmit,
+  slot_drain_needs_worker,
+  slot_drain_reading_of,
   bracket_wait_step,
   host_cap_drain_ticks,
   runner_host_cap_drain_policy,
@@ -98,4 +100,37 @@ test fn a_missing_readmit_reading_is_not_admitting() -> Bool {
 // RED: no readmit reading at all (refusal before any re-admission ran) is not admitting
 test fn no_readmit_reading_is_not_admitting() -> Bool {
   !admitting(l: host_left_of_readmit(units: units(), outcomes: []))
+}
+
+// THE REAL PROJECTION, FROM SHOW TEXT AND A PS LISTING, INTO THE BRACKET DECISION. The earlier controls
+// supply a SlotDrainReading and so cannot see a loss in the projection: a deactivating unit with a live
+// Runner.Worker was read as idle there. These start where the wet reader starts.
+fn show_masked_with(active: String) -> String { concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\nActiveState=", active, "\n") }
+fn listing_worker() -> String { concat(u(n: "01") as String, " Runner.Worker\n") }
+fn listing_listener_only() -> String { concat(u(n: "01") as String, " Runner.Listener\n") }
+
+fn projected(active: String, listing: String) -> SlotDrainReading {
+  let read = slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: active))
+  slot_drain_reading_of(unit: u(n: "01"), read: read, worker: if slot_drain_needs_worker(read: read) { slot_activity_of_listing(listing: listing, unit: u(n: "01")) } else { SlotIdle })
+}
+
+test fn a_deactivating_unit_with_a_live_worker_is_not_drained() -> Bool {
+  is_waiting(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_worker())], ticks_left: 3))
+    && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_worker())], ticks_left: 0), busy: 1, unproven: 0)
+}
+
+test fn a_deactivating_unit_with_a_quiescent_cgroup_is_drained() -> Bool {
+  is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "deactivating", listing: listing_listener_only())], ticks_left: 3))
+}
+
+test fn a_stopped_masked_unit_is_drained_without_a_cgroup_reading() -> Bool {
+  !slot_drain_needs_worker(read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "inactive")))
+    && is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [projected(active: "inactive", listing: "")], ticks_left: 3))
+}
+
+test fn an_unknown_or_missing_active_state_is_unproven_never_idle() -> Bool {
+  let unknown = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "wedged")), worker: SlotIdle)
+  let missing = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\n")), worker: SlotIdle)
+  exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unknown], ticks_left: 0), busy: 0, unproven: 1)
+    && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [missing], ticks_left: 0), busy: 0, unproven: 1)
 }

@@ -14,6 +14,7 @@ import gunbc.runner.runner_slot_actuation {
   SlotActuationRefused,
   SlotRead,
   SlotReadRefused,
+  SlotReadOutcome,
   read_slot_over,
   read_slot_worker_over,
   run_slot_steps_over,
@@ -21,6 +22,7 @@ import gunbc.runner.runner_slot_actuation {
   slot_actuation_settled,
   slot_actuation_outcome_wire,
   slot_state_active,
+  slot_state_stopped,
 }
 import gunbc.runner.runner_slot_actuation { slot_is_masked }
 import extdeps.systemd.systemctl { systemctl_mask_argv }
@@ -176,20 +178,38 @@ fn host_left_of_readmit(units: List<NonEmptyStr>, outcomes: List<SlotActuationOu
 
 // ── The effects ─────────────────────────────────────────────────────────────────────────────────
 
-fn read_slot_drain_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotDrainReading
-{
-  match read_slot_over(target: target, context: context, unit: unit) {
+// A SLOT IS IDLE ONLY WHEN ITS UNIT IS STOPPED OR ITS CGROUP HOLDS NO RUNNER.WORKER. "Not running" is not
+// "no worker": a deactivating unit is a stop in progress and its job process may still be alive, so every
+// state but a stopped one demands the cgroup reading. A refused or unparsed show reading is unobserved,
+// never idle.
+fn slot_drain_needs_worker(read: SlotReadOutcome) -> Bool {
+  match read {
+    SlotReadRefused { reason: _ } => false
+    SlotRead { reading: r } => !slot_state_stopped(active: r.active)
+  }
+}
+
+fn slot_drain_reading_of(unit: NonEmptyStr, read: SlotReadOutcome, worker: SlotActivityObservation) -> SlotDrainReading {
+  match read {
     SlotReadRefused { reason: why } => SlotDrainReading { unit: unit, masked: false, listener_running: false, activity: SlotActivityUnobserved { cause: why as NonEmptyStr } }
-    SlotRead { reading: r } => {
-      let running = slot_state_active(active: r.active)
+    SlotRead { reading: r } =>
       SlotDrainReading {
         unit: unit,
         masked: slot_is_masked(r: r),
-        listener_running: running,
-        activity: if running { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle },
+        listener_running: slot_state_active(active: r.active),
+        activity: if slot_state_stopped(active: r.active) { SlotIdle } else { worker },
       }
-    }
   }
+}
+
+fn read_slot_drain_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotDrainReading
+{
+  let read = read_slot_over(target: target, context: context, unit: unit)
+  slot_drain_reading_of(
+    unit: unit,
+    read: read,
+    worker: if slot_drain_needs_worker(read: read) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle },
+  )
 }
 
 // MASK ONLY, NEVER STOP: the mask inhibits successors and is safe at any time. Stopping a running idle

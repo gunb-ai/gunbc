@@ -336,6 +336,19 @@ type SlotReadOutcome
   = SlotRead { reading: SlotActuationReading }
   | SlotReadRefused { reason: String }
 
+// THE SHOW TEXT TO ITS TYPED READING, PURE. A missing block or a word outside the systemd vocabulary
+// (ActiveState included) is a refused reading, never a default: no decision reads a state it did not parse.
+fn slot_read_outcome_of(unit: NonEmptyStr, show_stdout: String) -> SlotReadOutcome {
+  match slot_actuation_reading_of(unit: unit, show_stdout: show_stdout) {
+    Absent => SlotReadRefused { reason: "systemctl show returned no complete block for the unit" }
+    Present { value: res } =>
+      match res {
+        SlotReadingUnknownWord { property: p, raw: w } => SlotReadRefused { reason: join(["systemctl show printed ", p, "=", w, ", a word outside the systemd vocabulary this effect decides on"], "") }
+        SlotReadingTyped { reading: rd } => SlotRead { reading: rd }
+      }
+  }
+}
+
 fn read_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotReadOutcome
 {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties)) {
@@ -344,14 +357,7 @@ fn read_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: No
       if !r.success {
         SlotReadRefused { reason: join(["systemctl show exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
       } else {
-        match slot_actuation_reading_of(unit: unit, show_stdout: r.stdout) {
-          Absent => SlotReadRefused { reason: "systemctl show returned no complete block for the unit" }
-          Present { value: res } =>
-            match res {
-              SlotReadingUnknownWord { property: p, raw: w } => SlotReadRefused { reason: join(["systemctl show printed ", p, "=", w, ", a word outside the systemd vocabulary this effect decides on"], "") }
-              SlotReadingTyped { reading: rd } => SlotRead { reading: rd }
-            }
-        }
+        slot_read_outcome_of(unit: unit, show_stdout: r.stdout)
       }
   }
 }
