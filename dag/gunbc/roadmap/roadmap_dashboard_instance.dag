@@ -387,6 +387,7 @@ fn dashboard_instance_agent_door_directory(instance: HostDashboardInstance) -> O
     path: lab_agent_door_host_prepared_directory,
     owner: instance.directory_owner,
     mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
   }
 }
 
