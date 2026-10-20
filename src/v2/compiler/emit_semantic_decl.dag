@@ -4,7 +4,7 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 import std.types { List, Map }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
-import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclMember, TargetSemanticDeclSerializeProfile, semantic_decl_emission_from_target, semantic_decl_profile_binding_spellings_over, semantic_decl_serialize_target, target_semantic_decl_surface_with_header, target_semantic_decl_surface_with_imports, target_semantic_enum_surface_from_coproduct, target_semantic_struct_surface_from_record }
+import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclMember, TargetSemanticDeclSurfaceProjection, TargetSemanticDeclSerializeProfile, semantic_decl_emission_from_target, semantic_decl_profile_binding_spellings_over, semantic_decl_serialize_target, target_semantic_decl_surface_with_header, target_semantic_decl_surface_with_imports, target_semantic_enum_surface_from_coproduct, target_semantic_struct_surface_from_record }
 import std.optional { Absent, Present }
 import v2.std.witness { map_get_checked }
 import v2.std.qualified_name { declaration_reference_path_optional }
@@ -91,6 +91,23 @@ fn emit_decl_surface(
 // target's own binding_spellings. There is no route that
 // binds a type as itself: a type the target cannot spell refuses, located, rather than printing its
 // interned name.
+// The surface exactly as the declaration route prints it: imports then header lead the declaration under the target's
+// own columns, present even when empty (an empty list is the nil their nullable productions consume). Every consumer
+// of a hand-built surface goes through this one wrapper rather than restating the edges.
+fn emit_surface_with_leading_columns(
+  projection: TargetSemanticDeclSurfaceProjection,
+  imports: List<Symbol>,
+  header: List<String>,
+  surface: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_semantic_decl_surface_with_imports(projection: projection, imports: imports, surface: surface),
+    f: fn(with_imports) {
+      target_semantic_decl_surface_with_header(projection: projection, header: header, surface: with_imports)
+    }
+  )
+}
+
 fn emit_semantic_type_decl(
   name: Symbol,
   params: List<Symbol>,
@@ -123,10 +140,7 @@ fn emit_semantic_type_decl(
                 ),
                 f: fn(bare) {
                   bind_outcome(
-                    o: target_semantic_decl_surface_with_imports(projection: emission.surface, imports: imports, surface: bare),
-                    f: fn(with_imports) {
-                  bind_outcome(
-                    o: target_semantic_decl_surface_with_header(projection: emission.surface, header: header, surface: with_imports),
+                    o: emit_surface_with_leading_columns(projection: emission.surface, imports: imports, header: header, surface: bare),
                     f: fn(surface) {
                       emit_decl_surface(
                         surface: surface,
@@ -134,8 +148,6 @@ fn emit_semantic_type_decl(
                         profile: emission.enum_serialize_profile,
                         host_binding_spellings: host_binding_spellings
                       )
-                    }
-                  )
                     }
                   )
                 }
@@ -158,10 +170,7 @@ fn emit_semantic_type_decl(
                 ),
                 f: fn(bare) {
                   bind_outcome(
-                    o: target_semantic_decl_surface_with_imports(projection: emission.surface, imports: imports, surface: bare),
-                    f: fn(with_imports) {
-                  bind_outcome(
-                    o: target_semantic_decl_surface_with_header(projection: emission.surface, header: header, surface: with_imports),
+                    o: emit_surface_with_leading_columns(projection: emission.surface, imports: imports, header: header, surface: bare),
                     f: fn(surface) {
                       emit_decl_surface(
                         surface: surface,
@@ -169,8 +178,6 @@ fn emit_semantic_type_decl(
                         profile: emission.struct_serialize_profile,
                         host_binding_spellings: host_binding_spellings
                       )
-                    }
-                  )
                     }
                   )
                 }
