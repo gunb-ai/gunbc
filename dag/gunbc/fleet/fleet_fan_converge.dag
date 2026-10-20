@@ -187,7 +187,7 @@ fn fleet_fan_refusal_standing(decision: FleetFanDecision, cause: NonEmptyStr) ->
 // decision (same subject, its own deciding receipt) lets a readback be judged, and independence is
 // that readback's attempt ordinal strictly after the deciding receipt, for the same subject. There
 // is no parameter an apply result could be passed in. This is CONTROL-STATE standing: it speaks of
-// FleetFanControl, not of the whole FleetFanPolicy revision (guard, unreadable_sensor_trips), so a
+// FleetFanControl, not of the whole FleetFanPolicy revision (guard), so a
 // consumer re-reads the current policy authority afresh and does not take this as proof that a
 // policy revision was admitted.
 fn fleet_fan_standing(decision: FleetFanDecision, readback: FleetFanObserved) -> FleetFanConvergenceStanding {

@@ -50,7 +50,6 @@ type FleetFanGuard {
 type FleetFanPolicy {
   control: FleetFanControl
   guard: FleetFanGuard
-  unreadable_sensor_trips: Bool
 }
 
 data fleet_fan_soc_trip_margin: CelsiusDelta = celsius_delta(15)
@@ -83,7 +82,6 @@ data fleet_fan_guard: FleetFanGuard = FleetFanGuard {
 data fleet_fan_policy: FleetFanPolicy = FleetFanPolicy {
   control: FirmwareAutomatic,
   guard: fleet_fan_guard,
-  unreadable_sensor_trips: true,
 }
 
 fn fleet_fan_guard_trip_for(guard: FleetFanGuard, role: ThermalGuardRole) -> GuardTrip {
@@ -124,11 +122,7 @@ fn fleet_fan_guard_reading(policy: FleetFanPolicy, role: ThermalGuardRole, compo
   match fleet_fan_trip_for(policy: policy, role: role, component_ceiling: component_ceiling) {
     Absent => GuardRestoreAutomatic { cause: GuardCeilingUnstated { role: role } }
     Present { value: trip } => match reading {
-      Absent => if policy.unreadable_sensor_trips {
-        GuardRestoreAutomatic { cause: GuardSensorUnreadable { role: role } }
-      } else {
-        GuardHolds
-      }
+      Absent => GuardRestoreAutomatic { cause: GuardSensorUnreadable { role: role } }
       Present { value: t } => if celsius_count(t) >= celsius_count(trip) {
         GuardRestoreAutomatic { cause: GuardTripped { role: role, temperature: t } }
       } else {

@@ -52,7 +52,7 @@ import gunbc.machine_intake.megarac_fan_thermal_guard {
 // that wiring reds witness_megarac_guard_reads_the_fleet_policy).
 
 fn held_policy() -> FleetFanPolicy {
-  FleetFanPolicy { control: HeldAtDutyFloor { floor: percent(20) }, guard: fleet_fan_policy.guard, unreadable_sensor_trips: true }
+  FleetFanPolicy { control: HeldAtDutyFloor { floor: percent(20) }, guard: fleet_fan_policy.guard }
 }
 
 fn is_restore(v: FleetFanGuardVerdict) -> Bool {
@@ -85,7 +85,7 @@ fn reading_trips(role: ThermalGuardRole, c: Int) -> Bool {
 
 // THE FLEET REST POSTURE IS FIRMWARE AUTOMATIC.
 test fn witness_fleet_policy_rests_in_automatic() -> Bool {
-  is_automatic(fleet_fan_policy.control) && fleet_fan_policy.unreadable_sensor_trips
+  is_automatic(fleet_fan_policy.control)
 }
 
 // TRIP IS AT-OR-ABOVE, PER ROLE. The oracle is the datasheet (100C continuous junction, Ampere) less
@@ -97,12 +97,12 @@ test fn witness_guard_trips_at_boundary_per_role() -> Bool {
     && reading_trips(role: ChassisOutlet, c: 70) && !reading_trips(role: ChassisOutlet, c: 69)
 }
 
-// AN UNREADABLE SENSOR TRIPS (fail-closed) - and only because the policy says so, which the second
-// half proves by flipping it.
+// AN UNREADABLE SENSOR ALWAYS TRIPS TOWARD AUTOMATIC: no FleetFanPolicy value describes otherwise, so
+// the held policy (the one that would otherwise keep manual duty) is the discriminating subject.
 test fn witness_unreadable_sensor_trips_toward_automatic() -> Bool {
-  let off = FleetFanPolicy { control: fleet_fan_policy.control, guard: fleet_fan_policy.guard, unreadable_sensor_trips: false }
-  is_restore(fleet_fan_guard_reading(policy: fleet_fan_policy, role: SocJunction, component_ceiling: ceiling_of(role: SocJunction), reading: Absent))
-    && !is_restore(fleet_fan_guard_reading(policy: off, role: SocJunction, component_ceiling: ceiling_of(role: SocJunction), reading: Absent))
+  let held = held_policy()
+  is_restore(fleet_fan_guard_reading(policy: held, role: SocJunction, component_ceiling: ceiling_of(role: SocJunction), reading: Absent))
+    && is_automatic(fleet_fan_control_after(policy: held, verdict: fleet_fan_guard_reading(policy: held, role: SocJunction, component_ceiling: ceiling_of(role: SocJunction), reading: Absent)))
 }
 
 // EVERY RESTORE LEAVES AUTOMATIC, WHATEVER THE POLICY WAS HOLDING; HOLDS KEEPS THE POLICY'S POSTURE.
