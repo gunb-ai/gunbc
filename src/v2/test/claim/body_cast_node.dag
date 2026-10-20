@@ -1,5 +1,7 @@
 module v2.test.claim.body_cast_node
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, application_binding_plan, declared_signature }
 import v2.compiler.resolve { ResolvedTree }

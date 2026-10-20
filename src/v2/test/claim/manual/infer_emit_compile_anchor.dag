@@ -1,5 +1,7 @@
 module v2.test.claim.manual.infer_emit_compile_anchor
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 
 
 data anchor_stub_empty_conj: Node = Node {

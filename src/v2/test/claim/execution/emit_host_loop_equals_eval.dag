@@ -1,5 +1,7 @@
 module v2.test.claim.execution.emit_host_loop_equals_eval
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List, Map }
 import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
   table_fixture_loop_arrow_with_body,

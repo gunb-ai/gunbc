@@ -1,5 +1,7 @@
 module v2.test.claim.body_let_annotation
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty, fold_list, length, list_snoc_item, skip, list_at_optional }

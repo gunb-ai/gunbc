@@ -1,5 +1,7 @@
 module v2.test.claim.execution.emit_host_complement_equals_eval
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List, Map }
 import v2.std.node_query { find_core_child }
 

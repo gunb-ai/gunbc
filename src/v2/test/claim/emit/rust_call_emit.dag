@@ -1,5 +1,7 @@
 module v2.test.claim.emit.rust_call_emit
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Optional, Present, Absent }
 import v2.std.arrow_signature { DeclaredSignatureEdges, declared_signature }

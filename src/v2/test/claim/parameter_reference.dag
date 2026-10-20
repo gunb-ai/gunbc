@@ -1,5 +1,7 @@
 module v2.test.claim.parameter_reference
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.algebra { empty_map, map_insert, Cons, Empty, FreeMonoid, PartialFunction, list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
 import std.occurrence_identity { LexicalValueOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }

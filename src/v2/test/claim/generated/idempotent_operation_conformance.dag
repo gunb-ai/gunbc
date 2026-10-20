@@ -1,5 +1,7 @@
 module v2.test.claim.generated.idempotent_operation_conformance
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List, Map }
 import v2.compiler.eval {
   EvalContext,

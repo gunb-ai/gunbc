@@ -1,5 +1,7 @@
 module v2.test.claim.manual.branch_lazy_arm_eval_acceptance
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List, Map }
 import v2.std.arrow_signature { declared_signature }
 import std.occurrence_identity { OccurrenceSynthetic }
