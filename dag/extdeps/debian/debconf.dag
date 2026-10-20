@@ -54,7 +54,8 @@ data debconf_release_observed: NonEmptyStr = "1.5.86ubuntu1 (Ubuntu 24.04 noble,
 // `my @knowntypes = qw(select boolean string multiselect note password text title);` goes to load_answer, and
 // `my @knownflags = qw(seen);` goes to set_flag (lines 77-78, dispatched at 136-144). A line whose type is in
 // neither list is DROPPED with a warning (ok_format, 86-88: `warning "Unknown type $type, skipping line $.")`, so
-// an answer whose type is outside these eleven words is not a strict-but-valid answer: upstream refuses to install
+// an answer whose type is outside these nine words (eight answer kinds, one flag — the two closed unions below)
+// is not a strict-but-valid answer: upstream refuses to install
 // it, the installer never asks the question, and on a headless board the package asks it at a console nobody is
 // standing at. Modelling the field as a String would let that state be written and only a scan could notice.
 //
@@ -177,6 +178,14 @@ type DebconfSelectionRefusalCause
   | LabelCarriesAFieldBoundary { label: NonEmptyStr }
   | ValueEndsTheLine { value: NonEmptyStr }
   | ValueSelectsNothing { value: NonEmptyStr }
+  // A TRAILING BACKSLASH IS THE OTHER WAY ONE RECORD BECOMES TWO. Upstream's own parser joins a line ending in
+  // the continuation character to the NEXT line before matching, so a value ending in it makes the shipped text
+  // mean more than the single record the list shows — the sibling of the embedded newline, refused here with its
+  // own cause because the reader must be able to tell "fix your value" from "fix your value AND the line below
+  // it", which one collapsed Bool could not (review: merry-fox-82, HOLD section 6). The refusal checks the value
+  // ONLY, never the key fields: upstream's reader joins a continuation at end of the WHOLE line, so a backslash
+  // mid-value is content (.*) happily takes it, and a trailing one is the only shape that changes meaning.
+  | ValueCarriesTheContinuationCharacter { value: NonEmptyStr }
 
 // THE MINT'S RESULT: a sealed record, or the typed reason this one could not be sealed. Two arms, exhaustive, no
 // Optional — the presence and the cause of its absence are decided by the same examination and must travel
@@ -213,21 +222,26 @@ fn debconf_selection_record(
       match key_field_is_well_formed(text: label as String) {
         False => RefusedAtTheMint { cause: LabelCarriesAFieldBoundary { label: label } }
         True =>
-          // THE TWO VALUE FACTS ARE EXAMINED APART, not through one collapsed Bool, because the refusal names
-          // which one failed: a newline splits the record (a second record smuggled into one) while a run of
-          // separators answers nothing, and a caller given only "no" could tell them apart only by re-running
+          // THE THREE VALUE FACTS ARE EXAMINED APART, not through one collapsed Bool, because the refusal names
+          // which one failed: a newline splits the record (a second record smuggled into one), a trailing
+          // backslash joins it to the line BELOW (a second record smuggled from outside), and a run of
+          // separators answers nothing — a caller given only "no" could tell them apart only by re-running
           // these checks itself.
           match value_ends_the_line(text: value as String) {
             True => RefusedAtTheMint { cause: ValueEndsTheLine { value: value } }
             False =>
-              match value_has_a_character_that_is_not_a_separator(text: value as String) {
-                False => RefusedAtTheMint { cause: ValueSelectsNothing { value: value } }
-                True => MintedSelection { record: DebconfSelectionRecord {
-                  owner: owner,
-                  label: label,
-                  kind: kind,
-                  value: value,
-                } }
+              match ends_with(s: value as String, suffix: "\\") {
+                True => RefusedAtTheMint { cause: ValueCarriesTheContinuationCharacter { value: value } }
+                False =>
+                  match value_has_a_character_that_is_not_a_separator(text: value as String) {
+                    False => RefusedAtTheMint { cause: ValueSelectsNothing { value: value } }
+                    True => MintedSelection { record: DebconfSelectionRecord {
+                      owner: owner,
+                      label: label,
+                      kind: kind,
+                      value: value,
+                    } }
+                  }
               }
           }
       }

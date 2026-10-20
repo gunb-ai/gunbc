@@ -34,6 +34,7 @@ import extdeps.debian.debconf {
   LabelCarriesAFieldBoundary,
   ValueEndsTheLine,
   ValueSelectsNothing,
+  ValueCarriesTheContinuationCharacter,
   debconf_answer_record,
   debconf_flag_record,
   debconf_flag_spelling,
@@ -135,8 +136,8 @@ import gunbc.provisioning.altra_autoinstall_seed {
   BmcSolConsoleUnlocked,
   BoundConfigurationMatchesSeed,
   BoundConfigurationDiffersFromSeed,
-  BootedADifferentSeed,
-  BootedThisSeed,
+  BootDoesNotStandForTheSeed,
+  BootStandsForTheSeed,
   BootNotObserved,
   BindingIsForeign,
   DocumentBuilt,
@@ -1633,8 +1634,8 @@ test fn a_binding_for_another_unit_or_attempt_is_foreign() -> Bool {
   match built_seed_and_binding() {
     Present { value: pair } =>
       match check_binding_against_seed( binding: pair.binding, seed: pair.seed, unit_key: unit_b_key, attempt: attempt_one, ) {
-        // THE ARM IS NAMED, NOT WILDCARDED. Accepting "anything but BootedThisSeed" would also accept a
-        // missing-arm defect that routed a foreign binding to BootedADifferentSeed -- the two verdicts have
+        // THE ARM IS NAMED, NOT WILDCARDED. Accepting "anything but BootStandsForTheSeed" would also accept a
+        // missing-arm defect that routed a foreign binding to BootDoesNotStandForTheSeed -- the two verdicts have
         // opposite remedies (wrong machine vs same machine, stale seed), so only the foreign verdict proves
         // the identity check ran.
         BindingIsForeign =>
@@ -4301,8 +4302,8 @@ test fn a_handle_with_no_read_builds_but_never_renders_and_never_binds() -> Bool
 // THE BOOT STANDING COMES FROM AN OBSERVATION OR FROM NOTHING AT ALL (review: merry-fox-82, HOLD section 1).
 // Three arms, each reached through the public recording fn:
 //  * no observation            -> BootNotObserved  (the honest default; nobody may infer a boot from a binding)
-//  * observation of OUR bytes   -> BootedThisSeed   (the only place that arm is constructible)
-//  * observation of OTHER bytes -> BootedADifferentSeed
+//  * observation of OUR bytes   -> BootStandsForTheSeed   (the only place that arm is constructible)
+//  * observation of OTHER bytes -> BootDoesNotStandForTheSeed
 // The digest compare lives in the module, not in this file, so the arms cannot be conjured here.
 test fn the_boot_standing_is_answered_only_by_an_observation_joined_to_the_served_bytes() -> Bool {
   match built_seed_and_binding() {
@@ -4324,7 +4325,7 @@ test fn the_boot_standing_is_answered_only_by_an_observation_joined_to_the_serve
                   ),
                 },
               ) {
-                BootedThisSeed =>
+                BootStandsForTheSeed =>
                   // (3) THE BOARD FETCHED SOMETHING ELSE. The same recording path, different bytes.
                   match boot_standing(
                     binding: pair.binding,
@@ -4335,7 +4336,7 @@ test fn the_boot_standing_is_answered_only_by_an_observation_joined_to_the_serve
                       ),
                     },
                   ) {
-                    BootedADifferentSeed => true
+                    BootDoesNotStandForTheSeed => true
                     _ => false
                   }
                 _ => false
@@ -4817,21 +4818,25 @@ test fn the_mint_refuses_the_fields_that_could_not_survive_the_trip() -> Bool {
                               LabelCarriesAFieldBoundary { label: _ } => false
                               OwnerCarriesAFieldBoundary { owner: _ } => false
                               ValueEndsTheLine { value: _ } => false
+                              ValueCarriesTheContinuationCharacter { value: _ } => false
                             }
                           }
                         ValueSelectsNothing { value: _ } => false
                         OwnerCarriesAFieldBoundary { owner: _ } => false
                         LabelCarriesAFieldBoundary { label: _ } => false
+                        ValueCarriesTheContinuationCharacter { value: _ } => false
                       }
                   }
               OwnerCarriesAFieldBoundary { owner: _ } => false
               ValueEndsTheLine { value: _ } => false
               ValueSelectsNothing { value: _ } => false
+              ValueCarriesTheContinuationCharacter { value: _ } => false
             }
           }
       LabelCarriesAFieldBoundary { label: _ } => false
       ValueEndsTheLine { value: _ } => false
       ValueSelectsNothing { value: _ } => false
+      ValueCarriesTheContinuationCharacter { value: _ } => false
     }
   }
 }
@@ -4891,16 +4896,19 @@ test fn a_tab_in_a_key_field_a_newline_in_a_key_field_and_a_one_character_value_
                   ValueEndsTheLine { value: _ } => false
                   OwnerCarriesAFieldBoundary { owner: _ } => false
                   LabelCarriesAFieldBoundary { label: _ } => false
+                  ValueCarriesTheContinuationCharacter { value: _ } => false
                 }
             }
             OwnerCarriesAFieldBoundary { owner: _ } => false
             ValueEndsTheLine { value: _ } => false
             ValueSelectsNothing { value: _ } => false
+            ValueCarriesTheContinuationCharacter { value: _ } => false
           }
         }
       ValueEndsTheLine { value: _ } => false
       ValueSelectsNothing { value: _ } => false
       LabelCarriesAFieldBoundary { label: _ } => false
+      ValueCarriesTheContinuationCharacter { value: _ } => false
     }
   }
 }

@@ -1073,28 +1073,66 @@ type ConsoleEntryAuthorisation =
 
 type ConsoleEntryUnlockReason = SerialConsoleGettyUnlocked | BmcSolConsoleUnlocked
 
+// EVERY KEY IS VALIDATED HERE, ON THE PRODUCTION ADMISSION ROUTE (review: merry-fox-82, HOLD section 3;
+// this was item A of the previous HOLD, which this mint did not yet satisfy). The validation must live in
+// THIS function and nowhere else, and the reason is the word "authorised": this mint is what turns a
+// caller's `List<SshPublicKey>` into the fact "the board's owner authorised these keys". A check placed in a
+// helper that a caller could also skip turns only the callers who remembered to call it into that fact —
+// which is why the earlier revision's claim that keys "are validated through ssh_ed25519_key_identity" was
+// false: nothing on the route from build_altra_autoinstall_seed to the seed ever called it. Each key must
+// satisfy BOTH facts before the list is credited as an authorisation, and each fact is refused as itself:
+//   - the declared algorithm must be Ed25519 — the fleet's declared key type, per keys.dag's Rsa posture row
+//     (ssh-rsa signatures deprecated by RFC 8332) — and
+//   - the material must parse to an ssh_ed25519_key_identity (RFC 8709 §4): canonical base64, exact 19-octet
+//     header, exactly 32 key octets, nothing after. A blob that fails parses as NO identity, so there is
+//     nothing to authorise — the absence IS the refusal, never a string that might be a key.
+// An RSA or ECDSA blob is well-formed material under ITS algorithm and is still refused here: the arms of
+// SshKeyAlgorithm are the claim being checked, not decoration beside it. A list containing ONE malformed key
+// is refused whole — an authorisation that silently drops a key is a board whose owner believes they are
+// authorised and is not. FUTURE REQUIREMENT: admitting another algorithm adds an arm to the admitted match
+// below with its own posture row; it does not become a fall-through.
+fn keys_are_the_admitted_authorisation(keys: List<SshPublicKey>) -> Bool {
+  match keys {
+    Empty => true
+    Cons { head: key, tail: rest } =>
+      match key.algorithm {
+        Ed25519 =>
+          match ssh_ed25519_key_identity(material: key.material) {
+            Absent => false
+            Present { value: _ } => keys_are_the_admitted_authorisation(keys: rest)
+          }
+        Rsa => false
+        EcdsaP256 => false
+      }
+  }
+}
+
 fn admit_admin_access_authorisation(
   authorised_keys: List<SshPublicKey>,
   console_entry: ConsoleEntryAuthorisation,
 ) -> Optional<AdminAccessAuthorisation> {
-  match list_length(items: authorised_keys) == 0 {
+  match keys_are_the_admitted_authorisation(keys: authorised_keys) {
+    False => Absent
     True =>
-      match console_entry {
-        ConsoleEntryUnlocked { reason: _ } =>
+      match list_length(items: authorised_keys) == 0 {
+        True =>
+          match console_entry {
+            ConsoleEntryUnlocked { reason: _ } =>
+              Present {
+                value: AdminAccessAuthorisation {
+                  authorised_keys: authorised_keys,
+                  console_entry: console_entry,
+                },
+              }
+            ConsoleEntryLocked => Absent
+          }
+        False =>
           Present {
             value: AdminAccessAuthorisation {
               authorised_keys: authorised_keys,
               console_entry: console_entry,
             },
           }
-        ConsoleEntryLocked => Absent
-      }
-    False =>
-      Present {
-        value: AdminAccessAuthorisation {
-          authorised_keys: authorised_keys,
-          console_entry: console_entry,
-        },
       }
   }
 }
@@ -3635,18 +3673,26 @@ fn record_seed_boot_observation(
   }
 }
 
-// THE STANDING, JOINED. `BootedThisSeed` is now reachable from exactly one place: an observation whose digest
+// THE STANDING, JOINED. `BootStandsForTheSeed` is now reachable from exactly one place: an observation whose digest
 // equals the digest of the document THIS binding was built to serve. With no observation the answer is
 // BootNotObserved — a first-class outcome, not an error and not a sentinel — which is what every attempt looks
 // like until somebody fetches what the board fetched.
+//
+// THE ARMS COMPARE RECORDS AND MAKE NO PAST-TENSE CLAIM (review: merry-fox-82, HOLD section 4). The arms used to
+// be spelled BootedThisSeed / BootedADifferentSeed, and that spelling was a lie this function had no way to keep:
+// its only input is an observation record whose digest this module recomputed — it never contacted a board, a
+// TFTP server, or a console, so it cannot know a boot HAPPENED. What it can know is narrower and worth saying
+// precisely: the bytes somebody recorded as served are the bytes this binding promised. The event itself is the
+// serving route's claim to make, when a delivery seam (which this module must not name) reports one; the two
+// claims joined are the boot evidence, and this type is only half of it.
 //
 // WHY THE COMPARISON IS AGAINST THE DOCUMENT DIGEST AND NOT THE CONFIGURATION DIGEST: the board was handed
 // bytes. Two configurations can render to the same document and one configuration can render differently
 // across writer versions, so only the document is what the boot can be matched against. The configuration
 // digest stays on the binding, where it answers "which configuration did we intend".
 type BootStanding
-  = BootedThisSeed
-  | BootedADifferentSeed
+  = BootStandsForTheSeed
+  | BootDoesNotStandForTheSeed
   // UNOBSERVED IS AN OUTCOME. No fetch, no standing — and the caller has to carry that forward rather than
   // defaulting to the flattering arm. A future requirement to distinguish "nobody looked" from "looked and the
   // document was not there" adds an arm with its own evidence, not a note field here.
@@ -3663,8 +3709,8 @@ fn boot_standing(
         left: binding.document_digest,
         right: seen.observed_document_digest,
       ) {
-        True => BootedThisSeed
-        False => BootedADifferentSeed
+        True => BootStandsForTheSeed
+        False => BootDoesNotStandForTheSeed
       }
   }
 }
@@ -3683,7 +3729,7 @@ fn boot_standing(
 // the same one.
 fn binding_digest(binding: AltraAutoinstallSeedBinding) -> Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "gunbc.provisioning.altra_autoinstall_seed.binding/1",
+    tag: "gunbc.provisioning.altra_autoinstall_seed.binding/2",
     payload: content_hash_combine_structural(
       left: content_hash_combine_structural(
         left: content_hash_atom(value: to_string(binding.unit_key) as NonEmptyStr),
@@ -3691,8 +3737,20 @@ fn binding_digest(binding: AltraAutoinstallSeedBinding) -> Fnv1a64Structural {
       ),
       right: content_hash_combine_structural(
         left: content_hash_combine_structural(
-          left: binding.seed_digest,
-          right: content_hash_atom(value: binding.seed_rendering),
+          left: content_hash_combine_structural(
+            left: binding.seed_digest,
+            right: content_hash_atom(value: binding.seed_rendering),
+          ),
+          // THE SERVED-DOCUMENT DIGEST IS IN THE ADDRESS (review: merry-fox-82, HOLD section 5). The binding
+          // was addressable by everything EXCEPT the bytes it exists to vouch for: two bindings differing only
+          // because a renderer revision produced different served bytes shared an address — the exact
+          // distinction document_digest was added to preserve, dropped by the address that should protect it.
+          // Tagged with the hash of the Fnv1a64Structural itself, not a decimal re-spelling: a decimal is a
+          // second spelling of the same number, and two spellings of one value is what collisions eat.
+          right: content_hash_tagged_structural(
+            tag: "document",
+            payload: content_hash_atom(value: to_string(binding.document_digest) as NonEmptyStr),
+          ),
         ),
         // The disk's own tagged structural hash, not a re-derivation of its fields: BoundDisk and
         // BoundDiskUnread are different claims, and they must not be able to collide with each other or with a
