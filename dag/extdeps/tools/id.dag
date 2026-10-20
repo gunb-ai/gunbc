@@ -45,6 +45,17 @@ fn id_gid_argv() -> List<String> {
   [id_program().invocation as String, "-g"]
 }
 
+// -gn WITH NO OPERAND: the PRIMARY GROUP NAME of THE CALLING PROCESS. -n selects NAMES over numeric gids
+// and -g picks the primary group, which is the group a process may chgrp an entry to without privilege.
+// It exists because find(1)'s `%g` prints the group NAME when the account database maps the gid to one
+// and the number when it does not: a witness that groups its own tree to a token and then reads the tree
+// back must compare against the spelling the tool used for the same inode, so it asks for the name the
+// way find would print it. The no-operand rule is the one every probe in this module follows -- the
+// account database cannot tell you what a process that is already running holds.
+fn id_group_name_command() -> ArgvCommand {
+  argv_command(program: id_program(), arguments: ["-gn"])
+}
+
 // -nG NAMES THE USER EXPLICITLY, AND THAT IS THE WHOLE REASON THIS BUILDER TAKES ONE. id(1) with an
 // operand answers from the account database; id(1) with no operand answers from the CALLING
 // PROCESS's own credentials, which were established at its exec and never change afterwards. A

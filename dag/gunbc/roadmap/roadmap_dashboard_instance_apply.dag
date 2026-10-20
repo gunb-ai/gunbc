@@ -28,6 +28,10 @@ import extdeps.tools.chmod { chmod_binary_path }
 import extdeps.tools.findutils { find_subtree_mode_readback_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.access.posix { file_mode_of_octal_text }
+// THE GROUP ROW, FOR THE TWO PRODUCTION BINDINGS IN THIS MODULE: the operation the plan builds, and the
+// readback refusal that checks it. Both compare the tree's group against the SAME declaration the grant
+// argv were built with -- two spellings of a group name is how a migration and its own proof could
+// disagree while both stayed green.
 import extdeps.ssh.session { shape_scp_copy_to_argv }
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
@@ -328,9 +332,19 @@ fn dashboard_git_shared_repository_posture_readback_refusal(
 // matched nothing proves nothing about an existing tree, which is precisely the failure mode this
 // follow-up exists to kill (recurring failure mode
 // directory_ownership_assertion_stops_at_the_top_level).
+// THE PRODUCTION-ROUTE FOLD FOR ONE SUBTREE: run the model's own walk over the subtree and decide with
+// the model's own fold. THE GROUP IS SUPPLIED BY THE CALLER, EXPLICITLY AND WITHOUT A DEFAULT, for the
+// same reason the migration takes one: the fold compares find's `%g` against the token the grant was
+// told, and only the caller knows which token its host resolves. The apply's refusal passes
+// fleet_posix_worker_shared_group_name, the one declaration (see
+// dashboard_git_worker_subtree_migration_readback_refusal); a witness on a machine that has no such group
+// passes the group it actually grouped to, and the dry pairing claim
+// the_production_route_names_the_declared_group_in_every_grant_command keeps the production binding
+// executed so the substituted spelling is never the only route through this code.
 fn dashboard_git_worker_subtree_is_granted(
   instance: HostDashboardInstance,
   child: NonEmptyStr,
+  group: NonEmptyStr,
 ) -> Bool {
   let read = dashboard_run_git_owned_step(
     instance: instance,
@@ -340,15 +354,28 @@ fn dashboard_git_worker_subtree_is_granted(
       depth: dashboard_git_worker_subtree_walk_depth,
     ),
   )
-  read.success && dashboard_git_subtree_readback_is_granted(child: child, receipt: read.stdout)
+  read.success && dashboard_git_subtree_readback_is_granted_under(
+    top: dashboard_git_worker_subtree_granted_directory_mode(child: child),
+    group: group,
+    files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: child),
+    receipt: read.stdout,
+  )
 }
 
 fn dashboard_git_worker_subtree_migration_readback_refusal(
   instance: HostDashboardInstance,
+  group: NonEmptyStr,
 ) -> String {
   let missing = filter(
     dashboard_git_worker_directory_children,
-    child => !dashboard_git_worker_subtree_is_granted(instance: instance, child: child),
+    child => !dashboard_git_worker_subtree_is_granted(
+      instance: instance,
+      child: child,
+      // THE TOKEN THE MIGRATION'S chgrp WAS TOLD, handed down from the op. This refusal is what the apply
+      // returns when the grant did not land, so it must check exactly the group the grant set -- not a
+      // second, independent reading of the declared row, which could drift from the one the command used.
+      group: group,
+    ),
   )
   if is_empty(missing) {
     ""
@@ -356,8 +383,9 @@ fn dashboard_git_worker_subtree_migration_readback_refusal(
     join([
       "the subtree re-group did not take for ",
       join(missing, ", "),
-      " -- the readback walk came back empty, unreadable, or holding a mode outside the granted set,",
-      " so the receipt refuses rather than claiming a grant it did not see",
+      " -- the readback walk came back empty, unreadable, holding a line whose group is not the shared",
+      " attempt group, or holding a mode outside the granted set, so the receipt refuses rather than",
+      " claiming a grant it did not see",
     ], "")
   }
 }
@@ -852,8 +880,15 @@ fn dashboard_apply_provision_op(
     // and why the confined children are excluded); the readback then walks the SAME subtrees and applies
     // the model's OWN grantedness figure to what find printed, refusing on an empty or unreadable
     // receipt rather than accepting a grant it did not observe.
-    DashboardMigrateGitWorkerSubtree { repo: _ } => {
-      let migration_steps = dashboard_instance_worker_git_subtree_migration(instance: instance)
+    DashboardMigrateGitWorkerSubtree { repo: _, group: group } => {
+      // THE TOKEN THE CALLER CARRIES, USED BY BOTH HALVES OF THIS ARM: the argv that grant, and the fold
+      // that reads the grant back, get the SAME value from the operation -- not two reads of a row that
+      // could be edited independently. Production reaches here through the plan site, which binds
+      // fleet_posix_worker_shared_group_name; the wet witness binds a token its host resolves.
+      let migration_steps = dashboard_instance_worker_git_subtree_migration(
+        instance: instance,
+        group: group,
+      )
       if !dashboard_git_owned_steps_are_runnable(commands: migration_steps) {
         dashboard_exec_refused(detail: "the git worker subtree migration has a step with no argv to run")
       } else {
@@ -867,7 +902,10 @@ fn dashboard_apply_provision_op(
       if !migrated.success {
         migrated
       } else {
-        let subtree_detail = dashboard_git_worker_subtree_migration_readback_refusal(instance: instance)
+        let subtree_detail = dashboard_git_worker_subtree_migration_readback_refusal(
+          instance: instance,
+          group: group,
+        )
         if subtree_detail == "" {
           dashboard_exec_ok(stdout: "git worker subtree re-group read back for objects/, refs/ and logs/")
         } else {

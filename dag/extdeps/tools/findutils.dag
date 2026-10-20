@@ -327,13 +327,37 @@ fn find_subtree_type_directory_action(words: List<String>) -> List<String> {
   )
 }
 
-// Group-writable on everything the walk reaches, and setgid on DIRECTORIES ONLY. The `-type d` guard on
-// the second action is the whole point: setgid on a file is a privilege shape (and RestrictSUIDSGID
-// would refuse it anyway), while setgid on a directory is what makes a fan-out directory git creates
-// later inherit the group rather than the creating process's primary group. BOTH actions and their
-// guards are inside the walk's right operand, and the `(` that opens `-type d` is CLOSED: an action
-// list that opens a group and never closes it makes find refuse the whole expression.
-fn find_subtree_group_writable_command(target: String, pruned: List<String>, sticky: Bool, depth: Nat) -> ArgvCommand {
+// THE SUBTREE GRANT: the attempt group writes the DIRECTORIES the walk reaches (so git can create the
+// next entry), setgid on those directories (so an entry created later inherits the group), and the
+// sticky bit where the caller says so. WHETHER FILES THEMSELVES GET `g+w` is the caller's decision,
+// carried by `files_group_writable`, and it is a real decision rather than a knob:
+//
+//   DERIVED, NOT ASSUMED (measured on git 2.47.3, 2026-10-19, four real linked-worktree commits). Git
+//   WRITES EVERYTHING EXCEPT A REFLOG BY CREATE-THEN-RENAME: a loose object is written to a temp and
+//   renamed in, a ref is written to `<name>.lock` and renamed over, the worktree entry's index and HEAD
+//   likewise. A rename is a write to the PARENT DIRECTORY, not to the file -- so a pre-existing object
+//   or ref at git's own 0444 does not stop any of it, and those commits succeeded with every object and
+//   ref file at 0444. A REFLOG is the one path git OPENS IN APPEND MODE: with the existing
+//   `logs/refs/heads/<branch>` at 0444 the commit dies with "unable to append ... Permission denied".
+//   So `g+w` belongs on files EXACTLY where the subtree holds a reflog (the caller names it) and nowhere
+//   else. Granting it everywhere is not merely wider than needed: it makes a base object OWNED BY THE
+//   SERVE ACCOUNT group-writable, and any attempt could then rewrite a shared object IN PLACE -- an
+//   object is content-addressed, so a scribbled-on one is corruption for every later attempt, not just
+//   the attacker's. `false` puts `g+w` behind the same `-type d` guard as the other two actions.
+//
+// The `-type d` guard on the setgid action is the other whole point: setgid on a file is a privilege
+// shape (and RestrictSUIDSGID would refuse it anyway), while setgid on a directory is what makes a
+// fan-out directory git creates later inherit the group rather than the creating process's primary
+// group. The actions and their guards are inside the walk's right operand, and every `(` that opens a
+// `-type d` is CLOSED: an action list that opens a group and never closes it makes find refuse the whole
+// expression.
+fn find_subtree_group_writable_command(
+  target: String,
+  pruned: List<String>,
+  sticky: Bool,
+  files_group_writable: Bool,
+  depth: Nat,
+) -> ArgvCommand {
   argv_command(
     program: find_program(),
     arguments: concat(
@@ -348,9 +372,19 @@ fn find_subtree_group_writable_command(target: String, pruned: List<String>, sti
         // plausible, and never run. §5's fabricated output, wearing an argv.
         flatten_actions(
           actions: [
-            find_subtree_exec_action(
-              words: chmod_mode_words(mode: chmod_group_writable_mode)
-            ),
+            // THE g+w ITSELF, guarded exactly as far as the caller's DERIVED decision reaches: over
+            // everything (directories and reflogs alike) when files may be written in place, and behind
+            // `-type d` when they may not -- so a subtree that holds no reflog gets directories-only,
+            // which is what the write-set actually needs.
+            if files_group_writable {
+              find_subtree_exec_action(
+                words: chmod_mode_words(mode: chmod_group_writable_mode)
+              )
+            } else {
+              find_subtree_type_directory_action(
+                words: chmod_mode_words(mode: chmod_group_writable_mode)
+              )
+            },
             find_subtree_type_directory_action(
               words: chmod_mode_words(mode: chmod_directory_setgid_mode)
             ),
@@ -391,14 +425,24 @@ fn find_subtree_group_writable_command(target: String, pruned: List<String>, sti
 // outside the two the model names is NOT quietly read as a third thing: the reader refuses it, because a
 // symlink, a socket or a device inside a git object store is not a granted entry, and counting it as one
 // would be a verdict over a tree the walk never classified.
+// THE GROUP, PRINTED AS ITS OWN FACT BECAUSE THE MODE CANNOT CARRY IT AND A SILENTLY-FAILED chgrp CANNOT
+// BE INFERRED FROM ANYTHING ELSE IN THE LINE: %m says the group may write, %g says WHICH GROUP. A receipt
+// without it can prove the mode half of a grant and go green over a tree whose chgrp never took effect --
+// and the grant whose whole purpose is the re-group is exactly the grant a gate is about to trust. find
+// prints the numeric gid when no name maps to it, which is what a test that groups to its own gid needs.
 data find_printf_type_field: NonEmptyStr = "%y"
 data find_printf_mode_field: NonEmptyStr = "%m"
+data find_printf_group_field: NonEmptyStr = "%g"
 data find_printf_relative_path_field: NonEmptyStr = "%P"
 data find_printf_type_directory_letter: NonEmptyStr = "d"
 data find_printf_type_regular_file_letter: NonEmptyStr = "f"
 
-// THE RECEIPT for one subtree: one line per entry, `<type-letter> <mode-in-octal> <path>`, with nothing
-// read but metadata -- find stat's every entry anyway, so both facts come from the inode it already has.
+// THE RECEIPT for one subtree: one line per entry, `<type-letter> <mode-in-octal> <group> <path>`, with
+// nothing read but metadata -- find stat's every entry anyway, so all three facts come from the inode it
+// already has. THE GROUP IS PRINTED ALONGSIDE THE MODE because a grant has two halves and a receipt that
+// shows one cannot certify the other: a chgrp that failed while its chmod succeeded -- or a tree somebody
+// chmod-ed by hand -- reads back GRANTED to a fold that never saw a group. find prints the numeric gid
+// when no name maps to it, so a caller that grouped by number can compare what it grouped by.
 // THE TYPE IS PRINTED BECAUSE THE MODE CANNOT BE ASKED TO CARRY IT: a regular file may be setgid, and
 // setgid sets the owner-execute leg of the special digit, so a decision that infers "directory" from an
 // executable owner bit waves a setgid FILE through as a directory -- while this PR's own migration
@@ -421,6 +465,8 @@ fn find_subtree_mode_readback_command(target: String, pruned: List<String>, dept
             find_printf_type_field as String,
             " ",
             find_printf_mode_field as String,
+            " ",
+            find_printf_group_field as String,
             " ",
             find_printf_relative_path_field as String,
             "\\n",

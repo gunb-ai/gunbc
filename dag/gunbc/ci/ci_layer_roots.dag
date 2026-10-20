@@ -1207,6 +1207,18 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_argv_execution_reason,
     dissolution: excl_local_repo_wet_argv_execution_dissolve},
+  // THE SIBLING: THE APPLY'S TWO GIT STEPS AND THE SPAWN'S ENTRY GRANT, RUN. Same route and the same
+  // reason -- but this one earns its exclusion on the operations it EXECUTES rather than the argv it
+  // builds: dashboard_apply_provision_op's posture and migration arms go through their production
+  // transport, belt_worker_git_entry_grant_readback is called as the spawn calls it, and the tree is
+  // graded afterwards by git and by find. It cannot join the hermetic corpus because those arms are real
+  // processes over a throwaway repository, and its row must not be deleted while the dry fold over the
+  // model's rows is the only other thing standing between a broken grant and a green build.
+  WitnessExclusionRow {
+    pattern: "worker_git_subtree_apply_spawn_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_argv_execution_reason,
+    dissolution: excl_local_repo_wet_argv_execution_dissolve},
   WitnessExclusionRow {
     pattern: "roadmap_dogfood_route_wet_witness.dag",
     classification: LocalRepoWetLane,

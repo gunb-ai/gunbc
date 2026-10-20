@@ -2,6 +2,16 @@ module test.claim.roadmap.worker_dedicated_account_witness
 
 import std.types { Bool, NonEmptyStr, List, String, Int, FilePath }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
+// THE WALK'S OWN PROGRAM IDENTITY, for the pairing claim's leg that requires every grant argv to BE a
+// find walk. Read from the tool module rather than spelled "find" here, so the claim cannot agree with a
+// model that had quietly started running a different program.
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.findutils { find_program }
+// THE TWO ACTION WORDS, so the pairing claim can tell a re-group walk from a mode walk by WHAT IT RUNS
+// rather than by its position in a list -- a model that swapped the two families would keep its count and
+// still be refused here.
+import extdeps.tools.chown { chgrp_path_resolved_program }
+import extdeps.tools.chmod { chmod_path_resolved_program }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.measure { kibibyte }
@@ -423,6 +433,25 @@ test fn the_lab_worker_commit_write_set_is_fully_granted_and_nothing_in_the_git_
     ))
 }
 
+// ONE RECEIPT LINE, BUILT THE WAY find_subtree_mode_readback_command PRINTS IT: `<letter> <mode> <group>
+// <path>`. Every receipt this claim writes goes through here so the GROUP LEG CANNOT BE FORGOTTEN in one
+// of them -- a receipt that omitted the group would be a line the parser refuses, and a claim that
+// quietly built three-field lines would be testing a format no tool emits. `group` is a parameter
+// precisely so the refusals below can put a DIFFERENT group in the field the grant checks.
+fn readback_line(kind: String, mode: String, group: String, path: String) -> String {
+  join([kind, " ", mode, " ", group, " ", path], "")
+}
+
+// THE RECEIPT'S OWN GROUP, spelled once: the name the production migration groups to. A receipt carrying
+// it is the granted state; a receipt carrying anything else is the refusal, and the fold decides by
+// comparing this string to what find printed for the inode.
+fn readback_granted_group() -> String = (fleet_posix_worker_shared_group_name as String)
+
+// THE FOREIGN GROUP FOR THE REFUSALS: briansrls, the owner-group the host reading recorded on the lab
+// tree (briansrls:briansrls 0775) -- the state this slice exists to repair, used here as the thing the
+// fold must refuse.
+data readback_foreign_group: NonEmptyStr = "briansrls"
+
 // THE READBACK FOLD, OVER A RECEIPT THE CLAIM WRITES. THE WITNESS RUNS THE WALK ON A REAL TREE; this is
 // where the DECISION is tested, against receipts the claim composes, because this fold is what the apply
 // and the spawn refuse on -- and a fold tested only by execution is tested by whatever the host happened
@@ -440,8 +469,50 @@ test fn the_lab_worker_commit_write_set_is_fully_granted_and_nothing_in_the_git_
 fn readback_grants_the_declared_state(child: NonEmptyStr, top: String) -> Bool {
   dashboard_git_subtree_readback_is_granted(
     child: child,
-    receipt: join([join(["d ", top], ""), "d 2775 f9", "f 664 f9/obj"], "\n"),
+    group: fleet_posix_worker_shared_group_name,
+    receipt: join([
+      readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
+    ], "\n"),
   )
+}
+
+// THE SAME RECEIPT, ONCE PER SUBTREE, WITH THE FILE AT THE MODE GIT WRITES IT IN -- 0444, which is what a
+// loose object comes out at even under core.sharedRepository=group. THE EXPECTATION IS AN ORACLE STATED BY
+// THIS CLAIM, not a call into the model's rule: `holds_reflog` is passed in, and the claim names which
+// subtree holds one. A subtree git only ever REPLACES entries in (objects/, refs/) needs the parent
+// directory's write and nothing from the file, so a 0444 file there is granted; a subtree git OPENS ITS
+// FILES IN APPEND MODE (logs/, the branch reflogs) cannot commit against a 0444 file -- git dies with
+// "unable to append ... Permission denied" -- so 0444 must be refused there. A single "every file must be
+// group-writable" rule got BOTH wrong: it refused the first and would have accepted the second. Measured on
+// git 2.47.3, 2026-10-19, real linked-worktree commits with every object and ref file at 0444.
+fn readback_grants_a_readonly_file_only_where_git_replaces_it(
+  child: NonEmptyStr,
+  top: String,
+  holds_reflog: Bool,
+) -> Bool {
+  if holds_reflog {
+    !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+        readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+        readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "refs/heads"),
+        readback_line(kind: "f", mode: "444", group: readback_granted_group(), path: "refs/heads/main"),
+      ], "\n"),
+    )
+  } else {
+    dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+        readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+        readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+        readback_line(kind: "f", mode: "444", group: readback_granted_group(), path: "f9/obj"),
+      ], "\n"),
+    )
+  }
 }
 
 fn readback_refuses_the_ungranted_states(
@@ -461,24 +532,66 @@ fn readback_refuses_the_ungranted_states(
   //     could rename the maintenance job's pack directory out of the way).
   !dashboard_git_subtree_readback_is_granted(
     child: child,
-    receipt: join([join(["d ", top], ""), "d 2775 f9", "f 2775 f9/obj"], "\n"),
+    group: fleet_posix_worker_shared_group_name,
+    receipt: join([
+      readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "f", mode: "2775", group: readback_granted_group(), path: "f9/obj"),
+    ], "\n"),
   )
     && !dashboard_git_subtree_readback_is_granted(
       child: child,
-      receipt: join(["d 775 ", "d 2775 f9", "f 664 f9/obj"], "\n"),
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+      readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: ""),
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
+    ], "\n"),
     )
     && !dashboard_git_subtree_readback_is_granted(
       child: child,
-      receipt: join([join(["d ", top], ""), "f 666 f9/obj"], "\n"),
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+      readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+      readback_line(kind: "f", mode: "666", group: readback_granted_group(), path: "f9/obj"),
+    ], "\n"),
     )
-    && !dashboard_git_subtree_readback_is_granted(child: child, receipt: "")
     && !dashboard_git_subtree_readback_is_granted(
       child: child,
-      receipt: join([join(["d ", top], ""), "l 777 f9"], "\n"),
+      group: fleet_posix_worker_shared_group_name,
+      receipt: "",
     )
     && !dashboard_git_subtree_readback_is_granted(
       child: child,
-      receipt: join([join(["d ", foreign_top], ""), "d 2775 f9", "f 664 f9/obj"], "\n"),
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+      readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+      readback_line(kind: "l", mode: "777", group: readback_granted_group(), path: "f9"),
+    ], "\n"),
+    )
+    // (vii) THE GROUP, AND ONLY THE GROUP: every mode in this receipt is the granted shape and every
+    //       entry belongs to somebody else's group -- the host reading's briansrls:briansrls 0775 tree,
+    //       with the modes this migration would give it. A fold that reads modes and not the group calls
+    //       this granted and starts the worker unit on a tree its commits cannot write. This is also the
+    //       leg that makes the %g field load-bearing: delete the group from the printf and this claim
+    //       cannot parse, delete the group CHECK and it stops refusing.
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+        readback_line(kind: "d", mode: top, group: readback_foreign_group as String, path: ""),
+        readback_line(kind: "d", mode: "2775", group: readback_foreign_group as String, path: "f9"),
+        readback_line(kind: "f", mode: "664", group: readback_foreign_group as String, path: "f9/obj"),
+      ], "\n"),
+    )
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+      readback_line(kind: "d", mode: foreign_top, group: readback_granted_group(), path: ""),
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
+    ], "\n"),
     )
 }
 
@@ -591,7 +704,15 @@ fn objects_pruned_path(instance: HostDashboardInstance, name: String) -> String 
 
 test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  let steps = dashboard_instance_worker_git_subtree_migration(instance: lab)
+  // THE PRODUCTION TOKEN, BOUND BY THE CLAIM THE WAY PRODUCTION BINDS IT -- the same row the plan site
+  // passes (the leg (h) below reads the plan and asserts that). A claim that substituted some other group
+  // here would be testing a route nothing runs; the wet witness is the caller allowed to substitute, and
+  // the pairing claim the_production_route_names_the_declared_group_in_every_grant_command is what keeps
+  // THIS route executed.
+  let steps = dashboard_instance_worker_git_subtree_migration(
+    instance: lab,
+    group: fleet_posix_worker_shared_group_name,
+  )
   let all_args = fold(steps, init: [] as List<String>, f: (acc, c) => concat(acc, c.arguments))
   // WHICH STEPS WALK WHICH SUBTREE, split by whether the target appears in the argv at all -- so a leg
   // about objects' prunes cannot be answered by a refs or logs step that has no business carrying them,
@@ -642,6 +763,9 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
     //     a setgid regular file, which an execute-bit classifier would let through.
     && readback_grants_the_declared_state(child: objects_child, top: "3775")
     && readback_grants_the_declared_state(child: refs_child, top: "2775")
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: objects_child, top: "3775", holds_reflog: false)
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: refs_child, top: "2775", holds_reflog: false)
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: logs_child, top: "2775", holds_reflog: true)
     && readback_refuses_the_ungranted_states(
       child: objects_child, top: "3775", foreign_top: "2775",
     )
@@ -845,7 +969,22 @@ test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
       pattern: concat(concat("-maxdepth\0", to_string(dashboard_git_worker_subtree_walk_depth)), "\0")
     ))
     // (g) PROD IS UNTOUCHED: the staged arm declares no migration and no posture step at all.
-    && length(dashboard_instance_worker_git_subtree_migration(instance: srv1_live_dashboard_instance())) == 0
+    && length(
+      dashboard_instance_worker_git_subtree_migration(
+        instance: srv1_live_dashboard_instance(),
+        group: fleet_posix_worker_shared_group_name,
+      ),
+    ) == 0
+    // (h) THE TOKEN COMES FROM THE PRODUCTION PLAN, not from the claim. dashboard_instance_provision_plan
+    //     is what the apply actually builds and executes; this leg reads the group off the operation THAT
+    //     builds and requires it to be the declared row -- so the claim's own binding above cannot drift
+    //     away from what production passes, and a plan site that invented a group name turns RED here
+    //     rather than shipping a migration that re-groups to nobody.
+    && exactly_one_migration(
+      plan: dashboard_instance_provision_plan(instance: lab),
+      repo: lab.repo_root,
+      group: fleet_posix_worker_shared_group_name,
+    )
 }
 
 // THE PER-ATTEMPT ENTRY, which #14270's handoff named and this slice closes. .git/worktrees/<key> is
@@ -861,7 +1000,13 @@ test fn the_per_attempt_git_entry_is_granted_where_the_attempt_key_lives() -> Bo
   let worktree = lab_worktree(instance: lab, key: "dispatch-attempt-claim-entry")
   let entry = dispatch_attempt_private_git_dir(instance: lab, attempt_worktree: worktree)
   let dirs = dispatch_attempt_worker_git_entry_directories(instance: lab, attempt_worktree: worktree)
-  let steps = dispatch_attempt_worker_git_entry_migration(instance: lab, attempt_worktree: worktree)
+  // THE PRODUCTION TOKEN AGAIN, the value the spawn binds at dispatch_spawn_commands_for_launch; the
+  // pairing claim asserts that spawn route, so this claim is free to name the same value.
+  let steps = dispatch_attempt_worker_git_entry_migration(
+    instance: lab,
+    attempt_worktree: worktree,
+    group: fleet_posix_worker_shared_group_name,
+  )
   let parent = join([lab.repo_root as String, "/.git/", dashboard_git_worktrees_child as String], "")
   length(dirs) == 1
     && all(dirs, d => owned_path_text(t: d) == entry
@@ -1026,7 +1171,7 @@ test fn the_shared_repository_posture_runs_before_the_attempt_worktree_is_added(
     // (b2) the plan carries EXACTLY ONE op of each kind, so the position compared above is the only
     //      one and a duplicated posture cannot hide a second, later one.
     && exactly_one_posture(plan: plan, repo: lab.repo_root)
-    && exactly_one_migration(plan: plan, repo: lab.repo_root)
+    && exactly_one_migration(plan: plan, repo: lab.repo_root, group: fleet_posix_worker_shared_group_name)
     && last_is_provider_verification(plan: plan)
     // (c) the staged arm declares NO posture op at all: prod's worker is the service user and owns every
     //     byte, so git's shared-repository behaviour would be a no-op written into a production config.
@@ -1107,9 +1252,17 @@ fn exactly_one_posture(plan: List<DashboardInstanceProvisionOp>, repo: FilePath)
   })) == 1
 }
 
-fn exactly_one_migration(plan: List<DashboardInstanceProvisionOp>, repo: FilePath) -> Bool {
+// THE PLAN'S MIGRATION STEP, COUNTED BY BOTH ITS TARGET AND THE GROUP IT CARRIES. The group is part of
+// the identity being counted because it is part of the operation: an op re-grouping to some other group is
+// not this migration, and reading it off the plan here is what stops a claim from asserting a token that no
+// production caller passes (the leg is called with fleet_posix_worker_shared_group_name).
+fn exactly_one_migration(
+  plan: List<DashboardInstanceProvisionOp>,
+  repo: FilePath,
+  group: NonEmptyStr,
+) -> Bool {
   count(filter(xs: plan, predicate: op => match op {
-    DashboardMigrateGitWorkerSubtree { repo: r } => r == repo
+    DashboardMigrateGitWorkerSubtree { repo: r, group: g } => r == repo && g == group
     _ => false
   })) == 1
 }
@@ -1121,4 +1274,125 @@ fn last_is_provider_verification(plan: List<DashboardInstanceProvisionOp>) -> Bo
     DashboardVerifyProviderAuth { executable: _, state_root: _ } => true
     _ => false
   })) == 1
+}
+
+// THE GROUP IS THE PRODUCTION PLAN'S, AND THE ARGV FOLLOW IT -- THE PAIRING OBLIGATION (DESIGN 3).
+//
+// Every grant in this slice takes its GROUP AS A PARAMETER, because on a machine the test does not
+// administer `chgrp gunbc-attempt` fails closed (verified: find exits 1 on a group the host has never
+// heard) and a witness must name a group its own host resolves. Once a value is a parameter, the value a
+// CLAIM passes stops being evidence about production -- the claim could pass while the production caller
+// bound something else. This claim closes that hole for the route that has a real production mint:
+//
+//   (1) read the group off the OPERATION THAT PRODUCTION BUILDS, from dashboard_instance_provision_plan
+//       itself -- the list the apply executes;
+//   (2) feed THAT VALUE, and no literal this claim wrote, back through the builder and read the argv.
+//
+// Together they say: the group production grants with IS the declared row, and the argv built from it
+// name it -- every subtree's chgrp and every subtree's chmod, with no group name written by this claim at
+// all. If the plan site invented a token, leg (1) refuses (it compares against the one declared row); if
+// the builder stopped putting the token into the argv, leg (2) refuses; if a claim somewhere started
+// asserting a private group, leg (1) is still the production reading and stays green only while the plan
+// and the row agree.
+//
+// WHY THE PER-ATTEMPT ENTRY GRANT IS NOT ASSERTED THROUGH ITS OWN PRODUCTION CALLER HERE: that caller is
+// dispatch_spawn_commands_for_launch, which for a WorkerDedicatedAccount instance on the lab refuses a
+// snapshot-free launch before it reaches the grant -- the credential snapshot has one mint, held by a real
+// take, which is why dispatch_credential_snapshot_wet_witness is wet. So this claim asserts the entry
+// grant with the same declared row the spawn binds at its sole production call site (asserted by
+// the_per_attempt_git_entry_is_granted_where_the_attempt_key_lives, which builds the argv from the
+// declared row), and the wet witness drives the gate itself.
+test fn the_production_route_names_the_declared_group_in_every_grant_command() -> Bool {
+  // THE LAB ROW, the one this witness uses everywhere its claims need a WorkerDedicatedAccount instance.
+  // The pairing claim reads production's BINDING off the plan; it does not choose an instance shape, it
+  // asks what the plan for this instance carries.
+  let lab = srv1_lab_dashboard_instance()
+  let plan = dashboard_instance_provision_plan(instance: lab)
+  match only_migration_group(plan: plan, repo: lab.repo_root) {
+    Absent => false
+    Present { value: planned_group } =>
+      // (1) THE PLAN'S OWN BINDING IS THE DECLARED ROW, read rather than assumed.
+      planned_group == fleet_posix_worker_shared_group_name
+        // (2) THE ARGV THE PRODUCTION TOKEN PRODUCES, read as the TWO FAMILIES the migration is: one
+        //     `-exec chgrp <group>` walk per granted subtree and one `-exec chmod <modes>` walk per
+        //     granted subtree. The two halves are asserted separately because they carry DIFFERENT facts
+        //     and a single "every argv mentions the group" leg would be false of the chmod walks (they
+        //     carry MODES, and must not carry a group name -- which is asserted as its own leg below, so
+        //     the grant cannot quietly widen into setting ownership from the mode step).
+        && all(
+          dashboard_instance_worker_git_subtree_migration(instance: lab, group: planned_group),
+          //     every argv is a find walk: a grant that lost its walk, or became a bare chgrp/chmod call,
+          //     could not be the migration this model derives.
+          cmd => cmd.program.invocation == find_program().invocation,
+        )
+        && grant_group_family(
+          steps: dashboard_instance_worker_git_subtree_migration(instance: lab, group: planned_group),
+          group: planned_group,
+        )
+        && grant_mode_family(
+          steps: dashboard_instance_worker_git_subtree_migration(instance: lab, group: planned_group),
+          group: planned_group,
+        )
+        //     the count the model declares, read rather than written: two argv per granted subtree, so a
+        //     subtree silently dropped from the migration (or a third action sprayed over the tree) is red.
+        && length(
+          dashboard_instance_worker_git_subtree_migration(instance: lab, group: planned_group),
+        ) == 2 * length(dashboard_git_worker_directory_children)
+  }
+}
+
+// THE RE-GROUP HALF OF THE MIGRATION'S ARGV: every walk whose action is `chgrp`, and every one of those
+// must carry the group as a WHOLE ARGUMENT -- `any(cmd.arguments, a => a == group)` compares whole words,
+// so a PATH that happened to contain the group name, or a mode string that merely shares letters with it,
+// cannot satisfy this. The count is read from the same row the migration maps over, so a family that lost
+// a subtree is red rather than merely shorter.
+fn grant_group_family(steps: List<ArgvCommand>, group: NonEmptyStr) -> Bool {
+  let group_steps = filter(
+    steps,
+    cmd => any(cmd.arguments, a => a == (chgrp_path_resolved_program as String)),
+  )
+  length(group_steps) == length(dashboard_git_worker_directory_children)
+    && all(group_steps, cmd => any(cmd.arguments, a => a == (group as String)))
+}
+
+// THE MODE HALF: every walk whose action is `chmod`, at least as many as there are granted subtrees, and
+// THE ABSENCE THAT MATTERS -- no chmod walk names a group. The chmod step exists to set modes; if it ever
+// grew an ownership argument, ownership would be asserted in two places with two different authorities and
+// the group pairing above would no longer describe the whole grant.
+fn grant_mode_family(steps: List<ArgvCommand>, group: NonEmptyStr) -> Bool {
+  let mode_steps = filter(
+    steps,
+    cmd => any(cmd.arguments, a => a == (chmod_path_resolved_program as String)),
+  )
+  length(mode_steps) == length(dashboard_git_worker_directory_children)
+    && all(mode_steps, cmd => !any(cmd.arguments, a => a == (group as String)))
+}
+
+// THE GROUP THE PLAN CARRIES FOR THE MIGRATION STEP, or Absent unless the plan carries exactly one.
+// Absent rather than a default: a plan with zero such steps, or two that disagree, is a world this claim
+// refuses to draw a conclusion about, and "no group to compare" must never read as "granted".
+fn only_migration_group(
+  plan: List<DashboardInstanceProvisionOp>,
+  repo: FilePath,
+) -> NonEmptyStr? {
+  // STRINGS, NOT OPTIONS, WHILE COLLECTING: an option inside an option is how a "missing" and a "present
+  // but missing" start meaning the same thing. An empty string marks a row that is not the migration, and
+  // is filtered out; two rows for this repo -- identical or not -- leave TWO entries and the count leg
+  // refuses, because a plan that migrates the same repository twice is not a plan this claim can name a
+  // single group for.
+  let groups = filter(
+    map(plan, op => match op {
+      DashboardMigrateGitWorkerSubtree { repo: r, group: g } => if r == repo { g as String } else { "" }
+      _ => ""
+    }),
+    g => g != "",
+  )
+  if length(groups) == 1 {
+    match groups.first() {
+      Absent => none
+      Present { value: g } => Present { value: g as NonEmptyStr }
+    }
+  } else {
+    none
+  }
 }
