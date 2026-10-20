@@ -270,7 +270,9 @@ test fn probe_stage_subject_admitted() -> Bool {
 test fn probe_stage_featured_unit_present() -> Bool {
   match probe_featured_unit() {
     Absent => false
-    Present { value: u } => len(u) > 0
+    // NonEmptyStr is non-empty by type; the fact under test is that srv1's admitted subject
+    // carries at least one desired unit at all (production data, not witness-supplied).
+    Present { value: _ } => true
   }
 }
 
@@ -302,7 +304,8 @@ test fn probe_stage_not_blocked_at_subject_or_context_or_frame() -> Bool {
 // realization is never consulted, or an observe that short-circuits, answers zero).
 test fn probe_stage_ledger_nonempty() -> Bool {
   match probe_world() {
-    ProbeRunReturned { phase: _, legs: l } => len(l) > 0
+    // Non-emptiness in the witness's own idiom (any/all over the ledger -- no len builtin here).
+    ProbeRunReturned { phase: _, legs: l } => any(l, _ => true)
     ProbeRunEnded { cause: _ } => false
   }
 }

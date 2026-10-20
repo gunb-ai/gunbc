@@ -106,6 +106,7 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     // P4: the cap-route witness reads the sealed fleet context through this one fixture rather than
     // resealing it -- one way to seal a fleet context, one home (DESIGN section 6).
     decl_ref(module_path: "test.claim.runner.runner_slot_cap_observe_route_witness", decl_name: "cap_context"),
+    decl_ref(module_path: "test.claim.runner.runner_slot_cap_observe_probe_witness", decl_name: "probe_context"),
   ]
 {
   match fixture_attempt() {
