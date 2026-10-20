@@ -479,3 +479,23 @@ the fold and compare printed shape against structural equality. The head already
 that file's own header records a fold-level assertion that measured FAILED on the shipped seed — so a
 fold-level check there can be RED, which is what makes it usable. It is an INSTRUMENT, not a PR-2 carrier:
 parent's ruling (d) keeps PR-2's discriminators in dag/test/claim.
+
+## Fold-arm disposition rows (stern-bat-401 msg_356ca7c1: dispose each family with a minimal two-arm
+## fixture, not by reading the code). PREDICTIONS WRITTEN BEFORE DISPATCH.
+Instrument run_fold_arms_14152.sh; rows fold_arm_rows_appendix.rs appended to the head's own
+cross_coproduct_generic_locate_test.rs (so they use its verified harness); heads = strip 406dc6d43f7 and
+Acc head 97e47f8e562; rows come from the instrument ref once and are hashed.
+ - Both heads: BUILD_RC=0, INSTRUMENT_ROWS_LISTED=7 (a build failure is reported raw, never grepped).
+ - D1 one declaration / two printings: FAIL at STRIP, PASS at ACC_HEAD. That pair is the over-refusal claim.
+ - D2 one spelling / two declarations: PASS at BOTH (a widening that admits this is silently wrong).
+ - D3 no declarations at all: PASS at BOTH (bare spellings must not compare equal).
+ - D4 List vs FreeMonoid: PASS at BOTH, expected via arm 1 (carrier), independent of the widening. If it
+   REFUSES, the carrier roster is unreachable from the fold and my arm-1 attribution is false.
+ - D5 Map without declarations: REPORTED, not asserted; PREDICTED refused at BOTH heads (Map is not a
+   carrier and arm 2 needs refs), which is what makes the dominant Map family an arm-2 story.
+ - D6 Map with ONE declaration both sides: PASS at ACC_HEAD, FAIL at STRIP.
+ - D7 Disj children invisible to the renderer: PASS at BOTH (pins the blind spot). RED would mean the
+   renderer already prints what the comparator compares, i.e. prereq (a) landed, and the triage must be
+   re-run before any 19/11/13-style count is trusted.
+A row that behaves identically at both heads where a difference was predicted is reported as
+NON-DISCRIMINATING, not quietly dropped.
