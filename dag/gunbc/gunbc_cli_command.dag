@@ -3,6 +3,7 @@ module gunbc.gunbc_cli_command
 import extdeps.exec.program { uncataloged_program }
 
 import std.types { String, List, NonEmptyStr }
+import std.optional { Present, Absent, Optional }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import gunbc.compute.unit_bounds { gunbc_user_work_scope_command }
 import extdeps.systemd.systemd_run { SystemdRunCommandReading }
@@ -10,6 +11,7 @@ import gunbc.cli_invoke {
   InvocationWord, LiteralWord,
   invocation_words_bare,
   gunbc_run_invocation_words_with_functions,
+  NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator, admit_named_argument,
   gunbc_bin_name,
   release_bin_rel_path
 }
@@ -87,6 +89,35 @@ fn gunbc_run_command(entry: String, functions: List<String>) -> ArgvCommand {
       arguments: [],
     )),
   )
+}
+
+// THE INSTALLED BINARY'S `gunbc run` OF ONE FUNCTION WITH ONE NAMED ARGUMENT, over source roots the
+// caller names absolutely. The program is the installed path the deploy placed, not the checkout's
+// release output, so the readback after an apply exercises the bytes the apply installed. A name the
+// argument admission refuses yields no command rather than a command carrying the malformed option.
+fn gunbc_installed_run_with_argument_command(
+  binary: NonEmptyStr,
+  source_roots: List<String>,
+  entry: String,
+  function: String,
+  argument_name: String,
+  argument_value: String,
+) -> Optional<ArgvCommand> {
+  match admit_named_argument(name: argument_name, value: argument_value) {
+    NamedArgumentAdmitted { argument: a } =>
+      Present { value: argv_command(
+        program: uncataloged_program(invocation: binary),
+        arguments: invocation_words_bare(words: gunbc_run_invocation_words_with_functions(
+          source_roots: source_roots,
+          entry: entry,
+          functions: [function],
+          claim_run: false,
+          arguments: [a],
+        )),
+      ) }
+    NamedArgumentNameEmpty => Absent
+    NamedArgumentNameHoldsSeparator { name: _ } => Absent
+  }
 }
 
 fn gunbc_command_argv(cmd: ArgvCommand) -> List<String> {

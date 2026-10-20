@@ -29,6 +29,28 @@ import gunbc.host.host_axis_caps {
 import gunbc.host.host_converge { SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
 import extdeps.systemd.systemctl { systemctl_daemon_reload_argv, systemctl_revert_memory_caps_argv }
 import std.algebra { non_empty_to_list }
+import extdeps.crypto.hash { Digest }
+import std.layout { doc_text, render }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import extdeps.systemd.systemctl { systemctl_restart_argv, systemctl_status_argv, systemctl_user_daemon_reload_argv }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_argv, coreutils_install_directory_owned_argv }
+import gunbc.gunbc_cli_command { gunbc_installed_run_with_argument_command }
+import std.types { NonEmptyStr }
+import std.optional { Absent, Present }
+import gunbc.live_deploy.member_identity { plan_publishes_tree, plan_installs_executable }
+import gunbc.live_deploy.emit {
+  install_d_shared_mode, install_executable_shared_mode, release_executable_install_source, path_parent_dir,
+  live_deploy_protocol, emit_slice_unit_doc, emit_repository_convergence_slice_unit_doc,
+  user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused,
+}
+import gunbc.live_deploy.spec {
+  deployment_slice_unit_path, gunbc_user_work_slice_unit_path, gunbc_repository_convergence_slice_unit_path,
+  tree_sync_unit_path, gunbc_service_uid,
+}
+import gunbc.live_deploy.host_layout { instance_receipts_dir }
+import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc, convergence_receipt_path, convergence_placement_entry_path }
+import gunbc.live_deploy.release_locus { release_revision_execstart_text }
+
 
 // THE APPLY FOLD'S LEGS AS DATA, replacing the apply bash script the way gunbc.live_deploy.retract_legs
 // replaced the retract script. A leg is one typed operation on the host; the runner
@@ -46,6 +68,8 @@ type DeployApplyLeg
   | ApplyLegReport { step: String, line: String }
   | ApplyLegHelperGrant { revision: ReleaseRevisionBinding }
   | ApplyLegObjectSource
+  | ApplyLegDigestVerify { step: String, path: String, digest: Digest }
+  | ApplyLegDiagnosedCommand { step: String, command: ArgvCommand, diagnosis: ArgvCommand }
 
 type DeployApplyPlan
   = ApplyPlanReady { legs: List<DeployApplyLeg> }
@@ -60,6 +84,8 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegReport { step: st, line: _ } => st
     ApplyLegHelperGrant { revision: _ } => "helper-grant"
     ApplyLegObjectSource => "object-source"
+    ApplyLegDigestVerify { step: st, path: _, digest: _ } => st
+    ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => st
   }
 }
 
@@ -223,7 +249,118 @@ fn deploy_apply_object_source_plan() -> DeployApplyPlan {
   ApplyPlanReady { legs: [ApplyLegObjectSource] }
 }
 
-fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision) -> DeployApplyPlan {
+// ── RELEASE MEMBERS ──────────────────────────────────────────────────────────────────────────────
+//
+// Every file a member installs travels as a stdin payload to the root install, never through a staged
+// path on the host, so a leg carries the bytes it writes. The checkout's own paths are absolute under
+// the apply's source root (the root the object-source leg observes), where the script read `$PWD`.
+fn apply_root_leg(step: String, argv: List<String>) -> DeployApplyLeg {
+  ApplyLegCommand { step: step, command: sudo_elevate_command(command: argv) }
+}
+
+fn apply_staged_leg(step: String, dest: String, payload: String) -> DeployApplyLeg {
+  ApplyLegInstallFile {
+    step: step,
+    command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+      mode: install_file_shared_mode,
+      owner: approval_broker_helper_root_principal, group: approval_broker_helper_root_principal,
+      source: "/dev/stdin", dest: dest)),
+    payload: payload,
+  }
+}
+
+fn apply_owned_directory_leg(spec: DeploymentSpec, step: String, path: String) -> DeployApplyLeg {
+  apply_root_leg(step: step, argv: coreutils_install_directory_owned_argv(
+    mode: install_d_shared_mode, owner: spec.service.service_user, group: spec.service.service_user, path: path))
+}
+
+fn apply_unit_text(file_text: String) -> String {
+  render(doc: doc_text(text: file_text), proto: live_deploy_protocol)
+}
+
+// THE PUBLISHED TREE: the shared root, the service-owned repo root, the tree-sync environment naming
+// the source root, the instance slice, the user-work and repository-convergence slices, the
+// convergence unit, a reload, the restart whose failure carries the unit's status tail, and the
+// readback of the receipt through the INSTALLED binary. A user-work slice that cannot derive its
+// bounds refuses the plan with that cause.
+fn deploy_apply_tree_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
+  if !plan_publishes_tree(plan: plan) {
+    ApplyPlanReady { legs: [] }
+  } else {
+    match user_work_slice_unit_file() {
+      UserWorkSliceUnitFileRefused { cause: c } =>
+        ApplyPlanRefused { step: "user-work-slice", reason: join(["live-deploy apply refused: ", c, " (DESIGN 5: refuse, never widen)"], "") }
+      UserWorkSliceUnitFileReady { file: f } =>
+        match gunbc_installed_run_with_argument_command(
+          binary: spec.service.serve_binary as String as NonEmptyStr,
+          source_roots: [join([source_root, "/dag"], ""), join([source_root, "/src/v2"], "")],
+          entry: convergence_placement_entry_path,
+          function: "repository_convergence_readback_wet",
+          argument_name: "receipt",
+          argument_value: convergence_receipt_path(instance_root: spec.service.instance_root as String),
+        ) {
+          Absent => ApplyPlanRefused { step: "convergence-readback", reason: "live-deploy apply refused: the convergence readback argument was not admitted", }
+          Present { value: readback } =>
+            ApplyPlanReady { legs: [
+              apply_root_leg(step: "tree-root", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: "/opt/gunbc")),
+              apply_owned_directory_leg(spec: spec, step: "tree-repo-root", path: spec.service.repo_root as String),
+              apply_staged_leg(step: "tree-sync-env", dest: spec.names.tree_sync_env_path as String, payload: join(["GUNBC_TREE_SRC=", source_root, "\n"], "")),
+              apply_staged_leg(step: "instance-slice", dest: deployment_slice_unit_path(names: spec.names) as String, payload: render(doc: emit_slice_unit_doc(spec: spec), proto: live_deploy_protocol)),
+              apply_owned_directory_leg(spec: spec, step: "instance-receipts-dir", path: instance_receipts_dir(instance_root: spec.service.instance_root as String)),
+              apply_staged_leg(step: "user-work-slice", dest: gunbc_user_work_slice_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f))),
+              apply_root_leg(step: "user-work-slice-reload", argv: systemctl_user_daemon_reload_argv(uid: gunbc_service_uid)),
+              apply_staged_leg(step: "repository-convergence-slice", dest: gunbc_repository_convergence_slice_unit_path() as String, payload: render(doc: emit_repository_convergence_slice_unit_doc(), proto: live_deploy_protocol)),
+              apply_staged_leg(
+                step: "tree-sync-unit",
+                dest: tree_sync_unit_path(names: spec.names) as String,
+                payload: convergence_unit_doc(
+                  spec: spec,
+                  candidate: release_revision_execstart_text(binding: RevisionBoundAtEmission { revision: plan.target.revision }),
+                  receipt_path: convergence_receipt_path(instance_root: spec.service.instance_root as String),
+                  working_directory: source_root,
+                )),
+              apply_root_leg(step: "tree-sync-reload", argv: systemctl_daemon_reload_argv()),
+              ApplyLegDiagnosedCommand {
+                step: "tree-sync-restart",
+                command: sudo_elevate_command(command: systemctl_restart_argv(unit: spec.names.tree_sync_unit_name)),
+                diagnosis: sudo_elevate_command(command: systemctl_status_argv(unit: spec.names.tree_sync_unit_name)),
+              },
+              ApplyLegCommand { step: "convergence-readback", command: readback },
+            ] }
+        }
+    }
+  }
+}
+
+// THE RELEASE EXECUTABLE: the built binary is verified against the plan's digest BEFORE it is copied and
+// the installed copy AFTER, so an installed executable can never differ from the identity the plan
+// declared converged.
+fn deploy_apply_executable_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
+  if !plan_installs_executable(plan: plan) {
+    ApplyPlanReady { legs: [] }
+  } else {
+    let source = join([source_root, "/", release_executable_install_source], "")
+    ApplyPlanReady { legs: [
+      ApplyLegDigestVerify { step: "executable-source-digest", path: source, digest: plan.target.executable },
+      apply_root_leg(step: "executable-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: spec.service.serve_binary as String))),
+      apply_root_leg(step: "executable-install", argv: coreutils_install_file_owned_argv(
+        mode: install_executable_shared_mode,
+        owner: spec.service.service_user, group: spec.service.service_user,
+        source: source, dest: spec.service.serve_binary as String)),
+      ApplyLegDigestVerify { step: "executable-installed-digest", path: spec.service.serve_binary as String, digest: plan.target.executable },
+      apply_owned_directory_leg(spec: spec, step: "instance-receipts-dir", path: instance_receipts_dir(instance_root: spec.service.instance_root as String)),
+    ] }
+  }
+}
+
+fn deploy_apply_release_members_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
+  deploy_apply_chain(
+    first: deploy_apply_tree_plan(spec: spec, plan: plan, source_root: source_root),
+    rest: deploy_apply_executable_plan(spec: spec, plan: plan, source_root: source_root),
+  )
+}
+
+fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String) -> DeployApplyPlan {
   deploy_apply_chain(
     first: deploy_apply_object_source_plan(),
     rest: deploy_apply_chain(
@@ -232,14 +369,17 @@ fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, auth
       first: deploy_apply_memory_cap_plan(spec: spec, authorization: authorization),
       rest: deploy_apply_chain(
         first: deploy_apply_slice_control_plan(spec: spec),
-        rest: deploy_apply_helper_grant_plan(spec: spec, plan: plan),
+        rest: deploy_apply_chain(
+          first: deploy_apply_helper_grant_plan(spec: spec, plan: plan),
+          rest: deploy_apply_release_members_plan(spec: spec, plan: plan, source_root: source_root),
+        ),
       ),
     ),
     ),
   )
 }
 
-fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision) -> DeployApplyPlan {
+fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String) -> DeployApplyPlan {
   match spec.target.lab_plan {
     LabPlanRefused { cause: c } =>
       ApplyPlanRefused {
@@ -253,19 +393,19 @@ fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, authori
             step: "tailscale-client",
             reason: join(["live-deploy apply refused: this target's tailscale client version is UNOBSERVED (", r, "), so whether scoped serve exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)"], ""),
           }
-        ScopedRemovalUnsupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization)
-        ScopedRemovalSupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization)
+        ScopedRemovalUnsupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization, source_root: source_root)
+        ScopedRemovalSupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization, source_root: source_root)
       }
   }
 }
 
-fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision) -> DeployApplyPlan {
+fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String) -> DeployApplyPlan {
   match membership_effects(plan: deployment_apply_plan(spec: spec)) {
     ApplyRefused { refusals: rs } =>
       ApplyPlanRefused {
         step: "wholesale",
         reason: join(["live-deploy apply refused WHOLESALE: the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown); the entire fold is refused rather than partially applied. refused-member-count=", to_string(count(rs))], ""),
       }
-    EffectsReady { effects: _ } => deploy_apply_family_plans(spec: spec, plan: plan, authorization: authorization)
+    EffectsReady { effects: _ } => deploy_apply_family_plans(spec: spec, plan: plan, authorization: authorization, source_root: source_root)
   }
 }

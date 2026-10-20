@@ -2,7 +2,7 @@ module gunbc.host.host_effect_realize
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text, admitted_scratch_path }
 
-import std.algebra { Cons, Empty, FreeSemigroup, list_append, list_snoc_item, trim, fold_list, list_map, non_empty_append, non_empty_singleton, non_empty_to_list, string_concat_join }
+import std.algebra { Cons, Empty, FreeSemigroup, list_append, list_snoc_item, trim, skip, fold_list, list_map, non_empty_append, non_empty_singleton, non_empty_to_list, string_concat_join }
 import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_command, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -273,7 +273,7 @@ import gunbc.live_deploy.retract_legs {
 import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe, ObjectSourceServeDecideAtApplyPwd, observe_object_source_serve, object_source_serve_refusal_text }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
-  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegHelperGrant, ApplyLegObjectSource,
+  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
 }
 import gunbc.systemctl_show_read { systemctl_show_load_state_read, SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
@@ -5612,6 +5612,47 @@ fn live_deploy_apply_helper_grant_on_host(spec: DeploymentSpec, revision: Releas
   }
 }
 
+// THE LAST LINES OF A FAILED CONTROL PROCESS'S STATUS, the diagnosis the restart's bare refusal never
+// carries. Bounded to the tail so a long journal cannot bury the cause.
+fn deploy_apply_status_tail(text: String) -> String {
+  let lines = split(s: text, delimiter: "\n")
+  let n = count(lines)
+  join(if n > 40 { skip(xs: lines, n: n - 40) } else { lines }, "\n")
+}
+
+// A COMMAND WHOSE FAILURE IS DIAGNOSED: the failure still fails the leg (a diagnosis, never an escape
+// hatch), and carries the status tail read through the diagnosis command. A diagnosis that itself
+// cannot run is named in the reason rather than dropped.
+fn deploy_apply_diagnosed_failure(why: String, diagnosis: RunArgvTransportOutcome) -> String {
+  match diagnosis {
+    RunArgvTransportRefused { reason: r } => join([why, " | diagnosis could not run: ", r], "")
+    RunArgvTransportObserved { observed: o } =>
+      join([why, "\n--- control-process diagnosis ---\n", deploy_apply_status_tail(text: concat(o.stdout, o.stderr))], "")
+  }
+}
+
+// THE DIGEST OF A FILE ON THE HOST AGAINST THE ONE THE PLAN DECLARED. An unreadable file, an unparseable
+// line and a different digest are each their own refusal; none reads as a match.
+fn deploy_apply_digest_failure(path: String, digest: Digest, outcome: RunArgvTransportOutcome) -> Optional<String> {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => Present { value: r }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code != 0 {
+        Present { value: join(["sha256sum could not read ", path, ": exit ", to_string(o.exit_code), ": ", o.stderr], "") }
+      } else {
+        match sha256sum_line_digest(line: o.stdout) {
+          Absent => Present { value: join(["sha256sum printed no digest for ", path], "") }
+          Present { value: d } =>
+            if d.hex as String == digest.hex as String {
+              Absent
+            } else {
+              Present { value: join([path, " digest ", d.hex as String, " is not the planned ", digest.hex as String], "") }
+            }
+        }
+      }
+  }
+}
+
 fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optional<String> {
   let command = ports.command
   let ensure = ports.ensure_directory
@@ -5624,6 +5665,12 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
     ApplyLegCommand { step: _, command: c } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegInstallFile { step: _, command: c, payload: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
     ApplyLegReport { step: _, line: _ } => Absent
+    ApplyLegDigestVerify { step: _, path: p, digest: d } => deploy_apply_digest_failure(path: p, digest: d, outcome: command(sha256sum_file_command(path: p)))
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } =>
+      match deploy_retract_command_failure(outcome: command(c)) {
+        Absent => Absent
+        Present { value: why } => Present { value: deploy_apply_diagnosed_failure(why: why, diagnosis: command(g)) }
+      }
     ApplyLegHelperGrant { revision: r } => ports.helper_grant(r)
     ApplyLegObjectSource => {
       let observe = ports.object_source
@@ -5646,6 +5693,8 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegInstallFile { step: _, command: _, payload: _ } => []
     ApplyLegHelperGrant { revision: _ } => []
     ApplyLegObjectSource => []
+    ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
+    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => []
   }
 }
 
