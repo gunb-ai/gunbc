@@ -1512,24 +1512,17 @@ fn translate_type_expression_project_admitted(
                   match type_node_occupancy_child(n: node) {
                     Present { value: payload } =>
                       bind_outcome(
-                        o: list_head_and_tail(xs: positional_child_target_nodes(node: node), node: node),
-                        f: fn(split) {
-                          bind_outcome(
-                            o: translate_type_expression_project(node: split.head, target: target, projection: projection),
-                            f: fn(head_projected) {
-                              bind_outcome(
-                                o: translate_type_expression_project(node: payload, target: target, projection: projection),
-                                f: fn(payload_projected) {
-                                  outcome_accepted(
-                                    target_type_expr_optional_instantiation_emitted(
-                                      form: projection.optional_instantiation_form,
-                                      head: head_projected,
-                                      args: Cons { head: payload_projected, tail: Empty }
-                                    )
-                                  )
-                                }
-                              )
-                            }
+                        o: translate_type_expression_project(node: payload, target: target, projection: projection),
+                        f: fn(payload_projected) {
+                          outcome_accepted(
+                            target_type_expr_optional_instantiation_emitted(
+                              form: projection.optional_instantiation_form,
+                              head: target_type_expr_atom_emitted(
+                                form: projection.atom_form,
+                                identity: ^target_native_optional_binding
+                              ),
+                              args: Cons { head: payload_projected, tail: Empty }
+                            )
                           )
                         }
                       )
