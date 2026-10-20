@@ -114,6 +114,10 @@ fn rb_b1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  le
 test fn rb_b1_infer_accepts() -> Bool { ers_infer_accepted(o: rb_b1()) }
 
 fn rb_b2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn mk() -> Int? { Absent }\n\nfn t() -> Int? {\n  let x = if true { mk() } else { Absent }\n  x\n}\n") }
+test fn rb_b2_infer_accepts() -> Bool { ers_infer_accepted(o: rb_b2()) }
+
+fn rb_b6() -> Outcome<ResolvedTree> { ers_assemble(body: "fn mk() -> Int? { Present { value: 1 } }\n\nfn t() -> Int? {\n  if true { mk() } else { Present { value: 2 } }\n}\n") }
+test fn rb_b6_application_arm_equals_constructor_arm_accepts() -> Bool { ers_infer_accepted(o: rb_b6()) }
 
 fn rb_b3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(o: Int?) -> Int? {\n  let x = match o {\n    Present { value: v } => Present { value: v }\n    Absent => Absent\n  }\n  x\n}\n") }
 test fn rb_b3_infer_accepts() -> Bool { ers_infer_accepted(o: rb_b3()) }
