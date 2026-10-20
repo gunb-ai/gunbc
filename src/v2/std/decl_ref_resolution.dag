@@ -10,7 +10,7 @@ import v2.std.integer { Int }
 import v2.std.node { Node, named_edge_sort_key, symbol_intern_lexeme }
 import v2.std.node_query { node_labeled_child_edges }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
-import v2.std.symbol_index { symbol_index_entry_at }
+import v2.std.symbol_index { symbol_index_entry_at, symbol_index_declares_resource_at }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, TypeAlias, OpaqueTypeDecl, NotATypeDecl, type_decl_view }
 
 // G1 cited-symbol resolution (feature:cited-symbol-resolution): every typed DeclarationRef resolves
@@ -102,6 +102,27 @@ fn decl_ref_named_field_present(ref: DeclarationRef, declaration: Node) -> Bool 
   }
 }
 
+// The declaring path of a cited name: the module, then ONE segment per dotted part of the name. A
+// service is declared under its dotted name (`service posix.Signal` is `<module>.posix.Signal`), so
+// the whole string interned as a single segment names nothing the fill wrote.
+fn declaration_ref_declaring_path(ref: DeclarationRef, module_qn: QualifiedName) -> QualifiedName {
+  fold_list(
+    xs: (ref.decl_name as String).split(delimiter: "."),
+    empty: module_qn,
+    cons: fn(acc, segment) { qualified_name_snoc(qn: acc, segment: symbol_intern_lexeme(lexeme: segment)) }
+  )
+}
+
+// A service is a RESOURCE, marked rather than an entry (symbol_index_declares_resource_at); it has no
+// fields, so only a whole-declaration citation resolves to it.
+fn declaration_ref_names_resource(ref: DeclarationRef, module_qn: QualifiedName, context: ResolutionContext) -> Bool {
+  match ref.field {
+    WholeDeclaration => symbol_index_declares_resource_at(index: context.symbol_index, qualified_path: declaration_ref_declaring_path(ref: ref, module_qn: module_qn))
+    NamedField { field_name: _ } => false
+    TypeParameter { name: _ } => false
+  }
+}
+
 fn resolve_declaration_ref(
   ref: DeclarationRef,
   context: ResolutionContext
@@ -115,14 +136,18 @@ fn resolve_declaration_ref(
         DeclarationRefModuleAbsent { reference: ref }
       }
     Present { value: _ } =>
-      match symbol_index_entry_at(
-        index: context.symbol_index,
-        qualified_path: qualified_name_snoc(
-          qn: module_qn,
-          segment: symbol_intern_lexeme(lexeme: ref.decl_name as String)
-        )
-      ) {
-        Absent => DeclarationRefDeclarationAbsent { reference: ref }
+      match symbol_index_entry_at(index: context.symbol_index, qualified_path: declaration_ref_declaring_path(ref: ref, module_qn: module_qn)) {
+        Absent =>
+          if declaration_ref_names_resource(ref: ref, module_qn: module_qn, context: context) {
+            DeclarationRefResolved {
+              declaration_identity: DeclarationIdentity {
+                qualified_name: declaration_ref_target_qualified_name(ref: ref),
+                name: ref.decl_name as String
+              }
+            }
+          } else {
+            DeclarationRefDeclarationAbsent { reference: ref }
+          }
         Present { value: declaration } =>
           if decl_ref_named_field_present(ref: ref, declaration: declaration) {
             DeclarationRefResolved {
