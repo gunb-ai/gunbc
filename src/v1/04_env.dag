@@ -1834,11 +1834,9 @@ fn is_type_variable_name(name: String) -> Bool {
 // reading is unjudged by the declared-type wall; every other Unidentified head refuses. Retired when pattern bindings
 // carry the instantiated type (C1.2c arity + C1.2d tail/split on top of pattern_binding_type).
 fn enclosing_declaration_of(declarations: List<Node>, n: Node) -> Node? {
-  declarations |> filter(d => d.span.start <= n.span.start) |> fold(init: none, f: (best, d) =>
-    match best {
-      Present { value: b } => if b.span.start >= d.span.start { best } else { Present { value: d } }
-      Absent => Present { value: d }
-    })
+  let preceding = declarations |> filter(d => d.span.start <= n.span.start)
+  let nearest_start = preceding |> fold(init: 0, f: (acc, d) => if d.span.start > acc { d.span.start } else { acc })
+  preceding |> filter(d => d.span.start == nearest_start) |> first
 }
 
 fn is_declared_type_parameter_of_enclosing_declaration(n: Node, parameter: String, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
