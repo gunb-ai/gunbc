@@ -440,7 +440,7 @@ data site_pxe_edge_receipts_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_receipts", decl_name: "bind_supplied_netboot_exchange"),
     reason: "no declared consumer promotes a SuppliedNetbootExchange into evidence for the S6/S7 wet attempt; today only the witness reads it, and its binding says only that two supplied views agree",
     dissolution: unbound_dissolution(
-      description: "dissolves when the S6/S7 wet declaration, not yet named, consumes a binding whose edge and client halves came from sealed producers (the two rows above); until then no fold reads this and it is not evidence of any boot"
+      description: "dissolves when the declaration the cut-6 S6/S7 wet children add under gunbc.plans.physical_machine_boot_program physical_machine_boot_program_plan (the tracking home; its consuming declaration does not exist yet, so none can be named today) consumes a binding whose edge and client halves came from sealed producers (the two rows above); until then no fold reads this and it is not evidence of any boot"
     )
   ),
   frontier_row_decl(
