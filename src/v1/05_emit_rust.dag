@@ -14751,9 +14751,12 @@ fn fm_lowering_refusal_message(cause: FmLoweringRefusal) -> String {
   }
 }
 
-fn fm_located_refusal(cause: FmLoweringRefusal, arm: Node) -> String {
+// The position half of this text comes from the ONE authority, like every other refusal a .dag
+// author reads (DESIGN 6b). It used to print `to_string(value: arm.span.start)` -- a raw byte
+// offset, which reads as a position and is not one.
+fn fm_located_refusal(cause: FmLoweringRefusal, arm: Node, si: Map<String, NewlineIndex>) -> String {
   concat("v1.compiler.emit_rust will not lower ", fm_lowering_refusal_message(cause: cause),
-    " at ", arm.span.file, ":", to_string(value: arm.span.start),
+    " at ", render_span_location(span: arm.span, source_indices: si),
     " -- the FreeMonoid match lowering refuses this shape rather than dropping the arm")
 }
 
@@ -14895,9 +14898,9 @@ fn fm_plans_refusal(plans: List<FmArmPlan>) -> FmArmPlan? {
   }
 }
 
-fn fm_plan_refusal_text(plan: FmArmPlan) -> String {
+fn fm_plan_refusal_text(plan: FmArmPlan, si: Map<String, NewlineIndex>) -> String {
   match plan.analysis {
-    FmUnsupportedArm { cause: c } => fm_located_refusal(cause: c, arm: plan.arm)
+    FmUnsupportedArm { cause: c } => fm_located_refusal(cause: c, arm: plan.arm, si: si)
     FmSpine { exact: _, len: _, head_binds: _, tail_bind: _ } => "v1.compiler.emit_rust internal: refusal requested for a supported FreeMonoid arm"
   }
 }
@@ -14964,7 +14967,7 @@ fn fm_spine_condition(len: Int, exact: Bool, cursor: String) -> String {
 // runs, so the unsupported arm is unreachable in production -- and it still emits a located refusal
 // rather than a fabricated branch, because a total function that cannot lie is worth more than an
 // unreachable! that asserts the caller checked (DESIGN section 5).
-fn fm_chain_piece(plan: FmArmPlan, body: String, cursor: String) -> FmChainPiece {
+fn fm_chain_piece(plan: FmArmPlan, body: String, cursor: String, si: Map<String, NewlineIndex>) -> FmChainPiece {
   match plan.analysis {
     FmSpine { exact: e, len: l, head_binds: hbs, tail_bind: tb } =>
       FmChainPiece {
@@ -14973,7 +14976,7 @@ fn fm_chain_piece(plan: FmArmPlan, body: String, cursor: String) -> FmChainPiece
         body: body
       }
     FmUnsupportedArm { cause: c } =>
-      FmChainPiece { cond: "true", binds: "", body: emit_rust_compile_error_expr(message: fm_located_refusal(cause: c, arm: plan.arm)) }
+      FmChainPiece { cond: "true", binds: "", body: emit_rust_compile_error_expr(message: fm_located_refusal(cause: c, arm: plan.arm, si: si)) }
   }
 }
 
@@ -14999,9 +15002,9 @@ fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: M
   let si = scope.type_env.source_indices
   let plans = arms |> map(arm => fm_arm_plan(arm: arm, si: si))
   match fm_plans_refusal(plans: plans) {
-    Present { value: bad } => emit_rust_compile_error_expr(message: fm_plan_refusal_text(plan: bad))
+    Present { value: bad } => emit_rust_compile_error_expr(message: fm_plan_refusal_text(plan: bad, si: si))
     Absent =>
-      let pieces = plans |> map(p => fm_chain_piece(plan: p, cursor: "",
+      let pieces = plans |> map(p => fm_chain_piece(plan: p, cursor: "", si: si,
         body: emit_typed_expr(texpr: arm_body(n: p.arm), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)))
       concat("{ let __fm = ", scrut_str, "; ", fm_chain_from(pieces: pieces, fuel: 256), " }")
   }
@@ -17263,9 +17266,9 @@ fn emit_native_freemonoid_tco_match(scrut_str: String, cursor: String, arms: Lis
   let si = scope.type_env.source_indices
   let plans = arms |> map(arm => fm_arm_plan(arm: arm, si: si))
   match fm_plans_refusal(plans: plans) {
-    Present { value: bad } => emit_rust_compile_error_expr(message: fm_plan_refusal_text(plan: bad))
+    Present { value: bad } => emit_rust_compile_error_expr(message: fm_plan_refusal_text(plan: bad, si: si))
     Absent =>
-      let pieces = plans |> map(p => fm_chain_piece(plan: p, cursor: cursor,
+      let pieces = plans |> map(p => fm_chain_piece(plan: p, cursor: cursor, si: si,
         body: emit_typed_tco_expr(texpr: arm_body(n: p.arm), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)))
       concat("{ let __fm = ", scrut_str, "; ", fm_chain_from(pieces: pieces, fuel: 256), " }")
   }
