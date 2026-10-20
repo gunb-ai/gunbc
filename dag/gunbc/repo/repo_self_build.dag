@@ -209,3 +209,15 @@ fn repo_self_build_command(bins: List<String>) -> String {
     join([repo_self_build_package_command(), repo_self_build_bin_selector(bins: bins)], " ")
   }
 }
+
+// THE LINT PASS RENDERED FOR A READER OF ITS OUTPUT: the same command as repo_self_clippy_command with
+// the workspace named and one located line per diagnostic, which is the shape
+// gunbc.v1_health_findings parses. The scheduled v1 health watch is its consumer.
+fn repo_self_clippy_short_report_command() -> String {
+  join(
+    argv_words(
+      command: cargo_clippy_command(extra_args: ["--workspace", "--all-targets", "--message-format=short"], lint_args: repo_self_warning_denial)
+    ),
+    " "
+  )
+}

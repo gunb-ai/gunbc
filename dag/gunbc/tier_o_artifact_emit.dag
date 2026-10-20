@@ -6,6 +6,7 @@ import gunbc.generated_artifact {
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact,
   InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact,
   BranchRunGrantBrokerWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact,
+  BranchRunGrantBrokerWorkflowYamlArtifact, V1HealthWatchWorkflowYamlArtifact,
   GitignoreArtifact, GitattributesArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, Fci1BoundedExecutionContextArtifact,
   RunnerHostSudoersArtifact
@@ -17,6 +18,7 @@ import gunbc.instruments.instrument_dispatch_workflow { expected_instrument_disp
 import gunbc.heal_workflow { expected_heal_workflow_yml, HealWorkflowGenerated, HealWorkflowGenerationRefused }
 import gunbc.heal_publisher_workflow { expected_heal_publisher_workflow_yml, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
 import gunbc.fleet.branch_run_grant_broker_workflow { expected_branch_run_grant_broker_workflow_yml, BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused }
+import gunbc.v1_health_watch_workflow { expected_v1_health_watch_workflow_yml, V1HealthWatchWorkflowGenerated, V1HealthWatchWorkflowGenerationRefused }
 import gunbc.drift_watch_workflow { expected_drift_watch_workflow_yml, DriftWatchWorkflowGenerated, DriftWatchWorkflowGenerationRefused }
 import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
 import gunbc.witness.compiler_gate_workflow { expected_compiler_gate_yml }
@@ -60,6 +62,7 @@ fn tier_o_fixed_artifacts() -> List<GeneratedArtifact> {
     HealPublisherWorkflowYamlArtifact,
     BranchRunGrantBrokerWorkflowYamlArtifact,
     DriftWatchWorkflowYamlArtifact,
+    V1HealthWatchWorkflowYamlArtifact,
     GitignoreArtifact,
     GitattributesArtifact,
     GithooksPrePushArtifact,
@@ -107,6 +110,10 @@ fn tier_o_unadorned_body(a: GeneratedArtifact) -> TierOArtifactBody {
     DriftWatchWorkflowYamlArtifact => match expected_drift_watch_workflow_yml() {
       DriftWatchWorkflowGenerated { content } => TierOArtifactProduced { content: content }
       DriftWatchWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
+    }
+    V1HealthWatchWorkflowYamlArtifact => match expected_v1_health_watch_workflow_yml() {
+      V1HealthWatchWorkflowGenerated { content } => TierOArtifactProduced { content: content }
+      V1HealthWatchWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     GitignoreArtifact => TierOArtifactProduced { content: expected_gitignore() }
     GitattributesArtifact => match expected_gitattributes() {

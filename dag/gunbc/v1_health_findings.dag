@@ -1,0 +1,77 @@
+module gunbc.v1_health_findings
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import std.algebra { list_map, string_contains, trim }
+
+// THE TYPED FINDINGS OF THE SCHEDULED V1 HEALTH WATCH (gunbc.v1_health_watch_workflow).
+// Each subject's captured output is read into one finding per failure, each naming its subject and
+// its remedy; an output that cannot be read as that subject's report is a SubjectUnreached finding,
+// never an empty (green) list. Pure: the instrument gunbc.instruments.v1_health_watch owns the reads.
+type V1HealthFinding
+  = UnitTestFailed { test: String }
+  | ClippyLint { site: String, message: String }
+  | SubjectUnreached { subject: String, reason: String }
+
+data unit_test_failed_suffix: String = " ... FAILED"
+
+data unit_test_result_marker: String = "test result:"
+
+data clippy_site_marker: String = ".rs:"
+
+fn v1_health_finding_text(f: V1HealthFinding) -> String {
+  match f {
+    UnitTestFailed { test: t } => join(["UNIT-TEST-FAILED ", t, ": a v1-compiler unit test fails on the default branch; remedy: run `cargo test --release -p v1-compiler --lib ", t, "` and repair the test or the code it judges"], "")
+    ClippyLint { site: s, message: m } => join(["CLIPPY-LINT ", s, ": ", m, "; remedy: repair the site (cargo clippy --workspace --all-targets)"], "")
+    SubjectUnreached { subject: s, reason: r } => join(["SUBJECT-UNREACHED ", s, ": ", r, "; remedy: restore the step that captures this subject's output; no verdict was reached"], "")
+  }
+}
+
+fn v1_health_unreached(subject: String, reason: String) -> List<V1HealthFinding> {
+  [SubjectUnreached { subject: subject, reason: reason }]
+}
+
+fn without_prefix(s: String, prefix: String) -> String {
+  substring(s: s, start: prefix.length(), end: s.length())
+}
+
+fn without_suffix(s: String, suffix: String) -> String {
+  substring(s: s, start: 0, end: s.length() - suffix.length())
+}
+
+fn unit_test_name(line: String) -> String? {
+  if starts_with(s: line, prefix: "test ") && ends_with(s: line, suffix: unit_test_failed_suffix) {
+    Present { value: without_suffix(s: without_prefix(s: line, prefix: "test "), suffix: unit_test_failed_suffix) }
+  } else { none }
+}
+
+fn unit_test_findings(text: String) -> List<V1HealthFinding> {
+  let lines = split(s: text, delimiter: "\n")
+  if !string_contains(s: text, pattern: unit_test_result_marker) {
+    v1_health_unreached(subject: "v1 unit tests", reason: "the captured output carries no `test result:` line (the build or the harness stopped before a verdict)")
+  } else {
+    fold(lines, init: [], f: fn(acc, l) {
+      match unit_test_name(line: trim(l)) {
+        Present { value: t } => concat(acc, [UnitTestFailed { test: t }])
+        Absent => acc
+      }
+    })
+  }
+}
+
+fn clippy_findings(text: String) -> List<V1HealthFinding> {
+  let lines = split(s: text, delimiter: "\n")
+  let found = fold(lines, init: [], f: fn(acc, l) {
+    if string_contains(s: l, pattern: clippy_site_marker) && (string_contains(s: l, pattern: ": warning: ") || string_contains(s: l, pattern: ": error: ")) {
+      let parts = split(s: l, delimiter: ": ")
+      concat(acc, [ClippyLint { site: join(parts.take(1), ""), message: join(parts.skip(2), ": ") }])
+    } else { acc }
+  })
+  if found.length() == 0 && !string_contains(s: text, pattern: "Finished") {
+    v1_health_unreached(subject: "clippy", reason: "the captured output reports neither a diagnostic nor a finished lint pass")
+  } else { found }
+}
+
+fn v1_health_findings_text(findings: List<V1HealthFinding>) -> List<String> {
+  list_map(xs: findings, f: fn(f) { v1_health_finding_text(f: f) })
+}

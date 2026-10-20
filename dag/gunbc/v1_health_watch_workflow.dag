@@ -1,0 +1,238 @@
+module gunbc.v1_health_watch_workflow
+
+
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import std.algebra { list_map }
+import extdeps.cron.schedule_model { CronSchedule, CronField, Wildcard, Exact }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep,
+  WorkflowTrigger, WorkflowDispatch, Schedule,
+  WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool
+}
+import gunbc.action_use_admission {
+  admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason, checkout_action, upload_artifact_action, google_auth_action }
+import extdeps.github.action_release { ActionRelease, action_release_same_producer }
+import gunbc.roadmap.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
+  workflow_job_capability_closure, capability_closure_is_closed
+}
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
+}
+import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
+import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
+import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.repo.repo_self_build { repo_self_build_command }
+import gunbc.repo.repo_identity { gunbc_default_branch_name }
+import gunbc.ci.ci_spec { gunbc_ci_v1_health_watch_unit_tests_invoke, gunbc_ci_v1_health_watch_clippy_invoke }
+import gunbc.repo.repo_self_build { repo_self_test_command, repo_self_clippy_short_report_command }
+
+// THE SCHEDULED, READ-ONLY WATCH OF THE DEFAULT BRANCH'S V1 HEALTH: IT FINDS AND FIXES NOTHING.
+// The required path judges none of the v1 unit tests, the lint pass, or any module outside the two
+// emitted closures (gunbc.rung_drop v1_required_lanes_withdrawn). This workflow reads the default
+// branch daily, captures each subject's report in its own step, and fails with one typed, located
+// finding per failure naming its subject and remedy (gunbc.v1_health_findings). Every subject step
+// runs even when an earlier one failed, so one run reports both populations. THE THIRD SUBJECT, the
+// resolve of every module outside the required closures, IS A DECLARED FRONTIER AND NOT A STEP: measured on a
+// 65 GiB BuildBuddy host it peaked at 38 GiB RSS over 1255 s, against the fleet slot's 22 GiB MemoryMax with no swap
+// (gunbc.runner.runner_slot_desired gunbc_runner_slot_memory_max_bytes). It fits no runner without a raised
+// budget, which the ruling forbids; its trigger is the native compiler judging that population
+// (gunbc.rung_drop v1_required_lanes_withdrawn). Budget: the
+// drift-watch job's own 60 minutes, not raised; the subjects are STEPS of this ONE job, never a
+// second job. It holds read-only permissions, is not a required context and is triggered by neither
+// a pull request nor a merge_group (ruling gunbc.design_ruling v1_health_watch_added_to_roster).
+data v1_health_watch_workflow_name: String = "v1-health-watch"
+
+data v1_health_watch_job_id: String = "v1-health"
+
+data v1_health_watch_timeout_minutes: Int = 60
+
+data v1_health_watch_required_bins: List<String> = ["gunbc"]
+
+data v1_health_watch_build_step_name: String = "Build the checker this job runs against the default branch"
+
+data v1_health_watch_cron: CronSchedule = CronSchedule {
+  minute: Exact { value: 47 },
+  hour: Exact { value: 5 },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
+
+fn v1_health_watch_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout the default branch" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [
+        kv(key: "fetch-depth", value: yaml_int(n: 1)),
+        kv(key: "persist-credentials", value: yaml_bool(b: false))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+data v1_health_capture_dir: String = "target/v1-health"
+
+// A CAPTURE NEVER FAILS ON ITS SUBJECT'S OWN EXIT: the verdict is the paired check step's, read from
+// the capture, so a failing subject is a finding and a missing capture is SubjectUnreached.
+fn v1_health_capture_run(command: String, file: String) -> String {
+  join(["mkdir -p ", v1_health_capture_dir, "\n", command, " > ", file, " 2>&1 || true"], "")
+}
+
+fn v1_health_always_step(name: String, run: String) -> Step {
+  RunStep {
+    name: Present { value: name },
+    id: none,
+    run: run,
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+type V1HealthWatchBoundStep {
+  step: Step
+  role: StepCapabilityRole
+  step_name: String
+}
+
+data v1_health_unit_tests_capture_name: String = "Capture the v1 unit tests"
+
+data v1_health_clippy_capture_name: String = "Capture clippy over the workspace"
+
+data v1_health_unit_tests_check_name: String = "Judge the v1 unit tests (read-only)"
+
+data v1_health_clippy_check_name: String = "Judge clippy (read-only)"
+
+fn v1_health_watch_bound_steps() -> List<V1HealthWatchBoundStep> {
+  [
+    V1HealthWatchBoundStep { step: v1_health_watch_checkout_step(), role: capability_neutral, step_name: "Checkout the default branch" },
+    V1HealthWatchBoundStep { step: toolchain_home_isolation_step(), role: capability_neutral, step_name: "Isolate toolchain homes" },
+    V1HealthWatchBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
+      step_name: "Install Rust toolchain",
+    },
+    V1HealthWatchBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    V1HealthWatchBoundStep {
+      step: witness_floor_build_step(step_name: v1_health_watch_build_step_name, build_script: repo_self_build_command(bins: v1_health_watch_required_bins)),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: v1_health_watch_build_step_name,
+    },
+    V1HealthWatchBoundStep {
+      step: v1_health_always_step(name: v1_health_unit_tests_capture_name, run: v1_health_capture_run(command: repo_self_test_command(), file: "target/v1-health/unit-tests.txt")),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: v1_health_unit_tests_capture_name,
+    },
+    V1HealthWatchBoundStep { step: v1_health_always_step(name: v1_health_unit_tests_check_name, run: gunbc_ci_v1_health_watch_unit_tests_invoke()), role: capability_neutral, step_name: v1_health_unit_tests_check_name },
+    V1HealthWatchBoundStep {
+      step: v1_health_always_step(name: v1_health_clippy_capture_name, run: v1_health_capture_run(command: repo_self_clippy_short_report_command(), file: "target/v1-health/clippy.txt")),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: v1_health_clippy_capture_name,
+    },
+    V1HealthWatchBoundStep { step: v1_health_always_step(name: v1_health_clippy_check_name, run: gunbc_ci_v1_health_watch_clippy_invoke()), role: capability_neutral, step_name: v1_health_clippy_check_name },
+  ]
+}
+
+fn v1_health_watch_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: v1_health_watch_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+data v1_health_watch_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermRead },
+  pull_requests: none,
+  issues: none,
+  actions: none,
+  id_token: none
+}
+
+fn v1_health_watch_job() -> Job {
+  Job {
+    id: v1_health_watch_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
+    steps: list_map(xs: v1_health_watch_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: v1_health_watch_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: v1_health_watch_permissions }
+  }
+}
+
+data v1_health_watch_workflow: Workflow = Workflow {
+  name: v1_health_watch_workflow_name,
+  run_name: none,
+  on: [Schedule { cron: v1_health_watch_cron }, WorkflowDispatch { inputs: [] }],
+  concurrency: Present { value: ConcurrencyMappingQueueNotMax {
+    group: "v1-health-watch",
+    cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+    explicit_single: none
+  } },
+  env: Present {
+    value: [
+      kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
+      kv(key: "MALLOC_ARENA_MAX", value: yaml_string(s: "2"))
+    ]
+  },
+  permissions: Present { value: v1_health_watch_permissions },
+  jobs: [v1_health_watch_job()]
+}
+
+type V1HealthWatchWorkflowGenerationOutcome
+  = V1HealthWatchWorkflowGenerated { content: String }
+  | V1HealthWatchWorkflowGenerationRefused { reason: String }
+
+data v1_health_watch_capability_refusal_reason: String = "REFUSED gunbc.v1_health_watch_workflow: the job's capability closure does not hold. No workflow yaml was emitted. Fix the step roles in v1_health_watch_bound_steps."
+
+fn expected_v1_health_watch_workflow_yml() -> V1HealthWatchWorkflowGenerationOutcome {
+  match admit_workflow_checkout_refs(workflow: v1_health_watch_workflow, declared: []) {
+    WorkflowCheckoutRefsRefused { refusals: crs } =>
+      V1HealthWatchWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.v1_health_watch_workflow", refusals: crs) }
+    WorkflowCheckoutRefsAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: v1_health_watch_workflow) {
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          V1HealthWatchWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+        WorkflowToolchainHomesAdmitted =>
+          if !v1_health_watch_capability_closure_holds() {
+            V1HealthWatchWorkflowGenerationRefused { reason: v1_health_watch_capability_refusal_reason }
+          } else {
+            match emit_yaml(v: project_workflow_to_yaml(workflow: v1_health_watch_workflow)) {
+              EmittedYaml { text: t } => V1HealthWatchWorkflowGenerated { content: t }
+              YamlEmitRefused { path: p, reason: r } => V1HealthWatchWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.v1_health_watch_workflow", path: p, reason: r) }
+            }
+          }
+      }
+  }
+}

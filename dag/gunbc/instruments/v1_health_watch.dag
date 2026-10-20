@@ -1,0 +1,35 @@
+module gunbc.instruments.v1_health_watch
+
+import std.types { String, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.v1_health_findings { V1HealthFinding, SubjectUnreached, unit_test_findings, clippy_findings, v1_health_findings_text }
+
+// READ-ONLY: TURN ONE CAPTURED SUBJECT REPORT OF THE V1 HEALTH WATCH INTO TYPED, LOCATED FINDINGS.
+// The workflow step before each function captured a subject's output under the capture directory
+// and never failed on the subject's own exit; this function is where the run fails, with one finding
+// per failure. A capture that is missing is SubjectUnreached, not a green run. Nothing is written
+// and nothing is pushed; the failed run is a signal, never a gate.
+data v1_health_capture_unit_tests: String = "target/v1-health/unit-tests.txt"
+
+data v1_health_capture_clippy: String = "target/v1-health/clippy.txt"
+
+fn captured_findings(path: String, subject: String, judge: fn(String) -> List<V1HealthFinding>) -> List<V1HealthFinding> {
+  let r = Filesystem.Read(path: path)
+  if !r.success {
+    [SubjectUnreached { subject: subject, reason: concat("the capture ", concat(path, concat(" is unreadable: ", r.error))) }]
+  } else { judge(r.content) }
+}
+
+fn verdict(findings: List<V1HealthFinding>) -> ProcessExit {
+  if findings.length() == 0 { ExitSuccess }
+  else { exit_failure(reason: join(v1_health_findings_text(findings: findings), "\n")) }
+}
+
+fn main_unit_tests() -> ProcessExit {
+  verdict(findings: captured_findings(path: v1_health_capture_unit_tests, subject: "v1 unit tests", judge: fn(t) { unit_test_findings(text: t) }))
+}
+
+fn main_clippy() -> ProcessExit {
+  verdict(findings: captured_findings(path: v1_health_capture_clippy, subject: "clippy", judge: fn(t) { clippy_findings(text: t) }))
+}

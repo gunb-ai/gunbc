@@ -1,7 +1,7 @@
 module gunbc.generated_workflow_provenance
 
 import std.types { String, List }
-import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact }
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, V1HealthWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact }
 import std.optional { Present, Absent }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -52,6 +52,10 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     DriftWatchWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.drift_watch_workflow expected_drift_watch_workflow_yml",
       authority: "gunbc.drift_watch_workflow drift_watch_workflow",
+    } }
+    V1HealthWatchWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
+      generator: "gunbc.v1_health_watch_workflow expected_v1_health_watch_workflow_yml",
+      authority: "gunbc.v1_health_watch_workflow v1_health_watch_workflow",
     } }
     _ => none
   }

@@ -26,6 +26,7 @@ type GeneratedArtifact
   | HealWorkflowYamlArtifact
   | HealPublisherWorkflowYamlArtifact
   | DriftWatchWorkflowYamlArtifact
+  | V1HealthWatchWorkflowYamlArtifact
   | BranchRunGrantBrokerWorkflowYamlArtifact
   | GitignoreArtifact
   | GitattributesArtifact
@@ -138,6 +139,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     HealWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal.yml" }
     HealPublisherWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal-publish.yml" }
     DriftWatchWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "drift-watch.yml" }
+    V1HealthWatchWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "v1-health-watch.yml" }
     BranchRunGrantBrokerWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "branch-run-grant-broker.yml" }
     GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
     GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
@@ -231,6 +233,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     HealWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     HealPublisherWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     DriftWatchWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    V1HealthWatchWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     BranchRunGrantBrokerWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => NotCommitted
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
@@ -296,6 +299,7 @@ fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
     HealWorkflowYamlArtifact => false
     HealPublisherWorkflowYamlArtifact => false
     DriftWatchWorkflowYamlArtifact => false
+    V1HealthWatchWorkflowYamlArtifact => false
     BranchRunGrantBrokerWorkflowYamlArtifact => false
     GitignoreArtifact => false
     GitattributesArtifact => false
@@ -361,6 +365,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     HealWorkflowYamlArtifact => match b { HealWorkflowYamlArtifact => true  _ => false }
     HealPublisherWorkflowYamlArtifact => match b { HealPublisherWorkflowYamlArtifact => true  _ => false }
     DriftWatchWorkflowYamlArtifact => match b { DriftWatchWorkflowYamlArtifact => true  _ => false }
+    V1HealthWatchWorkflowYamlArtifact => match b { V1HealthWatchWorkflowYamlArtifact => true  _ => false }
     BranchRunGrantBrokerWorkflowYamlArtifact => match b { BranchRunGrantBrokerWorkflowYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
@@ -441,6 +446,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     HealWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_workflow", decl_name: "expected_heal_workflow_yml")
     HealPublisherWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_publisher_workflow", decl_name: "expected_heal_publisher_workflow_yml")
     DriftWatchWorkflowYamlArtifact => decl_ref(module_path: "gunbc.drift_watch_workflow", decl_name: "expected_drift_watch_workflow_yml")
+    V1HealthWatchWorkflowYamlArtifact => decl_ref(module_path: "gunbc.v1_health_watch_workflow", decl_name: "expected_v1_health_watch_workflow_yml")
     BranchRunGrantBrokerWorkflowYamlArtifact => decl_ref(module_path: "gunbc.fleet.branch_run_grant_broker_workflow", decl_name: "expected_branch_run_grant_broker_workflow_yml")
     GitignoreArtifact => decl_ref(module_path: "gunbc.gitignore_emit", decl_name: "expected_gitignore")
     GitattributesArtifact => decl_ref(module_path: "gunbc.gitattributes_emit", decl_name: "expected_gitattributes")

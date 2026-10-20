@@ -126,6 +126,13 @@ data regeneration_jobs_added_to_roster: DesignRuling = DesignRuling {
   provenance: "Roster growth by two non-required jobs, heal-publish.yml and drift-watch.yml, recorded as approved by default: escalation msg_6b00c6a2-c66c-4f41-a3bf-b76dc9d8ab4e went unanswered inside the dashboard's 15-minute window, so its recommended option was recorded; this is not an explicit yes to the two-job split. The operator's own words cover the capability: at 2026-10-11T03:01:08Z 'could you make the regeneration CI step and we can see?', and at 2026-10-11T03:15:35Z 'OK - agreed with your rec - P and D are not urgent' on the proposal of a Tier S push-back plus a Tier O scheduled read-only check.",
 }
 
+data v1_health_watch_added_to_roster: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_health_watch_added_to_roster"),
+  decided: "2026-10-20",
+  section: "Building & checks",
+  provenance: "Roster growth by one non-required job, v1-health-watch.yml, recorded as approved by default: escalation msg_292fbf43 went unanswered inside the dashboard's window, so its recommended option was recorded; this is not an explicit yes. The job is scheduled, reads the default branch and writes nothing: it reports the v1 unit tests and the lint pass over the workspace, one typed, located finding per failure. The third requested subject, the resolve of every module outside the required gate's emitted closures, is a declared frontier: measured at 38 GiB peak RSS and 1255 s on a 65 GiB host, it exceeds the fleet slot's 22 GiB MemoryMax, and no budget is raised; its trigger is the native compiler judging that population (gunbc.rung_drop v1_required_lanes_withdrawn). It is one job whose subjects are steps, under the drift-watch job's 60-minute budget, never a second job and never a required context.",
+}
+
 data project_documentation_projections_are_not_checkout_artifacts: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "project_documentation_projections_are_not_checkout_artifacts"),
   decided: "2026-10-13",
@@ -312,6 +319,7 @@ fn design_rulings() -> List<DesignRuling> {
     v1_withdrawn_one_required_job,
     memory_envelope_is_part_of_the_verdict,
     regeneration_jobs_added_to_roster,
+    v1_health_watch_added_to_roster,
     harness_default_requirement_places_on_operator_endpoint,
     project_documentation_projections_are_not_checkout_artifacts,
     cardinality_one_concept,
