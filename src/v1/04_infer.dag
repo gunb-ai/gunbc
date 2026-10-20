@@ -3410,7 +3410,7 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
 // has no cited authority for its former exemption and is judged like any kernel. A non-kernel
 // formal keeps the two-relation wall's judgment (arm-to-parent, alias and generics are decided
 // there), and a type variable has no declaration to judge: both stay unjudged, named residuals of
-// the row. A head the reading cannot identify (a generic application such as a user Opt<Int>) is
+// the row. A match binding over a generic builtin's result carries the instantiated type, so it is judged like any actual. A head the reading cannot identify (a generic application such as a user Opt<Int>) is
 // JUDGED, not exempt: it carries no kernel name, so it inhabits the kernel formal by no route and
 // refuses with the located mismatch rather than passing silently.
 fn actual_is_unjudged_by_formal(actual: Node, actual_name: String, formal_name: String, formal_base: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -3423,7 +3423,6 @@ fn actual_is_unjudged_by_formal(actual: Node, actual_name: String, formal_name: 
       TypeReferenceNamesDeclaration { declaration: _ } => brand_grounds_transparently_to(name: actual_name, other: formal_base, type_env: type_env, source_indices: source_indices)
       TypeReferenceIsKernelType { name: _ } => false
       TypeReferenceIsTypeVariable { id: _ } => true
-      TypeReferenceUninstantiatedTypeParameter { name: _ } => true
       TypeReferenceUnidentified { authored: _, resolved: _ } => false
     }
   }
@@ -11373,7 +11372,6 @@ fn optional_reading_by_census(n: Node, scope: InferScope, spelling: String) -> O
       if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
     TypeReferenceIsKernelType { name: kernel } => optional_reading_of_kernel_mint(kernel: kernel)
     TypeReferenceIsTypeVariable { id: _ } => IsOtherType
-    TypeReferenceUninstantiatedTypeParameter { name: _ } => IsOtherType
     TypeReferenceUnidentified { authored: _, resolved: _ } =>
       if spelling == "Optional" { OptionalUnrecovered { spelling: spelling } } else { IsOtherType }
   }
