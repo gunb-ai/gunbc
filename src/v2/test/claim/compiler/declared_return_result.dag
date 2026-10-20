@@ -253,7 +253,7 @@ fn drr_reason_is(src: String, wanted: Symbol) -> Bool {
 
 data drr_nat_at_bool_source: String = "module p\n\nimport std.nat { Nat }\n\nfn mk() -> Nat {\n  0\n}\n\nfn f() -> Bool {\n  mk()\n}\n"
 
-data drr_generic_nat_at_bool_source: String = "module p\n\nimport std.nat { Nat }\nimport v2.std.collection { List }\n\nfn mk<T>(xs: List<T>) -> Nat {\n  0\n}\n\nfn f(xs: List<Int>) -> Bool {\n  mk(xs)\n}\n"
+data drr_generic_nat_at_bool_source: String = "module p\n\nimport std.nat { Nat }\nimport std.types { List }\n\nfn mk<T>(xs: List<T>) -> Nat {\n  0\n}\n\nfn f(xs: List<Int>) -> Bool {\n  mk(xs)\n}\n"
 
 data drr_int_at_bool_source: String = "module p\n\nfn mk() -> Int {\n  0\n}\n\nfn f() -> Bool {\n  mk()\n}\n"
 

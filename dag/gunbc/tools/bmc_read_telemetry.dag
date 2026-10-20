@@ -1,5 +1,7 @@
 module gunbc.tools.bmc_read_telemetry
 
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
 
 fn bmc_read_telemetry() -> ProcessExit
 {

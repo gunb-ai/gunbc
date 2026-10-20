@@ -54,10 +54,8 @@ import v2.extdeps.languages.bash {
   bash_pipe_and_or_flat_wrong_source_text,
   bash_pipe_and_or_flat_wrong_target_model
 }
-import v2.std.collection {
-  Map,
-  empty_map
-}
+import std.types { Map }
+import std.algebra { empty_map }
 import std.optional {
   Optional,
   Present,

@@ -1,5 +1,6 @@
 module test.claim.repository_convergence_placement_witness
 
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { String, Bool, NonEmptyStr }
 import gunbc.live_deploy.repository_convergence { convergence_fetch_upload_pack }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -9,6 +10,16 @@ import extdeps.access.posix_effective_principal {
   effective_posix_principal_observation,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.git.partial_clone {
+  ObjectSourceServeAdmission,
+  ObjectSourceCanServe,
+  ObjectSourceCannotServe,
+  ObjectSourceServeDecideAtApplyPwd,
+  ObjectStoreComplete,
+  PartialClonePromisor,
+  object_source_serve_admission,
+  object_source_serve_refusal_text,
+}
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name,
@@ -142,11 +153,16 @@ test fn an_unobservable_principal_refuses_as_its_own_state() -> Bool {
     && is_principal_admitted(a: admission_for(observed_name: concat(srv1_service_user(), "\n")))
 }
 
+fn complete_serve(object_source: String) -> ObjectSourceServeAdmission {
+  ObjectSourceCanServe { source: object_source }
+}
+
 fn admitted_operands(candidate: String, object_source: String) -> ConvergencePlacementOperands? {
   match convergence_operands_for(
     spec: deployment_spec_srv1(),
     candidate: candidate,
     object_source: object_source,
+    object_source_serve: complete_serve(object_source: object_source),
   ) {
     ConvergenceOperandsAdmitted { operands: o } => Present { value: o }
     ConvergenceOperandsRefused { reason: _ } => none
@@ -158,6 +174,7 @@ fn operands_refused(candidate: String, object_source: String) -> Bool {
     spec: deployment_spec_srv1(),
     candidate: candidate,
     object_source: object_source,
+    object_source_serve: complete_serve(object_source: object_source),
   ) {
     ConvergenceOperandsAdmitted { operands: _ } => false
     ConvergenceOperandsRefused { reason: r } => r != ""
@@ -206,6 +223,42 @@ test fn an_object_source_that_is_not_an_absolute_path_refuses() -> Bool {
     && operands_refused(candidate: fixture_candidate, object_source: "   ")
     && operands_refused(candidate: fixture_candidate, object_source: "gunbc")
     && !operands_refused(candidate: fixture_candidate, object_source: fixture_object_source)
+}
+
+test fn a_promisor_object_source_refuses_naming_the_source_and_the_cause() -> Bool {
+  let serve = object_source_serve_admission(
+    source: fixture_object_source,
+    standing: PartialClonePromisor { detail: "extensions.partialClone=origin" },
+  )
+  match serve {
+    ObjectSourceCanServe { source: _ } => false
+    ObjectSourceServeDecideAtApplyPwd => false
+    ObjectSourceCannotServe { source: s, cause: c } =>
+      s == fixture_object_source
+        && string_contains(s: c, pattern: "promisor")
+        && string_contains(s: object_source_serve_refusal_text(admission: serve), pattern: fixture_object_source)
+        && match convergence_operands_for(
+          spec: deployment_spec_srv1(),
+          candidate: fixture_candidate,
+          object_source: fixture_object_source,
+          object_source_serve: serve,
+        ) {
+          ConvergenceOperandsAdmitted { operands: _ } => false
+          ConvergenceOperandsRefused { reason: r } =>
+            string_contains(s: r, pattern: fixture_object_source)
+              && string_contains(s: r, pattern: "promisor")
+        }
+  }
+}
+
+test fn a_complete_object_source_admits() -> Bool {
+  match object_source_serve_admission(source: fixture_object_source, standing: ObjectStoreComplete) {
+    ObjectSourceCannotServe { source: _, cause: _ } => false
+    ObjectSourceServeDecideAtApplyPwd => false
+    ObjectSourceCanServe { source: s } =>
+      s == fixture_object_source
+        && !operands_refused(candidate: fixture_candidate, object_source: fixture_object_source)
+  }
 }
 
 fn srv1_unit_text() -> String {
@@ -305,7 +358,7 @@ test fn the_unit_runs_the_admitted_binary_over_the_runner_checkout_corpus() -> B
     candidate: fixture_candidate,
     receipt_path: convergence_receipt_path(instance_root: "/opt/gunbc"),
   )
-  starts_with(s: cmd, prefix: concat(spec.service.serve_binary as String, " run"))
+  starts_with(s: cmd, prefix: concat(fixed_serve_binary_path(binary: spec.service.serve_binary), " run"))
     && string_contains(s: cmd, pattern: "--source-root $\{GUNBC_TREE_SRC\}/dag")
     && string_contains(s: cmd, pattern: "--source-root $\{GUNBC_TREE_SRC\}/src/v2")
     && string_contains(

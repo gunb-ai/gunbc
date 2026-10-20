@@ -6,8 +6,7 @@ use self::HoleSite::*;
 use self::HoleTypeReading::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_types::{Bool, List, Map};
-pub use crate::v1_compiler_compile::compile_to_resolved;
-pub use crate::v1_compiler_compile::SourceFile;
+pub use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
 pub use crate::v1_compiler_infer::type_node_label;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_tokenize::tokenize;
@@ -22,9 +21,9 @@ use crate::v1_std_core::ExprData::{
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::TokenShape::{ShStrBegin, ShStrEnd, ShStrMid};
 pub use crate::v1_std_core::{
-    authored_name_at, byte_to_line_col, param_node_name_at, source_text_at,
+    authored_name_at, byte_to_line_col, param_node_name_at, source_text_at, ExprData, InferredNode,
+    NewlineIndex, Node, Token, TokenShape,
 };
-pub use crate::v1_std_core::{ExprData, InferredNode, NewlineIndex, Node, Token, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -177,7 +176,7 @@ pub fn ihc_hole_starts(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<i64>> {
                 Rc::new(IhcHoleStartScan {
                     after_opener: ihc_token_opens_hole(t.clone()),
                     starts: if acc.after_opener.clone() {
-                        v1_rt::rc_list_push(acc.starts.clone(), t.span.clone().start.clone())
+                        v1_rt::rc_list_push(acc.starts.clone(), t.span.start.clone())
                     } else {
                         acc.starts.clone()
                     },
@@ -376,19 +375,17 @@ pub fn ihc_named_or_span(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>)
 }
 
 pub fn ihc_span_text(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    match v1_rt::map_get(&si, e.span.clone().file.clone()) {
+    match v1_rt::map_get(&si, e.span.file.clone()) {
         Some(index) => crate::v1_std_core::source_text_at(index.clone(), e.span.clone()),
         std::option::Option::None => "".to_string(),
     }
 }
 
 pub fn ihc_line(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> i64 {
-    match v1_rt::map_get(&si, e.span.clone().file.clone()) {
-        Some(index) => {
-            crate::v1_std_core::byte_to_line_col(index.clone(), e.span.clone().start.clone())
-                .line
-                .clone()
-        }
+    match v1_rt::map_get(&si, e.span.file.clone()) {
+        Some(index) => crate::v1_std_core::byte_to_line_col(index.clone(), e.span.start.clone())
+            .line
+            .clone(),
         std::option::Option::None => 0,
     }
 }
@@ -469,7 +466,7 @@ pub fn ihc_template_observation(
     {
         let holes = ihc_template_holes(ctx.clone(), template.clone());
         Rc::new(ObservedTemplate {
-            file: template.span.clone().file.clone(),
+            file: template.span.file.clone(),
             holes: Rc::new({
                 let mut __result = Vec::new();
                 for hh in holes.iter().cloned() {
@@ -483,8 +480,8 @@ pub fn ihc_template_observation(
 
 pub fn ihc_leftmost_start(n: Rc<Node>) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let own = if (n.span.clone().end.clone() > n.span.clone().start.clone()) {
-            n.span.clone().start.clone()
+        let own = if (n.span.end.clone() > n.span.start.clone()) {
+            n.span.start.clone()
         } else {
             v1_rt::int_neg(1)
         };
@@ -509,7 +506,7 @@ pub fn ihc_leftmost_start(n: Rc<Node>) -> i64 {
 
 pub fn ihc_hole_row(ctx: Rc<HoleWalkContext>, h: Rc<Node>, fused: bool) -> Rc<HoleRow> {
     Rc::new(HoleRow {
-        file: h.span.clone().file.clone(),
+        file: h.span.file.clone(),
         start: ihc_leftmost_start(h.clone()),
         line: ihc_line(h.clone(), ctx.si.clone()),
         decl: ctx.file_decl.clone(),
@@ -620,9 +617,10 @@ pub fn ihc_module_templates(
 
 pub fn ihc_number_holes(rows: Rc<Vec<Rc<HoleRow>>>) -> Rc<Vec<Rc<HoleRow>>> {
     {
+        let seen_seed = v1_rt::rc_empty_map::<String, i64>();
         let numbered = rows.iter().cloned().fold(
             Rc::new(IhcNumbering {
-                seen: v1_rt::rc_empty_map::<String, i64>(),
+                seen: seen_seed.clone(),
                 out: Rc::new(vec![]),
             }),
             |acc: Rc<IhcNumbering>, r: Rc<HoleRow>| {
@@ -850,13 +848,18 @@ pub fn ihc_row_tsv(r: Rc<HoleRow>) -> String {
 }
 
 pub fn ihc_tally(keys: Rc<Vec<String>>) -> Rc<HashMap<String, i64>> {
-    keys.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
-            Some(n) => v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1)),
-            std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
-        },
-    )
+    {
+        let tally_seed = v1_rt::rc_empty_map::<String, i64>();
+        keys.iter().cloned().fold(
+            tally_seed.clone(),
+            |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
+                Some(n) => {
+                    v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1))
+                }
+                std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
+            },
+        )
+    }
 }
 
 pub fn ihc_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Vec<String>> {

@@ -91,12 +91,7 @@ test fn witness_compile_pool_effect_refuses_a_bmc_target() -> Bool {
 test fn witness_live_topology_refuses_the_slice_ensure() -> Bool {
   let a = admit_ensure_compile_pool_slice(
     topology: gunbc_compile_pool_placement,
-    sizing: compile_pool_bytes_for(
-      placement: gunbc_compile_pool_placement,
-      nproc: hardware_thread_count(count: 128),
-      host: byte_size(134317047808),
-      citation: jobserver_config,
-    ),
+    sizing: compile_pool_bytes_for(placement: gunbc_compile_pool_placement),
     cache_placement: ServerPlacementAbsent,
     observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
   )

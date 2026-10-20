@@ -1,0 +1,273 @@
+module extdeps.w3c.png
+
+import std.types { Int, List }
+import std.logic { Bool }
+import std.optional { Absent, Present }
+import std.machine_word { word32_xor, word32_not, machine_word_apply, OperatorXor, Width8 }
+import extdeps.color.srgb { Srgb8, srgb8_admissible }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.rfc_1950 { rfc_1950_fixed_stream, rfc_1950_push_word32_be }
+import extdeps.standards.rfc_1951 { rfc_1951_fixed_stream_bound }
+
+// W3C Portable Network Graphics (PNG) Specification (Third Edition), Recommendation. Cited
+// sections: §5.2 (the eight-octet signature), §5.3 (chunk layout: length, type, data, CRC; the CRC
+// covers type and data, not length), §7.1 (four-byte integers at most 2^31 - 1), §11.2.1 IHDR, §11.3.2.5 sRGB and §11.3.3.5 gAMA, §11.2.3 PLTE, §11.3.1.1 tRNS for indexed colour,
+// §11.2.4 IDAT, §11.2.5 IEND, §7.3 and §9 (filter method 0; filter type 0 "None" prefixes each
+// scanline), §10 (compression method 0 is a zlib datastream, RFC 1950), Annex D (the CRC-32: the
+// reflected polynomial 0xEDB88320, register preset to all ones, result complemented).
+//
+// ONE ENCODING, CHOSEN FOR ITS CONSUMER: 8-bit indexed colour (colour type 3), sRGB-tagged, with a tRNS
+// alpha per palette entry, no interlace, every row unfiltered, the IDAT zlib stream one fixed-Huffman block of runs. A logo
+// rasterized with anti-aliasing has a handful of distinct colours, so one octet per pixel holds it
+// exactly with per-entry transparency, and its rows are runs of one index, which the run stream
+// compresses without a match search. Other colour types, filters and dynamic-Huffman IDAT are the specification's, unrealized here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/png-3/"
+  }
+}
+
+data png_signature: List<Int> = [137, 80, 78, 71, 13, 10, 26, 10]
+
+// ═══ ANNEX D: CRC-32 ═══
+
+data png_crc_polynomial: Int = 3988292384
+
+fn png_crc_shift(c: Int) -> Int {
+  if c % 2 == 1 { word32_xor(a: png_crc_polynomial, b: c / 2) } else { c / 2 }
+}
+
+fn png_crc_entry(n: Int) -> Int {
+  png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: n))))))))
+}
+
+// Entry n is the register after shifting n through eight bits. Derived, never transcribed.
+data png_crc_table: List<Int> = png_crc_entries(n: 256, acc: [])
+
+fn png_crc_entries(n: Int, acc: List<Int>) -> List<Int> {
+  if n <= 0 { acc } else { png_crc_entries(n: n - 1, acc: acc |> list_push(png_crc_entry(n: 256 - n))) }
+}
+
+// The Absent arm is the definition itself and is unreachable for an index below 256.
+fn png_crc_lookup(i: Int) -> Int {
+  match get(png_crc_table, i) {
+    Present { value: v } => v
+    Absent => png_crc_entry(n: i)
+  }
+}
+
+// One octet into the register: the low octet of the register meets the input, the table entry it
+// selects meets the register's remaining three octets.
+fn png_crc_step(crc: Int, octet: Int) -> Int {
+  word32_xor(a: png_crc_lookup(i: machine_word_apply(op: OperatorXor, width: Width8, a: crc % 256, b: octet)), b: crc / 256)
+}
+
+// The register continued over more octets, before the final complement.
+fn png_crc_register(register: Int, octets: List<Int>) -> Int {
+  fold(octets, init: register, f: (c, o) => png_crc_step(crc: c, octet: o))
+}
+
+fn png_crc32(octets: List<Int>) -> Int {
+  word32_not(a: png_crc_register(register: 4294967295, octets: octets))
+}
+
+// ═══ §5.3: CHUNKS ═══
+
+// A chunk type is four ASCII letters, held as their octets.
+data png_chunk_ihdr: List<Int> = [73, 72, 68, 82]
+data png_chunk_plte: List<Int> = [80, 76, 84, 69]
+data png_chunk_trns: List<Int> = [116, 82, 78, 83]
+data png_chunk_srgb: List<Int> = [115, 82, 71, 66]
+data png_chunk_gama: List<Int> = [103, 65, 77, 65]
+data png_chunk_idat: List<Int> = [73, 68, 65, 84]
+data png_chunk_iend: List<Int> = [73, 69, 78, 68]
+
+// Appends one chunk to `out`. The CRC runs over the type then the data without joining them.
+fn png_push_chunk(out: List<Int>, chunk_type: List<Int>, data: List<Int>) -> List<Int> {
+  let crc = word32_not(a: png_crc_register(register: png_crc_register(register: 4294967295, octets: chunk_type), octets: data))
+  rfc_1950_push_word32_be(out: concat(concat(rfc_1950_push_word32_be(out: out, v: count(data)), chunk_type), data), v: crc)
+}
+
+// ═══ THE IMAGE ═══
+
+// §11.3.2.5 sRGB: the samples are sRGB, rendered with this intent. A logo's intent is
+// RelativeColorimetric (the specification names it for logos); the selection belongs to the caller.
+type PngSrgbRenderingIntent = PngPerceptual | PngRelativeColorimetric | PngSaturation | PngAbsoluteColorimetric
+
+fn png_srgb_intent_octet(intent: PngSrgbRenderingIntent) -> Int {
+  match intent {
+    PngPerceptual => 0
+    PngRelativeColorimetric => 1
+    PngSaturation => 2
+    PngAbsoluteColorimetric => 3
+  }
+}
+
+// Straight (unassociated) alpha: PNG stores colour unmultiplied by alpha (§4.4), so an entry's
+// colour is the colour itself whatever its alpha.
+type PngPaletteEntry {
+  color: Srgb8
+  alpha: Int
+}
+
+// Rows top to bottom; each row is `width` palette indices, left to right. The palette colours are
+// sRGB, so the file carries an sRGB chunk with `intent`.
+type PngIndexedImage {
+  width: Int
+  height: Int
+  intent: PngSrgbRenderingIntent
+  palette: List<PngPaletteEntry>
+  rows: List<List<Int>>
+}
+
+type PngAxis = PngWidth | PngHeight
+
+// What the encoder refuses rather than writes: a PNG decoder would reject each of these, or worse,
+// read a different picture than the one described. Each carries where it is and what was found.
+type PngRefusal =
+    PngDimensionOutOfRange { axis: PngAxis, observed: Int }
+  | PngIdatUpperBoundExceedsLimit { upper_bound: Int }
+  | PngPaletteSize { entries: Int }
+  | PngPaletteColorInadmissible { entry: Int, color: Srgb8 }
+  | PngPaletteAlphaOutOfRange { entry: Int, alpha: Int }
+  | PngRowCount { declared: Int, actual: Int }
+  | PngRowWidth { row: Int, declared: Int, actual: Int }
+  | PngIndexOutsidePalette { row: Int, column: Int, index: Int }
+
+type PngEncoding = PngEncoded { octets: List<Int> } | PngRefused { cause: PngRefusal }
+
+// §7.1: a PNG four-byte unsigned integer, and so a dimension and a chunk length, is at most 2^31 - 1.
+data png_four_byte_limit: Int = 2147483647
+
+fn png_dimension_refusal(axis: PngAxis, v: Int) -> PngRefusal? {
+  if v < 1 || v > png_four_byte_limit { Present { value: PngDimensionOutOfRange { axis: axis, observed: v } } } else { none }
+}
+
+// An upper bound on the IDAT data length, known before any octet is produced: zlib header, the
+// fixed stream's bound over the scanlines, and the Adler-32. It is a bound, not the length: an image
+// refused on it may compress below the limit, which is why its refusal names the bound.
+fn png_idat_length(width: Int, height: Int) -> Int {
+  2 + rfc_1951_fixed_stream_bound(raw: height * (width + 1)) + 4
+}
+
+type PngScan {
+  at: Int
+  refusal: PngRefusal?
+}
+
+fn png_check_entry(st: PngScan, e: PngPaletteEntry) -> PngScan {
+  match st.refusal {
+    Present { value: _ } => st
+    Absent =>
+      if !srgb8_admissible(c: e.color) {
+        PngScan { at: st.at, refusal: Present { value: PngPaletteColorInadmissible { entry: st.at, color: e.color } } }
+      } else if e.alpha < 0 || e.alpha > 255 {
+        PngScan { at: st.at, refusal: Present { value: PngPaletteAlphaOutOfRange { entry: st.at, alpha: e.alpha } } }
+      } else {
+        PngScan { at: st.at + 1, refusal: Absent }
+      }
+  }
+}
+
+fn png_check_index(st: PngScan, row: Int, index: Int, entries: Int) -> PngScan {
+  match st.refusal {
+    Present { value: _ } => st
+    Absent =>
+      if index < 0 || index >= entries {
+        PngScan { at: st.at, refusal: Present { value: PngIndexOutsidePalette { row: row, column: st.at, index: index } } }
+      } else {
+        PngScan { at: st.at + 1, refusal: Absent }
+      }
+  }
+}
+
+fn png_check_row(st: PngScan, row: List<Int>, width: Int, entries: Int) -> PngScan {
+  match st.refusal {
+    Present { value: _ } => st
+    Absent =>
+      if count(row) != width {
+        PngScan { at: st.at, refusal: Present { value: PngRowWidth { row: st.at, declared: width, actual: count(row) } } }
+      } else {
+        PngScan {
+          at: st.at + 1,
+          refusal: fold(row, init: PngScan { at: 0, refusal: Absent }, f: (c, i) => png_check_index(st: c, row: st.at, index: i, entries: entries)).refusal,
+        }
+      }
+  }
+}
+
+fn png_first_of(a: PngRefusal?, b: PngRefusal?) -> PngRefusal? {
+  match a {
+    Present { value: _ } => a
+    Absent => b
+  }
+}
+
+// The first refusal the image earns, in the order a reader meets the facts: the header's
+// dimensions and the size they imply before anything that would allocate them.
+fn png_first_refusal(image: PngIndexedImage) -> PngRefusal? {
+  let entries = count(image.palette)
+  let dimension = png_first_of(a: png_dimension_refusal(axis: PngWidth, v: image.width), b: png_dimension_refusal(axis: PngHeight, v: image.height))
+  match dimension {
+    Present { value: _ } => dimension
+    Absent =>
+      if png_idat_length(width: image.width, height: image.height) > png_four_byte_limit {
+        Present { value: PngIdatUpperBoundExceedsLimit { upper_bound: png_idat_length(width: image.width, height: image.height) } }
+      } else if entries == 0 || entries > 256 {
+        Present { value: PngPaletteSize { entries: entries } }
+      } else {
+        let palette = fold(image.palette, init: PngScan { at: 0, refusal: Absent }, f: (st, e) => png_check_entry(st: st, e: e)).refusal
+        match palette {
+          Present { value: _ } => palette
+          Absent =>
+            if count(image.rows) != image.height {
+              Present { value: PngRowCount { declared: image.height, actual: count(image.rows) } }
+            } else {
+              fold(image.rows, init: PngScan { at: 0, refusal: Absent }, f: (st, row) => png_check_row(st: st, row: row, width: image.width, entries: entries)).refusal
+            }
+        }
+      }
+  }
+}
+
+// Width and height, then bit depth 8, colour type 3, compression 0, filter 0, interlace 0.
+fn png_ihdr(image: PngIndexedImage) -> List<Int> {
+  concat(rfc_1950_push_word32_be(out: rfc_1950_push_word32_be(out: [], v: image.width), v: image.height), [8, 3, 0, 0, 0])
+}
+
+// §11.3.3.5 gAMA: an encoder writing sRGB should also write gAMA 45455 for decoders that read
+// only gAMA (1/2.2 in units of 1/100000).
+data png_srgb_gama: Int = 45455
+
+fn png_plte(palette: List<PngPaletteEntry>) -> List<Int> {
+  fold(palette, init: [], f: (out, e) => out |> list_push(e.color.r) |> list_push(e.color.g) |> list_push(e.color.b))
+}
+
+fn png_trns(palette: List<PngPaletteEntry>) -> List<Int> {
+  map(palette, e => e.alpha)
+}
+
+// §7.3: each scanline is its filter-type octet (0, None) followed by its pixels.
+fn png_scanlines(rows: List<List<Int>>) -> List<Int> {
+  fold(rows, init: [], f: (out, row) => fold(row, init: out |> list_push(0), f: (acc, i) => acc |> list_push(i)))
+}
+
+// §5.6 ordering: sRGB and gAMA precede PLTE; tRNS follows PLTE and precedes IDAT.
+fn png_encode_admitted(image: PngIndexedImage) -> List<Int> {
+  let header = png_push_chunk(out: png_signature, chunk_type: png_chunk_ihdr, data: png_ihdr(image: image))
+  let space = png_push_chunk(out: header, chunk_type: png_chunk_srgb, data: [png_srgb_intent_octet(intent: image.intent)])
+  let gamma = png_push_chunk(out: space, chunk_type: png_chunk_gama, data: rfc_1950_push_word32_be(out: [], v: png_srgb_gama))
+  let palette = png_push_chunk(out: gamma, chunk_type: png_chunk_plte, data: png_plte(palette: image.palette))
+  let alpha = png_push_chunk(out: palette, chunk_type: png_chunk_trns, data: png_trns(palette: image.palette))
+  let pixels = png_push_chunk(out: alpha, chunk_type: png_chunk_idat, data: rfc_1950_fixed_stream(octets: png_scanlines(rows: image.rows)))
+  png_push_chunk(out: pixels, chunk_type: png_chunk_iend, data: [])
+}
+
+fn png_encode(image: PngIndexedImage) -> PngEncoding {
+  match png_first_refusal(image: image) {
+    Present { value } => PngRefused { cause: value }
+    Absent => PngEncoded { octets: png_encode_admitted(image: image) }
+  }
+}

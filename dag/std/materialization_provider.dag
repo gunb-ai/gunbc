@@ -239,7 +239,7 @@ type ArtifactRequest
 // DECLARED FRONTIER (DESIGN section 3c). These three families are consumed today only by the store
 // semantics (std.materialization_object, extdeps.realization.materialization_store_local) and their
 // executed controls. Their production consumer is the EMITTED NATIVE ROUTE (the successor of
-// gunbc.witness.v2_native_route's operator-invoked instrument), which lands in a later lane.
+// v2.workflow.v2_native_route's operator-invoked instrument), which lands in a later lane.
 // TRIGGER: the emitted native route constructs these requests from its own receipt identities and
 // serves or commits them through the local store instead of re-preparing every module per run.
 // ComputeWorkRequest: one host-run unit of compute work (gunbc.compute.work_provider_local) -- a cargo

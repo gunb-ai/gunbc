@@ -16,8 +16,8 @@ import v2.extdeps.languages.dag {
   StringTemplateText
 }
 import std.occurrence_identity { OccurrenceSynthetic, NodeOccurrenceIdentity, OccurrenceId, OccurrencePending, node_occurrence_identity_minted }
-import v2.std.collection { list_at_optional }
-import std.algebra { Cons, Empty, FreeSemigroup, length }
+
+import std.algebra { Cons, Empty, FreeSemigroup, length, list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { node_subtree_nodes, Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, node_with_occurrence_id, symbol_lexeme }

@@ -11,7 +11,8 @@ import v2.std.compilers.body_lowering {
   lower_block_body_atoms
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.collection { Absent, Present, list_at_optional }
+import std.optional { Absent, Present }
+import std.algebra { list_at_optional }
 
 fn body_lowering_bool_node(pass: Bool) -> Node {
   if pass {

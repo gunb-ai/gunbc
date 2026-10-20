@@ -12,15 +12,15 @@ import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, fold_list }
+import std.algebra { Cons, Empty, fold_list, list_at_optional }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Node, NodeFold, TypeNode, Atom, Arrow, ComputationNode, Transform, fold_node }
-import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Node, NodeFold, TypeNode, Atom, Arrow, ComputationNode, Transform, fold_node }
+import v2.std.node_query { find_named_child }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.collection { list_at_optional }
+
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node }
 import v2.test.lens_common.infer_fixture { ClaimParam, ClaimRecord, claim_callable_arrow, claim_int_literal, claim_minted, claim_minted_atom, claim_record_declaration, claim_resolved_call_tree }
 import v2.test.lens_common.resolve_fixture { ClaimLoweredModule, ClaimLoweredParam, claim_lowered_atom, claim_lowered_function, claim_lowered_record, claim_resolve_lowered }
@@ -333,8 +333,8 @@ fn dre_same_leaf_resolved() -> ResolvedTree {
     root: call.root,
     symbol_index: call.symbol_index,
     resolved_declarations: symbol_index_insert(index: call.resolved_declarations, qualified_path: [^p, ^Wrap], resolved: dre_same_leaf_wrap_declaration()),
-    lexical_bindings: call.lexical_bindings,
-    module_outcomes: call.module_outcomes,
+    occurrence_bindings: call.occurrence_bindings, duplicate_binding_records: call.duplicate_binding_records,
+    module_outcomes: call.module_outcomes, outcome_index: call.outcome_index,
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
     constructing_module: optional_absent()
@@ -505,7 +505,7 @@ fn dre_return_atom_of(o: Outcome<ResolvedTree>, wanted: Symbol) -> Optional<Symb
                   match facts.grounding {
                     GroundingNotDerived { node: _ } => optional_absent()
                     DerivedGrounding { grounding: g } =>
-                      match list_at_optional(xs: node_positional_child_targets(node: g.witness.structural.evidence), index: 1) {
+                      match list_at_optional(xs: positional_child_target_nodes(node: g.witness.structural.evidence), index: 1) {
                         Absent => optional_absent()
                         Present { value: ret } =>
                           match ret.kind {
@@ -737,7 +737,7 @@ fn dre_arrow_of(o: Outcome<ResolvedTree>) -> Optional<Node> {
 fn dre_declared_return_of(o: Outcome<ResolvedTree>) -> Optional<Node> {
   match dre_arrow_of(o: o) {
     Absent => optional_absent()
-    Present { value: a } => list_at_optional(xs: node_positional_child_targets(node: a), index: 1)
+    Present { value: a } => list_at_optional(xs: positional_child_target_nodes(node: a), index: 1)
   }
 }
 

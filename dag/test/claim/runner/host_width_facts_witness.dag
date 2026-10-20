@@ -1,6 +1,6 @@
 module test.claim.runner.host_width_facts_witness
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size, byte_size_count }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
@@ -36,7 +36,7 @@ fn facts_with_usable_ram(f: HostWidthFacts, ram: HostUsableRam) -> HostWidthFact
     control_plane: f.control_plane,
     served_deployment: f.served_deployment,
     disk: f.disk,
-    carries_shakedown_slot: f.carries_shakedown_slot,
+    authored_slots: f.authored_slots,
   }
 }
 
@@ -69,7 +69,7 @@ test fn host_width_facts_RED_supplied_usable_ram_moves_the_standing() -> Bool {
     _ => 0
   }
   let halved = facts_with_usable_ram(f: real, ram: HostUsableRamMeasured { bytes: byte_size(halved_bytes), provenance: "designed: half of srv3's measured MemTotal" })
-  let unmeasured_refuses = match host_deployment_standing_given(offer: srv3_offer, facts: facts_with_usable_ram(f: real, ram: HostUsableRamUnmeasured), control_plane_placement: fabric_control_plane_placement) {
+  let unmeasured_refuses = match host_deployment_standing_given(offer: srv3_offer, facts: facts_with_usable_ram(f: real, ram: HostUsableRamUnmeasured { reason: "designed unmeasured" as NonEmptyStr }), control_plane_placement: fabric_control_plane_placement) {
     HostRunnerDeploymentDerived { deployment: _ } => false
     HostRunnerDeploymentRefused { refusal: r } => match r.cause {
       UsableRamUnavailable { cause: _ } => true

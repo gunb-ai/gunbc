@@ -17,7 +17,7 @@ import std.realization_reconcile {
   reconciliation_converged,
 }
 import std.types { String }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 
 type HostEffectPlan = EffectPlan<HostEffect>
 

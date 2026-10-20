@@ -3,6 +3,8 @@ module gunbc.spark.model_snapshot_materialize
 import extdeps.huggingface.hub { HubCacheEnvironment, hub_cache_root_for, hub_cache_environment_words, hub_cache_environment_unset }
 import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
+import std.retry_law { RetryLaw }
+import std.measure { second, second_count }
 import std.content_hash { content_hash_atom, content_hash_of_value, serialize_content_hash }
 import product.host_identity { HostIdentity }
 import std.algebra { trim }
@@ -18,6 +20,7 @@ import extdeps.ssh.session { ssh_client_error_exit_status }
 import gunbc.spark.remote_leg_began { remote_leg_began_payload_line, remote_leg_reported_began, remote_leg_stdout_without_began, remote_stdout_as_one_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, SshTarget, portable_remote_words,
+  SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_endpoint, spark_reach_path_wire }
@@ -147,12 +150,12 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
       match spark_reach_endpoint(host: ctx.host, path: ctx.path) {
         Absent => spark_remote_unreachable(u: LegNotAttempted { cause: join(["no ", spark_reach_path_wire(p: ctx.path), " endpoint for ", ctx.host as String], "") })
         Present { value: endpoint } =>
+          match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: fleet_bootstrap_principal_login()) {
+          SshTargetRefused { endpoint: e, refusal: why } => spark_remote_unreachable(u: LegNotAttempted { cause: ssh_target_refusal_text(endpoint: e, refusal: why) })
+          SshTargetResolved { target: target } =>
           match exec_as_fleet_principal_trusting_with_stdin(
             trust: ctx.trust,
-            target: SshTarget {
-              endpoint: endpoint as NonEmptyStr,
-              principal: fleet_bootstrap_principal_login(),
-            },
+            target: target,
             words: words,
             stdin_payload: join([ctx.admin_credential as String, "\n", remote_leg_began_payload_line(), shell_command_line(argv: argv), "\n"], ""),
             credential: BootstrapCredentialFileHeld { path: ctx.admin_credential_file },
@@ -160,6 +163,7 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
             FleetPrincipalLegRefused { cause: why } => spark_remote_unreachable(u: LegNotAttempted { cause: why as String })
             FleetPrincipalLegRan { session: _, result: r } =>
               spark_remote_run_of_session(endpoint: endpoint as String, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+          }
           }
       }
   }
@@ -692,13 +696,20 @@ fn spark_transfer_start(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
 // failure, and the Hub CLI resumes the files it has: a DNS or transport failure costs a retry, not the run.
 // It is BOUNDED, never a loop: at most spark_transfer_restart_burst starts within the interval, then the
 // unit stays failed and the supervision reads TransferExitedFailed, exactly as one failure did before.
-data spark_transfer_restart_delay_seconds: Nat = 120
+// RetryLaw is the backoff the supervisor will ask. StartLimitBurst / StartLimitIntervalSec are
+// systemd burst-window facts, not delay_cap or real_work_failure_bound (DESIGN §3 meaning fork).
+data spark_transfer_retry_law: RetryLaw = RetryLaw {
+  initial_delay: second(count: 120),
+  delay_cap: second(count: 120),
+  real_work_failure_bound: 1,
+}
+
 data spark_transfer_restart_burst: Nat = 30
 data spark_transfer_restart_interval_seconds: Nat = 21600
 
 data spark_transfer_restart_properties: List<String> = [
   "--property=Restart=on-failure",
-  join(["--property=RestartSec=", to_string(spark_transfer_restart_delay_seconds)], ""),
+  join(["--property=RestartSec=", to_string(second_count(s: spark_transfer_retry_law.initial_delay))], ""),
   join(["--property=StartLimitIntervalSec=", to_string(spark_transfer_restart_interval_seconds)], ""),
   join(["--property=StartLimitBurst=", to_string(spark_transfer_restart_burst)], ""),
 ]

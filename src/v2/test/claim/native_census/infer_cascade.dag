@@ -1,27 +1,27 @@
 module v2.test.claim.native_census.infer_cascade
 
 import v2.compiler.native_test_vocabulary { FileRefusalAtUnresolvedNode }
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeCensusCascadeMemberOf,
   NativeCensusCascadeNone,
   NativeCensusCascadeUnattributed,
   NativeCensusCascadeRoot,
   NativeCensusCauseFrontEnd,
   NativeCensusCauseInfer,
-  NativeCensusCauseMember,
   NativeCensusCauseResolve,
-  NativeCensusCauseStage,
   NativeCensusClosureFanOutAtLeast,
   NativeCensusClosureFanOutCounted,
   NativeCensusClosureFanOutUnavailable,
   NativeCensusClosureIndexRead,
   NativeCensusInSubjectClosure,
-  NativeCensusModule,
   NativeCensusOutsideSubjectClosure,
-  NativeCensusSubjectMembership,
   NativeCensusSubjectMembershipUnavailable,
-  NativeImportTargetAttribution,
   NativeImportTargetsAdmitted,
+  NativeCensusCauseMember,
+  NativeCensusCauseStage,
+  NativeCensusModule,
+  NativeCensusSubjectMembership,
+  NativeImportTargetAttribution,
   native_census_infer_cascade_of,
   native_census_cause_group_rows,
   native_census_cause_groups_add_infer_module,
@@ -39,12 +39,12 @@ import v2.compiler.compile {
 import v2.compiler.resolve { ClosureProviderRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.integer { Int }
-import std.algebra { Cons, Empty, fold_list, length, list_map }
+import std.algebra { Cons, Empty, fold_list, length, list_map, empty_map, map_insert }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, CorrectionNotModeled, DeclarationLocus, Diagnostic, NonEmptyDiagnostics, Rejected, Unavailable }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import std.types { List, Map }
 import std.optional { optional_present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

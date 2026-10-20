@@ -76,8 +76,8 @@ fn selected_host_allocation(plan: FleetHostPlan, allocation: HostAllocationVerdi
       match plan {
         FleetHostPlanUnsound { reason: r } => HostAllocationRefused { cause: r as NonEmptyStr }
         FleetHostPlanDerived {
-          name: _, tree: _, runner_slice_cap: slice, effective_build_tokens: _,
-          effective_runner_cpu_cap: cap, build_step: _,
+          name: _, tree: _, runner_slice_cap: slice,
+          effective_runner_cpu_cap: cap,
         } => HostAllocationAdmitted { runner_slice_cap: slice, effective_runner_cpu_cap: cap }
       }
   }

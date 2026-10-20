@@ -1,6 +1,6 @@
 module v2.test.claim.emit.semantic_decl_serialize_parity
 
-import v2.std.collection { empty_map }
+
 import v2.compiler.emit_semantic_decl { produced_type_binding }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
@@ -30,11 +30,11 @@ import v2.std.compilers.target_model {
   target_model_named_edge,
   target_model_type_conj_node
 }
-import v2.std.collection { Map }
+import std.types { Map }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
 import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.text { String }
-import std.algebra { Empty }
+import std.algebra { Empty, empty_map }
 
 data bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
 

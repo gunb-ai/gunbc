@@ -18,15 +18,9 @@ use crate::std_induction::SubValueRelation::{
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_occurrence_identity::{
-    occurrence_id_allocator_initial, occurrence_transport_refusal,
+    occurrence_id_allocator_initial, occurrence_transport_refusal, NodeOccurrenceIdentity,
+    OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
 };
-pub use crate::std_occurrence_identity::{
-    NodeOccurrenceIdentity, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
-};
-pub use crate::std_source_annotation::{
-    source_annotation_graph_concat, source_annotation_graph_empty,
-};
-pub use crate::std_source_annotation::{SourceAnnotationGraph, UnboundAnnotationCapture};
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue, ParseEnvironment};
@@ -34,46 +28,39 @@ use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_annotation_bind::bind_annotations;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
 use crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule;
-pub use crate::v1_compiler_artifact::{default_artifact_plan, selected_artifact_plan};
 pub use crate::v1_compiler_artifact::{
-    Artifact, ArtifactPlan, RenderTarget, RustModuleRenderSelection,
+    default_artifact_plan, selected_artifact_plan, Artifact, ArtifactPlan, RenderTarget,
+    RustModuleRenderSelection,
 };
-pub use crate::v1_compiler_complexity::{build_complexity_report, empty_complexity_report};
 pub use crate::v1_compiler_complexity::{
-    ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext,
+    build_complexity_report, empty_complexity_report, ComplexityReport, ComplexityViolation,
+    FuncEntry, RecursionContext,
 };
 pub use crate::v1_compiler_dag_collect::{collect_dag_nodes, dag_node_key, is_module_shell_node};
-pub use crate::v1_compiler_dag_collect_support::DagCollectAcc;
-pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote};
+pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote, DagCollectAcc};
 pub use crate::v1_compiler_emit::{
     unmodeled_file_transport_diagnostics, unmodeled_rest_transport_diagnostics,
     unmodeled_shell_transport_diagnostics,
 };
-pub use crate::v1_compiler_emit_core_support::escape_json_string;
-pub use crate::v1_compiler_emit_core_support::EmitResult;
+pub use crate::v1_compiler_emit_core_support::{escape_json_string, EmitResult};
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
 pub use crate::v1_compiler_emit_rust::emit_rust_selected;
 pub use crate::v1_compiler_infer::reconcile;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
-pub use crate::v1_compiler_normalize::normalize_graph;
-pub use crate::v1_compiler_normalize::NormalizeResult;
-pub use crate::v1_compiler_ownership::analyze_ownership;
+pub use crate::v1_compiler_normalize::{normalize_graph, NormalizeResult};
 use crate::v1_compiler_ownership::OwnershipDecision::SharedError;
-pub use crate::v1_compiler_ownership::{OwnershipDecision, OwnershipProof};
-pub use crate::v1_compiler_parse::ParseResult;
+pub use crate::v1_compiler_ownership::{analyze_ownership, OwnershipDecision, OwnershipProof};
 pub use crate::v1_compiler_parse::{
-    census_heads_body_stand_in, parse_with_table, parse_with_table_in_occurrence_scope,
+    census_heads_body_stand_in, parse_with_table, parse_with_table_in_occurrence_scope, ParseResult,
 };
 pub use crate::v1_compiler_resolve::{
     module_occurrence_input, module_occurrence_input_node, module_occurrence_input_transport,
-    resolve_modules_with_occurrence_transport,
+    resolve_modules_with_occurrence_transport, ModuleGraph, ModuleOccurrenceInput,
 };
-pub use crate::v1_compiler_resolve::{ModuleGraph, ModuleOccurrenceInput};
 pub use crate::v1_compiler_tokenize::tokenize_artifact;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -115,10 +102,8 @@ pub use crate::v1_std_core::{
     is_error_diagnostic, is_interpreter_blocking_diagnostic, lambda_param_names_at,
     make_error_node, module_imports, module_items, no_span, param_node_default_value,
     param_node_name_at, param_node_span, param_node_type_expr, pre_intern_tokens,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource,
-};
-pub use crate::v1_std_core::{
-    CallSemantics, CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource, CallSemantics,
+    CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
     DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary,
     FieldValueShape, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
     ResolvedCallFormal, StringPart, TextFile, Token, UnaryOpKind, VarBindingKind,
@@ -162,7 +147,6 @@ pub struct FrontendResult {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub occurrence_transport: Rc<OccurrenceTransport>,
-    pub annotations: Rc<SourceAnnotationGraph>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -178,22 +162,11 @@ pub struct FrontendAccum {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub occurrence_allocator: OccurrenceIdAllocator,
-    pub annotations: Rc<SourceAnnotationGraph>,
-}
-
-pub fn frontend_prepared_authored_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Carries the AUTHORED lexical result, not only the semantic tokens. `tokens` is what pre-interning and parsing consume, unchanged; `annotations` is what the annotation channel captured on the same pass.\n\nThreading the captures through this record rather than re-tokenizing later is what keeps the two halves of one lexical pass from drifting: a second pass could observe a different source, and placement in particular is unrecoverable once whitespace is gone.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendPrepared {
     pub tokens: Rc<Vec<Rc<Token>>>,
-    pub annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
     pub newline_index: Rc<NewlineIndex>,
 }
 
@@ -205,7 +178,7 @@ pub fn merge_occurrence_transports(
             entries: Rc::new({
                 let mut __result = Vec::new();
                 for transport in transports.iter().cloned() {
-                    __result.extend((*transport.index.clone().entries.clone()).iter().cloned());
+                    __result.extend((*transport.index.entries.clone()).iter().cloned());
                 }
                 __result
             }),
@@ -268,7 +241,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                     {
                         __result.push(Rc::new(FuncEntry {
                             name: crate::v1_std_core::authored_name_at(
-                                m.type_env.clone().source_indices.clone(),
+                                m.type_env.source_indices.clone(),
                                 item.clone(),
                             ),
                             body: item.body.clone().clone().unwrap(),
@@ -309,12 +282,12 @@ pub fn module_ownership_proofs(m: Rc<TypedModule>) -> Rc<Vec<Rc<OwnershipProof>>
         {
             __result.push(crate::v1_compiler_ownership::analyze_ownership(
                 crate::v1_std_core::authored_name_at(
-                    m.type_env.clone().source_indices.clone(),
+                    m.type_env.source_indices.clone(),
                     item.clone(),
                 ),
                 item.params.clone(),
                 item.body.clone().clone().unwrap(),
-                m.type_env.clone().source_indices.clone(),
+                m.type_env.source_indices.clone(),
             ));
         }
         __result
@@ -1215,24 +1188,19 @@ pub fn dag_emit_check_node_refs(
                                 __result.extend(
                                     (*v1_rt::concat(
                                         dag_emit_check_ref_target(
-                                            application.formal.clone().declared_type.clone(),
+                                            application.formal.declared_type.clone(),
                                             key_to_id.clone(),
                                         ),
                                         v1_rt::concat(
                                             dag_emit_check_ref_target(
                                                 application
                                                     .formal
-                                                    .clone()
                                                     .declaration_bound_conformance
                                                     .clone(),
                                                 key_to_id.clone(),
                                             ),
                                             dag_emit_check_ref_target(
-                                                application
-                                                    .formal
-                                                    .clone()
-                                                    .substitution_basis
-                                                    .clone(),
+                                                application.formal.substitution_basis.clone(),
                                                 key_to_id.clone(),
                                             ),
                                         ),
@@ -1298,7 +1266,7 @@ pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, 
     typed.modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
-            v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
+            v1_rt::rc_map_merge(acc, m.type_env.source_indices.clone())
         },
     )
 }
@@ -1803,29 +1771,26 @@ pub fn serialize_resolved_call_formal(
                                                 ", \"parameter_identity\": ".to_string(),
                                             ),
                                             crate::v1_compiler_dag_collect_support::json_quote(
-                                                value.formal.clone().parameter_identity.clone(),
+                                                value.formal.parameter_identity.clone(),
                                             ),
                                         ),
                                         ", \"declared_type\": ".to_string(),
                                     ),
                                     serialize_node_ref(
-                                        value.formal.clone().declared_type.clone(),
+                                        value.formal.declared_type.clone(),
                                         key_to_id.clone(),
                                     ),
                                 ),
                                 ", \"declaration_bound_conformance\": ".to_string(),
                             ),
                             serialize_node_ref(
-                                value.formal.clone().declaration_bound_conformance.clone(),
+                                value.formal.declaration_bound_conformance.clone(),
                                 key_to_id.clone(),
                             ),
                         ),
                         ", \"substitution_basis\": ".to_string(),
                     ),
-                    serialize_node_ref(
-                        value.formal.clone().substitution_basis.clone(),
-                        key_to_id.clone(),
-                    ),
+                    serialize_node_ref(value.formal.substitution_basis.clone(), key_to_id.clone()),
                 ),
                 ", \"matched_argument_index\": ".to_string(),
             ),
@@ -3255,7 +3220,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                         crate::v1_std_core::build_newline_index(s.path.clone(), s.content.clone());
                     Rc::new(FrontendPrepared {
                         tokens: artifact.tokens.clone(),
-                        annotations: artifact.annotations.clone(),
                         newline_index: si.clone(),
                     })
                 });
@@ -3276,31 +3240,25 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 intern_table: intern_table.clone(),
                 occurrence_allocator:
                     crate::std_occurrence_identity::occurrence_id_allocator_initial(),
-                annotations: crate::std_source_annotation::source_annotation_graph_empty(),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let parsed = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
                         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                        p.newline_index.clone().file.clone(),
+                        p.newline_index.file.clone(),
                         p.newline_index.clone(),
                     ),
                     acc.intern_table.clone(),
                     acc.occurrence_allocator.clone(),
                     dag_parse_environment(),
                 );
-                let bound = crate::v1_compiler_annotation_bind::bind_annotations(
-                    parsed.occurrence_transport.clone(),
-                    parsed.source_extents.clone(),
-                    p.annotations.clone(),
-                );
                 Rc::new(FrontendAccum {
                     parse_results: v1_rt::rc_list_push(
                         acc.parse_results.clone(),
                         parsed.result.clone(),
                     ),
-                    module_inputs: match parsed.result.clone().module.clone() {
+                    module_inputs: match parsed.result.module.clone() {
                         Some(parsed_module) => v1_rt::rc_list_push(
                             acc.module_inputs.clone(),
                             crate::v1_compiler_resolve::module_occurrence_input(
@@ -3316,10 +3274,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     ),
                     intern_table: parsed.intern_table.clone(),
                     occurrence_allocator: parsed.occurrence_allocator.clone(),
-                    annotations: crate::std_source_annotation::source_annotation_graph_concat(
-                        acc.annotations.clone(),
-                        bound.clone(),
-                    ),
                 })
             },
         );
@@ -3353,7 +3307,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             newline_indices: newline_indices.clone(),
             intern_table: parsed.intern_table.clone(),
             occurrence_transport: occurrence_transport.clone(),
-            annotations: parsed.annotations.clone(),
         })
     }
 }
@@ -3453,7 +3406,6 @@ pub fn parse_revision_declarations_with_environment(
                 intern_table: crate::v1_std_core::empty_intern_table(),
                 occurrence_allocator:
                     crate::std_occurrence_identity::occurrence_id_allocator_initial(),
-                annotations: crate::std_source_annotation::source_annotation_graph_empty(),
             }),
             |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| {
                 let artifact = crate::v1_compiler_tokenize::tokenize_artifact(
@@ -3463,7 +3415,6 @@ pub fn parse_revision_declarations_with_environment(
                 );
                 let p = Rc::new(FrontendPrepared {
                     tokens: artifact.tokens.clone(),
-                    annotations: artifact.annotations.clone(),
                     newline_index: crate::v1_std_core::build_newline_index(
                         s.path.clone(),
                         s.content.clone(),
@@ -3473,7 +3424,7 @@ pub fn parse_revision_declarations_with_environment(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
                         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                        p.newline_index.clone().file.clone(),
+                        p.newline_index.file.clone(),
                         p.newline_index.clone(),
                     ),
                     crate::v1_std_core::pre_intern_tokens(
@@ -3505,7 +3456,6 @@ pub fn parse_revision_declarations_with_environment(
                     ),
                     intern_table: parsed.intern_table.clone(),
                     occurrence_allocator: parsed.occurrence_allocator.clone(),
-                    annotations: acc.annotations.clone(),
                 })
             },
         );

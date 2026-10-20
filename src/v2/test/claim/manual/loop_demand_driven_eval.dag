@@ -1,5 +1,5 @@
 module v2.test.claim.manual.loop_demand_driven_eval
-import std.types { List }
+import std.types { List, Map }
 import v2.std.arrow_signature { declared_signature }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
@@ -23,9 +23,7 @@ import v2.std.cardinality {
   TerminationProof,
   structural_node_size_termination_proof
 }
-import v2.std.collection {
-  Map
-}
+
 import std.optional {
   Optional,
   Present,

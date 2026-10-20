@@ -25,8 +25,8 @@ import std.fabric_blob {
 }
 import std.checked_arithmetic { int_inclusive_max }
 import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
-import std.algebra { skip }
-import v2.std.collection { empty_map, map_lookup, map_insert }
+import std.algebra { skip, empty_map, map_lookup, map_insert }
+
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
@@ -132,6 +132,7 @@ import std.materialization_object {
   store_object_name, store_object_format_version, store_lookup_from_address, store_commit_prepare_addressed, store_commit_settle,
   StoreCommitAddressRefused,
 }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -387,6 +388,10 @@ type LocalStoreBinding sole_constructor {
   budgets: List<LocalStoreFamilyBudget>
 }
 
+fn local_store_binding_path(b: LocalStoreBinding) -> String {
+  materialization_store_root_path(root: b.root)
+}
+
 // A VERIFIED BUT NOT YET WRITABLE STORE. The marker decision yields only this; no public operation takes
 // it, so marker verification alone never confers the right to write.
 type LocalStorePreOpen sole_constructor {
@@ -478,7 +483,7 @@ fn local_store_open_swept(pre: LocalStorePreOpen, durability: MaterializationSto
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_open"),
   ]
 {
-  let root_path = materialization_store_root_path(root: pre.binding.root)
+  let root_path = local_store_binding_path(b: pre.binding)
   match sweep {
     LocalStoreSwept { removed: r, delete_refused: d, releases: rs } =>
       if count(d) == 0 {
@@ -1007,7 +1012,7 @@ fn local_store_write_index_current(held: LocalStoreFamilyHeld, expected: CasExpe
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index"),
   ]
 {
-  match local_store_settle_slot(root_path: materialization_store_root_path(root: held.binding.root), key: local_store_index_key(family: held.family)) {
+  match local_store_settle_slot(root_path: local_store_binding_path(b: held.binding), key: local_store_index_key(family: held.family)) {
     LocalStoreSlotSettled => local_store_write_index_settled(held: held, expected: expected, index: index)
     LocalStoreSlotGenerationsOutstanding { key: k, stale: st } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexUnsettled { settlement: LocalStoreSlotGenerationsOutstanding { key: k, stale: st } } }
     LocalStoreSlotUnlisted { key: k, cause: c } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexUnsettled { settlement: LocalStoreSlotUnlisted { key: k, cause: c } } }
@@ -1020,7 +1025,7 @@ fn local_store_write_index_settled(held: LocalStoreFamilyHeld, expected: CasExpe
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index_current"),
   ]
 {
-  let root_path = materialization_store_root_path(root: held.binding.root)
+  let root_path = local_store_binding_path(b: held.binding)
   let family = held.family
   let content = local_store_index_encode(index: index) as NonEmptyStr
   match local_store_index_window() {
@@ -1142,7 +1147,7 @@ fn local_store_acquire_family_hold(binding: LocalStoreBinding, family: ArtifactK
   ]
 {
   let root = binding.root
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: binding)
   match local_store_index_window() {
     Absent => LocalStoreHoldRefused { refusal: LocalStoreHoldWindowTooNarrow { k: local_store_index_window_k } }
     Present { value: window } =>
@@ -1168,7 +1173,7 @@ fn local_store_acquire_settled(binding: LocalStoreBinding, family: ArtifactKindI
   ]
 {
   let root = binding.root
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: binding)
           match file_hold_acquire_windowed(root: root_path as NonEmptyStr, slot_key: key, requested_owner: owner, window: window) {
             FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
               LocalStoreHoldAcquired { held: LocalStoreFamilyHeld { binding: binding, family: family, owner: o, generation: g, window: window } }
@@ -1190,7 +1195,7 @@ fn local_store_hold_occupied(binding: LocalStoreBinding, family: ArtifactKindId,
   ]
 {
   let root = binding.root
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: binding)
   match local_store_hold_owner_process(owner: holder) {
     Absent => LocalStoreHoldRefused { refusal: LocalStoreHolderUnobservable { holder: holder, cause: "the holder is not a materialization-store process" as NonEmptyStr } }
     Present { value: hp } => {
@@ -1238,7 +1243,7 @@ fn local_store_hold_check(held: LocalStoreFamilyHeld) -> LocalStoreHoldCheck
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
   ]
 {
-  match cas_verify_named_window_head(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, key: local_store_hold_key(family: held.family), generation: held.generation) {
+  match cas_verify_named_window_head(root: local_store_binding_path(b: held.binding) as NonEmptyStr, key: local_store_hold_key(family: held.family), generation: held.generation) {
     NamedWindowHeadMoved { named_generation: n } => LocalStoreHoldNamedWindowMoved { named: n }
     NamedWindowHeadCurrent { observation: o } =>
       local_store_hold_from_current_observation(held: held, observed: hold_observation_of_cas(observed: o))
@@ -1333,7 +1338,7 @@ fn local_store_release_family_hold(held: LocalStoreFamilyHeld) -> LocalStoreHold
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_all"),
   ]
 {
-  match file_hold_release_assess_windowed_at(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, slot_key: local_store_hold_key(family: held.family), owner: held.owner, acquired_generation: held.generation, released_by: local_store_hold_release_ref, window: held.window) {
+  match file_hold_release_assess_windowed_at(root: local_store_binding_path(b: held.binding) as NonEmptyStr, slot_key: local_store_hold_key(family: held.family), owner: held.owner, acquired_generation: held.generation, released_by: local_store_hold_release_ref, window: held.window) {
     FileHoldWindowedReleaseNotEligible { slot_key: _, refusal: r } => LocalStoreHoldReleaseNotEligible { refusal: r }
     FileHoldWindowedReleaseNamedHeadMoved { slot_key: _, named: n } => LocalStoreHoldReleaseNamedWindowHeadMoved { named: n }
     FileHoldWindowedReleasePlanned { plan: pl } =>
@@ -1368,8 +1373,8 @@ type LocalStoreWriteAuthority
 
 fn local_store_authority_root(authority: LocalStoreWriteAuthority) -> String {
   match authority {
-    LocalStoreFamilyAuthority { held: h } => materialization_store_root_path(root: h.binding.root)
-    LocalStoreSweepAuthority { all: a } => materialization_store_root_path(root: a.binding.root)
+    LocalStoreFamilyAuthority { held: h } => local_store_binding_path(b: h.binding)
+    LocalStoreSweepAuthority { all: a } => local_store_binding_path(b: a.binding)
   }
 }
 
@@ -1470,7 +1475,7 @@ fn local_store_reserve(held: LocalStoreFamilyHeld, name: String, bytes: ByteSize
 {
   let budgets = held.binding.budgets
   let family = held.family
-  let root_path = materialization_store_root_path(root: held.binding.root)
+  let root_path = local_store_binding_path(b: held.binding)
   if attempt > local_store_reservation_attempt_bound {
     LocalStoreReservationIndexRefused { refusal: LocalStoreIndexContended { attempts: local_store_reservation_attempt_bound } }
   } else {
@@ -1659,7 +1664,7 @@ fn local_store_indexed_names(binding: LocalStoreBinding) -> LocalStoreIndexedNam
 {
   let root = binding.root
   let budgets = binding.budgets
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: binding)
   fold(budgets, init: LocalStoreIndexedNamesRead { names: [] }, f: (acc, b) => match acc {
     LocalStoreIndexedNamesRefused { family: f, refusal: r } => LocalStoreIndexedNamesRefused { family: f, refusal: r }
     LocalStoreIndexedNamesRead { names: names } => match local_store_read_index(root_path: root_path, family: b.family) {
@@ -1702,7 +1707,7 @@ fn local_store_sweep(binding: LocalStoreBinding) -> LocalStoreSweep
 {
   let root = binding.root
   let budgets = binding.budgets
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: binding)
   match local_store_acquire_all(binding: binding) {
     LocalStoreAllHeldRefused { family: f, refusal: r, released: rs } => LocalStoreSweepUnavailable { refusal: LocalStoreSweepHoldRefused { family: f, refusal: r, released: rs } }
     LocalStoreAllHeldAcquired { all: a } => {
@@ -1722,7 +1727,7 @@ fn local_store_sweep_held(all: LocalStoreAllFamiliesHeld) -> LocalStoreSweep
   ]
 {
   let root = all.binding.root
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: all.binding)
   let stale = fold(all.held, init: none, f: (acc, h) => match acc {
     Present { value: _ } => acc
     Absent => match local_store_hold_check(held: h) {
@@ -1743,7 +1748,7 @@ fn local_store_sweep_current(all: LocalStoreAllFamiliesHeld) -> LocalStoreSweep
   ]
 {
   let root = all.binding.root
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: all.binding)
   let listing = Filesystem.List(path: root_path)
   let observed = filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error)
   match observed {
@@ -1806,7 +1811,7 @@ fn local_store_record_recency_held(held: LocalStoreFamilyHeld, served: List<Stri
   ]
 {
   let family = held.family
-  let root_path = materialization_store_root_path(root: held.binding.root)
+  let root_path = local_store_binding_path(b: held.binding)
   match local_store_hold_check(held: held) {
     LocalStoreHoldNotCurrent { observed: o } => LocalStoreRecencyHoldRefused { family: family, refusal: LocalStoreHoldStale { observed: o } }
     LocalStoreHoldNamedWindowMoved { named: n } => LocalStoreRecencyHoldRefused { family: family, refusal: LocalStoreHoldNamedWindowHeadMoved { named: n } }
@@ -1820,7 +1825,7 @@ fn local_store_record_recency_current(held: LocalStoreFamilyHeld, served: List<S
   ]
 {
   let family = held.family
-  let root_path = materialization_store_root_path(root: held.binding.root)
+  let root_path = local_store_binding_path(b: held.binding)
   match local_store_read_index(root_path: root_path, family: family) {
     LocalStoreIndexUnavailable { refusal: r } => LocalStoreRecencyLost { family: family, refusal: r }
     LocalStoreIndexAt { index: index, expected: expected } => {
@@ -1852,7 +1857,7 @@ fn local_store_record_lookup(binding: LocalStoreBinding, addressed: AddressedReq
 {
   let root = binding.root
   let store = binding.store
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: binding)
   match materialization_store_admissible(root: root, verb: Read) {
     Deny { refusal: _ } =>
       StoreLookupRefused {
@@ -1928,7 +1933,7 @@ fn local_store_lookup_parts_bound(binding: LocalStoreBinding, addressed: Address
 {
   let root = binding.root
   let store = binding.store
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: binding)
   let lookup = local_store_record_lookup(binding: binding, addressed: addressed)
   let blobs = store_lookup_blob_parts(l: lookup)
   if count(blobs) == 0 { LocalStorePartsLookup { lookup: lookup, parts: [] } } else {
@@ -2043,7 +2048,7 @@ fn local_store_commit_held(
 {
   let store = held.binding.store
   let root = held.binding.root
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: held.binding)
   let bytes = measure_add(a: local_store_object_bytes(object: object), b: local_store_parts_bytes(parts: blobs))
   let presence = local_store_object_presence(lookup: local_store_lookup_bound(binding: held.binding, addressed: addressed))
   match presence {
@@ -2074,7 +2079,7 @@ fn local_store_commit_verified(
   ]
 {
   let root = held.binding.root
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: held.binding)
   match local_store_hold_check(held: held) {
     LocalStoreHoldNotCurrent { observed: o } => local_store_commit_hold_refused(key: key, refusal: LocalStoreHoldStale { observed: o })
     LocalStoreHoldNamedWindowMoved { named: n } => local_store_commit_hold_refused(key: key, refusal: LocalStoreHoldNamedWindowHeadMoved { named: n })
@@ -2109,7 +2114,7 @@ fn local_store_commit_reserved(
 {
   let store = held.binding.store
   let root = held.binding.root
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: held.binding)
   match reservation {
     LocalStoreReservationRefused { refusal: r } => local_store_commit_refused(commit: StoreCommitRefused { key: key, refusal: r })
     LocalStoreReservationIndexRefused { refusal: r } => local_store_commit_index_refused(key: key, refusal: r)
@@ -2211,7 +2216,7 @@ fn local_store_publish_part(held: LocalStoreFamilyHeld, record: String, part: Lo
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
   ]
 {
-  let root_path = materialization_store_root_path(root: held.binding.root)
+  let root_path = local_store_binding_path(b: held.binding)
   let copy_name = local_store_copy_name(record: record, id: part.id)
   let authority = LocalStoreFamilyAuthority { held: held }
   if count(local_store_delete_split(attempts: local_store_delete_attempts(authority: authority, names: [copy_name])).refused) > 0 {
@@ -2240,7 +2245,7 @@ fn local_store_doom_copy(held: LocalStoreFamilyHeld, name: String, bytes: ByteSi
   ]
 {
   if attempt > local_store_reservation_attempt_bound { Present { value: "the occupancy index kept moving past the attempt bound" } } else {
-    match local_store_read_index(root_path: materialization_store_root_path(root: held.binding.root), family: held.family) {
+    match local_store_read_index(root_path: local_store_binding_path(b: held.binding), family: held.family) {
       LocalStoreIndexUnavailable { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
       LocalStoreIndexAt { index: index, expected: expected } =>
         if index.doomed |> any(d => d.name == name) { none } else {
@@ -2259,7 +2264,7 @@ fn local_store_copy_and_link(held: LocalStoreFamilyHeld, record: String, part: L
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_publish_part"),
   ]
 {
-  let root_path = materialization_store_root_path(root: held.binding.root)
+  let root_path = local_store_binding_path(b: held.binding)
   let copy_path = store_path(root_path: root_path, name: local_store_copy_name(record: record, id: part.id))
   let target = store_path(root_path: root_path, name: local_store_part_name(record: record, id: part.id))
   let label = concat("byte part ", part.id as String)
@@ -2362,7 +2367,7 @@ fn local_store_commit_under(
   parts: List<LocalStoreStagedPart>
 ) -> LocalStoreCommit {
   let root = held.binding.root
-  let root_path = materialization_store_root_path(root: root)
+  let root_path = local_store_binding_path(b: held.binding)
   if request_kind(req: addressed.request) != held.family {
     local_store_commit_hold_refused(key: request_key(req: addressed.request), refusal: LocalStoreHoldWrongFamily { held: held.family, requested: request_kind(req: addressed.request) })
   } else {

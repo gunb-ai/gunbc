@@ -15,9 +15,7 @@ import v2.extdeps.languages.rust_fixtures {
   rust_field_access_target_model_staging
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

@@ -173,7 +173,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
     reason: "Receipt for gunbc.recurring_failure_mode one_type_variable_bound_to_two_distinct_coproducts. The assertion RUNS and returns false: same_arm<T>(a: T, b: T) called with P1 (coproduct Pa) and Q1 (coproduct Pb) is ACCEPTED by infer and answers false, where the compiler floor (DESIGN section 4b, values inhabit declared types) owes a typecheck refusal. Measured on both the v1 route and the v2 route, remote runner, main b69fc48027. Owner: the infer lane stern-bat-401 dispatched; the constructor-tag carrier item (node adhoc-b2d312a6-1ee) is gated on it through its RED (iii).",
-    dissolution: unbound_dissolution(description: "this probe retires when the v2 wall refuses the call (v2.compiler.infer infer_match_generic_formal compares a later actual to the stored instance) OR when the v1 capability v1 type representation canonical (one encoding per decl, DeclarationRef stamped) is restored and the same probe is a typecheck refusal — not #14037")
+    dissolution: unbound_dissolution(description: "infer refuses a call that binds ONE type variable to two distinct coproduct declarations: this witness can no longer return a verdict (the call stops compiling), so it is NOT a regression control and does not green: the fix PR (#14037) deletes this row and both probe files in favour of its refusal-at-typecheck control on the real compile path, and updates the recurring_failure_mode row rung")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/manual/constructor_tag_route_probe_red.dag",
@@ -181,7 +181,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
     reason: "Receipt for gunbc.recurring_failure_mode one_type_variable_bound_to_two_distinct_coproducts. The assertion RUNS and returns false: same_arm<T>(a: T, b: T) called with P1 (coproduct Pa) and Q1 (coproduct Pb) is ACCEPTED by infer and answers false, where the compiler floor (DESIGN section 4b, values inhabit declared types) owes a typecheck refusal. Measured on both the v1 route and the v2 route, remote runner, main b69fc48027. Owner: the infer lane stern-bat-401 dispatched; the constructor-tag carrier item (node adhoc-b2d312a6-1ee) is gated on it through its RED (iii).",
-    dissolution: unbound_dissolution(description: "this probe retires when the v2 wall refuses the call (v2.compiler.infer infer_match_generic_formal compares a later actual to the stored instance) OR when the v1 capability v1 type representation canonical (one encoding per decl, DeclarationRef stamped) is restored and the same probe is a typecheck refusal — not #14037")
+    dissolution: unbound_dissolution(description: "infer refuses a call that binds ONE type variable to two distinct coproduct declarations: this witness can no longer return a verdict (the call stops compiling), so it is NOT a regression control and does not green: the fix PR (#14037) deletes this row and both probe files in favour of its refusal-at-typecheck control on the real compile path, and updates the recurring_failure_mode row rung")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/body_lowering/map_literal.dag",

@@ -1,0 +1,900 @@
+module test.claim.roadmap.attempt_system_unit_launch_witness
+
+import std.types { Bool, NonEmptyStr, List, String, FilePath }
+import std.optional { Present, Absent }
+import std.measure { kibibyte, kibibyte_count, second_count, byte_size_count }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
+import extdeps.systemd {
+  systemd_service_unit_name,
+  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
+  SystemdUnitNameOverlong,
+}
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  WorkerIsServiceUser, dashboard_instance_worker_user,
+  HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
+  public_builtin_dashboard_instances, dashboard_instance_for_id,
+  DashboardInstanceForId, DashboardInstanceIdUnknown,
+}
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+import gunbc.live_deploy.slice_bounds {
+  live_deploy_slice_memory_swap_max, user_work_slice_unit_name,
+  attempt_worker_slice_unit_name, attempt_worker_slice_memory_max,
+  attempt_worker_slice_memory_high,
+  UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
+}
+import gunbc.live_deploy.emit {
+  attempt_system_unit_grant_steps, attempt_system_unit_grant_steps_for_instance,
+  attempt_system_unit_grant_launch_argv_refused_poison, apply_intent_from_effects,
+}
+import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
+import gunbc.live_deploy.spec { DeploymentSpec, gunbc_attempt_worker_slice_unit_path }
+import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
+import gunbc.host.host_axis_caps { CapConvergeWithheld }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_full_install_plan }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
+}
+import gunbc.roadmap.attempt_system_unit_launch {
+  AttemptSystemUnitStartFacts, AttemptSystemUnitAdmitted, AttemptSystemUnitRefused,
+  attempt_system_unit_start_admitted,
+  attempt_system_unit_privileged_effect, attempt_system_unit_sudoers_body,
+  AttemptSystemUnitSudoersText, AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
+  attempt_system_unit_sudoers_path, attempt_system_unit_instance_for_root,
+  attempt_system_unit_systemd_run_command, attempt_system_unit_plan_from_facts,
+  attempt_system_unit_worker_slice,
+  attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_dir,
+  AttemptSystemUnitStartRequest, attempt_system_unit_start_facts_for_request,
+  AttemptSystemUnitStartDerived, AttemptSystemUnitStartUnderivable,
+  AttemptSystemUnitStartVerb, StartDetached, StartAndWait,
+  attempt_system_unit_encode_start, attempt_system_unit_start_request_decode,
+  AttemptSystemUnitStartEncoded, AttemptSystemUnitStartUnencodable,
+  AttemptSystemUnitStartUnencodableCause,
+  AttemptSystemUnitArgvEmpty, AttemptSystemUnitArgvWordContainsUnitSeparator,
+  AttemptSystemUnitArgvWordContainsNewline,
+  AttemptSystemUnitStartRequestDecoded, AttemptSystemUnitStartRequestMalformed,
+  AttemptSystemUnitStartVerbUnknown,
+  attempt_system_unit_start_verb_wire,
+  attempt_system_unit_request_entry_name,
+  attempt_system_unit_decode_answer, attempt_system_unit_harness_start_from_answer,
+  AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
+  AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
+  AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
+  attempt_system_unit_admit_body_kind, AttemptSystemUnitBodyRegular, AttemptSystemUnitBodyRefused,
+  attempt_system_unit_launch_gunbc_argv_at, attempt_system_unit_launch_flocked_argv_at,
+  attempt_system_unit_launch_host_argv_at,
+  AttemptSystemUnitLaunchArgv, AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
+  AttemptSystemUnitLaunchArgvRevisionUnreadable,
+  attempt_system_unit_sudoers_line, attempt_system_unit_launcher_busy_exit,
+  attempt_system_unit_launcher_flock_wait, attempt_system_unit_harness_start_from_launcher_exit,
+}
+import gunbc.executor_privileged_operation { sudoers_argument_word }
+import extdeps.systemd.service_exec { exec_full_privileges_prefix }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
+  dispatch_attempt_unit_stem, dispatch_pane_working_directory, GunbcHarnessProvider,
+}
+import gunbc.host.host_layout { attempt_unit_spool_drain_lock_path }
+import extdeps.tools.util_linux_flock { flock_absolute_path }
+import extdeps.sudo.elevation { sudo_non_interactive_flag }
+import gunbc.executor_privileged_operation { sudoers_argument_word }
+import gunbc.cli_invoke {
+  NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator,
+}
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.auth.authorization_pattern_selection {
+  select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
+  HumanOnlyStep, OperatorOwnSession, AdministratorEdge, ManualStepRequired, NoAdmissiblePattern,
+  PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
+}
+import gunbc.auth.privileged_effect_census {
+  privileged_effect_census, site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
+}
+
+fn claim_start_facts(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  user: NonEmptyStr,
+  inner_argv: List<String>,
+  exit_hook: NonEmptyStr,
+) -> AttemptSystemUnitStartFacts? {
+  match systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id: node_id, attempt_key: attempt_key)) {
+    SystemdUnitNameStemEmpty => none
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => none
+    SystemdUnitNameOverlong { length: _ } => none
+    SystemdUnitNameAdmitted { name } => Present {
+      value: AttemptSystemUnitStartFacts {
+        unit: name,
+        node_id: node_id,
+        attempt_key: attempt_key,
+        user: user,
+        working_directory: instance.repo_root as String,
+        attempt_worktree: "/tmp/wt",
+        stdout_path: "/tmp/out",
+        stderr_path: "/tmp/err",
+        granted: kibibyte(count: 1),
+        exit_hook: exit_hook,
+        inner_argv: inner_argv,
+      },
+    }
+  }
+}
+
+test fn a_start_with_the_instance_binary_and_user_is_admitted() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  match claim_start_facts(
+    instance: inst,
+    node_id: "n",
+    attempt_key: "k",
+    user: inst.directory_owner.user as NonEmptyStr,
+    inner_argv: [inst.serve_binary as String, "run"],
+    exit_hook: "true" as NonEmptyStr,
+  ) {
+    Absent => false
+    Present { value: facts } =>
+  match attempt_system_unit_start_admitted(
+    instance: inst,
+    facts: facts,
+  ) {
+    AttemptSystemUnitAdmitted { unit: u, facts: _ } =>
+      (u as String) == "gunbc-attempt-n-k.service"
+    AttemptSystemUnitRefused { reason: _ } => false
+  }
+  }
+}
+
+test fn a_start_with_another_program_is_refused() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  match claim_start_facts(
+    instance: inst,
+    node_id: "n",
+    attempt_key: "k",
+    user: inst.directory_owner.user as NonEmptyStr,
+    inner_argv: ["/bin/touch", "/tmp/x"],
+    exit_hook: "true" as NonEmptyStr,
+  ) {
+    Absent => false
+    Present { value: facts } =>
+  match attempt_system_unit_start_admitted(
+    instance: inst,
+    facts: facts,
+  ) {
+    AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "gunbc binary")
+    AttemptSystemUnitAdmitted { unit: _, facts: _ } => false
+  }
+  }
+}
+
+test fn a_start_with_another_user_is_refused() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  match claim_start_facts(
+    instance: inst,
+    node_id: "n",
+    attempt_key: "k",
+    user: "root" as NonEmptyStr,
+    inner_argv: [inst.serve_binary as String],
+    exit_hook: "true" as NonEmptyStr,
+  ) {
+    Absent => false
+    Present { value: facts } =>
+  match attempt_system_unit_start_admitted(
+    instance: inst,
+    facts: facts,
+  ) {
+    AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "worker user")
+    AttemptSystemUnitAdmitted { unit: _, facts: _ } => false
+  }
+  }
+}
+
+test fn the_launcher_effect_selects_federated_scoped_grant() -> Bool {
+  match select_authorization_pattern(e: attempt_system_unit_privileged_effect()) {
+    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => false
+    PatternSelected { pattern: HumanOnlyStep { step: _ }, receipt: _ } => false
+    PatternSelected { pattern: OperatorOwnSession, receipt: _ } => false
+    PatternSelected { pattern: AdministratorEdge, receipt: _ } => false
+    ManualStepRequired { step: _, receipt: _ } => false
+    NoAdmissiblePattern { causes: _, scope: _ } => false
+    PatternSelectionNeedsEvidence { needs: _ } => false
+    PatternSelectionNeedsPolicy { survivors: _ } => false
+    PatternSelectionRefused { defects: _ } => false
+  }
+}
+
+test fn the_launcher_site_conforms_in_the_privileged_effect_census() -> Bool {
+  let rows = filter(privileged_effect_census, r => (r.site.decl_name as String) == "attempt_system_unit_launch_cli")
+  match rows.first() {
+    Absent => false
+    Present { value: row } =>
+      match site_verdict(row: row).conformance {
+        Conforms => true
+        DivergesWithReason { reason: _ } => false
+        Diverges => false
+        SiteNotDecidable { standing: _ } => false
+      }
+  }
+}
+
+fn sudoers_ready_text(reading: AttemptSystemUnitSudoersText) -> String? {
+  match reading {
+    AttemptSystemUnitSudoersRefused { cause: _ } => none
+    AttemptSystemUnitSudoersReady { text } => Present { value: text }
+  }
+}
+
+fn sudoers_instance_root_word(root: String) -> String {
+  sudoers_argument_word(w: join(["instance_root=", root], ""))
+}
+
+test fn each_instance_gets_its_own_sudoers_file() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let lab = srv1_lab_dashboard_instance()
+  let live_path = attempt_system_unit_sudoers_path(instance: live)
+  let lab_path = attempt_system_unit_sudoers_path(instance: lab)
+  live_path != lab_path
+    && string_contains(s: live_path, pattern: live.instance_id as String)
+    && string_contains(s: lab_path, pattern: lab.instance_id as String)
+    && !string_contains(s: live.instance_id as String, pattern: ".")
+    && !string_contains(s: lab.instance_id as String, pattern: ".")
+}
+
+test fn each_instance_sudoers_body_pins_its_named_instance_root() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let lab = srv1_lab_dashboard_instance()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  let live_word = sudoers_instance_root_word(root: live.instance_root as String)
+  let lab_word = sudoers_instance_root_word(root: lab.instance_root as String)
+  match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(instance: live, revision: rev)) {
+    Absent => false
+    Present { value: live_body } =>
+      match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(instance: lab, revision: rev)) {
+        Absent => false
+        Present { value: lab_body } =>
+          string_contains(s: live_body, pattern: "attempt_system_unit_launch")
+            && string_contains(s: live_body, pattern: "NOPASSWD")
+            && string_contains(s: live_body, pattern: live_word)
+            && !string_contains(s: live_body, pattern: lab_word)
+            && string_contains(s: lab_body, pattern: lab_word)
+            && !string_contains(s: lab_body, pattern: live_word)
+      }
+  }
+}
+
+// DISCRIMINATING: sudoers pins the sha-addressed root-owned launcher, not the requester-writable
+// instance binary or checkout. The deploy grant installs that tree as root (privileged copy +
+// readback) and writes the sudoers body that names it.
+test fn the_launcher_grant_pins_a_root_owned_release_the_deploy_installs() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  let dir = attempt_system_unit_launcher_dir(instance: live, revision: rev)
+  match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(instance: live, revision: rev)) {
+    Absent => false
+    Present { value: body } => {
+      let steps = pipeline_steps_text(steps: attempt_system_unit_grant_steps(
+        spec: deployment_spec_srv1(),
+        principal: fleet_posix_ci_runner_principal(),
+        revision: rev,
+      ))
+      string_contains(s: dir, pattern: attempt_system_unit_launcher_helpers_root)
+        && string_contains(s: dir, pattern: live.instance_id as String)
+        && string_contains(s: dir, pattern: deploy_witness_release_revision as String)
+        && string_contains(s: body, pattern: dir)
+        && string_contains(s: body, pattern: gunbc_release_bin_name)
+        && !string_contains(s: body, pattern: live.serve_binary as String)
+        && !string_contains(s: body, pattern: live.repo_root as String)
+        && string_contains(s: steps, pattern: dir)
+        && string_contains(s: steps, pattern: "'--no-preserve=all'")
+        && string_contains(s: steps, pattern: "'-o' 'root' '-g' 'root'")
+        && string_contains(s: steps, pattern: dir)
+    }
+  }
+}
+
+// THE DEPLOY RUNS THE GRANT (review 80299). The grant fold above is the shape; whether a deploy installs it is a
+// fact of the apply the real producer emits (apply_intent_from_effects over the instance's spec, a full
+// install), so these claims read that apply. The grant once sat on an emit_artifact_upsert arm no apply
+// reaches while the fold's own claim stayed green. Each instance's apply installs its own grant and never
+// the other instance's: a lab apply never touches production's privilege surface.
+fn full_install_apply_text(spec: DeploymentSpec) -> String {
+  join(map(
+    apply_intent_from_effects(
+      spec: spec,
+      effects: apply_empty_host_effects(spec: spec),
+      access: ci_deploy_srv1_access,
+      plan: deploy_witness_full_install_plan(spec: spec),
+      cap_authorization: CapConvergeWithheld { cause: "the launcher grant claims are not about the cap step" },
+      oidc_now: claim_oidc_now(),
+      object_source_serve: apply_complete_object_source_serve(),
+    ).steps,
+    st => pipeline_step_text(st: st)
+  ), "")
+}
+
+fn apply_installs_only_its_own_grant(spec: DeploymentSpec, own: HostDashboardInstance, other: HostDashboardInstance) -> Bool {
+  let text = full_install_apply_text(spec: spec)
+  string_contains(s: text, pattern: attempt_system_unit_sudoers_path(instance: own))
+    && string_contains(s: text, pattern: join([attempt_system_unit_launcher_helpers_root, "/", own.instance_id as String], ""))
+    && !string_contains(s: text, pattern: attempt_system_unit_sudoers_path(instance: other))
+}
+
+test fn the_production_full_install_apply_installs_the_production_launcher_grant() -> Bool {
+  apply_installs_only_its_own_grant(
+    spec: deployment_spec_srv1(),
+    own: srv1_live_dashboard_instance(),
+    other: srv1_lab_dashboard_instance(),
+  )
+}
+
+test fn the_lab_full_install_apply_installs_only_the_lab_launcher_grant() -> Bool {
+  apply_installs_only_its_own_grant(
+    spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+    own: srv1_lab_dashboard_instance(),
+    other: srv1_live_dashboard_instance(),
+  )
+}
+
+fn apply_needle_precedes(text: String, earlier: String, later: String) -> Bool {
+  string_contains(s: text, pattern: earlier)
+    && string_contains(s: text, pattern: later)
+    && match split(s: text, delimiter: earlier).first() {
+      Absent => false
+      Present { value: prefix } => !string_contains(s: prefix, pattern: later)
+    }
+}
+
+test fn the_full_install_apply_installs_the_attempt_worker_slice_with_bounds_before_the_grant() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let text = full_install_apply_text(spec: deployment_spec_srv1())
+  let dest = gunbc_attempt_worker_slice_unit_path() as String
+  let grant = attempt_system_unit_sudoers_path(instance: live)
+  match attempt_worker_slice_memory_high() {
+    UserWorkSliceHighGapExceedsMax => false
+    UserWorkSliceHighDerived { bytes: high } =>
+      string_contains(s: dest, pattern: "/etc/systemd/system/")
+        && string_contains(s: dest, pattern: attempt_worker_slice_unit_name as String)
+        && string_contains(s: text, pattern: dest)
+        && string_contains(s: text, pattern: join(["MemoryMax=", to_string(byte_size_count(b: attempt_worker_slice_memory_max))], ""))
+        && string_contains(s: text, pattern: join(["MemoryHigh=", to_string(byte_size_count(b: high))], ""))
+        && string_contains(s: text, pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], ""))
+        && apply_needle_precedes(text: text, earlier: dest, later: grant)
+  }
+}
+
+fn instance_toolchain_has_systemd_run(instance: HostDashboardInstance) -> Bool {
+  match instance.toolchain.systemd_run {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn launcher_grant_exists_for(instance: HostDashboardInstance) -> Bool {
+  match dashboard_instance_for_id(instance_id: instance.instance_id as String) {
+    DashboardInstanceIdUnknown { instance_id: _ } => false
+    DashboardInstanceForId { instance: resolved } =>
+      resolved.instance_id == instance.instance_id
+        && match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(
+          instance: instance,
+          revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+        )) {
+          Absent => false
+          Present { value: body } =>
+            string_contains(s: body, pattern: instance.instance_root as String)
+              && string_contains(s: attempt_system_unit_sudoers_path(instance: instance), pattern: instance.instance_id as String)
+        }
+  }
+}
+
+test fn every_systemd_run_roster_instance_resolves_at_the_launcher_and_has_its_grant() -> Bool {
+  all(
+    public_builtin_dashboard_instances() |> filter(i => instance_toolchain_has_systemd_run(instance: i)),
+    i => match attempt_system_unit_instance_for_root(instance_root: i.instance_root as String) {
+      Absent => false
+      Present { value: resolved } =>
+        resolved.instance_id == i.instance_id && launcher_grant_exists_for(instance: i)
+    },
+  )
+    && match attempt_system_unit_instance_for_root(instance_root: "/not-a-declared-dashboard-instance") {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+// THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). The requester
+// writes one per-attempt spool entry, so the claims below supply request values at that interface
+// and read what the launcher derives: the exit hook is attempt_exit_hook's render for the attempt,
+// User= is the instance's, and the writable worktree and log paths are the belt's own derivations.
+fn claim_request(node_id: String, attempt_key: String) -> AttemptSystemUnitStartRequest {
+  AttemptSystemUnitStartRequest {
+    node_id: node_id,
+    attempt_key: attempt_key,
+    granted: kibibyte(count: 1),
+    inner_argv: [srv1_lab_dashboard_instance().serve_binary as String, "run"],
+  }
+}
+
+// THE `+` PREFIX IS THE CONFINEMENT, not its withdrawal. gunbc.roadmap.roadmap_attempt_exit_spool
+// attempt_exit_hook renders ExecStopPost through exec_command_line_full_privileges: a fixed
+// refuse-on-syntax mkdir of a create-only inbox path from root-derived facts, run outside the unit
+// sandbox so the confined process cannot write that inbox. An earlier conjunct asserted
+// !starts_with(exit_hook, "+") as if the prefix were a requester-chosen privilege grant; that
+// reading diverges from the spool's design. This claim requires the prefix because the launcher
+// inhabits that one hook, not a request-supplied line.
+test fn the_launcher_derives_the_exit_hook_from_the_attempt_identity() -> Bool {
+  let inst = srv1_lab_dashboard_instance()
+  let node = "n1"
+  let key = "k1"
+  match attempt_system_unit_start_facts_for_request(instance: inst, request: claim_request(node_id: node, attempt_key: key)) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => false
+    AttemptSystemUnitStartDerived { facts } =>
+      match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole) {
+        AttemptExitHookRefused { reason: _ } => false
+        AttemptExitHookRendered { exec_line } =>
+          (facts.exit_hook as String) == (exec_line as String)
+            && starts_with(s: facts.exit_hook as String, prefix: exec_full_privileges_prefix)
+      }
+  }
+}
+
+// User= is the instance WORKER user (WorkerIdentity arm), not the service user: on the srv1 lab the worker is the
+// dedicated account (#14246), and the launcher refuses any User= other than dashboard_instance_worker_user.
+test fn the_launcher_derives_the_user_and_paths_from_the_attempt_identity() -> Bool {
+  let inst = srv1_lab_dashboard_instance()
+  let node = "n1"
+  let key = "k1"
+  match attempt_system_unit_start_facts_for_request(instance: inst, request: claim_request(node_id: node, attempt_key: key)) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => false
+    AttemptSystemUnitStartDerived { facts } =>
+      (facts.user as String) == (dashboard_instance_worker_user(instance: inst) as String)
+        && facts.attempt_worktree == dispatch_worktree_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
+        && facts.stdout_path == dispatch_attempt_worker_log_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
+        && facts.working_directory == dispatch_pane_working_directory(provider: GunbcHarnessProvider, instance: inst, worktree_path: facts.attempt_worktree)
+  }
+}
+
+fn request_is_underivable(node_id: String, attempt_key: String) -> Bool {
+  match attempt_system_unit_start_facts_for_request(instance: srv1_lab_dashboard_instance(), request: claim_request(node_id: node_id, attempt_key: attempt_key)) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => true
+    AttemptSystemUnitStartDerived { facts: _ } => false
+  }
+}
+
+test fn an_attempt_identity_that_is_not_one_path_segment_is_underivable() -> Bool {
+  request_is_underivable(node_id: "../../opt", attempt_key: "k1")
+    && request_is_underivable(node_id: "n1", attempt_key: "a/b")
+    && request_is_underivable(node_id: "..", attempt_key: "k1")
+    && request_is_underivable(node_id: "n1", attempt_key: "")
+    && !request_is_underivable(node_id: "n1", attempt_key: "k1")
+}
+
+test fn a_path_safe_node_id_with_a_space_is_underivable_as_a_systemd_unit() -> Bool {
+  request_is_underivable(node_id: "a b", attempt_key: "k1")
+}
+
+test fn a_path_safe_node_id_with_at_is_underivable_as_a_systemd_unit() -> Bool {
+  request_is_underivable(node_id: "x@y", attempt_key: "k1")
+}
+
+test fn a_start_whose_node_id_systemd_disallows_cannot_inhabit_start_facts() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  match claim_start_facts(
+    instance: inst,
+    node_id: "a b",
+    attempt_key: "k",
+    user: inst.directory_owner.user as NonEmptyStr,
+    inner_argv: [inst.serve_binary as String, "run"],
+    exit_hook: "true" as NonEmptyStr,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// The earlier wide body carried user, working directory, worktree, both log paths and the exit hook.
+// Its hook line here is the root-exec shape systemd honours (`+` runs ExecStopPost with full
+// privileges); the decoder reads no such field, so the body is malformed rather than partly admitted.
+test fn a_wide_request_body_naming_a_root_exit_hook_is_malformed() -> Bool {
+  let wide = split(s: join([
+    "start", "n1", "k1", "briansrls", "/", "/opt/gunbc", "/tmp/o", "/tmp/e", "1",
+    "+/bin/sh -c 'id > /tmp/rooted'", "/usr/bin/true",
+  ], "\n"), delimiter: "\n")
+  match attempt_system_unit_start_request_decode(lines: wide) {
+    AttemptSystemUnitStartRequestMalformed { reason: _ } => true
+    AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
+    AttemptSystemUnitStartVerbUnknown { tag: _ } => false
+  }
+}
+
+test fn a_narrow_request_body_round_trips() -> Bool {
+  start_request_round_trips(verb: StartDetached, request: claim_request(node_id: "n1", attempt_key: "k1"))
+}
+
+fn start_verbs_equal(got: AttemptSystemUnitStartVerb, expected: AttemptSystemUnitStartVerb) -> Bool {
+  match expected {
+    StartDetached =>
+      match got {
+        StartDetached => true
+        StartAndWait => false
+      }
+    StartAndWait =>
+      match got {
+        StartAndWait => true
+        StartDetached => false
+      }
+  }
+}
+
+fn start_request_round_trips(verb: AttemptSystemUnitStartVerb, request: AttemptSystemUnitStartRequest) -> Bool {
+  match attempt_system_unit_encode_start(verb: verb, request: request) {
+    AttemptSystemUnitStartUnencodable { cause: _ } => false
+    AttemptSystemUnitStartEncoded { body } =>
+      match attempt_system_unit_start_request_decode(lines: split(s: body, delimiter: "\n")) {
+        AttemptSystemUnitStartRequestMalformed { reason: _ } => false
+        AttemptSystemUnitStartVerbUnknown { tag: _ } => false
+        AttemptSystemUnitStartRequestDecoded { verb: got_verb, request: got } =>
+          start_verbs_equal(got: got_verb, expected: verb)
+            && got.node_id == request.node_id
+            && got.attempt_key == request.attempt_key
+            && kibibyte_count(k: got.granted) == kibibyte_count(k: request.granted)
+            && got.inner_argv == request.inner_argv
+      }
+  }
+}
+
+fn encode_refuses_cause(request: AttemptSystemUnitStartRequest) -> AttemptSystemUnitStartUnencodableCause? {
+  match attempt_system_unit_encode_start(verb: StartDetached, request: request) {
+    AttemptSystemUnitStartEncoded { body: _ } => none
+    AttemptSystemUnitStartUnencodable { cause } => Present { value: cause }
+  }
+}
+
+fn request_with_argv(argv: List<String>) -> AttemptSystemUnitStartRequest {
+  AttemptSystemUnitStartRequest {
+    node_id: "n1",
+    attempt_key: "k1",
+    granted: kibibyte(count: 1),
+    inner_argv: argv,
+  }
+}
+
+test fn each_unencodable_argv_refuses_at_encode() -> Bool {
+  match encode_refuses_cause(request: request_with_argv(argv: [])) {
+    Absent => false
+    Present { value: AttemptSystemUnitArgvEmpty } => true
+    Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
+    Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
+  }
+    && match encode_refuses_cause(request: request_with_argv(argv: ["a\u{1f}b"])) {
+      Absent => false
+      Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => true
+      Present { value: AttemptSystemUnitArgvEmpty } => false
+      Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
+    }
+    && match encode_refuses_cause(request: request_with_argv(argv: ["a\nb"])) {
+      Absent => false
+      Present { value: AttemptSystemUnitArgvWordContainsNewline } => true
+      Present { value: AttemptSystemUnitArgvEmpty } => false
+      Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
+    }
+}
+
+test fn every_encodable_request_round_trips_exactly() -> Bool {
+  let argv = ["/opt/gunbc/bin/gunbc", "run", "--arg", "k=v", "path with spaces", join(["quote", "\"", "here"], ""), "dollar$ID"]
+  start_request_round_trips(verb: StartDetached, request: request_with_argv(argv: argv))
+    && start_request_round_trips(verb: StartAndWait, request: request_with_argv(argv: argv))
+}
+
+test fn an_unknown_verb_on_the_wire_is_a_typed_refusal() -> Bool {
+  match attempt_system_unit_start_request_decode(lines: ["stop", "n1", "k1", "1", "/bin/true"]) {
+    AttemptSystemUnitStartVerbUnknown { tag } => tag == "stop"
+    AttemptSystemUnitStartRequestMalformed { reason: _ } => false
+    AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
+  }
+}
+
+test fn each_start_verb_wire_round_trips() -> Bool {
+  start_request_round_trips(verb: StartDetached, request: request_with_argv(argv: ["/bin/true"]))
+    && start_request_round_trips(verb: StartAndWait, request: request_with_argv(argv: ["/bin/true"]))
+    && attempt_system_unit_start_verb_wire(verb: StartDetached) == "start"
+    && attempt_system_unit_start_verb_wire(verb: StartAndWait) == "start-wait"
+}
+
+test fn an_empty_argv_line_is_malformed() -> Bool {
+  match attempt_system_unit_start_request_decode(lines: ["start", "n1", "k1", "1", ""]) {
+    AttemptSystemUnitStartRequestMalformed { reason: why } => why == "start request argv is empty"
+    AttemptSystemUnitStartVerbUnknown { tag: _ } => false
+    AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
+  }
+}
+
+fn launcher_execstoppost_argv_keeps_single_dollar(instance: HostDashboardInstance, exec_line: NonEmptyStr) -> Bool {
+  match claim_start_facts(
+    instance: instance,
+    node_id: "n",
+    attempt_key: "k",
+    user: instance.directory_owner.user as NonEmptyStr,
+    inner_argv: [instance.serve_binary as String],
+    exit_hook: exec_line,
+  ) {
+    Absent => false
+    Present { value: facts } =>
+  match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
+    AttemptSystemUnitRefused { reason: _ } => false
+    AttemptSystemUnitAdmitted { unit: unit, facts: admitted } =>
+      match attempt_system_unit_systemd_run_command(
+        instance: instance,
+        plan: attempt_system_unit_plan_from_facts(facts: admitted, unit: unit),
+        granted: admitted.granted,
+        user: admitted.user,
+      ) {
+        SystemdRunCommandRefused { cause: _ } => false
+        SystemdRunCommandReady { command } =>
+          launcher_execstoppost_words_are_short_and_single_dollar(words: argv_words(command: command))
+      }
+  }
+  }
+}
+
+fn launcher_execstoppost_words_are_short_and_single_dollar(words: List<String>) -> Bool {
+  let stop = filter(words, w => string_contains(s: w, pattern: "ExecStopPost="))
+  let dollar = join(["$", "{", "INVOCATION_ID", "}"], "")
+  let doubled = join(["$", "$", "{", "INVOCATION_ID", "}"], "")
+  any(words, w => w == "-p")
+    && !any(words, w => string_contains(s: w, pattern: "--property=ExecStopPost="))
+    && any(stop, w => string_contains(s: w, pattern: dollar))
+    && !any(stop, w => string_contains(s: w, pattern: doubled))
+}
+
+test fn the_launcher_systemd_run_argv_places_the_worker_and_forbids_swap() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  match claim_start_facts(
+    instance: inst,
+    node_id: "n",
+    attempt_key: "k",
+    user: inst.directory_owner.user as NonEmptyStr,
+    inner_argv: [inst.serve_binary as String],
+    exit_hook: "true" as NonEmptyStr,
+  ) {
+    Absent => false
+    Present { value: facts } =>
+      match attempt_system_unit_start_admitted(instance: inst, facts: facts) {
+        AttemptSystemUnitRefused { reason: _ } => false
+        AttemptSystemUnitAdmitted { unit: unit, facts: admitted } =>
+          match attempt_system_unit_systemd_run_command(
+            instance: inst,
+            plan: attempt_system_unit_plan_from_facts(facts: admitted, unit: unit),
+            granted: admitted.granted,
+            user: admitted.user,
+          ) {
+            SystemdRunCommandRefused { cause: _ } => false
+            SystemdRunCommandReady { command } => {
+              let words = argv_words(command: command)
+              let swap = join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], "")
+              let slice = join(["Slice=", attempt_worker_slice_unit_name as String], "")
+              let user_slice = join(["Slice=", user_work_slice_unit_name as String], "")
+              (attempt_system_unit_worker_slice.unit as String) == (attempt_worker_slice_unit_name as String)
+                && filter(words, w => string_contains(s: w, pattern: swap)).length() == 1
+                && filter(words, w => string_contains(s: w, pattern: slice)).length() == 1
+                && filter(words, w => string_contains(s: w, pattern: user_slice)).length() == 0
+            }
+          }
+      }
+  }
+}
+
+// DISCRIMINATING: systemd-run specifier-escapes `$` inside one `--property=ExecStopPost=...${VAR}`
+// word, so the unit stored `$${INVOCATION_ID}` and the inbox directory kept the unexpanded
+// `${` spelling (lab 2026-10-14). Reviewer units use `-p` as two words and expand. The launcher
+// must spell ExecStopPost the same way, with a single `$` still in the argv.
+test fn the_launcher_execstoppost_uses_short_property_words_and_keeps_a_single_dollar() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  match attempt_exit_hook(
+    instance_root: inst.instance_root as String,
+    node_id: "n",
+    attempt_key: "k",
+    role: AttemptWorkerRole,
+  ) {
+    AttemptExitHookRefused { reason: _ } => false
+    AttemptExitHookRendered { exec_line } =>
+      launcher_execstoppost_argv_keeps_single_dollar(instance: inst, exec_line: exec_line)
+  }
+}
+
+test fn two_attempts_never_share_one_request_entry_name() -> Bool {
+  attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1")
+    != attempt_system_unit_request_entry_name(node_id: "n-b", attempt_key: "k1")
+    && attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1")
+      != attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k2")
+}
+
+test fn a_refused_answer_is_not_harness_started() -> Bool {
+  match attempt_system_unit_harness_start_from_answer(
+    reading: AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: "occupied" } },
+  ) {
+    AttemptSystemUnitHarnessStarted => false
+    AttemptSystemUnitHarnessFailed { detail } => detail == "occupied"
+  }
+}
+
+test fn a_missing_answer_is_not_harness_started() -> Bool {
+  match attempt_system_unit_harness_start_from_answer(reading: AttemptSystemUnitAnswerMissing) {
+    AttemptSystemUnitHarnessStarted => false
+    AttemptSystemUnitHarnessFailed { detail } => string_contains(s: detail, pattern: "missing")
+  }
+}
+
+test fn a_started_answer_decodes() -> Bool {
+  match attempt_system_unit_decode_answer(content: "started\n") {
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => true
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: _ } } => false
+    AttemptSystemUnitAnswerMissing => false
+    AttemptSystemUnitAnswerUnreadable { detail: _ } => false
+  }
+}
+
+fn body_kind_refused_with(kind: StatFileKind, needle: String) -> Bool {
+  match attempt_system_unit_admit_body_kind(kind: kind) {
+    AttemptSystemUnitBodyRegular => false
+    AttemptSystemUnitBodyRefused { reason } => string_contains(s: reason, pattern: needle)
+  }
+}
+
+test fn a_regular_file_body_is_admitted() -> Bool {
+  match attempt_system_unit_admit_body_kind(kind: RegularFileKind) {
+    AttemptSystemUnitBodyRegular => true
+    AttemptSystemUnitBodyRefused { reason: _ } => false
+  }
+}
+
+test fn a_fifo_or_symlink_body_kind_is_refused() -> Bool {
+  body_kind_refused_with(kind: FifoKind, needle: "fifo")
+    && body_kind_refused_with(kind: SymbolicLinkKind, needle: "symlink")
+    && body_kind_refused_with(kind: DirectoryKind, needle: "directory")
+}
+
+test fn the_sudoers_line_and_host_argv_pin_the_flock_wrapped_launcher() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  match attempt_system_unit_launch_flocked_argv_at(instance: live, revision: rev) {
+    AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
+    AttemptSystemUnitLaunchArgvRevisionUnreadable => false
+    AttemptSystemUnitLaunchArgvReady { argv: flocked } =>
+      match sudoers_ready_text(reading: attempt_system_unit_sudoers_line(instance: live, revision: rev)) {
+        Absent => false
+        Present { value: line } =>
+          match attempt_system_unit_launch_host_argv_at(instance: live, revision: rev) {
+            AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
+            AttemptSystemUnitLaunchArgvRevisionUnreadable => false
+            AttemptSystemUnitLaunchArgvReady { argv: host } => {
+              let lock = attempt_unit_spool_drain_lock_path(instance_root: live.instance_root as String)
+              let wait = to_string(value: second_count(s: attempt_system_unit_launcher_flock_wait))
+              count(flocked) > 0
+                && match flocked.first() {
+                  Absent => false
+                  Present { value: bin } => bin == (flock_absolute_path as String)
+                }
+                && any(flocked, w => w == "--wait")
+                && any(flocked, w => w == wait)
+                && any(flocked, w => w == "--conflict-exit-code")
+                && any(flocked, w => w == to_string(value: attempt_system_unit_launcher_busy_exit))
+                && any(flocked, w => w == lock)
+                && string_contains(s: line, pattern: join(map(flocked, w => sudoers_argument_word(w: w)), " "))
+                && skip(xs: host, n: 1) == concat([sudo_non_interactive_flag as String], flocked)
+            }
+          }
+      }
+  }
+}
+
+test fn flock_expiry_is_launcher_busy_past_the_bound() -> Bool {
+  match attempt_system_unit_harness_start_from_launcher_exit(
+    exit_code: attempt_system_unit_launcher_busy_exit,
+    reading: AttemptSystemUnitAnswerMissing,
+  ) {
+    AttemptSystemUnitHarnessStarted => false
+    AttemptSystemUnitHarnessFailed { detail } => string_contains(s: detail, pattern: "busy past the bound")
+  }
+}
+
+fn live_with_instance_root(root: FilePath) -> HostDashboardInstance {
+  let live = srv1_live_dashboard_instance()
+  HostDashboardInstance {
+    deployment: live.deployment,
+    instance_id: live.instance_id,
+    host_identity: live.host_identity,
+    provision_parent_root: live.provision_parent_root,
+    instance_root: root,
+    local_origin_root: live.local_origin_root,
+    local_origin_publish_ref: live.local_origin_publish_ref,
+    repo_root: live.repo_root,
+    dispatch_base_ref: live.dispatch_base_ref,
+    dispatch_state_scope: live.dispatch_state_scope,
+    execution_environment: live.execution_environment,
+    provider_state: live.provider_state,
+    serve_binary: live.serve_binary,
+    serve_function: live.serve_function,
+    listen_host: live.listen_host,
+    listen_port: live.listen_port,
+    tmux_server: live.tmux_server,
+    actuation: live.actuation,
+    provision_transport: live.provision_transport,
+    source_seed: live.source_seed,
+    admitted_revision: live.admitted_revision,
+    toolchain: live.toolchain,
+    dispatch_worker_memory_max: live.dispatch_worker_memory_max,
+    directory_owner: live.directory_owner,
+    worker: WorkerIsServiceUser,
+    materialization_store_root: live.materialization_store_root,
+    publication_base_branch: live.publication_base_branch,
+  }
+}
+
+fn launch_argv_refused_separator(reading: AttemptSystemUnitLaunchArgv) -> Bool {
+  match reading {
+    AttemptSystemUnitLaunchArgvReady { argv: _ } => false
+    AttemptSystemUnitLaunchArgvRevisionUnreadable => false
+    AttemptSystemUnitLaunchArgvRefused { cause } =>
+      match cause {
+        NamedArgumentNameHoldsSeparator { name } => name == "instance_root"
+        NamedArgumentNameEmpty => false
+        NamedArgumentAdmitted { argument: _ } => false
+      }
+  }
+}
+
+fn sudoers_refused_separator(reading: AttemptSystemUnitSudoersText) -> Bool {
+  match reading {
+    AttemptSystemUnitSudoersReady { text: _ } => false
+    AttemptSystemUnitSudoersRefused { cause } =>
+      match cause {
+        NamedArgumentNameHoldsSeparator { name } => name == "instance_root"
+        NamedArgumentNameEmpty => false
+        NamedArgumentAdmitted { argument: _ } => false
+      }
+  }
+}
+
+test fn an_instance_root_holding_the_separator_refuses_at_argv_sudoers_and_grant() -> Bool {
+  let inst = live_with_instance_root(root: "/tmp/gunbc=separator" as FilePath)
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  let steps = pipeline_steps_text(steps: attempt_system_unit_grant_steps_for_instance(
+    spec: deployment_spec_srv1(),
+    principal: fleet_posix_ci_runner_principal(),
+    instance: inst,
+    revision: rev,
+  ))
+  launch_argv_refused_separator(reading: attempt_system_unit_launch_gunbc_argv_at(instance: inst, revision: rev))
+    && launch_argv_refused_separator(reading: attempt_system_unit_launch_flocked_argv_at(instance: inst, revision: rev))
+    && launch_argv_refused_separator(reading: attempt_system_unit_launch_host_argv_at(instance: inst, revision: rev))
+    && sudoers_refused_separator(reading: attempt_system_unit_sudoers_line(instance: inst, revision: rev))
+    && sudoers_refused_separator(reading: attempt_system_unit_sudoers_body(instance: inst, revision: rev))
+    && string_contains(s: steps, pattern: attempt_system_unit_grant_launch_argv_refused_poison)
+    && string_contains(s: steps, pattern: "holds the separator")
+}
+
+test fn a_declared_instance_launch_argv_stays_ready() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  match attempt_system_unit_launch_gunbc_argv_at(instance: live, revision: rev) {
+    AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
+    AttemptSystemUnitLaunchArgvRevisionUnreadable => false
+    AttemptSystemUnitLaunchArgvReady { argv: gunbc } =>
+      match attempt_system_unit_launch_flocked_argv_at(instance: live, revision: rev) {
+        AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
+        AttemptSystemUnitLaunchArgvRevisionUnreadable => false
+        AttemptSystemUnitLaunchArgvReady { argv: flocked } =>
+          match attempt_system_unit_launch_host_argv_at(instance: live, revision: rev) {
+            AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
+            AttemptSystemUnitLaunchArgvRevisionUnreadable => false
+            AttemptSystemUnitLaunchArgvReady { argv: host } =>
+              count(gunbc) > 0 && count(flocked) > 0 && count(host) > 0
+                && !any(host, w => w == "/usr/bin/false")
+          }
+      }
+  }
+}

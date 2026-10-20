@@ -1,10 +1,10 @@
 module v2.test.claim.resolve.namespace_candidate_rule
 
-import v2.compiler.compile {
-  NativeCensusModule,
+import v2.compiler.source_root_eval {
   NativeCensusModuleFileRefused,
   NativeCensusModuleResolveRefused,
   NativeCensusModuleResolved,
+  NativeCensusModule,
   NativeCensusModuleOutcome,
   NativeTestContext,
   native_census_module_resolution,
@@ -14,7 +14,7 @@ import v2.compiler.compile {
 }
 import v2.compiler.native_test_vocabulary { NativeTestFileRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.collection { Map }
+
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, for_all, length }
 import v2.std.artifact { Artifact, SourceFile }
@@ -67,7 +67,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // establish nothing. Two homes declare `NcrTwin`, and the three consumers differ only in what they
 // BIND -- one home, neither home, both homes -- which is exactly the variable the rule reads.
 
-data ncr_home_a_source: String = "module v2.ncr_home_a\n\nimport std.types { Bool }\n\ntype NcrTwin = Bool\n"
+data ncr_home_a_source: String = "module v2.ncr_home_a\n\nimport std.types { Bool, Map }\n\ntype NcrTwin = Bool\n"
 
 data ncr_home_b_source: String = "module v2.ncr_home_b\n\nimport std.types { Bool }\n\ntype NcrTwin = Bool\n"
 

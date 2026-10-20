@@ -11,9 +11,7 @@ import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree }
 import std.algebra { list_snoc_item, bag_eq }
-import v2.std.collection {
-  optional_present_witness
-}
+
 import std.optional {
   Optional,
   optional_absent,
@@ -34,7 +32,7 @@ import v2.std.diagnostic {
   WholeFile
 }
 import v2.std.node { Symbol }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.witness { Holds, Violates, Witness, optional_present_witness }
 
 type IdempotencyFact {
   dependencies: List<ClassifiedDependencyView<IdempotencyVerdict>>

@@ -954,9 +954,9 @@ test fn effect_demand_witness_roster_realization_comes_from_the_registry() -> Bo
   match seam_realization(
     seam: SeamStanding {
       declaration: "empty_map_primitive_delegate",
-      seam_module: "v2.std.collection",
+      seam_module: "std.algebra",
       projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "empty_map") },
-      emitted_rust_identity: "v2_std_collection.rs::empty_map_primitive_delegate",
+      emitted_rust_identity: "std_algebra.rs::empty_map_primitive_delegate",
       evidence: SeamEvidenceDerivedNotExercised { reason: ^synthetic_control_row }
     },
     registry: Empty
@@ -1005,9 +1005,9 @@ test fn effect_demand_witness_an_ambiguous_binding_is_neither_realized_nor_unrea
   !any(
     xs: [SeamStanding {
       declaration: "empty_map_primitive_delegate",
-      seam_module: "v2.std.collection",
+      seam_module: "std.algebra",
       projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "empty_map") },
-      emitted_rust_identity: "v2_std_collection.rs::empty_map_primitive_delegate",
+      emitted_rust_identity: "std_algebra.rs::empty_map_primitive_delegate",
       evidence: SeamEvidenceDerivedNotExercised { reason: ^synthetic_control_row }
     }],
     predicate: fn(seam) {

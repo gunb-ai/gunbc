@@ -1,7 +1,8 @@
 module v2.std.source_position
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse }
-import v2.std.collection { Absent, Present, list_at_optional }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse, list_at_optional }
+import std.optional { Absent, Present }
+import v2.std.sorted_floor { SortedFloorStrides, sorted_floor_position, sorted_floor_strides_empty, sorted_floor_strides_grown }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import v2.std.integer { Int }
 import v2.std.text { String }
@@ -57,43 +58,30 @@ fn source_newline_byte_offsets(text: String) -> FreeMonoid<Int> {
 type SourcePositionIndex {
   line_starts: FreeMonoid<Int>
   line_count: Int
-  strides: FreeMonoid<Int>
-}
-
-// The binary search's state: the line reached (0-based index into line_starts) and its start.
-type LineStartAt {
-  index: Int
-  start: Int
-}
-
-type StrideBuild {
-  next: Int
-  found: FreeMonoid<Int>
+  strides: SortedFloorStrides
 }
 
 fn source_position_index(text: String) -> SourcePositionIndex {
   let starts = Cons { head: 0, tail: list_reverse(xs: fold_list(xs: source_newline_byte_offsets(text: text), empty: Empty, cons: fn(acc, nl) {
     Cons { head: nl + 1, tail: acc }
   })) }
-  let count = fold_list(xs: starts, empty: 0, cons: fn(acc, _) { acc + 1 })
-  // One candidate stride per line start bounds the doubling: 2^k <= count needs at most count steps.
-  let strides = fold_list(xs: starts, empty: StrideBuild { next: 1, found: Empty }, cons: fn(acc, _) {
-    if acc.next <= count { StrideBuild { next: acc.next * 2, found: Cons { head: acc.next, tail: acc.found } } } else { acc }
-  }).found
-  SourcePositionIndex { line_starts: starts, line_count: count, strides: strides }
+  let strides = fold_list(xs: starts, empty: sorted_floor_strides_empty(), cons: fn(acc, _) { sorted_floor_strides_grown(s: acc) })
+  SourcePositionIndex { line_starts: starts, line_count: strides.count, strides: strides }
 }
 
 // Line and byte column of `offset` against an index: the last line start at or before it is its
 // line, and the column counts bytes from that start. An index read past the end answers Absent,
 // which is "not at or before the offset" -- the search does not move there.
 fn source_line_col_in(index: SourcePositionIndex, offset: Int) -> SourceLineCol {
-  let at = fold_list(xs: index.strides, empty: LineStartAt { index: 0, start: 0 }, cons: fn(acc, stride) {
-    match list_at_optional(xs: index.line_starts, index: acc.index + stride) {
-      Absent => acc
-      Present { value: start } => if start <= offset { LineStartAt { index: acc.index + stride, start: start } } else { acc }
-    }
-  })
-  SourceLineCol { line: at.index + 1, byte_column: SourceByteColumn { value: offset - at.start + 1 } }
+  let line = match sorted_floor_position(strides: index.strides, key: offset, key_at: fn(i) { list_at_optional(xs: index.line_starts, index: i) }) {
+    Present { value: at } => at
+    Absent => 0
+  }
+  let start = match list_at_optional(xs: index.line_starts, index: line) {
+    Present { value: at } => at
+    Absent => 0
+  }
+  SourceLineCol { line: line + 1, byte_column: SourceByteColumn { value: offset - start + 1 } }
 }
 
 // Line and byte column of `offset` in `text`, for a consumer locating ONE offset. Every newline

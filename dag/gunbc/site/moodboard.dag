@@ -1,11 +1,11 @@
 module gunbc.site.moodboard
 
-import std.markup { Fragment, Element, FragmentText, Attribute, attr }
+import std.markup { MarkupDocument, Fragment, Element, FragmentText, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class }
 import std.types { NonEmptyStr }
 import std.content_hash { content_hash_atom }
 import extdeps.languages.css.properties { Cursor }
-import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import extdeps.languages.html { try_serialize_html_document, EmitOk, EmitRejected, html_doctype_name }
 import gunbc.design.principles {
   RegisterPrinciple, register_principles, register_thesis, principle_id_key,
 }
@@ -22,7 +22,7 @@ import gunbc.design.material {
 import gunbc.site.tokens {
   ResponseRule, WithinSubject, ContainerHas, OnFocusVisible,
   SurfaceRole, BorderRole, TextRole, TextDimRole,
-  FigureRole, FigureLitRole, FigureEdgeRole, FocusRole, BoundaryRole,
+  FigureRole, FigureLitRole, FigureEdgeRole, BoundaryRole,
 }
 import gunbc.design.interaction {
   BehaviorRow, InteractiveElement,
@@ -30,12 +30,11 @@ import gunbc.design.interaction {
   StarElement, HashElement, SwatchElement, element_id_eq,
   coverage_gaps, verb_key, response_key,
 }
-import gunbc.site.mark { render_mark, mark_nodes, mark_edges, all_forks_rejoin }
 import gunbc.site.constellation { constellation_figure, layer_stars, LayerStar }
 import gunbc.site.theme_transition { reframe_css, reframe_watcher_js, unthemed_color_decls }
 
 // Layer 6: the page. Everything visible projects from the layers below — principles (laws) ->
-// tokens (themes/materials/timing) -> interaction (behavior rows) -> mark / constellation (figures)
+// tokens (themes/materials/timing) -> interaction (behavior rows) -> constellation (figures)
 // -> this composition. Every color routes through a theme role var: :root carries the night theme,
 // one prefers-color-scheme media block carries the day theme, both derived from the same Theme rows
 // (one rule set, N themes — a hardcoded hsl in a page rule is the fork this construction removes).
@@ -149,11 +148,6 @@ fn behavior_rules(rows: List<BehaviorRow>) -> List<BuildRule> {
 
 fn figure_rules() -> List<BuildRule> {
   [
-    StaticRule { selector: ClassSelector { name: "mark-point" }, decls: [ role_decl(prop: Fill, r: FigureRole) ] },
-    StaticRule { selector: ClassSelector { name: "mark-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
-    StaticRule { selector: ClassSelector { name: "mark-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.16") ] },
-    StaticRule { selector: ClassSelector { name: "mark-halo-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
-    StaticRule { selector: ClassSelector { name: "mark-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
     StaticRule { selector: ClassSelector { name: "sky-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
     StaticRule { selector: ClassSelector { name: "star-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.1") ] },
   ]
@@ -201,10 +195,6 @@ fn static_rules() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "mono" }, decls: [
       decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
       decl(prop: FontSize, value: "0.82em"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "mark" }, decls: [
-      decl(prop: Height, value: "3rem"),
-      decl(prop: MarginRight, value: "1.5rem"),
     ] },
     StaticRule { selector: ClassSelector { name: "constellation" }, decls: [
       decl(prop: Width, value: "100%"),
@@ -299,17 +289,6 @@ fn masthead() -> Fragment {
   el_class("header", "masthead", [
     el_class("p", "wordmark", [ txt("gunb.ai") ]),
     el_class("p", "thesis", [ txt(register_thesis) ]),
-  ])
-}
-
-fn mark_section() -> Fragment {
-  el("section", [
-    el("h2", [ txt("the mark — one spec, three depths") ]),
-    el_class("div", "panel", [
-      render_mark(depth: 0),
-      render_mark(depth: 1),
-      render_mark(depth: 3),
-    ]),
   ])
 }
 
@@ -443,7 +422,6 @@ fn moodboard_page() -> Fragment {
     el("body", [
       el("main", [
         masthead(),
-        mark_section(),
         hero_section(),
         themes_section(),
         timing_section(),
@@ -455,9 +433,18 @@ fn moodboard_page() -> Fragment {
   ] }
 }
 
+// The document type is declared through the model now: Fragment.Document carries it through the
+// guarded serializer instead of being concatenated onto the serialized string here. That was a real
+// gap, not cosmetics — the concatenation sat OUTSIDE try_serialize_html_source, so the doctype line
+// bypassed every guard, and its spelling was one more hand-typed copy of "<!DOCTYPE" (§6b: a leaf
+// beside the modeled route).
+fn moodboard_document() -> MarkupDocument {
+  MarkupDocument { doctype: html_doctype_name, root: moodboard_page() }
+}
+
 fn moodboard_html() -> String {
-  match try_serialize_html_source(node: moodboard_page()) {
-    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
+  match try_serialize_html_document(doc: moodboard_document()) {
+    EmitOk { html: h } => h
     EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
   }
 }
@@ -467,5 +454,4 @@ fn moodboard_preconditions_hold() -> Bool {
     && coverage_gaps(elements: moodboard_elements, rows: moodboard_behaviors).length() == 0
     && unrealized_behaviors(rows: moodboard_behaviors).length() == 0
     && unthemed_color_decls(rules: moodboard_rules()).length() == 0
-    && all_forks_rejoin(nodes: mark_nodes, edges: mark_edges, source: "a")
 }

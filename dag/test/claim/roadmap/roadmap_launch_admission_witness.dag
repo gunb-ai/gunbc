@@ -494,7 +494,7 @@ fn labels_distinct(labels: List<String>) -> Bool {
 
 test fn witness_refusal_labels_are_distinct_and_total() -> Bool {
   let labels = map(launch_refusal_exemplars(), r => launch_refusal_label(r: r))
-  count(labels) == 15 && labels_distinct(labels: labels)
+  count(labels) == 17 && labels_distinct(labels: labels)
 }
 
 test fn witness_contract_text_carries_gate_order_and_digest_is_hex16() -> Bool {
@@ -793,6 +793,7 @@ test fn witness_tick_receipt_round_trips_launch_identities() -> Bool {
     launches: [id],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRecorded,
   }
   match belt_tick_receipt_decode(raw: serialize_json(v: belt_tick_receipt_json_value(receipt: receipt))) {

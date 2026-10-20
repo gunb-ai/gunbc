@@ -1,7 +1,7 @@
 module v2.test.std_grounding.value_carrier_laws
 
 import extdeps.storage.types { Ephemeral, PersistenceKind }
-import v2.std.collection { empty_map, map_insert }
+import std.algebra { empty_map, map_insert }
 import v2.std.runtime { ReferenceIdentical, StructurallyCompared, identity_evidence_equal }
 import v2.std.value_carrier {
   EphemeralUpdate,

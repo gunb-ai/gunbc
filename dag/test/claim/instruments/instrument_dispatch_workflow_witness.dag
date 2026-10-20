@@ -11,8 +11,12 @@ import gunbc.instruments.instrument_dispatch_workflow {
   InstrumentDispatchMemoryDemand, instrument_dispatch_memory_demands, instrument_dispatch_memory_demands_fit,
   instrument_dispatch_memory_demands_fit_selected_target, instrument_dispatch_memory_demands_are_dispatchable,
   instrument_dispatch_whole_tree_memory_demand, instrument_dispatch_stage0_regen_memory_demand,
+  instrument_dispatch_compute_run_unit_cold_memory_demand,
 }
-import gunbc.instrument_targets { dependency_demand_census_label, v2_native_census_label, regen_round_cost_label }
+import gunbc.instrument_targets { dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_dependency_wrong_capture_label }
+import gunbc.instruments.compute_run_unit_cold {
+  compute_run_unit_cold_unit_grant_bytes, compute_run_unit_cold_job_memory_demand,
+}
 import extdeps.bazel.label { render_label }
 import std.measure { byte_size, byte_size_count }
 
@@ -150,4 +154,31 @@ test fn the_dispatch_choice_offers_the_regen_round_cost_with_its_own_memory_dema
   contains(generated_text(), "//gunbc/instruments:regen-round-cost")
     && any(declared, l => l == render_label(l: regen_round_cost_label()))
     && contains(generated_text(), to_string(byte_size_count(b: instrument_dispatch_stage0_regen_memory_demand)))
+}
+
+// C5: the dependency arm is dispatched, so it must be offered AND carry its own row at the compute
+// price. An un-rostered option refuses the whole corpus; a missing row refuses the guard, and the
+// run would take the DEFAULT budget -- which for a two-build instrument is a silent OOM, not a clean
+// refusal. Same demand object as the compute row, never the whole-tree row.
+test fn the_compute_dependency_wrong_capture_dispatch_carries_its_own_memory_demand_holds() -> Bool {
+  let declared = map(instrument_dispatch_memory_demands(), d => render_label(l: d.label))
+  contains(generated_text(), "//gunbc/instruments:compute-dependency-wrong-capture")
+    && any(declared, l => l == render_label(l: compute_dependency_wrong_capture_label()))
+    && any(instrument_dispatch_memory_demands(), d =>
+      (render_label(l: d.label) == render_label(l: compute_dependency_wrong_capture_label()))
+        && (d.demand == instrument_dispatch_compute_run_unit_cold_memory_demand))
+    && (contains(generated_text(), "compute-dependency-wrong-capture"))
+}
+
+test fn the_compute_run_unit_cold_dispatch_carries_its_own_memory_demand_holds() -> Bool {
+  let declared = map(instrument_dispatch_memory_demands(), d => render_label(l: d.label))
+  contains(generated_text(), "//gunbc/instruments:compute-run-unit-cold")
+    && any(declared, l => l == render_label(l: compute_run_unit_cold_label()))
+    && any(instrument_dispatch_memory_demands(), d =>
+      (render_label(l: d.label) == render_label(l: compute_run_unit_cold_label()))
+        && (d.demand == instrument_dispatch_compute_run_unit_cold_memory_demand))
+    && (instrument_dispatch_compute_run_unit_cold_memory_demand == compute_run_unit_cold_job_memory_demand())
+    && (byte_size_count(b: instrument_dispatch_compute_run_unit_cold_memory_demand)
+      > byte_size_count(b: compute_run_unit_cold_unit_grant_bytes))
+    && contains(generated_text(), to_string(byte_size_count(b: instrument_dispatch_compute_run_unit_cold_memory_demand)))
 }

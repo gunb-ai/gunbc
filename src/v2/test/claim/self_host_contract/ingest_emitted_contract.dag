@@ -2,7 +2,8 @@ module v2.test.claim.self_host_contract.ingest_emitted_contract
 
 import std.logic { Bool }
 import v2.compiler.ingest { parse_atom_frontier_class }
-import v2.std.collection { Map, empty_map, map_insert }
+import std.types { Map }
+import std.algebra { empty_map, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node, Symbol, Atom, TypeNode, node_synthetic }
 

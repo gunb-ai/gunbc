@@ -1,0 +1,140 @@
+module gunbc.parse_verdict_schema
+
+import std.types { Bool, Int, String, List, Map, NonEmptyStr }
+import std.optional { Absent, Optional, Present }
+import std.algebra { map_lookup }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// THE PARSE-VERDICT RECEIPT WIRE, ONE PLACE. ParseVerdictRequest stays a family of
+// std.materialization_provider ArtifactRequest (extracting the variant would fork the coproduct).
+// This module is the third import_closure_live entry of the parse-compiler identity: the wire
+// a publisher stamps and a consumer reads, not the rest of ArtifactRequest.
+
+data parse_verdict_request_family: String = "parse-verdict"
+data parse_verdict_receipt_accepted: String = "Accepted"
+
+fn parse_verdict_stored_accepted_line(source_digest: String, compiler: String) -> String {
+  join([parse_verdict_request_family, "\t", source_digest, "\t", compiler, "\t", parse_verdict_receipt_accepted], "")
+}
+
+data parse_verdict_receipts_empty_detail: String = "ParseVerdictReceiptsEmpty: compiler-stamped walk produced no Accepted receipts"
+
+// PR-2 is the named consumer of restore-keys and of the saved receipts blob. PR-1 publishes
+// and does not restore. The trigger is the restoring step existing on pull_request heads.
+type ParseVerdictLaterConsumer {
+  declaration: DeclarationRef
+  named_consumer: NonEmptyStr
+  trigger: DissolutionCondition
+}
+
+data parse_verdict_pr2_restore_frontier: ParseVerdictLaterConsumer = ParseVerdictLaterConsumer {
+  declaration: DeclarationRef {
+    module_path: "gunbc.parse_verdict_schema",
+    decl_name: "parse_verdict_request_family",
+    field: WholeDeclaration
+  },
+  named_consumer: "gunbc.parse_verdict_restore — PR-2 restores the GHA prefix gunbc-materialization-parse-verdict-<compiler>- on pull_request and reads receipts.tsv",
+  trigger: unbound_dissolution(description: "dissolves when the PR-2 consumer step restores that prefix on pull_request heads and the parse step reuses a receipt only on exact identity, counting every miss by its typed standing")
+}
+
+// Named roots of the parse-compiler identity (not the member list). Members are
+// v2.lens.module_graph import_closure_live over these paths with pool_roots dag + src/v2.
+data parse_compiler_tokenize_entry: String = "src/v2/compiler/tokenize.dag"
+data parse_compiler_parse_entry: String = "src/v2/compiler/parse.dag"
+data parse_compiler_schema_entry: String = "dag/gunbc/parse_verdict_schema.dag"
+
+fn parse_compiler_identity_entries() -> List<String> {
+  [parse_compiler_tokenize_entry, parse_compiler_parse_entry, parse_compiler_schema_entry]
+}
+
+// Independent I_base observation: main publishes a tiny identity blob keyed by github.sha
+// alone (gunbc-parse-identity-<sha>), content = parse-compiler identity. PR-2 restores
+// that exact key for base.sha; it does not infer I_base from a receipts miss.
+data parse_compiler_sha_identity_cache_prefix: String = "gunbc-parse-identity-"
+data parse_compiler_sha_identity_blob_dir: String = ".gunbc/parse-sha-identity"
+
+fn parse_compiler_sha_identity_cache_key(sha: String) -> String {
+  join([parse_compiler_sha_identity_cache_prefix, sha], "")
+}
+
+fn parse_compiler_sha_identity_blob_path() -> String {
+  join([parse_compiler_sha_identity_blob_dir, "/identity"], "")
+}
+
+// THE PER-MODULE REUSE STANDING. A pull-request run reuses a stored Accepted receipt only on EXACT
+// identity: the restored base identity equals the head's compiler identity AND the module's own
+// receipt line (digest stamped with that identity) is in the restored receipts. Every other state is
+// a typed, countable miss that re-parses; none is widened to a near identity, and an absent
+// (evicted or never restored) entry is a miss, never Accepted (DESIGN.md section 5). The absence
+// misses are one arm each because they ask for different fixes: a missing identity blob means the
+// base sha never published, a missing receipts blob means the entry was evicted (GHA caches are
+// released after idle and capped per repository, extdeps.cache.github_actions).
+type ParseVerdictStanding
+  = Reused
+  | MissIdentityAbsent
+  | MissIdentityMismatch
+  | MissEntryAbsent
+  | MissDigestUnseen
+  | MissDeclaredRefused
+
+fn parse_verdict_standing(
+  i_head: String,
+  i_base: Optional<String>,
+  receipt_lines: Optional<Map<String, Bool>>,
+  source_digest: String
+) -> ParseVerdictStanding {
+  match i_base {
+    Absent => MissIdentityAbsent
+    Present { value: base } =>
+      if base != i_head {
+        MissIdentityMismatch
+      } else {
+        match receipt_lines {
+          Absent => MissEntryAbsent
+          Present { value: lines } =>
+            match map_lookup(m: lines, key: parse_verdict_stored_accepted_line(source_digest: source_digest, compiler: i_head)) {
+              Present { value: _ } => Reused
+              Absent => MissDigestUnseen
+            }
+        }
+      }
+  }
+}
+
+// THE TWO BLOB FILES, ONE SPELLING. The publisher saves these basenames under the runner temp
+// directory, the restore step puts the base-sha entries back at the same paths, and the verb reads
+// them from that directory, so publish, restore and read cannot disagree on a name.
+data parse_verdict_restore_identity_basename: String = "gunbc-parse-compiler-identity"
+data parse_verdict_restore_receipts_basename: String = "gunbc-parse-verdict-receipts.tsv"
+
+// THE ANCESTOR LOCATOR'S DECLARED BOUND. The restore key carries a commit sha, and the sha only LOCATES
+// an entry: reuse is decided per module by compiler identity plus source digest. The pull request's
+// base is main's tip, which moves faster than its push runs publish, so a key on the tip alone hits
+// only while main is idle. The locator therefore tries the first-parent ancestors of the base, newest
+// first, one exact key each, and the first with a published identity blob wins. These ordinals are
+// the whole bound: the workflow's locator, its gated restore chain and its record step are all
+// generated from this list, so they cannot disagree on how far back to look. No restore-keys prefix
+// is used anywhere, because a prefix hit is chosen by creation time, not ancestry.
+data parse_verdict_restore_ancestor_ordinals: List<Int> = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+
+// The record the restore chain leaves for the verb: the sha of the ancestor whose entry was restored
+// (one line, empty when none was), so the counts line can name the ancestor it used.
+data parse_verdict_restore_ancestors_basename: String = "gunbc-parse-ancestor"
+
+// THE COUNTS LINE'S DECLARED SHAPE, ONE PLACE. `parse-verdict reuse:` is the line the fleet's reuse walk
+// reads back, and the walk's only contract on it is a shell exit code -- so when the PR head predates a
+// field, the older verb answers the newer command and the step still goes green
+// (gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions, silent arm:
+// runs 39066871919, 39067193189, 39067690307, 39069382384 printed the six-field shape with no ancestor=
+// and exited 0). These rows are what the invocation-contract stamp hashes, so the shape is written down
+// as a premise instead of being inferred from whatever the binary happened to print.
+//
+// THE PREFIX ONLY. The seven field LABELS used to be declared here as well, which made them a second
+// spelling of what v2.cli.parse_verdict_reuse prints -- and the contract stamp hashed THAT copy, so the
+// verb could rename or drop a field while the stamp kept certifying the old shape. They now live with the
+// renderer that prints them (v2.cli.parse_verdict_reuse.parse_verdict_reuse_counts_fields), which is the
+// only place that can say what the line contains (§3: one spelling; where two must meet, a witness that
+// fails loudly, not a comment that says "keep in sync"). The prefix stays here because the guard's
+// readers and the verb both address the line by it, and it is not derived from anything.
+data parse_verdict_reuse_counts_prefix: String = "parse-verdict reuse:"

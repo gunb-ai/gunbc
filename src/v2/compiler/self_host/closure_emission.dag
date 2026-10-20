@@ -2,7 +2,7 @@ module v2.compiler.self_host.closure_emission
 
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules }
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, list_map, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, list_map, list_reverse, empty_map, map_insert, map_lookup }
 import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
 import extdeps.languages.json.emit {
   JsonKeyValue,
@@ -26,7 +26,7 @@ import v2.compiler.parse { PreparedGrammar, parse_module_prepared_seeded, prepar
 import v2.compiler.program_assembly { program_assembly_phase_tokenize }
 import v2.compiler.program_partition { emit_for_target_with_declarations }
 import v2.compiler.reference_closure { ReferenceOwnerless, ReferencesOwned, reference_closure_ownership }
-import v2.compiler.resolve { ResolvedTree, resolved_tree_outcome, type_declaration_modifier_channel_of_trees }
+import v2.compiler.resolve { empty_module_outcome_index, ResolvedTree, resolved_tree_outcome, type_declaration_modifier_channel_of_trees }
 import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
@@ -36,7 +36,7 @@ import v2.compiler.source_authority {
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.types { Map }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.cross_tree.resolution { SourceRootIndex, source_root_index_empty, source_root_index_insert }
@@ -281,7 +281,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, module_outcomes: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
+      ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
     }
   )
 }
@@ -325,7 +325,8 @@ fn closure_member_emission(
                 segment: program_segment_whole_program(),
                 target: target,
                 boundary: partition_boundary_fail_closed(),
-                kinds: member.tree.type_declaration_kinds
+                kinds: member.tree.type_declaration_kinds,
+                declarations: resolved.resolved_declarations
               )
             }
           )

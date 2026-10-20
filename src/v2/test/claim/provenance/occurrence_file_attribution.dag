@@ -1,9 +1,11 @@
 module v2.test.claim.provenance.occurrence_file_attribution
 
-import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.compile {
+import v2.compiler.name_resolve { Admission, ResolutionSubject, ValidatedModuleRoots }
+import v2.compiler.source_root_eval {
   NativeCensusPositionTable,
+  NativeTestContext,
   native_census_locate,
+  native_census_owner_of,
   native_census_position_table_empty,
   native_census_positions_absorb_accepted,
   native_test_context_from_ingest
@@ -19,7 +21,7 @@ import v2.compiler.program_assembly {
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { list_at_optional }
+
 import v2.std.artifact { Artifact, SourceFile }
 import v2.cli.compile_cli {
   CliEmitClosure,
@@ -36,8 +38,9 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Diagnostics, ExternalContractUnknown, NonEmptyDiagnostics, None, Rejected, Some, Textual, Unavailable, WholeFile, diagnostics_has_reason, invariant_port_locus, node_locus }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_with_occurrence_id, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, list_starts_with }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, list_starts_with, list_at_optional, map_lookup }
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance {
@@ -591,21 +594,21 @@ fn attribution_first_projected_in_node(n: Node) -> Optional<Node> {
   match n.occurrence_id {
     OccurrenceProjected { id: _, caused_by: _ } => optional_present(value: n)
     OccurrenceMinted { id: _ } =>
-      fold_list(xs: n.children, empty: optional_absent(), cons: fn(acc, e) {
+      fold(n.children, init: optional_absent(), f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
           Absent => attribution_first_projected_in_node(n: e.target)
         }
       })
     OccurrenceSynthetic =>
-      fold_list(xs: n.children, empty: optional_absent(), cons: fn(acc, e) {
+      fold(n.children, init: optional_absent(), f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
           Absent => attribution_first_projected_in_node(n: e.target)
         }
       })
     OccurrencePending { caused_by: _ } =>
-      fold_list(xs: n.children, empty: optional_absent(), cons: fn(acc, e) {
+      fold(n.children, init: optional_absent(), f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
           Absent => attribution_first_projected_in_node(n: e.target)
@@ -679,5 +682,42 @@ test fn a_same_graph_projected_cause_is_a_line_on_the_census_locator_holds() -> 
   ) {
     FileRefusalAtLine { line: _, byte_column: _ } => true
     _ => false
+  }
+}
+
+// THE CENSUS OWNER IS ONE RANGE PER FILE, FOUND BY SEARCH (v2.compiler.source_root_eval
+// native_census_owner_of). The same two shape-identical files through the real ingest fold: each
+// module root's occurrence is owned by its own compilation unit, and an id past every recorded file
+// is owned by none. Reading the owner off the wrong range -- or dropping the bound on a range's last
+// id -- answers the other file, or a file, where the claim demands its own file, or nothing.
+test fn census_owner_ranges_attribute_each_root_to_its_own_file_holds() -> Bool {
+  match native_test_context_from_ingest(ingest: [attribution_read_a(), attribution_read_b()]) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: context, diagnostics: _ } =>
+      match context.resolution {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: shared, diagnostics: _ } =>
+          attribution_census_owner_is(context: context, roots: shared.roots, module: "v2.test.fixture.attribution_a", expected: ^attribution_file_a)
+            && attribution_census_owner_is(context: context, roots: shared.roots, module: "v2.test.fixture.attribution_b", expected: ^attribution_file_b)
+            && match native_census_owner_of(positions: context.positions, id: OccurrenceId { value: 1000000000 }) {
+              Absent => true
+              Present { value: _ } => false
+            }
+      }
+  }
+}
+
+fn attribution_census_owner_is(context: NativeTestContext, roots: ValidatedModuleRoots, module: String, expected: Symbol) -> Bool {
+  match map_lookup(roots.by_name, qualified_name_from_dotted_string(dotted: module)) {
+    Absent => false
+    Present { value: tree } =>
+      match node_occurrence_id_optional(node: tree.root) {
+        Absent => false
+        Present { value: id } =>
+          match native_census_owner_of(positions: context.positions, id: id) {
+            Present { value: p } => p == expected
+            Absent => false
+          }
+      }
   }
 }

@@ -61,6 +61,7 @@ use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGrap
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
+use crate::v1_compiler_infer_types::node_declaration_identity;
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
 use crate::v1_compiler_resolve;
@@ -104,13 +105,14 @@ pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrate
 pub use emitted_crate_workspace_host::{write_emitted_workspace, EmittedWorkspace};
 pub use native_lane_runner::{
     emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
-    run_native_claim_program, run_native_process_memory_runs, run_native_serve_program,
-    run_required_v2_native, run_self_host, run_type_declaration_use_census_runs,
-    run_v2_demand_census, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
-    run_v2_native_cli_emit, run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute,
-    NativeCensusRun, NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt,
-    NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns,
-    NativeRouteOutcome, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
+    run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
+    run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
+    run_self_host, run_type_declaration_use_census_runs, run_v2_demand_census,
+    run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit,
+    run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
+    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
+    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
+    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
     TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
     MEASURED_SPAWN_RECEIPT_ENV,
 };
@@ -196,11 +198,14 @@ pub(crate) use test_migration::*;
 // is registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
+mod demand_acquire;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
+mod source_layout_lookup;
+pub use demand_acquire::resolve_entry_graph_demand_acquired;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
@@ -3823,6 +3828,19 @@ fn fixture_imported_corpus_sources(
                     );
                     queue.push(file_content);
                 }
+            } else if let Some(rest) = module_path.strip_prefix("fixture.closure.rustc_") {
+                let rel_path = format!("fixtures/fixture_closure_rustc/{rest}.dag");
+                let abs_path = ws.join(&rel_path);
+                if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    seen.insert(
+                        module_path,
+                        Rc::new(v1_compiler_compile::SourceFile {
+                            path: rel_path,
+                            content: file_content.clone(),
+                        }),
+                    );
+                    queue.push(file_content);
+                }
             }
         }
     }
@@ -4901,7 +4919,7 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
     c.matches('{').count() as i32 - c.matches('}').count() as i32
 }
 
-type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
+pub(crate) type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
 /// The fallible core. Every filesystem condition and every corpus-authority violation
 /// returns a located `Err` instead of unwinding.
@@ -7710,7 +7728,7 @@ fn parsed_bare_candidates(
 fn parsed_file_references_of(
     index: &MultiEntryIndex,
     sf: &Rc<v1_compiler_compile::SourceFile>,
-) -> Result<Rc<entry_resolve::ParsedFileReferences>, &'static str> {
+) -> Result<Rc<entry_resolve::ParsedFileReferences>, String> {
     let file = workspace_relative_repo_path(&sf.path);
     if let Some(hit) = index.parsed_references.borrow().get(&file) {
         return hit.clone();
@@ -7775,7 +7793,7 @@ fn bare_candidates_from_source(
     content: &str,
     referencing_module: &str,
     module_names: &HashSet<String>,
-) -> Result<BareCandidates, &'static str> {
+) -> Result<BareCandidates, String> {
     entry_resolve::parsed_file_references(path, content, referencing_module, module_names)
         .map(|refs| bare_candidates_from_references(&refs))
 }
@@ -8019,7 +8037,7 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
         .try_for_each(|source| admit_bare_references_of_file(index, source));
     pre_entry_phase::record(
         "pool_bare_reference_admission",
-        pre_entry_phase::PhaseScale::Tree,
+        pre_entry_phase::index_scale(),
         admission_started.elapsed(),
     );
     verdict
@@ -9103,6 +9121,50 @@ mod closure_edge_demand_tests {
         assert!(
             !names.contains("unrelated"),
             "an unused pool module must not enter the typed graph: {names:?}"
+        );
+    }
+
+    /// A qualified call must bind to the imported module's declaration when the
+    /// enclosing fn shares the leaf name (gcp_iam_converge_run after #13925).
+    /// On current main this types the call as Named(run_attempt) — the function
+    /// node — instead of the imported fn's return type.
+    #[test]
+    fn host_reconcile_qualified_call_is_not_shadowed_by_local_fn() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module gunbc.auth.consumer\n\
+                 import gunbc.auth.provider\n\
+                 fn run_attempt() -> Int { gunbc.auth.provider.run_attempt() }\n",
+            ),
+            (
+                "provider.dag",
+                "module gunbc.auth.provider\nfn run_attempt() -> Int { 7 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let outcome =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy());
+        let (graph, _) = outcome.expect("qualified provider must resolve");
+        let all_diags: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        let blocking: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking.is_empty(),
+            "qualified call must bind the imported fn, not the local leaf.\nblocking={blocking:?}\nall={all_diags:?}"
+        );
+        let joined = all_diags.join("\n");
+        assert!(
+            !joined.contains("Named(run_attempt)"),
+            "the call must not be typed as the local function node: {joined}"
         );
     }
 
@@ -11415,7 +11477,7 @@ pub struct MultiEntryIndex {
     /// feedback loop, not a bound. `OnceCell` gives lazy single-sample semantics
     /// so index construction stays free of the governor read for callers that
     /// never touch the typed cache.
-    typed_module_cache_cap: std::cell::OnceCell<usize>,
+    typed_module_cache_cap: std::cell::OnceCell<Result<usize, String>>,
     /// Source-content hashes by file path, recorded in the parse loop (where the
     /// `SourceFile.content` is in hand) — the source-hash key term for
     /// `typed_module_content_key`. A reconcile of a module whose file never passed
@@ -11482,7 +11544,7 @@ pub struct MultiEntryIndex {
     /// module-path references and its bare references -- and its bare-reference admission read
     /// this one value; the file's bytes and the pool's module names are fixed for the index's life.
     parsed_references:
-        RefCell<HashMap<String, Result<Rc<entry_resolve::ParsedFileReferences>, &'static str>>>,
+        RefCell<HashMap<String, Result<Rc<entry_resolve::ParsedFileReferences>, String>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier and the only
     // tier of the resolved graph: it serves same-subject repeats within the process and is
     // populated on first assembly. Without it, N same-subject resolves each retained an
@@ -11944,8 +12006,8 @@ const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_ceiling`.
 const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4000;
 
-fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
-    let cap = typed_module_cache_cap(index);
+fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) -> Result<(), String> {
+    let cap = typed_module_cache_cap(index)?;
     let mut cache = index.typed_module_cache.borrow_mut();
     let mut evicted = 0u64;
     while cache.len() > cap {
@@ -11967,6 +12029,7 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
             "[floor-drain] typed_cache_eviction: evicted={evicted} cap={cap} total_evictions={total}"
         );
     }
+    Ok(())
 }
 
 /// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
@@ -12069,7 +12132,7 @@ fn index_insert_typed(
         .typed_module_cache
         .borrow_mut()
         .insert(typed_key, result.clone());
-    enforce_typed_cache_entry_cap(index);
+    enforce_typed_cache_entry_cap(index)?;
     Ok(result)
 }
 
@@ -13683,7 +13746,7 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     });
     pre_entry_phase::record(
         "pool_census_parse",
-        pre_entry_phase::PhaseScale::Tree,
+        pre_entry_phase::index_scale(),
         pool_started.elapsed(),
     );
     *index.pool_parse.borrow_mut() = Some(parsed.clone());
@@ -13924,7 +13987,7 @@ fn closure_name_census(
         v1_compiler_infer::build_symbol_index_census_raw_nodes(nodes, pool.combined_si.clone());
     pre_entry_phase::record(
         "closure_name_census_build",
-        pre_entry_phase::PhaseScale::Tree,
+        pre_entry_phase::index_scale(),
         census_started.elapsed(),
     );
     index
@@ -14221,10 +14284,13 @@ fn reconcile_with_typed_cache(
                                         )
                                     );
                                 }
-                                // Same-tree bare underlay for the module being typechecked
+                                // Same-tree unique-bare underlay for the module being typechecked
                                 // (bare = own tree); out-of-root modules keep the
                                 // closure-only bare universe. Qualified names come from
-                                // the closure census, not a whole-pool fill.
+                                // the closure census, not a whole-pool fill (#13925).
+                                // Demand-acquired indexes still use this over *acquired*
+                                // same-root files (not a whole-tree walk). Without it,
+                                // unique-bares such as `join` refuse on mtcollins1_boot_run.
                                 let (module_symbol_index, module_variant_base) =
                                     match source_tree_root_of(&index.source_roots, &decl_file) {
                                         Some(root) => match tree_symbol_index_memo.get(&root) {
@@ -16813,8 +16879,7 @@ fn refers_to_std_types_nonempty_str(
     if type_nodes_name_the_same_declaration(&resolved, decl) {
         return true;
     }
-    let decl_id =
-        v1_compiler_infer::node_declaration_identity(decl.clone(), ctx.source_indices.clone());
+    let decl_id = node_declaration_identity(decl.clone(), ctx.source_indices.clone());
     let ref_id = v1_compiler_infer::type_reference_identity(type_expr, ctx.source_indices.clone());
     !decl_id.is_empty() && ref_id == decl_id
 }
@@ -26249,7 +26314,7 @@ thread_local! {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReferenceAccountingRefusal {
     pub path: String,
-    pub cause: &'static str,
+    pub cause: String,
 }
 
 /// Import-less files `reference_resolution_facts` could not account for, with located causes.
@@ -32107,6 +32172,39 @@ mod annotation_erased_scan_projection {
         )
         .is_err());
     }
+
+    /// RED for the dropped span: the closure-load parse refusal must name `file:line:col`.
+    /// Reproducer from W7 PR #14155 -- a `data` with a String base and variant arms.
+    #[test]
+    fn a_closure_load_parse_refusal_names_file_line_col() {
+        let module_names: HashSet<String> = HashSet::new();
+        let src = "module m\n\ndata VerifiedBinaryInstallPlan: String = Planned { steps: List<ArgvCommand> } | RefusedToInstall { reason: String }\n";
+        let cause = referenced_module_paths_of_source("fixture/m.dag", src, &module_names)
+            .expect_err("the fixture line is a parse refusal");
+        let located = regex_free_located(&cause, "fixture/m.dag");
+        assert!(located, "refusal must carry file:line:col, got: {cause}");
+    }
+
+    /// Positive control: a well-formed module still reads.
+    #[test]
+    fn a_well_formed_module_still_reads_its_references() {
+        let module_names: HashSet<String> = HashSet::new();
+        let src = "module m\n\nfn g() -> Int { 1 }\n";
+        referenced_module_paths_of_source("fixture/m.dag", src, &module_names)
+            .unwrap_or_else(|e| panic!("control must parse: {e}"));
+    }
+
+    fn regex_free_located(cause: &str, file: &str) -> bool {
+        let Some(at) = cause.find(&format!("{file}:")) else {
+            return false;
+        };
+        let rest = &cause[at + file.len() + 1..];
+        let mut parts = rest.splitn(3, ':');
+        let digits = |p: Option<&str>| {
+            p.is_some_and(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+        };
+        digits(parts.next()) && digits(parts.next())
+    }
 }
 
 #[cfg(test)]
@@ -34487,15 +34585,16 @@ pub use emitted_closure_compile_host::{
 /// public surface merely because Rust needs a path to it.
 #[cfg(test)]
 pub(crate) use emitted_closure_compile_host::{
-    fixture_arm_diagnostic_lines, fixture_closure_attributed_diagnostic,
-    fixture_closure_attributed_line, fixture_closure_compiled, fixture_closure_reached_rustc,
-    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
-    fixture_discrimination_report, run_append_concat_form_discrimination,
-    run_argv_word_list_splice_discrimination, run_empty_map_turbofish_discrimination,
-    run_fixture_closure_discrimination, run_function_value_adapter_discrimination,
-    run_local_true_false_coproduct_discrimination, run_native_bool_variant_discrimination,
-    run_nested_refinement_cast_discrimination, run_phantom_marker_identity_discrimination,
-    run_shell_projection_arity_discrimination, FixtureClosureOutcome,
+    fixture_argv_non_string_discrimination_passed, fixture_arm_diagnostic_lines,
+    fixture_closure_attributed_diagnostic, fixture_closure_attributed_line,
+    fixture_closure_compiled, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
+    fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
+    run_append_concat_form_discrimination, run_argv_word_list_splice_discrimination,
+    run_empty_map_turbofish_discrimination, run_fixture_closure_discrimination,
+    run_function_value_adapter_discrimination, run_local_true_false_coproduct_discrimination,
+    run_native_bool_variant_discrimination, run_nested_refinement_cast_discrimination,
+    run_phantom_marker_identity_discrimination, run_shell_projection_arity_discrimination,
+    FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.

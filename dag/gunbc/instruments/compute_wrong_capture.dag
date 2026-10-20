@@ -1,0 +1,386 @@
+module gunbc.instruments.compute_wrong_capture
+
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.algebra { trim }
+import std.process { ExitSuccess, ExitFailure }
+import std.optional { Present, Absent }
+import extdeps.systemd.systemd_run { SystemdSetenvBinding }
+import extdeps.tools.sed { sed_program, sed_script_expression_flag }
+import extdeps.tools.grep { grep_program }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.roadmap.roadmap_dashboard_instance { fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes }
+import gunbc.compute.host_capacity { compute_root }
+import gunbc.compute.work_request { work_default_build, work_declared_outputs, WorkOutput }
+import gunbc.compute.work_provider_local {
+  ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
+  compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
+  NoStopObservation, NoPathVirtualization,
+  NoComputeDependency, compute_return_outputs, OutputsReturn, OutputsReturned, OutputsMismatch, compute_staged_path,
+}
+import gunbc.instruments.compute_run_unit_cold {
+  HermeticUserSessionRuntimeAbsent, HermeticUserSessionRuntimeBound,
+  observe_hermetic_user_session_runtime, observe_isolated_job_toolchain_homes, observe_workspace,
+  observe_run_frame, observe_head, prepare_checkout, mkdir_ok, path_is_under_production_instance_root,
+  hermetic_user_session_unit_setenv, hermetic_toolchain_unit_setenv, hermetic_user_session_launcher_env,
+  compute_run_unit_cold_unit_grant,
+}
+
+// C1: THE CROSS-IDENTITY WRONG CAPTURE, REPRODUCED OR REFUTED ON THE REAL COLD PATH.
+//
+// compute_layout gives each work identity its own checkout, staging path and lease
+// (lease_path = <root>/leases/<identity_hex>, the key compute_reserve_and_run takes under), but ONE
+// target_dir per host. compute_command_argv passes it to cargo as --target-dir and compute_return_outputs
+// reads the declared TargetRoot outputs back out of it. This instrument drives exactly those two
+// steps for two identities from two distinguishable trees, in the order
+//     A builds -> B builds (writes the shared target) -> A captures -> B captures
+// which is the interleaving compute_spawn_and_collect leaves open between its compute_run_unit and
+// compute_return_outputs calls (it fuses them for one identity, so the interleave needs the two
+// steps called apart). It runs BELOW compute_reserve: reserve is keyed by identity, so the two
+// identities hold disjoint leases and race anyway; omitting it does not weaken the repro.
+//
+// EXPECTED RED ON main. Exit 0 only when A captured A's bytes. Exit 1 prints the two blobs and the
+// markers each captured copy contains.
+//
+// TWO ARMS, ONE BODY OF LOGIC (C5). The two entry points below differ ONLY in which file of the
+// throwaway checkout carries the marker: `compute_wrong_capture_exit` marks the top crate's bin
+// sources, `compute_dependency_wrong_capture_exit` marks nothing in the top crate and marks the
+// built binaries' one in-repo DEPENDENCY crate instead. Both arms share this file's build, capture,
+// report and exit decision, so the dependency arm cannot drift from C1's semantics.
+
+data wrong_capture_marker_a: String = "C1-WRONG-CAPTURE-MARKER-A"
+data wrong_capture_marker_b: String = "C1-WRONG-CAPTURE-MARKER-B"
+data wrong_capture_dependency_marker_a: String = "C5-DEP-WRONG-CAPTURE-MARKER-A"
+data wrong_capture_dependency_marker_b: String = "C5-DEP-WRONG-CAPTURE-MARKER-B"
+
+// No typed file-write effect exists for compute_exec (missing capability); sed -i takes the path as one argv element, no shell interprets it.
+// A marked source gets a #[used] static, so each tree's binary carries its own marker bytes.
+data wrong_capture_marked_sources: List<String> = ["src/v1/stage0/src/main.rs", "src/v1/stage0/src/bin/claim_batch.rs"]
+
+// THE C5 DEPENDENCY-ONLY ARM: the top crate is byte-identical across the two identities here; only this
+// in-repo dependency of both built binaries differs (package v1-stage0-v1-infer, the path dependency
+// src/v1/stage0/Cargo.toml declares), so a wrong capture cannot be masked by the top crate rebuilding.
+// The file is a generated carrier (`claim_executor --emit-partition-crates --write`) and every other file
+// in that crate is a path-included generated module -- there is no hand-written file to mark. The append
+// happens only in this run's throwaway checkout; nothing lands in a tracked tree, exactly as C1's mark.
+data wrong_capture_dependency_marked_sources: List<String> = ["src/v1/stage0_v1_infer/src/lib.rs"]
+
+// What distinguishes an arm: its printed name, its two marker strings, and the paths that carry them.
+type WrongCaptureArm {
+  name: String
+  marker_a: String
+  marker_b: String
+  marked_sources: List<String>
+  // Extra report lines, arm-only. EMPTY for C1's arm, so the bytes C1 prints are exactly the bytes
+  // C1 printed before this file carried a second arm; only the dependency arm names its markers and
+  // its marked file, which is what the RED/GREEN readout has to show by hand.
+  preamble: List<String>
+  // C1's per-output row prints A's contains_A/contains_B but only B's contains_B. The dependency
+  // arm needs contains_* printed for EACH binary -- A carrying B's dependency marker is the exact
+  // wrong-capture signature when nothing in the top crate can explain it -- so its row gains B's
+  // contains_A_marker. false keeps C1's row byte-for-byte as it was.
+  per_output_verbose: Bool
+}
+
+data wrong_capture_top_crate_arm: WrongCaptureArm = WrongCaptureArm {
+  name: "compute-wrong-capture",
+  marker_a: wrong_capture_marker_a,
+  marker_b: wrong_capture_marker_b,
+  marked_sources: wrong_capture_marked_sources,
+  preamble: [],
+  per_output_verbose: false,
+}
+
+data wrong_capture_dependency_arm: WrongCaptureArm = WrongCaptureArm {
+  name: "compute-dependency-wrong-capture",
+  marker_a: wrong_capture_dependency_marker_a,
+  marker_b: wrong_capture_dependency_marker_b,
+  marked_sources: wrong_capture_dependency_marked_sources,
+  // Printed so a reader can check the dependency marker reached BOTH built binaries and is not
+  // being carried by the top crate: the per-output rows print contains_* for EACH binary, and
+  // marked_sources names the only file that differs between the two identities.
+  preamble: ["marker_a=", wrong_capture_dependency_marker_a, " marker_b=", wrong_capture_dependency_marker_b, "\n",
+    "marked_sources=", join(wrong_capture_dependency_marked_sources, " "), " (the ONLY difference between the two identities; neither top-crate bin source is marked)\n",
+  ],
+  per_output_verbose: true,
+}
+
+fn wrong_capture_mark_tree(instance: HostDashboardInstance, layout: ComputeLayout, marker: String, marked_sources: List<String>) -> String {
+  fold(marked_sources, init: "", f: (acc, rel) =>
+    if acc != "" { acc } else {
+      match compute_exec(
+        program: sed_program().invocation as String,
+        workdir: layout.checkout,
+        args: ["-i", sed_script_expression_flag, join(["$a#[used] static WRONG_CAPTURE_MARKER: &str = \"", marker, "\";"], ""), join([layout.checkout, "/", rel], "")],
+      ) {
+        ComputeExecOk { stdout: _, stderr: _ } => ""
+        ComputeExecFailed { exit_code: _, stdout: _, stderr } => join(["could not mark ", rel, ": ", stderr], "")
+      }
+    })
+}
+
+fn wrong_capture_unit_env(runtime_dir: FilePath, homes: IsolatedJobToolchainHomes) -> List<SystemdSetenvBinding> {
+  concat(
+    concat(compute_operation_env(op: work_default_build()), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
+    hermetic_toolchain_unit_setenv(homes: homes),
+  )
+}
+
+// grep -c prints the count and exits 1 on zero matches; any other failure (exit 2, unreadable file) is "unreadable".
+fn wrong_capture_marker_count(path: String, marker: String) -> String {
+  match compute_exec(program: grep_program().invocation as String, workdir: ".", args: ["-a", "-c", marker, path]) {
+    ComputeExecOk { stdout, stderr: _ } => trim(s: stdout)
+    ComputeExecFailed { exit_code, stdout, stderr: _ } => if (exit_code == 1) && (trim(s: stdout) == "0") { "0" } else { "unreadable" }
+  }
+}
+
+fn wrong_capture_has(path: String, marker: String) -> Bool {
+  let n = wrong_capture_marker_count(path: path, marker: marker)
+  (n != "0") && (n != "unreadable")
+}
+
+fn wrong_capture_unreadable(path: String, arm: WrongCaptureArm) -> Bool {
+  (wrong_capture_marker_count(path: path, marker: arm.marker_a) == "unreadable")
+    || (wrong_capture_marker_count(path: path, marker: arm.marker_b) == "unreadable")
+}
+
+fn wrong_capture_mismatch(r: OutputsReturn) -> Bool {
+  match r {
+    OutputsReturned { outputs: _ } => false
+    OutputsMismatch { detail: _ } => true
+  }
+}
+
+fn wrong_capture_build(
+  instance: HostDashboardInstance,
+  layout: ComputeLayout,
+  identity: String,
+  runtime_dir: FilePath,
+  homes: IsolatedJobToolchainHomes,
+) -> String {
+  match compute_run_unit(
+    instance: instance,
+    layout: layout,
+    identity_hex: identity,
+    argv: compute_command_argv(instance: instance, layout: layout, op: work_default_build(), dependency: NoComputeDependency),
+    env: wrong_capture_unit_env(runtime_dir: runtime_dir, homes: homes),
+    launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
+    granted: compute_run_unit_cold_unit_grant(),
+    user_runtime_dir: runtime_dir,
+    // NoStopObservation: this instrument's evidence is the staged output blobs it reads out of the
+    // target directory itself. From the unit's reading it takes only whether the build succeeded, so
+    // the unit must carry exactly the properties a plain build unit carries. The arm that appends one,
+    // SccacheStatsAtStop, exists to print cache counters at ExecStop for another subject
+    // (gunbc.instruments.compute_run_unit_cold) and nothing here would read them. The parameter is
+    // required; omitting it fails at dispatch resolve rather than at compile, which is why the corpus
+    // that imports this module (test/claim/target_invocation_witness) is the check that catches it.
+    stop_observation: NoStopObservation,
+    path_virtualization: NoPathVirtualization,
+  ) {
+    ComputeUnitRunRefused { cause: _ } => "unit launch refused"
+    ComputeUnitRunExecuted { run: unit_run } =>
+      match unit_run.exec {
+        ComputeExecOk { stdout: _, stderr: _ } => ""
+        ComputeExecFailed { exit_code, stdout, stderr } =>
+          join(["build exited ", to_string(value: exit_code), "\n", stdout, stderr], "")
+      }
+  }
+}
+
+fn wrong_capture_blobs(r: OutputsReturn) -> List<WorkOutput> {
+  match r {
+    OutputsReturned { outputs } => outputs
+    OutputsMismatch { detail: _ } => []
+  }
+}
+
+// The wrong-capture DIRECTION, as a pure function so the naming stern-bat-401 required is witnessed
+// without a fleet run. a_wrong = some staged A output holds B's marker and not A's (A<-B, what C1
+// observed first); b_wrong = some staged B output holds A's marker and not B's (B<-A, what the
+// dependency arm observed in run 38880268300). SYMMETRIC: either one, on either arm, is the wrong
+// capture and exits 1. "" means no wrong capture was observed.
+fn wrong_capture_direction(a_wrong: Bool, b_wrong: Bool) -> String {
+  if a_wrong && b_wrong { "A<-B,B<-A" }
+  else if a_wrong { "A<-B" }
+  else if b_wrong { "B<-A" }
+  else { "" }
+}
+
+fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout, layout_b: ComputeLayout, root: String, arm: WrongCaptureArm) -> CliWireResponse {
+  let declared = work_declared_outputs(op: work_default_build())
+  let cap_a = compute_return_outputs(instance: instance, layout: layout_a, declared: declared)
+  let cap_b = compute_return_outputs(instance: instance, layout: layout_b, declared: declared)
+  let rows = map(declared, d => {
+    let rel = d.path
+    let staged_a = compute_staged_path(layout: layout_a, declared: rel)
+    let staged_b = compute_staged_path(layout: layout_b, declared: rel)
+    let blob_a = fold(wrong_capture_blobs(r: cap_a), init: "", f: (acc, o) => if o.declared == rel { o.blob } else { acc })
+    let blob_b = fold(wrong_capture_blobs(r: cap_b), init: "", f: (acc, o) => if o.declared == rel { o.blob } else { acc })
+    let a_has_a = wrong_capture_has(path: staged_a, marker: arm.marker_a)
+    let a_has_b = wrong_capture_has(path: staged_a, marker: arm.marker_b)
+    let b_has_b = wrong_capture_has(path: staged_b, marker: arm.marker_b)
+    let b_has_a = wrong_capture_has(path: staged_b, marker: arm.marker_a)
+    let wrong_a = a_has_b && !a_has_a
+    let wrong_b = b_has_a && !b_has_b
+    join([
+      "output=", rel, "\n",
+      "  A blob=", blob_a, " contains_A_marker=", if a_has_a { "true" } else { "false" }, " contains_B_marker=", if a_has_b { "true" } else { "false" }, "\n",
+      "  B blob=", blob_b, " contains_B_marker=", if b_has_b { "true" } else { "false" }, "\n",
+      // Printed whenever it could matter: the dependency arm always shows it, and either arm shows
+      // it once B actually carries A's marker, so a B<-A verdict is never read without its evidence.
+      if arm.per_output_verbose || wrong_b { join(["  B contains_A_marker=", if b_has_a { "true" } else { "false" }, "\n"], "") } else { "" },
+      "  A_blob_equals_B_blob=", if (blob_a == blob_b) && (blob_a != "") { "true" } else { "false" }, "\n",
+      "  staged_a=", staged_a, "\n  staged_b=", staged_b, "\n",
+      "  staging_collides_across_identities=", if staged_a == staged_b { "true" } else { "false" }, "\n",
+      if wrong_a { "  WRONG_CAPTURE A<-B: request A captured request B's bytes\n" } else { "" },
+      if wrong_b { "  WRONG_CAPTURE B<-A: request B captured request A's bytes\n" } else { "" },
+    ], "")
+  })
+  let any_wrong_a = any(declared, d => {
+    let staged_a = compute_staged_path(layout: layout_a, declared: d.path)
+    wrong_capture_has(path: staged_a, marker: arm.marker_b) && !wrong_capture_has(path: staged_a, marker: arm.marker_a)
+  })
+  let any_wrong_b = any(declared, d => {
+    let staged_b = compute_staged_path(layout: layout_b, declared: d.path)
+    wrong_capture_has(path: staged_b, marker: arm.marker_a) && !wrong_capture_has(path: staged_b, marker: arm.marker_b)
+  })
+  let direction = wrong_capture_direction(a_wrong: any_wrong_a, b_wrong: any_wrong_b)
+  // SYMMETRIC WRONG CAPTURE, both arms, one shared table (stern-bat-401): exit 1 whenever SOME
+  // REQUEST's capture holds the OTHER request's marker and not its own, whichever side it hits.
+  // C1's observed red is A<-B and stays exit 1 with the same condition; the dependency arm's red is
+  // B<-A (run 38880268300: A blob == B blob, B carried A's marker), which under the old
+  // A-only condition fell through to exit 2 and read as "no observation". Exit 0 and the other
+  // exit-2 outcomes are unchanged.
+  let own_bytes = !any(declared, d => !wrong_capture_has(path: compute_staged_path(layout: layout_a, declared: d.path), marker: arm.marker_a))
+  let b_own = !any(declared, d => !wrong_capture_has(path: compute_staged_path(layout: layout_b, declared: d.path), marker: arm.marker_b))
+  // Premise controls: disjoint leases and disjoint staged paths. shared target_dir is a printed reading only, never a gate.
+  let premise = (layout_a.lease_path != layout_b.lease_path) && !any(declared, d => compute_staged_path(layout: layout_a, declared: d.path) == compute_staged_path(layout: layout_b, declared: d.path))
+  let bytes = join([
+    arm.name, " compute_root=", root, "\n",
+    join(arm.preamble, ""),
+    "shared_target_dir_same_for_both=", if layout_a.target_dir == layout_b.target_dir { "true" } else { "false" }, "\n",
+    "target_dir=", layout_a.target_dir, "\n",
+    "lease_path_a=", layout_a.lease_path, "\nlease_path_b=", layout_b.lease_path, "\n",
+    "leases_disjoint=", if layout_a.lease_path != layout_b.lease_path { "true" } else { "false" }, "\n",
+    join(rows, ""),
+    if direction != "" { join(["VERDICT: wrong capture reproduced (", direction, "): ",
+        if any_wrong_a { "the capture of request A holds B's marker and not A's" } else { "" },
+        if any_wrong_a && any_wrong_b { "; " } else { "" },
+        if any_wrong_b { "the capture of request B holds A's marker and not B's" } else { "" },
+        "\n"], "") }
+      else if own_bytes && b_own { "VERDICT: each request captured its own bytes\n" } else { "VERDICT: no observation\n" },
+  ], "")
+  let unobserved = wrong_capture_mismatch(r: cap_a) || wrong_capture_mismatch(r: cap_b) || any(declared, d =>
+    wrong_capture_unreadable(path: compute_staged_path(layout: layout_a, declared: d.path), arm: arm) || wrong_capture_unreadable(path: compute_staged_path(layout: layout_b, declared: d.path), arm: arm))
+  if !premise {
+    CliWirePrintable { bytes: join([bytes, "no observation: premise control failed (leases or staged paths not disjoint)\n"], ""), exit: ExitFailure { code: 2, reason: "premise control failed" } }
+  } else if unobserved {
+    CliWirePrintable { bytes: join([bytes, "no observation: a capture mismatched or a staged file was unreadable\n"], ""), exit: ExitFailure { code: 2, reason: "capture mismatch or unreadable staged file" } }
+  } else if direction != "" {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: join(["wrong capture ", direction, ": a request captured the other request's bytes from the shared target_dir"], "") } }
+  } else if !(own_bytes && b_own) {
+    CliWirePrintable { bytes: join([bytes, "no observation: not every staged A output has A's marker and every staged B output B's marker\n"], ""), exit: ExitFailure { code: 2, reason: "own marker absent from a staged output" } }
+  } else {
+    CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+  }
+}
+
+fn wrong_capture_run(arm: WrongCaptureArm) -> CliWireResponse {
+  match observe_hermetic_user_session_runtime() {
+    HermeticUserSessionRuntimeAbsent =>
+      CliWirePrintable {
+        bytes: join([arm.name, ": no observation: user session bus absent at /run/user/<uid>/bus"], ""),
+        exit: ExitFailure { code: 2, reason: "user session bus absent" },
+      }
+    HermeticUserSessionRuntimeBound { runtime_dir } =>
+      match observe_isolated_job_toolchain_homes() {
+        Absent =>
+          CliWirePrintable {
+            bytes: join([arm.name, ": ToolchainHomesNotIsolated CARGO_HOME/RUSTUP_HOME unset or empty"], ""),
+            exit: ExitFailure { code: 2, reason: "ToolchainHomesNotIsolated" },
+          }
+        Present { value: homes } => {
+          match observe_run_frame() {
+            Absent =>
+              CliWirePrintable {
+                bytes: join([arm.name, ": no observation: clock unix millis unreadable, so this run has no frame"], ""),
+                exit: ExitFailure { code: 2, reason: "run frame unreadable" },
+              }
+            Present { value: frame } => {
+          let stamp = to_string(value: frame)
+          let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: homes)
+          let workspace = observe_workspace(instance: probe)
+          if (workspace == "") || path_is_under_production_instance_root(path: workspace) {
+            CliWirePrintable {
+              bytes: join([arm.name, ": no observation: workspace unusable"], ""),
+              exit: ExitFailure { code: 2, reason: "workspace unusable" },
+            }
+          } else {
+            let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: homes)
+            let id_a = join([stamp, "a"], "")
+            let id_b = join([stamp, "b"], "")
+            match compute_layout(instance: instance, identity_hex: id_a) {
+              Absent =>
+                CliWirePrintable {
+                  bytes: join([arm.name, ": the hermetic instance declares no materialization store"], ""),
+                  exit: ExitFailure { code: 2, reason: "no materialization store declared" },
+                }
+              Present { value: layout_a } =>
+            match compute_layout(instance: instance, identity_hex: id_b) {
+              Absent =>
+                CliWirePrintable {
+                  bytes: join([arm.name, ": the hermetic instance declares no materialization store"], ""),
+                  exit: ExitFailure { code: 2, reason: "no materialization store declared" },
+                }
+              Present { value: layout_b } => {
+            let root = compute_root(instance: instance) as String
+            let head = observe_head(instance: instance, workdir: workspace)
+            let dirs_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
+              && mkdir_ok(instance: instance, path: layout_a.work_dir)
+              && mkdir_ok(instance: instance, path: layout_b.work_dir)
+              && mkdir_ok(instance: instance, path: layout_a.target_dir)
+              && mkdir_ok(instance: instance, path: layout_a.staging_dir)
+              && mkdir_ok(instance: instance, path: layout_a.attempts_dir)
+            if !dirs_ok || (head == "") {
+              CliWirePrintable {
+                bytes: join([arm.name, ": could not create the two layouts or read HEAD"], ""),
+                exit: ExitFailure { code: 2, reason: "layout or HEAD unavailable" },
+              }
+            } else {
+              let setup = prepare_checkout(instance: instance, layout: layout_a, head: head)
+              let setup_b = if setup != "" { setup } else { prepare_checkout(instance: instance, layout: layout_b, head: head) }
+              let marked_a = if setup_b != "" { setup_b } else { wrong_capture_mark_tree(instance: instance, layout: layout_a, marker: arm.marker_a, marked_sources: arm.marked_sources) }
+              let marked_b = if marked_a != "" { marked_a } else { wrong_capture_mark_tree(instance: instance, layout: layout_b, marker: arm.marker_b, marked_sources: arm.marked_sources) }
+              if marked_b != "" {
+                CliWirePrintable { bytes: join([arm.name, ": ", marked_b], ""), exit: ExitFailure { code: 2, reason: marked_b } }
+              } else {
+                let built_a = wrong_capture_build(instance: instance, layout: layout_a, identity: id_a, runtime_dir: runtime_dir, homes: homes)
+                let built_b = if built_a != "" { built_a } else { wrong_capture_build(instance: instance, layout: layout_b, identity: id_b, runtime_dir: runtime_dir, homes: homes) }
+                if built_b != "" {
+                  CliWirePrintable { bytes: join([arm.name, ": a build did not complete\n", built_b], ""), exit: ExitFailure { code: 2, reason: "a build did not complete" } }
+                } else {
+                  wrong_capture_report(instance: instance, layout_a: layout_a, layout_b: layout_b, root: root, arm: arm)
+                }
+              }
+            }
+          }
+              }
+            }
+            }
+          }
+            }
+        }
+      }
+  }
+}
+
+// C1's entry, unchanged in meaning: the two top-level bin sources carry the markers.
+fn compute_wrong_capture_exit() -> CliWireResponse {
+  wrong_capture_run(arm: wrong_capture_top_crate_arm)
+}
+
+// C5's entry: neither top-crate source carries anything; the built binaries' in-repo dependency
+// crate is the only difference between the two identities, so the capture cannot be explained by
+// the top crate rebuilding. Same build, capture, report and exit decision as C1.
+fn compute_dependency_wrong_capture_exit() -> CliWireResponse {
+  wrong_capture_run(arm: wrong_capture_dependency_arm)
+}

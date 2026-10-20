@@ -2,7 +2,8 @@ module extdeps.filesystem.filesystem_io
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Bool, FilePath, Int, List, String, NonEmptyStr }
+import std.types { Bool, Bytes, FilePath, Int, List, String, NonEmptyStr }
+import std.algebra { collection_join_shape }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -776,6 +777,21 @@ service Filesystem {
       error: String from "error"
     }
     transport file { path: "{path}" }
+  }
+
+  // WriteBytes: Write with Bytes content, for binary files. It shares Write's realization on the
+  // Rust target. The seed interpreter has no byte write and refuses the verb, so a program using it
+  // runs as emitted Rust.
+  operation WriteBytes {
+    requires none
+    input { path: String, content: Bytes }
+    output {
+      success: Bool from "write_success"
+      bytes_written: Int from "bytes_written"
+      path: String from "path"
+      error: String from "error"
+    }
+    transport file { path: "{path}", verb: "write_bytes" }
   }
 
   operation WriteOwnerOnly {

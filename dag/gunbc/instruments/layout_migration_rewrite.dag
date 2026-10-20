@@ -1,9 +1,9 @@
 module gunbc.instruments.layout_migration_rewrite
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, Map }
 import std.optional { Absent, Optional, Present, optional_present }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
-import std.algebra { skip }
+
+import std.algebra { skip, empty_map, map_insert, map_lookup }
 
 // THE REFERENCE REWRITE ENGINE OF THE LAYOUT MIGRATION (gunbc.plans.source_layout_authority, C1).
 // Given the old and new name of every module and the old and new path of every file, it rewrites

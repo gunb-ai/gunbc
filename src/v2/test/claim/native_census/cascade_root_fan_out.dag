@@ -1,14 +1,14 @@
 module v2.test.claim.native_census.cascade_root_fan_out
 
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeCensusCascadeMemberOf,
   NativeCensusCascadeNone,
   NativeCensusCascadeUnattributed,
   NativeCensusCascadeRoot,
-  NativeCensusCauseMember,
   NativeCensusClosureFanOutAtLeast,
   NativeCensusClosureFanOutCounted,
   NativeCensusClosureFanOutUnavailable,
+  NativeCensusCauseMember,
   native_census_cause_group_rows,
   native_census_cause_groups_add_module,
   native_census_cause_groups_from_file_refusals,
@@ -20,7 +20,7 @@ import v2.compiler.compile {
   native_test_context_from_ingest
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }

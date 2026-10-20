@@ -1,0 +1,53 @@
+module test.claim.revision_job_fixture.revision_job_light_claims
+
+import std.types { Bool, String }
+import std.algebra { trim }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent }
+import extdeps.git { git_hash_object_command }
+import extdeps.rust.cargo_build { cargo_run_release_manifest_offline_command }
+import gunbc.command_runner { run_shell_command_capture }
+
+// THE REVISION JOB'S LIGHT, DISCRIMINATING CLAIM SET -- FIXTURES, NOT CLAIMS ABOUT THE PROGRAM.
+//
+// A revision job's stand-in (gunbc.runner.runner_revision_job_main, S4b-3b) runs these two, in this
+// order, through `gunbc test //test/claim/revision_job_fixture/revision_job_light_claims:<fn>`:
+//   1. the_guest_toolchain_links_c_into_rust      -- expected exit 0
+//   2. a_fixture_observation_that_holds          -- expected exit 0
+//   3. a_fixture_observation_that_does_not_hold  -- expected exit 1, DELIBERATELY
+// so the results frame and its digest must carry both exits in order, and a decoder that dropped a
+// non-zero exit or reordered them goes red. They are tiny on purpose: the stand-in proves the guest
+// path, not anything about the corpus, and existing labels change for unrelated reasons.
+//
+// THIS DIRECTORY IS NOT PART OF THE CLAIM POPULATION. gunbc.ci.ci_layer_roots witness_exclusion_frontier
+// excludes "test/claim/revision_job_fixture/" as FixtureExplicitRoster: floor discovery, routine claim
+// runs and censuses never select it, so the deliberately-not-holding fixture is never read as a real
+// red. It stays runnable by its exact label, which is the only way the stand-in names it.
+
+// THE LINK SMOKE, FIRST: the image's toolchain closure is real only if it executes. git hashes a
+// fixture file to the object id git computed for it outside the guest; cargo builds link_smoke/ offline
+// and locked from the staged vendor set (cc 1.2.62, pinned in its own Cargo.lock to the repository's
+// entries), whose build script compiles smoke.c through cc (gcc), rustc links it through cc and ld, and
+// the binary prints 7 * 6 + 4 from the C side. A missing git, gcc, ld, libc6-dev, vendored crate or
+// source replacement fails here, by name in the job's results, before any corpus claim runs.
+data link_smoke_dir: String = "dag/test/claim/revision_job_fixture/link_smoke"
+
+test fn the_guest_toolchain_links_c_into_rust() -> Bool {
+  let hashed = match run_shell_command_capture(command: git_hash_object_command(path: concat(link_smoke_dir, "/smoke.c")), transport: LocalExec) {
+    ProcessOutputPresent { text: t } => trim(s: t) == "e012e4200b94e6f1ca8eee16515e389e5ee10f75"
+    _ => false
+  }
+  let linked = match run_shell_command_capture(command: cargo_run_release_manifest_offline_command(manifest_path: concat(link_smoke_dir, "/Cargo.toml"), target_dir: "/work/link-smoke-target"), transport: LocalExec) {
+    ProcessOutputPresent { text: t } => trim(s: t) == "link-smoke 46"
+    _ => false
+  }
+  hashed && linked
+}
+
+test fn a_fixture_observation_that_holds() -> Bool {
+  true
+}
+
+test fn a_fixture_observation_that_does_not_hold() -> Bool {
+  false
+}

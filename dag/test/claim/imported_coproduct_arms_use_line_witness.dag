@@ -1,0 +1,59 @@
+module test.claim.imported_coproduct_arms_use_line_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A module that merely IMPORTS a coproduct and its arms declares neither, so a consumer of the
+// coproduct through it must still get the coproduct's use-line from the DECLARING module. The
+// relay imports `{ ArmT }` in the control and `{ ArmT, ArmX, ArmY }` in the red; the consumer is the same.
+// The defect was the variant glob `use crate::<relay>::ArmT::*`, rooted at the importing module.
+fn v_consumer_through_relay(relay: String, relay_fn: String) -> Bool {
+  compile_dag_rust_emit_check(
+    concat("module iar_consumer\n\nimport test.fixture.imported_arms.", relay, " \{ ArmT, ", relay_fn, " \}\n\nfn iar_use(t: ArmT) -> ArmT {\n  ", relay_fn, "(t)\n}\n"),
+    "src/iar_consumer.rs",
+    ["crate::test_fixture_imported_arms_provider::", "ArmT"],
+    [concat("crate::test_fixture_imported_arms_", relay, "::ArmT")]
+  )
+}
+
+test fn a_relay_importing_only_the_coproduct_routes_its_use_line_to_the_declarer() -> Bool {
+  v_consumer_through_relay("relay_without_arms", "arm_relay_without_arms")
+}
+
+test fn a_relay_importing_the_coproduct_and_its_arms_routes_its_use_line_to_the_declarer() -> Bool {
+  v_consumer_through_relay("relay_with_arms", "arm_relay_with_arms")
+}
+
+// The corpus specimen: v2.std.logic importing Bool, True, False made v2.compiler.infer emit
+// `use crate::v2_std_logic::Bool::*;`, which rustc refuses with E0432.
+// Bool is realized natively (`pub type Bool = bool`), so no module `Bool` exists to glob at its declarer either.
+test fn a_consumer_of_logic_bool_never_roots_the_variant_glob_at_logic() -> Bool {
+  compile_dag_rust_emit_check(
+    "module iar_real\n\nimport v2.std.logic \{ Bool, bool_node \}\n\nfn iar_real_use(b: Bool) -> Bool {\n  b\n}\n",
+    "src/iar_real.rs",
+    [],
+    ["crate::v2_std_logic::Bool", "crate::std_types::Bool::"]
+  )
+}
+
+// The non-coproduct sibling: a data item declared by the provider, imported by a relay, and
+// imported again from the relay. Its use-line must name the provider, never the relay.
+test fn a_consumer_of_a_relayed_plain_function_routes_its_use_line_to_the_declarer() -> Bool {
+  compile_dag_rust_emit_check(
+    "module iar_plain\n\nimport std.types \{ Int \}\nimport test.fixture.imported_arms.relay_plain_fn \{ arm_plain_data \}\n\nfn iar_plain_use(x: Int) -> Int {\n  x + arm_plain_data\n}\n",
+    "src/iar_plain.rs",
+    ["crate::test_fixture_imported_arms_provider::\{arm_plain_data"],
+    ["crate::test_fixture_imported_arms_relay_plain_fn::\{arm_plain_data"]
+  )
+}
+
+// Positive control: the same function imported straight from its declarer.
+test fn a_consumer_importing_a_plain_function_from_its_declarer_keeps_its_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module iar_plain_direct\n\nimport std.types \{ Int \}\nimport test.fixture.imported_arms.provider \{ arm_plain_data \}\n\nfn iar_plain_direct_use(x: Int) -> Int {\n  x + arm_plain_data\n}\n",
+    "src/iar_plain_direct.rs",
+    ["crate::test_fixture_imported_arms_provider::\{arm_plain_data"],
+    []
+  )
+}

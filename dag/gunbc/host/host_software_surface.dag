@@ -1,0 +1,593 @@
+module gunbc.host.host_software_surface
+
+import std.types { Int, List, NonEmptyStr, String, FilePath }
+import std.optional { Absent, Present }
+import std.os.types {
+  OperatingSystemSurface,
+  OsPackageManager,
+  Linux,
+  Posix,
+  PosixProcess,
+  NobleNumbat2404Lts,
+  UbuntuDistribution,
+}
+import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
+import std.os { operating_system_surface_ubuntu }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.host.host_resource {
+  HostResource,
+  HostResourceIdentity,
+  resource_occurrence_allocator_initial,
+  alloc_resource_occurrence,
+}
+import extdeps.external_authority {
+  CitedFigureStanding,
+  TranscribedUncited,
+  CitedToAuthority,
+  ObservedByReceipt,
+  observed_receipt,
+}
+import std.decl_ref { decl_ref }
+import gunbc.host.srv1_software_inhabitance_receipt {
+  HostSoftwareProbe,
+  host_software_probe_obligation,
+  srv1_software_inhabitance_receipt,
+  srv1_os_release_probe,
+  srv1_kernel_release_probe,
+  srv1_apparmor_sysctl_probe,
+  srv1_sudo_list_probe,
+  srv1_procps_probe,
+  srv1_timeout_probe,
+  srv1_git_probe,
+  srv1_jq_probe,
+  srv1_systemd_probe,
+  srv1_cgroup_delegation_probe,
+  srv1_tailscale_probe,
+  srv1_toolchain_read_obligation,
+}
+import extdeps.linux.apparmor_userns {
+  apparmor_restrict_unprivileged_userns_sysctl_name,
+  apparmor_unprivileged_userns_restricted,
+}
+import extdeps.exec.program { ProgramIdentity }
+import extdeps.procps.kill {
+  kill_program,
+  KillSignalRealization,
+  ProcpsNgArgvKill,
+  ShellBuiltinKill,
+}
+import extdeps.git { git_program }
+import extdeps.tools.jq { jq_program }
+import extdeps.systemd.systemctl { systemctl_path_resolved_program }
+import extdeps.tools.gnu_coreutils { timeout_program }
+import gunbc.fleet.fleet_posix_accounts {
+  GroundedPosixPrincipal,
+  fleet_posix_operator_principal,
+}
+import extdeps.version.semver { semver_version_parse }
+import extdeps.tailscale.serve {
+  TailscaleServeCapability,
+  ScopedRemovalUnobserved,
+  tailscale_scoped_removal_capability,
+  tailscale_program,
+}
+import std.host_text { chars }
+
+// PER-HOST SOFTWARE, KEYED BY THE SAME HostIdentity ComputeHost already carries (DESIGN 3: do not
+// mint a second host authority). ComputeHost remains the host row; this module is its software
+// side, which fleet_intent_os_surface left empty fleet-wide. Each fact is a HostResource so
+// standing is CitedFigureStanding — not a parallel vocabulary. Upstream behaviour lives in
+// extdeps; the host row says which version or setting THIS host has.
+
+type OsReleaseRole = | OsRelease
+type KernelReleaseRole = | KernelRelease
+type SysctlRole = | Sysctl
+type ToolVersionRole = | ToolVersion
+type SudoPolicyRole = | SudoPolicy
+type CgroupDelegationRole = | CgroupDelegation
+type ToolchainPathsRole = | ToolchainPaths
+
+type HostOsReleaseFact {
+  version_id: NonEmptyStr?
+  pretty_name: NonEmptyStr?
+  distro: UbuntuDistribution?
+  standing: CitedFigureStanding
+}
+
+type HostKernelReleaseFact {
+  kernel_release_label: NonEmptyStr?
+  standing: CitedFigureStanding
+}
+
+type HostSysctlFact {
+  name: NonEmptyStr
+  value: Int?
+  standing: CitedFigureStanding
+}
+
+type HostProgramVersionFact {
+  program: ProgramIdentity
+  version_label: NonEmptyStr?
+  package_version_label: NonEmptyStr?
+  standing: CitedFigureStanding
+}
+
+type HostSudoPolicyFact {
+  principal: GroundedPosixPrincipal
+  observed_listing: NonEmptyStr?
+  standing: CitedFigureStanding
+}
+
+type HostCgroupDelegationFact {
+  user_manager_controllers: NonEmptyStr?
+  standing: CitedFigureStanding
+}
+
+type HostToolchainPathFact {
+  git: FilePath?
+  jq: FilePath?
+  timeout: FilePath?
+  systemd_run: FilePath?
+  standing: CitedFigureStanding
+}
+
+type HostSoftwareSurface {
+  host: HostIdentity
+  os_release: HostResource<OsReleaseRole, HostOsReleaseFact>
+  kernel_release: HostResource<KernelReleaseRole, HostKernelReleaseFact>
+  apparmor_userns: HostResource<SysctlRole, HostSysctlFact>
+  programs: HostResource<ToolVersionRole, List<HostProgramVersionFact>>
+  sudo_policy: HostResource<SudoPolicyRole, HostSudoPolicyFact>
+  user_cgroup_delegation: HostResource<CgroupDelegationRole, HostCgroupDelegationFact>
+  toolchain_paths: HostResource<ToolchainPathsRole, HostToolchainPathFact>
+  // Whether the host's shell lists a builtin `kill` beside procps-ng's binary. Absent is not
+  // observed, never "no builtin": only an observed surface may say which realizations exist.
+  kill_shell_builtin: Bool?
+}
+
+fn unobserved_standing(probe: NonEmptyStr) -> CitedFigureStanding {
+  TranscribedUncited { read_obligation: probe }
+}
+
+// BOUNDARY TRANSCRIPTION (DESIGN 4b). Standing points at srv1_software_inhabitance_receipt,
+// the typed probe-result row. srv1_software_surface is derived from that row. observed_receipt
+// admits this fold by name. Next-rung trigger: an executing probe route that writes the receipt
+// from live argv.
+fn srv1_software_inhabitance_ground() -> CitedFigureStanding {
+  ObservedByReceipt {
+    observed: observed_receipt(receipt: decl_ref(
+      module_path: "gunbc.host.srv1_software_inhabitance_receipt",
+      decl_name: "srv1_software_inhabitance_receipt",
+    ))
+  }
+}
+
+fn srv1_software_inhabitance_probe_commands() -> List<HostSoftwareProbe> {
+  srv1_software_inhabitance_receipt.probes
+}
+
+fn software_surface(
+  host: HostIdentity,
+  os: HostOsReleaseFact,
+  kernel: HostKernelReleaseFact,
+  apparmor: HostSysctlFact,
+  programs: List<HostProgramVersionFact>,
+  sudo_policy: HostSudoPolicyFact,
+  cgroup: HostCgroupDelegationFact,
+  toolchain: HostToolchainPathFact,
+  kill_shell_builtin: Bool? = none,
+) -> HostSoftwareSurface {
+  let a0 = resource_occurrence_allocator_initial()
+  let m0 = alloc_resource_occurrence(alloc: a0)
+  let m1 = alloc_resource_occurrence(alloc: m0.alloc)
+  let m2 = alloc_resource_occurrence(alloc: m1.alloc)
+  let m3 = alloc_resource_occurrence(alloc: m2.alloc)
+  let m4 = alloc_resource_occurrence(alloc: m3.alloc)
+  let m5 = alloc_resource_occurrence(alloc: m4.alloc)
+  let m6 = alloc_resource_occurrence(alloc: m5.alloc)
+  HostSoftwareSurface {
+    host: host,
+    os_release: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: m0.id },
+      role: OsRelease,
+      value: os,
+    },
+    kernel_release: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: m1.id },
+      role: KernelRelease,
+      value: kernel,
+    },
+    apparmor_userns: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: m2.id },
+      role: Sysctl,
+      value: apparmor,
+    },
+    programs: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: m3.id },
+      role: ToolVersion,
+      value: programs,
+    },
+    sudo_policy: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: m4.id },
+      role: SudoPolicy,
+      value: sudo_policy,
+    },
+    user_cgroup_delegation: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: m5.id },
+      role: CgroupDelegation,
+      value: cgroup,
+    },
+    toolchain_paths: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: m6.id },
+      role: ToolchainPaths,
+      value: toolchain,
+    },
+    kill_shell_builtin: kill_shell_builtin,
+  }
+}
+
+fn blank_os() -> HostOsReleaseFact {
+  HostOsReleaseFact {
+    version_id: none,
+    pretty_name: none,
+    distro: none,
+    standing: unobserved_standing(probe: host_software_probe_obligation(p: srv1_os_release_probe())),
+  }
+}
+
+fn blank_kernel() -> HostKernelReleaseFact {
+  HostKernelReleaseFact {
+    kernel_release_label: none,
+    standing: unobserved_standing(probe: host_software_probe_obligation(p: srv1_kernel_release_probe())),
+  }
+}
+
+fn blank_apparmor() -> HostSysctlFact {
+  HostSysctlFact {
+    name: apparmor_restrict_unprivileged_userns_sysctl_name,
+    value: none,
+    standing: unobserved_standing(probe: host_software_probe_obligation(p: srv1_apparmor_sysctl_probe())),
+  }
+}
+
+fn blank_program(program: ProgramIdentity, probe: NonEmptyStr) -> HostProgramVersionFact {
+  HostProgramVersionFact {
+    program: program,
+    version_label: none,
+    package_version_label: none,
+    standing: unobserved_standing(probe: probe),
+  }
+}
+
+fn unobserved_programs() -> List<HostProgramVersionFact> {
+  [
+    blank_program(program: kill_program(), probe: host_software_probe_obligation(p: srv1_procps_probe())),
+    blank_program(program: timeout_program(), probe: host_software_probe_obligation(p: srv1_timeout_probe())),
+    blank_program(program: git_program(), probe: host_software_probe_obligation(p: srv1_git_probe())),
+    blank_program(program: jq_program(), probe: host_software_probe_obligation(p: srv1_jq_probe())),
+    blank_program(program: systemctl_path_resolved_program(), probe: host_software_probe_obligation(p: srv1_systemd_probe())),
+    blank_program(program: tailscale_program(), probe: host_software_probe_obligation(p: srv1_tailscale_probe())),
+  ]
+}
+
+fn observed_program(
+  program: ProgramIdentity,
+  version_label: NonEmptyStr,
+  package_version_label: NonEmptyStr?,
+  standing: CitedFigureStanding,
+) -> HostProgramVersionFact {
+  HostProgramVersionFact {
+    program: program,
+    version_label: Present { value: version_label },
+    package_version_label: package_version_label,
+    standing: standing,
+  }
+}
+
+fn blank_sudo() -> HostSudoPolicyFact {
+  HostSudoPolicyFact {
+    principal: fleet_posix_operator_principal(),
+    observed_listing: none,
+    standing: unobserved_standing(probe: host_software_probe_obligation(p: srv1_sudo_list_probe())),
+  }
+}
+
+fn blank_cgroup() -> HostCgroupDelegationFact {
+  HostCgroupDelegationFact {
+    user_manager_controllers: none,
+    standing: unobserved_standing(probe: host_software_probe_obligation(p: srv1_cgroup_delegation_probe(uid: srv1_software_inhabitance_receipt.observer_uid))),
+  }
+}
+
+fn blank_toolchain() -> HostToolchainPathFact {
+  HostToolchainPathFact {
+    git: none,
+    jq: none,
+    timeout: none,
+    systemd_run: none,
+    standing: unobserved_standing(probe: srv1_toolchain_read_obligation()),
+  }
+}
+
+fn unobserved_software_surface(host: HostIdentity) -> HostSoftwareSurface {
+  software_surface(
+    host: host,
+    os: blank_os(),
+    kernel: blank_kernel(),
+    apparmor: blank_apparmor(),
+    programs: unobserved_programs(),
+    sudo_policy: blank_sudo(),
+    cgroup: blank_cgroup(),
+    toolchain: blank_toolchain(),
+  )
+}
+
+// srv1 values are derived from srv1_software_inhabitance_receipt. jq version_label is the
+// binary self-report. Package versions were not in the HOST-1 inhabitance comment and stay
+// Absent (obligation: srv1_package_version_read_obligation). Lab deploy reads PATH and the
+// binary label.
+fn srv1_software_surface() -> HostSoftwareSurface {
+  let r = srv1_software_inhabitance_receipt
+  let standing = srv1_software_inhabitance_ground()
+  software_surface(
+    host: operator_host_srv1,
+    os: HostOsReleaseFact {
+      version_id: Present { value: r.os_version_id },
+      pretty_name: Present { value: r.os_pretty_name },
+      distro: Present { value: NobleNumbat2404Lts },
+      standing: standing,
+    },
+    kernel: HostKernelReleaseFact {
+      kernel_release_label: Present { value: r.kernel_release_label },
+      standing: standing,
+    },
+    apparmor: HostSysctlFact {
+      name: apparmor_restrict_unprivileged_userns_sysctl_name,
+      value: Present { value: r.apparmor_userns },
+      standing: standing,
+    },
+    programs: [
+      observed_program(program: kill_program(), version_label: r.procps_version_label, package_version_label: r.procps_package, standing: standing),
+      observed_program(program: timeout_program(), version_label: r.coreutils_version_label, package_version_label: r.coreutils_package, standing: standing),
+      observed_program(program: git_program(), version_label: r.git_version_label, package_version_label: r.git_package, standing: standing),
+      observed_program(program: jq_program(), version_label: r.jq_version_label, package_version_label: r.jq_package, standing: standing),
+      observed_program(program: systemctl_path_resolved_program(), version_label: r.systemd_version_label, package_version_label: r.systemd_package, standing: standing),
+      observed_program(program: tailscale_program(), version_label: r.tailscale_version_label, package_version_label: r.tailscale_package, standing: standing),
+    ],
+    sudo_policy: HostSudoPolicyFact {
+      principal: fleet_posix_operator_principal(),
+      observed_listing: Present {
+        value: join([r.sudo_all_as_all as String, "\n", r.sudo_nopasswd_all as String], "") as NonEmptyStr
+      },
+      standing: standing,
+    },
+    cgroup: HostCgroupDelegationFact {
+      user_manager_controllers: Present { value: r.cgroup_controllers },
+      standing: standing,
+    },
+    toolchain: HostToolchainPathFact {
+      git: Present { value: r.git_path },
+      jq: Present { value: r.jq_path },
+      timeout: Present { value: r.timeout_path },
+      systemd_run: Present { value: r.systemd_run_path },
+      standing: standing,
+    },
+    kill_shell_builtin: Present { value: r.kill_shell_builtin_listed },
+  )
+}
+
+fn host_software_surface_for_identity(identity: HostIdentity) -> HostSoftwareSurface {
+  if host_identity_eq(a: identity, b: operator_host_srv1) {
+    srv1_software_surface()
+  } else if host_identity_eq(a: identity, b: operator_host_srv2) {
+    unobserved_software_surface(host: identity)
+  } else if host_identity_eq(a: identity, b: operator_host_srv3) {
+    unobserved_software_surface(host: identity)
+  } else if host_identity_eq(a: identity, b: operator_host_srv4) {
+    unobserved_software_surface(host: identity)
+  } else {
+    unobserved_software_surface(host: identity)
+  }
+}
+
+fn host_operating_system_surface(surface: HostSoftwareSurface) -> OperatingSystemSurface {
+  match surface.os_release.value.distro {
+    Absent => OperatingSystemSurface {
+      kernel: Linux,
+      distro_or_product: none,
+      version: none,
+      filesystem_semantics: Posix,
+      process_semantics: PosixProcess,
+    }
+    Present { value: distro } => operating_system_surface_ubuntu(row: ubuntu_distribution_catalog_row(distro: distro))
+  }
+}
+
+type HostPackageManagerReading
+  = HostPackageManagerKnown { manager: OsPackageManager }
+  | HostPackageManagerUnobserved { obligation: NonEmptyStr }
+
+fn cited_figure_obligation(standing: CitedFigureStanding) -> NonEmptyStr? {
+  match standing {
+    TranscribedUncited { read_obligation: o } => Present { value: o }
+    CitedToAuthority { authority: _ } => none
+    ObservedByReceipt { observed: _ } => none
+  }
+}
+
+fn host_surface_unobserved_obligation(standing: CitedFigureStanding, fallback: NonEmptyStr) -> NonEmptyStr {
+  match cited_figure_obligation(standing: standing) {
+    Present { value: o } => o
+    Absent => fallback
+  }
+}
+
+data host_os_release_unobserved_obligation: NonEmptyStr = "observe /etc/os-release on this host"
+data host_apparmor_sysctl_unobserved_obligation: NonEmptyStr = "observe kernel.apparmor_restrict_unprivileged_userns on this host"
+data host_program_version_unobserved_obligation: NonEmptyStr = "observe this program's version on this host"
+
+fn host_toolchain_read_obligation(surface: HostSoftwareSurface) -> NonEmptyStr {
+  host_surface_unobserved_obligation(
+    standing: surface.toolchain_paths.value.standing,
+    fallback: srv1_toolchain_read_obligation(),
+  )
+}
+
+fn host_os_package_manager(surface: HostSoftwareSurface) -> HostPackageManagerReading {
+  match surface.os_release.value.distro {
+    Absent => HostPackageManagerUnobserved {
+      obligation: host_surface_unobserved_obligation(
+        standing: surface.os_release.value.standing,
+        fallback: host_os_release_unobserved_obligation,
+      )
+    }
+    Present { value: distro } =>
+      HostPackageManagerKnown { manager: ubuntu_distribution_catalog_row(distro: distro).package_manager }
+  }
+}
+
+fn host_os_package_manager_optional(surface: HostSoftwareSurface) -> OsPackageManager? {
+  match host_os_package_manager(surface: surface) {
+    HostPackageManagerKnown { manager: m } => Present { value: m }
+    HostPackageManagerUnobserved { obligation: _ } => none
+  }
+}
+
+type UserManagerSandboxEnforcement
+  = UserManagerDoesNotEnforceSandbox { wrote_into_home: NonEmptyStr }
+  | UserManagerSandboxUnobserved { obligation: NonEmptyStr }
+  | UserManagerSandboxEnforcementUnobserved { obligation: NonEmptyStr }
+  | UserManagerSandboxSysctlUnreadable { value: Int }
+
+fn host_program_version(surface: HostSoftwareSurface, program: ProgramIdentity) -> HostProgramVersionFact? {
+  fold(surface.programs.value, init: none, f: (acc, p) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if p.program.invocation == program.invocation {
+          Present { value: p }
+        } else {
+          none
+        }
+    }
+  )
+}
+
+// WHICH kill REALIZATIONS A SURFACE ESTABLISHES, WITH THE BUILTIN'S STANDING CARRIED (review 81199).
+// procps-ng's binary is established by its observed version label; a shell builtin only by the
+// surface's own observation. An unobserved builtin is carried as unobserved, never read as absent.
+type HostKillRealizations
+  = KillRealizationsEstablished { realizations: List<KillSignalRealization> }
+  | KillRealizationsBuiltinUnobserved { known: List<KillSignalRealization> }
+
+fn host_procps_kill_realizations(surface: HostSoftwareSurface) -> List<KillSignalRealization> {
+  match host_program_version(surface: surface, program: kill_program()) {
+    Absent => []
+    Present { value: fact } =>
+      match fact.version_label {
+        Absent => []
+        Present { value: _ } => [ProcpsNgArgvKill]
+      }
+  }
+}
+
+fn host_kill_signal_realizations(surface: HostSoftwareSurface) -> HostKillRealizations {
+  let procps = host_procps_kill_realizations(surface: surface)
+  match surface.kill_shell_builtin {
+    Present { value: listed } =>
+      KillRealizationsEstablished { realizations: if listed { concat(procps, [ShellBuiltinKill]) } else { procps } }
+    Absent => KillRealizationsBuiltinUnobserved { known: procps }
+  }
+}
+
+// THE ARGV REALIZATION DOES NOT DEPEND ON THE BUILTIN'S STANDING. ProcpsNgArgvKill is an exec of the
+// procps-ng binary by argv, which no shell interprets, so a shell builtin cannot shadow it; it is
+// admissible exactly when procps-ng's binary is established, whether the builtin was observed or
+// not. The builtin's standing stays on HostKillRealizations for any caller that runs kill through
+// a shell, which must not read an unobserved builtin as absent.
+fn host_kill_signal_realization(surface: HostSoftwareSurface) -> KillSignalRealization? {
+  let established = host_procps_kill_realizations(surface: surface)
+  fold(established, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        match r {
+          ProcpsNgArgvKill => Present { value: ProcpsNgArgvKill }
+          ShellBuiltinKill => none
+        }
+    }
+  )
+}
+
+// OBSERVATION PLUS A BET, NOT A CITED systemd FACT (DESIGN 4d). srv1 on 2026-10-14: a user-manager
+// unit with ProtectHome wrote into home (github.com/gunb-ai/gunbc/issues/13942#issuecomment-6175000334).
+// DoesNotEnforce is an identity join: surface.host equals the observation's host, and sysctl is 1.
+// The same sysctl on another host is not that observation. Sysctl 0 is only a bet that the user
+// manager would enforce. Any other sysctl is unreadable.
+type UserManagerWroteIntoHomeObservation {
+  host: HostIdentity
+  receipt: NonEmptyStr
+}
+
+data srv1_user_manager_protect_home_wrote_into_home: UserManagerWroteIntoHomeObservation = UserManagerWroteIntoHomeObservation {
+  host: operator_host_srv1,
+  receipt: "github.com/gunb-ai/gunbc/issues/13942#issuecomment-6175000334",
+}
+data user_manager_protect_home_enforcement_read_obligation: NonEmptyStr = "ProtectHome confinement observed on this host (sysctl 0 is a bet, not that observation)"
+data user_manager_wrote_into_home_observed_on_this_host_obligation: NonEmptyStr = "ProtectHome wrote-into-home observed on this host (the srv1 2026-10-14 receipt is not this host's)"
+
+fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManagerSandboxEnforcement {
+  match surface.apparmor_userns.value.value {
+    Absent => UserManagerSandboxUnobserved {
+      obligation: host_surface_unobserved_obligation(
+        standing: surface.apparmor_userns.value.standing,
+        fallback: host_apparmor_sysctl_unobserved_obligation,
+      )
+    }
+    Present { value: n } =>
+      if n == apparmor_unprivileged_userns_restricted {
+        let observed = srv1_user_manager_protect_home_wrote_into_home
+        if host_identity_eq(a: surface.host, b: observed.host) {
+          UserManagerDoesNotEnforceSandbox {
+            wrote_into_home: observed.receipt
+          }
+        } else {
+          UserManagerSandboxEnforcementUnobserved {
+            obligation: user_manager_wrote_into_home_observed_on_this_host_obligation
+          }
+        }
+      } else if n == 0 {
+        UserManagerSandboxEnforcementUnobserved {
+          obligation: user_manager_protect_home_enforcement_read_obligation
+        }
+      } else {
+        UserManagerSandboxSysctlUnreadable { value: n }
+      }
+  }
+}
+
+fn host_tailscale_client(surface: HostSoftwareSurface) -> TailscaleServeCapability {
+  match host_program_version(surface: surface, program: tailscale_program()) {
+    Absent => ScopedRemovalUnobserved {
+      reason: host_program_version_unobserved_obligation as String
+    }
+    Present { value: fact } =>
+      match fact.version_label {
+        Absent => ScopedRemovalUnobserved {
+          reason: host_surface_unobserved_obligation(
+            standing: fact.standing,
+            fallback: host_program_version_unobserved_obligation,
+          ) as String
+        }
+        Present { value: label } =>
+          match semver_version_parse(cps: chars(text: label as String)) {
+            Absent => ScopedRemovalUnobserved {
+              reason: "the observed tailscale version label failed to parse"
+            }
+            Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
+          }
+      }
+  }
+}
+

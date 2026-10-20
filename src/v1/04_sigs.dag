@@ -334,6 +334,39 @@ fn parent_closure_callable_candidates(env: ResolvedFuncEnv, name: String) -> Lis
   )
 }
 
+// A QUALIFIED CALL NAMES AN OWNER MODULE. Looking up the full spelling in maps keyed
+// by bare leaf, then falling through to the current module's `run_attempt`, is silent
+// mis-resolution (gcp_iam_converge_run after pool_qualified_fill deletion). Collect
+// only the owner whose module path is the prefix; never the leaf in some other parent.
+fn owner_module_leaf_callable_candidates(env: ResolvedFuncEnv, owner: String, leaf: String) -> List<CallableCandidate> {
+  let self_hits = if env.name == owner {
+    match map_get(env.local, leaf) {
+      Present { value: sig } =>
+        [CallableCandidate {
+          identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf } },
+          sig: sig
+        }]
+      Absent => []
+    }
+  } else {
+    []
+  }
+  fold(env.parents, init: self_hits, f: (acc, p) =>
+    if p.name == owner {
+      match map_get(p.local, leaf) {
+        Present { value: sig } =>
+          concat(acc, [CallableCandidate {
+            identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf } },
+            sig: sig
+          }])
+        Absent => acc
+      }
+    } else {
+      acc
+    }
+  )
+}
+
 // THE DECISION, AND IT IS ORDER-INDEPENDENT BY CONSTRUCTION.
 //
 // Cardinality routes through module_path_owner_binding_decide exactly as the two existing

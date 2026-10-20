@@ -22,9 +22,7 @@ import v2.extdeps.languages.rust_sg2_mode2 {
   rust_sg2_mode2_shared_target_model
 }
 import std.algebra { is_empty }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Absent,

@@ -16,8 +16,8 @@ import std.materialization_ladder {
 }
 import std.measure { Millisecond, Nanosecond, byte_size, millisecond_count, nanosecond, nanosecond_count }
 import v2.workflow.required_floor { required_floor_new_witness_envelope_ms }
-import std.algebra { list_flat_map, list_map }
-import v2.std.collection { empty_map, map_get_checked, map_insert }
+import std.algebra { list_flat_map, list_map, empty_map, map_insert }
+import v2.std.witness { map_get_checked }
 import v2.std.diagnostic { Accepted, Rejected, Outcome }
 import std.optional { Absent, Present, Optional }
 
@@ -960,7 +960,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_variant_of_its_kind", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_kernel_type", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_variant_of_another_coproduct", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "tak_unkinded_parameter_is_unchanged", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "tak_unkinded_parameter_refuses_a_variant_as_a_category_mismatch", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1166,7 +1166,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.body_lowering.single_arm_match",
     claims: [
       SingleClaimFillDebtClaim { claim: "three_arm_match_keeps_every_arm_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "zero_arm_match_still_refuses_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "zero_arm_match_lowers_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1232,7 +1232,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "oar_an_optional_at_a_required_record_field_refuses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "oar_an_optional_returned_at_a_declared_int_refuses_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "oar_the_lift_is_still_accepted_on_the_route_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "oar_a_bare_lift_is_refused_on_the_route_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1317,7 +1317,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "fps_an_unresolvable_provider_leaves_its_declaration_unavailable_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
       SingleClaimFillDebtClaim { claim: "fps_the_int_field_grounds_as_an_int_parameter_does_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
       SingleClaimFillDebtClaim { claim: "fps_two_fields_of_different_types_ground_differently_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
-      SingleClaimFillDebtClaim { claim: "fps_a_match_binder_receiver_is_not_yet_typed_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "fps_a_match_binder_receiver_is_typed_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {

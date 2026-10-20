@@ -17,14 +17,16 @@ import v2.std.service_realization_labels {
 }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape }
 import v2.compiler.fold_lowering {
-  CallbackAllByAnd,
-  CallbackAnyByOr,
-  CallbackFiltersByCondition,
   CallbackCallOperands,
-  CallbackMapsToCons,
-  CallbackRealization,
+  CallbackStepRow,
+  InitBoolLiteral,
+  InitEmptyCarrier,
+  StepAccBoolJoined,
+  StepConsOfCallbackResult,
+  StepKeepsMemberUnderCondition,
+  callback_step_row,
   FoldCallCallbackLowered,
   FoldCallLowered,
   FunctionValueBinder,
@@ -72,6 +74,7 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom,
   dag_string_literal_node,
   dag_string_literal_value_symbol_optional,
+  dag_float_literal_lexeme_optional,
   string_template_optional,
   StringTemplate,
   StringTemplateSegment,
@@ -90,13 +93,8 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_is
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
-import v2.std.node { content_hash }
-import v2.std.collection {
-  empty_map,
-  list_at_optional,
-  map_insert,
-  map_lookup
-}
+import v2.std.node { positional_child_target_nodes, content_hash }
+
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
 import v2.std.resource_declaration { resource_kind_of_label, resource_mode_of_label }
@@ -150,7 +148,7 @@ import v2.std.compilers.lowered_shape {
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional, sugar_named_child_optional, sugar_type_node }
-import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class, parse_production_emitted_identity_optional }
+import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -172,7 +170,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, optional_declaration_identity, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -205,7 +203,6 @@ import v2.std.node {
   is_positional,
   Atom,
   Branch,
-  Occupancy,
   ComputationNode,
   Match,
   Value,
@@ -243,29 +240,7 @@ import v2.std.node {
 import v2.std.type_binder { type_binder_set_children, cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.arrow_contract { effect_claim_label, hermetic_claim_label }
 import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
-import v2.std.node_query {
-  binder_edge,
-  construct_field_edges,
-  member_edge_type_node,
-  node_positional_child_targets,
-  construct_node,
-  construct_node_elided,
-  construct_tag_elided_reference,
-  construct_tag_reading,
-  construct_tag_reading_of_target,
-  ConstructTagAuthored,
-  ConstructTagElided,
-  NotAConstruct,
-  construct_tag_optional,
-  field_projection_node,
-  field_projection_optional,
-  find_named_child,
-  positional_payload_field_name,
-  pattern_wildcard_name,
-  wildcard_pattern_identity,
-  repeated_name_edges,
-  variant_declaration_node
-}
+import v2.std.node_query { binder_edge, construct_field_edges, member_edge_type_node, construct_node, construct_node_elided, construct_tag_elided_reference, construct_tag_reading, construct_tag_reading_of_target, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, field_projection_optional, find_named_child, positional_payload_field_name, pattern_wildcard_name, wildcard_pattern_identity, repeated_name_edges, variant_declaration_node }
 import std.roster_frontier { FrontierRow, PathSubject }
 
 data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into v2.compiler.body_producer_forward GrammarRelationRow forward fold (general-body-producer-design §3) once Slice 4 deletes this module; match/if/body_try hand-walker scaffolds dissolved into body_producer_forward + body_lower_fold. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → the fold encoding via fold_call_lowering and fold_recurrence_encoding); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_lowering — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained as the typed BodyWrapperRetained variant (general-body-producer-design Stage A frontier: lowered | wrapper-retained, refused at the retained shell by the normalized-tree door — never silent shell accept)."
@@ -507,7 +482,6 @@ fn body_lower_arrow_domain_named_bindings(root: Node) -> List<Symbol> {
     TypeNode { connective: Atom { identity: _ } } => Empty
     TypeNode { connective: Disj } => Empty
     TypeNode { connective: Arrow } => Empty
-    TypeNode { connective: Occupancy } => Empty
     TypeNode { connective: Instantiation } => Empty
     ComputationNode { behavior: _ } => Empty
   }
@@ -753,7 +727,6 @@ fn body_term_wrapper_optional(n: Node) -> Optional<BodyTermWrapper> {
     TypeNode { connective: Atom { identity: _ } } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -860,7 +833,6 @@ fn body_term_is_leaf(n: Node) -> Bool
     TypeNode { connective: Conj } => length(xs: n.children) == 0
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1578,7 +1550,7 @@ fn body_lower_positional_payload(payload_shell: Node) -> Outcome<Node> {
 
 type VariantPayloadShell
   = VariantPayloadAbsent
-  | VariantPayloadShell { shell: Node }
+  | VariantPayloadCarries { shell: Node }
   | VariantPayloadUnrecognized
 
 fn body_lower_variant_payload_shell(suffix: Node) -> VariantPayloadShell {
@@ -1589,7 +1561,7 @@ fn body_lower_variant_payload_shell(suffix: Node) -> VariantPayloadShell {
     match parse_production_emitted_identity_optional(node: stripped) {
       Present { value: id } =>
         if (id == ^dag_surface_field_decl_block) || (id == ^dag_surface_positional_variant_payload) {
-          VariantPayloadShell { shell: stripped }
+          VariantPayloadCarries { shell: stripped }
         } else {
           VariantPayloadUnrecognized
         }
@@ -1663,7 +1635,7 @@ fn body_lower_type_variant(shell: Node) -> Outcome<Node> {
             Absent => outcome_accepted(value: shell)
             Present { value: suffixes } =>
               match body_lower_variant_payload_shell(suffix: suffixes.right) {
-                VariantPayloadShell { shell: payload_shell } =>
+                VariantPayloadCarries { shell: payload_shell } =>
                   if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: suffixes.left)) {
                     body_lower_fielded_type_variant(shell: shell, head: pair.left, payload_shell: payload_shell)
                   } else {
@@ -1815,7 +1787,7 @@ fn body_lower_operand_from_shell_read(shell: Node) -> OperandRefRead {
 // a refusal here too, carrying that reader's cause at its position.
 fn body_lower_operand_ref_sequence_read(node: Node) -> OperandRefRead {
   match body_lower_read_operator_expression(node: node) {
-    OperatorExpressionRead { lowered: lowered } => OperandRefLowered { lowered: lowered }
+    OperatorExpressionCarries { lowered: lowered } => OperandRefLowered { lowered: lowered }
     OperatorExpressionRefused { diagnostics: d } => OperandRefRefused { diagnostics: d }
     OperatorExpressionAbsent => OperandRefAbsent
   }
@@ -2027,7 +1999,7 @@ fn body_lower_unwrap_captured(shell: Node) -> Optional<Node> {
 // operand is lowered and an unreadable position is a located refusal.
 type OperatorExpressionRead
   = OperatorExpressionAbsent
-  | OperatorExpressionRead { lowered: Node }
+  | OperatorExpressionCarries { lowered: Node }
   | OperatorExpressionRefused { diagnostics: NonEmptyDiagnostics }
 
 // THE OPERATOR SETS ARE READ OFF THE GRAMMAR, NOT LISTED BESIDE IT. Every terminal of
@@ -2147,7 +2119,7 @@ fn body_lower_operator_refusal(reason: Symbol, at: Node) -> OperatorExpressionRe
 fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
   let operand = body_lower_strip_empty_tails(node: node)
   match body_lower_read_operator_expression(node: operand) {
-    OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: lowered)
+    OperatorExpressionCarries { lowered: lowered } => outcome_accepted(value: lowered)
     OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
     OperatorExpressionAbsent =>
       match body_term_of(node: operand) {
@@ -2272,7 +2244,7 @@ fn body_lower_read_infix_application(app: InfixApplication) -> OperatorExpressio
         Accepted { value: left, diagnostics: _ } =>
           match body_lower_binary_apply(acc: left, operator: operator, right: app.right) {
             Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
-            Accepted { value: applied, diagnostics: _ } => OperatorExpressionRead { lowered: applied }
+            Accepted { value: applied, diagnostics: _ } => OperatorExpressionCarries { lowered: applied }
           }
       }
   }
@@ -2293,7 +2265,7 @@ fn body_lower_read_operator_expression(node: Node) -> OperatorExpressionRead {
               match body_lower_operator_operand(node: pair.right) {
                 Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
                 Accepted { value: operand, diagnostics: _ } =>
-                  OperatorExpressionRead { lowered: lower_unary_prefix(operator: operator, operand: operand) }
+                  OperatorExpressionCarries { lowered: lower_unary_prefix(operator: operator, operand: operand) }
               }
             Absent => OperatorExpressionAbsent
           }
@@ -2304,7 +2276,7 @@ fn body_lower_read_operator_expression(node: Node) -> OperatorExpressionRead {
 fn body_lower_try_infix_transform(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_read_operator_expression(node: node) {
     OperatorExpressionAbsent => outcome_accepted(value: optional_absent())
-    OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: optional_present(value: lowered))
+    OperatorExpressionCarries { lowered: lowered } => outcome_accepted(value: optional_present(value: lowered))
     OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
@@ -2373,6 +2345,24 @@ fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
+// A GENERIC ARGUMENT THAT IS A NATURAL LITERAL KEEPS ITS VALUE: `MachineWidth<8>` lowers its `8` to the
+// int-literal atom with its magnitude edge (the shape a value-position literal has), never a childless
+// atom -- the value is the argument, and a bare token class cannot be read back (A0-2 literal admission).
+fn body_lower_type_int_literal_argument_optional(node: Node) -> Optional<Node> {
+  match body_lower_int_literal_with_magnitude_optional(node: node) {
+    Present { value: literal } => optional_present(value: literal)
+    Absent =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: sym } =>
+          match dag_int_literal_node_from_lexeme(lexeme: symbol_lexeme(sym: sym), occurrence_id: node.occurrence_id) {
+            Accepted { value: literal, diagnostics: _ } => optional_present(value: literal)
+            Rejected { diagnostics: _ } => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+  }
+}
+
 fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
@@ -2399,6 +2389,9 @@ fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
         Absent
       }
     Absent =>
+      match body_lower_type_int_literal_argument_optional(node: node) {
+        Present { value: literal } => Present { value: literal }
+        Absent =>
       match dag_binding_branded_atom_identity(node: node) {
         Present { value: binding } =>
           Present { value: body_lower_type_atom_node(sym: binding, source: node) }
@@ -2426,6 +2419,7 @@ fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
                   })
               }
           }
+      }
       }
   }
 }
@@ -2783,7 +2777,7 @@ fn body_lower_unwrap_optional_element(node: Node) -> Node {
 // before (a binding atom or a qualified-name spine); a generic application becomes the
 // Instantiation connective with the head as its first positional child and each argument
 // after it (the shape v2.std.compilers.target_model reads the head from, index 0); a trailing
-// `?` wraps the result in the Occupancy connective, v2's authority for an optional field
+// `?` wraps the result in the std.optional Instantiation (a marked generated declaration reference applied to it), v2's authority for an optional field
 // (v2.std.node_query DeclaredField.cardinality, decoded once at declared_field_cardinality_of_target). Before this reader a param or field typed
 // `List<Int>` or `Int?` lowered to the bare head atom, silently.
 fn body_lower_type_generic_args_optional(generic_capture: Node) -> Optional<List<Node>> {
@@ -2857,8 +2851,11 @@ fn body_lower_type_wrap_occupancy(base: Node, question_capture: Node, source: No
           true =>
             optional_present(
               value: close_lowered_image(root: node_with_occurrence_id(
-                kind: TypeNode { connective: Occupancy },
-                children: [Edge { label: Positional, target: base }],
+                kind: TypeNode { connective: Instantiation },
+                children: [
+                  Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: source.occurrence_id) },
+                  Edge { label: Positional, target: base }
+                ],
                 occurrence_id: source.occurrence_id
               ))
             )
@@ -3584,7 +3581,7 @@ fn body_lower_fold(node: Node) -> Outcome<Node> {
 fn body_lower_fold_raw(node: Node) -> Outcome<Node> {
   if body_lower_application_pipes_into_fold(node: node) {
     match body_lower_read_operator_expression(node: node) {
-      OperatorExpressionRead { lowered: lowered } => body_term_sealed_outcome(o: outcome_accepted(value: lowered), shape: LoweredOperatorExpression)
+      OperatorExpressionCarries { lowered: lowered } => body_term_sealed_outcome(o: outcome_accepted(value: lowered), shape: LoweredOperatorExpression)
       OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
       OperatorExpressionAbsent => body_lower_fold_by_identity(node: node)
     }
@@ -3703,29 +3700,33 @@ fn body_lower_callback_operator(token: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: token } }, children: [])
 }
 
-fn body_lower_callback_init(realization: CallbackRealization, source: Node) -> Node {
-  match realization {
-    CallbackMapsToCons => body_lower_algebra_constructor_reference(name: ^Empty, source: source)
-    CallbackAllByAnd => body_lower_param_ref_atom(source: source, identity: ^dag_token_kw_true)
-    CallbackFiltersByCondition => body_lower_algebra_constructor_reference(name: ^Empty, source: source)
-    CallbackAnyByOr => body_lower_param_ref_atom(source: source, identity: ^dag_token_kw_false)
+fn body_lower_callback_init(row: CallbackStepRow, source: Node) -> Node {
+  match row.init {
+    InitEmptyCarrier => body_lower_algebra_constructor_reference(name: ^Empty, source: source)
+    InitBoolLiteral { value: value } => body_lower_param_ref_atom(source: source, identity: value)
   }
 }
 
 // filter's step names the MEMBER as well as the accumulator: the member is the callback's own authored
 // binder, so a reference to it is the same lexical reference the callback body already makes.
-fn body_lower_callback_step_body(realization: CallbackRealization, accumulator: Symbol, member: Symbol, body: Node, source: Node) -> Node {
+// THE BODY IS CONSTRUCTED FROM THE ROW'S SHAPE, one arm per shape (v2.compiler.fold_lowering
+// callback_step_row): each arm builds the body its shape is, so there is no free choice left between
+// what the step does and the direction callback_step_shape_iteration_direction reads off the same shape.
+// The old match was one arm per realization, a second hand-written sibling to the direction reader over
+// the same sum; the contradiction had no constructor, because the direction is now read from the shape
+// and never spelled beside it (DESIGN section 5: the row carries the shape, the direction derives from
+// it, so the contradicted pair has no constructor). A realization with no row never reaches
+// here: the assembly refuses it first (no silent default, DESIGN section 5).
+fn body_lower_callback_step_body(row: CallbackStepRow, accumulator: Symbol, member: Symbol, body: Node, source: Node) -> Node {
   let acc_ref = body_lower_param_ref_atom(source: source, identity: accumulator)
-  match realization {
-    CallbackMapsToCons => body_lower_callback_cons(head: body, tail: acc_ref, source: source)
-    CallbackAllByAnd => lower_binary_infix(left: acc_ref, operator: body_lower_callback_operator(token: ^dag_token_and_and), right: body)
-    CallbackFiltersByCondition =>
-      lower_branch(
-        condition: body,
-        then_arm: body_lower_callback_cons(head: body_lower_param_ref_atom(source: source, identity: member), tail: acc_ref, source: source),
-        else_arm: body_lower_param_ref_atom(source: source, identity: accumulator)
-      )
-    CallbackAnyByOr => lower_binary_infix(left: acc_ref, operator: body_lower_callback_operator(token: ^dag_token_or_or), right: body)
+  match row.step_shape {
+    StepConsOfCallbackResult => body_lower_callback_cons(head: body, tail: acc_ref, source: source)
+    StepKeepsMemberUnderCondition => lower_branch(
+      condition: body,
+      then_arm: body_lower_callback_cons(head: body_lower_param_ref_atom(source: source, identity: member), tail: acc_ref, source: source),
+      else_arm: body_lower_param_ref_atom(source: source, identity: accumulator)
+    )
+    StepAccBoolJoined { operator: operator } => lower_binary_infix(left: acc_ref, operator: body_lower_callback_operator(token: operator), right: body)
   }
 }
 
@@ -3761,11 +3762,18 @@ fn body_lower_callback_encoding_from(operands: CallbackCallOperands, collection:
                           name: accumulator,
                           at: node_synthetic(kind: TypeNode { connective: Atom { identity: accumulator } }, children: [])
                         }
+                        // THE STEP ROW IS RESOLVED ONCE AND EVERYTHING IS BUILT FROM IT -- the init, the
+                        // step body, and (through it) the direction the encoding carries. The row is TOTAL
+                        // (v2.compiler.fold_lowering callback_step_row: a realization without a row is
+                        // refused at compile time by infer_match_non_exhaustive), so there is no absent
+                        // row to refuse at the assembly and no default to fall through to
+                        // (DESIGN section 5: the total match leaves no absent case to default).
+                        let row = callback_step_row(r: operands.realization)
                         match body_lower_function_value_arrow(
                           shell: callback_node,
                           binders: [accumulator_binder, member],
                           codomain: CodomainElided,
-                          body: body_lower_callback_step_body(realization: operands.realization, accumulator: accumulator, member: member.name, body: body, source: callback_node)
+                          body: body_lower_callback_step_body(row: row, accumulator: accumulator, member: member.name, body: body, source: callback_node)
                         ) {
                           Rejected { diagnostics: r } => Rejected { diagnostics: r }
                           Accepted { value: step, diagnostics: ad } =>
@@ -3773,7 +3781,7 @@ fn body_lower_callback_encoding_from(operands: CallbackCallOperands, collection:
                               value: fold_recurrence_encoding(operands: FoldCallOperands {
                                 head: operands.head,
                                 collection: lowered_collection,
-                                init: body_lower_callback_init(realization: operands.realization, source: synthetic),
+                                init: body_lower_callback_init(row: row, source: synthetic),
                                 step: step,
                                 carrier: accumulator
                               }),
@@ -4329,7 +4337,6 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
     TypeNode { connective: Conj } => outcome_accepted(value: body)
     TypeNode { connective: Disj } => outcome_accepted(value: body)
     TypeNode { connective: Arrow } => outcome_accepted(value: body)
-    TypeNode { connective: Occupancy } => outcome_accepted(value: body)
     TypeNode { connective: Instantiation } => outcome_accepted(value: body)
     ComputationNode { behavior: Value } => outcome_accepted(value: body)
     ComputationNode { behavior: Branch } => outcome_accepted(value: body)
@@ -4977,8 +4984,6 @@ fn body_lower_admit_entry_edge(entry: Node, template: Node) -> Optional<Edge> {
           optional_present(value: body_lower_admit_entry_marker(template: template))
         TypeNode { connective: Arrow } =>
           optional_present(value: body_lower_admit_entry_marker(template: template))
-        TypeNode { connective: Occupancy } =>
-          optional_present(value: body_lower_admit_entry_marker(template: template))
         TypeNode { connective: Instantiation } =>
           optional_present(value: body_lower_admit_entry_marker(template: template))
         TypeNode { connective: Disj } =>
@@ -5420,7 +5425,7 @@ fn body_lower_value_read(value: Node) -> Outcome<Node> {
 // this reader for every nested argument, so a call nested d deep is folded on the order of 5^d
 // times. The instrument that re-derives this is the native lane's per-file phase clock: the
 // emitted driver's `adjudicate` (std.compiler_entry SourceRootEvalDriver, absorbed by
-// v2.compiler.compile native_test_context_absorb) prints one row per ingested file carrying
+// v2.compiler.source_root_eval native_test_context_absorb) prints one row per ingested file carrying
 // `normalize_nanos`; sum and sort it over the workload closure, baseline against candidate.
 //
 // A FOLD THAT REFUSES IS THE VALUE'S REFUSAL, AND IT PROPAGATES. It used to hand the value to the
@@ -5860,7 +5865,6 @@ fn body_lower_position_function_value_arrow(node: Node, path: List<Int>) -> Node
     TypeNode { connective: Atom { identity: _ } } => node
     TypeNode { connective: Conj } => node
     TypeNode { connective: Disj } => node
-    TypeNode { connective: Occupancy } => node
     TypeNode { connective: Instantiation } => node
     ComputationNode { behavior: _ } => node
   }
@@ -5891,7 +5895,7 @@ fn body_lower_fresh_type_variable_renames(arrow: Node, path: List<Int>) -> Map<S
     key: fresh_return_type_variable(path: body_lower_unpositioned_path()),
     value: fresh_return_type_variable(path: path)
   )
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
     Present { value: domain } => body_lower_fresh_type_variable_domain_renames(edges: domain.children, path: path, init: with_return)
     Absent => with_return
   }
@@ -5952,7 +5956,6 @@ fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbo
         )
       TypeNode { connective: Disj } => node
       TypeNode { connective: Arrow } => node
-      TypeNode { connective: Occupancy } => node
       TypeNode { connective: Instantiation } => node
       ComputationNode { behavior: _ } => node
     }
@@ -7111,7 +7114,7 @@ fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
   }
   body_lower_transform_call(
     operator: qualified_name_spine_node(
-      qn: [^v2, ^std, ^collection, ^list_at_optional],
+      qn: [^std, ^algebra, ^list_at_optional],
       occurrence_id: operator_occurrence
     ),
     args: [
@@ -7303,6 +7306,9 @@ fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
   match body_lower_string_literal_value_optional(node: stripped) {
     Present { value: literal } => optional_present(value: literal)
     Absent =>
+  match body_lower_float_literal_value_optional(node: stripped) {
+    Present { value: literal } => optional_present(value: literal)
+    Absent =>
   match dag_node_is_int_literal_atom(node: stripped) {
     true => body_lower_int_literal_with_magnitude_optional(node: stripped)
     false =>
@@ -7325,6 +7331,17 @@ fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
       }
   }
   }
+  }
+  }
+}
+
+// A FLOAT LITERAL IS READ WHOLE, lexeme payload and occurrence kept, for the reason a string literal is:
+// the parser built it carrying its exact source digits (dag_float_literal_node_from_lexeme), and
+// rebuilding it as a bare atom drops them, leaving a float no later stage can tell from any other.
+fn body_lower_float_literal_value_optional(node: Node) -> Optional<Node> {
+  match dag_float_literal_lexeme_optional(node: node) {
+    Present { value: _ } => optional_present(value: node)
+    Absent => optional_absent()
   }
 }
 
@@ -7899,7 +7916,6 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
     TypeNode { connective: Conj } => outcome_accepted(value: body)
     TypeNode { connective: Disj } => outcome_accepted(value: body)
     TypeNode { connective: Arrow } => outcome_accepted(value: body)
-    TypeNode { connective: Occupancy } => outcome_accepted(value: body)
     TypeNode { connective: Instantiation } => outcome_accepted(value: body)
     ComputationNode { behavior: Value } => outcome_accepted(value: body)
     ComputationNode { behavior: Transform } => outcome_accepted(value: body)
@@ -7921,7 +7937,6 @@ fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
     TypeNode { connective: Conj } => outcome_accepted(value: body)
     TypeNode { connective: Disj } => outcome_accepted(value: body)
     TypeNode { connective: Arrow } => outcome_accepted(value: body)
-    TypeNode { connective: Occupancy } => outcome_accepted(value: body)
     TypeNode { connective: Instantiation } => outcome_accepted(value: body)
     ComputationNode { behavior: Value } => outcome_accepted(value: body)
     ComputationNode { behavior: Loop } => outcome_accepted(value: body)
@@ -8853,7 +8868,7 @@ fn body_lower_let_match_exit_join(plan: BodyLowerLetMatchExit, lowered: Node, at
     outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_multi_binding_arm_early_return_needs_join_point, n: at))
   } else {
     if body_lower_is_match_node(node: lowered) {
-        match node_positional_child_targets(node: lowered) {
+        match positional_child_target_nodes(node: lowered) {
           Empty => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_match_arm_navigation_refused, n: at))
           Cons { head: scrutinee, tail: wires } =>
             if count(wires) != count(plan.arms) {
@@ -9515,18 +9530,9 @@ fn body_lower_match_arm_items_on_lbrace_token(id: Symbol, right: Node) -> Outcom
       match body_lower_match_arm_items_from_brace_interior(interior: right) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: arms, diagnostics: d } =>
-          if count(arms) > 0 {
-            Accepted {
-              value: optional_present(value: arms),
-              diagnostics: d
-            }
-          } else {
-            outcome_rejected(
-              d: body_lower_diagnostic(
-                reason: ^body_lowering_reason_match_arm_navigation_refused,
-                n: right
-              )
-            )
+          Accepted {
+            value: optional_present(value: arms),
+            diagnostics: d
           }
       }
     false => body_lower_match_arm_items_after_lbrace_optional(spine: right)
@@ -9589,18 +9595,9 @@ fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>>
         Accepted { value: arms_opt, diagnostics: d } =>
           match arms_opt {
             Present { value: arms } =>
-              if count(arms) > 0 {
-                Accepted {
-                  value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
-                  diagnostics: d
-                }
-              } else {
-                outcome_rejected(
-                  d: body_lower_diagnostic(
-                    reason: ^body_lowering_reason_match_arm_navigation_refused,
-                    n: captured
-                  )
-                )
+              Accepted {
+                value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
+                diagnostics: d
               }
             Absent =>
               outcome_rejected(
@@ -10633,7 +10630,6 @@ fn body_lower_eq_type_decl_rhs(shell: Node, type_name: Symbol, rhs: Node, type_p
       }
     TypeNode { connective: Atom { identity: _ } } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
     TypeNode { connective: Arrow } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
-    TypeNode { connective: Occupancy } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
     TypeNode { connective: Instantiation } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
     ComputationNode { behavior: _ } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
   }
@@ -10930,7 +10926,6 @@ fn body_lower_type_decl_modifier_slot(slot: Node) -> TypeDeclModifierSlotRead {
             Atom { identity: _ } => TypeDeclModifierSlotUnreadable { at: element }
             Disj => TypeDeclModifierSlotUnreadable { at: element }
             Arrow => TypeDeclModifierSlotUnreadable { at: element }
-            Occupancy => TypeDeclModifierSlotUnreadable { at: element }
             Instantiation => TypeDeclModifierSlotUnreadable { at: element }
           }
         ComputationNode { behavior: _ } => TypeDeclModifierSlotUnreadable { at: element }
@@ -10939,16 +10934,16 @@ fn body_lower_type_decl_modifier_slot(slot: Node) -> TypeDeclModifierSlotRead {
 }
 
 type TypeDeclModifiersRead
-  = TypeDeclModifiersRead { modifiers: FreeMonoid<TypeDeclModifier> }
+  = TypeDeclModifiersCarries { modifiers: FreeMonoid<TypeDeclModifier> }
   | TypeDeclModifiersUnreadable { at: Node }
 
 fn body_lower_type_decl_modifier_snoc(acc: TypeDeclModifiersRead, slot: Node) -> TypeDeclModifiersRead {
   match acc {
     TypeDeclModifiersUnreadable { at: a } => TypeDeclModifiersUnreadable { at: a }
-    TypeDeclModifiersRead { modifiers: ms } =>
+    TypeDeclModifiersCarries { modifiers: ms } =>
       match body_lower_type_decl_modifier_slot(slot: slot) {
-        TypeDeclModifierSlotEmpty => TypeDeclModifiersRead { modifiers: ms }
-        TypeDeclModifierSlotCarries { modifier: m } => TypeDeclModifiersRead { modifiers: list_snoc_item(xs: ms, item: m) }
+        TypeDeclModifierSlotEmpty => TypeDeclModifiersCarries { modifiers: ms }
+        TypeDeclModifierSlotCarries { modifier: m } => TypeDeclModifiersCarries { modifiers: list_snoc_item(xs: ms, item: m) }
         TypeDeclModifierSlotUnreadable { at: a } => TypeDeclModifiersUnreadable { at: a }
       }
   }
@@ -10974,7 +10969,7 @@ fn body_lower_type_decl_modifiers_read(shell: Node, captured: Node) -> TypeDeclM
                     Absent => TypeDeclModifiersUnreadable { at: slot_and_body.left }
                     Present { value: slots } =>
                       body_lower_type_decl_modifier_snoc(
-                        acc: body_lower_type_decl_modifier_snoc(acc: TypeDeclModifiersRead { modifiers: Empty }, slot: slots.left),
+                        acc: body_lower_type_decl_modifier_snoc(acc: TypeDeclModifiersCarries { modifiers: Empty }, slot: slots.left),
                         slot: slots.right
                       )
                   }
@@ -11008,7 +11003,7 @@ fn body_lower_type_decl_declared_modifiers(shell: Node) -> Outcome<DeclaredTypeM
           match body_lower_type_decl_modifiers_read(shell: shell, captured: captured) {
             TypeDeclModifiersUnreadable { at: a } =>
               Rejected { diagnostics: diagnostics_singleton(d: body_lower_type_decl_modifiers_unreadable_diagnostic(at: a)) }
-            TypeDeclModifiersRead { modifiers: ms } =>
+            TypeDeclModifiersCarries { modifiers: ms } =>
               match ms {
                 Empty => outcome_accepted(value: DeclaredTypeModifiersAbsent)
                 Cons { head: _, tail: _ } =>

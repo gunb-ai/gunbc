@@ -11,7 +11,7 @@ import extdeps.github.checks_contracts {
   check_status_wire_contract,
   check_conclusion_wire_contract,
 }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { GET, PATCH, POST }
 import extdeps.transports.rest { RestResult }

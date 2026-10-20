@@ -1,10 +1,9 @@
 module v2.compiler.grammar_reach
 
-import std.algebra { Cons }
+import std.algebra { Cons, map_lookup }
 import std.optional { Absent, Present }
-import std.types { List }
+import std.types { List, Map }
 import v2.compiler.parse { grammar_choice_plan_peek_depth, symbol_list_contains }
-import v2.std.collection { Map, map_lookup }
 import v2.std.grammar { AfterLineBreak, Choice, Expect, GrammarExpr, GrammarProduction, InfixTable, LiteralTerminal, Nonterminal, NotPredicate, RefuseOnMatch, Repeat, Sequence, Terminal }
 import v2.std.node { Symbol }
 

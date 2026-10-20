@@ -263,7 +263,12 @@ type MapIntroductionEntry<K, V> {
 }
 
 fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> Map<K, V> {
-  entries |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.key, entry.value))
+  let entries_seed: Map<K, V> = empty_map()
+  entries |> fold(init: entries_seed, f: map_entry_insert)
+}
+
+fn map_entry_insert<K, V>(acc: Map<K, V>, entry: MapIntroductionEntry<K, V>) -> Map<K, V> {
+  map_insert(acc, entry.key, entry.value)
 }
 
 // MOVED HERE from `v2.std.collection` by the change that split `PartialFunction`. They are the
@@ -809,7 +814,8 @@ fn carrier_spelling_row_present(m: CarrierRowMembership) -> Bool {
 }
 
 fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, AlgebraProfile> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.method_surface) {
         map_insert(inner, spelling.text, carrier.profile)
@@ -819,7 +825,8 @@ fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
 }
 
 fn carrier_container_algebra_rows() -> Map<String, String> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, String> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_algebra_row) {
         map_insert(inner, spelling.text, carrier.name)
@@ -829,7 +836,8 @@ fn carrier_container_algebra_rows() -> Map<String, String> {
 }
 
 fn carrier_container_alias_rows() -> Map<String, String> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, String> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_alias_row) {
         map_insert(inner, spelling.text, carrier.name)
@@ -839,7 +847,8 @@ fn carrier_container_alias_rows() -> Map<String, String> {
 }
 
 fn carrier_container_roster_map() -> Map<String, Bool> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, Bool> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_roster_name) {
         map_insert(inner, spelling.text, true)
@@ -852,7 +861,8 @@ fn carrier_container_roster_map() -> Map<String, Bool> {
 // `FinitePowerSet` is unary because `algebra_type_param_names` says `["T"]`, so a carrier cannot
 // declare an arity that disagrees with its algebra.
 fn carrier_container_arity_rows() -> Map<String, Int> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, Int> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_arity_row) {
         map_insert(inner, spelling.text, algebra_type_param_names(profile: carrier.profile) |> fold(init: 0, f: (n, _) => n + 1))
@@ -933,7 +943,8 @@ fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
 }
 
 fn carrier_container_equality_rows() -> Map<String, Bool> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, Bool> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_algebra_row) {
         map_insert(inner, spelling.text, algebra_profile_equality_extensional(profile: carrier.profile))
@@ -1197,14 +1208,12 @@ fn all_algebra_template_names() -> List<String> {
 // std.algebra::trim delegates to v1_rt::trim via rust_host_string_op_fn_emit. The scalar template
 // row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s)
 // requires explicit import std.algebra { trim } -- bare trim refuses via
-// closure_independent_bare_free_call registry in v1.compiler.infer_env even when std.algebra is
+// v1.compiler.infer_env bare_free_call_requires_listed_import registry even when std.algebra is
 // already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).
 
-// The seam diverges before producing anything; `s` is read in the condition so the declared
-// input reaches the result (wiring-liveness). Both arms are std.error_primitives
-// pure_dag_seam_unreachable_string, the named seam refusal, so whichever arm the condition selects
-// diverges by name rather than as an unnamed division by zero; the body is never reached because
-// resolution routes trim to free_call.trim.
+// Host realization routes to free_call.trim / v1_rt::trim. The declared body is the named
+// String seam, so if the host arm is absent the call refuses by that identity rather than
+// self-recursing. `s` is read so wiring-liveness holds.
 fn trim(s: String) -> String {
   if s == s { pure_dag_seam_unreachable_string() } else { pure_dag_seam_unreachable_string() }
 }
@@ -1312,6 +1321,170 @@ fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
       Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
     }
   }
+}
+
+// The first `n` members, in order. The merge sort below splits on it.
+fn take_prefix<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
+  if n <= 0 {
+    Empty
+  } else {
+    match xs {
+      Empty => Empty
+      Cons { head: h, tail: t } => Cons { head: h, tail: take_prefix(xs: t, n: n - 1) }
+    }
+  }
+}
+
+// An item beside the key computed for it once, so the sort pays key_work n times and not per comparison
+// (std.primitives sort_by_contract: n * (key_work + log n)).
+type SortKeyed<T, K> {
+  key: K
+  item: T
+}
+
+// STABLE: on an equal key the left run's member is emitted first, so equal keys keep input order, as
+// the host sort_by (a stable sort over canonical_content_cmp) does.
+fn sort_merge_runs<T, K>(
+  left: FreeMonoid<SortKeyed<T, K>>,
+  right: FreeMonoid<SortKeyed<T, K>>,
+  order: TotalOrder<K>
+) -> FreeMonoid<SortKeyed<T, K>> {
+  match left {
+    Empty => right
+    Cons { head: l, tail: lt } => match right {
+      Empty => left
+      Cons { head: r, tail: rt } => match order.compare(l.key, r.key) {
+        Greater => Cons { head: r, tail: sort_merge_runs(left: left, right: rt, order: order) }
+        Less => Cons { head: l, tail: sort_merge_runs(left: lt, right: right, order: order) }
+        Equal => Cons { head: l, tail: sort_merge_runs(left: lt, right: right, order: order) }
+      }
+    }
+  }
+}
+
+// Descent: `n` halves toward 1 on both branches (std.induction mergesort_bound, two branches,
+// ProportionalShrink DivideByTwo, work_exponent 1).
+fn sort_keyed_runs<T, K>(xs: FreeMonoid<SortKeyed<T, K>>, n: Int, order: TotalOrder<K>) -> FreeMonoid<SortKeyed<T, K>> {
+  if n <= 1 {
+    xs
+  } else {
+    sort_merge_runs(
+      left: sort_keyed_runs(xs: take_prefix(xs: xs, n: n / 2), n: n / 2, order: order),
+      right: sort_keyed_runs(xs: skip(xs: xs, n: n / 2), n: n - n / 2, order: order),
+      order: order
+    )
+  }
+}
+
+fn int_compare_canonical(a: Int, b: Int) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+// The canonical content order on Int keys, the order the host sort_by applies to them.
+fn int_total_order() -> TotalOrder<Int> {
+  TotalOrder { compare: int_compare_canonical }
+}
+
+// std.primitives sort_by_contract inhabited by a MODELED merge sort (named apart from the `sort_by` method
+// spelling, which is a primitive with the host realization): no host seam, so the realization
+// is this body. The key order is the caller's TotalOrder (the host admits String, Int and Bool keys
+// under CanonicalOrdKey; those are the carriers whose TotalOrder is the canonical content order).
+fn list_sort_by_key<T, K>(xs: FreeMonoid<T>, key: fn(T) -> K, order: TotalOrder<K>) -> FreeMonoid<T> {
+  list_map(
+    xs: sort_keyed_runs(
+      xs: list_map(xs: xs, f: fn(item) { SortKeyed { key: key(item), item: item } }),
+      n: length(xs: xs),
+      order: order
+    ),
+    f: fn(k) { k.item }
+  )
+}
+
+fn empty_map_primitive_delegate<K, V>() -> Map<K, V> {
+  empty_map_primitive_delegate()
+}
+fn empty_map<K, V>() -> Map<K, V> {
+  empty_map_primitive_delegate()
+}
+fn map_insert_primitive_delegate<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
+  map_insert_primitive_delegate(m: m, key: key, value: value)
+}
+fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
+  map_insert_primitive_delegate(m: m, key: key, value: value)
+}
+
+// LOOKUP IS TOTAL. A map either holds the key or does not, and both are answers — there is no
+// third state in which the map fails to say. So the total form is the primitive and the
+// Outcome-wrapped form below is a projection of it, not the other way round.
+//
+// The direction matters at the consumer. A caller reaching for `map_get_checked` must match a
+// `Rejected` arm that no producer can construct, and the only arms available to it are the
+// caller's own domain answers — so the unreachable arm gets bound to whichever domain answer is
+// nearest, and a substrate failure would report as a domain fact. Exposing the total lookup
+// removes the arm rather than asking every caller to dispose of it honestly.
+fn map_lookup_primitive_delegate<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+  map_lookup_primitive_delegate(m: m, key: key)
+}
+fn map_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+  map_lookup_primitive_delegate(m: m, key: key)
+}
+
+// KEY MEMBERSHIP, the one presence predicate over a map: whether `key` has an entry, without its value.
+// Callers that store a marker value (a map used as a set of paths) read membership here rather than
+// each matching map_lookup's Optional to a Bool.
+fn map_contains_key<K, V>(m: Map<K, V>, key: K) -> Bool {
+  match map_lookup(m: m, key: key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE INDEXED READ IS THE `get` PRIMITIVE, PROJECTED TOTAL. `std.primitives` `get_contract` already
+// declares its cost -- constant work on an ephemeral carrier, `log n` on the persistent one this List
+// is -- so the read inhabits that contract rather than minting a second indexed read. The projection
+// is total in the same way `map_lookup` is: an index outside the list is an answer (`Absent`), never a
+// sentinel. The body was a fold from the head, O(index) per read, so a caller walking positions paid
+// the quadratic the lexer cursor exists to remove.
+fn list_at_primitive_delegate<T>(xs: FreeMonoid<T>, index: Int) -> Optional<T> {
+  list_at_primitive_delegate(xs: xs, index: index)
+}
+fn list_at_optional<T>(xs: FreeMonoid<T>, index: Int) -> Optional<T> {
+  list_at_primitive_delegate(xs: xs, index: index)
+}
+
+// THE MODELED REFERENCE FOR THE NATIVE KERNEL, and its only consumer is the equivalence witness
+// `gunbc.primitive_egress` owes the `get` row: the same fixture through this fold and through the
+// realized `list_at_optional`, equal answers in and out of range. It is not a second indexed read
+// for callers -- it is O(index) and nothing in production reaches it.
+type ListAtLookup<T>
+  = ListAtMissing { remaining: Int }
+  | ListAtFound { value: T }
+
+fn list_at_reference<T>(xs: FreeMonoid<T>, index: Int) -> Optional<T> {
+  match fold_list(
+    xs: xs,
+    empty: ListAtMissing { remaining: index },
+    cons: fn(acc, item) {
+      match acc {
+        ListAtFound { value: _ } => acc
+        ListAtMissing { remaining: r } =>
+          if r == 0 {
+            ListAtFound { value: item }
+          } else {
+            ListAtMissing { remaining: r - 1 }
+          }
+      }
+    }
+  ) {
+    ListAtFound { value: v } => optional_present(value: v)
+    ListAtMissing { remaining: _ } => optional_absent()
+  }
+}
+
+// The key set of a map: the support of its FinitelySupportedFunction. A method call to the `map_keys`
+// primitive (std.primitives map_keys_contract), so the realization is the one the method already has.
+fn map_support_keys<K, V>(m: Map<K, V>) -> FreeMonoid<K> {
+  m |> map_keys
 }
 
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {

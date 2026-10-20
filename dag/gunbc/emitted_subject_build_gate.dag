@@ -17,7 +17,7 @@ import gunbc.host.memory_envelope { memory_envelope_slot_requirement_value }
 // THE SUBJECT OF THE REQUIRED EMIT-AND-BUILD LANE, AND WHAT IT IS CAREFULLY NOT.
 //
 // WHAT IT IS. Two instruments, each of which asks the seed to EMIT a retained v2 closure and then
-// asks cargo to BUILD the emitted crate: `//gunbc/instruments:self-host` over `v2.compiler.compile`
+// asks cargo to BUILD the emitted crate: `//gunbc/instruments:self-host` over `v2.compiler.source_root_eval`
 // and `//gunbc/instruments:v2-native-cli` over `v2.cli.compile_cli`. Both also start what they
 // built -- the self-host row's census-mode pair, the CLI row's `cli_no_entry` refusal arm -- and
 // the self-host row injects a type error into its own emitted module and requires cargo to fail
@@ -73,7 +73,7 @@ import gunbc.host.memory_envelope { memory_envelope_slot_requirement_value }
 // ONE SUBJECT PER LABEL, AND TWO LABELS RATHER THAN ONE. `gunbc.instrument_targets` states why
 // these are two instruments and not one: the two closures are DIFFERENT rather than nested, neither
 // contains the other's `compiler_pipeline_entry`, and the CLI closure reaches modules
-// `v2.compiler.compile`'s does not. A green on one is not evidence about the other. The lane
+// `v2.compiler.source_root_eval`'s does not. A green on one is not evidence about the other. The lane
 // therefore runs them as two STEPS with two step ids, so a regression is reported under a name that
 // says which compilation broke -- the same reason the labels are two.
 type EmittedSubjectBuildRow {
@@ -86,10 +86,12 @@ type EmittedSubjectBuildRow {
 // neither of which an id admits -- so deriving one from the other means authoring a mangling rule
 // whose only consumer is this list. Two rows say the same thing with no rule to maintain, and the
 // pairing stays visible at the one place a subject is added.
+data emitted_subject_v2_native_cli_step_id: String = "emit_build_v2_native_cli"
+
 fn emitted_subject_build_rows() -> List<EmittedSubjectBuildRow> {
   [
     EmittedSubjectBuildRow { label: self_host_label(), step_id: "emit_build_self_host" },
-    EmittedSubjectBuildRow { label: v2_native_cli_label(), step_id: "emit_build_v2_native_cli" },
+    EmittedSubjectBuildRow { label: v2_native_cli_label(), step_id: emitted_subject_v2_native_cli_step_id },
   ]
 }
 

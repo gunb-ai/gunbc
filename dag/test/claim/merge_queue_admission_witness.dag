@@ -44,7 +44,7 @@ import gunbc.merge_queue_admission {
   merge_queue_terminal,
   floor_workflow_admits_merge_group,
 }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 
 // WHAT THESE WITNESSES ESTABLISH AND WHAT THEY DO NOT.
 //

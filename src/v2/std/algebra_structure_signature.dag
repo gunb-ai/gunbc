@@ -5,7 +5,7 @@ import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissi
 import v2.std.logic { bool_node }
 import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, StructuralLabel, Symbol, TypeNode, algebra_empty_conj }
 import std.algebra { list_snoc_item }
-import v2.std.collection { List }
+import std.types { List }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
 // THE ALGEBRA'S STRUCTURE SIGNATURES AS NODES: each algebraic structure std.algebra declares (magma

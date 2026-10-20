@@ -1,7 +1,7 @@
 module v2.std.operation_argv
 
-import std.types { String, List, Bool }
-import std.algebra { list_map }
+import std.types { brand, String, List, Bool }
+import std.algebra { list_map, collection_concat_shape, collection_join_shape }
 import v2.std.template { Template }
 
 // An operation's transport argv is materialized by binding THAT OPERATION'S OWN DECLARED INPUTS, by

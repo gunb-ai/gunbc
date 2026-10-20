@@ -1,6 +1,6 @@
 module v2.compiler.dependency_demand_census
 
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length, empty_map, map_insert, map_lookup, collection_concat_shape }
 import v2.compiler.body_lowering_fold {
   body_lower_find_production_shell_optional,
   body_lower_param_binding_optional,
@@ -33,8 +33,7 @@ import v2.compiler.dependency_demand {
 }
 import v2.compiler.resolve { ResolveContext, ResolvedTree, resolve_node }
 import v2.compiler.eval { eval_node_is_arrow, eval_transform_has_callee_reference }
-import v2.std.node_query { find_arrow_body_child, node_positional_child_targets }
-import v2.std.list_introduction { list_introduction_head_path_optional }
+import v2.std.node_query { find_arrow_body_child }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.extdeps.languages.dag {
   dag_node_is_fn_decl,
@@ -43,7 +42,8 @@ import v2.extdeps.languages.dag {
   dag_surface_module_header_metadata_edge,
   parse_production_captured_child_optional
 }
-import v2.std.collection { List, Map, empty_map, list_at_optional, map_insert, map_lookup }
+import std.types { List, Map }
+import std.algebra { list_at_optional }
 import v2.std.diagnostic {
   Accepted,
   DeclarationLocus,
@@ -59,9 +59,9 @@ import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.grammar { grammar_empty_node, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
 import std.types { Bool }
-import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, NodeKind, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild, symbol_lexeme }
+import v2.std.node { positional_child_target_nodes, Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, NodeKind, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_from_node, qualified_name_init, qualified_name_snoc, qualified_name_spine_shape_present, qualified_name_to_dotted_string }
 import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
 import v2.std.text { String }
 
@@ -78,7 +78,7 @@ import v2.std.text { String }
 // a second binder beside resolve, and it is not admitted (DESIGN section 5). Duplicate aliases, or
 // an alias that cannot be read, leave the fn unobserved. A body that names an elided alias is
 // unobserved until resolve models the clause. The stripped tree is consumed inside the census route
-// only (v2.compiler.compile native_demand_census_report). The authored rows are never lowered onto
+// only (v2.compiler.source_root_eval native_demand_census_report). The authored rows are never lowered onto
 // the fn: they are read, judged and reported (operator D13: no carrier for the authored row).
 //
 // THE VERDICT IS SCOPED TO THE AUDITED VOCABULARY (lane ruling). Derived demand is grounded only
@@ -517,7 +517,6 @@ fn demand_census_requirement(arrow: Node) -> RequirementClass {
             Conj => demand_census_requirement_members(t: t)
             Disj => RequiresUndeclared
             Arrow => RequiresUndeclared
-            Occupancy => RequiresUndeclared
             Instantiation => RequiresUndeclared
           }
         ComputationNode { behavior: _ } => RequiresUndeclared
@@ -609,24 +608,36 @@ type DemandCensusUnboundLocus
   = UnboundNamed { name: Symbol }
   | UnboundShaped { kind: NodeKind, reference: Optional<QualifiedName> }
 
-// THE CANONICAL SHAPED REFERENCE OF A COMPOSITE MENTION, derived once: a marked declaration
-// reference path, else a list-introduction head path, else the first positional child's path.
+// THE CANONICAL SHAPED REFERENCE OF A COMPOSITE MENTION, derived once: the mention's own reference
+// path, else its first positional child's (an instantiation's head, a list introduction's head).
 // Census and CLI both render this; a second walk of the node would be a second authority.
 fn demand_census_shaped_reference_optional(node: Node) -> Optional<QualifiedName> {
+  match demand_census_reference_path_optional(node: node) {
+    Present { value: p } => optional_present(value: p)
+    Absent =>
+      match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
+        Absent => optional_absent()
+        Present { value: head } => demand_census_reference_path_optional(node: head)
+      }
+  }
+}
+
+// A REFERENCE IN EITHER FORM A REFUSED MENTION CAN CARRY: the marked declaration reference (a
+// compiler-generated head, or one resolve minted), or the qualified-name spine an AUTHORED qualified
+// name is before resolve binds it (`std.algebra.FreeMonoid<T>` written in a type ascription). The
+// census renders what the resolver refused, so it reads the pre-resolve spine as the path it spells;
+// this reads a name, it binds nothing.
+fn demand_census_reference_path_optional(node: Node) -> Optional<QualifiedName> {
   match declaration_reference_path_optional(node: node) {
     Present { value: p } => optional_present(value: p)
     Absent =>
-      match list_introduction_head_path_optional(head: node) {
-        Present { value: p } => optional_present(value: p)
-        Absent =>
-          match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-            Absent => optional_absent()
-            Present { value: head } =>
-              match declaration_reference_path_optional(node: head) {
-                Present { value: p } => optional_present(value: p)
-                Absent => list_introduction_head_path_optional(head: head)
-              }
-          }
+      if qualified_name_spine_shape_present(root: node) {
+        match qualified_name_from_node(root: node) {
+          Accepted { value: qn, diagnostics: _ } => optional_present(value: qn)
+          Rejected { diagnostics: _ } => optional_absent()
+        }
+      } else {
+        optional_absent()
       }
   }
 }
@@ -1126,7 +1137,6 @@ fn demand_census_node_kind_word(k: NodeKind) -> String {
     TypeNode { connective: Conj } => "conj"
     TypeNode { connective: Disj } => "disj"
     TypeNode { connective: Arrow } => "arrow"
-    TypeNode { connective: Occupancy } => "occupancy"
     TypeNode { connective: Instantiation } => "instantiation"
     ComputationNode { behavior: Value } => "value"
     ComputationNode { behavior: Transform } => "transform"

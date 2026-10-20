@@ -23,7 +23,7 @@ const PROBE: &str = r#"
 module test.map_insert_record_shaped_refusal
 
 import std.types { Map }
-import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 import std.optional { Absent, Present, Optional }
 
 fn record_shaped_insert() -> Map<String, String> {

@@ -16,7 +16,7 @@ import v2.test.claim.body_lowering.wave1_gate1_c1_copied_port_helpers {
   wave1_gate1_c1_unregistered_combiner_lookup_refuses_holds,
   wave1_gate1_c1_citation_retained_frontier_count_holds
 }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 
 // Wave 1 Gate 1 C1 execution witnesses (long lane): per-combiner derivation greens,
 // domain-exclusion RED, unpriceable refuse, multi-linear-ambiguous refuse — enrolled per-PR via

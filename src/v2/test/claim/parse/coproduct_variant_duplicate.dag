@@ -1,0 +1,161 @@
+module v2.test.claim.parse.coproduct_variant_duplicate
+
+import v2.test.claim.parse.parse_test_block_headed_operand_class { bc_parse_at }
+import v2.compiler.body_lowering_fold { BodyLoweredTree }
+import v2.compiler.normalize { normalize_node }
+import v2.std.compilers.sugar { sugar_duplicate_variant_diagnostic }
+import v2.std.node { Atom, Authored, Disj, Edge, Node, Positional, Symbol }
+import v2.std.diagnostic {
+  Diagnostic,
+  Locus,
+  Rejected,
+  Accepted,
+  Outcome,
+  DeclarationLocus,
+  diagnostics_fatal,
+  diagnostics_fatal_reason
+}
+import std.algebra { Cons, Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// The seed reads this to select the substrate-only (hermetic) execution: the probe's two claims
+// parse and normalize their own source in-process, touching no live tree.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// C2 (gunbc#13999): the Disj (coproduct) fold refuses a type declaration whose children do not carry
+// pairwise distinct AUTHORED names. A coproduct variant is authored by name, so a repeated name IS
+// a repeated variant. The refusal is a TYPED, LOCATED diagnostic -- reason
+// ^sugar_reason_duplicate_variant_name, at a DeclarationLocus naming the enclosing TYPE and the
+// name declared twice -- not the generic ^sugar_reason_malformed over a bare node locus. The
+// enclosing type name is threaded down the normalize recursion from the type_decl (a Node carries
+// no parent pointer), so the fold at the type_decl's rhs can name the declaration in its diagnostic.
+//
+// THE PAIRED PROBE IS THE DISCRIMINATING TEST (DESIGN section 5, "Done means executed"):
+//   duplicate_variant_duplicate_name_is_refused_with_a_typed_located_diagnostic  (RED pre-fix)
+//     -- pre-fix the refusal only said ^sugar_reason_malformed over a node locus, so this claim
+//        failed before the diagnostic was made typed and located.
+//   prefix_shared_variant_names_are_accepted  (POSITIVE CONTROL)
+//     -- variants that merely share a prefix (A and AB) have distinct authored names and conform,
+//        so they are accepted; a shared prefix is not a collision.
+//   unnamed_variant_is_refused_as_malformed_not_as_duplicate  (MEANING-FORK CONTROL, public route)
+//     -- an arm with no authored name is refused, and NOT with the duplicate reason: there is no
+//        repeated name to report, so the duplicate reason would fabricate a subject.
+//   distinct_but_unnamed_edges_are_not_reported_as_a_duplicate_variant  (MEANING-FORK CONTROL, direct)
+//     and its pair repeated_authored_edge_is_reported_as_a_typed_located_duplicate_variant
+//     -- the diagnostic is called AT ITS OWN INTERFACE with edge lists the fold cannot itself emit
+//        (an unnamed edge is refused before the LabeledEdges check), so the two branches' reasons are
+//        pinned independently: distinct-unnamed => malformed, authored-repeated => typed duplicate.
+// (1)-(3) run the same REAL route: parse a top-level type declaration at its production, then run
+// the normalize pass, where the coproduct fold fires on the type_decl's rhs.
+
+// THE DECLARATION, PARSED AT ITS PRODUCTION AND LOWERED. Same route the parse-layer coproduct
+// probe (v2.test.claim.parse.parse_test_coproduct_leading_pipe) lowers through.
+fn cvd_lower(text: String) -> Outcome<BodyLoweredTree> {
+  match bc_parse_at(text: text, production: ^dag_production_type_decl) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: n, diagnostics: _ } => normalize_node(n: n)
+  }
+}
+
+// THE DECLARATION-LOCUS CHECK: the locus is a DeclarationLocus whose path is exactly
+// <type> <repeated> (two segments). Structural, so it needs no FreeMonoid Eq.
+fn cvd_is_decl_locus(type_name: Symbol, repeated: Symbol, at: Locus) -> Bool {
+  match at {
+    DeclarationLocus { declaration: path } =>
+      match path {
+        Cons { head: h, tail: Cons { head: r, tail: Empty } } => (h == type_name) && (r == repeated)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// (1) RED: `type T = A | A` is refused (not accepted), with reason
+// ^sugar_reason_duplicate_variant_name located at the declaration path T A.
+test fn duplicate_variant_duplicate_name_is_refused_with_a_typed_located_diagnostic() -> Bool {
+  match cvd_lower(text: "type T = A | A") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (diagnostics_fatal_reason(d: d) == ^sugar_reason_duplicate_variant_name)
+        && cvd_is_decl_locus(type_name: ^T, repeated: ^A, at: diagnostics_fatal(d: d).at)
+  }
+}
+
+// (2) POSITIVE CONTROL: `type T = A | AB` (variants share the prefix "A") is accepted -- distinct
+// authored names conform, so a shared prefix is not a collision.
+test fn prefix_shared_variant_names_are_accepted() -> Bool {
+  match cvd_lower(text: "type T = A | AB") {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (3) AN UNNAMED VARIANT IS NOT A DUPLICATE, ON THE PUBLIC ROUTE: a coproduct arm with no authored
+// name (a record-shaped arm in variant position) is refused, and the reason is a malformed-shape
+// reason -- NOT ^sugar_reason_duplicate_variant_name. There is no repeated name to report here, so
+// reporting one would fabricate a subject (DESIGN section 5: no plausible output is fabricated).
+test fn unnamed_variant_is_refused_as_malformed_not_as_duplicate() -> Bool {
+  match cvd_lower(text: "type T = { x: Int } | B") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (diagnostics_fatal_reason(d: d) != ^sugar_reason_duplicate_variant_name)
+        && (diagnostics_fatal_reason(d: d) == ^sugar_reason_malformed)
+  }
+}
+
+// THE MEANING FORK, DISCRIMINATED AT ITS OWN INTERFACE. The fold cannot reach the duplicate
+// diagnostic with an unnamed edge: sugar_variant_to_disj_edge mints Authored names and refuses a
+// nameless arm (sugar_malformed_diagnostic) before the LabeledEdges check, and
+// v2.std.node_query variant_declaration_edge_optional yields an edge only for an Authored label.
+// So probe the diagnostic ITSELF at that boundary rather than routing four stages to reach an arm
+// that is refused upstream (DESIGN section 3: discriminate at the one interface that answers).
+// A pairwise-DISTINCT edge list -- no repeated name -- must NOT be given the duplicate reason.
+fn cvd_disj_over(edges: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: edges,
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn cvd_leaf(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: name } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn cvd_diagnostic_of(edges: List<Edge>) -> Diagnostic {
+  sugar_duplicate_variant_diagnostic(
+    edges: edges,
+    shell: cvd_disj_over(edges: edges),
+    enclosing_type_name: Present { value: ^T }
+  )
+}
+
+// RED PRE-FIX: the no-repeat arm used to carry ^sugar_reason_duplicate_variant_name anyway, so this
+// claim -- positional edges, no name repeated, expecting the malformed reason -- failed.
+test fn distinct_but_unnamed_edges_are_not_reported_as_a_duplicate_variant() -> Bool {
+  let edges: List<Edge> = [
+    Edge { label: Positional, target: cvd_leaf(name: ^A) },
+    Edge { label: Positional, target: cvd_leaf(name: ^B) }
+  ]
+  cvd_diagnostic_of(edges: edges).reason == ^sugar_reason_malformed
+}
+
+// AND ITS PAIR AT THE SAME INTERFACE: an AUTHORED repeated name, still handed to the diagnostic
+// directly, IS the duplicate reason at a DeclarationLocus naming T and A. Deleting the duplicate
+// branch -- or the name that locates it -- goes red here while the claim above stays green, so the
+// pair says which branch carries which reason.
+test fn repeated_authored_edge_is_reported_as_a_typed_located_duplicate_variant() -> Bool {
+  let edges: List<Edge> = [
+    Edge { label: Authored { name: ^A }, target: cvd_leaf(name: ^A) },
+    Edge { label: Authored { name: ^A }, target: cvd_leaf(name: ^B) }
+  ]
+  let d = cvd_diagnostic_of(edges: edges)
+  (d.reason == ^sugar_reason_duplicate_variant_name)
+    && cvd_is_decl_locus(type_name: ^T, repeated: ^A, at: d.at)
+}

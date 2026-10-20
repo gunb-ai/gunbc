@@ -1,25 +1,16 @@
 module v2.std.fn_index
-import std.optional { Absent, Optional, Present }
-
-
-import std.types { List }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { List, Map }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.algebra { list_append, list_snoc_item, Cons, Empty, contains, fold_list, list_head, list_reverse, skip }
-import v2.std.collection { Absent, Map, Present, empty_map, map_insert, map_lookup, optional_absent, optional_present }
-import v2.std.compilers.body_lowering {
-  ApplicationHeadFound,
-  ApplicationHeadRefused,
-  ArrowHead,
-  AtomHead,
-  NotApplicationHead,
-  application_head_read,
-  body_lowering_diagnostic
-}
+import std.algebra { list_append, list_snoc_item, Cons, Empty, contains, fold_list, list_head, list_reverse, skip, empty_map, map_insert, map_lookup, list_tail }
+import v2.std.compilers.body_lowering { ApplicationHeadFound, ApplicationHeadRefused, ArrowHead, AtomHead, NotApplicationHead, application_head_read, body_lowering_diagnostic }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, diagnostics_singleton }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, symbol_eq, symbol_lexeme }
 import v2.std.text { String }
+
+
 
 type FnArrowParam {
   name: Symbol

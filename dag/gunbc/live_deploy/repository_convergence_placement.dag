@@ -1,5 +1,6 @@
 module gunbc.live_deploy.repository_convergence_placement
 
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { String, Bool, NonEmptyStr, List }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -75,7 +76,15 @@ import gunbc.live_deploy.desired {
   selected_deployment_spec,
 }
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
-import v2.std.collection { Present, Absent }
+import extdeps.git.partial_clone {
+  ObjectSourceServeAdmission,
+  ObjectSourceCanServe,
+  ObjectSourceCannotServe,
+  ObjectSourceServeDecideAtApplyPwd,
+  object_source_serve_refusal_text,
+  observe_object_source_serve,
+}
+import std.optional { Present, Absent }
 
 // THE DEFECT THIS MODULE CLOSES IS A PLACEMENT DEFECT, NOT AN ADJUDICATION ONE.
 //
@@ -126,11 +135,20 @@ import v2.std.collection { Present, Absent }
 // commit id over that transport depends on the server's upload-pack configuration rather than on
 // anything this repository controls.
 //
-// The runner checkout is a LOCAL repository already holding exactly the admitted revision. Fetching
-// from it needs no network, no credential, and no server-side option, and -- the load-bearing part --
-// it cannot resolve the candidate against a DIFFERENT population than the one the deploy admitted,
-// because it is that population. A fetch from `origin` would reintroduce a second source of truth
-// for the admitted subject at the last step of the transaction.
+// The runner checkout is a LOCAL repository chosen so the fetch needs no network, no credential,
+// and no server-side option, and -- the load-bearing part -- so it cannot resolve the candidate
+// against a DIFFERENT population than the one the deploy admitted. Holding the admitted revision
+// is not the same as being able to serve this target the objects the transfer needs:
+// `git clone --filter=blob:none` sets git's own promisor keys, and git-upload-pack(1) sets
+// GIT_NO_LAZY_FETCH=1 by default, so pack-objects dies on blobs the source does not hold
+// (including thin-pack bases of advertised have-commits). Admission therefore consumes
+// extdeps.git.partial_clone object_source_serve_admission over that path, not path shape alone.
+// Shallow history without those keys is observed and admitted: no specimen shows a complete
+// shallow source failing the same fetch. The srv1 2.43.0 print is a receipt on
+// gunbc.recurring_failure_mode.a_convergence_precondition_decided_after_the_binary_swap, not
+// a git-owned version fact.
+// A fetch from `origin` would reintroduce a second source of truth for the admitted subject at
+// the last step of the transaction.
 //
 // THIS DOES NOT CONTRADICT THAT MODULE'S NO-FETCH RULING, and the distinction is exact: its concern
 // is a fetch REFSPEC written into config, which would make a bare `git fetch origin` clobber
@@ -204,9 +222,28 @@ fn convergence_operands_for(
   spec: DeploymentSpec,
   candidate: String,
   object_source: String,
+  object_source_serve: ObjectSourceServeAdmission,
 ) -> ConvergenceOperandAdmission {
   let repo = spec.service.repo_root as String
-  match git_decode_object_id_text(format: GitObjectFormatSha1, text: candidate) {
+  match object_source_serve {
+    ObjectSourceCannotServe { source: _, cause: _ } =>
+      ConvergenceOperandsRefused {
+        reason: object_source_serve_refusal_text(admission: object_source_serve),
+      }
+    ObjectSourceServeDecideAtApplyPwd =>
+      ConvergenceOperandsRefused {
+        reason: "object-source serve standing was deferred to apply $PWD; convergence needs observe_object_source_serve on the path GUNBC_TREE_SRC names",
+      }
+    ObjectSourceCanServe { source: admitted_source } =>
+      if admitted_source != object_source {
+        ConvergenceOperandsRefused {
+          reason: join([
+            "the object source `", object_source, "` is not the path whose serve standing was admitted (`",
+            admitted_source, "`)",
+          ], ""),
+        }
+      } else {
+        match git_decode_object_id_text(format: GitObjectFormatSha1, text: candidate) {
     GitObjectIdTextRefused { cause: cause } =>
       ConvergenceOperandsRefused {
         reason: candidate_refusal_text(candidate: candidate, cause: cause),
@@ -230,6 +267,8 @@ fn convergence_operands_for(
           base_ref: convergence_base_ref,
           candidate: git_object_id_wire_hex(oid: oid) as String,
         } }
+      }
+        }
       }
   }
 }
@@ -529,7 +568,7 @@ fn convergence_exec_start(
 ) -> String {
   let src = "$\{GUNBC_TREE_SRC\}"
   join([
-    spec.service.serve_binary as String, " run",
+    fixed_serve_binary_path(binary: spec.service.serve_binary), " run",
     " --source-root ", src, "/dag",
     " --source-root ", src, "/src/v2",
     " --entry ", src, "/", convergence_placement_entry_path,
@@ -834,6 +873,7 @@ fn placement_converge_admitted(
     spec: spec,
     candidate: candidate,
     object_source: object_source,
+    object_source_serve: observe_object_source_serve(source: object_source),
   ) {
     ConvergenceOperandsRefused { reason: why } =>
       placement_finish(

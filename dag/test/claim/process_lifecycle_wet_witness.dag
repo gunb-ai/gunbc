@@ -7,13 +7,14 @@ import extdeps.http.client
 import extdeps.tools.sleep
 import extdeps.filesystem.filesystem_io
 import extdeps.shell
-import v2.std.collection { list_at_optional }
+import std.algebra { list_at_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.instruments.emit_host_transport {
   node_http_serve_port_seed,
   node_http_await_ready,
   node_http_await_reaped
 }
+import std.host_text { chars }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,0 +1,246 @@
+module v2.test.claim.name_resolve.generated_list_head_identity
+
+import std.algebra { empty_map, list_at_optional, map_insert }
+import std.types { Bool, List }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.source_root_eval {
+  native_test_context_from_ingest,
+  native_lane_file_refusal_index,
+  native_module_resolve_verdict,
+  NativeModuleResolveVerdict,
+  NativeModuleResolveAccepted,
+  NativeModuleResolveRefused
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.reference_closure { ReferenceOwnerless, ReferenceOwnership, ReferencesOwned, reference_closure_ownership }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.integer { Int }
+import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path, lower_list_introduction }
+import v2.std.node { positional_child_target_nodes, ComputationNode, Edge, Node, NodeFold, OccurrenceId, OccurrenceMinted, Positional, Symbol, Transform, fold_node, node_with_occurrence_id }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_spine_node }
+import v2.std.text { String }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_source }
+import v2.test.claim.compiler.primitive_authority_resolve { par_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A COMPILER-GENERATED LIST HEAD CARRIES THE IDENTITY OF std.algebra.FreeMonoid FROM CONSTRUCTION, AND
+// IS NEVER REBOUND THROUGH SOURCE VISIBILITY, SPELLING OR AN AUTHORED IMPORT (v2-namespace-cutover N2).
+// Every module here goes through the real native front end and resolver (native_test_context_from_ingest
+// then native_module_resolve_verdict, the route the census reads); only the source texts are supplied.
+
+data glh_algebra: String = "module std.algebra\n\ntype FreeMonoid<T> = Empty | Cons { head: T, tail: FreeMonoid<T> }\n"
+
+// The canonical declaration exists but refuses: its tail names nothing.
+data glh_algebra_refused: String = "module std.algebra\n\ntype FreeMonoid<T> = Empty | Cons { head: T, tail: Missing }\n"
+
+// A same-spelled declaration in another module, the candidate a spelling lookup would capture.
+data glh_foreign: String = "module v2.test.glh.foreign\n\ntype FreeMonoid<T> = | Nope\n"
+
+// Two list literals, one empty, and no import of std.algebra.
+data glh_no_import: String = "module v2.test.glh.user\n\ntype T = | A\n\nfn f(x: T) -> T {\n  let ys = [x, x]\n  let e = []\n  x\n}\n"
+
+// The same body, importing the foreign same-spelled FreeMonoid.
+data glh_foreign_import: String = "module v2.test.glh.user\n\nimport v2.test.glh.foreign { FreeMonoid }\n\ntype T = | A\n\nfn f(x: T) -> T {\n  let ys = [x, x]\n  let e = []\n  x\n}\n"
+
+// An AUTHORED use of FreeMonoid with no import: still a source name, still bound by the namespace rules.
+data glh_authored_unimported: String = "module v2.test.glh.user\n\ntype T = | A\n\nfn f(x: FreeMonoid<T>) -> T {\n  A\n}\n"
+
+fn glh_read(text: String, id: Symbol, path: String, root: SourceRootRef) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: root
+  }
+}
+
+fn glh_algebra_read(text: String) -> DagSourceReadWitness {
+  glh_read(text: text, id: ^glh_algebra, path: "dag/std/algebra.dag", root: DagTree)
+}
+
+fn glh_foreign_read() -> DagSourceReadWitness {
+  glh_read(text: glh_foreign, id: ^glh_foreign, path: "src/v2/test/glh/foreign.dag", root: V2Tree)
+}
+
+fn glh_user_read(text: String) -> DagSourceReadWitness {
+  glh_read(text: text, id: ^glh_user, path: "src/v2/test/glh/user.dag", root: V2Tree)
+}
+
+fn glh_verdict(ingest: List<DagSourceReadWitness>) -> Optional<NativeModuleResolveVerdict> {
+  match native_test_context_from_ingest(ingest: ingest) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      optional_present(value: native_module_resolve_verdict(
+        context: context,
+        refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+        module: "v2.test.glh.user",
+        path: ^glh_user
+      ).verdict)
+  }
+}
+
+fn glh_reason(v: Optional<NativeModuleResolveVerdict>) -> Symbol {
+  match v {
+    Absent => ^glh_context_refused
+    Present { value: NativeModuleResolveAccepted { resolved: _ } } => ^glh_accepted
+    Present { value: NativeModuleResolveRefused { first: d, rest: _, observation: _ } } => diagnostics_fatal_reason(d: d)
+    Present { value: _ } => ^glh_other
+  }
+}
+
+// How many marked declaration references in the resolved module name `path`.
+fn glh_marked_references_to(v: Optional<NativeModuleResolveVerdict>, path: QualifiedName) -> Int {
+  match v {
+    Present { value: NativeModuleResolveAccepted { resolved: tree } } =>
+      fold_node(n: tree.root, algebra: NodeFold {
+        init: fn(self) {
+          match declaration_reference_path_optional(node: self) {
+            Present { value: p } => if p == path { 1 } else { 0 }
+            Absent => 0
+          }
+        },
+        step: fn(acc, _edge, sub) { acc + sub }
+      })
+    Present { value: _ } => 0 - 1
+    Absent => 0 - 1
+  }
+}
+
+fn glh_foreign_path() -> QualifiedName {
+  [^v2, ^test, ^glh, ^foreign, ^FreeMonoid]
+}
+
+// THREE GENERATED HEADS PER USER MODULE: the two list literals, and the parameter-order list f's arrow
+// signature carries (v2.std.arrow_signature lowers it through the same producer, lower_list_introduction).
+fn glh_heads_in_user() -> Int {
+  3
+}
+
+// (1) NO IMPORT IS NEEDED: both list literals resolve, and every generated head keeps its marked
+// reference to the canonical declaration.
+test fn generated_list_heads_resolve_without_an_import_holds() -> Bool {
+  let v = glh_verdict(ingest: [glh_algebra_read(text: glh_algebra), glh_user_read(text: glh_no_import)])
+  glh_reason(v: v) == ^glh_accepted
+    && glh_marked_references_to(v: v, path: list_introduction_head_path()) == glh_heads_in_user()
+}
+
+// (2) A SAME-SPELLED IMPORT CANNOT CAPTURE THE HEAD: with a foreign FreeMonoid imported, both heads
+// still name std.algebra.FreeMonoid and none names the foreign one.
+test fn generated_list_heads_are_not_captured_by_a_same_spelled_import_holds() -> Bool {
+  let v = glh_verdict(ingest: [glh_algebra_read(text: glh_algebra), glh_foreign_read(), glh_user_read(text: glh_foreign_import)])
+  glh_reason(v: v) == ^glh_accepted
+    && glh_marked_references_to(v: v, path: list_introduction_head_path()) == glh_heads_in_user()
+    && glh_marked_references_to(v: v, path: glh_foreign_path()) == 0
+}
+
+// (3) THE SAME, WITH THE CANONICAL DECLARATION ABSENT: the visible same-spelled FreeMonoid is still not
+// the answer; the head refuses as a generated reference whose declaration the closure lacks.
+test fn generated_list_head_without_its_declaration_refuses_and_is_not_captured_holds() -> Bool {
+  glh_reason(v: glh_verdict(ingest: [glh_foreign_read(), glh_user_read(text: glh_foreign_import)]))
+    == ^resolve_reason_generated_reference_declaration_absent
+}
+
+// (4) NOTHING VISIBLE AT ALL: the same typed refusal, never unbound -- nothing the author wrote is unbound.
+test fn generated_list_head_without_its_declaration_is_not_unbound_holds() -> Bool {
+  glh_reason(v: glh_verdict(ingest: [glh_user_read(text: glh_no_import)]))
+    == ^resolve_reason_generated_reference_declaration_absent
+}
+
+// (5) THE CANONICAL DECLARATION REFUSED: the head refuses with that declaration's chain.
+test fn generated_list_head_carries_its_refused_declarations_chain_holds() -> Bool {
+  glh_reason(v: glh_verdict(ingest: [glh_algebra_read(text: glh_algebra_refused), glh_user_read(text: glh_no_import)]))
+    == ^resolve_reason_declarer_refused
+}
+
+// (6) THE RULE IS FOR GENERATED REFERENCES ONLY: an authored FreeMonoid with no import is still unbound.
+test fn an_authored_free_monoid_without_an_import_still_refuses_holds() -> Bool {
+  glh_reason(v: glh_verdict(ingest: [glh_algebra_read(text: glh_algebra), glh_user_read(text: glh_authored_unimported)]))
+    == ^resolve_reason_unbound_symbol
+}
+
+// (7) AT THE v2.std.list_introduction INTERFACE: the producer writes the marked reference, on the list
+// expression's own occurrence, and the reader recognises that form and NOT a bare spine spelling the
+// same path -- reading the spine would be the fallback from identity to spelling.
+fn glh_source() -> Node {
+  node_with_occurrence_id(kind: ComputationNode { behavior: Transform }, children: [], occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 7 } })
+}
+
+fn glh_bare_spine_list() -> Node {
+  node_with_occurrence_id(
+    kind: ComputationNode { behavior: Transform },
+    children: [Edge { label: Positional, target: qualified_name_spine_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 7 } }) }],
+    occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 7 } }
+  )
+}
+
+fn glh_is_present(o: Optional<List<Node>>) -> Bool {
+  match o {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn list_introduction_head_is_marked_and_a_bare_spine_is_not_a_list_holds() -> Bool {
+  let lowered = lower_list_introduction(elements: [], source: glh_source())
+  let head_is_marked = match list_at_optional(xs: positional_child_target_nodes(node: lowered), index: 0) {
+    Present { value: head } =>
+      match declaration_reference_path_optional(node: head) {
+        Present { value: p } => p == list_introduction_head_path() && head.occurrence_id == glh_source().occurrence_id
+        Absent => false
+      }
+    Absent => false
+  }
+  head_is_marked
+    && glh_is_present(o: list_introduction_elements_optional(node: lowered))
+    && !glh_is_present(o: list_introduction_elements_optional(node: glh_bare_spine_list()))
+}
+
+// (8) PAST RESOLVE, A LIST INTRODUCTION IS STILL NOT A CALL. Every declared fn carries a parameter-order
+// list and a body may carry list literals; with their heads marked, type inference's caller admission
+// must not read either as an application of std.algebra.FreeMonoid (v2.compiler.infer
+// infer_caller_admission_application_diags). The real assembly and infer, two parameters and a literal.
+data glh_two_params_and_a_literal: String = "module p\n\ntype T = | A\n\nfn f(x: T, y: T) -> T {\n  let ys = [x, y]\n  x\n}\n"
+
+test fn a_fn_with_generated_list_heads_passes_type_inference_holds() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: glh_two_params_and_a_literal,
+    peers: [bla_source(src: glh_algebra, artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)]
+  )) == ^accepted
+}
+
+// (9) THE CLOSURE OWNERSHIP CHECK AGREES WITH RESOLVE ABOUT WHAT IS A REFERENCE (v2.compiler.reference_closure).
+// A fn's parameter-order list is labels resolve never walks, so a module holding only declarations is
+// owned by a closure of itself; a body list literal IS a resolved reference to std.algebra.FreeMonoid, so
+// a closure that lacks its provider is ownerless at that head -- the generated-dependency acquisition
+// obligation (N2b) stated as a red that stays red until acquisition supplies the provider.
+data glh_declarations_only: String = "module v2.test.glh.user\n\ntype T = | A\n\nfn f(x: T, y: T) -> T {\n  x\n}\n\ndata d: T = A\n"
+
+fn glh_owned_by_itself(v: Optional<NativeModuleResolveVerdict>) -> Optional<ReferenceOwnership> {
+  match v {
+    Present { value: NativeModuleResolveAccepted { resolved: tree } } =>
+      optional_present(value: reference_closure_ownership(resolved: tree.root, import_targets: [], roster: map_insert(m: empty_map(), key: "v2.test.glh.user", value: true)))
+    Present { value: _ } => optional_absent()
+    Absent => optional_absent()
+  }
+}
+
+test fn a_parameter_order_list_is_not_a_reference_the_closure_must_own_holds() -> Bool {
+  match glh_owned_by_itself(v: glh_verdict(ingest: [glh_algebra_read(text: glh_algebra), glh_user_read(text: glh_declarations_only)])) {
+    Present { value: ReferencesOwned } => true
+    Present { value: ReferenceOwnerless { target: _, at: _ } } => false
+    Absent => false
+  }
+}
+
+test fn a_body_list_literal_is_a_reference_its_closure_must_own_holds() -> Bool {
+  match glh_owned_by_itself(v: glh_verdict(ingest: [glh_algebra_read(text: glh_algebra), glh_user_read(text: glh_no_import)])) {
+    Present { value: ReferenceOwnerless { target: t, at: _ } } => t == list_introduction_head_path()
+    Present { value: ReferencesOwned } => false
+    Absent => false
+  }
+}

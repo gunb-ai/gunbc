@@ -1,20 +1,11 @@
 module v2.extdeps.languages.bash_build
 import std.optional { Absent, Optional, Present }
-
-
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { list_head }
-import v2.std.collection { Present, list_at_optional }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-}
+import std.algebra { list_head, list_at_optional }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode }
+
+
 
 fn bash_build_word_kinded(kind: Symbol, value: String) -> Node {
   Node {

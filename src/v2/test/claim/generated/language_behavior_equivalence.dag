@@ -11,7 +11,7 @@ import v2.compiler.eval {
   run_test_claim_assert,
   test_claim_typed_input_node
 }
-import v2.std.collection { Absent }
+import std.optional { Absent }
 import v2.std.verdict { Verdict, Deferred, Pass, SemanticMismatch, BuildFailed, RunFailed }
 import v2.compiler.infer {
   InferredFacts,
@@ -19,7 +19,7 @@ import v2.compiler.infer {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import std.algebra { length }
-import v2.std.collection { Map }
+import std.types { Map }
 import v2.std.diagnostic {
   Accepted,
   AmbiguousIntent,

@@ -48,29 +48,32 @@ pub fn build_reverse_adj(
     all_names: Rc<Vec<String>>,
     local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    all_names.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
-            &local_deps,
-            name.clone(),
-        ) {
-            Some(deps) => deps.iter().cloned().fold(
-                acc.clone(),
-                |inner_acc: Rc<HashMap<String, Rc<Vec<String>>>>, dep: String| {
-                    let existing = match v1_rt::map_get(&inner_acc, dep.clone()) {
-                        Some(v) => v.clone(),
-                        std::option::Option::None => Rc::new(vec![]),
-                    };
-                    v1_rt::rc_map_insert(
-                        inner_acc.clone(),
-                        dep.clone(),
-                        v1_rt::rc_list_push(existing.clone(), name.clone()),
-                    )
-                },
-            ),
-            std::option::Option::None => acc.clone(),
-        },
-    )
+    {
+        let seed = v1_rt::rc_empty_map::<String, Rc<Vec<String>>>();
+        all_names.iter().cloned().fold(
+            seed.clone(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
+                &local_deps,
+                name.clone(),
+            ) {
+                Some(deps) => deps.iter().cloned().fold(
+                    acc.clone(),
+                    |inner_acc: Rc<HashMap<String, Rc<Vec<String>>>>, dep: String| {
+                        let existing = match v1_rt::map_get(&inner_acc, dep.clone()) {
+                            Some(v) => v.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        };
+                        v1_rt::rc_map_insert(
+                            inner_acc.clone(),
+                            dep.clone(),
+                            v1_rt::rc_list_push(existing.clone(), name.clone()),
+                        )
+                    },
+                ),
+                std::option::Option::None => acc.clone(),
+            },
+        )
+    }
 }
 
 pub fn build_in_degree(

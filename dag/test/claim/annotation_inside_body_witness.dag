@@ -1,0 +1,68 @@
+module test.claim.annotation_inside_body_witness
+
+import std.types { Int, String, Bool, List }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+  census_histograms_equal,
+}
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// Durable witness for the retired failure mode
+// gunbc.recurring_failure_mode.annotation_inside_a_declaration_body_is_invisible_to_the_authoring_gate.
+// That row recorded a `//` annotation inside a declaration body refusing as a blocking error on the
+// compile path. #13754 deleted that refusal: a comment attaches to its gap anywhere in a file
+// (DESIGN 4c), so the class no longer has a writable invalid state. This witness keeps the
+// executed evidence enrolled (DESIGN 4b meta-obligation 4): a source carrying comments in a
+// function body, a match arm, trailing a statement and between list elements compiles with the
+// same diagnostics as the same source with every comment stripped.
+//
+// PRECISION (gunbc.compile_diagnostic_census): a census carries the whole compile's rows, imported
+// closure included, so the positive wall is the differential form -- two sources differing only in
+// their comments, where the shared closure cancels -- not a zero count.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+// The census resolves the fixture's imports against the live checkout.
+
+data commented_source: String = "module zqx_annot_body\nimport std.types { Int, List }\nimport std.optional { Optional, Absent, Present }\nfn zqx_pick(o: Optional<Int>) -> Int {\n  // inside the body, before the first statement\n  let base = 1 // trailing after a let\n  match o {\n    // inside the match, above an arm\n    Present { value: v } => v + base // trailing on an arm\n    Absent => base\n  }\n  // before the closing brace\n}\ndata zqx_rows: List<Int> = [\n  1, // trailing on a list element\n  // between list elements\n  2,\n]\n"
+
+data stripped_source: String = "module zqx_annot_body\nimport std.types { Int, List }\nimport std.optional { Optional, Absent, Present }\nfn zqx_pick(o: Optional<Int>) -> Int {\n  let base = 1\n  match o {\n    Present { value: v } => v + base\n    Absent => base\n  }\n}\ndata zqx_rows: List<Int> = [\n  1,\n  2,\n]\n"
+
+// RED CONTROL SOURCE: the stripped source with one unresolved name, so the census demonstrably
+// reports a blocking diagnostic that originates in this fixture.
+data broken_source: String = "module zqx_annot_body\nimport std.types { Int, List }\nimport std.optional { Optional, Absent, Present }\nfn zqx_pick(o: Optional<Int>) -> Int {\n  let base = zqx_not_declared\n  match o {\n    Present { value: v } => v + base\n    Absent => base\n  }\n}\ndata zqx_rows: List<Int> = [\n  1,\n  2,\n]\n"
+
+// Blocking rows, or -1 rows-total when the census cannot run, so every wall fails closed.
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn rows_agree(a: List<CompileDiagnosticCensusRow>, b: List<CompileDiagnosticCensusRow>) -> Bool {
+  census_histograms_equal(a: a, b: b)
+}
+
+// THE WALL: comments in every in-body position change no diagnostic, blocking or advisory.
+test fn w_in_body_comments_leave_the_census_unchanged() -> Bool {
+  match compile_dag_diagnostic_census(commented_source) {
+    CensusObserved { rows: commented } =>
+      match compile_dag_diagnostic_census(stripped_source) {
+        CensusObserved { rows: stripped } => rows_agree(a: commented, b: stripped)
+        CensusNotRunnable { cause: _ } => false
+      }
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// ADEQUACY CONTROL: the same census sees a blocking error introduced in this fixture, so the
+// agreement above is the compiler's judgment and not an instrument that reports nothing.
+test fn w_census_sees_a_blocking_error_in_the_fixture() -> Bool {
+  let green = blocking_total(source: stripped_source)
+  let red = blocking_total(source: broken_source)
+  green >= 0 && red > green
+}

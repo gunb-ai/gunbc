@@ -1,14 +1,16 @@
 module v2.test.claim.native_census.whole_tree_census_resolve
 
-import v2.compiler.compile {
-  NativeCensusModule,
+import v2.compiler.source_root_eval {
   NativeCensusModuleFileRefused,
   NativeCensusModuleResolveRefused,
   NativeCensusModuleResolved,
-  NativeCensusModuleOutcome,
-  NativeCensusResidualRow,
   NativeCensusCompletenessObserved,
   NativeCensusCompletenessUnavailable,
+  NativeCensusCascadeNone,
+  NativeCensusClosureIndexUnavailable,
+  NativeCensusModule,
+  NativeCensusModuleOutcome,
+  NativeCensusResidualRow,
   NativeTestContext,
   native_census_module_completeness,
   native_census_module_resolution,
@@ -16,8 +18,6 @@ import v2.compiler.compile {
   native_census_residual_rows,
   native_census_position_table_empty,
   NativeCensusCauseGroup,
-  NativeCensusCascadeNone,
-  NativeCensusClosureIndexUnavailable,
   native_census_cause_groups_add_residual,
   native_census_cause_groups_empty,
   native_census_cause_groups_from_file_refusals,
@@ -27,7 +27,7 @@ import v2.compiler.compile {
 }
 import v2.compiler.native_test_vocabulary { FileRefusalAtWholeFile, FileRefusalLink, NativeTestFileRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.collection { Map }
+
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty, FreeSemigroup, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
@@ -73,7 +73,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // only unbound name in the tree is the one the middle specimen exists to carry. A probe whose
 // return type were also unbound would still be reported resolve_refused and would stop telling you
 // WHICH absence the census saw.
-data census_clean_source: String = "module v2.census_probe_clean\n\nimport std.types { Bool }\n\nfn census_probe_clean_value(p: Bool) -> Bool { p }\n"
+data census_clean_source: String = "module v2.census_probe_clean\n\nimport std.types { Bool, Map }\n\nfn census_probe_clean_value(p: Bool) -> Bool { p }\n"
 
 // THE UNBOUND REFERENCE IS THE SUBJECT, and it is shaped like what an XL-2 rehearsal actually
 // leaves behind: the module parses and normalizes cleanly -- so the context admits the file and

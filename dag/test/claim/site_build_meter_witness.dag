@@ -1,4 +1,5 @@
 module test.claim.site_build_meter_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.markup { Fragment }
@@ -41,7 +42,6 @@ import gunbc.site.element.build_meter {
 import gunbc.workflow_reconcile { WorkflowFactKey }
 import gunbc.site.build_meter_client { build_meter_bind_statements, build_meter_fresh_event, build_meter_dwell_ms }
 import extdeps.languages.typescript.program { serialize_ts_stmts_indented }
-import gunbc.site.robot_mark { robot_mark_body_path, robot_mark_antenna_path, robot_mark_body_transform }
 import gunbc.site.element.styles { element_styles }
 import gunbc.roadmap.roadmap_surface_style { roadmap_surface_rules }
 import gunbc.design.material { BuildRule, StaticRule, reduced_motion_block, serialize_rules, decl }
@@ -217,7 +217,7 @@ fn fx_summary(view: BuildMeterView) -> CompactWorkSummary {
 }
 
 fn fx_html(view: BuildMeterView) -> String {
-  serialize_html_source(node: build_meter(summary: fx_summary(view: view), link_attributes: []))
+  render_html(serialize_html_source(node: build_meter(summary: fx_summary(view: view), link_attributes: [])))
 }
 
 fn fx_drawn_round(step: Int, marks: List<BuildMeterMark>) -> BuildMeterRound {
@@ -425,12 +425,6 @@ fn draws_the_solid_robot(h: String) -> Bool {
     && has(s: h, pattern: "x=\"4\" y=\"4\" width=\"3\" height=\"3\"")
     && has(s: h, pattern: "x=\"13\" y=\"4\" width=\"3\" height=\"3\"")
     && has(s: h, pattern: "x=\"8\" y=\"7\" width=\"4\" height=\"1\"")
-}
-
-test fn the_robot_mark_paths_are_the_symbols_spelling() -> Bool {
-  robot_mark_body_path == "M40,20 H80 A30,30 0 0,1 110,50 V70 A30,30 0 0,1 80,100 H40 A30,30 0 0,1 10,70 V50 A30,30 0 0,1 40,20 Z M30,41 H40 A2,2 0 0,1 42,43 V53 A2,2 0 0,1 40,55 H30 A2,2 0 0,1 28,53 V43 A2,2 0 0,1 30,41 Z M80,41 H90 A2,2 0 0,1 92,43 V53 A2,2 0 0,1 90,55 H80 A2,2 0 0,1 78,53 V43 A2,2 0 0,1 80,41 Z M54,54 H66 A2,2 0 0,1 68,56 V58 A2,2 0 0,1 66,60 H54 A2,2 0 0,1 52,58 V56 A2,2 0 0,1 54,54 Z"
-    && robot_mark_antenna_path == "M58,6 H62 V12 H58 Z M55,5 A5,5 0 0,1 65,5 A5,5 0 0,1 55,5 Z"
-    && robot_mark_body_transform == "translate(-12 -12) scale(1.2)"
 }
 
 test fn the_working_worker_is_the_robot() -> Bool { draws_the_solid_robot(h: worker_html(pose: BuildMeterWorking, stale: false)) }

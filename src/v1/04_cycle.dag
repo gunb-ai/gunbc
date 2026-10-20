@@ -23,7 +23,8 @@ fn build_reverse_adj(
     all_names: List<String>,
     local_deps: Map<String, List<String>>
 ) -> Map<String, List<String>> {
-  fold(all_names, init: empty_map(), f: (acc, name) =>
+  let seed: Map<String, List<String>> = empty_map()
+  fold(all_names, init: seed, f: (acc, name) =>
     match map_get(local_deps, name) {
       Present { value: deps } =>
         fold(deps, init: acc, f: (inner_acc, dep) =>

@@ -5,7 +5,7 @@
 //! seed, not interpreted -- turns an emission into the complete file population of its workspace
 //! (layout from `gunbc.emitted_crate_workspace` `emitted_workspace_build`, manifests and crate
 //! roots from `v1.compiler.stage0_crates`, every emitted file placed or refused), and this file
-//! writes those files. `//gunbc/instruments:emitted-crate-workspace` emits `v2.compiler.compile`,
+//! writes those files. `//gunbc/instruments:emitted-crate-workspace` emits `v2.compiler.source_root_eval`,
 //! writes it through the same realization, builds it, then lays the RED over it
 //! (`emitted_workspace_red_realization`) and builds again.
 //!
@@ -27,7 +27,7 @@ use crate::v1_compiler_emitted_workspace::{
     EmittedWorkspaceRedRealization,
 };
 
-const WORKSPACE_ENTRY: &str = "src/v2/compiler/compile.dag";
+const WORKSPACE_ENTRY: &str = "src/v2/compiler/source_root_eval.dag";
 
 pub struct EmittedCrateWorkspaceHeld {
     pub head: String,

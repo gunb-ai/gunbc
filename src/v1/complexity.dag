@@ -3044,14 +3044,16 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
   members |> flat_map(name =>
     match map_get(func_index, name) {
       Present { value: entry } =>
-        let tree_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
+        let tree_edge_seed: Map<String, DescentEvidence> = empty_map()
+        let tree_edge_map = entry.params |> fold(init: tree_edge_seed, f: (best_map, p) =>
           let pname = param_node_name_at(n: p, source_indices: si)
           let tree_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false, si: si)
           let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set, check_child: true, check_list: false, scc_measure_params: measure_params, si: si)
           let param_map = param_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
           pick_best_param_edges(current: best_map, candidate: param_map)
         )
-        let list_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
+        let list_edge_seed: Map<String, DescentEvidence> = empty_map()
+        let list_edge_map = entry.params |> fold(init: list_edge_seed, f: (best_map, p) =>
           let pname = param_node_name_at(n: p, source_indices: si)
           let list_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: false, check_list: true, si: si)
           let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: list_vars, target_set: scc_name_set, check_child: false, check_list: true, scc_measure_params: measure_params, si: si)
@@ -3060,7 +3062,8 @@ fn collect_scc_independent_dim_edges(members: List<String>, func_index: Map<Stri
         )
 
         let all_keys = concat(map_keys(tree_edge_map), map_keys(list_edge_map))
-        let unique_keys = all_keys |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, true))
+        let unique_seed: Map<String, Bool> = empty_map()
+        let unique_keys = all_keys |> fold(init: unique_seed, f: (acc, k) => map_insert(acc, k, true))
         map_keys(unique_keys) |> map(callee =>
           let tree_ev = match map_get(tree_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
           let list_ev = match map_get(list_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
@@ -3085,7 +3088,8 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
     members |> flat_map(name =>
       match map_get(func_index, name) {
         Present { value: entry } =>
-          let tree_edge_map = entry.params |> fold(init: empty_map(), f: (best_map, p) =>
+          let tree_edge_seed: Map<String, DescentEvidence> = empty_map()
+          let tree_edge_map = entry.params |> fold(init: tree_edge_seed, f: (best_map, p) =>
             let pname = param_node_name_at(n: p, source_indices: si)
             let tree_vars = collect_descent_vars(body: entry.body, param_name: pname, vars: empty_map(), check_child: true, check_list: false, si: si)
             let param_edges = collect_scc_child_edges(body: entry.body, caller: name, param_name: pname, descent_vars: tree_vars, target_set: scc_name_set, check_child: true, check_list: false, scc_measure_params: measure_params, si: si)
@@ -3096,7 +3100,8 @@ fn collect_scc_tree_parser_dim_edges(members: List<String>, func_index: Map<Stri
           let parser_edge_map = my_parser_edges |> fold(init: empty_map(), f: (bm, pe) => merge_edge_evidence(acc_map: bm, pe: pe))
 
           let all_keys = concat(map_keys(tree_edge_map), map_keys(parser_edge_map))
-          let unique_keys = all_keys |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, true))
+          let unique_seed: Map<String, Bool> = empty_map()
+          let unique_keys = all_keys |> fold(init: unique_seed, f: (acc, k) => map_insert(acc, k, true))
           map_keys(unique_keys) |> map(callee =>
             let tree_ev = match map_get(tree_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
             let parser_ev = match map_get(parser_edge_map, callee) { Present { value: ev } => ev   Absent => DescentUnknown }
@@ -4760,7 +4765,8 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>, si: Map<String, Newl
 
 fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: RecursionContext, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
   let si = source_indices
-  let func_index = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
+  let func_index_seed: Map<String, FuncEntry> = empty_map()
+  let func_index = func_entries |> fold(init: func_index_seed, f: (acc, entry) =>
     map_insert(acc, entry.name, entry)
   )
   let scc_result = build_scc_index(func_entries: func_entries, func_index: func_index, si: si)
@@ -4787,12 +4793,14 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   )
 
   let call_forward = forward_adjacency(names: func_entries |> map(entry => entry.name), graph: scc_result.call_graph)
-  let fan_in = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
+  let fan_in_seed: Map<String, Int> = empty_map()
+  let fan_in = func_entries |> fold(init: fan_in_seed, f: (acc, entry) =>
     let callees = match map_get(call_forward, entry.name) {
       Present { value: cs } => cs
       Absent => []
     }
-    let unique_set = callees |> fold(init: empty_map(), f: (s, c) => map_insert(s, c, true))
+    let unique_set_seed: Map<String, Bool> = empty_map()
+    let unique_set = callees |> fold(init: unique_set_seed, f: (s, c) => map_insert(s, c, true))
     map_keys(unique_set) |> fold(init: acc, f: (inner, callee) =>
       let current = match map_get(inner, callee) { Present { value: v } => v, Absent => 0 }
       map_insert(inner, callee, current + 1)
@@ -4833,7 +4841,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
           Present { value: cs } => cs
           Absent => []
         }
-        let unique_set = callees |> fold(init: empty_map(), f: (s, c) => map_insert(s, c, true))
+        let unique_set_seed: Map<String, Bool> = empty_map()
+        let unique_set = callees |> fold(init: unique_set_seed, f: (s, c) => map_insert(s, c, true))
         let unique_callees = map_keys(unique_set)
         let new_fan_in = unique_callees |> fold(init: acc.fan_in, f: (fi, callee) =>
           let current = match map_get(fi, callee) { Present { value: v } => v, Absent => 0 }

@@ -2,15 +2,15 @@ module v2.test.claim.compiler.let_binder_frame
 
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers }
 import v2.test.claim.compiler.callback_argument_formal { caf_correction_type, caf_same_type }
-import v2.compiler.infer { InferredFactsEntry, infer, infer_entries_for_tree, infer_settled_type_at }
+import v2.compiler.infer { infer, infer_entries_for_tree, infer_settled_type_at }
 import v2.std.diagnostic { Accepted, Diagnostic, None, Rejected, Some, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_has_reason }
-import v2.std.node { Bind, ComputationNode, Node, Symbol }
-import v2.std.node_query { node_positional_child_targets }
-import v2.std.collection { list_at_optional }
+import v2.std.node { positional_child_target_nodes, Bind, ComputationNode, Node, Symbol }
+import std.algebra { fold_list, list_at_optional, map_support_keys }
 import v2.std.integer { Int }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, List, String }
+import std.types { Bool, List, Map, String }
+import v2.compiler.inferred_tree { InferredFacts }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -94,8 +94,8 @@ fn lbf_is_bind(n: Node) -> Bool {
   }
 }
 
-fn lbf_child_type(bind: Node, index: Int, entries: List<InferredFactsEntry>) -> Optional<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: bind), index: index) {
+fn lbf_child_type(bind: Node, index: Int, entries: Map<Node, List<InferredFacts>>) -> Optional<Node> {
+  match list_at_optional(xs: positional_child_target_nodes(node: bind), index: index) {
     Absent => optional_absent()
     Present { value: c } => infer_settled_type_at(target: c, entries: entries)
   }
@@ -108,12 +108,12 @@ fn lbf_let_types(body: String) -> LbfLetTypes {
       match infer_entries_for_tree(tree: tree) {
         Rejected { diagnostics: _ } => lbf_no_types()
         Accepted { value: entries, diagnostics: _ } =>
-          fold(entries, init: lbf_no_types(), f: fn(acc, e) {
-            if lbf_is_bind(n: e.node) {
+          fold_list(xs: map_support_keys(m: entries), empty: lbf_no_types(), cons: fn(acc, key) {
+            if lbf_is_bind(n: key) {
               LbfLetTypes {
-                value: lbf_child_type(bind: e.node, index: 1, entries: entries),
-                body: lbf_child_type(bind: e.node, index: 2, entries: entries),
-                bind: infer_settled_type_at(target: e.node, entries: entries)
+                value: lbf_child_type(bind: key, index: 1, entries: entries),
+                body: lbf_child_type(bind: key, index: 2, entries: entries),
+                bind: infer_settled_type_at(target: key, entries: entries)
               }
             } else {
               acc

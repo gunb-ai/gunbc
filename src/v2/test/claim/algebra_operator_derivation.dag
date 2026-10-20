@@ -4,7 +4,7 @@ import v2.compiler.infer { AlgebraFieldNotCarried, AlgebraFieldResultType, Algeb
 import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
 import v2.std.integer { integer_int_type_node }
 import v2.std.model_core { AlgebraInhabitanceDecl }
-import v2.std.collection { List }
+import std.types { List }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

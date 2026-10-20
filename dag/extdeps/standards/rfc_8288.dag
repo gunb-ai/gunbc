@@ -1,7 +1,7 @@
 module extdeps.standards.rfc_8288
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
-import std.algebra { trim }
+import std.algebra { trim, fold_list }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri {
   Uri, Https, Http,

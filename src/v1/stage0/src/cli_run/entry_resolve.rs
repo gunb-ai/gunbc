@@ -716,20 +716,20 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     with_module_path_index(&pool_roots_abs(&roots), |_| ());
     super::pre_entry_phase::record(
         "module_path_index_build",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         index_started
             .elapsed()
             .saturating_sub(super::pool_acquire::attributed() - acquired_before),
     );
     let observation = super::pre_entry_phase::timed(
         "graph_facts_import_edges",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         || import_resolution_facts_with_observation(&roots, &roots, EXCLUDE),
     );
     let edges = observation.facts;
     let nodes = super::pre_entry_phase::timed(
         "graph_facts_module_declarations",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         || module_declaration_facts(&roots),
     );
     // Loader tier: import edges only, unchanged. Every consumer that goes on to RESOLVE what it
@@ -1376,7 +1376,7 @@ pub fn try_process_shared_index_for_pool(
     };
     super::pre_entry_phase::record(
         "source_root_walk_and_read",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         walk_started.elapsed(),
     );
     let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots));
@@ -1461,7 +1461,7 @@ pub(crate) fn new_multi_entry_index_scratch_over(
         &source_files,
         MultiEntryIndexBuildKind::ScratchCachesOverExistingSet,
     );
-    multi_entry_index_shell_body(source_files, source_roots)
+    multi_entry_index_shell_body(source_files, source_roots, None)
 }
 
 #[track_caller]
@@ -1474,17 +1474,33 @@ pub(crate) fn new_multi_entry_index_shell(
         &source_files,
         MultiEntryIndexBuildKind::NameSetIndex,
     );
-    multi_entry_index_shell_body(source_files, source_roots)
+    multi_entry_index_shell_body(source_files, source_roots, None)
+}
+
+#[track_caller]
+pub(crate) fn new_multi_entry_index_acquired(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+    facts: ModuleGraphFactsLive,
+) -> MultiEntryIndex {
+    record_multi_entry_index_site(
+        std::panic::Location::caller(),
+        &source_files,
+        MultiEntryIndexBuildKind::NameSetIndex,
+    );
+    multi_entry_index_shell_body(source_files, source_roots, Some(facts))
 }
 
 fn multi_entry_index_shell_body(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
+    acquired_facts: Option<ModuleGraphFactsLive>,
 ) -> MultiEntryIndex {
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
-        module_graph_facts: build_module_graph_facts_live(source_roots),
+        module_graph_facts: acquired_facts
+            .unwrap_or_else(|| build_module_graph_facts_live(source_roots)),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
         typed_cache_evictions: Cell::new(0),
         typed_cache_evicted_keys: RefCell::new(std::collections::HashSet::new()),
@@ -1625,15 +1641,15 @@ pub(crate) fn typed_module_content_key(
 /// host-wide `MemAvailable`/`MemTotal` last resort, or no budget was found at
 /// all and the ceiling was used). Pure and side-effect-free: callers decide
 /// how often to invoke it and whether to log the degraded case.
-pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
+pub(crate) fn typed_module_cache_cap_derivation() -> Result<(usize, String, bool), String> {
     if let Ok(raw) = std::env::var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES") {
         if let Ok(n) = raw.trim().parse::<usize>() {
             if n > 0 {
-                return (
+                return Ok((
                     n.min(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL),
                     "env override GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES".to_string(),
                     false,
-                );
+                ));
             }
             // Zero override is invalid — fall through to derived cap.
         }
@@ -1651,47 +1667,54 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     //
     // An unreadable budget has no source, so `degraded_source` is `None` there and the
     // question is not answered with a boolean; the refusal below runs first regardless.
+    match &resolution {
+        crate::memory_governor::HostBudgetResolution::ExternallyBounded { run_id } => {
+            let label = super::user_work_scope::standing_wire(
+                &super::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                    run_id: run_id.clone(),
+                },
+            );
+            eprintln!(
+                "[floor-drain] host_memory_budget source=externally_bounded executor={label}"
+            );
+            // WRAP STANDING, NOT AN ENV SUBSTITUTE FOR A CGROUP READ. The earlier comment
+            // said a BuildBuddy environment declaration cannot replace a missing observation.
+            // That still holds for bytes: this arm carries no number. What changed is that
+            // wrap already classified the process as ExternallyBoundedExecutor
+            // (`gunbc.compute.unit_bounds`); HostBudget records that standing instead of
+            // panicking HostBudgetUnreadable. CapEntriesExternallyBounded is the floor until
+            // the executor exposes a readable memory.max (`typed_module_cache_externally_bounded_dissolves_on`).
+            // SEED MIRROR of `gunbc.typed_module_cache_capacity` `CapEntriesExternallyBounded`
+            // (not `CapEntries`: that arm is a derived bound from observed/declared bytes).
+            return Ok((TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR, label, false));
+        }
+        crate::memory_governor::HostBudgetResolution::Unreadable { reason } => {
+            return Err(format!(
+                "HostBudgetUnreadable: no modeled host memory source answered ({reason}). \
+                 The typed-module cache cap bounds the memory used to RESOLVE the corpus, so an \
+                 unknown budget cannot be defaulted — the previous default was the ceiling, which \
+                 OOM-killed this process rather than refusing, and the MemAvailable arm that \
+                 replaced it substituted the MACHINE's memory for this slot's and was SIGKILLed \
+                 at rc=137 instead. Configure the executor to expose a cgroup memory limit; \
+                 GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling \
+                 (dag/gunbc/host/host_budget_source.dag)."
+            ));
+        }
+        _ => {}
+    }
     let degraded = resolution.degraded_source().unwrap_or(true);
-    let budget = resolution.bytes();
-    // REFUSE rather than widen when no budget is readable (operator ruling 2026-08-05;
-    // authority `dag/gunbc/host/host_budget_source.dag` `HostBudgetUnreadable`).
-    //
-    // This was `.unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)`: a budget that could not
-    // be computed became the MOST PERMISSIVE cap available — top-as-answer conflated with
-    // top-as-ignorance, the absorbing fallback DESIGN section 5 forbids by name. It is not
-    // hypothetical. It OOM-killed the full witness corpus twice on a macOS dev machine
-    // (exit 137): nothing readable, cap defaults to the ceiling, nothing bounds the resolve,
-    // kernel ends the process. The deficit's frequency was zero by construction, so it never
-    // ranked for fixing, and the cost arrived as a dead process instead of a diagnostic.
-    //
-    // Reaching this arm means the host declared no bound this process can read: no cgroup
-    // memory.high or memory.max, no operator override, and no Darwin physical-memory read.
-    // That is the ordinary state on a remote-execution runner whose slot cap lives outside
-    // the container's cgroup namespace (BuildBuddy, measured 2026-08-30), and it used to be
-    // answered with the machine's MemAvailable capped at this fleet's own declared slot line
-    // — two substitutions stacked, and an rc=137 SIGKILL of `main_wet` with no diagnostic.
-    // An environment declaration cannot replace that missing observation: it constrains no
-    // allocation. Panicking here is a hard
-    // stop by design: this runs inside resolution, there is no caller that could honour a
-    // typed refusal without threading Result through the cache seam, and continuing is the
-    // one option ruled out.
-    let Some(budget_bytes) = budget else {
-        panic!(
+    let Some(budget_bytes) = resolution.bytes() else {
+        return Err(format!(
             "HostBudgetUnreadable: no modeled host memory source answered ({source_label}). \
-             The typed-module cache cap bounds the memory used to RESOLVE the corpus, so an \
-             unknown budget cannot be defaulted — the previous default was the ceiling, which \
-             OOM-killed this process rather than refusing, and the MemAvailable arm that \
-             replaced it substituted the MACHINE's memory for this slot's and was SIGKILLed \
-             at rc=137 instead. Configure the executor to expose a cgroup memory limit; \
-             GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling \
+             Configure the executor to expose a cgroup memory limit \
              (dag/gunbc/host/host_budget_source.dag)."
-        );
+        ));
     };
     let cap = ((budget_bytes / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize).clamp(
         TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
         TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
     );
-    (cap, source_label, degraded)
+    Ok((cap, source_label, degraded))
 }
 
 /// The typed-cache cap for `index`, sampled exactly ONCE for this index's
@@ -1708,17 +1731,20 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
 /// kernel that HAS cgroups, a missing limit is a missing bound and the
 /// derivation refuses instead of degrading — that path used to answer with the
 /// host's MemAvailable and got `main_wet` SIGKILLed at rc=137.
-pub(crate) fn typed_module_cache_cap(index: &MultiEntryIndex) -> usize {
-    *index.typed_module_cache_cap.get_or_init(|| {
-        let (cap, source, degraded) = typed_module_cache_cap_derivation();
-        if degraded {
-            eprintln!(
-                "[floor-drain] degraded_budget_source: cap={cap} source={source} \
-                 (this kernel has no private-limit mechanism, so the reading is host-shared)"
-            );
-        }
-        cap
-    })
+pub(crate) fn typed_module_cache_cap(index: &MultiEntryIndex) -> Result<usize, String> {
+    index
+        .typed_module_cache_cap
+        .get_or_init(|| {
+            let (cap, source, degraded) = typed_module_cache_cap_derivation()?;
+            if degraded {
+                eprintln!(
+                    "[floor-drain] degraded_budget_source: cap={cap} source={source} \
+                     (this kernel has no private-limit mechanism, so the reading is host-shared)"
+                );
+            }
+            Ok(cap)
+        })
+        .clone()
 }
 
 pub fn resolve_entry_with_index(
@@ -2585,17 +2611,36 @@ pub(crate) fn parse_module_node_tolerant(
     rel: &str,
     content: &str,
 ) -> Option<Rc<crate::v1_std_core::Node>> {
+    parse_module_node_located(rel, content).ok()
+}
+
+/// `parse_module_node_tolerant` that keeps the parse refusal's located cause: `file:line:col:
+/// message` from the `ErrorNode` the parser already computed (DESIGN §5, §6b -- the span is
+/// in hand at the parse and must survive the seam into the closure-load diagnostic).
+pub(crate) fn parse_module_node_located(
+    rel: &str,
+    content: &str,
+) -> Result<Rc<crate::v1_std_core::Node>, String> {
     let filename = rel.to_string();
     // One acquisition, not one per walk -- see `cli_run::pool_acquire`.
     let tokens = super::pool_acquire::tokens_for(&filename, content);
     let source_index = super::pool_acquire::newline_index_for(&filename, content);
     let mut source_indices = HashMap::new();
-    source_indices.insert(filename.clone(), source_index);
+    source_indices.insert(filename.clone(), source_index.clone());
     let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
-    if result.error.is_some() {
-        return None;
+    if let Some(error) = &result.error {
+        let span = crate::v1_std_core::diagnostic_to_span(error.diagnostic.clone());
+        let message = crate::v1_std_core::diagnostic_to_message(error.diagnostic.clone());
+        let lc = crate::v1_std_core::byte_to_line_col(source_index, span.start);
+        return Err(format!(
+            "parse-failed at {rel}:{}:{}: {message}",
+            lc.line, lc.col
+        ));
     }
-    result.module.clone()
+    result
+        .module
+        .clone()
+        .ok_or_else(|| format!("parse-failed at {rel}: parser produced no module and no error"))
 }
 
 /// THE POOL-WIDE HALF OF THE REFERENCE-EDGE PRODUCER: which pool module declares each exported
@@ -2673,7 +2718,7 @@ pub(crate) fn reference_pool_names_for_index(
     ));
     super::pre_entry_phase::record(
         "reference_pool_names_from_census",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         started.elapsed(),
     );
     *index.reference_pool_names.borrow_mut() = Some(names.clone());
@@ -2722,7 +2767,7 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
     ));
     super::pre_entry_phase::record(
         "reference_pool_names_heads",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         started.elapsed(),
     );
     REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow_mut().insert(key, names.clone()));
@@ -2817,7 +2862,7 @@ impl ReferenceSelectionTier {
             .collect();
             super::pre_entry_phase::record(
                 "selection_tier_whole_pool",
-                super::pre_entry_phase::PhaseScale::Tree,
+                super::pre_entry_phase::index_scale(),
                 started.elapsed(),
             );
             (adjacency, unaccounted)
@@ -2909,7 +2954,7 @@ pub(crate) enum FileReferenceEdges {
     /// The file's reference edges, every tier (`reference_edges_as_import_facts` filters).
     Edges(Vec<ReferenceEdgeRaw>),
     /// An import-less file the producer could not answer for, with the located cause.
-    Unaccounted(&'static str),
+    Unaccounted(String),
 }
 
 /// ONE FILE'S FREE NAMES, read from its FULL parse by the one structural walk
@@ -3006,10 +3051,8 @@ pub(crate) fn parsed_file_references(
     content: &str,
     self_module: &str,
     module_names: &HashSet<String>,
-) -> Result<ParsedFileReferences, &'static str> {
-    let Some(tree) = parse_module_node_tolerant(rel, content) else {
-        return Err("parse-failed");
-    };
+) -> Result<ParsedFileReferences, String> {
+    let tree = parse_module_node_located(rel, content)?;
     let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut chains: Vec<Vec<String>> = Vec::new();
     // `collect_node_refs` recovers a lambda parameter's name from its authored span, so the
@@ -3049,10 +3092,10 @@ pub(crate) fn parsed_file_references(
     // syntax the collector must learn, and a reconciliation miss names an accounting defect in
     // the collector itself (review 55667).
     if !classify.refusals.is_empty() {
-        return Err("binder-refusal");
+        return Err("binder-refusal".to_string());
     }
     if !classify.reconciles() {
-        return Err("occurrence-accounting-mismatch");
+        return Err("occurrence-accounting-mismatch".to_string());
     }
     let positions = std::mem::take(&mut classify.bare_positions);
     let mut authored_types = std::collections::HashSet::new();
@@ -3098,12 +3141,12 @@ pub(crate) fn reference_edges_for_file_on_demand<
     names: impl FnOnce() -> R,
 ) -> FileReferenceEdges {
     let Some(content) = content else {
-        return FileReferenceEdges::Unaccounted("unreadable");
+        return FileReferenceEdges::Unaccounted("unreadable".to_string());
     };
     let names = names();
     let names: &ReferencePoolNames = &names;
     let Some(self_module) = extract_module_path(content) else {
-        return FileReferenceEdges::Unaccounted("no-module-line");
+        return FileReferenceEdges::Unaccounted("no-module-line".to_string());
     };
     let refs = match parsed_file_references(rel, content, &self_module, &names.module_names) {
         Ok(refs) => refs,
@@ -3226,7 +3269,7 @@ pub fn reference_resolution_facts(
         if let Err(cause) = collect_dag_files_tolerant(root_path, &mut files) {
             unaccounted.push(ReferenceAccountingRefusal {
                 path: cause,
-                cause: "the pool root's ledger roster could not be derived",
+                cause: "the pool root's ledger roster could not be derived".to_string(),
             });
             continue;
         }

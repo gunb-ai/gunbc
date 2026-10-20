@@ -20,7 +20,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 //
 // WHAT STANDS IS THE MODULE HEADER READ for the two consumers that hold a source with no acquired name,
 // because their subject is exactly the files whose front end refused and which therefore carry no
-// parse-derived name: v2.compiler.compile native_refused_file_module (the module a refused file
+// parse-derived name: v2.compiler.source_root_eval native_refused_file_module (the module a refused file
 // declares) and native_census_modules (the roster a census reports on). A header scan kept for those
 // files alone is still a second reader of the `module` production.
 //
@@ -31,9 +31,9 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // files whose refusals a census exists to report.
 
 data native_lane_second_textual_production_reading_population: List<String> = [
-  "v2.compiler.compile native_lane_declared_module_name — the textual reading of the `module` production",
-  "v2.compiler.compile native_refused_file_module — its consumer that names the module a refused file declares",
-  "v2.compiler.compile native_census_modules — its consumer that names the roster a census reports on",
+  "v2.compiler.source_root_eval native_lane_declared_module_name — the textual reading of the `module` production",
+  "v2.compiler.source_root_eval native_refused_file_module — its consumer that names the module a refused file declares",
+  "v2.compiler.source_root_eval native_census_modules — its consumer that names the roster a census reports on",
 ]
 
 data native_lane_second_textual_production_reading: RungDrop = RungDrop {

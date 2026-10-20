@@ -1,0 +1,198 @@
+module gunbc.runner.runner_revision_job_guest
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.systemd.service_exec {
+  ExecCommandLineRendering, ExecCommandLineRendered, ExecCommandLineRefused,
+  exec_command_line_with_environment, exec_words_line_with_environment,
+}
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.gnu_coreutils { cp_command }
+import extdeps.tools.tar { tar_extract_command }
+import extdeps.git {
+  git_init_quiet_command, git_add_all_force_command, git_commit_snapshot_command, git_diff_tree_equal_command,
+}
+import extdeps.rust.cargo_build { cargo_build_release_bin_offline_command }
+import gunbc.repo.repo_self_build { repo_self_build_package }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
+import std.measure { ByteSize, byte_size, Mebibyte, mebibyte, mebibyte_count, mebibyte_ceiling, gibibyte_to_byte_size, mebibyte_to_byte_size }
+import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_realization_allowance }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, Description, SuccessAction, FailureAction, ServiceType, ExecMode,
+  Restart, WorkingDirectory, Environment, EnvironmentFile, ServiceStandardOutput, ServiceStandardError,
+  OutputJournalAndConsole, ExecStartPre, ExecStart, Installable, WantedBy, UnitActionPoweroffForce,
+  systemd_environment_reference, ServiceResourceControl, service_memory_max, service_memory_swap_max,
+}
+import gunbc.cli_invoke { release_bin_rel_path, gunbc_bin_name, gunbc_run_invocation_words, invocation_words_bare }
+import gunbc.runner.runner_guest_image {
+  runner_guest_job_path, runner_guest_job_home, runner_guest_agent_target,
+}
+
+// THE REVISION JOB'S GUEST UNIT: EVERY INPUT ON A READ-ONLY DEVICE, NO NETWORK, VERIFY BEFORE EXECUTE.
+//
+// A revision job runs one admitted tree's claims in a fresh VM whose only inputs are what the host
+// staged, each digest-pinned (bright-moth-475's hermetic ruling, 2026-10-15):
+//   /dev/vda  the image rootfs, which carries git, tar and the toolchain the host already matched
+//             against the tree's rust-toolchain.toml before launch;
+//   /dev/vdb  the job spec, an environment file: commit, tree, claims, results device and size;
+//   /dev/vdc  the tree, a tar archive of exactly the admitted tree's files;
+//   /dev/vdd  the vendored crates the tree's Cargo.lock pins, a tar archive;
+//   /dev/vde  the results drive, raw, zeroed by the host (gunbc.runner.runner_claim_set_results).
+// The device names follow the order the launch plan attaches drives (S4b-3, gunbc.runner.runner_revision_job_launch); a drive
+// out of that order is a launch-plan defect, not something the guest guesses around.
+//
+// The steps are ExecStartPre lines, each one typed argv command, and systemd runs them in order and
+// stops at the first that fails. The VM then powers off (SuccessAction=/FailureAction=) with the
+// results drive still zeroed, which the host decodes as unwritten: no receipt. In order:
+//   1. the tree: unpack, then prove it equal to the admitted tree object (extdeps.git's staged-tree
+//      steps) -- BEFORE anything from the tree executes. A mismatch is diff-tree's nonzero exit;
+//   2. the crates: unpack the vendor set;
+//   3. the build: the one binary the guest runs (cargo -p v1-compiler --bin gunbc, the seed build's
+//      own selection), release, --locked --offline (extdeps.rust.cargo_build), from the verified
+//      tree, with the image's /work/.cargo/config.toml pointing crates-io at /work/vendor;
+//   4. ExecStart: the built gunbc runs gunbc.runner.runner_claim_set_guest claim_set_guest_main,
+//      which runs each claim and frames the exits onto /dev/vde.
+// THE GUEST'S RAM AND THE CLAIMS' ENVELOPE ARE ONE DECLARATION, read by the launch plan (the VM's
+// mem_size_mib and the jailer unit) and by the guest unit below (its MemoryMax=), so the two cannot
+// drift. The cell a revision job runs in is bounded by the CI slot's row (gunbc_runner_slot_memory_max):
+// the jailer unit asks for the VM's RAM plus the realization allowance, so the VM's RAM is the row
+// LESS that allowance, and the claims' envelope is the VM's RAM less the guest OS allowance. Sized the
+// other way (the row plus allowances) the VM asked for more than its own cell grants.
+// The row is the FLEET constant, not gunbc_runner_slot_desired_for(slot), because the guest unit's
+// MemoryMax= is baked into the image (runner_revision_job_image) and one image serves every slot. A slot
+// whose row differs from the fleet row needs its own image or a refusal; nothing checks that yet (PR B).
+data revision_job_guest_os_allowance: Mebibyte = mebibyte(count: 1024)
+
+fn revision_job_guest_memory() -> Mebibyte {
+  mebibyte(count: mebibyte_count(m: mebibyte_ceiling(b: gunbc_runner_slot_memory_max)) - mebibyte_count(m: mebibyte_ceiling(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))))
+}
+
+fn revision_job_claim_envelope() -> ByteSize {
+  mebibyte_to_byte_size(m: mebibyte(count: mebibyte_count(m: revision_job_guest_memory()) - mebibyte_count(m: revision_job_guest_os_allowance)))
+}
+
+// THE CLAIMS RUN BOUNDED INSIDE THE GUEST. The unit carries MemoryMax= and MemorySwapMax=0 on its own
+// cgroup, so `gunbc test` inside it reads a finite memory.max with no swap on its cgroup chain
+// (gunbc.compute.unit_bounds BoundedByObservedCgroup) -- bounded by the cgroup, not exempted by name.
+// The bound is revision_job_claim_envelope, derived from the CI slot's row above.
+//
+// The job's per-job values (the tree id the diff compares against) reach the argv through systemd's
+// ${NAME} substitution from the spec environment file (systemd.service(5), "Command lines"); every
+// other word is literal.
+
+// DECLARED FRONTIER (DESIGN 3c): revision_job_guest_unit is installed by the revision-job guest image
+// recipe, and the drives it reads are attached by the revision-job launch plan; both land in S4b-3
+// with the host staging (exact-commit tree archive, lockfile-keyed vendor set). TRIGGER: S4b-3's
+// stand-in inhabitance claim, which runs these same steps over staged files with the light claim set.
+
+data revision_job_spec_device: NonEmptyStr = "/dev/vdb"
+data revision_job_tree_device: String = "/dev/vdc"
+data revision_job_vendor_device: String = "/dev/vdd"
+data revision_job_tree_dir: String = "/work/tree"
+data revision_job_vendor_dir: String = "/work/vendor"
+data revision_job_snapshot_identity_name: String = "gunbc-revision-job"
+data revision_job_snapshot_identity_email: String = "revision-job@gunbc.invalid"
+
+// THE TREE STEPS, parameterised by where the archive and the working directory are and which tree to
+// compare against, so the hermetic stand-in runs exactly these commands over a file and a temp
+// directory, and the unit runs them over the devices.
+fn revision_job_tree_steps(tree_archive: String, work_dir: String, tree: String) -> List<ArgvCommand> {
+  [
+    mkdir_parents_command(path: work_dir),
+    tar_extract_command(archive: tree_archive, into_directory: work_dir, strip_components: 0),
+    git_init_quiet_command(repository_dir: work_dir),
+    git_add_all_force_command(repository_dir: work_dir),
+    git_commit_snapshot_command(repository_dir: work_dir, identity_name: revision_job_snapshot_identity_name,
+      identity_email: revision_job_snapshot_identity_email, message: "revision-job-tree"),
+    git_diff_tree_equal_command(repository_dir: work_dir, tree: tree, revision: "HEAD"),
+  ]
+}
+
+fn revision_job_vendor_steps(vendor_archive: String, vendor_dir: String) -> List<ArgvCommand> {
+  [
+    mkdir_parents_command(path: vendor_dir),
+    tar_extract_command(archive: vendor_archive, into_directory: vendor_dir, strip_components: 0),
+  ]
+}
+
+// THE CARGO SOURCE REPLACEMENT, placed on the mounted work disk. The image carries the config at
+// revision_job_image_cargo_config (gunbc.runner.runner_revision_job_image writes it); /work is the
+// job's fresh disk mounted over the image's /work, so the config is copied onto it before anything
+// reads it, and cargo finds it from /work/tree as /work/.cargo/config.toml.
+data revision_job_image_cargo_config: String = "/etc/gunbc-revision-job-cargo-config.toml"
+data revision_job_cargo_config_dir: String = "/work/.cargo"
+
+fn revision_job_cargo_config_steps() -> List<ArgvCommand> {
+  [
+    mkdir_parents_command(path: revision_job_cargo_config_dir),
+    cp_command(source: revision_job_image_cargo_config, destination: concat(revision_job_cargo_config_dir, "/config.toml")),
+  ]
+}
+
+fn revision_job_pre_steps() -> List<ArgvCommand> {
+  revision_job_cargo_config_steps() + revision_job_tree_steps(tree_archive: revision_job_tree_device, work_dir: revision_job_tree_dir, tree: systemd_environment_reference(name: "GUNBC_CLAIM_SET_TREE") as String)
+    + revision_job_vendor_steps(vendor_archive: revision_job_vendor_device, vendor_dir: revision_job_vendor_dir)
+    + [cargo_build_release_bin_offline_command(package: repo_self_build_package as String, bin: gunbc_bin_name as String)]
+}
+
+// ── the systemd command line ───────────────────────────────────────────────────────────────────
+
+// EVERY LINE GOES THROUGH extdeps.systemd.service_exec, the one wall for what a systemd command line
+// may carry: a literal word must be free of anything the manager would read as syntax, and the one
+// variable a word here may name is the job spec's tree id, declared as the environment the unit loads.
+data revision_job_environment_names: List<NonEmptyStr> = ["GUNBC_CLAIM_SET_TREE"]
+
+fn revision_job_exec_line(command: ArgvCommand) -> ExecCommandLineRendering {
+  exec_command_line_with_environment(command: command, environment: revision_job_environment_names)
+}
+
+fn revision_job_entry_exec_words() -> List<String> {
+  [concat(concat(revision_job_tree_dir, "/"), release_bin_rel_path(bin_name: gunbc_bin_name))]
+    + invocation_words_bare(words: gunbc_run_invocation_words(
+      source_roots: ["dag", "src/v2"],
+      entry: "dag/gunbc/runner/runner_claim_set_guest.dag",
+      function: "claim_set_guest_main",
+      claim_run: false,
+    ))
+}
+
+type RevisionJobGuestUnit
+  = RevisionJobGuestUnitRendered { unit: SystemdUnitFile }
+  | RevisionJobGuestUnitRefused { reason: NonEmptyStr }
+
+// THE ENTRY WORDS ARE CHECKED BY THE SAME WALL AS THE STEPS: ExecStart is a command line too.
+fn revision_job_guest_unit() -> RevisionJobGuestUnit {
+  match exec_words_line_with_environment(words: revision_job_entry_exec_words(), environment: revision_job_environment_names) {
+  ExecCommandLineRefused { reason: r } => RevisionJobGuestUnitRefused { reason: r }
+  ExecCommandLineRendered { line: entry_line } => {
+  let rendered = map(revision_job_pre_steps(), c => revision_job_exec_line(command: c))
+  match filter(rendered, r => match r { ExecCommandLineRefused { reason: _ } => true  ExecCommandLineRendered { line: _ } => false }).first() {
+    Present { value: ExecCommandLineRefused { reason: w } } => RevisionJobGuestUnitRefused { reason: w }
+    _ => RevisionJobGuestUnitRendered { unit: ServiceUnitFile {
+      unit: [
+        Description { text: "gunbc revision job: verify the staged tree, build offline, run the claims" as NonEmptyStr },
+        SuccessAction { action: UnitActionPoweroffForce },
+        FailureAction { action: UnitActionPoweroffForce },
+      ],
+      service: [
+        ServiceType { mode: ExecMode },
+        Restart { policy: "no" as NonEmptyStr },
+        WorkingDirectory { path: revision_job_tree_dir as NonEmptyStr },
+        Environment { assignment: runner_guest_job_path },
+        Environment { assignment: runner_guest_job_home },
+        EnvironmentFile { path: revision_job_spec_device },
+        ServiceResourceControl { directive: service_memory_max(bytes: revision_job_claim_envelope()) },
+        ServiceResourceControl { directive: service_memory_swap_max(bytes: byte_size(count: 0)) },
+        ServiceStandardOutput { stream: OutputJournalAndConsole },
+        ServiceStandardError { stream: OutputJournalAndConsole },
+      ] + flat_map(rendered, r => match r {
+        ExecCommandLineRendered { line: l } => [ExecStartPre { command: l }]
+        ExecCommandLineRefused { reason: _ } => []
+      }) + [ExecStart { command: entry_line }],
+      install: Installable { directives: [WantedBy { target: runner_guest_agent_target }] },
+    } }
+  }
+}
+  }
+}

@@ -57,7 +57,8 @@ fn anchor_inferred_facts_bare_atom_algebra() -> InferredFacts {
         strict: v2.std.cardinality.RankingComponent { measured: ^anchor_descent_dim_sym }
       }
     },
-    denotation: optional_absent()
+    denotation: optional_absent(),
+    type_instances: []
   }
 }
 

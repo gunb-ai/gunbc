@@ -41,7 +41,10 @@ import gunbc.claim_executor_cli { claim_executor_command, claim_executor_program
 import gunbc.repo.repo_self_build { repo_self_build_all_bins_command }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import std.types { String, List }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, FreeSemigroup }
+import extdeps.bazel.label { Label, render_label }
+import extdeps.github.github { Repository, github_https_clone_url }
+import gunbc.gunbc_cli_command { gunbc_test_command }
 
 // THE EXACT BUILD-LANE WORK, NOT ANOTHER CI COMMAND.
 //
@@ -78,38 +81,60 @@ fn verify_git_commit_tree(
   }
 }
 
-type RequiredBuildSource
+type FabricCiSource
   = ExactGitSource { subject: VerifiedGitCommitTree }
   | MovingGitRef { ref_name: NonEmptyStr }
   | WorkingDirectorySource { path: NonEmptyStr }
 
-type RequiredBuildEnvironmentEntry { name: NonEmptyStr, value: NonEmptyStr }
+type FabricCiEnvironmentEntry { name: NonEmptyStr, value: NonEmptyStr }
 
-type RequiredBuildExecutionSpec {
-  source: RequiredBuildSource
+// THE SUBJECT SAYS WHAT THE WORK IS FOR, so one spec family carries more than one job without one
+// name standing for two contracts (DESIGN section 3, meaning fork). The arm decides the program
+// namespace, the steps and the execution requirements; every other coordinate is the spec's.
+//
+// RequiredWitnessesBuild keeps the namespace, steps and requirements it had before the subject
+// existed, byte for byte, so its WorkKey does not move. Its repository is the one the Actions
+// checkout stands in, which is why that arm names none.
+//
+// The command is the subject's, not the spec's: the build lane runs one argv, while a claim set runs
+// one `gunbc test` argv per claim, derived from its labels, so a spec-level command would be a
+// second authority beside the claims, free to disagree with them.
+//
+// ClaimSetRun builds the exact source once and runs each `gunbc test` label against that build.
+// The claims are a FreeSemigroup because a run that promises no claim has nothing to receipt, and
+// they are declared Labels, rendered by extdeps.bazel.label, never spelled by the caller
+// (gunbc.gunbc_cli_command gunbc_test_command says why). The repository is typed because the run
+// fetches from it rather than standing in it. The requirements are the caller's because the
+// memory envelope is a fact of the claims selected, not of this binder: one label is not the floor.
+type FabricCiWorkSubject
+  = RequiredWitnessesBuild { command: ArgvCommand }
+  | ClaimSetRun { repository: Repository, claims: FreeSemigroup<Label>, requirements: ExecutionRequirements }
+
+type FabricCiExecutionSpec {
+  subject: FabricCiWorkSubject
+  source: FabricCiSource
   checkout_materialization: List<NonEmptyStr>
   toolchain_provenance: List<NonEmptyStr>
   executable_provenance: List<NonEmptyStr>
-  command: ArgvCommand
-  environment: List<RequiredBuildEnvironmentEntry>
+  environment: List<FabricCiEnvironmentEntry>
   cache_policy: List<NonEmptyStr>
   permitted_credential_refs: List<NonEmptyStr>
   output_manifest: List<NonEmptyStr>
   terminal_result_manifest: List<NonEmptyStr>
 }
 
-type RequiredBuildWorkRefusal
-  = RequiredBuildMovingRefRefused { ref_name: NonEmptyStr }
-  | RequiredBuildWorkingDirectoryRefused { path: NonEmptyStr }
-  | RequiredBuildCoordinateMissing { coordinate: NonEmptyStr }
+type FabricCiWorkRefusal
+  = FabricCiMovingRefRefused { ref_name: NonEmptyStr }
+  | FabricCiWorkingDirectoryRefused { path: NonEmptyStr }
+  | FabricCiCoordinateMissing { coordinate: NonEmptyStr }
 
-type RequiredBuildWorkBinding
-  = RequiredBuildWorkBound {
+type FabricCiWorkBinding
+  = FabricCiWorkBound {
       work: Work<NonEmptyStr>
       source_tree_digest: ContentHash
       environment_materialization_digest: ContentHash
     }
-  | RequiredBuildWorkRefused { cause: RequiredBuildWorkRefusal }
+  | FabricCiWorkRefused { cause: FabricCiWorkRefusal }
 
 type RequiredBuildFrozenIdentities {
   work_key: WorkKey
@@ -119,7 +144,7 @@ type RequiredBuildFrozenIdentities {
 
 type RequiredBuildFrozenIdentityProjection
   = RequiredBuildFrozenIdentitiesProjected { identities: RequiredBuildFrozenIdentities }
-  | RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildWorkRefusal }
+  | RequiredBuildFrozenIdentitiesRefused { cause: FabricCiWorkRefusal }
 
 // Canonical sequence encoding. Delimiters alone are not an encoding: ["a", "b"] and
 // ["a<delimiter>b"] collapse. Every scalar is length-prefixed and every sequence carries its
@@ -141,7 +166,7 @@ fn non_empty_strings_material(label: NonEmptyStr, values: List<NonEmptyStr>) -> 
   }
 }
 
-fn environment_material(entries: List<RequiredBuildEnvironmentEntry>) -> NonEmptyStr? {
+fn environment_material(entries: List<FabricCiEnvironmentEntry>) -> NonEmptyStr? {
   match entries {
     Empty {} => none
     Cons { head: _, tail: _ } => Present { value: fold(
@@ -165,32 +190,89 @@ fn action_ref_material(action: ActionRelease) -> NonEmptyStr {
   concat("action:", concat(framed_string(value: action.owner), concat(framed_string(value: action.repo), framed_string(value: action.commit))))
 }
 
+// THE SUBJECT'S NAMESPACE, STEPS, SOURCE AND REQUIREMENTS. Each is a total match, so a new arm
+// cannot borrow another arm's contract by omission.
+fn fabric_ci_subject_namespace(subject: FabricCiWorkSubject) -> NonEmptyStr {
+  match subject {
+    RequiredWitnessesBuild { command: _ } => "gunbc.required-witnesses-build"
+    ClaimSetRun { repository: _, claims: _, requirements: _ } => "gunbc.claim-set-run"
+  }
+}
+
+fn fabric_ci_claims(claims: FreeSemigroup<Label>) -> List<Label> {
+  concat([claims.head], claims.tail)
+}
+
+// One step per claim, keyed by its rendered label, so a claim whose receipt is already admitted is
+// satisfiable on a rerun without re-running its siblings; the build is the shared step before them.
+fn fabric_ci_subject_steps(subject: FabricCiWorkSubject) -> List<WorkStep> {
+  match subject {
+    RequiredWitnessesBuild { command: _ } => [
+      WorkStep { step_id: "checkout-materialize", resumability: ReceiptSatisfiable },
+      WorkStep { step_id: "toolchain-and-executable-materialize", resumability: ReceiptSatisfiable },
+      WorkStep { step_id: "required-witnesses-build", resumability: ReceiptSatisfiable },
+    ]
+    ClaimSetRun { repository: _, claims, requirements: _ } => concat(
+      [
+        WorkStep { step_id: "checkout-materialize", resumability: ReceiptSatisfiable },
+        WorkStep { step_id: "toolchain-and-executable-materialize", resumability: ReceiptSatisfiable },
+      ],
+      map(fabric_ci_claims(claims: claims), fn(claim) { WorkStep { step_id: concat("claim:", render_label(l: claim)), resumability: ReceiptSatisfiable } }),
+    )
+  }
+}
+
+// The claim argv IS the program material, so the `gunbc test` shape is part of what the run IS:
+// a change to how a claim is invoked is a different Work even when the labels are unchanged.
+fn fabric_ci_subject_program(subject: FabricCiWorkSubject) -> NonEmptyStr {
+  match subject {
+    RequiredWitnessesBuild { command } => framed_string(value: command_material(command: command))
+    ClaimSetRun { repository: _, claims, requirements: _ } => fold(
+      fabric_ci_claims(claims: claims),
+      init: concat("claims:", concat(to_string(1 + count(claims.tail)), ":")),
+      f: fn(acc, claim) { concat(acc, framed_string(value: command_material(command: gunbc_test_command(label: render_label(l: claim))))) },
+    )
+  }
+}
+
+fn fabric_ci_subject_source(subject: FabricCiWorkSubject, tree: VerifiedGitCommitTree) -> NonEmptyStr {
+  let exact = concat(framed_string(value: git_object_id_wire_hex(oid: tree.commit)), framed_string(value: git_object_id_wire_hex(oid: tree.tree)))
+  match subject {
+    RequiredWitnessesBuild { command: _ } => concat("git-source:", exact)
+    ClaimSetRun { repository, claims: _, requirements: _ } => concat("git-source:", concat(framed_string(value: github_https_clone_url(repo: repository)), exact))
+  }
+}
+
+fn fabric_ci_subject_requirements(subject: FabricCiWorkSubject) -> ExecutionRequirements {
+  match subject {
+    RequiredWitnessesBuild { command: _ } => floor_execution_requirements()
+    ClaimSetRun { repository: _, claims: _, requirements } => requirements
+  }
+}
+
 // Opaque contract name. Obligations are the structured field —
 // they used to be framed into the OutputContractRef string (content-serialised
 // meaning fork). Deleting that encoding is the cut; the roster no longer hides
 // in a name.
-fn required_build_contract_from_materials(
+fn fabric_ci_contract_from_materials(
+  subject: FabricCiWorkSubject,
   source: NonEmptyStr,
   checkout: NonEmptyStr,
   toolchain: NonEmptyStr,
   executable: NonEmptyStr,
-  command: NonEmptyStr,
   environment: NonEmptyStr,
   cache: NonEmptyStr,
   credentials: NonEmptyStr,
   output_manifest: List<NonEmptyStr>,
   terminal_result_manifest: List<NonEmptyStr>,
 ) -> WorkContract {
+  let ns = fabric_ci_subject_namespace(subject: subject)
   WorkContract {
-    execution: MaterializedProgram { program: concat("gunbc.required-witnesses-build.program:", framed_string(value: command)), source: concat("gunbc.required-witnesses-build.source:", concat(framed_string(value: source), framed_string(value: checkout))), runtime_closure: concat("gunbc.required-witnesses-build.runtime:", concat(framed_string(value: toolchain), framed_string(value: executable))) },
-    steps: [
-      WorkStep { step_id: "checkout-materialize", resumability: ReceiptSatisfiable },
-      WorkStep { step_id: "toolchain-and-executable-materialize", resumability: ReceiptSatisfiable },
-      WorkStep { step_id: "required-witnesses-build", resumability: ReceiptSatisfiable },
-    ],
-    inputs: concat("gunbc.required-witnesses-build.inputs:", concat(framed_string(value: environment), concat(framed_string(value: cache), framed_string(value: credentials)))),
-    effect_contract: "gunbc.required-witnesses-build.effects.checkout-read-cache-and-permitted-credentials-only",
-    output_contract: "gunbc.required-witnesses-build.outputs",
+    execution: MaterializedProgram { program: concat(ns, concat(".program:", fabric_ci_subject_program(subject: subject))), source: concat(ns, concat(".source:", concat(framed_string(value: source), framed_string(value: checkout)))), runtime_closure: concat(ns, concat(".runtime:", concat(framed_string(value: toolchain), framed_string(value: executable)))) },
+    steps: fabric_ci_subject_steps(subject: subject),
+    inputs: concat(ns, concat(".inputs:", concat(framed_string(value: environment), concat(framed_string(value: cache), framed_string(value: credentials))))),
+    effect_contract: concat(ns, ".effects.checkout-read-cache-and-permitted-credentials-only"),
+    output_contract: concat(ns, ".outputs"),
     output_obligations: declared_output_obligations_from_manifests(
       artifacts: output_manifest,
       terminals: terminal_result_manifest,
@@ -198,48 +280,47 @@ fn required_build_contract_from_materials(
   }
 }
 
-fn bind_required_witnesses_build_work(
+fn bind_fabric_ci_work(
   principal: NonEmptyStr,
-  spec: RequiredBuildExecutionSpec,
-) -> RequiredBuildWorkBinding {
+  spec: FabricCiExecutionSpec,
+) -> FabricCiWorkBinding {
   match spec.source {
-    MovingGitRef { ref_name } => RequiredBuildWorkRefused { cause: RequiredBuildMovingRefRefused { ref_name: ref_name } }
-    WorkingDirectorySource { path } => RequiredBuildWorkRefused { cause: RequiredBuildWorkingDirectoryRefused { path: path } }
+    MovingGitRef { ref_name } => FabricCiWorkRefused { cause: FabricCiMovingRefRefused { ref_name: ref_name } }
+    WorkingDirectorySource { path } => FabricCiWorkRefused { cause: FabricCiWorkingDirectoryRefused { path: path } }
     ExactGitSource { subject } =>
       match non_empty_strings_material(label: "checkout", values: spec.checkout_materialization) {
-        Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "checkout-materialization" } }
+        Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "checkout-materialization" } }
         Present { value: checkout } => match non_empty_strings_material(label: "toolchain", values: spec.toolchain_provenance) {
-          Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "toolchain-provenance" } }
+          Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "toolchain-provenance" } }
           Present { value: toolchain } => match non_empty_strings_material(label: "executable", values: spec.executable_provenance) {
-            Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "executable-provenance" } }
+            Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "executable-provenance" } }
             Present { value: executable } => match environment_material(entries: spec.environment) {
-              Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "environment" } }
+              Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "environment" } }
               Present { value: environment } => match non_empty_strings_material(label: "cache", values: spec.cache_policy) {
-                Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "cache-policy" } }
+                Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "cache-policy" } }
                 Present { value: cache } => match non_empty_strings_material(label: "credentials", values: spec.permitted_credential_refs) {
-                  Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "permitted-credential-refs" } }
+                  Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "permitted-credential-refs" } }
                   Present { value: credentials } => match non_empty_strings_material(label: "outputs", values: spec.output_manifest) {
-                    Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "output-manifest" } }
+                    Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "output-manifest" } }
                     Present { value: _ } => match non_empty_strings_material(label: "terminal", values: spec.terminal_result_manifest) {
-                      Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "terminal-result-manifest" } }
+                      Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "terminal-result-manifest" } }
                       Present { value: _ } => {
-                        let source = concat("git-source:", concat(framed_string(value: git_object_id_wire_hex(oid: subject.commit)), framed_string(value: git_object_id_wire_hex(oid: subject.tree))))
-                        let command = command_material(command: spec.command)
-                        let contract = required_build_contract_from_materials(
+                        let source = fabric_ci_subject_source(subject: spec.subject, tree: subject)
+                        let contract = fabric_ci_contract_from_materials(
+                          subject: spec.subject,
                           source: source,
                           checkout: checkout,
                           toolchain: toolchain,
                           executable: executable,
-                          command: command,
                           environment: environment,
                           cache: cache,
                           credentials: credentials,
                           output_manifest: spec.output_manifest,
                           terminal_result_manifest: spec.terminal_result_manifest,
                         )
-                        let requirements = floor_execution_requirements()
+                        let requirements = fabric_ci_subject_requirements(subject: spec.subject)
                         let work = work_for(principal: principal, contract: contract, requirements: requirements)
-                        RequiredBuildWorkBound {
+                        FabricCiWorkBound {
                           work: work,
                           source_tree_digest: git_object_id_content_hash(oid: subject.tree),
                           environment_materialization_digest: content_hash_of_value(value: concat("environment-materialization:", concat(framed_string(value: checkout), concat(framed_string(value: toolchain), concat(framed_string(value: executable), concat(framed_string(value: environment), concat(framed_string(value: cache), framed_string(value: credentials)))))))),
@@ -260,24 +341,24 @@ fn bind_required_witnesses_build_work(
 // verifier, never a historical literal transcribed into production. The checkout, bootstrap, build
 // and run facts mirror the authorities the current Actions realization consumes; this value does
 // not make Actions execute through the fabric. FCI-3 owns that later authority cut.
-fn required_witnesses_build_work(source: RequiredBuildSource) -> RequiredBuildWorkBinding {
-  bind_required_witnesses_build_work(
+fn required_witnesses_build_work(source: FabricCiSource) -> FabricCiWorkBinding {
+  bind_fabric_ci_work(
     principal: "gunbc",
-    spec: RequiredBuildExecutionSpec {
+    spec: FabricCiExecutionSpec {
+          subject: RequiredWitnessesBuild { command: build_lane_run_command() },
           source: source,
           checkout_materialization: [action_ref_material(action: checkout_action), "fetch-depth=0", ci_toolchain_home_isolation_script()],
           toolchain_provenance: [action_ref_material(action: setup_rust_action), "rust-toolchain.toml:1.93.0+clippy+rustfmt", ci_pin_rustup_default_script()],
           executable_provenance: [repo_self_build_all_bins_command(), claim_executor_program().invocation],
-          command: build_lane_run_command(),
           environment: [
-            RequiredBuildEnvironmentEntry { name: "CARGO_TERM_COLOR", value: "always" },
-            RequiredBuildEnvironmentEntry { name: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: "expected_red_roster_join.tsv" },
-            RequiredBuildEnvironmentEntry { name: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: "required_floor_disposition.tsv" },
-            RequiredBuildEnvironmentEntry { name: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: "long_home_storage_agreement.tsv" },
-            RequiredBuildEnvironmentEntry { name: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: "required_floor_claim_cost.tsv" },
-            RequiredBuildEnvironmentEntry { name: "HOME", value: "derived-from-RUNNER_TEMP" },
-            RequiredBuildEnvironmentEntry { name: "CARGO_HOME", value: "derived-from-RUNNER_TEMP/cargo" },
-            RequiredBuildEnvironmentEntry { name: "RUSTUP_HOME", value: "derived-from-RUNNER_TEMP/rustup" },
+            FabricCiEnvironmentEntry { name: "CARGO_TERM_COLOR", value: "always" },
+            FabricCiEnvironmentEntry { name: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: "expected_red_roster_join.tsv" },
+            FabricCiEnvironmentEntry { name: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: "required_floor_disposition.tsv" },
+            FabricCiEnvironmentEntry { name: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: "long_home_storage_agreement.tsv" },
+            FabricCiEnvironmentEntry { name: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: "required_floor_claim_cost.tsv" },
+            FabricCiEnvironmentEntry { name: "HOME", value: "derived-from-RUNNER_TEMP" },
+            FabricCiEnvironmentEntry { name: "CARGO_HOME", value: "derived-from-RUNNER_TEMP/cargo" },
+            FabricCiEnvironmentEntry { name: "RUSTUP_HOME", value: "derived-from-RUNNER_TEMP/rustup" },
           ],
           cache_policy: ["setup-rust-cache=false", "delete-and-recreate-RUNNER_TEMP/rustup-and-cargo", "step-reuse-permitted"],
           permitted_credential_refs: ["github.actions.checkout-token"],
@@ -287,10 +368,10 @@ fn required_witnesses_build_work(source: RequiredBuildSource) -> RequiredBuildWo
   )
 }
 
-fn required_witnesses_build_frozen_identities(source: RequiredBuildSource) -> RequiredBuildFrozenIdentityProjection {
+fn required_witnesses_build_frozen_identities(source: FabricCiSource) -> RequiredBuildFrozenIdentityProjection {
   match required_witnesses_build_work(source: source) {
-    RequiredBuildWorkRefused { cause } => RequiredBuildFrozenIdentitiesRefused { cause: cause }
-    RequiredBuildWorkBound { work, source_tree_digest, environment_materialization_digest } =>
+    FabricCiWorkRefused { cause } => RequiredBuildFrozenIdentitiesRefused { cause: cause }
+    FabricCiWorkBound { work, source_tree_digest, environment_materialization_digest } =>
       RequiredBuildFrozenIdentitiesProjected {
         identities: RequiredBuildFrozenIdentities {
           work_key: work.id.key,
@@ -309,13 +390,13 @@ fn required_witnesses_build_frozen_identity_wire(
   observed_commit_tree_hex: NonEmptyStr,
 ) -> String {
   let projection = match git_sha1_object_id(hex: commit_hex) {
-    Absent => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "source-commit" } }
+    Absent => RequiredBuildFrozenIdentitiesRefused { cause: FabricCiCoordinateMissing { coordinate: "source-commit" } }
     Present { value: commit } => match git_sha1_object_id(hex: tree_hex) {
-      Absent => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "verified-source-tree" } }
+      Absent => RequiredBuildFrozenIdentitiesRefused { cause: FabricCiCoordinateMissing { coordinate: "verified-source-tree" } }
       Present { value: tree } => match git_sha1_object_id(hex: observed_commit_tree_hex) {
-        Absent => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "observed-commit-tree" } }
+        Absent => RequiredBuildFrozenIdentitiesRefused { cause: FabricCiCoordinateMissing { coordinate: "observed-commit-tree" } }
         Present { value: observed_commit_tree } => match verify_git_commit_tree(commit: commit, declared_tree: tree, observed_commit_tree: observed_commit_tree) {
-          GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "commit-tree-verification" } }
+          GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } => RequiredBuildFrozenIdentitiesRefused { cause: FabricCiCoordinateMissing { coordinate: "commit-tree-verification" } }
           GitCommitTreeVerified { subject } => required_witnesses_build_frozen_identities(source: ExactGitSource { subject: subject })
         }
       }

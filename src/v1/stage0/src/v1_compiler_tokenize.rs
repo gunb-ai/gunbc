@@ -8,17 +8,15 @@ use crate::std_source_annotation::AnnotationPlacement::{
     LeadingAfterLineIndent, TrailingAfterSemanticToken,
 };
 pub use crate::std_source_annotation::{
-    advance_line_prefix_indent_only_text, placement_from_line_prefix,
+    advance_line_prefix_indent_only_text, placement_from_line_prefix, AnnotationPlacement,
+    UnboundAnnotationCapture,
 };
-pub use crate::std_source_annotation::{AnnotationPlacement, UnboundAnnotationCapture};
 pub use crate::std_syntax::ParseEnvironment;
 pub use crate::std_types::SourceSpan;
 pub use crate::std_unicode_types::unicode_scalar;
-pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
-pub use crate::v1_compiler_languages::EmojiCharEscape;
+pub use crate::v1_compiler_languages::{canonical_emoji_char_escape, EmojiCharEscape};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::make_file_span;
 use crate::v1_std_core::TokenShape::{
     ShAnd, ShArrow, ShBang, ShCaret, ShColon, ShComma, ShDot, ShDotDot, ShEof, ShEq, ShEqEq,
     ShFatArrow, ShGe, ShGt, ShIdent, ShKeyword, ShLBrace, ShLBracket, ShLParen, ShLe, ShLitFloat,
@@ -26,14 +24,14 @@ use crate::v1_std_core::TokenShape::{
     ShPipeArrow, ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin,
     ShStrEnd, ShStrMid, ShUnknown,
 };
-pub use crate::v1_std_core::{Token, TokenShape};
+pub use crate::v1_std_core::{make_file_span, Token, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_keyword_text(text: String, env: Rc<ParseEnvironment>) -> bool {
-    match v1_rt::lookup(&env.syntax_spec.clone().keyword_set.clone(), text.clone()) {
+    match v1_rt::lookup(&env.syntax_spec.keyword_set.clone(), text.clone()) {
         Some(_) => true,
         std::option::Option::None => false,
     }
@@ -1537,9 +1535,9 @@ pub fn drop_last(stack: Rc<Vec<i64>>) -> Rc<Vec<i64>> {
         .cloned()
         .fold(Rc::new(vec![]), |result: Rc<Vec<i64>>, pair: (i64, i64)| {
             if (pair.0.clone() < v1_rt::int_sub(len.clone(), 1)) {
-                Rc::new(v1_rt::append(result.clone(), pair.1.clone()))
+                Rc::new(v1_rt::append(result, pair.1.clone()))
             } else {
-                result.clone()
+                result
             }
         })
     }
@@ -1555,10 +1553,24 @@ pub fn replace_last(stack: Rc<Vec<i64>>, value: i64) -> Rc<Vec<i64>> {
 pub fn skip_spaces(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<TokPos> {
     {
         let p = source_skip_ws(source.clone(), pos.pos.clone());
-        Rc::new(TokPos {
-            pos: p.clone(),
-            interp_depth: pos.interp_depth.clone(),
-        })
+        {
+            let __rb_0_0 = p.clone();
+            let __rb_1_0 = pos.interp_depth.clone();
+            let mut __rb_h = pos;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.pos = __rb_0_0;
+                    __rb_r.interp_depth = __rb_1_0;
+                }
+                None => {
+                    __rb_h = Rc::new(TokPos {
+                        pos: __rb_0_0,
+                        interp_depth: __rb_1_0,
+                    });
+                }
+            }
+            __rb_h
+        }
     }
 }
 

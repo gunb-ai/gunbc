@@ -1,6 +1,6 @@
 module v2.test.claim.name_resolve.kind_aware_binding
 
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   native_test_context_from_ingest,
   native_lane_file_refusal_index,
   native_module_resolve_verdict,
@@ -228,14 +228,14 @@ test fn value_role_optional_binds_the_variant_beside_the_type() -> Bool {
   }
 }
 
-// WRONG KIND. Only the variant is imported; Optional<Unit> in type position is unbound. The
+// WRONG KIND. Only the variant is imported; Optional<Unit> in type position is a category mismatch (the name exists, as a variant). The
 // kernel excludes an inadmissible declaration then runs none/one/many
 // (occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds →
 // OccurrenceUnbound). WrongOccurrenceRole is a different cause (declaration vs reference role).
-test fn a_variant_optional_in_type_position_is_unbound() -> Bool {
+test fn a_variant_optional_in_type_position_is_a_category_mismatch() -> Bool {
   match kab_verdicts() {
     Absent => false
-    Present { value: vs } => kab_refuses_with(v: vs.wrong_kind, reason: ^resolve_reason_unbound_symbol)
+    Present { value: vs } => kab_refuses_with(v: vs.wrong_kind, reason: ^resolve_reason_reference_category_mismatch)
   }
 }
 
@@ -258,10 +258,10 @@ test fn a_data_value_resolves_in_value_position() -> Bool {
   }
 }
 
-test fn a_data_value_in_type_position_is_unbound() -> Bool {
+test fn a_data_value_in_type_position_is_a_category_mismatch() -> Bool {
   match kab_verdicts() {
     Absent => false
-    Present { value: vs } => kab_refuses_with(v: vs.data_n_as_type, reason: ^resolve_reason_unbound_symbol)
+    Present { value: vs } => kab_refuses_with(v: vs.data_n_as_type, reason: ^resolve_reason_reference_category_mismatch)
   }
 }
 
@@ -386,9 +386,9 @@ test fn an_imported_refinement_binds_in_type_position() -> Bool {
 
 // THE DUAL. Classified as a value, the same refinement used to bind in value position; as a type
 // it is excluded there and the kernel fold is unbound.
-test fn an_imported_refinement_in_value_position_is_unbound() -> Bool {
+test fn an_imported_refinement_in_value_position_is_a_category_mismatch() -> Bool {
   match kab_verdicts() {
     Absent => false
-    Present { value: vs } => kab_refuses_with(v: vs.refined_as_value, reason: ^resolve_reason_unbound_symbol)
+    Present { value: vs } => kab_refuses_with(v: vs.refined_as_value, reason: ^resolve_reason_reference_category_mismatch)
   }
 }

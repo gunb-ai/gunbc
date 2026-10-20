@@ -2,7 +2,7 @@ module v2.test.claim.body_let_annotation
 
 import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
-import std.algebra { Cons, Empty, fold_list, length, list_snoc_item, skip }
+import std.algebra { Cons, Empty, fold_list, length, list_snoc_item, skip, list_at_optional }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_artifact, tpb_assemble, tpb_refuses_with }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -18,7 +18,7 @@ import v2.std.integer { integer_decimal_digit_type_node }
 import std.types { Int }
 import v2.extdeps.languages.rust_fixtures { rust_binop_target_model_staging }
 import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated }
-import v2.std.collection { list_at_optional }
+
 import v2.std.diagnostic {
   None,
   Some,
@@ -383,7 +383,6 @@ fn bla_undecided_count(o: Outcome<Bool>) -> Int {
       fold_list(xs: Cons { head: d.head, tail: d.tail }, empty: 0, cons: fn(acc, x) {
         if (x.reason == ^inhabitance_undecidable_argument_type_not_derived)
           || (x.reason == ^inhabitance_undecidable_formal_unresolved)
-          || (x.reason == ^inhabitance_undecidable_optional_carrier)
           || (x.reason == ^inhabitance_undecidable_generic_formal) { acc + 1 } else { acc }
       })
   }
@@ -406,7 +405,6 @@ fn bla_admits_decided(o: Outcome<Bool>) -> Bool {
     Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
       !bla_has_reason(d: d, reason: ^inhabitance_undecidable_argument_type_not_derived)
         && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
-        && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_optional_carrier)
         && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
   }
 }

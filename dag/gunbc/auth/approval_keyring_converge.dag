@@ -38,11 +38,11 @@ import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.file_access { FileTreeScope }
-import gunbc.typed_remote_file_write {
+import gunbc.typed_remote_file_write { NoValidation,
   typed_remote_file_write_seal, converge_typed_remote_file,
   RemoteFileModeOwnerReadWriteGroupRead, RemoteFileViaNonInteractiveSudo,
   TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
@@ -176,11 +176,8 @@ fn roadmap_unit_restart_argv() -> List<String> {
   systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
 }
 
-fn keyring_ssh_target(host: String) -> SshTarget {
-  SshTarget {
-    endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
-    principal: executor_bootstrap_principal.login,
-  }
+fn keyring_ssh_target(host: String) -> SshTargetResolution {
+  fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host), principal: executor_bootstrap_principal.login)
 }
 
 fn keyring_elevated_exec(
@@ -232,6 +229,7 @@ fn keyring_install_file(
     admission: typed_remote_file_write_seal(path: dest as FilePath, content: content, allowed_scope: approval_keyring_etc_scope),
     mode: RemoteFileModeOwnerReadWriteGroupRead,
     privilege: RemoteFileViaNonInteractiveSudo,
+    validation: NoValidation,
   ) {
     TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
       exit_failure(reason: concat("approval keyring: ", concat(step, concat(" ", concat(st, concat(": ", why))))))
@@ -277,7 +275,10 @@ fn approval_keyring_converge_on_host(host: String) -> ProcessExit
                               FleetSshContextRefused { cause: c } =>
                                 exit_failure(reason: concat("approval keyring: ", c))
                               FleetSshContextReady { context: context, receipt: _ } => {
-                                let target = keyring_ssh_target(host: host)
+                                match keyring_ssh_target(host: host) {
+                                SshTargetRefused { endpoint: e, refusal: why } =>
+                                  exit_failure(reason: concat("approval keyring: ", ssh_target_refusal_text(endpoint: e, refusal: why)))
+                                SshTargetResolved { target: target } =>
                                 match keyring_elevated_exec(target: target, context: context, command: ["true"], step: "administrator-privilege") {
                                   ExitSuccess =>
                                     match keyring_ensure_dirs(target: target, context: context) {
@@ -305,6 +306,7 @@ fn approval_keyring_converge_on_host(host: String) -> ProcessExit
                                       other => other
                                     }
                                   other => other
+                                }
                                 }
                               }
                             }

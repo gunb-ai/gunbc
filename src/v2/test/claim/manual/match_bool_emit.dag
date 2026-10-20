@@ -22,10 +22,8 @@ import v2.extdeps.languages.dag {
 import v2.compiler.source_authority { source_authority_node_equal }
 import v2.compiler.translate { coerce_grounded_node, translate_emitted_node }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
-import v2.std.collection {
-  Map,
-  list_at_optional
-}
+import std.types { Map }
+import std.algebra { list_at_optional }
 import std.optional {
   Optional,
   Present,
@@ -38,11 +36,8 @@ import v2.std.diagnostic {
   Rejected,
   bind_outcome
 }
-import v2.std.node { Node }
-import v2.std.node_query {
-  find_arrow_body_child,
-  node_positional_child_targets
-}
+import v2.std.node { positional_child_target_nodes, Node }
+import v2.std.node_query { find_arrow_body_child }
 import v2.std.compilers.target_model {
   TargetModel,
   target_value_expr_match_gate

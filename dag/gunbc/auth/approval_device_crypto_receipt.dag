@@ -1,0 +1,31 @@
+module gunbc.auth.approval_device_crypto_receipt
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.native_serve { NativeServeStartup, NativeServeStartupPassed, NativeServeStartupRefused }
+import gunbc.auth.approval_device_crypto_wire { device_crypto_obligation_wire }
+import gunbc.auth.approval_device_crypto_realization {
+  DeviceCryptoObligation, DeviceCryptoHandlerReceipt, device_crypto_receipt_admission, device_crypto_obligations, device_crypto_handler_identity,
+  DeviceCryptoAdmitted, DeviceCryptoRefused,
+}
+
+// THE HALF OF THE STARTUP SELF-CHECK THAT JUDGES A RECEIPT, apart from the folds that earn it, so the one place that
+// mints a receipt and asks gunbc.auth.approval_device_crypto_realization device_crypto_receipt_admission whether it covers the
+// population is shared by the verifier (gunbc.auth.approval_device_crypto_self_check device_crypto_startup, which
+// executes the obligations and supplies the binary's digest) and by the control that drops obligations
+// (gunbc.instruments.native_serve_startup_refusal_fixture). A receipt that omits an obligation is refused by
+// device_crypto_receipt_admission naming the evidence it lacks; the startup carries that refusal and the door then refuses to bind.
+
+// The startup fold's payload is the admitted receipt itself (NativeServeStartup<DeviceCryptoHandlerReceipt>): the handler
+// receives it typed, coverage included, and the announced line is only its one-way rendering.
+fn device_crypto_receipt_startup(covered: List<DeviceCryptoObligation>, exact_revision: NonEmptyStr) -> NativeServeStartup<DeviceCryptoHandlerReceipt> {
+  let receipt = DeviceCryptoHandlerReceipt {
+    handler_identity: device_crypto_handler_identity,
+    exact_revision: exact_revision,
+    covered: covered,
+  }
+  match device_crypto_receipt_admission(receipt: receipt, required: device_crypto_obligations) {
+    DeviceCryptoAdmitted { handler_identity: h, exact_revision: r } =>
+      NativeServeStartupPassed { line: join([h as String, " @ sha256:", r as String, " covers ", join(map(covered, o => device_crypto_obligation_wire(o: o)), ",")], ""), value: receipt }
+    DeviceCryptoRefused { status: _, reason: why } => NativeServeStartupRefused { reason: why }
+  }
+}

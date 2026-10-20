@@ -5,7 +5,8 @@ import v2.extdeps.languages.rust {
   rust_lex_rule,
   rust_type_expression_projection_bundle_node
 }
-import v2.std.collection { Map, empty_map, map_insert }
+import std.types { Map }
+import std.algebra { empty_map, map_insert }
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules, VoidLexRules }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,

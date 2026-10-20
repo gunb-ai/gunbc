@@ -1,71 +1,20 @@
 module v2.lens.affected_set
 import std.optional { Absent, Optional, Present }
-
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-
-import v2.std.collection { Absent, Map, Present, map_get_checked, map_insert }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, contains, length }
+import v2.std.witness { map_get_checked, Holds, Witness }
+import std.algebra { map_insert, Cons, Empty, list_append, list_snoc_item, contains, length, list_tail, list_at_optional }
 import v2.compiler.infer { InferredTree }
-import v2.std.change {
-  AffectedDependency,
-  AffectedExclusion,
-  AffectedSet,
-  AffectedSetDiagnostics,
-  AffectedSetEvidence,
-  AffectedSetFailClosed,
-  AffectedSetProduced,
-  AffectedSetReason,
-  Change,
-  ChangeSet,
-  DependencyDependent,
-  DependencyEndpoint,
-  DependencySource,
-  NodeChanged
-}
+import v2.std.change { AffectedDependency, AffectedExclusion, AffectedSet, AffectedSetDiagnostics, AffectedSetEvidence, AffectedSetFailClosed, AffectedSetProduced, AffectedSetReason, Change, ChangeSet, DependencyDependent, DependencyEndpoint, DependencySource, NodeChanged }
 import v2.std.dependency { Contains, DependencyKind, DependencyView, ProjectionDependsOn, VerifiedBy, dependency_lens }
-import v2.std.diagnostic {
-  Diagnostic,
-  Diagnostics,
-  NonEmptyDiagnostics,
-  Outcome,
-  Accepted,
-  None,
-  Rejected,
-  bind_outcome,
-  diagnostics_merge,
-  diagnostics_singleton,
-  outcome_accepted
-}
-import v2.std.node {
-  Arrow,
-  Atom,
-  Behavior,
-  Bind,
-  Branch,
-  Occupancy,
-  ComputationNode,
-  Conj,
-  Connective,
-  Diff,
-  Disj,
-  Edit,
-  Hash,
-  Instantiation,
-  Loop,
-  Node,
-  Path,
-  Symbol,
-  Transform,
-  TypeNode,
-  Value,
-  content_hash,
-}
-import v2.std.witness { Holds, Witness }
+import v2.std.diagnostic { Diagnostic, Diagnostics, NonEmptyDiagnostics, Outcome, Accepted, None, Rejected, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_accepted }
+import v2.std.node { Arrow, Atom, Behavior, Bind, Branch, ComputationNode, Conj, Connective, Diff, Disj, Edit, Hash, Instantiation, Loop, Node, Path, Symbol, Transform, TypeNode, Value, content_hash }
 import v2.std.node_reflection { coproduct_arm_keys }
 import v2.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at, find_child_by_label }
+
+
 
 type Dag = Node
 
@@ -1053,7 +1002,6 @@ fn connective_to_dimension_family(connective: Connective) -> AffectedDimension {
     Conj => ^canonical_tag_conj
     Disj => ^canonical_tag_disj
     Arrow => ^canonical_tag_arrow
-    Occupancy => ^canonical_tag_cardinality
     Instantiation => ^canonical_tag_instantiation
   }
 }

@@ -19,12 +19,11 @@ import extdeps.uri { uri_wire }
 import gunbc.site.controls { site_client_path }
 import gunbc.site.document { SiteStyles, site_document }
 
-import gunbc.site.robot_mark { robot_mark_svg }
 import gunbc.site.avatar_marks { unknown_avatar_svg, group_avatar_svg, unassigned_avatar }
 import gunbc.roadmap.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, membership_index, project_root_for_node_in }
 import gunbc.roadmap.roadmap_lineage { lineage_lookup }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 
 import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
 
@@ -43,7 +42,7 @@ import gunbc.principal_projection {
 }
 import gunbc.auth.profile_projection { PrincipalProfile }
 import gunbc.roadmap.roadmap_component { standing_chip_class }
-import std.types { list_length }
+import std.types { list_length, Map }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation,
   RoundSegment, RoundSegmentKind, ReadRound, WriteRound, UnmeasuredRound, round_segments, round_segment_kind_word, round_playback, RoundPlayback, round_remaining_flex, harness_round_budget_steps,
@@ -762,7 +761,7 @@ fn issue_avatar_chip_node(display: EventPrincipalDisplay, workflow: Bool) -> Fra
 // THE CIRCLE'S FACE: absent/unread human pictures use the question-mark brand avatar;
 // resolved pictures keep their existing initials realization until the photo transport lands.
 // The Fabric workflow shows the gunb robot mark
-// (gunbc.site.robot_mark, copied from the frontend's #stoic-robot symbol), in the chip's own color.
+// (gunbc.design.brand_mark RobotMark), in the chip's own color.
 fn issue_avatar_face(display: EventPrincipalDisplay, workflow: Bool) -> List<Fragment> {
   if workflow { [group_avatar_svg(class_name: "site-avatar-default-mark", label: concat(display.name, " group"))] }
   else if display.picture != "" {
@@ -871,6 +870,10 @@ fn script_inline_text(children: List<Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => match c {
     FragmentText { content } => concat(acc, content)
     RawNode { content } => concat(acc, content)
+    // A <script>'s children are its character data: a comment or a whole document cannot legitimately
+    // sit there, and neither contributes text to what the script's inline body is checked against. Same
+    // answer as the Element arm below, which is why it is not a silent skip of a page-level scan.
+    MarkupComment { body: _ } => acc
     Element { tag: _, attributes: _, children: _ } => acc
   })
 }
@@ -883,6 +886,7 @@ fn collect_script_violations(node: Fragment, known_src: String) -> List<PageScri
   match node {
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
+    MarkupComment { body: _ } => []
     Element { tag, attributes, children } =>
       if tag == "script" {
         let inline = script_inline_text(children: children)
@@ -3299,6 +3303,7 @@ fn issue_mention_fragment(f: Fragment, profiles: List<PrincipalProfile>) -> Frag
   match f {
     FragmentText { content: _ } => f
     RawNode { content: _ } => f
+    MarkupComment { body: _ } => f
     Element { tag, attributes, children } =>
       let href = fold(attributes, init: "", f: (acc, a) => if a.name == "href" { a.value } else { acc })
       match principal_mention_read(uri: href) {

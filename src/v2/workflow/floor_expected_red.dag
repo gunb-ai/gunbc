@@ -1242,26 +1242,9 @@ fn floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded() -> List<String>
 }
 
 // TWO IDENTITIES ENROLLED 2026-10-01, AUTHORED red: the controls for top-down CHECKING MODE in
-// v2.compiler.infer. Each hands infer a generic record construct whose type its field values cannot
-// fix -- a phantom parameter (`Ph<T> { n: Int }`), or one that occurs only inside a field whose own
-// value is a construct only the context can type (`Two<T> { a: Ph<T>, b: T }`) -- at a position that
-// DECLARES the instantiation (`data p: Ph<Bool> = ...`). infer is a bottom-up fold, so the construct's
-// row decides before its expected type is known, and both answer the wrong way today: the phantom
-// and the nested construct are accepted with a counted obligation where they should be decided.
-// The discriminating refusal (`b: 3` at a declared Two<Bool> is accepted where it should refuse at
-// the value) is NOT enrolled here: while red it runs the whole member and exceeds the floor's
-// new-witness budget. Checking mode enrolls it green, per docs/plans/infer-checking-mode-plan.md.
-//
-// TRIGGER, the capability and not an artifact: checking mode carries a declared position's expected
-// type INTO the construct's row before that row decides -- infer's gather run as
-// v2.std.node fold_node_topdown, whose child_context hands each child the type its parent expects --
-// so the construct forms R<instances> itself. Sufficient for both to pass unchanged and for the refusal to be enrolled green. Owner:
-// smart-newt-725, sequenced after eager-newt-412's site-keyed facts store (branch
-// eager-newt-412/facts-site-key), which makes a child's site addressable from its parent and keeps
-// one fact per site; checking mode must deliver the expected type before a row decides, never
-// revise a fact after it. The plan is docs/plans/infer-checking-mode-plan.md. A consumer-side
-// re-judgment that made these pass without checking mode was built and withdrawn (gunbc#12935):
-// it was a second route checking mode would have deleted.
+// v2.compiler.infer (a generic record construct whose type its field values cannot fix, at a position
+// that DECLARES the instantiation). Their disposition and restoration trigger are the typed stall
+// gunbc.guarantee_stall.infer_checking_mode_expected_red_pair_stall.
 fn floor_expected_red_chunk_infer_checking_mode() -> List<String> {
   Cons { head: "v2.test.claim.compiler.infer_expected_type_record_instantiation_witness.etr_a_phantom_binder_is_fixed_by_the_declared_type_holds", tail: Cons { head: "v2.test.claim.compiler.infer_expected_type_record_instantiation_witness.etr_a_nested_construct_typed_only_by_its_context_is_decided_at_its_declared_return_holds", tail: Empty {} } }
 }

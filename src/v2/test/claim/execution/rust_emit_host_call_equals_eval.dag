@@ -1,6 +1,6 @@
 module v2.test.claim.execution.rust_emit_host_call_equals_eval
 
-import std.types { List }
+import std.types { List, Map }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -25,9 +25,7 @@ import v2.test.claim.emit.rust_call_emit {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection {
-  Map
-}
+
 import std.optional {
   Optional,
   Present,

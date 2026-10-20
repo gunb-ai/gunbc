@@ -1,0 +1,181 @@
+module test.claim.fleet.fleet_ssh_multiplexing_witness
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.measure { byte_size_count }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  FleetSshExecutionContext,
+  SshTarget,
+  SshTargetResolved,
+  SshTargetRefused,
+  fleet_ssh_target_at_standard_port,
+  portable_remote_words,
+  shape_fleet_ssh_exec,
+  fleet_ssh_password_client_options,
+  fleet_ssh_multiplex_control_path,
+  fleet_ssh_multiplex_directory_admitted,
+  fleet_ssh_multiplex_directory_path_for,
+  fleet_ssh_multiplexing,
+  FleetSshMultiplexPreparation,
+  FleetSshMultiplexReady,
+  FleetSshMultiplexRefused,
+  fleet_ssh_multiplex_path_bytes,
+}
+import extdeps.ssh.client_options { serialize_ssh_client_options, openssh_control_path_temporary_suffix_length }
+import extdeps.linux.unix_socket { linux_unix_socket_pathname_max_length }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture {
+  fleet_ssh_execution_context_at_witness_fixture,
+  fixture_multiplex_directory_path,
+}
+
+// KEY-SESSION LEGS SHARE ONE AUTHENTICATED CONNECTION PER (CONTEXT, TARGET), the route's answer to
+// srv1 run 38767890891 (two of five slot legs reset at kex past sshd MaxStartups). Every fleet key
+// leg, the runner-host-file converge legs included (gunbc.fleet.fleet_bootstrap_principal_session),
+// is shaped by shape_fleet_ssh_exec, so the claims are on its argv and on the job teardown.
+
+data base_key: NonEmptyStr = "AAAAC3NzaC1lZDI1NTE5AAAAIHERMETICWITNESSFIXTUREKEYMATERIAL0"
+data other_key: NonEmptyStr = "AAAAC3NzaC1lZDI1NTE5AAAAIHERMETICWITNESSFIXTUREKEYMATERIAL1"
+
+fn context_at(attempt_raw: String, rental: Bool, content_salt: String, key_material: NonEmptyStr) -> FleetSshExecutionContext? {
+  fleet_ssh_execution_context_at_witness_fixture(attempt_raw: attempt_raw, rental: rental, content_salt: content_salt, key_material: key_material)
+}
+
+fn target(endpoint: String, principal: String) -> SshTarget? {
+  match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: principal as NonEmptyStr) {
+    SshTargetResolved { target: t } => Present { value: t }
+    SshTargetRefused { endpoint: _, refusal: _ } => none
+  }
+}
+
+fn path_of(context: FleetSshExecutionContext?, t: SshTarget?) -> String {
+  match context {
+    Present { value: c } => match t {
+      Present { value: tt } => fleet_ssh_multiplex_control_path(context: c, target: tt) as String
+      Absent => ""
+    }
+    Absent => ""
+  }
+}
+
+fn base_path(t: SshTarget?) -> String {
+  path_of(context: context_at(attempt_raw: "mux-witness-a", rental: false, content_salt: "", key_material: base_key), t: t)
+}
+
+fn shaped_line(t0: SshTarget?) -> String {
+  match context_at(attempt_raw: "mux-witness-a", rental: false, content_salt: "", key_material: base_key) {
+    Absent => ""
+    Present { value: c } => match t0 {
+     Absent => ""
+     Present { value: t } =>
+      match portable_remote_words(raws: ["id", "-un"]) {
+        Absent => ""
+        Present { value: w } => join(shape_fleet_ssh_exec(context: c, target: t, words: w), " ")
+      }
+    }
+  }
+}
+
+// The three options are ssh OPTIONS, before the endpoint: after it they would be remote words.
+test fn w_the_fleet_key_leg_multiplexes_over_one_master() -> Bool {
+  let t = target(endpoint: "srv1", principal: "ubuntu")
+  let line = shaped_line(t0: t)
+  let p = base_path(t: t)
+  p != ""
+    && contains(line, "-o ControlMaster=auto ")
+    && contains(line, concat("-o ControlPath=", p))
+    && contains(line, "-o ControlPersist=60 srv1 -- id -un")
+}
+
+// MASTER REUSE: every leg of one context to one target names the same socket, so the second leg
+// rides the first's master; another endpoint or principal is another master.
+test fn w_legs_to_one_target_reuse_one_socket_and_other_targets_do_not() -> Bool {
+  let srv1 = base_path(t: target(endpoint: "srv1", principal: "ubuntu"))
+  srv1 != ""
+    && srv1 == base_path(t: target(endpoint: "srv1", principal: "ubuntu"))
+    && srv1 != base_path(t: target(endpoint: "srv3", principal: "ubuntu"))
+    && srv1 != base_path(t: target(endpoint: "srv1", principal: "node"))
+}
+
+// The socket sits in the job-owned directory, never a relative or shared location.
+test fn w_the_socket_lives_in_the_job_owned_directory() -> Bool {
+  starts_with(s: base_path(t: target(endpoint: "srv1", principal: "ubuntu")), prefix: concat(fixture_multiplex_directory_path as String, "/"))
+}
+
+fn differs_from_base(other: FleetSshExecutionContext?) -> Bool {
+  let t = target(endpoint: "srv1", principal: "ubuntu")
+  let a = base_path(t: t)
+  let b = path_of(context: other, t: t)
+  a != "" && b != "" && a != b
+}
+
+// REDS: a socket shared across any of these would hand a leg a session authenticated under a trust
+// anchor or key it did not pin; each drops one fact from the digest's discriminating power.
+test fn red_two_attempts_never_share_a_control_socket() -> Bool {
+  differs_from_base(other: context_at(attempt_raw: "mux-witness-b", rental: false, content_salt: "", key_material: base_key))
+}
+
+test fn red_two_trust_registries_never_share_a_control_socket() -> Bool {
+  differs_from_base(other: context_at(attempt_raw: "mux-witness-a", rental: true, content_salt: "", key_material: base_key))
+}
+
+test fn red_two_anchor_contents_never_share_a_control_socket() -> Bool {
+  differs_from_base(other: context_at(attempt_raw: "mux-witness-a", rental: false, content_salt: "other-materialized-content", key_material: base_key))
+}
+
+test fn red_two_credentials_never_share_a_control_socket() -> Bool {
+  differs_from_base(other: context_at(attempt_raw: "mux-witness-a", rental: false, content_salt: "", key_material: other_key))
+}
+
+// THE SOCKET NAME HAS FIXED LENGTH, whatever the attempt, so the directory decision bounds it once.
+test fn w_the_socket_name_length_is_independent_of_the_attempt() -> Bool {
+  let t = target(endpoint: "srv1", principal: "ubuntu")
+  let short = path_of(context: context_at(attempt_raw: "a", rental: false, content_salt: "", key_material: base_key), t: t)
+  let long = path_of(context: context_at(attempt_raw: "runner-host-file-converge-ci-with-a-much-longer-attempt-identity-than-any-today", rental: false, content_salt: "", key_material: base_key), t: t)
+  short != "" && string_length(s: short) == string_length(s: long)
+    && byte_size_count(b: fleet_ssh_multiplex_path_bytes(path: long)) + byte_size_count(b: openssh_control_path_temporary_suffix_length)
+      <= byte_size_count(b: linux_unix_socket_pathname_max_length())
+}
+
+fn is_ready(p: FleetSshMultiplexPreparation) -> Bool {
+  match p {
+    FleetSshMultiplexReady { directory: _, receipt: _ } => true
+    FleetSshMultiplexRefused { cause: _ } => false
+  }
+}
+
+// THE DIRECTORY DECISION over supplied readback facts: created or adopted at 700 by the
+// RUNNER_TEMP owner is ready; anything else refuses, so no context and no leg.
+test fn w_an_owner_only_job_directory_is_admitted() -> Bool {
+  is_ready(p: fleet_ssh_multiplex_directory_admitted(path: fleet_ssh_multiplex_directory_path_for(runner_temp: "/home/runner/work/_temp"), created: true, mode_text: "700", owner: "runner", runner_temp_owner: "runner"))
+}
+
+test fn red_a_wider_mode_refuses() -> Bool {
+  !is_ready(p: fleet_ssh_multiplex_directory_admitted(path: "/home/runner/work/_temp/fleet-ssh-mux", created: false, mode_text: "755", owner: "runner", runner_temp_owner: "runner"))
+}
+
+test fn red_a_foreign_owner_refuses() -> Bool {
+  !is_ready(p: fleet_ssh_multiplex_directory_admitted(path: "/home/runner/work/_temp/fleet-ssh-mux", created: false, mode_text: "700", owner: "mallory", runner_temp_owner: "runner"))
+}
+
+test fn red_a_directory_too_deep_for_sun_path_refuses() -> Bool {
+  !is_ready(p: fleet_ssh_multiplex_directory_admitted(
+    path: fleet_ssh_multiplex_directory_path_for(runner_temp: "/srv/actions-runner/a-runner-root-whose-path-is-long-enough/_work/_temp/and-deeper"),
+    created: true, mode_text: "700", owner: "runner", runner_temp_owner: "runner",
+  ))
+}
+
+// RED: sun_path is a byte array, so a directory whose characters fit but whose UTF-8 bytes do not
+// refuses. A slash and 43 two-byte characters are 44 characters and 87 bytes: by character count
+// the socket fits (44 + 1 + 32 + 17 = 94 <= 107), by bytes it does not (87 + 1 + 32 + 17 = 137).
+data non_ascii_runner_temp: String = "/ééééééééééééééééééééééééééééééééééééééééééé"
+
+test fn red_a_non_ascii_directory_that_fits_by_characters_but_not_bytes_refuses() -> Bool {
+  let path = non_ascii_runner_temp
+  string_length(s: path) + 1 + fleet_ssh_multiplexing.socket_name_hex_length + byte_size_count(b: openssh_control_path_temporary_suffix_length)
+    <= byte_size_count(b: linux_unix_socket_pathname_max_length())
+    && !is_ready(p: fleet_ssh_multiplex_directory_admitted(path: path, created: true, mode_text: "700", owner: "runner", runner_temp_owner: "runner"))
+}
+
+// The password session never multiplexes: it carries ControlPath none explicitly.
+test fn w_the_password_session_disables_sharing() -> Bool {
+  contains(join(serialize_ssh_client_options(options: fleet_ssh_password_client_options(trust: [], principal: "ubuntu" as NonEmptyStr)), " "), "-o ControlPath=none")
+}

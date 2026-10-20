@@ -1,11 +1,11 @@
 module v2.test.native_decl_selection
 
-import v2.compiler.compile {
-  native_lane_module_resolution,
-  native_lane_file_refusal_index,
+import v2.compiler.source_root_eval {
   NativeLaneModuleResolved,
   NativeLaneModuleContextRowsDecided,
   NativeLaneModuleResolveRowsDecided,
+  native_lane_module_resolution,
+  native_lane_file_refusal_index,
   NativeLaneUniverseModule,
   native_infer_advisory_count_for,
   native_test_context_from_ingest,

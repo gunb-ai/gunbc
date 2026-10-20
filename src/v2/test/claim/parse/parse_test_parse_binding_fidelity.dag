@@ -26,10 +26,8 @@ import v2.extdeps.languages.dag {
   dag_named_edge,
   dag_surface_edge,
 }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.collection {
-  list_at_optional
-}
+import std.algebra { Cons, Empty, FreeMonoid, list_at_optional }
+
 import std.optional {
   Absent,
   Optional,

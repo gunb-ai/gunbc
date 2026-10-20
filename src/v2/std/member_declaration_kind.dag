@@ -1,8 +1,8 @@
 module v2.std.member_declaration_kind
 
-import std.types { List }
-import std.algebra { FreeMonoid, fold_list }
-import v2.std.collection { Map, empty_map, map_contains_key, map_insert }
+import std.types { List, Map }
+import std.algebra { FreeMonoid, fold_list, empty_map, map_contains_key, map_insert }
+
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }

@@ -1,8 +1,8 @@
 module v2.std.model_core
 
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.collection { Absent, Map, Present, empty_map, map_insert }
+import std.optional { Absent, Present }
 import v2.std.diagnostic {
   Diagnostic,
   Textual,
@@ -11,7 +11,9 @@ import v2.std.diagnostic {
   WholeFile
 }
 import std.algebra {
-  fold_list
+  fold_list,
+  empty_map,
+  map_insert
 }
 import v2.std.algebra_structure_signature { bool_boolean_algebra_node, bool_boolean_algebra_type_node, field_reciprocal_nonzero_precondition_node, field_reciprocal_operation_node }
 import v2.std.logic {

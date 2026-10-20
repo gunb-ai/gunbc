@@ -13,12 +13,15 @@ use self::TextRepresentation::*;
 use self::TypeDeclarationProvenance::*;
 use self::TypeRealizationDecision::*;
 use self::TypeReferenceIdentity::*;
-pub use crate::std_decl_ref::declaration_ref_eq;
-pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_count_shape, collection_map_shape,
+};
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
+pub use crate::std_host_text::chars;
 use crate::std_literal_elaboration::LiteralSourceKind::*;
 pub use crate::std_literal_elaboration::{LiteralHomomorphism, LiteralSourceKind};
 pub use crate::std_optional::Optional;
-pub use crate::std_types::NonEmptyStr;
+pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -330,7 +333,7 @@ pub struct ConversionPlan {
 }
 
 pub fn conversion_plan_identity(plan: Rc<ConversionPlan>) -> String {
-    plan.route.clone().decl_name.clone()
+    plan.route.decl_name.clone()
 }
 
 pub fn kernel_carrier_of_literal_source(kind: LiteralSourceKind) -> Rc<ConversionEndpoint> {
@@ -591,7 +594,7 @@ pub fn judge_text_conversion_plan(
 }
 
 pub fn unicode_scalar_unfold(s: String) -> Rc<Vec<i64>> {
-    Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+    v1_rt::chars(&s)
 }
 
 pub fn unicode_scalar_fold(xs: Rc<Vec<i64>>) -> String {

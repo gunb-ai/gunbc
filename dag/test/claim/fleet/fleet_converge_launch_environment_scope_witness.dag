@@ -1,5 +1,6 @@
 module test.claim.fleet.fleet_converge_launch_environment_scope_witness
 
+import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
 
 import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, AwaitingCapability, fleet_converge_apply_terminal_wire }
@@ -35,7 +36,6 @@ import gunbc.fleet.fleet_converge_plan {
   fleet_converge_plan_subject,
   fleet_converge_launch_environment_plan_artifact,
   fleet_converge_plan_artifact,
-  fleet_converge_desired_caps,
   timer_retirement_observed_legacy_srv1
 }
 import gunbc.host.host_converge { gunbc_runner_per_slot_dropin_path }
@@ -48,7 +48,7 @@ import gunbc.runner.runner_slot_allocation {
 import gunbc.runner.runner_unit { runner_slot_unit_name, runner_unit_template_name, runner_unit_prefix }
 import gunbc.live_deploy.spec { deployment_owned_steps_retract_order }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.host.host_axis_caps { CapMember }
+import gunbc.host.host_axis_caps { CapMember, derived_runner_slot_cap_members }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import std.content_hash { serialize_content_hash }
 import std.optional { Present, Absent }
@@ -94,6 +94,7 @@ fn witness_full_host_request() -> FleetConvergeRequest {
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  observed_host_grants: witness_grants_rendered(host: witness_unmodeled_host),
   }
 }
 
@@ -168,11 +169,13 @@ test fn the_launch_environment_scope_carries_a_real_timer_obligation() -> Bool {
     request: req,
     terminal: fleet_converge_apply_terminal(request: req),
   )
-  let artifact = fleet_converge_launch_environment_plan_artifact(
+  match fleet_converge_launch_environment_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: timer_retirement_observed_legacy_srv1(),
-  )
+  ) {
+    Absent => false
+    Present { value: artifact } => {
     string_contains(s: baseline, pattern: "timer:")
       && string_contains(s: artifact.plan_body, pattern: "# timer-retirement")
       && string_contains(s: artifact.plan_body, pattern: "REMOVE timer-unit ")
@@ -183,7 +186,8 @@ test fn the_launch_environment_scope_carries_a_real_timer_obligation() -> Bool {
                   request: LaunchEnvironmentConverge { host: witness_host_srv1, observed_timers: [] },
                 ).member_set_fingerprint,
               ) as String)
-}
+    }
+  }}
 
 // THE EXECUTED SCRIPT CARRIES NO FOREIGN AXIS. A terminal that omitted the axes while the script
 // still emitted their work would be the worse failure of the two: a converged launch environment
@@ -212,11 +216,13 @@ test fn the_launch_environment_apply_script_emits_no_foreign_axis_work() -> Bool
 // as "nothing was refused on this axis", a claim about the host, where the truth is that the axis
 // was never this scope's obligation.
 test fn the_launch_environment_plan_body_carries_only_its_own_axis_counter() -> Bool {
-  let artifact = fleet_converge_launch_environment_plan_artifact(
+  match fleet_converge_launch_environment_plan_artifact(
     host: witness_unmodeled_host,
     prior_generation: 0,
     observed_timers: [],
-  )
+  ) {
+    Absent => false
+    Present { value: artifact } => {
     string_contains(s: artifact.plan_body, pattern: "# scope=scope:launch-environment")
       && string_contains(s: artifact.plan_body, pattern: "# timer-refusals=")
       && !string_contains(s: artifact.plan_body, pattern: "# slot-refusals=")
@@ -226,12 +232,13 @@ test fn the_launch_environment_plan_body_carries_only_its_own_axis_counter() -> 
       && !string_contains(s: artifact.plan_body, pattern: "# cap-axis")
       && !string_contains(s: artifact.plan_body, pattern: "# fabric-cell")
       && string_contains(s: artifact.plan_body, pattern: "# apply-terminal: FullyApplied")
-}
+    }
+  }}
 
 // THE CONTROL THAT SEPARATES "the launch scope omits these axes" FROM "these axes were deleted".
 test fn the_full_host_plan_body_still_carries_the_slot_and_activation_counters() -> Bool {
   {
-    let artifact = fleet_converge_plan_artifact(
+    match fleet_converge_plan_artifact(
     host: witness_unmodeled_host,
     prior_generation: 0,
     observed_timers: [],
@@ -241,14 +248,18 @@ test fn the_full_host_plan_body_still_carries_the_slot_and_activation_counters()
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
-  )
+  observed_host_grants: witness_grants_rendered(host: witness_unmodeled_host),
+  ) {
+      Absent => false
+      Present { value: artifact } => {
   string_contains(s: artifact.plan_body, pattern: "# scope=scope:full-host")
         && string_contains(s: artifact.plan_body, pattern: "# slot-refusals=")
         && string_contains(s: artifact.plan_body, pattern: "# activation-refusals=")
         && string_contains(s: artifact.plan_body, pattern: "# cap-refusals=")
         && string_contains(s: artifact.plan_body, pattern: "# fabric-cell-refusals=")
         && string_contains(s: artifact.plan_body, pattern: "# apply-terminal: PartiallyApplied")
-  }
+        }
+    }}
 }
 
 // CAP DRIFT IS OBSERVABLE UNDER FULL-HOST AND HAS NO POSITION UNDER LAUNCH.
@@ -267,7 +278,7 @@ fn drifted_cap() -> CapMember {
 }
 
 test fn cap_drift_is_visible_under_full_host_and_unconstructible_under_launch() -> Bool {
-  let full_with_drift = fleet_converge_plan_artifact(
+  match fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
@@ -277,12 +288,17 @@ test fn cap_drift_is_visible_under_full_host_and_unconstructible_under_launch() 
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
-  )
-  let launch = fleet_converge_launch_environment_plan_artifact(
+  observed_host_grants: witness_grants_rendered(host: witness_host_srv1),
+  ) {
+    Absent => false
+    Present { value: full_with_drift } => {
+  match fleet_converge_launch_environment_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
-  )
+  ) {
+    Absent => false
+    Present { value: launch } => {
   {
     let fh = full_with_drift
   {
@@ -294,7 +310,9 @@ test fn cap_drift_is_visible_under_full_host_and_unconstructible_under_launch() 
             && !string_contains(s: le.apply_shell, pattern: gunbc_runner_per_slot_dropin_path)
     }
   }
-}
+    }
+  }    }
+  }}
 
 // THE CAP PATH IS A RUNNER-UNIT PATH, WHICH IS THE MEASUREMENT THAT CONDEMNED THE EARLIER CUT.
 // This is not decoration beside the claim above: it is the fact that makes caps foreign rather
@@ -308,7 +326,7 @@ test fn the_cap_axis_lives_under_the_actions_runner_unit_template() -> Bool {
 // fabric cell, so an unobserved population there is a REFUSAL for a scope carrying that axis; the
 // launch body cannot render it under any host because the arm has no field for it.
 test fn a_refusing_fabric_observation_moves_full_host_and_cannot_enter_launch() -> Bool {
-  let fh = fleet_converge_plan_artifact(
+  match fleet_converge_plan_artifact(
     host: operator_host_srv3 as NonEmptyStr,
     prior_generation: 0,
     observed_timers: [],
@@ -318,12 +336,17 @@ test fn a_refusing_fabric_observation_moves_full_host_and_cannot_enter_launch() 
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
-  )
-  let le = fleet_converge_launch_environment_plan_artifact(
+  observed_host_grants: witness_grants_rendered(host: operator_host_srv3 as NonEmptyStr),
+  ) {
+    Absent => false
+    Present { value: fh } => {
+  match fleet_converge_launch_environment_plan_artifact(
     host: operator_host_srv3 as NonEmptyStr,
     prior_generation: 0,
     observed_timers: [],
-  )
+  ) {
+    Absent => false
+    Present { value: le } => {
   {
     let f = fh
   {
@@ -335,7 +358,9 @@ test fn a_refusing_fabric_observation_moves_full_host_and_cannot_enter_launch() 
                ))
     }
   }
-}
+    }
+  }    }
+  }}
 
 // ---------------------------------------------------------------------------
 // SCOPE-CROSSING AND MUTATION CONTROLS
@@ -504,12 +529,13 @@ fn srv1_full_host_request() -> FleetConvergeRequest {
   FullHostConverge {
     host: witness_host_srv1,
     observed_timers: [],
-    observed_caps: fleet_converge_desired_caps(),
+    observed_caps: derived_runner_slot_cap_members(),
     observed_slots: srv1_production_shaped_slots(),
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  observed_host_grants: witness_grants_rendered(host: witness_host_srv1),
   }
 }
 
@@ -549,22 +575,26 @@ test fn the_production_shaped_srv1_observation_splits_on_the_scope_alone() -> Bo
 // an obligation from RLM and removed nothing from the fleet program.
 test fn the_excluded_families_still_refuse_loudly_under_the_scope_that_owns_them() -> Bool {
   {
-    let artifact = fleet_converge_plan_artifact(
+    match fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
-    observed_caps: fleet_converge_desired_caps(),
+    observed_caps: derived_runner_slot_cap_members(),
     observed_slots: srv1_production_shaped_slots(),
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
-  )
+  observed_host_grants: witness_grants_rendered(host: witness_host_srv1),
+  ) {
+      Absent => false
+      Present { value: artifact } => {
   string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL runner-slot")
         && string_contains(s: artifact.plan_body, pattern: "OwnershipUnknown")
         && string_contains(s: artifact.plan_body, pattern: "# slot-refusals=31")
         && string_contains(s: artifact.plan_body, pattern: "# activation-refusals=2")
-  }
+        }
+    }}
 }
 
 // ---------------------------------------------------------------------------

@@ -1,154 +1,22 @@
 module v2.compiler.parse
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
-import std.types { List, SourceSpan }
-import std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
-import v2.std.diagnostic {
-  Accepted,
-  ByteRange,
-  Diagnostic,
-  Diagnostics,
-  ExternalContractUnknown,
-  Locus,
-  NonEmptyDiagnostics,
-  None,
-  Outcome,
-  Rejected,
-  Some,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile,
-  diagnostics_singleton,
-  node_locus,
-  outcome_accepted,
-  declaration_locus,
-  invariant_port_locus,
-  port_refusal_locus,
-  source_port_locus
-}
+import std.types { List, SourceSpan, Map }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Rejected, Some, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton, node_locus, outcome_accepted, declaration_locus, invariant_port_locus, port_refusal_locus, source_port_locus }
 import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Authored,
-  Node,
-  Symbol,
-  TypeNode,
-  node_synthetic,
-  node_with_occurrence_id,
-  well_formed,
-  symbol_intern_lexeme,
-  symbol_lexeme,
-}
-import v2.std.occurrence_id {
-  alloc_occurrence_id,
-  occurrence_id_allocator_initial
-}
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, node_with_occurrence_id, well_formed, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.occurrence_id { alloc_occurrence_id, occurrence_id_allocator_initial }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceIdAllocator, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, node_occurrence_identity_minted }
-import std.source_annotation {
-  AnnotationRegion,
-  AnnotationScope,
-  FileScope,
-  NormalizedAnnotationCapture,
-  OccurrenceScope,
-  SourceAnnotationGraph,
-  attach_annotations
-}
-import v2.std.provenance {
-  DerivedBy,
-  SpanIndex,
-  node_occurrence_id_optional,
-  origin_event_from_source,
-  span_index_empty,
-  span_index_extent,
-  RecordedSourceExtent,
-  SourceExtentKnown,
-  SourceExtentUnrepresentable,
-  span_index_record_extent_unrepresentable,
-  span_index_record,
-  span_index_record_extent
-}
-import v2.std.collection {
-  Map,
-  empty_map,
-  list_at_optional,
-  map_get_checked,
-  map_insert,
-  map_lookup
-}
-import std.algebra { Cons, Empty, list_append, list_snoc_item, contains, fold_list, fold_list_right, is_empty, length, list_head, list_reverse, list_tail, skip, unique, zip_eq }
-import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
-import v2.extdeps.languages.dag {
-  dag_float_literal_node_from_lexeme,
-  dag_int_literal_node_from_lexeme,
-  dag_string_literal_node_from_lexeme,
-  dag_string_template_part_class,
-  dag_string_template_part_node_from_lexeme
-}
-import v2.std.compilers.lexing {
-  LexArtifact,
-  UnboundSourceAnnotation,
-  LineBreakAnswer,
-  LineBreakInGap,
-  LineBreakUnknownWithoutSource,
-  Lexeme,
-  NoLineBreakInGap,
-  StreamLayout,
-  Token,
-  TokenStream,
-  token_stream_line_break_before,
-  token_stream_remaining,
-  token_stream_remaining_count,
-  token_stream_layout,
-}
+import std.source_annotation { AnnotationRegion, AnnotationScope, FileScope, NormalizedAnnotationCapture, OccurrenceScope, SourceAnnotationGraph, attach_annotations }
+import v2.std.provenance { DerivedBy, SpanIndex, node_occurrence_id_optional, origin_event_from_source, span_index_empty, span_index_extent, RecordedSourceExtent, SourceExtentKnown, SourceExtentUnrepresentable, span_index_record_extent_unrepresentable, span_index_record, span_index_record_extent }
+import std.algebra { empty_map, list_at_optional, map_insert, map_lookup, Cons, Empty, list_append, list_snoc_item, contains, fold_list, fold_list_right, is_empty, length, list_head, list_reverse, list_tail, skip, unique, zip_eq, collection_count_shape, collection_map_shape }
+import v2.std.witness { map_get_checked, Holds, Violates, Witness, witness_from_optional }
+import v2.extdeps.languages.dag { dag_float_literal_node_from_lexeme, dag_int_literal_node_from_lexeme, dag_string_literal_node_from_lexeme, dag_string_template_part_class, dag_string_template_part_node_from_lexeme }
+import v2.std.compilers.lexing { LexArtifact, UnboundSourceAnnotation, LineBreakAnswer, LineBreakInGap, LineBreakUnknownWithoutSource, Lexeme, NoLineBreakInGap, StreamLayout, Token, TokenStream, token_stream_line_break_before, token_stream_remaining, token_stream_remaining_count, token_stream_layout }
 import v2.std.parse_refusal_reason { LayoutUnknownWithoutSource, NonAssociativeOperatorChain, ParseRefusalReason, TokenStartsNotIncreasing, parse_refusal_reason_symbol }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
-import v2.std.grammar {
-  parse_production_emitted_identity_optional,
-  AfterLineBreak,
-  Choice,
-  Expect,
-  RefuseOnMatch,
-  NotPredicate,
-  LiteralTerminal,
-  ParseGrammar,
-  GrammarExpr,
-  GrammarExprFold,
-  GrammarProduction,
-  GrammarRoot,
-  InfixLeft,
-  InfixNonAssociative,
-  InfixOperatorRow,
-  InfixTable,
-  ModeledGrammar,
-  Nonterminal,
-  ParseTree,
-  Repeat,
-  Sequence,
-  Terminal,
-  ValidatedGrammarRoot,
-  VoidGrammar,
-  TerminalStampMode,
-  StampBinding,
-  StampClass,
-  StampLexeme,
-  fold_grammar_expr,
-  grammar_empty_node,
-  grammar_infix_right_min_power,
-  grammar_infix_row_binding_power,
-  grammar_infix_row_class,
-  grammar_infix_table_language,
-  grammar_named_edge,
-  grammar_to_node
-}
+import v2.std.grammar { parse_production_emitted_identity_optional, AfterLineBreak, Choice, Expect, RefuseOnMatch, NotPredicate, LiteralTerminal, ParseGrammar, GrammarExpr, GrammarExprFold, GrammarProduction, GrammarRoot, InfixLeft, InfixNonAssociative, InfixOperatorRow, InfixTable, ModeledGrammar, Nonterminal, ParseTree, Repeat, Sequence, Terminal, ValidatedGrammarRoot, VoidGrammar, TerminalStampMode, StampBinding, StampClass, StampLexeme, fold_grammar_expr, grammar_empty_node, grammar_infix_right_min_power, grammar_infix_row_binding_power, grammar_infix_row_class, grammar_infix_table_language, grammar_named_edge, grammar_to_node }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -1412,7 +1280,7 @@ fn first_list_intersect(left: List<FirstKey>, right: List<FirstKey>) -> List<Fir
 }
 
 fn production_first_row_lookup(rows: Map<Symbol, List<FirstKey>>, name: Symbol) -> List<FirstKey> {
-  match v2.std.collection.map_get_checked(m: rows, key: name) {
+  match map_get_checked(m: rows, key: name) {
     Accepted { value: Present { value: terminals }, diagnostics: _ } => terminals
     Accepted { value: Absent, diagnostics: _ } => grammar_empty_terminal_list()
     Rejected { diagnostics: _ } => grammar_empty_terminal_list()
@@ -3381,7 +3249,7 @@ fn parse_table_token_dispatch(table: ParseTable, production: Symbol) -> Bool {
 // When the key is absent the Choice plan is ordered backtrack, the pre-cutover
 // interpreter. Analyzed tables always resolve Present here.
 fn parse_table_prepared_expr(table: ParseTable, production: GrammarProduction) -> PreparedGrammarExpr {
-  match v2.std.collection.map_get_checked(m: table.prepared_exprs, key: production.name) {
+  match map_get_checked(m: table.prepared_exprs, key: production.name) {
     Accepted { value: Present { value: prepared }, diagnostics: _ } => prepared
     Accepted { value: Absent, diagnostics: _ } =>
       prepare_grammar_expr(
@@ -3612,7 +3480,7 @@ fn left_corner_direct_rows(root: GrammarRoot, nullable_set: List<Symbol>) -> Map
 }
 
 fn left_corner_row(rows: Map<Symbol, List<Symbol>>, name: Symbol) -> List<Symbol> {
-  match v2.std.collection.map_get_checked(m: rows, key: name) {
+  match map_get_checked(m: rows, key: name) {
     Accepted { value: Present { value: reached }, diagnostics: _ } => reached
     Accepted { value: Absent, diagnostics: _ } => std.algebra.Empty
     Rejected { diagnostics: _ } => std.algebra.Empty

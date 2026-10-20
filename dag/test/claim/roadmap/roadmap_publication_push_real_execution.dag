@@ -14,7 +14,7 @@ import gunbc.roadmap.roadmap_publish_actuate {
   publication_source_git_dir, PublicationGitDirResolved, PublicationGitDirRefused,
   publication_mirror_ref,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

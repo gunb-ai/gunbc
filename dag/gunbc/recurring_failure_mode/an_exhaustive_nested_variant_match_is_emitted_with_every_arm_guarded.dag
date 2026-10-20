@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded" as NonEmptyStr,
+
+  receipts: [
+    "E0004 on gunbc#14084: the seed-emitter lowers each match arm whose pattern nests a variant under a variant to an Outcome::Accepted arm with a matches-guard on the inner variant, so a source match that is exhaustive (Accepted over BoundInFrame over TypeParameterFrame, Accepted over BoundInFrame with a wildcard kind, Accepted over BoundAtRoot, Accepted over ScopeUnbound, Rejected) has no unguarded Accepted arm; rustc refuses E0004 non-exhaustive patterns, Outcome::Accepted not covered, at stage0/src/v2_compiler_resolve.rs:3366 (CI receipt: head f7f2d34). Matching Accepted once, then matching the binding in a second fn, emitted and compiled (head 0cbc094).",
+
+    "INVALID STATE: a source match the checker finds exhaustive is emitted as Rust that is not exhaustive. HARM: the required emit-and-build job refuses on admitted source (EmittedCompilerBuildFailed); the author must flatten the pattern. Loud, not silent."
+
+    "RUNG FOUND AT: 1, mitigatable -- caught only by building the emitted crate. CEILING: 3, structurally guaranteed: the emitter lowers nested variant patterns to nested matches, or emits an unguarded final arm when the source arm set is exhaustive. NEXT TRIGGER: the seed-emitter's match lowering; owner tidy-swift-183 (queued after #14069, per clever-crane-830). STANDING: the ordinary match lowering now regroups one Rc level deeper (rc_grouped_arm_plan allow_deeper), guarded by the nested_variant_match_* cases in //gunbc/instruments:native-emission-controls, and the resolve.dag single-level split (type_parameter_binding_value_reading) was collapsed into one nested match, so the self-host build executes the nested shape. REMAINING GAP, below ceiling: the tail-call lowering (emit_rust_tco_match) passes allow_deeper: false and keeps the declared residue, so a tail-recursive match with the same nested arm set is still emitted fully guarded (E0004); no control covers it. NEXT TRIGGER (capability): emit_rc_grouped_tco_match_arm gaining the deeper-level recursion, after which that control is enrolled."
+
+    "RECOGNITION RULE: E0004 non-exhaustive patterns on an emitted match in a file whose source match is exhaustive with an arm nesting a variant (or a literal) inside a variant payload."
+  ],
+
+  evidence: [],
+}
