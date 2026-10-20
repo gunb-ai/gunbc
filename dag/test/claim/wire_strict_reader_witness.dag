@@ -1,6 +1,6 @@
 module test.claim.wire_strict_reader_witness
 
-import std.roster_frontier { frontier_rows_well_formed }
+import std.roster_frontier { frontier_rows_well_formed, FrontierRow, DeclSubject, PathSubject }
 import gunbc.auth.wire_strict_reader { wire_strict_reader_frontier_rows }
 import std.types { String, List, Bool, NonEmptyStr }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
@@ -131,9 +131,34 @@ test fn a_policy_that_is_the_declared_fields_binds() -> Bool {
   }
 }
 
-// The four declared consumers carry a reason and a bound-or-described dissolution trigger.
+// Every declared frontier row carries a reason and a bound-or-described dissolution trigger (review 83284: no row count is asserted).
 test fn the_declared_frontier_rows_are_well_formed() -> Bool {
-  frontier_rows_well_formed(rows: wire_strict_reader_frontier_rows) && count(wire_strict_reader_frontier_rows) == 5
+  frontier_rows_well_formed(rows: wire_strict_reader_frontier_rows)
+}
+
+// Completeness at identity grain: each declaration the fold's consumers are still owed on is joined to a row's DeclSubject by name.
+fn frontier_owed_declarations() -> List<String> {
+  ["read_shape", "admission_verdict", "WireSumArm", "field_default_reading", "WireShape"]
+}
+
+fn row_names(rows: List<FrontierRow>) -> List<String> {
+  map(rows, r => match r.subject {
+    DeclSubject { ref: d } => d.decl_name as String
+    PathSubject { path: p } => p
+  })
+}
+
+fn owed_all_named(rows: List<FrontierRow>) -> Bool {
+  all(frontier_owed_declarations(), n => any(row_names(rows), m => m == n))
+}
+
+test fn every_owed_declaration_has_a_frontier_row() -> Bool {
+  owed_all_named(wire_strict_reader_frontier_rows)
+}
+
+// RED: a dropped row fails the join.
+test fn a_dropped_frontier_row_fails_the_join() -> Bool {
+  !owed_all_named(filter(wire_strict_reader_frontier_rows, r => !(row_names([r]) == ["read_shape"])))
 }
 
 // B3/B4: every admission row the protocol declares is a subset of its declared arms.
