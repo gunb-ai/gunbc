@@ -5,7 +5,7 @@ import std.types { List }
 import std.decl_ref { CitationIndexCoverage, OutsideDeclIndexTestWitnessModule, DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import v2.compiler.name_resolve { ResolutionContext }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.algebra { fold_list, map_lookup }
+import std.algebra { fold_list, map_lookup, list_at_optional }
 import v2.std.integer { Int }
 import v2.std.node { Node, named_edge_sort_key, symbol_intern_lexeme }
 import v2.std.node_query { node_labeled_child_edges }
@@ -23,8 +23,9 @@ import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, TypeAlias, OpaqueTyp
 // at each DECLARING path). The module a reference cites and the declaration it names are both read
 // by that real path, so a name cannot be shared by two trees: the host census this replaced stripped
 // a leading `v2.` and so could see one declaration twice (the old DeclarationRefAmbiguous arm). With
-// the key the real path the arm has no constructor; its RED is kept as a control
-// (v2.test.claim.decl_ref_resolution_witness).
+// the key the real path the arm has no constructor: DeclarationRefResolution above has no Ambiguous
+// variant (structural), and the host module's Ambiguous RED stays enrolled against the host resolver
+// (test.claim.long.decl_ref_resolution_witness), which is where that reading still exists.
 //
 // RUNG, stated honestly: construction cannot reach a DeclarationRef literal today -- it is three
 // strings built `as NonEmptyStr` -- so resolution is the earliest decidable refusal on the real
@@ -33,9 +34,12 @@ import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, TypeAlias, OpaqueTyp
 // resolution authority until then.
 //
 // A TEST WITNESS MODULE IS DELIBERATELY OUTSIDE THE INDEX (std.decl_ref CitationIndexCoverage;
-// gunbc.ci.ci_layer_roots records the exclusion). A reference into `test.` / `v2.test.` whose module
-// the ingest did not read lands in DeclarationRefOutsideIndex: counted, never resolved by default and
-// never dropped.
+// gunbc.ci.ci_layer_roots records the exclusion by PATH, witness_layer_roots). A reference into the
+// `test.` / `v2.test.` namespaces whose module the ingest did not read lands in
+// DeclarationRefOutsideIndex: counted by the census, never resolved and never dropped. KNOWN LIMIT:
+// ci_layer_roots has no namespace-keyed row, so a typo'd name inside those namespaces is counted as
+// OutsideIndex rather than ModuleAbsent. dissolve-on: the ingest records which roots it read by
+// namespace, so an unread module is told from an absent one.
 
 type DeclarationIdentity {
   qualified_name: String
@@ -50,8 +54,20 @@ type DeclarationRefResolution
   | DeclarationRefOutsideIndex { reference: DeclarationRef, coverage: CitationIndexCoverage }
 
 fn declaration_ref_module_outside_index(ref: DeclarationRef) -> Bool {
-  let path = ref.module_path as String
-  path.starts_with(prefix: "test.") || path.starts_with(prefix: "v2.test.")
+  let segments = (ref.module_path as String).split(delimiter: ".")
+  let first = list_at_optional(xs: segments, index: 0)
+  let second = list_at_optional(xs: segments, index: 1)
+  match first {
+    Present { value: head } => head == "test" || (head == "v2" && declaration_ref_segment_is_test(segment: second))
+    Absent => false
+  }
+}
+
+fn declaration_ref_segment_is_test(segment: Optional<String>) -> Bool {
+  match segment {
+    Present { value: s } => s == "test"
+    Absent => false
+  }
 }
 
 fn declaration_ref_module_qualified_name(ref: DeclarationRef) -> QualifiedName {
