@@ -21301,6 +21301,9 @@ pub enum RestResponseDecodeCause {
     /// Both the wire key and the authored name of one renamed field are present; which one
     /// populates the field would be decided by iteration order.
     AmbiguousWireSpelling { authored: String, wire: String },
+    /// A field declared `std.decimal` `ExactDecimal` was answered by a JSON value that is not a
+    /// finite decimal number whose digits fit the record's Int units.
+    NotAnExactDecimal { json_text: String },
 }
 
 impl fmt::Display for RestResponseDecodeRefusal {
@@ -21344,6 +21347,11 @@ impl fmt::Display for RestResponseDecodeRefusal {
             RestResponseDecodeCause::UnknownSpelling { spelling } => {
                 write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
             }
+            RestResponseDecodeCause::NotAnExactDecimal { json_text } => write!(
+                f,
+                "declared ExactDecimal, answered `{}`, which is not a finite decimal whose digits fit Int units",
+                json_text
+            ),
         }
     }
 }
@@ -21561,6 +21569,49 @@ fn decode_json_by_declared_type(
             }
             _ => Ok(json_to_value(json)),
         };
+    }
+    // A field declared `std.decimal` `ExactDecimal { units, fraction_digits }` is carried on the wire
+    // as a JSON number (extdeps.cloud.vast_ai money fields). serde_json's arbitrary_precision keeps the
+    // number's wire text, so it is decoded from the wire's own digits and scale; a number that is not a
+    // finite decimal whose digits fit Int units refuses. Without this arm the number fell through to `json_to_value` and
+    // the declared ExactDecimal arrived as a Float (gunbc.recurring_failure_mode
+    // rest_response_declared_exact_decimal_decoded_as_float).
+    // `T?` on the wire is T or null; null returned above, so a present value decodes as the declared T
+    // (a present value is carried raw, as `json_to_value` carries it). Without this the declared type
+    // under the optional layer was never consulted.
+    if name.rsplit('.').next() == Some("Optional") {
+        if let Some(inner) = ty.children.first() {
+            return decode_json_by_declared_type(json, inner, path, ctx);
+        }
+    }
+    if name.rsplit('.').next() == Some("ExactDecimal") {
+        if let serde_json::Value::Number(n) = json {
+            let text = n.to_string();
+            return match exact_decimal_from_json_number_text(&text) {
+                Some((units, fraction_digits)) => {
+                    let mut fields: HamtMap<CanonKey, Value> = HamtMap::new();
+                    if let Some(ck) = CanonKey::new(str_value("units")) {
+                        fields.insert(ck, Value::Int(units));
+                    }
+                    if let Some(ck) = CanonKey::new(str_value("fraction_digits")) {
+                        fields.insert(ck, Value::Int(fraction_digits));
+                    }
+                    Ok(map_value(fields))
+                }
+                None => Err(RestResponseDecodeRefusal {
+                    field_path: path.to_string(),
+                    coproduct: name.clone(),
+                    cause: RestResponseDecodeCause::NotAnExactDecimal { json_text: text },
+                }),
+            };
+        }
+        return Err(RestResponseDecodeRefusal {
+            field_path: path.to_string(),
+            coproduct: name.clone(),
+            cause: RestResponseDecodeCause::NotAnExactDecimal {
+                json_text: json.to_string(),
+            },
+        });
     }
     if ty.connective == Connective::Disj {
         let nullary =
@@ -21803,6 +21854,69 @@ pub(crate) fn json_container_depth(json: &serde_json::Value) -> usize {
         }
     }
     deepest
+}
+
+/// The largest decimal exponent an i64-unit decimal can carry: i64::MAX has 19 digits, 18 of them free.
+const EXACT_DECIMAL_MAX_DECIMAL_EXPONENT: u64 = 18;
+
+/// The largest scale (fraction digits) a decoded ExactDecimal may carry: 18 free significant digits whose
+/// leading digit lies at most 18 places past the point.
+const EXACT_DECIMAL_MAX_SCALE: i64 = 2 * EXACT_DECIMAL_MAX_DECIMAL_EXPONENT as i64;
+
+/// The exact `(units, fraction_digits)` of a JSON number's decimal text: `-?D+(.D+)?([eE][+-]?D+)?`.
+/// `units` is the signed mantissa digits and `fraction_digits` the count of digits after the point less
+/// the exponent; a negative scale is folded into `units`. `None` when the text is not that grammar or
+/// the digits do not fit i64, so the caller refuses rather than rounding.
+fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
+    let (negative, rest) = match text.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, text),
+    };
+    let (mantissa, exponent) = match rest.find(['e', 'E']) {
+        Some(i) => (&rest[..i], rest[i + 1..].parse::<i64>().ok()?),
+        None => (rest, 0),
+    };
+    // The exponent is bounded BEFORE any scaling: an i64 holds at most 18 full decimal digits, so an
+    // exponent beyond that either overflows the units or names a scale no Int-unit decimal carries. Without
+    // the bound a zero mantissa (`0e9223372036854775807`) never overflows and the scaling loop below does
+    // not return, and `1e-999999999` would be accepted with a billion fraction digits (review 82479).
+    // The scale is capped separately, because the exponent bound does not limit it: `parse::<i64>` accepts
+    // leading zeros, so `0.` followed by ten thousand zeros and a `1` has exponent 0 and scale 10001
+    // (review 82586). The cap is EXACT_DECIMAL_MAX_SCALE (36): at most 18 free significant digits whose
+    // leading digit lies at most 18 places past the point. An earlier cap at 19 refused a live price with 17
+    // significant digits at 20 fraction digits (`0.00026041666666666666`, fleet-converge run 39222150650)
+    // and with it the whole offer page.
+    if exponent.unsigned_abs() > EXACT_DECIMAL_MAX_DECIMAL_EXPONENT {
+        return None;
+    }
+    let (int_part, frac_part) = match mantissa.find('.') {
+        Some(i) => (&mantissa[..i], &mantissa[i + 1..]),
+        None => (mantissa, ""),
+    };
+    if int_part.is_empty()
+        || !int_part.bytes().all(|b| b.is_ascii_digit())
+        || !frac_part.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let digits = format!("{}{}", int_part, frac_part);
+    let mut units: i64 = digits.parse::<i64>().ok()?;
+    let mut fraction_digits: i64 = (frac_part.len() as i64).checked_sub(exponent)?;
+    if fraction_digits > EXACT_DECIMAL_MAX_SCALE {
+        return None;
+    }
+    while fraction_digits < 0 {
+        units = units.checked_mul(10)?;
+        fraction_digits += 1;
+    }
+    Some((
+        if negative {
+            units.checked_neg()?
+        } else {
+            units
+        },
+        fraction_digits,
+    ))
 }
 
 fn json_to_value(json: &serde_json::Value) -> Value {
