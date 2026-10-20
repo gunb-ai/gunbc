@@ -90,15 +90,14 @@ import std.content_hash {
 }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.debian.debconf {
-  DebconfSelectionKind,
+  DebconfAnswerKind,
   DebconfSelectionRecord,
-  debconf_answer_kind_is_answer,
+  debconf_answer_record,
+  debconf_selection_answer,
   debconf_selection_kind,
   debconf_selection_kind_spelling,
   debconf_selection_label,
-  debconf_selection_line,
   debconf_selection_owner,
-  debconf_selection_record,
   debconf_selection_value,
 }
 import extdeps.libxcrypt.crypt_scheme {
@@ -615,13 +614,18 @@ type PackageIntent =
 // key is unestablished, the verdict is OpenQuestion, and the seed is refused. An answer that would have been
 // silently mis-parsed by the old tokenizer (an owner with a space in it, a value with nothing in it) now becomes
 // a refused seed instead of a green proof.
+// THE KIND IS A DebconfAnswerKind, NOT THE WIRE UNION (review 83188). A caller assembling a seed cannot name a
+// flag at all through this door, so it cannot author a line it might then expect to close a question; the flag
+// remains representable on the shelf (extdeps.debian.debconf's debconf_flag_record, exercised by the witness
+// because a real preseed does contain flag lines), and it stays inert here because the crediting path asks the
+// shelf for an ANSWER KIND and a flag has none.
 fn debconf_answer(
   owner: NonEmptyStr,
-  kind: DebconfSelectionKind,
+  kind: DebconfAnswerKind,
   label: NonEmptyStr,
   value: NonEmptyStr,
 ) -> List<DebconfSelectionRecord> {
-  match debconf_selection_record(owner: owner, label: label, kind: kind, value: value) {
+  match debconf_answer_record(owner: owner, label: label, kind: kind, value: value) {
     Present { value: record } => [record]
     Absent => []
   }
@@ -631,7 +635,7 @@ fn debconf_answer(
 // free string to get wrong, it is read from the known package the arm already names.
 fn debconf_answer_for(
   package: KnownPromptingPackage,
-  kind: DebconfSelectionKind,
+  kind: DebconfAnswerKind,
   label: NonEmptyStr,
   value: NonEmptyStr,
 ) -> List<DebconfSelectionRecord> {
@@ -792,7 +796,7 @@ fn package_prompting_verdict(intent: PackageIntent) -> PackagePromptingVerdict {
 // rule, the nine legal type words and the empty-value policy — because those are debconf's facts, in a package
 // with its own version, and not ours (DESIGN §3). The consumer mints records through debconf_answer_for and reads
 // them through the accessors; the wire line exists only as debconf_selection_line, derived at the moment something
-// is shipped. `is_space`, the boundary scanner and the comment check are gone: with records there is no text to
+// is shipped. The character classifier, the boundary scanner and the comment check are gone: with records there is no text to
 // ask a question of, so "a comment is not an answer" is no longer a rule anybody has to remember correctly.
 //
 // THE VALUE IS REQUIRED. That policy moved to the shelf with the rest of the grammar, and it is stricter than
@@ -826,9 +830,12 @@ fn value_established_for(
       match debconf_selection_owner(record: record) == owner {
         True => match debconf_selection_label(record: record) == label {
           True =>
-            match debconf_answer_kind_is_answer(kind: debconf_selection_kind(record: record)) {
-              True => Present { value: debconf_selection_value(record: record) }
-              False => value_established_for(records: rest, owner: owner, label: label)
+            // THE PROJECTION, NOT A PREDICATE (review 83188). Asking the shelf for the record's ANSWER KIND is
+            // what credits it; a flag line has no DebconfAnswerKind to hand over, so the flag cannot be credited
+            // by any call site — there is no Bool here for a future caller to ignore or invert.
+            match debconf_selection_answer(record: record) {
+              Present { value: _ } => Present { value: debconf_selection_value(record: record) }
+              Absent => value_established_for(records: rest, owner: owner, label: label)
             }
           False => value_established_for(records: rest, owner: owner, label: label)
         }

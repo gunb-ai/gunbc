@@ -49,76 +49,94 @@ data debconf_release_observed: NonEmptyStr = "1.5.86ubuntu1 (Ubuntu 24.04 noble,
 // 1. The type field, as a closed set rather than a string.
 // ---------------------------------------------------------------------------
 
-// THE TYPE FIELD IS A CLOSED UNION (review 83132). Upstream keeps the legal set as a list of words and only ever
-// tests membership: `my @knowntypes = qw(select boolean string multiselect note password text title);` and
-// `my @knownflags = qw(seen);` (lines 77-78), and a line whose type is in neither list is DROPPED with a warning
-// (ok_format, line 86-88: `warning "Unknown type $type, skipping line $.")`. So an answer whose type is not one of
-// these nine is not a strict-but-valid answer; upstream refuses to install it, and the installer never asks the
-// question, which on a headless board means the package asks it interactively at the console nobody is standing
-// at. Modelling the field as a String would let that state be written, and only a scan could notice.
+// THE TYPE FIELD IS TWO CLOSED SETS, NOT ONE UNION WITH A PREDICATE OVER IT (reviews 83132, 83188). Upstream
+// keeps the legal words in TWO lists and routes them to two different functions:
+// `my @knowntypes = qw(select boolean string multiselect note password text title);` goes to load_answer, and
+// `my @knownflags = qw(seen);` goes to set_flag (lines 77-78, dispatched at 136-144). A line whose type is in
+// neither list is DROPPED with a warning (ok_format, 86-88: `warning "Unknown type $type, skipping line $.")`, so
+// an answer whose type is outside these eleven words is not a strict-but-valid answer: upstream refuses to install
+// it, the installer never asks the question, and on a headless board the package asks it at a console nobody is
+// standing at. Modelling the field as a String would let that state be written and only a scan could notice.
 //
-// THE WIRE SPELLING OF EACH ARM IS DERIVED by debconf_selection_kind_spelling, never stored next to the arm: a
-// stored spelling is a second copy of the word, and the drift that review caught in the sibling libxcrypt shelf —
-// an alphabet list that disagreed with the rule beside it — is what two copies of a word do.
-type DebconfSelectionKind
-  = KindSelect
-  | KindBoolean
-  | KindString
-  | KindMultiselect
-  | KindNote
-  | KindPassword
-  | KindText
-  | KindTitle
-  // 'seen' is a FLAG, not a template type: upstream routes it to set_flag rather than load_answer (lines
-  // 136-144). It shares the field position and the wire spelling, so it shares this union, but it is kept
-  // distinguishable because a seed that sets a flag has not answered anything — see debconf_selection_kind_is_answer.
-  //
-  // EVERY ARM IS PREFIXED `Kind`, including KindString. The field's own words are the upstream vocabulary, and one
-  // of them is `string`, which is also the substrate's text type in scope in this very file: an arm named `String`
-  // sits one resolver change away from meaning the type. The prefix costs nothing at the call sites (the spelling
-  // function, not the arm name, is what produces the wire word) and removes a whole class of ambiguity.
-  | KindSeenFlag
+// WHY TWO UNIONS RATHER THAN ONE UNION PLUS AN ANSWER-OR-NOT BOOL. A Bool over a coproduct collapses the distinction
+// at every call site: each caller decides what true means, and a new arm is a compile-clean edit because the Bool
+// lists the arms by hand (the first cut of this shelf had eight `true` rows and one `false` row). Splitting the
+// sets means the CREDIT DECISION IS MEMBERSHIP: the answer-crediting path asks for a DebconfAnswerKind and a flag
+// literally has no value of that type, so no call site can credit one. A future debconf ANSWER type is an arm of
+// DebconfAnswerKind and becomes creditable automatically, which is right; a future debconf FLAG is an arm of
+// DebconfFlag and stays non-creditable automatically, which is also right. Neither is a row somebody can forget
+// to update, which is what a hand-listed Bool cannot promise.
+//
+// THE WIRE SPELLING OF EVERY ARM IS DERIVED, never stored beside it: a stored word is a second copy, and the drift
+// review caught in the sibling libxcrypt shelf — an alphabet list disagreeing with the rule printed next to it — is
+// what two copies of a word do. The nine words therefore exist in exactly one place (the two spelling functions
+// below); the witness asserts them against its own transcription of upstream's two qw() lists, which is where a
+// transcription belongs: as the expected value of the check that notices drift, not as production data.
+type DebconfAnswerKind
+  = AnswerSelect
+  | AnswerBoolean
+  | AnswerString
+  | AnswerMultiselect
+  | AnswerNote
+  | AnswerPassword
+  | AnswerText
+  | AnswerTitle
 
-// THE SPELLING, in the order the union lists them and the order the upstream qw() lists them. A future type
-// (debconf gains types over releases) adds an arm here and a row in debconf_answer_kind_spellings; nothing that
-// matches on this union can silently accept the new word, which is the point.
-fn debconf_selection_kind_spelling(kind: DebconfSelectionKind) -> NonEmptyStr {
+// THE FLAGS UPSTREAM RECOGNISE, as their own set because @knownflags is its own list and set_flag is its own
+// branch. It has one member today; a second is an arm here plus a row in debconf_flag_spelling, and joining this
+// set is what keeps a line legal without making it an answer. Written `= | SeenFlag` because a lone bare arm needs
+// the leading bar to be an ARM at all — `= SeenFlag` would read as an alias for an undefined name, which is the
+// repo's own convention (see product/build_fulfillment.dag's BasisAllocationPolicy).
+type DebconfFlag
+  = | SeenFlag
+
+// THE TYPE FIELD AS WRITTEN ON THE WIRE: one field, whose contents decide whether the line answers a question or
+// marks one. Both arms carry a payload so neither arm is a bare name sitting beside a braced one, and the
+// distinction the audit needs is the arm itself.
+type DebconfSelectionKind
+  = Answered { kind: DebconfAnswerKind }
+  | Flagged { flag: DebconfFlag }
+
+// THE EIGHT ANSWER WORDS, in the order @knowntypes lists them.
+fn debconf_answer_kind_spelling(kind: DebconfAnswerKind) -> NonEmptyStr {
   match kind {
-    KindSelect => "select"
-    KindBoolean => "boolean"
-    KindString => "string"
-    KindMultiselect => "multiselect"
-    KindNote => "note"
-    KindPassword => "password"
-    KindText => "text"
-    KindTitle => "title"
-    KindSeenFlag => "seen"
+    AnswerSelect => "select"
+    AnswerBoolean => "boolean"
+    AnswerString => "string"
+    AnswerMultiselect => "multiselect"
+    AnswerNote => "note"
+    AnswerPassword => "password"
+    AnswerText => "text"
+    AnswerTitle => "title"
   }
 }
 
-// THE NINE WORDS UPSTREAM ACCEPTS, as data so the set is cited rather than inferred from a qw() someone
-// transcribed. Consumed by the sweep in test.claim.altra_autoinstall_seed_witness, which asserts the derived
-// spellings are exactly these words in this order — the only way to notice that an arm and a word have parted.
-data debconf_known_kind_spellings: List<NonEmptyStr> = [
-  "select", "boolean", "string", "multiselect", "note", "password", "text", "title", "seen",
-]
+// THE FLAG WORD. Kept separate from the answer words because upstream keeps the two lists separate; a flag that
+// arrives at the answer speller cannot resolve, so the two vocabularies cannot quietly merge.
+fn debconf_flag_spelling(flag: DebconfFlag) -> NonEmptyStr {
+  match flag {
+    SeenFlag => "seen"
+  }
+}
 
-// THE TYPES THAT ANSWER A QUESTION, which is everything except the flag. WHY THIS IS NOT THE WHOLE UNION: a line
-// of type `seen` sets a flag on a question that must already exist, so it establishes no answer to anything;
-// crediting one as an answer is how a seed certifies a question closed that the package will still ask. Keeping
-// the flag in the union (it is legal in the field) while excluding it from this list is what makes the
-// distinction structural instead of a string comparison in a caller.
-fn debconf_answer_kind_is_answer(kind: DebconfSelectionKind) -> Bool {
+// THE ONE WIRE WORD FOR ANY LEGAL TYPE FIELD, derived by delegating to the two set-specific spellers. This is the
+// only function a consumer needs, and it holds no words of its own, so there is nowhere for a word to go stale.
+fn debconf_selection_kind_spelling(kind: DebconfSelectionKind) -> NonEmptyStr {
   match kind {
-    KindSeenFlag => false
-    KindSelect => true
-    KindBoolean => true
-    KindString => true
-    KindMultiselect => true
-    KindNote => true
-    KindPassword => true
-    KindText => true
-    KindTitle => true
+    Answered { kind: answer } => debconf_answer_kind_spelling(kind: answer)
+    Flagged { flag: flag } => debconf_flag_spelling(flag: flag)
+  }
+}
+
+// THE CREDITING PROJECTION: THE ANSWER KIND A RECORD CARRIES, IF IT CARRIES ONE. This is not a classifier — it
+// does not answer "is this an answer", it hands over the answer kind when there is one and nothing when there is
+// not, so the caller's crediting path is typed on DebconfAnswerKind and a flag can never reach it. The Flagged arm
+// returning Absent is not a policy toggle either: a flag has no DebconfAnswerKind to hand over, which is the whole
+// reason the sets were split. See the comment on DebconfSelectionKind for why this replaced a Bool.
+fn debconf_selection_answer(record: DebconfSelectionRecord) -> Optional<DebconfAnswerKind> {
+  match debconf_selection_kind(record: record) {
+    Answered { kind: answer } => Present { value: answer }
+    Flagged { flag: _ } => Absent
   }
 }
 
@@ -181,6 +199,44 @@ fn debconf_selection_record(
           }
       }
   }
+}
+
+// THE TWO WAYS A LINE IS AUTHORED, one per set. Both go through the same well-formedness gate; what differs is
+// which arm of the type field they can produce, and that difference is not a parameter anybody passes. Answering
+// takes a DebconfAnswerKind and marking takes a DebconfFlag, so "this line answers the question" is settled by
+// which function the caller had to call, and the general constructor above exists so the shelf can render and
+// re-read a line it received as text — a consumer building a seed has no reason to reach for it, and cannot
+// accidentally build a flag and hand it to the crediting path, because that path asks for a DebconfAnswerKind.
+fn debconf_answer_record(
+  owner: NonEmptyStr,
+  label: NonEmptyStr,
+  kind: DebconfAnswerKind,
+  value: NonEmptyStr,
+) -> Optional<DebconfSelectionRecord> {
+  debconf_selection_record(
+    owner: owner,
+    label: label,
+    kind: Answered { kind: kind },
+    value: value,
+  )
+}
+
+// A FLAG LINE. Legal on the wire, inert as an answer: upstream sends it to set_flag for a question that has to
+// exist already. The value is carried because upstream reads one (`set_flag($owner, $label, $type, $content)`,
+// line 139) — refusing it here would make a real preseed unrepresentable, and the flag is harmless precisely
+// because nothing can credit it.
+fn debconf_flag_record(
+  owner: NonEmptyStr,
+  label: NonEmptyStr,
+  flag: DebconfFlag,
+  value: NonEmptyStr,
+) -> Optional<DebconfSelectionRecord> {
+  debconf_selection_record(
+    owner: owner,
+    label: label,
+    kind: Flagged { flag: flag },
+    value: value,
+  )
 }
 
 // A VALUE THAT SELECTS NOTHING IS NOT AN ANSWER. Upstream stores an empty content happily (lines 133-135) and
@@ -313,24 +369,24 @@ fn debconf_selection_line(record: DebconfSelectionRecord) -> NonEmptyStr {
   // owner SP label SP type SP value — four parts, three separators, no more and no fewer. Written as one
   // expression over the four part-functions so there is exactly one place the separators are decided.
   concat(
-    concat(concat(concat(deconf_owner_part(record: record), " "), deconf_label_part(record: record)), " "),
-    concat(deconf_type_part(record: record), concat(" ", deconf_value_part(record: record))),
+    concat(concat(concat(debconf_selection_owner_part(record: record), " "), debconf_selection_label_part(record: record)), " "),
+    concat(debconf_selection_type_part(record: record), concat(" ", debconf_selection_value_part(record: record))),
   ) as NonEmptyStr
 }
 
-fn deconf_owner_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+fn debconf_selection_owner_part(record: DebconfSelectionRecord) -> NonEmptyStr {
   debconf_selection_owner(record: record)
 }
 
-fn deconf_label_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+fn debconf_selection_label_part(record: DebconfSelectionRecord) -> NonEmptyStr {
   debconf_selection_label(record: record)
 }
 
-fn deconf_type_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+fn debconf_selection_type_part(record: DebconfSelectionRecord) -> NonEmptyStr {
   debconf_selection_kind_spelling(kind: debconf_selection_kind(record: record))
 }
 
-fn deconf_value_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+fn debconf_selection_value_part(record: DebconfSelectionRecord) -> NonEmptyStr {
   debconf_selection_value(record: record)
 }
 

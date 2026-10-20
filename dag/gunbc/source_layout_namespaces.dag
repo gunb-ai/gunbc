@@ -68,7 +68,6 @@ fn layout_namespaces() -> List<String> {
     "extdeps.currency",
     "extdeps.darwin",
     "extdeps.debian",
-    "extdeps.debian.debconf",
     "extdeps.deepseek",
     "extdeps.dhcp",
     "extdeps.diagnostic",
