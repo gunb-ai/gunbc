@@ -137,3 +137,10 @@ fn rb_resolved(o: Outcome<ResolvedTree>) -> Bool {
 
 fn rb_b5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { Absent }\n  x\n}\n") }
 test fn rb_b5_refuses_no_arm_declares() -> Bool { ers_has(o: rb_b5(), reason: ^infer_no_arm_declares_a_type) }
+
+fn rb_e1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f() -> List<Int> { [] }\n") }
+fn rb_e2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn g() -> List<Int> {\n  let x = []\n  x\n}\n") }
+fn rb_e3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> { if true { [1] } else { [] } }\n") }
+test fn rb_e1_empty_list_at_declared_list_accepts() -> Bool { ers_infer_accepted(o: rb_e1()) }
+test fn rb_e2_unfixed_empty_list_let_refuses() -> Bool { ers_has(o: rb_e2(), reason: ^infer_unsolved_constructor_type_variable) }
+test fn rb_e3_empty_list_arm_closes_at_sibling() -> Bool { ers_infer_accepted(o: rb_e3()) }
