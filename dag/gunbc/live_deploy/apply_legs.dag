@@ -45,6 +45,7 @@ type DeployApplyLeg
   | ApplyLegInstallFile { step: String, command: ArgvCommand, payload: String }
   | ApplyLegReport { step: String, line: String }
   | ApplyLegHelperGrant { revision: ReleaseRevisionBinding }
+  | ApplyLegObjectSource
 
 type DeployApplyPlan
   = ApplyPlanReady { legs: List<DeployApplyLeg> }
@@ -58,6 +59,7 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegInstallFile { step: st, command: _, payload: _ } => st
     ApplyLegReport { step: st, line: _ } => st
     ApplyLegHelperGrant { revision: _ } => "helper-grant"
+    ApplyLegObjectSource => "object-source"
   }
 }
 
@@ -214,8 +216,17 @@ fn deploy_apply_helper_grant_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan)
   }
 }
 
+// THE OBJECT SOURCE THE TRANSFER READS FROM: one leg whose execution is extdeps.git.partial_clone
+// observe_object_source_serve over the apply's source root. It leads the plan, as the Decide fragment led
+// the script, so a source that cannot serve stops the run before any mutation.
+fn deploy_apply_object_source_plan() -> DeployApplyPlan {
+  ApplyPlanReady { legs: [ApplyLegObjectSource] }
+}
+
 fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision) -> DeployApplyPlan {
   deploy_apply_chain(
+    first: deploy_apply_object_source_plan(),
+    rest: deploy_apply_chain(
     first: deploy_apply_directories_plan(spec: spec, plan: plan),
     rest: deploy_apply_chain(
       first: deploy_apply_memory_cap_plan(spec: spec, authorization: authorization),
@@ -223,6 +234,7 @@ fn deploy_apply_family_plans(spec: DeploymentSpec, plan: ReleaseEffectPlan, auth
         first: deploy_apply_slice_control_plan(spec: spec),
         rest: deploy_apply_helper_grant_plan(spec: spec, plan: plan),
       ),
+    ),
     ),
   )
 }

@@ -24,9 +24,10 @@ import gunbc.owned_directory { OwnedDirectoryEnsureOutcome, OwnedDirectoryEnsure
 import gunbc.host.host_axis_caps { CapMember, CapConvergeAuthorized, CapConvergeWithheld }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
-  ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegHelperGrant,
+  ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegHelperGrant, ApplyLegObjectSource,
   deploy_apply_memory_cap_plan, deploy_apply_leg_step,
 }
+import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import std.types { CommitSha }
@@ -51,7 +52,12 @@ fn grant_boom() -> Optional<String> {
 }
 
 fn ports(command_code: Int, stdin_code: Int) -> DeployApplyPorts {
+  ports_serving(command_code: command_code, stdin_code: stdin_code, source: ObjectSourceCannotServe { source: "/src", cause: "source-boom" })
+}
+
+fn ports_serving(command_code: Int, stdin_code: Int, source: ObjectSourceServeAdmission) -> DeployApplyPorts {
   DeployApplyPorts {
+    object_source: fn() { source },
     command: fn(c) { observed(code: command_code, err: "cmd-boom") },
     stdin: fn(c, p) { observed(code: stdin_code, err: "stdin-boom") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
@@ -105,6 +111,7 @@ test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
         ApplyLegEnsureDirectory { target: _ } => false
         ApplyLegRepairDirectoryEntries { command: _ } => false
         ApplyLegHelperGrant { revision: _ } => false
+        ApplyLegObjectSource => false
       }
     ApplyPlanReady { legs: _ } => false
     ApplyPlanRefused { step: _, reason: _ } => false
@@ -166,6 +173,28 @@ test fn the_helper_grant_leg_reaches_its_port_and_stops_the_run() -> Bool {
   ) {
     ApplyRunFailed { step: s, reason: r, legs_run: n } => s == "helper-grant" && r == "grant-boom" && n == 0
     ApplyRunOk { legs_run: _, reports: _ } => false
+  }
+}
+
+// The object-source leg reaches its port: a source that cannot serve stops the run before any later leg,
+// with the admission's own sentence; one that can serve lets the next leg run.
+test fn an_object_source_that_cannot_serve_dispatches_no_later_leg() -> Bool {
+  match deploy_apply_run_legs(
+    legs: [ApplyLegObjectSource, ApplyLegReport { step: "r", line: "l" }],
+    ports: ports(command_code: 0, stdin_code: 0),
+  ) {
+    ApplyRunFailed { step: s, reason: r, legs_run: n } => s == "object-source" && string_contains(s: r, pattern: "source-boom") && n == 0
+    ApplyRunOk { legs_run: _, reports: _ } => false
+  }
+}
+
+test fn an_object_source_that_can_serve_lets_the_next_leg_run() -> Bool {
+  match deploy_apply_run_legs(
+    legs: [ApplyLegObjectSource, ApplyLegReport { step: "r", line: "l" }],
+    ports: ports_serving(command_code: 0, stdin_code: 0, source: ObjectSourceCanServe { source: "/src" }),
+  ) {
+    ApplyRunOk { legs_run: n, reports: _ } => n == 2
+    ApplyRunFailed { step: _, reason: _, legs_run: _ } => false
   }
 }
 
