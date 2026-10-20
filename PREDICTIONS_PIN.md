@@ -311,3 +311,16 @@ data-bearing run's output (that run had not completed when these lines were writ
      the definition stayed dead -> a 30-min remote regen refused to emit ("undefined variable").
      No discriminating consumer (5 wildcard arms, 0 discriminating). This is the silent-semantic-merge
      class parent warned about; report it, do not fix it inside PR-2.
+
+## Family-run failure modes (three dispatches, all reported as VOID, never as passes)
+  j2ee41ed9 E0603 private re-export (compile); jb9701ba5 BUILD_RC=0 (4m20s warm, binary cached);
+  j6c2e970a TEST_RC=124 at my internal 2700s; jf4e9bad2 TEST_RC=124 at 900s;
+  jbad8b8df TEST_RC=124 at 2700s with "Running unittests" printed and FAM_LINES=0.
+With --test-threads=1 libtest runs ALPHABETICALLY: the first test is fam_f1_unannotated_empty_map.
+So the un-instrumented 45 minutes were consumed inside F1's census call, before its BEGIN could be
+observed (BEGIN now prints before the call; the previous binary predated it). PENDING per-test
+confirmation (jd52f0d3b, timeout 200 per test): F1 = unannotated empty_map() appears NON-TERMINATING
+on the Acc head for a 6-line module. If confirmed, that is substantive evidence for parent's
+family question: (ii) Acc/producer defect -- a true source disagreement would refuse, not diverge.
+CI's 76-diagnostic run did not hang, so the divergence may need the single-module census path
+(compiling std per call) rather than the corpus path; naming that difference is part of the verdict.
