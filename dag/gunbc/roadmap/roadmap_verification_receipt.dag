@@ -859,9 +859,9 @@ fn attempt_head_receipt_name_is_a_receipt(name: String, head_sha: String) -> Boo
   }
 }
 
-fn attempt_head_receipts_read_names(verification_dir: String, names: List<String>, index: Int) -> List<ExactVerificationReceiptSource> {
+fn attempt_head_receipts_read_names(verification_dir: String, names: List<String>, index: Int, read_so_far: List<ExactVerificationReceiptSource>) -> List<ExactVerificationReceiptSource> {
   match names.get(index) {
-    Absent => []
+    Absent => read_so_far
     Present { value: name } => {
       let path = join([verification_dir, "/", name], "")
       let read = Filesystem.Read(path: path)
@@ -869,7 +869,7 @@ fn attempt_head_receipts_read_names(verification_dir: String, names: List<String
         FilesystemReadSucceeded { content: text } => ExactVerificationReceiptPresent { text: text }
         FilesystemReadRefused { error: e } => ExactVerificationReceiptUnreadable { detail: e }
       }
-      [this].concat(attempt_head_receipts_read_names(verification_dir: verification_dir, names: names, index: index + 1))
+      attempt_head_receipts_read_names(verification_dir: verification_dir, names: names, index: index + 1, read_so_far: read_so_far.concat([this]))
     }
   }
 }
@@ -909,6 +909,7 @@ fn attempt_head_receipts_read(attempt_dir: String, verification_dir: String, hea
               verification_dir: verification_dir,
               names: filesystem_listing_entry_names(listing: l).filter(n => attempt_head_receipt_name_is_a_receipt(name: n, head_sha: head_sha)),
               index: 0,
+              read_so_far: [],
             ),
           }
       }
