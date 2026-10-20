@@ -26,6 +26,6 @@ data gcp_iam_bootstrap_trust_root_wall_in_code: RungDrop = RungDrop {
       "account iam-converge@gunbai-secrets.iam.gserviceaccount.com", "account iam-observe@gunbai-secrets.iam.gserviceaccount.com",
       "account iam-bootstrap@gunbai-secrets.iam.gserviceaccount.com",
     ],
-    restoration_trigger: "the gunbc-trust-root tag is bound on the three accounts and a tag-conditioned deny refuses iam-bootstrap serviceAccounts.setIamPolicy/actAs/getAccessToken on them, observed by readback"
+    restoration_trigger: "the gunbc-trust-root tag is bound on the three accounts, a deny conditioned on it refuses iam-bootstrap serviceAccounts.setIamPolicy on them, and actAs/getAccessToken are refused to iam-bootstrap on them (by the unconditioned boundary deny, which covers every account), each observed by readback"
   }
 }

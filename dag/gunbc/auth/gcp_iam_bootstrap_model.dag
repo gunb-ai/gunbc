@@ -440,11 +440,14 @@ fn iam_bootstrap_delta_principal() -> String {
   concat("principal://iam.googleapis.com/projects/-/serviceAccounts/", iam_bootstrap_service_account as String)
 }
 
-// ── THE TRUST-ROOT WALL IN THE CREDENTIAL LAYER (retires gunbc.rung_drop
-// gcp_iam_bootstrap_trust_root_wall_in_code) ─────────────────────────────────────────────────────
+// ── THE TRUST-ROOT WALL IN THE CREDENTIAL LAYER (the replacement gunbc.rung_drop
+// gcp_iam_bootstrap_trust_root_wall_in_code stages; the drop retires on its readback trigger) ────────
 // The three own-trust accounts carry a project-parented tag, gunbai-secrets/gunbc-trust-root = root, and
-// a deny rule refuses iam-bootstrap every permission it could use to rewrite or become them when the
-// resource carries that tag. Denial conditions recognize only resource tag functions (deny-overview);
+// this rule refuses iam-bootstrap every write to such an account's policy or lifecycle when the resource
+// carries that tag. BECOMING one needs no tag: the boundary deny (iam_bootstrap_delta_deny_rules) refuses
+// iam-bootstrap actAs, token and identity-token minting, implicit delegation, signing and key creation on
+// every account, unconditioned, which no conditioned rule could strengthen. The wall holds only what
+// the boundary cannot deny everywhere, because iam-bootstrap writes the target accounts' policies. Denial conditions recognize only resource tag functions (deny-overview);
 // resource.matchTag takes the namespaced key `<project id>/<short name>` (conditions attribute
 // reference); every permission below is on the deny-supported list (deny-permissions-support, read
 // 2026-10-19). The pools stay walled in code alone (gunbc.rung_drop gcp_iam_bootstrap_trust_pool_untaggable).

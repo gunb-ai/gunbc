@@ -565,21 +565,6 @@ fn gcp_tag_condition_expression(c: GcpTagCondition) -> String {
   }
 }
 
-// WHETHER A TAG CONDITION HOLDS for a resource carrying the given tags (by namespaced key and value
-// short name), the semantics the attribute reference gives matchTag. matchTagId names permanent ids,
-// which a tag set read by name cannot answer, so it is refused as undecidable here rather than guessed.
-type GcpResourceTag { key_namespaced_name: String, value_short_name: String }
-
-type GcpTagConditionVerdict = GcpTagConditionHolds | GcpTagConditionFails | GcpTagConditionUndecided
-
-fn gcp_tag_condition_verdict(c: GcpTagCondition, tags: List<GcpResourceTag>) -> GcpTagConditionVerdict {
-  match c {
-    ResourceMatchTag { key_namespaced_name: k, value_short_name: v } =>
-      if any(tags, t => t.key_namespaced_name == (k as String) && t.value_short_name == (v as String)) { GcpTagConditionHolds } else { GcpTagConditionFails }
-    ResourceMatchTagId { key_id: _, value_id: _ } => GcpTagConditionUndecided
-  }
-}
-
 // A SERVICE ACCOUNT'S FULL RESOURCE NAME, the tag binding parent
 // (docs.cloud.google.com/iam/docs/service-accounts-tags, read 2026-10-19).
 fn gcp_service_account_full_resource_name(project_id: GcpProjectId, account: ServiceAccountEmail) -> String {
