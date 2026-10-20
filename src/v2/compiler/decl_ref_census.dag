@@ -170,11 +170,21 @@ fn literal_scan_add(scan: LiteralScan, file: Symbol, interior: List<Token>) -> L
   }
 }
 
+// A `-> DeclarationRef {` is a return type opening a function body, never a record literal.
+fn after_return_type(toks: List<Token>) -> List<Token> {
+  match toks {
+    Empty => toks
+    Cons { head: h, tail: rest } => if token_is_ident(t: h, lexeme: "DeclarationRef") { rest } else { toks }
+  }
+}
+
 fn literal_scan(file: Symbol, toks: List<Token>, scan: LiteralScan) -> LiteralScan {
   match toks {
     Empty => scan
     Cons { head: h, tail: r1 } =>
-      if token_is_ident(t: h, lexeme: "DeclarationRef") {
+      if h.lexeme == "->" {
+        literal_scan(file: file, toks: after_return_type(toks: r1), scan: scan)
+      } else if token_is_ident(t: h, lexeme: "DeclarationRef") {
         match r1 {
           Cons { head: lb, tail: r2 } =>
             if lb.class == ^dag_token_lbrace {
