@@ -78,3 +78,53 @@ fn sudo_nopasswd_grant_list_admits_probe(
     }
   )
 }
+
+service sudo.NopasswdExecuteProbe {
+  operation Check {
+    requires opaque
+    input { probe: SudoNopasswdExecuteProbeShape }
+    output { success: Bool from "exit_success" }
+    readonly
+
+    transport shell {
+      argv: ["sudo", "-n", "{probe.command_path}", "{probe.check_argv}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "sudo nopasswd execute probe failed"
+    }
+    mock_response {
+      0 => { success: true } "hermetic sudo.NopasswdExecuteProbe.Check"
+    }
+  }
+}
+
+service sudo.NopasswdGrantList {
+  operation Read {
+    requires none
+    input {}
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+
+    transport shell {
+      argv: ["sudo", "-n", "-l"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "sudo nopasswd grant-list read failed"
+    }
+    mock_response {
+      0 => {
+        exit_code: 0,
+        success: true,
+        stdout: "User ghrunner may run the following commands:\n    (ALL) NOPASSWD: /usr/bin/tailscale",
+        stderr: ""
+      } "hermetic sudo.NopasswdGrantList.Read"
+    }
+  }
+}
