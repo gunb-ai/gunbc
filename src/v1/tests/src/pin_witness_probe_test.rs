@@ -52,13 +52,8 @@ fn run(label: &str, source: &str, target: &str) {
     let hard: Vec<String> = resolved
         .diagnostics
         .iter()
-        .filter(|d| {
-            !matches!(
-                d,
-                v1_compiler::v1_compiler_diagnostic::Diagnostic::UnusedDeclaration { .. }
-            )
-        })
-        .map(|d| format!("{d:?}"))
+        .map(|e| format!("{:?}", e.diagnostic))
+        .filter(|d| !d.contains("UnusedDeclaration"))
         .collect();
     let mut uniq: Vec<&String> = ids
         .iter()
