@@ -255,7 +255,7 @@ import v1.compiler.infer_access {
   check_index_access_node, check_slice_access_node
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
-import std.generated_provider { GeneratedProviderDemand }
+import std.generated_provider { GeneratedProviderDemand, group_provider_demands }
 
 fn is_witness_type_name(name: String) -> Bool {
   name == "Witness" || name == "witness"
@@ -18601,9 +18601,23 @@ type RealizeState {
   variant_surfaces: Map<String, VariantExportSurface>
   item_registry: Map<String, ItemInfo>
   diags_by_name: Map<String, List<ErrorNode>>
+  demands_by_name: Map<String, List<GeneratedProviderDemand>>
 }
 
-fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
+// THE PASS OUTPUT: the typed program and, beside it rather than inside it, the provider demands its
+// generated references owe. TypedGraph stays the semantic program; demands are orchestration facts
+// about completing its closure, grouped once over the whole pass for the acquisition boundary.
+type TypecheckPass {
+  graph: TypedGraph
+  provider_demands: List<GeneratedProviderDemand>
+}
+
+type ReconciledPass {
+  graph: ResolvedGraph
+  provider_demands: List<GeneratedProviderDemand>
+}
+
+fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckPass {
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
@@ -18614,7 +18628,8 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
     module_index: empty_map(),
     variant_surfaces: empty_map(),
     item_registry: empty_map(),
-    diags_by_name: empty_map()
+    diags_by_name: empty_map(),
+    demands_by_name: empty_map()
   }, f: (st, rm) =>
     realize_module(
       name: authored_name_at(source_indices: source_indices, node: rm.module),
@@ -18648,10 +18663,19 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
     EffectsIncomplete { partial: _, causes: causes } => causes
   }
   let incompleteness_diagnostics = effect_incompleteness_diagnostics(causes: incompleteness_causes)
-  TypedGraph {
-    modules: modules,
-    item_registry: analysed_registry,
-    diagnostics: concat(flat_map(diag_chunks, c => c), incompleteness_diagnostics)
+  let demand_chunks = graph.modules |> map(rm =>
+    match map_get(state.demands_by_name, authored_name_at(source_indices: source_indices, node: rm.module)) {
+      Present { value: d } => d
+      Absent => []
+    }
+  )
+  TypecheckPass {
+    graph: TypedGraph {
+      modules: modules,
+      item_registry: analysed_registry,
+      diagnostics: concat(flat_map(diag_chunks, c => c), incompleteness_diagnostics)
+    },
+    provider_demands: group_provider_demands(demands: flat_map(demand_chunks, c => c))
   }
 }
 
@@ -18737,7 +18761,8 @@ fn realize_module(
               build_variant_export_surface(tm: typed, surfaces: dep_state.variant_surfaces, source_indices: source_indices)
             ),
             item_registry: map_merge(dep_state.item_registry, typed.item_registry),
-            diags_by_name: map_insert(dep_state.diags_by_name, typed_path, concat(parent_result.diagnostics, tc_result.diagnostics))
+            diags_by_name: map_insert(dep_state.diags_by_name, typed_path, concat(parent_result.diagnostics, tc_result.diagnostics)),
+            demands_by_name: map_insert(dep_state.demands_by_name, typed_path, tc_result.provider_demands)
           }
       }
   }
@@ -18860,14 +18885,18 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
   )
 }
 
-fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ResolvedGraph {
-  let typed = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
+fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ReconciledPass {
+  let pass = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
+  let typed = pass.graph
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
-  ResolvedGraph {
-    modules: modules,
-    item_registry: typed.item_registry,
-    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: typed.item_registry),
-    diagnostics: typed.diagnostics,
+  ReconciledPass {
+    graph: ResolvedGraph {
+      modules: modules,
+      item_registry: typed.item_registry,
+      item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: typed.item_registry),
+      diagnostics: typed.diagnostics,
+    },
+    provider_demands: pass.provider_demands
   }
 }
