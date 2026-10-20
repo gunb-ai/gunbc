@@ -11,7 +11,7 @@ import gunbc.compile_diagnostic_census {
 import std.types { Bool, Int, String, List }
 import std.algebra { string_contains }
 import std.decl_ref { DeclarationRef, decl_ref }
-import v2.std.decl_ref_resolution { cited_declaration_ref_refusal_count_live }
+import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_live }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_traits }
 import extdeps.languages.rust.emit { rust_trait_derive_attr_from_traits }

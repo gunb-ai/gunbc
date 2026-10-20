@@ -1,0 +1,63 @@
+module gunbc.claim_coverage_census_live
+
+import std.types { String, List }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
+import std.optional { Absent, Present }
+import gunbc.rung_drop.v1_required_lanes_withdrawn { v1_required_lanes_withdrawn }
+import gunbc.emitted_subject_build_gate { emitted_subject_build_rows, emitted_subject_build_label_text }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_required_job_id }
+import gunbc.claim_coverage_census {
+  ClaimSource, ClaimExecutorRow, ClaimCoverageInputs,
+  ClaimCoverageHeld, ClaimCoverageDidNotHold,
+  claim_coverage, claim_coverage_standing, claim_coverage_receipt_lines,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE SOURCE ROSTER. A further source of enrolled claims is a row here.
+//
+// `local_repo_wet_schedule` is the wet claim lane's roster. Its enrolled identities are read from
+// the schedule itself, so a claim added to it joins this census with no edit here. The drop that
+// declares its non-execution is gunbc.rung_drop v1_required_lanes_withdrawn (member 1 names this
+// instrument as the population's enumerator).
+fn claim_sources() -> List<ClaimSource> {
+  [
+    ClaimSource {
+      source_id: "local_repo_wet_schedule",
+      enrolled: local_repo_wet_schedule() |> map(c => witness_identity_qualified_name(identity: c.identity)),
+      executed_by_label: Absent,
+      declaring_drop: Present { value: v1_required_lanes_withdrawn }
+    }
+  ]
+}
+
+// THE EXECUTOR ROSTER IS READ, NOT AUTHORED: the required job and the instrument labels its steps
+// run, from `emitted_subject_build_rows` -- the same rows `gunbc.witness.compiler_gate_workflow`
+// renders its `gunbc test` steps from. A step added there joins this census; no edit here. The
+// wet schedule's `executed_by_label` is Absent because no instrument executes it; restoring the
+// capability (trigger 1a of v1_required_lanes_withdrawn) is a label on that source AND a row there.
+fn claim_executors() -> List<ClaimExecutorRow> {
+  [
+    ClaimExecutorRow {
+      job_id: compiler_gate_required_job_id,
+      executed_labels: emitted_subject_build_rows() |> map(r => emitted_subject_build_label_text(row: r))
+    }
+  ]
+}
+
+// `gunbc test //gunbc/instruments:claim-coverage-census`: 0 every enrolled claim is executed by a
+// required job; 1 the uncovered population is nonempty (printed above the exit by identity, each
+// tagged with its declaring drop or UNDECLARED).
+fn claim_coverage_census_exit() -> CliWireResponse {
+  let c = claim_coverage(inputs: ClaimCoverageInputs { sources: claim_sources(), jobs: claim_executors() })
+  let bytes = concat(claim_coverage_receipt_lines(c: c) |> join(separator: "\n"), "\n")
+  match claim_coverage_standing(c: c) {
+    ClaimCoverageHeld => CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+    ClaimCoverageDidNotHold { uncovered: u } =>
+      CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: concat("claim-coverage-census: did not hold: ", concat(to_string(u |> count), " enrolled claims are executed by no required job (listed above by identity)")) } }
+  }
+}
