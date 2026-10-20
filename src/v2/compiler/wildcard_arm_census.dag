@@ -1,6 +1,6 @@
 module v2.compiler.wildcard_arm_census
 
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, list_at_optional }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, list_at_optional, skip }
 import std.types { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -102,6 +102,30 @@ fn wildcard_arm_is_wildcard(arm: Node) -> Bool {
   }
 }
 
+fn wildcard_match_rows(
+  module: String,
+  enclosing: String,
+  typing: WildcardTyping,
+  match_node: Node,
+  acc: FreeMonoid<WildcardArmRow>
+) -> FreeMonoid<WildcardArmRow> {
+  let targets: List<Node> = positional_child_target_nodes(node: match_node)
+  match list_at_optional(xs: targets, index: 0) {
+    Absent => acc
+    Present { value: scrutinee } =>
+      fold_list(xs: skip(xs: targets, n: 1), empty: acc, cons: fn(a, arm) {
+        if wildcard_arm_is_wildcard(arm: arm) {
+          list_snoc_item(xs: a, item: WildcardArmRow {
+            module: module,
+            enclosing: enclosing,
+            occurrence: wildcard_occurrence(n: match_node),
+            scrutinee: wildcard_scrutinee_read(typing: typing, scrutinee: scrutinee)
+          })
+        } else { a }
+      })
+  }
+}
+
 fn wildcard_walk(
   module: String,
   enclosing: String,
@@ -110,26 +134,7 @@ fn wildcard_walk(
   acc: FreeMonoid<WildcardArmRow>
 ) -> FreeMonoid<WildcardArmRow> {
   let here = match n.kind {
-    ComputationNode { behavior: Match } =>
-      match positional_child_target_nodes(node: n) {
-        targets =>
-          match list_at_optional(xs: targets, index: 0) {
-            Absent => acc
-            Present { value: scrutinee } => {
-              let read = wildcard_scrutinee_read(typing: typing, scrutinee: scrutinee)
-              fold_list(xs: targets, empty: acc, cons: fn(a, arm) {
-                if wildcard_arm_is_wildcard(arm: arm) {
-                  list_snoc_item(xs: a, item: WildcardArmRow {
-                    module: module,
-                    enclosing: enclosing,
-                    occurrence: wildcard_occurrence(n: n),
-                    scrutinee: read
-                  })
-                } else { a }
-              })
-            }
-          }
-      }
+    ComputationNode { behavior: Match } => wildcard_match_rows(module: module, enclosing: enclosing, typing: typing, match_node: n, acc: acc)
     ComputationNode { behavior: _ } => acc
     TypeNode { connective: _ } => acc
   }
