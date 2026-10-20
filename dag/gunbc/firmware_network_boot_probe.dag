@@ -5,6 +5,7 @@ import std.optional { Present, Absent }
 import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac, OpenBmc }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
 
 // S0 IMPORT, ONE MARKED BLOCK. The observation vocabulary belongs to gunbc.firmware_network_boot_standing
 // (S0); this module emits it and defines none of it. Nothing outside this block names where these
@@ -375,6 +376,24 @@ fn firmware_boot_family_rows() -> List<FirmwareBootFamilyRow> {
 // redfish_axis_replies, returning List<AxisReply>. The witness pins the literal.
 fn firmware_boot_axis_reader_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "redfish_axis_replies")
+}
+
+// THE CALLER IS A DECLARED FRONTIER (DESIGN.md 3c): today only witnesses call probe() and
+// redfish_axis_replies. What lands them in a running route is the effectful observer that performs
+// the read-only Redfish GETs against a unit, wraps each result as a RedfishGet, and feeds
+// redfish_axis_replies into probe(). THE NAME IS A COMMITMENT, NOT A DISCOVERY: no branch declares it
+// yet (gunbc.firmware_network_boot_observation, fn observe_firmware_boot_axes); renaming it means
+// editing this one fn and its witness pin. Until it appears the frontier stays Pending on purpose.
+data firmware_boot_observer_frontier: DissolutionCondition = BoundDissolution {
+  trigger: DeclarationAppears { ref: firmware_boot_observer_ref() },
+}
+
+fn firmware_boot_observer_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.firmware_network_boot_observation", decl_name: "observe_firmware_boot_axes")
+}
+
+fn firmware_boot_observer_frontier_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {
+  dissolution_status(condition: firmware_boot_observer_frontier, present_decls: present_decls)
 }
 
 type AxisReplyInhabitation

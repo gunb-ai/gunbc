@@ -8,6 +8,7 @@ import gunbc.firmware_network_boot_standing {
 import gunbc.firmware_network_boot_probe {
   FirmwareBootFamilyRow, BmcStack, RouteVerdict,
   firmware_boot_axis_reply_inhabitation, AxisReplyUninhabited, AxisReplyInhabitedByReader,
+  firmware_boot_observer_frontier_status,
 }
 import std.optional { Present, Absent }
 import std.decl_ref { decl_ref }
@@ -171,4 +172,17 @@ test fn inhabitation_is_owed_by_the_reader_until_a_capture_is_decoded() -> Bool 
     AxisReplyUninhabited { owed_by: o, over: _, falsified_by: _ } => o == reader
     AxisReplyInhabitedByReader { observed: _ } => false
   }
+}
+
+test fn observer_frontier_is_pending_until_the_named_caller_appears() -> Bool {
+  let observer = decl_ref(module_path: "gunbc.firmware_network_boot_observation", decl_name: "observe_firmware_boot_axes")
+  let pending = match firmware_boot_observer_frontier_status(present_decls: []) {
+    DissolutionPending => true
+    _ => false
+  }
+  let fired = match firmware_boot_observer_frontier_status(present_decls: [observer]) {
+    DissolutionFired => true
+    _ => false
+  }
+  pending && fired
 }
