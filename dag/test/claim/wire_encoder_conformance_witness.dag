@@ -20,7 +20,7 @@ import test.claim.approval_device_wire_witness { fx_push, fx_enrolment, fx_redem
 // stay hand-written (validation where construction is not yet available: dag has no value reflection,
 // so a generic fold cannot take a typed value apart by derived field name -- typed frontier row in
 // wire_strict_reader, trigger feature:value-reflection). What is checked: an encoder's output has, at
-// every object level, the declaration-derived member ORDER (a sum's "kind" first) and every admitted
+// every object level, the member ORDER of the shape (a sum's "kind" first); the shape's members are paired to their declarations for the record shapes by test.claim.wire_shape_declaration_pairing_witness and for ReadAuthentication by wire_schema_derivation_witness, while the sum arms (push_shape, evidence_shape) are supplied and unpaired (frontier row on WireShape) and every admitted
 // string member spelled as one of its row's admitted spellings. The shapes are the ones the reader's
 // differential witnesses already use, so one row set judges both directions.
 //

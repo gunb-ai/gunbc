@@ -262,7 +262,7 @@ data wire_strict_reader_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "WireShape"),
-    reason: "the shape drives only the READ direction; the server *_json encoders are hand-written and merely judged against the shape's member order and admitted spellings by test.claim.wire_encoder_conformance_witness, because dag cannot take a typed value apart by derived field name",
+    reason: "the sum shapes' arm members (push_shape, evidence_shape) are supplied values not paired to their variant declarations (declared_field_list reads a record's fields, not a sum arm's payload); the shape drives only the READ direction; the server *_json encoders are hand-written and merely judged against the shape's member order and admitted spellings by test.claim.wire_encoder_conformance_witness, because dag cannot take a typed value apart by derived field name",
     dissolution: unbound_dissolution(description: "feature:value-reflection -- a field read by derived name with declaration-driven newtype, enum-spelling and nested dispatch; with it a generic fold from a value plus its WireShape to JsonValue replaces the hand-written *_json encoders and the conformance witness becomes the differential against them"),
   ),
 ]
