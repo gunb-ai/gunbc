@@ -338,7 +338,15 @@ fn checkout_context_names_a_commit(context: ExpressionContext, path: List<String
         || fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || dotted == concat("event.inputs.", n) })
     Inputs => checkout_names_a_revision_input(name: dotted)
     Needs => fold(checkout_commit_job_outputs, init: false, f: fn(acc, n) { acc || dotted == n })
-    _ => false
+    Env => false
+    Vars => false
+    Job => false
+    Jobs => false
+    Steps => false
+    Runner => false
+    Secrets => false
+    Strategy => false
+    Matrix => false
   }
 }
 
@@ -352,7 +360,11 @@ fn checkout_ref_value_refusals(ref_expression: Expression, falls_through: Bool) 
       else { [concat(serialize_expression(expression: ref_expression), " (a condition with no fallback yields a non-commit value)")] }
     ContextAccess { context: c, path: p } =>
       if checkout_context_names_a_commit(context: c, path: p) { [] } else { [serialize_expression(expression: ref_expression)] }
-    _ => [serialize_expression(expression: ref_expression)]
+    FunctionCall { function: _, args: _ } => [serialize_expression(expression: ref_expression)]
+    StringLiteral { value: _ } => [serialize_expression(expression: ref_expression)]
+    Equals { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
+    NotEquals { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
+    LogicalNot { operand: _ } => [serialize_expression(expression: ref_expression)]
   }
 }
 
