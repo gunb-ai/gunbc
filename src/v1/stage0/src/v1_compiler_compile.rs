@@ -3603,55 +3603,6 @@ pub fn interpreter_blocking_diagnostic_messages_with_source_indices(
     })
 }
 
-pub fn interpreter_blocking_diagnostic_messages(
-    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for d in Rc::new({
-            let mut __result = Vec::new();
-            for d in diagnostics.iter().cloned() {
-                if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-                    __result.push(d);
-                }
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        {
-            __result.push({
-                let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            crate::v1_std_core::diagnostic_to_message(
-                                                d.diagnostic.clone(),
-                                            ),
-                                            " (".to_string(),
-                                        ),
-                                        span.file.clone(),
-                                    ),
-                                    ":".to_string(),
-                                ),
-                                (span.start.clone()).to_string(),
-                            ),
-                            "-".to_string(),
-                        ),
-                        (span.end.clone()).to_string(),
-                    ),
-                    ")".to_string(),
-                )
-            });
-        }
-        __result
-    })
-}
-
 pub fn stage0_self_compile_refusal_message(
     subject: String,
     result: Rc<PipelineResult>,
