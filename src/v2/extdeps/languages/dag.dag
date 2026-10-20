@@ -1886,13 +1886,13 @@ fn dag_grammar_postfix_as_suffix_expr() -> GrammarExpr {
   )
 }
 
-// `x is V` is a postfix step beside the cast: the arm V is spelled as a qualified name and is only a
+// `x is V` is a postfix step beside the cast: the arm V is spelled as one name and is only a
 // SOURCE SPELLING here. Resolving it against x's type declaration is elaboration's work, and the
 // resolved arm it produces has no row in this grammar, so no source text can spell it.
 fn dag_grammar_postfix_is_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_is),
-    right: dag_grammar_nonterminal(production: ^dag_production_qualified_name)
+    right: dag_grammar_binding_name_terminal()
   )
 }
 

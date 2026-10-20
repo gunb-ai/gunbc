@@ -1,0 +1,47 @@
+module v2.test.claim.is_surface
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, ComputationNode, Edge, Node, Positional, Symbol, Transform, TypeNode, node_subtree_nodes }
+import std.optional { Absent, Optional, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: `x is V` is carried as Transform[kw_is, x, V] through lowering and resolve; V stays the arm's
+// source spelling, resolved against x's type by infer (R1). BOUNDARY: source text in via tpb_assemble.
+
+fn is_unit_test() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\ntype Color = Red | Green\n\nfn f(c: Color) -> Bool {\n  c is Red\n}\n")
+}
+
+fn is_atom_identity(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => Present { value: id }
+    _ => Absent
+  }
+}
+
+fn is_head_is_kw(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match n.children {
+        [first, _, _] =>
+          match is_atom_identity(n: first.target) {
+            Present { value: id } => id == ^dag_token_kw_is
+            Absent => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn is_unit_test_lowers_to_one_is_node() -> Bool {
+  match is_unit_test() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: root.root), init: 0, f: fn(acc, x) { if is_head_is_kw(n: x) { acc + 1 } else { acc } }) == 1
+  }
+}
