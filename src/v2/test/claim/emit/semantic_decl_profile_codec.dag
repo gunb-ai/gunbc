@@ -96,9 +96,9 @@ test fn emit_transform_rows_round_trip_through_the_bundle() -> Bool {
   }
 }
 
-test fn rust_profile_states_no_line_breaks() -> Bool {
+test fn rust_profile_states_only_the_string_quote_no_line_breaks() -> Bool {
   match decoded_profile() {
-    Accepted { value: p, diagnostics: _ } => p.emit_transform_rows == []
+    Accepted { value: p, diagnostics: _ } => p.emit_transform_rows == [quote_row()]
     Rejected { diagnostics: _ } => false
   }
 }
