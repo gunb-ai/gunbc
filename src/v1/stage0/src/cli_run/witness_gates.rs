@@ -79,13 +79,13 @@ use crate::v1_interpreter::str_value;
 use crate::v1_interpreter::Value;
 use crate::v1_rt;
 use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_pattern, authored_name_at, block_stmts,
-    build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
-    empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
-    field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    arg_name_at, arg_value, arm_body, arm_pattern, block_stmts, build_newline_index,
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
+    empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
+    field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
+    inferred_to_node, intern, is_error_diagnostic, is_interpreter_blocking_diagnostic,
+    let_binding_name_at, let_value, make_error_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_items, no_span, node_authored_text,
     param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
     ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
     Node,
@@ -163,10 +163,7 @@ pub(crate) fn witness_exclusion_rows_from_module_source(
             let mut pattern: Option<String> = None;
             let mut classification: Option<String> = None;
             for field in el.children.iter() {
-                let fname = crate::v1_std_core::field_init_node_name_at(
-                    field.clone(),
-                    source_indices.clone(),
-                );
+                let fname = crate::v1_std_core::field_init_node_name_at(field.clone());
                 let value = crate::v1_std_core::field_init_node_value(field.clone());
                 match fname.as_str() {
                     "pattern" => match value.expr_data.as_ref() {
@@ -183,10 +180,7 @@ pub(crate) fn witness_exclusion_rows_from_module_source(
                         ),
                     },
                     "classification" => {
-                        let name = crate::v1_std_core::field_init_node_name_at(
-                            value.clone(),
-                            source_indices.clone(),
-                        );
+                        let name = crate::v1_std_core::field_init_node_name_at(value.clone());
                         if !WITNESS_EXCLUSION_CLASSIFICATIONS.contains(&name.as_str()) {
                             panic!(
                                 "exclusion frontier reader: unrecognized classification \

@@ -25,7 +25,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
 };
 pub use crate::v1_std_core::{
-    authored_name_at, field_init_node_name_at, make_error_node, CompilerDiagnostic, Connective,
+    field_init_node_name_at, make_error_node, node_authored_text, CompilerDiagnostic, Connective,
     ErrorNode, NewlineIndex, Node, ParsedModuleItemKind, TextFile,
 };
 use crate::NonEmptyBTreeSet;
@@ -239,10 +239,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                 diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<ModuleFilenameOwners>, tm: Rc<TypedModule>| {
-                let module_name = crate::v1_std_core::authored_name_at(
-                    tm.type_env.source_indices.clone(),
-                    tm.module.clone(),
-                );
+                let module_name = crate::v1_std_core::node_authored_text(tm.module.clone());
                 let filename =
                     crate::gunbc_rust_emitted_edge::module_to_filename(module_name.clone());
                 match v1_rt::map_get(&acc.owners.clone(), filename.clone()) {
@@ -776,7 +773,6 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                                 if has_mock_prefix(
                                                     crate::v1_std_core::field_init_node_name_at(
                                                         p.clone(),
-                                                        tm.type_env.source_indices.clone(),
                                                     ),
                                                 ) {
                                                     __found = true;
@@ -794,16 +790,13 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                 .cloned()
                                 {
                                     __result.push(Rc::new(TestProjection {
-                                        module_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.source_indices.clone(),
+                                        module_name: crate::v1_std_core::node_authored_text(
                                             tm.module.clone(),
                                         ),
-                                        service_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.source_indices.clone(),
+                                        service_name: crate::v1_std_core::node_authored_text(
                                             item.clone(),
                                         ),
-                                        operation_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.source_indices.clone(),
+                                        operation_name: crate::v1_std_core::node_authored_text(
                                             c.clone(),
                                         ),
                                         inferred: crate::v1_compiler_infer_types::resolved_type(
@@ -816,7 +809,6 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                                 if has_mock_prefix(
                                                     crate::v1_std_core::field_init_node_name_at(
                                                         p.clone(),
-                                                        tm.type_env.source_indices.clone(),
                                                     ),
                                                 ) {
                                                     __result.push(p);
@@ -844,11 +836,8 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
     })
 }
 
-pub fn is_type_alias_return_node(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
+pub fn is_type_alias_return_node(n: Rc<Node>) -> bool {
+    (crate::v1_std_core::node_authored_text(n.clone()) != "Unit".to_string())
 }
 
 pub fn is_type_def_item(item: Rc<Node>) -> bool {
@@ -864,26 +853,14 @@ pub fn is_leaf_type_item(item: Rc<Node>) -> bool {
         && ((item.children.clone().len() as i64) == 0))
 }
 
-pub fn is_type_alias_item(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
+pub fn is_type_alias_item(item: Rc<Node>) -> bool {
     (is_leaf_type_item(item.clone())
-        && is_type_alias_return_node(
-            crate::v1_compiler_infer_types::resolved_type(item.clone()),
-            source_indices.clone(),
-        ))
+        && is_type_alias_return_node(crate::v1_compiler_infer_types::resolved_type(item.clone())))
 }
 
-pub fn is_type_decl_item(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
+pub fn is_type_decl_item(item: Rc<Node>) -> bool {
     ((is_leaf_type_item(item.clone())
-        && !is_type_alias_return_node(
-            crate::v1_compiler_infer_types::resolved_type(item.clone()),
-            source_indices.clone(),
-        ))
+        && !is_type_alias_return_node(crate::v1_compiler_infer_types::resolved_type(item.clone())))
         || ((((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
             && ((item.params.clone().len() as i64) > 0))
             && (item.body.clone() == std::option::Option::None))
@@ -902,21 +879,17 @@ pub struct EmittedSymbolOwners {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn emitted_symbol_bindings_for_item(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<EmittedSymbolBinding>>> {
+pub fn emitted_symbol_bindings_for_item(item: Rc<Node>) -> Rc<Vec<Rc<EmittedSymbolBinding>>> {
     {
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+        let name = crate::v1_std_core::node_authored_text(item.clone());
         if (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemService) {
             Rc::new(vec![Rc::new(EmittedSymbolBinding {
                 symbol: sanitize_service_name(name.clone()),
                 identity: v1_rt::concat("service ".to_string(), name.clone()),
             })])
         } else {
-            if ((is_type_def_item(item.clone())
-                || is_type_alias_item(item.clone(), source_indices.clone()))
-                || is_type_decl_item(item.clone(), source_indices.clone()))
+            if ((is_type_def_item(item.clone()) || is_type_alias_item(item.clone()))
+                || is_type_decl_item(item.clone()))
             {
                 Rc::new(vec![Rc::new(EmittedSymbolBinding {
                     symbol: name.clone(),
@@ -935,11 +908,11 @@ pub fn emitted_symbol_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec<
         for tm in typed.modules.clone().iter().cloned() {
             __result.extend((*{
         let source_indices = tm.type_env.source_indices.clone();
-let module_name = crate::v1_std_core::authored_name_at(source_indices.clone(), tm.module.clone());
+let module_name = crate::v1_std_core::node_authored_text(tm.module.clone());
 let result = tm.items.clone().iter().cloned().fold(Rc::new(EmittedSymbolOwners {
     owners: v1_rt::rc_empty_map::<String, String>(),
     diagnostics: Rc::new(vec![]),
-}), |acc: Rc<EmittedSymbolOwners>, item: Rc<Node>| emitted_symbol_bindings_for_item(item.clone(), source_indices.clone()).iter().cloned().fold(acc, |inner: Rc<EmittedSymbolOwners>, binding: Rc<EmittedSymbolBinding>| match v1_rt::map_get(&inner.owners.clone(), binding.symbol.clone()) {
+}), |acc: Rc<EmittedSymbolOwners>, item: Rc<Node>| emitted_symbol_bindings_for_item(item.clone()).iter().cloned().fold(acc, |inner: Rc<EmittedSymbolOwners>, binding: Rc<EmittedSymbolBinding>| match v1_rt::map_get(&inner.owners.clone(), binding.symbol.clone()) {
     Some(owner) => if (owner.clone() == binding.identity.clone()) {
             inner.clone()
         } else {

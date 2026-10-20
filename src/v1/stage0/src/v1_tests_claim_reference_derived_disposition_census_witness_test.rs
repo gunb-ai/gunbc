@@ -14,7 +14,7 @@ pub use crate::v1_compiler_emit_rust::{reference_derived_row_diagnostics, Refere
 pub use crate::v1_compiler_infer_emit_info::{TypeSummary, TypeSummaryIndex, empty_emit_graph_info, empty_type_summary_index, type_summary_index_insert, TypeRepr};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind};
 pub use crate::v1_std_core::{ErrorNode, no_span, diagnostic_to_message, is_error_diagnostic};
-pub use crate::v1_std_core::{FieldSummary, LeafOwner, NewlineIndex};
+pub use crate::v1_std_core::{FieldSummary, LeafOwner};
 use crate::gunbc_namespace_cut_reference_derived_candidate::ReferenceDerivedCandidateDisposition::{CandidateSurvived, CandidateOwnModule, CandidateRegistryAbsent, CandidateExportProofFailed, CandidateVariantDelegatedToParent, CandidateVariantParentUnresolved};
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr};
 use crate::v1_compiler_infer_items::ItemKind::{FnItem};
@@ -73,7 +73,6 @@ pub fn fixture_disposition(
             registry.clone(),
             export_sets.clone(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             crate::v1_compiler_emit_rust::build_module_index(
                 Rc::new(vec![]),
                 v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
@@ -114,7 +113,6 @@ pub fn cross_module_candidate_with_export_proof_survives() -> bool {
         fixture_registry("PeerName".to_string(), "fixture.provider".to_string()),
         fixture_export_sets("fixture.provider".to_string(), "PeerName".to_string()),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         crate::v1_compiler_emit_rust::build_module_index(
             Rc::new(vec![]),
             v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
@@ -237,7 +235,6 @@ pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
         v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         crate::v1_compiler_emit_rust::build_module_index(
             Rc::new(vec![]),
             v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
@@ -296,7 +293,6 @@ pub fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> bool
         v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         crate::v1_compiler_emit_rust::build_module_index(
             Rc::new(vec![]),
             v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
@@ -320,7 +316,6 @@ pub fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> b
             v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
             v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             crate::v1_compiler_emit_rust::build_module_index(
                 Rc::new(vec![]),
                 v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
@@ -351,7 +346,6 @@ pub fn non_variant_name_still_answers_registry_absent() -> bool {
             v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
             v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             crate::v1_compiler_emit_rust::build_module_index(
                 Rc::new(vec![]),
                 v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),

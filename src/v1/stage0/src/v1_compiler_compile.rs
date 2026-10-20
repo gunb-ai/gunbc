@@ -98,17 +98,17 @@ use crate::v1_std_core::VarBindingKind::{
     VariantValueBinding,
 };
 pub use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at,
-    build_newline_index, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
-    expr_call_func_at, expr_method_name_at, field_access_field_at, field_binding_name_at,
-    field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_cardinality,
+    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, build_newline_index,
+    diagnostic_to_message, diagnostic_to_span, empty_intern_table, expr_call_func_at,
+    expr_method_name_at, field_access_field_at, field_binding_name_at, field_binding_pattern,
+    field_init_node_name_at, field_init_node_value, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_span,
     field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, lambda_param_names_at,
-    make_error_node, module_imports, module_items, no_span, param_node_default_value,
-    param_node_name_at, param_node_span, param_node_type_expr, pre_intern_tokens,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, CallSemantics,
-    CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
+    make_error_node, module_imports, module_items, no_span, node_authored_text,
+    param_node_default_value, param_node_name_at, param_node_span, param_node_type_expr,
+    pre_intern_tokens, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
+    CallSemantics, CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
     DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary,
     FieldValueShape, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
     ResolvedCallFormal, StringPart, TextFile, Token, UnaryOpKind, VarBindingKind,
@@ -257,10 +257,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                     .cloned()
                     {
                         __result.push(Rc::new(FuncEntry {
-                            name: crate::v1_std_core::authored_name_at(
-                                m.type_env.source_indices.clone(),
-                                item.clone(),
-                            ),
+                            name: crate::v1_std_core::node_authored_text(item.clone()),
                             body: item.body.clone().clone().unwrap(),
                             params: item.params.clone(),
                             span: item.span.clone(),
@@ -298,10 +295,7 @@ pub fn module_ownership_proofs(m: Rc<TypedModule>) -> Rc<Vec<Rc<OwnershipProof>>
         .cloned()
         {
             __result.push(crate::v1_compiler_ownership::analyze_ownership(
-                crate::v1_std_core::authored_name_at(
-                    m.type_env.source_indices.clone(),
-                    item.clone(),
-                ),
+                crate::v1_std_core::node_authored_text(item.clone()),
                 item.params.clone(),
                 item.body.clone().clone().unwrap(),
                 m.type_env.source_indices.clone(),
@@ -398,10 +392,7 @@ pub fn test_reference_import_referrer() -> String {
     "<import>".to_string()
 }
 
-pub fn test_marked_declaration_keys(
-    typed: Rc<ResolvedGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, bool>> {
+pub fn test_marked_declaration_keys(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, bool>> {
     typed.modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
         |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| {
@@ -421,13 +412,10 @@ pub fn test_marked_declaration_keys(
                     inner,
                     v1_rt::concat(
                         v1_rt::concat(
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                m.module.clone(),
-                            ),
+                            crate::v1_std_core::node_authored_text(m.module.clone()),
                             ".".to_string(),
                         ),
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                        crate::v1_std_core::node_authored_text(item.clone()),
                     ),
                     true,
                 )
@@ -473,17 +461,16 @@ pub fn call_target_declaration_key(target: Rc<CallTargetIdentity>) -> Option<Str
 pub fn module_declaration_keys(
     m: Rc<TypedModule>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, String>> {
     m.items.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
         |acc: Rc<HashMap<String, String>>, item: Rc<Node>| {
             v1_rt::rc_map_insert(
                 acc,
-                crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                crate::v1_std_core::node_authored_text(item.clone()),
                 v1_rt::concat(
                     v1_rt::concat(module_name.clone(), ".".to_string()),
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                    crate::v1_std_core::node_authored_text(item.clone()),
                 ),
             )
         },
@@ -494,7 +481,6 @@ pub fn visible_declaration_keys(
     m: Rc<TypedModule>,
     module_name: String,
     modules_by_name: Rc<HashMap<String, Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, String>> {
     {
         let wildcard = Rc::new({
@@ -515,14 +501,13 @@ pub fn visible_declaration_keys(
             v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, imp: Rc<Node>| match v1_rt::map_get(
                 &modules_by_name,
-                crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone()),
+                crate::v1_std_core::node_authored_text(imp.clone()),
             ) {
                 Some(tm) => v1_rt::rc_map_merge(
                     acc.clone(),
                     module_declaration_keys(
                         tm.clone(),
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone()),
-                        source_indices.clone(),
+                        crate::v1_std_core::node_authored_text(imp.clone()),
                     ),
                 ),
                 std::option::Option::None => acc.clone(),
@@ -545,7 +530,7 @@ pub fn visible_declaration_keys(
         .fold(
             wildcard.clone(),
             |acc: Rc<HashMap<String, String>>, imp: Rc<Node>| {
-                crate::v1_std_core::import_specific_names_at(imp.clone(), source_indices.clone())
+                crate::v1_std_core::import_specific_names_at(imp.clone())
                     .iter()
                     .cloned()
                     .fold(acc, |inner: Rc<HashMap<String, String>>, name: String| {
@@ -554,10 +539,7 @@ pub fn visible_declaration_keys(
                             name.clone(),
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        imp.clone(),
-                                    ),
+                                    crate::v1_std_core::node_authored_text(imp.clone()),
                                     ".".to_string(),
                                 ),
                                 name.clone(),
@@ -568,7 +550,7 @@ pub fn visible_declaration_keys(
         );
         v1_rt::rc_map_merge(
             named.clone(),
-            module_declaration_keys(m.clone(), module_name.clone(), source_indices.clone()),
+            module_declaration_keys(m.clone(), module_name.clone()),
         )
     }
 }
@@ -576,7 +558,6 @@ pub fn visible_declaration_keys(
 pub fn function_value_target(
     texpr: Rc<Node>,
     visible: Rc<HashMap<String, String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprVar {
@@ -585,7 +566,7 @@ pub fn function_value_target(
             Some(kind) => match (*kind.clone()).clone() {
                 VarBindingKind::FunctionValueBinding => visible_or_qualified_key(
                     visible.clone(),
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), texpr.clone()),
+                    crate::v1_std_core::node_authored_text(texpr.clone()),
                 ),
                 VarBindingKind::LocalValueBinding => std::option::Option::None,
                 VarBindingKind::VariantValueBinding { .. } => std::option::Option::None,
@@ -594,15 +575,14 @@ pub fn function_value_target(
             },
             std::option::Option::None => visible_or_qualified_key(
                 visible.clone(),
-                crate::v1_std_core::authored_name_at(source_indices.clone(), texpr.clone()),
+                crate::v1_std_core::node_authored_text(texpr.clone()),
             ),
         },
         ExprData::ExprFieldAccess { summary: s, .. } => match s.clone() {
             Some(_) => std::option::Option::None,
-            std::option::Option::None => visible_or_qualified_key(
-                visible.clone(),
-                dotted_reference_text(texpr.clone(), source_indices.clone()),
-            ),
+            std::option::Option::None => {
+                visible_or_qualified_key(visible.clone(), dotted_reference_text(texpr.clone()))
+            }
         },
         ExprData::ExprCall {
             call_semantics: cs, ..
@@ -610,7 +590,7 @@ pub fn function_value_target(
             Some(_) => call_semantics_source_target(cs.clone()),
             std::option::Option::None => visible_or_qualified_key(
                 visible.clone(),
-                crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone()),
+                crate::v1_std_core::expr_call_func_at(texpr.clone()),
             ),
         },
         ExprData::ExprMethodCall {
@@ -622,14 +602,8 @@ pub fn function_value_target(
                 Some(receiver) => visible_or_qualified_key(
                     visible.clone(),
                     v1_rt::concat(
-                        v1_rt::concat(
-                            dotted_reference_text(receiver.clone(), source_indices.clone()),
-                            ".".to_string(),
-                        ),
-                        crate::v1_std_core::expr_method_name_at(
-                            texpr.clone(),
-                            source_indices.clone(),
-                        ),
+                        v1_rt::concat(dotted_reference_text(receiver.clone()), ".".to_string()),
+                        crate::v1_std_core::expr_method_name_at(texpr.clone()),
                     ),
                 ),
                 std::option::Option::None => std::option::Option::None,
@@ -655,31 +629,21 @@ pub fn visible_or_qualified_key(
     }
 }
 
-pub fn dotted_reference_text(
-    texpr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn dotted_reference_text(texpr: Rc<Node>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: _, ..
-            } => crate::v1_std_core::authored_name_at(source_indices.clone(), texpr.clone()),
+            } => crate::v1_std_core::node_authored_text(texpr.clone()),
             ExprData::ExprFieldAccess { summary: _, .. } => {
                 match texpr.children.clone().first().cloned() {
                     Some(base) => v1_rt::concat(
-                        v1_rt::concat(
-                            dotted_reference_text(base.clone(), source_indices.clone()),
-                            ".".to_string(),
-                        ),
-                        crate::v1_std_core::field_access_field_at(
-                            texpr.clone(),
-                            source_indices.clone(),
-                        ),
+                        v1_rt::concat(dotted_reference_text(base.clone()), ".".to_string()),
+                        crate::v1_std_core::field_access_field_at(texpr.clone()),
                     ),
-                    std::option::Option::None => crate::v1_std_core::field_access_field_at(
-                        texpr.clone(),
-                        source_indices.clone(),
-                    ),
+                    std::option::Option::None => {
+                        crate::v1_std_core::field_access_field_at(texpr.clone())
+                    }
                 }
             }
             _ => "".to_string(),
@@ -693,25 +657,23 @@ pub fn test_references_in_expr(
     texpr: Rc<Node>,
     test_keys: Rc<HashMap<String, bool>>,
     visible: Rc<HashMap<String, String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TestReferenceOccurrence>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let here =
-            match function_value_target(texpr.clone(), visible.clone(), source_indices.clone()) {
-                Some(key) => {
-                    if v1_rt::map_contains_key(&test_keys, key.clone()) {
-                        Rc::new(vec![Rc::new(TestReferenceOccurrence {
-                            module_name: module_name.clone(),
-                            referrer: referrer.clone(),
-                            target: key.clone(),
-                            span: texpr.span.clone(),
-                        })])
-                    } else {
-                        Rc::new(vec![])
-                    }
+        let here = match function_value_target(texpr.clone(), visible.clone()) {
+            Some(key) => {
+                if v1_rt::map_contains_key(&test_keys, key.clone()) {
+                    Rc::new(vec![Rc::new(TestReferenceOccurrence {
+                        module_name: module_name.clone(),
+                        referrer: referrer.clone(),
+                        target: key.clone(),
+                        span: texpr.span.clone(),
+                    })])
+                } else {
+                    Rc::new(vec![])
                 }
-                std::option::Option::None => Rc::new(vec![]),
-            };
+            }
+            std::option::Option::None => Rc::new(vec![]),
+        };
         v1_rt::concat(
             here.clone(),
             Rc::new({
@@ -724,7 +686,6 @@ pub fn test_references_in_expr(
                             child.clone(),
                             test_keys.clone(),
                             visible.clone(),
-                            source_indices.clone(),
                         ))
                         .iter()
                         .cloned(),
@@ -741,10 +702,9 @@ pub fn declaration_test_references(
     module_name: String,
     test_keys: Rc<HashMap<String, bool>>,
     visible: Rc<HashMap<String, String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TestReferenceOccurrence>>> {
     {
-        let referrer = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+        let referrer = crate::v1_std_core::node_authored_text(item.clone());
         let in_body = match item.body.clone() {
             Some(body) => test_references_in_expr(
                 module_name.clone(),
@@ -752,7 +712,6 @@ pub fn declaration_test_references(
                 body.clone(),
                 test_keys.clone(),
                 visible.clone(),
-                source_indices.clone(),
             ),
             std::option::Option::None => Rc::new(vec![]),
         };
@@ -766,7 +725,6 @@ pub fn declaration_test_references(
                         p.clone(),
                         test_keys.clone(),
                         visible.clone(),
-                        source_indices.clone(),
                     ))
                     .iter()
                     .cloned(),
@@ -784,7 +742,6 @@ pub fn declaration_test_references(
                         c.clone(),
                         test_keys.clone(),
                         visible.clone(),
-                        source_indices.clone(),
                     ))
                     .iter()
                     .cloned(),
@@ -803,17 +760,11 @@ pub fn module_test_references(
     m: Rc<TypedModule>,
     modules_by_name: Rc<HashMap<String, Rc<TypedModule>>>,
     test_keys: Rc<HashMap<String, bool>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TestReferenceOccurrence>>> {
     {
-        let module_name =
-            crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone());
-        let visible = visible_declaration_keys(
-            m.clone(),
-            module_name.clone(),
-            modules_by_name.clone(),
-            source_indices.clone(),
-        );
+        let module_name = crate::v1_std_core::node_authored_text(m.module.clone());
+        let visible =
+            visible_declaration_keys(m.clone(), module_name.clone(), modules_by_name.clone());
         let decl_refs = Rc::new({
             let mut __result = Vec::new();
             for item in m.items.clone().iter().cloned() {
@@ -823,7 +774,6 @@ pub fn module_test_references(
                         module_name.clone(),
                         test_keys.clone(),
                         visible.clone(),
-                        source_indices.clone(),
                     ))
                     .iter()
                     .cloned(),
@@ -844,19 +794,14 @@ pub fn module_test_references(
                             let mut __result = Vec::new();
                             for key in Rc::new({
                                 let mut __result = Vec::new();
-                                for name in crate::v1_std_core::import_specific_names_at(
-                                    imp.clone(),
-                                    source_indices.clone(),
-                                )
-                                .iter()
-                                .cloned()
+                                for name in
+                                    crate::v1_std_core::import_specific_names_at(imp.clone())
+                                        .iter()
+                                        .cloned()
                                 {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(
-                                            crate::v1_std_core::authored_name_at(
-                                                source_indices.clone(),
-                                                imp.clone(),
-                                            ),
+                                            crate::v1_std_core::node_authored_text(imp.clone()),
                                             ".".to_string(),
                                         ),
                                         name.clone(),
@@ -909,18 +854,15 @@ pub fn test_reference_occurrence_diag(o: Rc<TestReferenceOccurrence>) -> Rc<Erro
     )
 }
 
-pub fn test_reference_diagnostics(
-    typed: Rc<ResolvedGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn test_reference_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<ErrorNode>>> {
     {
-        let test_keys = test_marked_declaration_keys(typed.clone(), source_indices.clone());
+        let test_keys = test_marked_declaration_keys(typed.clone());
         let modules_by_name = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
             |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
                 v1_rt::rc_map_insert(
                     acc,
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone()),
+                    crate::v1_std_core::node_authored_text(m.module.clone()),
                     m.clone(),
                 )
             },
@@ -935,7 +877,6 @@ pub fn test_reference_diagnostics(
                             m.clone(),
                             modules_by_name.clone(),
                             test_keys.clone(),
-                            source_indices.clone(),
                         ))
                         .iter()
                         .cloned(),
@@ -1456,10 +1397,7 @@ pub fn serialize_span(span: Rc<SourceSpan>) -> String {
     )
 }
 
-pub fn serialize_import_node(
-    imp: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn serialize_import_node(imp: Rc<Node>) -> String {
     {
         let names_json = if crate::v1_std_core::import_is_all(imp.clone()) {
             "{\"kind\": \"ImportAll\"}".to_string()
@@ -1469,12 +1407,9 @@ pub fn serialize_import_node(
                     "{\"kind\": \"ImportSpecific\", \"names\": ".to_string(),
                     json_list(Rc::new({
                         let mut __result = Vec::new();
-                        for v in crate::v1_std_core::import_specific_names_at(
-                            imp.clone(),
-                            source_indices.clone(),
-                        )
-                        .iter()
-                        .cloned()
+                        for v in crate::v1_std_core::import_specific_names_at(imp.clone())
+                            .iter()
+                            .cloned()
                         {
                             __result.push(crate::v1_compiler_dag_collect_support::json_quote(
                                 v.clone(),
@@ -1494,10 +1429,7 @@ pub fn serialize_import_node(
                             v1_rt::concat(
                                 "{\"module_path\": ".to_string(),
                                 crate::v1_compiler_dag_collect_support::json_quote(
-                                    crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        imp.clone(),
-                                    ),
+                                    crate::v1_std_core::node_authored_text(imp.clone()),
                                 ),
                             ),
                             ", \"names\": ".to_string(),
@@ -1574,37 +1506,25 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
     }
 }
 
-pub fn serialize_field_binding(
-    binding: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn serialize_field_binding(binding: Rc<Node>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     "{\"field_name\": ".to_string(),
                     crate::v1_compiler_dag_collect_support::json_quote(
-                        crate::v1_std_core::field_binding_name_at(
-                            binding.clone(),
-                            source_indices.clone(),
-                        ),
+                        crate::v1_std_core::field_binding_name_at(binding.clone()),
                     ),
                 ),
                 ", \"binding\": ".to_string(),
             ),
-            serialize_match_pattern(
-                crate::v1_std_core::field_binding_pattern(binding.clone()),
-                source_indices.clone(),
-            ),
+            serialize_match_pattern(crate::v1_std_core::field_binding_pattern(binding.clone())),
         ),
         "}".to_string(),
     )
 }
 
-pub fn serialize_match_pattern(
-    pattern: Rc<MatchPattern>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn serialize_match_pattern(pattern: Rc<MatchPattern>) -> String {
     match (*pattern.clone()).clone() {
         MatchPattern::Bind {
             declaration: declaration,
@@ -1646,7 +1566,7 @@ pub fn serialize_match_pattern(
                 json_list(Rc::new({
                     let mut __result = Vec::new();
                     for fb in field_bindings.iter().cloned() {
-                        __result.push(serialize_field_binding(fb.clone(), source_indices.clone()));
+                        __result.push(serialize_field_binding(fb.clone()));
                     }
                     __result
                 })),
@@ -1657,20 +1577,13 @@ pub fn serialize_match_pattern(
     }
 }
 
-pub fn serialize_named_arg(
-    arg: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
+pub fn serialize_named_arg(arg: Rc<Node>, key_to_id: Rc<HashMap<String, String>>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     "{\"name\": ".to_string(),
-                    json_optional_string(crate::v1_std_core::arg_name_at(
-                        arg.clone(),
-                        source_indices.clone(),
-                    )),
+                    json_optional_string(crate::v1_std_core::arg_name_at(arg.clone())),
                 ),
                 ", \"value\": ".to_string(),
             ),
@@ -1683,11 +1596,7 @@ pub fn serialize_named_arg(
     )
 }
 
-pub fn serialize_match_arm(
-    arm: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
+pub fn serialize_match_arm(arm: Rc<Node>, key_to_id: Rc<HashMap<String, String>>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -1695,10 +1604,7 @@ pub fn serialize_match_arm(
                     v1_rt::concat(
                         v1_rt::concat(
                             "{\"pattern\": ".to_string(),
-                            serialize_match_pattern(
-                                crate::v1_std_core::arm_pattern(arm.clone()),
-                                source_indices.clone(),
-                            ),
+                            serialize_match_pattern(crate::v1_std_core::arm_pattern(arm.clone())),
                         ),
                         ", \"guard\": ".to_string(),
                     ),
@@ -1717,7 +1623,6 @@ pub fn serialize_match_arm(
 
 pub fn serialize_field_init(
     field_init: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     v1_rt::concat(
@@ -1726,10 +1631,7 @@ pub fn serialize_field_init(
                 v1_rt::concat(
                     "{\"name\": ".to_string(),
                     crate::v1_compiler_dag_collect_support::json_quote(
-                        crate::v1_std_core::field_init_node_name_at(
-                            field_init.clone(),
-                            source_indices.clone(),
-                        ),
+                        crate::v1_std_core::field_init_node_name_at(field_init.clone()),
                     ),
                 ),
                 ", \"value\": ".to_string(),
@@ -1745,7 +1647,6 @@ pub fn serialize_field_init(
 
 pub fn serialize_string_part(
     part: Rc<StringPart>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     match (*part.clone()).clone() {
@@ -1874,7 +1775,6 @@ pub fn serialize_call_semantics(
 
 pub fn serialize_method_semantics(
     value: Option<Rc<MethodSemantics>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     match value.clone().as_deref().cloned() {
@@ -1886,8 +1786,7 @@ pub fn serialize_method_semantics(
             fold_accumulator_type,
             ..
         }) => {
-            let mn =
-                crate::v1_std_core::authored_name_at(source_indices.clone(), method_def.clone());
+            let mn = crate::v1_std_core::node_authored_text(method_def.clone());
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
@@ -1918,11 +1817,7 @@ pub fn serialize_method_semantics(
                 json_list(Rc::new({
                     let mut __result = Vec::new();
                     for p in op_params.iter().cloned() {
-                        __result.push(serialize_param(
-                            p.clone(),
-                            source_indices.clone(),
-                            key_to_id.clone(),
-                        ));
+                        __result.push(serialize_param(p.clone(), key_to_id.clone()));
                     }
                     __result
                 })),
@@ -2089,14 +1984,10 @@ pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> 
     }
 }
 
-pub fn serialize_expr_data(
-    expr_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
+pub fn serialize_expr_data(expr_node: Rc<Node>, key_to_id: Rc<HashMap<String, String>>) -> String {
     {
         let ch = expr_node.children.clone();
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), expr_node.clone());
+        let name = crate::v1_std_core::node_authored_text(expr_node.clone());
         match (*expr_node.expr_data.clone()).clone() {
             ExprData::NoExprData => "{\"kind\": \"NoExprData\"}".to_string(),
             ExprData::ExprLiteral { value: value, .. } => v1_rt::concat(
@@ -2171,10 +2062,7 @@ pub fn serialize_expr_data(
             ExprData::ExprFieldAccess {
                 summary: summary, ..
             } => {
-                let field = crate::v1_std_core::field_access_field_at(
-                    expr_node.clone(),
-                    source_indices.clone(),
-                );
+                let field = crate::v1_std_core::field_access_field_at(expr_node.clone());
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -2211,10 +2099,7 @@ pub fn serialize_expr_data(
                 descent_evidence: de,
                 ..
             } => {
-                let func = crate::v1_std_core::expr_call_func_at(
-                    expr_node.clone(),
-                    source_indices.clone(),
-                );
+                let func = crate::v1_std_core::expr_call_func_at(expr_node.clone());
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -2256,10 +2141,7 @@ pub fn serialize_expr_data(
                 method_semantics: method_semantics,
                 ..
             } => {
-                let method = crate::v1_std_core::expr_method_name_at(
-                    expr_node.clone(),
-                    source_indices.clone(),
-                );
+                let method = crate::v1_std_core::expr_method_name_at(expr_node.clone());
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -2275,7 +2157,6 @@ pub fn serialize_expr_data(
                                 ),
                                 serialize_method_semantics(
                                     method_semantics.clone(),
-                                    source_indices.clone(),
                                     key_to_id.clone(),
                                 ),
                             ),
@@ -2352,10 +2233,7 @@ pub fn serialize_expr_data(
                 "}".to_string(),
             ),
             ExprData::ExprLambda => {
-                let params = crate::v1_std_core::lambda_param_names_at(
-                    expr_node.clone(),
-                    source_indices.clone(),
-                );
+                let params = crate::v1_std_core::lambda_param_names_at(expr_node.clone());
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -2409,10 +2287,7 @@ pub fn serialize_expr_data(
                 parent_enum: parent_enum,
                 ..
             } => {
-                let type_name = crate::v1_std_core::record_lit_type_name_at(
-                    expr_node.clone(),
-                    source_indices.clone(),
-                );
+                let type_name = crate::v1_std_core::record_lit_type_name_at(expr_node.clone());
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -2440,10 +2315,7 @@ pub fn serialize_expr_data(
                 )
             }
             ExprData::ExprForEach => {
-                let variable = crate::v1_std_core::foreach_variable_at(
-                    expr_node.clone(),
-                    source_indices.clone(),
-                );
+                let variable = crate::v1_std_core::foreach_variable_at(expr_node.clone());
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -2652,7 +2524,6 @@ pub fn serialize_inferred_node_ref(
 
 pub fn serialize_resource_use(
     resource_use: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     v1_rt::concat(
@@ -2663,10 +2534,7 @@ pub fn serialize_resource_use(
                         v1_rt::concat(
                             "{\"name\": ".to_string(),
                             crate::v1_compiler_dag_collect_support::json_quote(
-                                crate::v1_std_core::resource_use_name_at(
-                                    resource_use.clone(),
-                                    source_indices.clone(),
-                                ),
+                                crate::v1_std_core::resource_use_name_at(resource_use.clone()),
                             ),
                         ),
                         ", \"resource\": ".to_string(),
@@ -2684,19 +2552,11 @@ pub fn serialize_resource_use(
     )
 }
 
-pub fn serialize_field(
-    field: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), crate::v1_compiler_dag_collect_support::json_quote(crate::v1_std_core::field_node_name_at(field.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node_ref(crate::v1_std_core::field_node_type_expr(field.clone()), key_to_id.clone())), ", \"cardinality\": ".to_string()), crate::v1_compiler_dag_collect_support::json_quote(cardinality_name(crate::v1_std_core::field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node_ref(crate::v1_std_core::field_node_default_value(field.clone()), key_to_id.clone())), ", \"from_key\": ".to_string()), json_optional_string(crate::v1_std_core::field_node_from_key(field.clone(), source_indices.clone()))), ", \"span\": ".to_string()), serialize_span(crate::v1_std_core::field_node_span(field.clone()))), "}".to_string())
+pub fn serialize_field(field: Rc<Node>, key_to_id: Rc<HashMap<String, String>>) -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), crate::v1_compiler_dag_collect_support::json_quote(crate::v1_std_core::field_node_name_at(field.clone()))), ", \"type_expr\": ".to_string()), serialize_node_ref(crate::v1_std_core::field_node_type_expr(field.clone()), key_to_id.clone())), ", \"cardinality\": ".to_string()), crate::v1_compiler_dag_collect_support::json_quote(cardinality_name(crate::v1_std_core::field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node_ref(crate::v1_std_core::field_node_default_value(field.clone()), key_to_id.clone())), ", \"from_key\": ".to_string()), json_optional_string(crate::v1_std_core::field_node_from_key(field.clone()))), ", \"span\": ".to_string()), serialize_span(crate::v1_std_core::field_node_span(field.clone()))), "}".to_string())
 }
 
-pub fn serialize_param(
-    param: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
+pub fn serialize_param(param: Rc<Node>, key_to_id: Rc<HashMap<String, String>>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -2707,10 +2567,7 @@ pub fn serialize_param(
                                 v1_rt::concat(
                                     "{\"name\": ".to_string(),
                                     crate::v1_compiler_dag_collect_support::json_quote(
-                                        crate::v1_std_core::param_node_name_at(
-                                            param.clone(),
-                                            source_indices.clone(),
-                                        ),
+                                        crate::v1_std_core::param_node_name_at(param.clone()),
                                     ),
                                 ),
                                 ", \"type_expr\": ".to_string(),
@@ -2745,7 +2602,6 @@ pub fn is_import_statement_node(n: Rc<Node>) -> bool {
 
 pub fn serialize_node_params_json(
     node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     if crate::v1_compiler_dag_collect::is_module_shell_node(node.clone()) {
@@ -2754,21 +2610,14 @@ pub fn serialize_node_params_json(
         json_list(Rc::new({
             let mut __result = Vec::new();
             for param in node.params.clone().iter().cloned() {
-                __result.push(serialize_param(
-                    param.clone(),
-                    source_indices.clone(),
-                    key_to_id.clone(),
-                ));
+                __result.push(serialize_param(param.clone(), key_to_id.clone()));
             }
             __result
         }))
     }
 }
 
-pub fn serialize_module_imports_json(
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn serialize_module_imports_json(node: Rc<Node>) -> String {
     {
         let imports = crate::v1_std_core::module_imports(node.clone());
         if ((imports.clone().len() as i64) == 0) {
@@ -2787,7 +2636,7 @@ pub fn serialize_module_imports_json(
                 json_list(Rc::new({
                     let mut __result = Vec::new();
                     for imp in imports.iter().cloned() {
-                        __result.push(serialize_import_node(imp.clone(), source_indices.clone()));
+                        __result.push(serialize_import_node(imp.clone()));
                     }
                     __result
                 }))
@@ -2798,12 +2647,8 @@ pub fn serialize_module_imports_json(
     }
 }
 
-pub fn serialize_node_record(
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), crate::v1_compiler_dag_collect_support::json_quote(crate::v1_std_core::authored_name_at(source_indices.clone(), node.clone()))), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone(), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(match node.ident_span.clone() {
+pub fn serialize_node_record(node: Rc<Node>, key_to_id: Rc<HashMap<String, String>>) -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), crate::v1_compiler_dag_collect_support::json_quote(crate::v1_std_core::node_authored_text(node.clone()))), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone())), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(match node.ident_span.clone() {
     Some(ident) => Some(ident.span.clone()),
     std::option::Option::None => std::option::Option::None,
 })), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node_ref(child.clone(), key_to_id.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
@@ -2811,7 +2656,7 @@ pub fn serialize_node_record(
     Connective::Disj => crate::v1_compiler_dag_collect_support::json_quote(crate::v1_compiler_dag_collect_support::connective_name(Connective::Disj)),
     Connective::NoConnective => "null".to_string(),
     Connective::Arrow => crate::v1_compiler_dag_collect_support::json_quote(crate::v1_compiler_dag_collect_support::connective_name(Connective::Arrow)),
-}), ", \"params\": ".to_string()), serialize_node_params_json(node.clone(), source_indices.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), crate::v1_compiler_dag_collect_support::json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone(), source_indices.clone(), key_to_id.clone())), "}".to_string())
+}), ", \"params\": ".to_string()), serialize_node_params_json(node.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), crate::v1_compiler_dag_collect_support::json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone(), key_to_id.clone())), "}".to_string())
 }
 
 pub fn serialize_typed_module(
@@ -2858,7 +2703,6 @@ pub fn serialize_typed_module(
 
 pub fn serialize_dag_nodes_table(
     order: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     Rc::new({
@@ -2883,7 +2727,7 @@ pub fn serialize_dag_nodes_table(
                     )),
                     ": ".to_string(),
                 ),
-                serialize_node_record(pair.1.clone(), source_indices.clone(), key_to_id.clone()),
+                serialize_node_record(pair.1.clone(), key_to_id.clone()),
             ));
         }
         __result
@@ -2960,8 +2804,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             });
         }
         let source_indices = dag_graph_source_indices(typed.clone());
-        let nodes_json =
-            serialize_dag_nodes_table(order.clone(), source_indices.clone(), key_to_id.clone());
+        let nodes_json = serialize_dag_nodes_table(order.clone(), key_to_id.clone());
         let modules_json = Rc::new({
             let mut __result = Vec::new();
             for m in typed.modules.clone().iter().cloned() {
@@ -3197,7 +3040,6 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
 
 pub fn resolve_frontend_occurrence_transport(
     module_inputs: Rc<Vec<Rc<ModuleOccurrenceInput>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     occurrence_transport: Rc<OccurrenceTransport>,
 ) -> Rc<FrontendOccurrenceResolution> {
     match crate::std_occurrence_identity::occurrence_transport_refusal(occurrence_transport.clone())
@@ -3214,7 +3056,6 @@ pub fn resolve_frontend_occurrence_transport(
         std::option::Option::None => {
             let graph = crate::v1_compiler_resolve::resolve_modules_with_occurrence_transport(
                 module_inputs.clone(),
-                source_indices.clone(),
                 occurrence_transport.clone(),
             );
             Rc::new(FrontendOccurrenceResolution {
@@ -3329,7 +3170,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         }));
         let resolution = resolve_frontend_occurrence_transport(
             module_inputs.clone(),
-            source_indices.clone(),
             occurrence_transport.clone(),
         );
         Rc::new(FrontendResult {
@@ -3711,8 +3551,7 @@ pub fn compile_to_resolved_with_options(
                 let all_diags = v1_rt::concat(typed_diags.clone(), complexity_diags.clone());
                 let ownership = extract_ownership_proofs(typed.clone());
                 let ownership_diags = ownership_diagnostics(ownership.clone());
-                let test_reference_diags =
-                    test_reference_diagnostics(typed.clone(), source_indices.clone());
+                let test_reference_diags = test_reference_diagnostics(typed.clone());
                 let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
                 Rc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),
@@ -3769,10 +3608,7 @@ pub fn emit_resolved_for_target_selected(
                 Rc::new({
                     let mut __result = Vec::new();
                     for m in typed.modules.clone().iter().cloned() {
-                        __result.push(crate::v1_std_core::authored_name_at(
-                            resolved.source_indices.clone(),
-                            m.module.clone(),
-                        ));
+                        __result.push(crate::v1_std_core::node_authored_text(m.module.clone()));
                     }
                     __result
                 }),

@@ -84,13 +84,13 @@ use crate::v1_interpreter::str_value;
 use crate::v1_interpreter::Value;
 use crate::v1_rt;
 use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_pattern, authored_name_at, block_stmts,
-    build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
-    empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
-    field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    arg_name_at, arg_value, arm_body, arm_pattern, block_stmts, build_newline_index,
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
+    empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
+    field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
+    inferred_to_node, intern, is_error_diagnostic, is_interpreter_blocking_diagnostic,
+    let_binding_name_at, let_value, make_error_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_items, no_span, node_authored_text,
     param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
     ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
     Node,
@@ -596,18 +596,13 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             Ok(pair) => pair,
             Err(e) => return Err(format!("parse failed for {file_path}: {e}")),
         };
-        let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
-            let mut m = HashMap::new();
-            m.insert(file_norm.clone(), nl.clone());
-            m
-        });
         // A test is a declaration carrying the authored `test` marker, read off the item the
         // parse above already produced: no second reading of the file, and no line scan.
         let mut test_fn_names: HashSet<String> = HashSet::new();
         let mut decls: Vec<(i64, String, bool)> = Vec::new();
         for item in crate::v1_std_core::module_items(module_node.clone()).iter() {
             let line = byte_to_line_col(nl.clone(), item.span.start).line;
-            let name = authored_name_at(single_si.clone(), item.clone());
+            let name = node_authored_text(item.clone());
             let is_data = item_kind(item.clone()) == ItemKind::DataItem;
             if item.declaration_marker == crate::v1_std_core::DeclarationMarker::TestMarked {
                 test_fn_names.insert(name.clone());

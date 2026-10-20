@@ -51,9 +51,9 @@ use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
-    authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
-    intern_find, intern_str, kernel_ident, kernel_span, merge_intern_tables, module_path_segments,
-    param_node_name_at, param_node_type_expr, qualified_last_segment,
+    declaration_provenance_of, empty_intern_table, find_child_named, intern, intern_find,
+    intern_str, kernel_ident, kernel_span, merge_intern_tables, module_path_segments,
+    node_authored_text, param_node_name_at, param_node_type_expr, qualified_last_segment,
     resolved_node_is_kernel_identity_for_name, source_text_at, Cardinality, CompilerDiagnostic,
     Connective, DeclarationMarker, ExprData, InferredNode, InternTable, NewlineIndex, Node,
 };
@@ -114,7 +114,6 @@ pub fn variant_lookup_structural(ty: Rc<Node>) -> Rc<Node> {
 
 pub fn binding_unit_variant_contributions(
     binding: Rc<TypeBinding>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<UnitVariantContribution>>> {
     {
         let ty = variant_lookup_structural(binding.resolved.clone());
@@ -126,10 +125,7 @@ pub fn binding_unit_variant_contributions(
                     |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, v: Rc<Node>| {
                         if is_unit_variant_node(v.clone()) {
                             {
-                                let vname = crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    v.clone(),
-                                );
+                                let vname = crate::v1_std_core::node_authored_text(v.clone());
                                 match v1_rt::map_get(&acc, vname.clone()) {
                                     Some(prev) => v1_rt::rc_map_insert(
                                         acc.clone(),
@@ -182,11 +178,9 @@ pub fn contributions_without_key(
 pub fn unit_variant_index_remove_binding(
     index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
     binding: Rc<TypeBinding>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
     Rc::new(v1_rt::map_keys(&binding_unit_variant_contributions(
         binding.clone(),
-        source_indices.clone(),
     )))
     .iter()
     .cloned()
@@ -207,11 +201,9 @@ pub fn unit_variant_index_remove_binding(
 pub fn unit_variant_index_add_binding(
     index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
     binding: Rc<TypeBinding>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
     {
-        let contributions =
-            binding_unit_variant_contributions(binding.clone(), source_indices.clone());
+        let contributions = binding_unit_variant_contributions(binding.clone());
         Rc::new(v1_rt::map_keys(&contributions))
             .iter()
             .cloned()
@@ -267,25 +259,19 @@ pub fn unit_variant_index_shadow_insert(
     unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
     shadowed: Option<Rc<TypeBinding>>,
     binding: Rc<TypeBinding>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
     {
         let cleared = match shadowed.clone() {
-            Some(old) => unit_variant_index_remove_binding(
-                unit_variant_index.clone(),
-                old.clone(),
-                source_indices.clone(),
-            ),
+            Some(old) => unit_variant_index_remove_binding(unit_variant_index.clone(), old.clone()),
             std::option::Option::None => unit_variant_index.clone(),
         };
-        unit_variant_index_add_binding(cleared.clone(), binding.clone(), source_indices.clone())
+        unit_variant_index_add_binding(cleared.clone(), binding.clone())
     }
 }
 
 pub fn build_unit_variant_index(
     str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     parents: Rc<Vec<Rc<TypeEnv>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
     {
         let visible = parents.iter().cloned().fold(
@@ -298,7 +284,7 @@ pub fn build_unit_variant_index(
             v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>(),
             |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
              binding: Rc<TypeBinding>| {
-                unit_variant_index_add_binding(acc, binding.clone(), source_indices.clone())
+                unit_variant_index_add_binding(acc, binding.clone())
             },
         )
     }
@@ -1669,18 +1655,14 @@ pub fn global_bare_owner_module(
             module_path: mp,
             binding: b,
             ..
-        }) => match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
+        }) => match binding_declares_name(b.clone(), name.clone()) {
             true => Some(mp.clone()),
             false => std::option::Option::None,
         },
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
         }) => match global_bare_policy_candidate(owner_module_path.clone(), cands.clone()) {
-            Some(cand) => match binding_declares_name(
-                cand.binding.clone(),
-                name.clone(),
-                env.source_indices.clone(),
-            ) {
+            Some(cand) => match binding_declares_name(cand.binding.clone(), name.clone()) {
                 true => Some(cand.module_path.clone()),
                 false => std::option::Option::None,
             },
@@ -1690,25 +1672,17 @@ pub fn global_bare_owner_module(
     }
 }
 
-pub fn binding_declares_name(
-    binding: Rc<TypeBinding>,
-    name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (crate::v1_std_core::authored_name_at(source_indices.clone(), binding.resolved.clone())
-        == name.clone())
+pub fn binding_declares_name(binding: Rc<TypeBinding>, name: String) -> bool {
+    (crate::v1_std_core::node_authored_text(binding.resolved.clone()) == name.clone())
 }
 
-pub fn borrowed_generic_param_names(
-    params: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, bool>> {
+pub fn borrowed_generic_param_names(params: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, bool>> {
     params.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
         |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
             let pt = crate::v1_std_core::param_node_type_expr(p.clone());
-            let pname = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
-            let tname = crate::v1_std_core::authored_name_at(source_indices.clone(), pt.clone());
+            let pname = crate::v1_std_core::param_node_name_at(p.clone());
+            let tname = crate::v1_std_core::node_authored_text(pt.clone());
             if (((((pt.children.clone().len() as i64) == 0)
                 && (pt.connective.clone() == Connective::NoConnective))
                 && (pname.clone() != "".to_string()))
@@ -1785,7 +1759,7 @@ pub fn qualify_borrowed_type_names(
                 __result
             })
         };
-        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
+        let name = crate::v1_std_core::node_authored_text(n.clone());
         let is_type_var = match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::TypeVariable { id: _, .. }) => true,
             _ => false,
@@ -2068,19 +2042,17 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
 
 pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     match lookup_binding_by_name(env.clone(), name.clone()) {
-        Some(binding) => {
-            match binding_declares_name(binding.clone(), name.clone(), env.source_indices.clone()) {
-                true => Some(binding.resolved.clone()),
-                false => match variant_arm_type_projection(
-                    env.clone(),
-                    binding.resolved.clone(),
-                    name.clone(),
-                ) {
-                    Some(arm) => Some(arm.clone()),
-                    std::option::Option::None => Some(binding.resolved.clone()),
-                },
-            }
-        }
+        Some(binding) => match binding_declares_name(binding.clone(), name.clone()) {
+            true => Some(binding.resolved.clone()),
+            false => match variant_arm_type_projection(
+                env.clone(),
+                binding.resolved.clone(),
+                name.clone(),
+            ) {
+                Some(arm) => Some(arm.clone()),
+                std::option::Option::None => Some(binding.resolved.clone()),
+            },
+        },
         std::option::Option::None => std::option::Option::None,
     }
 }
@@ -2103,7 +2075,7 @@ pub fn declaration_substitution_basis(
             __result
         });
         let with_children = node_with_children(n.clone(), children.clone());
-        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
+        let name = crate::v1_std_core::node_authored_text(n.clone());
         let generic_leaf = ((((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
             && (name.clone() != "".to_string()))
@@ -2223,10 +2195,8 @@ pub fn width_resolution_declaration(env: Rc<TypeEnv>) -> Option<Rc<Node>> {
                 let mut __found = false;
                 for v in decl.children.clone().iter().cloned() {
                     if (is_unit_variant_node(v.clone())
-                        && (crate::v1_std_core::authored_name_at(
-                            env.source_indices.clone(),
-                            v.clone(),
-                        ) == static_width_index_arm_name()))
+                        && (crate::v1_std_core::node_authored_text(v.clone())
+                            == static_width_index_arm_name()))
                     {
                         __found = true;
                         break;
@@ -2306,11 +2276,8 @@ pub fn variant_arm_type_projection(
     name: String,
 ) -> Option<Rc<Node>> {
     match owner.connective.clone() {
-        Connective::Disj => match crate::v1_std_core::find_child_named(
-            owner.clone(),
-            name.clone(),
-            env.source_indices.clone(),
-        ) {
+        Connective::Disj => match crate::v1_std_core::find_child_named(owner.clone(), name.clone())
+        {
             Some(arm) => match ((arm.children.clone().len() as i64) == 0) {
                 true => Some(arm.clone()),
                 false => std::option::Option::None,
@@ -2322,7 +2289,7 @@ pub fn variant_arm_type_projection(
 }
 
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
-    crate::v1_std_core::authored_name_at(env.source_indices.clone(), node.clone())
+    crate::v1_std_core::node_authored_text(node.clone())
 }
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
@@ -2331,10 +2298,7 @@ pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
             Some(resolved) => {
                 let name = authored_name(env.clone(), node.clone());
                 match ((resolved.connective.clone() == Connective::Disj)
-                    && (crate::v1_std_core::authored_name_at(
-                        env.source_indices.clone(),
-                        resolved.clone(),
-                    ) != name.clone()))
+                    && (crate::v1_std_core::node_authored_text(resolved.clone()) != name.clone()))
                 {
                     true => match variant_arm_type_projection(
                         env.clone(),
@@ -2649,7 +2613,6 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 e.unit_variant_index.clone(),
                 shadowed.clone(),
                 tp_binding.clone(),
-                e.source_indices.clone(),
             );
             Rc::new(TypeEnv {
                 module_path: e.module_path.clone(),
@@ -2725,11 +2688,7 @@ pub fn binding_declares_span(binding: Rc<TypeBinding>, sp: Rc<SourceSpan>) -> bo
     }
 }
 
-pub fn type_reference_declaration(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<OperandDeclaration>> {
+pub fn type_reference_declaration(n: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<OperandDeclaration>> {
     {
         let rt = match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
@@ -2739,7 +2698,7 @@ pub fn type_reference_declaration(
             },
         };
         let decl_name = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone()),
+            crate::v1_std_core::node_authored_text(rt.clone()),
         );
         if (decl_name.clone() == "".to_string()) {
             return std::option::Option::None;
@@ -2895,11 +2854,10 @@ pub enum TypeNodeUnidentifiedCause {
 
 pub fn declaration_reading_of_type_node(
     rt: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Rc<TypeNodeDeclarationReading> {
     {
-        let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone());
+        let authored = crate::v1_std_core::node_authored_text(rt.clone());
         let decl_name = crate::v1_std_core::qualified_last_segment(authored.clone());
         if (decl_name.clone() == "".to_string()) {
             return Rc::new(TypeNodeDeclarationReading::TypeNodeUnidentified {
@@ -2907,8 +2865,7 @@ pub fn declaration_reading_of_type_node(
             });
         }
         let entry = v1_rt::map_get(&env.symbol_index.global_bare.clone(), decl_name.clone());
-        let by_span =
-            declaration_ref_of_declaration_node(rt.clone(), source_indices.clone(), env.clone());
+        let by_span = declaration_ref_of_declaration_node(rt.clone(), env.clone());
         match by_span.clone() {
             Some(d) => Rc::new(TypeNodeDeclarationReading::TypeNodeNamesDeclaration {
                 declaration: d.clone(),
@@ -2961,12 +2918,11 @@ pub fn declaration_reading_of_type_node(
 
 pub fn declaration_ref_of_declaration_node(
     decl: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<DeclarationRef>> {
     {
         let decl_name = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), decl.clone()),
+            crate::v1_std_core::node_authored_text(decl.clone()),
         );
         if (decl_name.clone() == "".to_string()) {
             return std::option::Option::None;
@@ -3038,14 +2994,8 @@ pub fn declaration_ref_of_declaration_node(
     }
 }
 
-pub fn declaration_ref_of_type_node(
-    rt: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<DeclarationRef>> {
-    match (*declaration_reading_of_type_node(rt.clone(), source_indices.clone(), env.clone()))
-        .clone()
-    {
+pub fn declaration_ref_of_type_node(rt: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<DeclarationRef>> {
+    match (*declaration_reading_of_type_node(rt.clone(), env.clone())).clone() {
         TypeNodeDeclarationReading::TypeNodeNamesDeclaration { declaration: d, .. } => {
             Some(d.clone())
         }
@@ -3075,12 +3025,9 @@ pub enum TypeReferenceDeclarationReading {
 
 pub fn type_reference_declaration_reading(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Rc<TypeReferenceDeclarationReading> {
-    match (*declaration_reading_of_type_node(n.clone(), source_indices.clone(), env.clone()))
-        .clone()
-    {
+    match (*declaration_reading_of_type_node(n.clone(), env.clone())).clone() {
         TypeNodeDeclarationReading::TypeNodeNamesDeclaration { declaration: d, .. } => Rc::new(
             TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
                 declaration: d.clone(),
@@ -3094,13 +3041,7 @@ pub fn type_reference_declaration_reading(
                 TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: v.clone() },
             ),
             Some(InferredNode::Resolved { node: r, .. }) => {
-                match (*declaration_reading_of_type_node(
-                    r.clone(),
-                    source_indices.clone(),
-                    env.clone(),
-                ))
-                .clone()
-                {
+                match (*declaration_reading_of_type_node(r.clone(), env.clone())).clone() {
                     TypeNodeDeclarationReading::TypeNodeNamesDeclaration {
                         declaration: d, ..
                     } => Rc::new(
@@ -3113,30 +3054,25 @@ pub fn type_reference_declaration_reading(
                         ..
                     } => kernel_or_unidentified(
                         r.clone(),
-                        source_indices.clone(),
                         authored_cause.clone(),
                         Some(resolved_cause.clone()),
                     ),
                 }
             }
-            _ => kernel_or_unidentified(
-                n.clone(),
-                source_indices.clone(),
-                authored_cause.clone(),
-                std::option::Option::None,
-            ),
+            _ => {
+                kernel_or_unidentified(n.clone(), authored_cause.clone(), std::option::Option::None)
+            }
         },
     }
 }
 
 pub fn kernel_or_unidentified(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     authored: Rc<TypeNodeUnidentifiedCause>,
     resolved: Option<Rc<TypeNodeUnidentifiedCause>>,
 ) -> Rc<TypeReferenceDeclarationReading> {
     {
-        let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        let nm = crate::v1_std_core::node_authored_text(n.clone());
         match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::TypeVariable { id: v, .. }) => Rc::new(
                 TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: v.clone() },
@@ -3282,13 +3218,7 @@ pub fn text_element_is_char(n: Rc<Node>, env: Rc<TypeEnv>) -> TextRepresentation
                 Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
                 _ => ch.clone(),
             };
-            match (*type_reference_declaration_reading(
-                el.clone(),
-                env.source_indices.clone(),
-                env.clone(),
-            ))
-            .clone()
-            {
+            match (*type_reference_declaration_reading(el.clone(), env.clone())).clone() {
                 TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
                     declaration: e,
                     ..
@@ -3381,12 +3311,7 @@ pub fn text_representation_by_identity_bounded(
                             }
                         }
                     } else {
-                        match (*type_reference_declaration_reading(
-                            n.clone(),
-                            env.source_indices.clone(),
-                            env.clone(),
-                        ))
-                        .clone()
+                        match (*type_reference_declaration_reading(n.clone(), env.clone())).clone()
                         {
                             TypeReferenceDeclarationReading::TypeReferenceUnidentified {
                                 ..
@@ -3475,7 +3400,7 @@ pub fn text_representation_by_identity_bounded(
                                                                 node: target,
                                                                 ..
                                                             }) => {
-                                                                let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.source_indices.clone(), env.clone())).clone() {
+                                                                let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.clone())).clone() {
     TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: t, .. } => crate::std_decl_ref::declaration_ref_eq(t.clone(), d.clone()),
     _ => false,
 };
@@ -3564,22 +3489,19 @@ pub fn host_text_into_structural_sequence(
             false
         } else {
             match text_representation_by_identity(actual.clone(), env.clone()) {
-                TextRepresentation::HostText => match (*type_reference_declaration_reading(
-                    formal.clone(),
-                    env.source_indices.clone(),
-                    env.clone(),
-                ))
-                .clone()
-                {
-                    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-                        declaration: d,
-                        ..
-                    } => crate::std_decl_ref::declaration_ref_eq(
-                        d.clone(),
-                        text_identity_std_algebra_free_monoid(),
-                    ),
-                    _ => false,
-                },
+                TextRepresentation::HostText => {
+                    match (*type_reference_declaration_reading(formal.clone(), env.clone())).clone()
+                    {
+                        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                            declaration: d,
+                            ..
+                        } => crate::std_decl_ref::declaration_ref_eq(
+                            d.clone(),
+                            text_identity_std_algebra_free_monoid(),
+                        ),
+                        _ => false,
+                    }
+                }
                 _ => false,
             }
         }
@@ -3618,12 +3540,7 @@ pub struct SettledType {
     pub args: Rc<Vec<Rc<Node>>>,
 }
 
-pub fn settled_type(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-    fuel: i64,
-) -> Option<Rc<SettledType>> {
+pub fn settled_type(n: Rc<Node>, env: Rc<TypeEnv>, fuel: i64) -> Option<Rc<SettledType>> {
     {
         let read = match n.declaration.clone() {
             Some(dn) => Rc::new(
@@ -3631,15 +3548,13 @@ pub fn settled_type(
                     declaration: dn.clone(),
                 },
             ),
-            std::option::Option::None => {
-                type_reference_declaration_reading(n.clone(), source_indices.clone(), env.clone())
-            }
+            std::option::Option::None => type_reference_declaration_reading(n.clone(), env.clone()),
         };
         let reading = match (*read.clone()).clone() {
             TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => {
                 match v1_rt::map_get(&env.symbol_index.file_modules.clone(), n.span.file.clone()) {
                     Some(authoring) => match declaration_named_in_module(
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+                        crate::v1_std_core::node_authored_text(n.clone()),
                         authoring.clone(),
                         env.clone(),
                     ) {
@@ -3664,24 +3579,14 @@ pub fn settled_type(
                     head: d.clone(),
                     args: n.children.clone(),
                 })),
-                Some(rhs) => settled_alias_rhs(
-                    rhs.clone(),
-                    source_indices.clone(),
-                    env.clone(),
-                    fuel.clone(),
-                ),
+                Some(rhs) => settled_alias_rhs(rhs.clone(), env.clone(), fuel.clone()),
             },
             _ => std::option::Option::None,
         }
     }
 }
 
-pub fn settled_alias_rhs(
-    rhs: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-    fuel: i64,
-) -> Option<Rc<SettledType>> {
+pub fn settled_alias_rhs(rhs: Rc<Node>, env: Rc<TypeEnv>, fuel: i64) -> Option<Rc<SettledType>> {
     if (fuel.clone() <= 0) {
         std::option::Option::None
     } else {
@@ -3689,7 +3594,6 @@ pub fn settled_alias_rhs(
             Some(rhs_head) => settled_rhs(
                 rhs.clone(),
                 rhs_head.clone(),
-                source_indices.clone(),
                 env.clone(),
                 v1_rt::int_sub(fuel.clone(), 1),
             ),
@@ -3700,7 +3604,6 @@ pub fn settled_alias_rhs(
 
 pub fn settled_type_of_declaration(
     d: Rc<DeclarationRef>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
     fuel: i64,
 ) -> Option<Rc<SettledType>> {
@@ -3709,19 +3612,13 @@ pub fn settled_type_of_declaration(
             head: d.clone(),
             args: Rc::new(vec![]),
         })),
-        Some(rhs) => settled_alias_rhs(
-            rhs.clone(),
-            source_indices.clone(),
-            env.clone(),
-            fuel.clone(),
-        ),
+        Some(rhs) => settled_alias_rhs(rhs.clone(), env.clone(), fuel.clone()),
     }
 }
 
 pub fn settled_rhs(
     mut __tco_loop_rhs: Rc<Node>,
     mut __tco_loop_head: Rc<DeclarationRef>,
-    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut __tco_loop_env: Rc<TypeEnv>,
     mut __tco_loop_fuel: i64,
 ) -> Option<Rc<SettledType>> {
@@ -3730,8 +3627,6 @@ pub fn settled_rhs(
         let mut rhs = __tco_loop_rhs;
         #[allow(unused_mut)]
         let mut head = __tco_loop_head;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
         #[allow(unused_mut)]
         let mut env = __tco_loop_env;
         #[allow(unused_mut)]
@@ -3751,14 +3646,12 @@ pub fn settled_rhs(
                         {
                             let __tco_0 = next.clone();
                             let __tco_1 = next_head.clone();
-                            let __tco_2 = source_indices;
-                            let __tco_3 = env;
-                            let __tco_4 = v1_rt::int_sub(fuel, 1);
+                            let __tco_2 = env;
+                            let __tco_3 = v1_rt::int_sub(fuel, 1);
                             __tco_loop_rhs = __tco_0;
                             __tco_loop_head = __tco_1;
-                            __tco_loop_source_indices = __tco_2;
-                            __tco_loop_env = __tco_3;
-                            __tco_loop_fuel = __tco_4;
+                            __tco_loop_env = __tco_2;
+                            __tco_loop_fuel = __tco_3;
                             continue;
                         }
                     }
@@ -3857,7 +3750,7 @@ pub fn alias_rhs_with_index_identity(
     env: Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
     {
-        let spelled = crate::v1_std_core::authored_name_at(env.source_indices.clone(), rhs.clone());
+        let spelled = crate::v1_std_core::node_authored_text(rhs.clone());
         match declaration_named_in_module(spelled.clone(), owner_module.clone(), env.clone()) {
             std::option::Option::None => std::option::Option::None,
             Some(d) => Some(Rc::new(Node {
@@ -3983,15 +3876,12 @@ pub fn settled_arity_agrees(
 
 pub fn kernel_settled_name(
     mut __tco_loop_n: Rc<Node>,
-    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut __tco_loop_env: Rc<TypeEnv>,
     mut __tco_loop_fuel: i64,
 ) -> Option<String> {
     loop {
         #[allow(unused_mut)]
         let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
         #[allow(unused_mut)]
         let mut env = __tco_loop_env;
         #[allow(unused_mut)]
@@ -4002,9 +3892,7 @@ pub fn kernel_settled_name(
                     declaration: dn.clone(),
                 },
             ),
-            std::option::Option::None => {
-                type_reference_declaration_reading(n.clone(), source_indices.clone(), env.clone())
-            }
+            std::option::Option::None => type_reference_declaration_reading(n.clone(), env.clone()),
         };
         match (*reading.clone()).clone() {
             TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: kernel, .. } => {
@@ -4023,13 +3911,11 @@ pub fn kernel_settled_name(
                         }
                         Some(rhs) => {
                             let __tco_0 = rhs.clone();
-                            let __tco_1 = source_indices;
-                            let __tco_2 = env;
-                            let __tco_3 = v1_rt::int_sub(fuel, 1);
+                            let __tco_1 = env;
+                            let __tco_2 = v1_rt::int_sub(fuel, 1);
                             __tco_loop_n = __tco_0;
-                            __tco_loop_source_indices = __tco_1;
-                            __tco_loop_env = __tco_2;
-                            __tco_loop_fuel = __tco_3;
+                            __tco_loop_env = __tco_1;
+                            __tco_loop_fuel = __tco_2;
                             continue;
                         }
                     }
@@ -4045,24 +3931,15 @@ pub fn kernel_settled_name(
 pub fn alias_settled_agree(
     left: Rc<Node>,
     right: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
     agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
 ) -> bool {
-    match settled_type(left.clone(), source_indices.clone(), env.clone(), 16) {
-        std::option::Option::None => kernel_settled_agree(
-            left.clone(),
-            right.clone(),
-            source_indices.clone(),
-            env.clone(),
-        ),
-        Some(l) => match settled_type(right.clone(), source_indices.clone(), env.clone(), 16) {
-            std::option::Option::None => kernel_settled_agree(
-                left.clone(),
-                right.clone(),
-                source_indices.clone(),
-                env.clone(),
-            ),
+    match settled_type(left.clone(), env.clone(), 16) {
+        std::option::Option::None => kernel_settled_agree(left.clone(), right.clone(), env.clone()),
+        Some(l) => match settled_type(right.clone(), env.clone(), 16) {
+            std::option::Option::None => {
+                kernel_settled_agree(left.clone(), right.clone(), env.clone())
+            }
             Some(r) => settled_types_agree(l.clone(), r.clone(), env.clone(), agree.clone()),
         },
     }
@@ -4087,7 +3964,6 @@ pub fn settled_types_agree(
 pub fn alias_names_settled_agree(
     left: String,
     right: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
     agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
 ) -> bool {
@@ -4095,19 +3971,9 @@ pub fn alias_names_settled_agree(
         std::option::Option::None => false,
         Some(ld) => match declaration_named_by_type_name(right.clone(), env.clone()) {
             std::option::Option::None => false,
-            Some(rd) => match settled_type_of_declaration(
-                ld.clone(),
-                source_indices.clone(),
-                env.clone(),
-                16,
-            ) {
+            Some(rd) => match settled_type_of_declaration(ld.clone(), env.clone(), 16) {
                 std::option::Option::None => false,
-                Some(l) => match settled_type_of_declaration(
-                    rd.clone(),
-                    source_indices.clone(),
-                    env.clone(),
-                    16,
-                ) {
+                Some(l) => match settled_type_of_declaration(rd.clone(), env.clone(), 16) {
                     std::option::Option::None => false,
                     Some(r) => {
                         settled_types_agree(l.clone(), r.clone(), env.clone(), agree.clone())
@@ -4118,57 +3984,39 @@ pub fn alias_names_settled_agree(
     }
 }
 
-pub fn kernel_settled_agree(
-    left: Rc<Node>,
-    right: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> bool {
-    match kernel_settled_name(left.clone(), source_indices.clone(), env.clone(), 16) {
+pub fn kernel_settled_agree(left: Rc<Node>, right: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    match kernel_settled_name(left.clone(), env.clone(), 16) {
         std::option::Option::None => false,
-        Some(l) => {
-            match kernel_settled_name(right.clone(), source_indices.clone(), env.clone(), 16) {
-                std::option::Option::None => false,
-                Some(r) => (l.clone() == r.clone()),
-            }
-        }
+        Some(l) => match kernel_settled_name(right.clone(), env.clone(), 16) {
+            std::option::Option::None => false,
+            Some(r) => (l.clone() == r.clone()),
+        },
     }
 }
 
-pub fn type_reference_declaration_ref(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<DeclarationRef>> {
+pub fn type_reference_declaration_ref(n: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<DeclarationRef>> {
     {
-        let from_authored =
-            declaration_ref_of_type_node(n.clone(), source_indices.clone(), env.clone());
+        let from_authored = declaration_ref_of_type_node(n.clone(), env.clone());
         if (from_authored.clone() != std::option::Option::None) {
             return from_authored.clone();
         }
         let from_resolved = match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: r, .. }) => {
-                declaration_ref_of_type_node(r.clone(), source_indices.clone(), env.clone())
+                declaration_ref_of_type_node(r.clone(), env.clone())
             }
             _ => std::option::Option::None,
         };
         match from_resolved.clone() {
             Some(d) => Some(d.clone()),
             std::option::Option::None => match lookup_type_for(env.clone(), n.clone()) {
-                Some(bound) => {
-                    declaration_ref_of_type_node(bound.clone(), source_indices.clone(), env.clone())
-                }
+                Some(bound) => declaration_ref_of_type_node(bound.clone(), env.clone()),
                 std::option::Option::None => match lookup_type_by_name(
                     env.clone(),
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+                    crate::v1_std_core::node_authored_text(n.clone()),
                 ) {
-                    Some(bound) => declaration_ref_of_type_node(
-                        bound.clone(),
-                        source_indices.clone(),
-                        env.clone(),
-                    ),
+                    Some(bound) => declaration_ref_of_type_node(bound.clone(), env.clone()),
                     std::option::Option::None => {
-                        declaration_ref_of_type_node(n.clone(), source_indices.clone(), env.clone())
+                        declaration_ref_of_type_node(n.clone(), env.clone())
                     }
                 },
             },
@@ -4182,11 +4030,7 @@ pub fn declaration_named_by_type_name(
 ) -> Option<Rc<DeclarationRef>> {
     {
         let scoped = match lookup_type_by_name(env.clone(), name.clone()) {
-            Some(decl) => declaration_ref_of_declaration_node(
-                decl.clone(),
-                env.source_indices.clone(),
-                env.clone(),
-            ),
+            Some(decl) => declaration_ref_of_declaration_node(decl.clone(), env.clone()),
             std::option::Option::None => std::option::Option::None,
         };
         if (scoped.clone() != std::option::Option::None) {

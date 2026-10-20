@@ -8,7 +8,7 @@ use serde_json::json;
 
 use crate::v1_interpreter::{sorted_fields, str_value, InterpContext, Value};
 use crate::v1_rt;
-use crate::v1_std_core::{authored_name_at, param_node_name_at, Node};
+use crate::v1_std_core::{node_authored_text, param_node_name_at, Node};
 
 pub const FIXTURE_FRESHNESS_SECS: u64 = 30 * 24 * 60 * 60;
 
@@ -290,10 +290,9 @@ pub fn service_inputs_fixture_json(
     param_env: &crate::v1_interpreter::Env,
     ctx: &InterpContext,
 ) -> Result<serde_json::Value, FixtureError> {
-    let si = ctx.source_indices();
     let mut rows = Vec::new();
     for param in op_node.params.iter() {
-        let name = param_node_name_at(param.clone(), si.clone());
+        let name = param_node_name_at(param.clone());
         let key = ctx.sym(&name);
         let value = match param_env.lookup(key) {
             Some(val) => value_to_fixture_json(val, ctx)?,
@@ -309,10 +308,9 @@ pub fn content_hash_service_inputs(
     param_env: &crate::v1_interpreter::Env,
     ctx: &InterpContext,
 ) -> String {
-    let si = ctx.source_indices();
     let mut digest = "0000000000000000".to_string();
     for param in op_node.params.iter() {
-        let name = param_node_name_at(param.clone(), si.clone());
+        let name = param_node_name_at(param.clone());
         let key = ctx.sym(&name);
         let limb = match param_env.lookup(key) {
             Some(val) => format!("{:016x}", crate::v1_interpreter::value_hash_public(val)),
@@ -662,10 +660,10 @@ pub fn value_from_fixture_json(
     })
 }
 
-pub fn operation_result_type_name(op_node: &Rc<Node>, ctx: &InterpContext) -> String {
+pub fn operation_result_type_name(op_node: &Rc<Node>) -> String {
     match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => {
-            authored_name_at(ctx.source_indices(), node.clone())
+            node_authored_text(node.clone())
         }
         _ => String::new(),
     }

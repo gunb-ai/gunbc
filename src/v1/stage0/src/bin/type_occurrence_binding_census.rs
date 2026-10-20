@@ -534,16 +534,13 @@ enum CensusUnavailableCause {
 /// decides it from the absence of BODY, TRANSPORT and TYPE_ANNOTATION. They are different facts
 /// about the same item, so their agreement is a join and not `measure() == measure()` -- which is
 /// the whole point: a join against the stamper's own output would assert nothing (DESIGN section 5).
-fn emit_side_reads_item_as_type_declaration(
-    item: &Rc<v1_compiler::v1_std_core::Node>,
-    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
-) -> bool {
+fn emit_side_reads_item_as_type_declaration(item: &Rc<v1_compiler::v1_std_core::Node>) -> bool {
     use v1_compiler::v1_compiler_emit_core_support::{
         is_type_alias_item, is_type_decl_item, is_type_def_item,
     };
     is_type_def_item(item.clone())
-        || is_type_alias_item(item.clone(), source_indices.clone())
-        || is_type_decl_item(item.clone(), source_indices.clone())
+        || is_type_alias_item(item.clone())
+        || is_type_decl_item(item.clone())
 }
 
 fn item_occurrence_id(item: &Rc<v1_compiler::v1_std_core::Node>) -> Option<i64> {
@@ -642,7 +639,7 @@ fn establish_declaration_population(
             }
             let mut grammar_side: std::collections::HashSet<i64> = std::collections::HashSet::new();
             for item in module_node.children.iter() {
-                if !emit_side_reads_item_as_type_declaration(item, &source_indices) {
+                if !emit_side_reads_item_as_type_declaration(item) {
                     continue;
                 }
                 match item_occurrence_id(item) {

@@ -363,10 +363,8 @@ fn missing_export_names(dir: &Path, basenames: &[&str]) -> Vec<String> {
         let parsed = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(indices.clone()));
         modules.push(parsed.module.as_ref().expect("fixture must parse").clone());
     }
-    let graph = v1_compiler::v1_compiler_resolve::resolve_modules(
-        Rc::new(modules.into_iter().collect()),
-        Rc::new(indices),
-    );
+    let graph =
+        v1_compiler::v1_compiler_resolve::resolve_modules(Rc::new(modules.into_iter().collect()));
     graph
         .diagnostics
         .iter()

@@ -47,7 +47,7 @@ import v1.std.core { Unmarked, TestMarked,
   with_required_cardinality,
   error_type, is_compiler_error,
   node_name_span, no_span,
-  NewlineIndex, AuthoredIdent, authored_name_at, authored_ident, authored_ident_at, kernel_span, byte_to_line_col,
+  NewlineIndex, AuthoredIdent, node_authored_text, authored_ident, authored_ident_at, kernel_span, byte_to_line_col,
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
   intern_table_with_authored_token_ordinals,
   field_access_base,
@@ -1452,13 +1452,13 @@ fn eat(tokens: TokenStream, expected: ExpectedToken) -> EatResult {
   }
 }
 
-fn parser_result_base_var(expr: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+fn parser_result_base_var(expr: Node) -> String? {
   match expr.expr_data {
     ExprFieldAccess =>
       match expr.children |> first {
         Present { value: base } =>
           match base.expr_data {
-            ExprVar { binding_kind: _ } => Present { value: expr_var_name_at(texpr: base, source_indices: source_indices) }
+            ExprVar { binding_kind: _ } => Present { value: expr_var_name_at(texpr: base) }
             _ => none
           }
         Absent => none
@@ -1467,14 +1467,14 @@ fn parser_result_base_var(expr: Node, source_indices: Map<String, NewlineIndex>)
   }
 }
 
-fn parser_helper_state_arg_expr(call_node: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn parser_helper_state_arg_expr(call_node: Node) -> Node? {
   call_node.children |> enumerate |> fold(init: none, f: (acc, pair) =>
     if acc != none {
       acc
     } else {
       let idx = pair.first
       let arg_node = pair.second
-      let matches_state = match arg_name_at(n: arg_node, source_indices: source_indices) {
+      let matches_state = match arg_name_at(n: arg_node) {
         Present { value: name } => name == "state" || name == "tokens"
         Absent => idx == 0
       }
@@ -1487,12 +1487,12 @@ fn parser_helper_state_arg_expr(call_node: Node, source_indices: Map<String, New
   )
 }
 
-fn parser_progress_flag_var(expr: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+fn parser_progress_flag_var(expr: Node) -> String? {
   match expr.expr_data {
     ExprFieldAccess =>
-      let field = field_access_field_at(texpr: expr, source_indices: source_indices)
+      let field = field_access_field_at(texpr: expr)
       if field == "consumed" || field == "changed" {
-        parser_result_base_var(expr: expr, source_indices: source_indices)
+        parser_result_base_var(expr: expr)
       } else {
         none
       }
@@ -1512,14 +1512,14 @@ fn parser_helper_identity(callee: String) -> ParserHelperIdentity? {
   }
 }
 
-fn parser_passthrough_state_expr(expr: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn parser_passthrough_state_expr(expr: Node) -> Node? {
   match expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      match parser_helper_identity(callee: expr_call_func_at(texpr: expr, source_indices: source_indices)) {
+      match parser_helper_identity(callee: expr_call_func_at(texpr: expr)) {
         Present { value: ParserHelperSkipNewlines } =>
-          parser_helper_state_arg_expr(call_node: expr, source_indices: source_indices)
+          parser_helper_state_arg_expr(call_node: expr)
         Present { value: ParserHelperSkipContinuationNewlines } =>
-          parser_helper_state_arg_expr(call_node: expr, source_indices: source_indices)
+          parser_helper_state_arg_expr(call_node: expr)
         Present { value: ParserHelperWith } =>
           match expr.children |> first {
             Present { value: base_arg } => Present { value: arg_value(n: base_arg) }
@@ -1531,10 +1531,10 @@ fn parser_passthrough_state_expr(expr: Node, source_indices: Map<String, Newline
   }
 }
 
-fn parser_result_witness(expr: Node, source_indices: Map<String, NewlineIndex>) -> ParserResultWitness {
+fn parser_result_witness(expr: Node) -> ParserResultWitness {
   match expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      match expr_call_func_at(texpr: expr, source_indices: source_indices) {
+      match expr_call_func_at(texpr: expr) {
         "advance" => ParserWitnessAdvance
         "expect" => ParserWitnessExpect
         "eat" => ParserWitnessEat
@@ -1586,12 +1586,12 @@ fn child_inferred_or_empty(ch: Node) -> Node {
   }
 }
 
-fn node_inferred_to_outputs(rt: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+fn node_inferred_to_outputs(rt: Node) -> List<Node> {
   if is_conj_with_children(n: rt) {
     let all_children_typed = rt.children |> all(ch => match ch.inferred { Present { value: Resolved { node: _ } } => true  _ => false })
     if all_children_typed {
       rt.children
-        |> map(ch => make_field_node(occurrence_identity: OccurrenceSynthetic, name: authored_name_at(source_indices: source_indices, node: ch), type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key_properties: [], span: ch.span, name_span: node_name_span(n: ch)))
+        |> map(ch => make_field_node(occurrence_identity: OccurrenceSynthetic, name: node_authored_text(node: ch), type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key_properties: [], span: ch.span, name_span: node_name_span(n: ch)))
     } else {
       []
     }
@@ -2867,9 +2867,9 @@ fn parse_item_by_form(tokens: TokenStream, ctx: ParseContext, form: ItemForm) ->
   }
 }
 
-fn field_to_child_node(field: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+fn field_to_child_node(field: Node) -> Node {
   let ret_type = field_node_type_expr(n: field)
-  Node { occurrence_identity: field.occurrence_identity, name: field_node_name_at(n: field, source_indices: source_indices), span: field.span, ident_span: field.ident_span,
+  Node { occurrence_identity: field.occurrence_identity, name: field_node_name_at(n: field), span: field.span, ident_span: field.ident_span,
     children: [], connective: NoConnective,
     params: [], inferred: Present { value: Resolved { node: ret_type } }, return_cardinality: field_node_cardinality(n: field),
     uses: [], body: field_node_default_value(n: field),
@@ -2877,10 +2877,10 @@ fn field_to_child_node(field: Node, source_indices: Map<String, NewlineIndex>) -
     type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
-fn variant_to_child_node(variant: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+fn variant_to_child_node(variant: Node) -> Node {
   let fields = variant_node_fields(n: variant)
-  let children = fields |> map(f => field_to_child_node(field: f, source_indices: source_indices))
-  Node { occurrence_identity: variant.occurrence_identity, name: variant_node_name_at(n: variant, source_indices: source_indices), span: variant.span, ident_span: variant.ident_span,
+  let children = fields |> map(f => field_to_child_node(field: f))
+  Node { occurrence_identity: variant.occurrence_identity, name: variant_node_name_at(n: variant), span: variant.span, ident_span: variant.ident_span,
     children: children,
     connective: if fields |> count > 0 { Conj } else { NoConnective },
     params: [], inferred: none, return_cardinality: Required,
@@ -2889,37 +2889,37 @@ fn variant_to_child_node(variant: Node, source_indices: Map<String, NewlineIndex
     type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
-fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> InferredNode? {
+fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan) -> InferredNode? {
   if outputs |> count > 0 {
-    Present { value: Resolved { node: Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: map(outputs, f => field_to_child_node(field: f, source_indices: source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData } } }
+    Present { value: Resolved { node: Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: map(outputs, f => field_to_child_node(field: f)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData } } }
   } else {
     none
   }
 }
 
-fn make_operation_node(occurrence_identity: NodeOccurrenceIdentity, name: String, ident_span: AuthoredIdent?, inputs: List<Node>, outputs: List<Node>, response_props: List<Node>, mock_props: List<Node>, exit_props: List<Node>, modifier_props: List<Node>, transport: Node?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> Node {
+fn make_operation_node(occurrence_identity: NodeOccurrenceIdentity, name: String, ident_span: AuthoredIdent?, inputs: List<Node>, outputs: List<Node>, response_props: List<Node>, mock_props: List<Node>, exit_props: List<Node>, modifier_props: List<Node>, transport: Node?, span: SourceSpan) -> Node {
   let all_props = concat(modifier_props, response_props, exit_props, mock_props)
   Node { occurrence_identity: occurrence_identity, name: name, span: span, ident_span: ident_span,
     children: [],
     params: inputs |> map(f => make_param_node(occurrence_identity: f.occurrence_identity,
-      name: field_node_name_at(n: f, source_indices: source_indices), type_expr: field_node_type_expr(n: f),
+      name: field_node_name_at(n: f), type_expr: field_node_type_expr(n: f),
       default_value: field_node_default_value(n: f), span: f.span, name_span: node_name_span(n: f)
     )),
-    inferred: outputs_to_inferred(outputs: outputs, span: span, source_indices: source_indices), return_cardinality: Required,
+    inferred: outputs_to_inferred(outputs: outputs, span: span), return_cardinality: Required,
     uses: [], body: none, connective: NoConnective,
     transport: transport,
     properties: all_props, type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
-fn make_capability_node(occurrence_identity: NodeOccurrenceIdentity, name: String, ident_span: AuthoredIdent?, inputs: List<Node>, outputs: List<Node>, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> Node {
+fn make_capability_node(occurrence_identity: NodeOccurrenceIdentity, name: String, ident_span: AuthoredIdent?, inputs: List<Node>, outputs: List<Node>, span: SourceSpan) -> Node {
   Node { occurrence_identity: occurrence_identity, name: name, span: span, ident_span: ident_span,
     children: [],
     params: inputs |> map(f => make_param_node(occurrence_identity: f.occurrence_identity,
-      name: field_node_name_at(n: f, source_indices: source_indices), type_expr: field_node_type_expr(n: f),
+      name: field_node_name_at(n: f), type_expr: field_node_type_expr(n: f),
       default_value: field_node_default_value(n: f), span: f.span, name_span: node_name_span(n: f)
     )),
-    inferred: outputs_to_inferred(outputs: outputs, span: span, source_indices: source_indices), return_cardinality: Required,
+    inferred: outputs_to_inferred(outputs: outputs, span: span), return_cardinality: Required,
     uses: [], body: none, connective: NoConnective,
     transport: none,
     properties: [], type_annotation: none,
@@ -2960,7 +2960,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
     let ctx = r.ctx
     let r2 = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
-    let type_children = r.fields |> map(f => field_to_child_node(field: f, source_indices: ctx.source_indices))
+    let type_children = r.fields |> map(f => field_to_child_node(field: f))
     let sole = parsed_sole_constructor_properties(ctx: ctx, enabled: is_sole_constructor, span: start_span, at: sole_at)
     let minted = mint_parsed_node_identity(ctx: sole.ctx, at: FromToken { start: start_span, to: r2.tokens })
     let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: authored_ident(span: name_span, text: name) }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole.properties, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
@@ -2998,7 +2998,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
     let ctx = r.ctx
     let r2 = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
-    let type_children = r.fields |> map(f => field_to_child_node(field: f, source_indices: ctx.source_indices))
+    let type_children = r.fields |> map(f => field_to_child_node(field: f))
     let sole = parsed_sole_constructor_properties(ctx: ctx, enabled: is_sole_constructor, span: start_span, at: sole_at)
     let minted = mint_parsed_node_identity(ctx: sole.ctx, at: FromToken { start: start_span, to: r2.tokens })
     let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: authored_ident(span: name_span, text: name) }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole.properties, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
@@ -3090,7 +3090,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
     if has_err(err: rv.err) { return ItemResult { item: dummy, tokens: rv.tokens, ctx: rv.ctx, err: rv.err } }
     let rest = parse_more_variants_acc(tokens: rv.tokens, ctx: rv.ctx, acc: [rv.variant])
     if has_err(err: rest.err) { return ItemResult { item: dummy, tokens: rest.tokens, ctx: rest.ctx, err: rest.err } }
-    let type_children = rest.variants |> map(v => variant_to_child_node(variant: v, source_indices: ctx.source_indices))
+    let type_children = rest.variants |> map(v => variant_to_child_node(variant: v))
     let minted = mint_parsed_node_identity(ctx: rest.ctx, at: FromToken { start: start_span, to: rest.tokens })
     let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: authored_ident(span: name_span, text: name) }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: minted.ctx, err: none }
@@ -3109,7 +3109,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
       let rest = parse_more_variants_acc(tokens: r.tokens, ctx: r.ctx, acc: [first_variant])
       if has_err(err: rest.err) { return ItemResult { item: dummy, tokens: rest.tokens, ctx: rest.ctx, err: rest.err } }
       let variants = rest.variants
-      let type_children = variants |> map(v => variant_to_child_node(variant: v, source_indices: ctx.source_indices))
+      let type_children = variants |> map(v => variant_to_child_node(variant: v))
       let minted = mint_parsed_node_identity(ctx: rest.ctx, at: FromToken { start: start_span, to: rest.tokens })
       let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: authored_ident(span: name_span, text: name) }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: minted.ctx, err: none }
@@ -3374,7 +3374,7 @@ fn parse_type_expr(tokens: TokenStream, ctx: ParseContext) -> TypeResult {
       let r2 = expect(tokens: tokens, expected: ExpectRBrace)
       if has_err(err: r2.err) { return TypeResult { type_expr: leaf_type_node(occurrence_identity: OccurrenceSynthetic, name: "", span: span), tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
       let minted = mint_parsed_node_identity(ctx: r.ctx, at: FromToken { start: span, to: r2.tokens })
-      let te = Node { occurrence_identity: minted.identity, name: "", span: span, ident_span: none, children: map(r.fields, f => field_to_child_node(field: f, source_indices: ctx.source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+      let te = Node { occurrence_identity: minted.identity, name: "", span: span, ident_span: none, children: map(r.fields, f => field_to_child_node(field: f)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       TypeResult { type_expr: te, tokens: r2.tokens, ctx: minted.ctx, err: none }
     }
     Present { value: ShKeyword } => {
@@ -3538,9 +3538,9 @@ fn parse_optional_type_param_kind(tokens: TokenStream, ctx: ParseContext) -> Typ
 }
 
 // THE KIND PROPERTY'S name_span MUST BE no_span(), AND THE REASON IS A TRAP WORTH NAMING. Property
-// lookup goes through find_property -> field_init_node_name_at -> authored_name_at, which reads the
-// SOURCE TEXT at the property node's ident_span and falls back to the node's `name` field ONLY when
-// that span's file is absent from source_indices. Passing the kind token's own span therefore made
+// lookup goes through find_property -> field_init_node_name_at -> node_authored_text, which answers the
+// text carried on the property node's ident_span (it used to re-read the SOURCE TEXT at that span,
+// falling back to the node's `name` field only when the span's file was absent). Passing the kind token's own span therefore made
 // this property answer its own name as "WidthResolution" rather than "__param_kind", every lookup
 // missed, and the kind wall compiled, shipped and never fired -- green on every probe including the
 // ones written to go red. The existing sole_constructor property passes no_span() for exactly this
@@ -4233,7 +4233,7 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, v
 
 fn parse_operation_def(tokens: TokenStream, ctx: ParseContext) -> OpResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy_op = make_operation_node(occurrence_identity: OccurrenceSynthetic, name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: ctx.source_indices)
+  let dummy_op = make_operation_node(occurrence_identity: OccurrenceSynthetic, name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "operation" })
   if has_err(err: r.err) { return OpResult { operation: dummy_op, tokens: r.tokens, ctx: ctx, err: r.err } }
 
@@ -4251,7 +4251,7 @@ fn parse_operation_def(tokens: TokenStream, ctx: ParseContext) -> OpResult {
 }
 
 fn parse_operation_v2_inline(tokens: TokenStream, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
-  let dummy_op = make_operation_node(occurrence_identity: OccurrenceSynthetic, name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: ctx.source_indices)
+  let dummy_op = make_operation_node(occurrence_identity: OccurrenceSynthetic, name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
   let mods_r = parse_operation_modifiers(tokens: tokens, ctx: ctx)
   let mod_props = mods_r.properties
   let tokens = mods_r.tokens
@@ -4272,7 +4272,7 @@ fn parse_operation_v2_inline(tokens: TokenStream, ctx: ParseContext, name: Strin
   let tokens = ret.tokens
   let ctx = ret.ctx
   let outputs = match ret.inferred {
-    Present { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: ctx.source_indices)
+    Present { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt)
     _ => []
   }
   let tokens = skip_newlines(tokens: tokens)
@@ -4291,14 +4291,12 @@ fn parse_operation_v2_inline(tokens: TokenStream, ctx: ParseContext, name: Strin
     occurrence_identity: minted.identity,
     name: name, ident_span: Present { value: authored_ident(span: name_span, text: name) }, inputs: inputs, outputs: outputs,
     response_props: resp_r.responses, mock_props: mock_r.mocks,
-    exit_props: [], modifier_props: mod_props, transport: none, span: start_span,
-    source_indices: ctx.source_indices
-  )
+    exit_props: [], modifier_props: mod_props, transport: none, span: start_span)
   OpResult { operation: op, tokens: tokens, ctx: minted.ctx, err: none }
 }
 
 fn parse_operation_v1_body(tokens: TokenStream, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
-  let dummy_op = make_operation_node(occurrence_identity: OccurrenceSynthetic, name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: ctx.source_indices)
+  let dummy_op = make_operation_node(occurrence_identity: OccurrenceSynthetic, name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span)
   let r = expect(tokens: tokens, expected: ExpectLBrace)
   if has_err(err: r.err) { return OpResult { operation: dummy_op, tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = skip_newlines(tokens: r.tokens)
@@ -4318,9 +4316,7 @@ fn parse_operation_v1_body(tokens: TokenStream, ctx: ParseContext, name: String,
     name: name, ident_span: Present { value: authored_ident(span: name_span, text: name) }, inputs: r2.inputs, outputs: r2.outputs,
     response_props: r2.response_props, mock_props: r2.mock_props,
     exit_props: r2.exit_props, modifier_props: r2.modifier_props,
-    transport: r2.transport, span: start_span,
-    source_indices: ctx.source_indices
-  )
+    transport: r2.transport, span: start_span)
   OpResult { operation: op, tokens: skip_newlines(tokens: r3.tokens), ctx: minted.ctx, err: none }
 }
 
@@ -4417,14 +4413,14 @@ fn parse_op_body_entries(
   }
 }
 
-fn status_expr_to_str(expr: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn status_expr_to_str(expr: Node) -> String {
   match expr.expr_data {
     ExprLiteral { value: v } => match v {
       LitInt { value: n } => int_to_string(value: n)
       LitStr { value: s } => s
       _ => "_"
     }
-    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: expr, source_indices: source_indices)
+    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: expr)
     _ => "_"
   }
 }
@@ -4465,25 +4461,25 @@ fn last_child_or_self(n: Node) -> Node {
   }
 }
 
-fn node_to_name_str(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn node_to_name_str(n: Node) -> String {
   let is_optional = n.return_cardinality == CardOptional
   let effective_n = if is_optional { with_required_cardinality(n: n) } else { n }
   let opt_prefix = if is_optional { "Optional_" } else { "" }
-  let effective_name = authored_name_at(source_indices: source_indices, node: effective_n)
+  let effective_name = node_authored_text(node: effective_n)
   let is_keyed_container = is_container_type(name: effective_name) && effective_n.children |> count == 2
   if is_keyed_container {
     match effective_n.children |> last {
-      Present { value: ch } => concat(opt_prefix, effective_name, "_", node_to_name_str(n: ch, source_indices: source_indices))
+      Present { value: ch } => concat(opt_prefix, effective_name, "_", node_to_name_str(n: ch))
       Absent => concat(opt_prefix, effective_name)
     }
   } else if effective_n.type_annotation != none {
     match effective_n.children |> first {
-      Present { value: ch } => concat(opt_prefix, node_to_name_str(n: ch, source_indices: source_indices))
+      Present { value: ch } => concat(opt_prefix, node_to_name_str(n: ch))
       Absent => concat(opt_prefix, effective_name)
     }
   } else if is_container_type(name: effective_name) {
     match effective_n.children |> first {
-      Present { value: ch } => concat(opt_prefix, "List_", node_to_name_str(n: ch, source_indices: source_indices))
+      Present { value: ch } => concat(opt_prefix, "List_", node_to_name_str(n: ch))
       Absent => concat(opt_prefix, effective_name)
     }
   } else if effective_n.ident_span == none {
@@ -4519,7 +4515,7 @@ fn parse_exit_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node
       Present { value: ShLitStr } => token_stream_advance(stream: r3.tokens, n: 1)
       _ => r3.tokens
     }
-    let code_str = status_expr_to_str(expr: code, source_indices: ctx.source_indices)
+    let code_str = status_expr_to_str(expr: code)
     let prop_name = concat("exit_", code_str)
     let minted = mint_parsed_node_identity(ctx: r3.ctx, at: ConsumedWindow { from: tokens, to: desc_tokens })
     let entry = make_field_init_node(occurrence_identity: minted.identity, name: prop_name, value: r3.type_expr, span: r3.type_expr.span, name_span: no_span())
@@ -4541,7 +4537,7 @@ fn parse_exit_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node
 // each is carried as the ONE `requires` property its members would use, whose value is the word as a
 // string literal -- a member is always a parsed type expression and never a string literal, so the
 // reader tells the forms apart by the value's shape. (A property's name is read back from the source
-// at its name span (v1.std.core authored_name_at), so a differently named marker spanned on the
+// through the text its ident_span carries (v1.std.core node_authored_text), so a differently named marker spanned on the
 // `requires` token would read back as `requires`; one name, one span, is the honest carrier.) A member
 // after either word refuses, so a clause cannot both declare nothing and name a resource; and a SECOND
 // `requires` clause refuses in parse_op_body_entries, as v2 refuses it at lowering
@@ -4593,9 +4589,9 @@ type OperationRequiresDeclaration
   | RequiresOpaque
   | RequiresResources { members: List<Node> }
 
-fn operation_requires_declaration(op: Node, source_indices: Map<String, NewlineIndex>) -> OperationRequiresDeclaration {
+fn operation_requires_declaration(op: Node) -> OperationRequiresDeclaration {
   let members = op.properties
-    |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "requires")
+    |> filter(p => field_init_node_name_at(n: p) == "requires")
     |> flat_map(p => p.children)
   let none_words = members |> filter(m => requires_word_is(member: m, word: "none")) |> count
   let opaque_words = members |> filter(m => requires_word_is(member: m, word: "opaque")) |> count
@@ -4706,8 +4702,8 @@ fn parse_response_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<
     if has_err(err: r2.err) { return RespEntriesResult { entries: [], tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
     let r3 = parse_type_expr(tokens: r2.tokens, ctx: r.ctx)
     if has_err(err: r3.err) { return RespEntriesResult { entries: [], tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
-    let status_str = status_expr_to_str(expr: status, source_indices: ctx.source_indices)
-    let type_name = node_to_name_str(n: r3.type_expr, source_indices: ctx.source_indices)
+    let status_str = status_expr_to_str(expr: status)
+    let type_name = node_to_name_str(n: r3.type_expr)
     let prop_name = concat("response_", status_str)
     let minted = mint_parsed_node_identity(ctx: r3.ctx, at: ConsumedWindow { from: tokens, to: r3.tokens })
     let entry = make_field_init_node(occurrence_identity: minted.identity, name: prop_name, value: make_named_expr_node(occurrence_identity: r3.type_expr.occurrence_identity, name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
@@ -4759,7 +4755,7 @@ fn parse_mock_response_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: 
       Present { value: ShLitStr } => token_stream_advance(stream: r3.tokens, n: 1)
       _ => r3.tokens
     }
-    let status_str = status_expr_to_str(expr: status, source_indices: ctx.source_indices)
+    let status_str = status_expr_to_str(expr: status)
     let prop_name = concat("mock_", status_str)
     let minted = mint_parsed_node_identity(ctx: r3.ctx, at: ConsumedWindow { from: tokens, to: desc_tokens })
     let entry = make_field_init_node(occurrence_identity: minted.identity, name: prop_name, value: body, span: no_span(), name_span: no_span())
@@ -4882,7 +4878,7 @@ fn skip_until_rbrace(tokens: TokenStream) -> UnitResult {
 
 fn parse_capability(tokens: TokenStream, ctx: ParseContext) -> CapResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy_cap = make_capability_node(occurrence_identity: OccurrenceSynthetic, name: "", ident_span: none, inputs: [], outputs: [], span: start_span, source_indices: ctx.source_indices)
+  let dummy_cap = make_capability_node(occurrence_identity: OccurrenceSynthetic, name: "", ident_span: none, inputs: [], outputs: [], span: start_span)
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "capability" })
   if has_err(err: r.err) { return CapResult { capability: dummy_cap, tokens: r.tokens, ctx: ctx, err: r.err } }
 
@@ -4900,7 +4896,7 @@ fn parse_capability(tokens: TokenStream, ctx: ParseContext) -> CapResult {
     let r3 = expect(tokens: skip_newlines(tokens: io.tokens), expected: ExpectRBrace)
     if has_err(err: r3.err) { return CapResult { capability: dummy_cap, tokens: r3.tokens, ctx: io.ctx, err: r3.err } }
     let minted = mint_parsed_node_identity(ctx: io.ctx, at: FromToken { start: start_span, to: r3.tokens })
-    let cap = make_capability_node(occurrence_identity: minted.identity, name: name, ident_span: Present { value: authored_ident(span: name_span, text: name) }, inputs: io.inputs, outputs: io.outputs, span: start_span, source_indices: ctx.source_indices)
+    let cap = make_capability_node(occurrence_identity: minted.identity, name: name, ident_span: Present { value: authored_ident(span: name_span, text: name) }, inputs: io.inputs, outputs: io.outputs, span: start_span)
     CapResult { capability: cap, tokens: skip_newlines(tokens: r3.tokens), ctx: minted.ctx, err: none }
   } else if tok_is_lparen(tok: token_stream_first(stream: tokens)) {
     let r2 = expect(tokens: tokens, expected: ExpectLParen)
@@ -4913,15 +4909,15 @@ fn parse_capability(tokens: TokenStream, ctx: ParseContext) -> CapResult {
     let ret = parse_optional_inferred(tokens: r4.tokens, ctx: r3.ctx)
     if has_err(err: ret.err) { return CapResult { capability: dummy_cap, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
     let outputs = match ret.inferred {
-      Present { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: ret.ctx.source_indices)
+      Present { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt)
       _ => []
     }
     let minted = mint_parsed_node_identity(ctx: ret.ctx, at: FromToken { start: start_span, to: ret.tokens })
-    let cap = make_capability_node(occurrence_identity: minted.identity, name: name, ident_span: Present { value: authored_ident(span: name_span, text: name) }, inputs: inputs, outputs: outputs, span: start_span, source_indices: ctx.source_indices)
+    let cap = make_capability_node(occurrence_identity: minted.identity, name: name, ident_span: Present { value: authored_ident(span: name_span, text: name) }, inputs: inputs, outputs: outputs, span: start_span)
     CapResult { capability: cap, tokens: skip_newlines(tokens: ret.tokens), ctx: minted.ctx, err: none }
   } else {
     let minted = mint_parsed_node_identity(ctx: ctx, at: FromToken { start: start_span, to: tokens })
-    let cap = make_capability_node(occurrence_identity: minted.identity, name: name, ident_span: Present { value: authored_ident(span: name_span, text: name) }, inputs: [], outputs: [], span: start_span, source_indices: ctx.source_indices)
+    let cap = make_capability_node(occurrence_identity: minted.identity, name: name, ident_span: Present { value: authored_ident(span: name_span, text: name) }, inputs: [], outputs: [], span: start_span)
     CapResult { capability: cap, tokens: skip_newlines(tokens: tokens), ctx: minted.ctx, err: none }
   }
 }
@@ -5611,7 +5607,7 @@ fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, receiv
   if tok_is_lparen(tok: token_stream_first(stream: tokens)) {
     let r2 = parse_call_args(tokens: tokens, ctx: leading_result.ctx)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-    parsed_expr_result(from: receiver_from, tokens: r2.tokens, ctx: r2.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat(leading_result.nodes, r2.args |> map(na => make_arg_node(occurrence_identity: na.occurrence_identity, name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: callee.method_span))
+    parsed_expr_result(from: receiver_from, tokens: r2.tokens, ctx: r2.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat(leading_result.nodes, r2.args |> map(na => make_arg_node(occurrence_identity: na.occurrence_identity, name: arg_name_at(n: na), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: callee.method_span))
   } else {
     parsed_expr_result(from: receiver_from, tokens: tokens, ctx: leading_result.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: leading_result.nodes, inferred: none, span: span, name_span: callee.method_span))
   }
@@ -5665,7 +5661,7 @@ fn parse_caret_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       let callee_mint = mint_parsed_node_identity(ctx: r.ctx, at: AtToken { span: span })
       let callee = make_named_expr_node(occurrence_identity: callee_mint.identity, name: "discriminant", expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: call_span, name_span: kernel_span(name: "discriminant"))
       let call_mint = mint_parsed_node_identity(ctx: callee_mint.ctx, at: FromToken { start: span, to: r2.tokens })
-      let call = make_call_expr(occurrence_identity: call_mint.identity, lhs: callee, args: [r.expr], span: call_span, source_indices: ctx.source_indices)
+      let call = make_call_expr(occurrence_identity: call_mint.identity, lhs: callee, args: [r.expr], span: call_span)
       ExprResult { expr: call, tokens: r2.tokens, ctx: call_mint.ctx, err: none }
     }
     _ => {
@@ -5833,7 +5829,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
         let r = parse_call_args(tokens: tokens, ctx: ctx)
         if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
         let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
-        let call_expr = make_call_expr(occurrence_identity: minted.identity, lhs: lhs, args: r.args, span: span, source_indices: ctx.source_indices)
+        let call_expr = make_call_expr(occurrence_identity: minted.identity, lhs: lhs, args: r.args, span: span)
         PostfixResult { expr: call_expr, changed: true, tokens: r.tokens, ctx: parse_context_record_absorbed(ctx: minted.ctx, absorbed: lhs, into: minted.identity), err: none }
       }
     }
@@ -5868,7 +5864,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
     Present { value: ShLBrace } => {
       match lhs.expr_data {
         ExprVar { binding_kind: _ } => {
-          let n = expr_var_name_at(texpr: lhs, source_indices: ctx.source_indices)
+          let n = expr_var_name_at(texpr: lhs)
           if is_uppercase_start(name: n) && 14 <= min_bp {
             PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
           } else {
@@ -5882,12 +5878,12 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
           }
         }
         ExprFieldAccess { summary: _ } => {
-          let last_seg = field_access_field_at(texpr: lhs, source_indices: ctx.source_indices)
+          let last_seg = field_access_field_at(texpr: lhs)
           if is_uppercase_start(name: last_seg) && 14 <= min_bp {
             PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
           } else {
             if is_uppercase_start(name: last_seg) {
-              match field_access_spine(texpr: lhs, source_indices: ctx.source_indices) {
+              match field_access_spine(texpr: lhs) {
                 Present { value: spine } => {
                   let r = parse_record_literal_named(tokens: tokens, ctx: ctx, name: spine.dotted, span: field_access_chain_span(texpr: lhs), name_span: kernel_span(name: spine.dotted), from: lhs_from)
                   if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -5965,10 +5961,10 @@ fn try_constraint_annotations(tokens: TokenStream, ctx: ParseContext) -> Constra
   }
 }
 
-fn make_call_expr(occurrence_identity: NodeOccurrenceIdentity, lhs: Node, args: List<Node>, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> Node {
+fn make_call_expr(occurrence_identity: NodeOccurrenceIdentity, lhs: Node, args: List<Node>, span: SourceSpan) -> Node {
   match lhs.expr_data {
-    ExprVar { binding_kind: _ } => make_named_expr_node(occurrence_identity: occurrence_identity, name: expr_var_name_at(texpr: lhs, source_indices: source_indices), expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
-    ExprFieldAccess { summary: _ } => make_named_expr_node(occurrence_identity: occurrence_identity, name: field_access_field_at(texpr: lhs, source_indices: source_indices), expr_data: ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
+    ExprVar { binding_kind: _ } => make_named_expr_node(occurrence_identity: occurrence_identity, name: expr_var_name_at(texpr: lhs), expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
+    ExprFieldAccess { summary: _ } => make_named_expr_node(occurrence_identity: occurrence_identity, name: field_access_field_at(texpr: lhs), expr_data: ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span, name_span: node_name_span(n: lhs))
     _ => make_named_expr_node(occurrence_identity: occurrence_identity, name: "<expr>", expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span, name_span: no_span())
   }
 }
@@ -6160,7 +6156,7 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, l
       if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let span = token_span(tok: token_stream_first(stream: tokens))
       let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
-      let new_lhs = make_call_expr(occurrence_identity: minted.identity, lhs: lhs, args: r.args, span: span, source_indices: ctx.source_indices)
+      let new_lhs = make_call_expr(occurrence_identity: minted.identity, lhs: lhs, args: r.args, span: span)
       parse_expr_loop_no_brace(tokens: r.tokens, ctx: parse_context_record_absorbed(ctx: minted.ctx, absorbed: lhs, into: minted.identity), lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
     } else if tok_is_lbracket(tok: token_stream_first(stream: tokens)) && 21 >= min_bp {
       let span = token_span(tok: token_stream_first(stream: tokens))

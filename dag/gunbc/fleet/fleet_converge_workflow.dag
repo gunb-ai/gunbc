@@ -217,6 +217,9 @@ import gunbc.fleet.host_credential_custody_converge { host_custody_credential_op
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.runner.runner_slot_allocation { runner_host_label, revision_job_slots }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name, deploy_slot_observed_tenancy }
+import gunbc.ci.deploy_route_requirement { srv1_deploy_route_requirement, deploy_route_switch_admitted }
+import gunbc.runner.runner_slot_job_role { srv1_modeled_deploy_slot_reading }
 import gunbc.host.host_reset_return {
   DispatchAssignment,
   DispatchAssignmentRefused,
@@ -1059,7 +1062,19 @@ fn fleet_converge_host_reset_return_receipt_upload_step() -> Step {
   }
 }
 
-data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
+data fleet_converge_host_runner_expression_body: String = "fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host))"
+
+data fleet_converge_host_runner_expression: String = join(["${{ ", fleet_converge_host_runner_expression_body, " }}"], "")
+
+// THE DEPLOY SLOT'S SELECTOR, for the one host that has such a slot. Selection is set membership, so
+// srv1's selector adds the deploy label to the host's and every other host keeps its own selector
+// unchanged; the restricted group (gunbc.ci.deploy_slot_tenancy), not this expression, is the wall
+// that refuses a pull request workflow the slot.
+data fleet_converge_deploy_slot_runner_expression: String = join([
+  "${{ github.event.inputs.host == '", runner_host_label(host: operator_host_srv1) as String, "' && fromJSON('[\"self-hosted\",\"linux\",\"arm64\",\"",
+  runner_host_label(host: operator_host_srv1) as String, "\",\"", deploy_slot_runner_group_name as String, "\"]') || ",
+  fleet_converge_host_runner_expression_body, " }}",
+], "")
 
 // THE BACKSTOP NOW DERIVES FROM THE STEPS IT GUARDS, rather than restating their budgets in a
 // hand-kept sum. It was such a sum, and review 61958 found what that costs: this change inserted a
@@ -1356,8 +1371,21 @@ fn fleet_converge_plan_revision_job() -> Job {
   }
 }
 
+// THE ROUTE TO THE DEPLOY SLOT SWITCHES WITH THE ROOT, NOT BEFORE IT. The deploy slot's account holds
+// per-unit grants only (decision D5), so a dispatch routed there still needs the root switch to the
+// administrator edge to do what it does today under the whole-binary grants; routing early would
+// leave srv1 with no deploy route. The selector therefore follows deploy_route_switch_admitted over
+// the modeled slot's reading, which reads shared until the host readback is produced, and the
+// generated workflow keeps today's expression until then.
 fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
-  RunsOnExpression { expression: fleet_converge_host_runner_expression }
+  if deploy_route_switch_admitted(
+    r: srv1_deploy_route_requirement,
+    observed: deploy_slot_observed_tenancy(reading: srv1_modeled_deploy_slot_reading()),
+  ) {
+    RunsOnExpression { expression: fleet_converge_deploy_slot_runner_expression }
+  } else {
+    RunsOnExpression { expression: fleet_converge_host_runner_expression }
+  }
 }
 
 data fleet_converge_plan_step_if: String = fleet_converge_mode_step_if(mode: FullHostPlan)

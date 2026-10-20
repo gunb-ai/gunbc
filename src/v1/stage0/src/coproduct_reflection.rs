@@ -27,9 +27,9 @@ use crate::v1_interpreter::{
     fields_get, sorted_fields, str_value, InterpContext, InterpError, InterpResult, Value,
 };
 use crate::v1_std_core::{
-    authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    param_node_type_expr, source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex,
-    Node, VarBindingKind,
+    expr_var_name_at, field_node_type_expr, inferred_to_node, node_authored_text,
+    param_node_name_at, param_node_type_expr, source_text_at, Connective, DeclarationMarker,
+    ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -219,7 +219,7 @@ fn type_expr_authored_name(
     {
         return type_expr_authored_name(si, &type_expr.children[0]);
     }
-    let name = authored_name_at(si.clone(), type_expr.clone());
+    let name = node_authored_text(type_expr.clone());
     if !name.is_empty() {
         return name;
     }
@@ -231,7 +231,7 @@ fn type_expr_authored_name(
         .as_ref()
         .and_then(|inf| inferred_to_node(inf.clone()))
     {
-        let inferred_name = authored_name_at(si.clone(), inferred.clone());
+        let inferred_name = node_authored_text(inferred.clone());
         if !inferred_name.is_empty() {
             return inferred_name;
         }
@@ -270,7 +270,7 @@ fn marshal_variant_arm_target(
     }
     let mut edges = Vec::with_capacity(variant.children.len());
     for field in variant.children.iter() {
-        let field_name = authored_name_at(si.clone(), field.clone());
+        let field_name = node_authored_text(field.clone());
         let type_expr = field
             .inferred
             .as_ref()
@@ -298,7 +298,7 @@ pub fn marshal_disj_type_item(
     }
     let mut edges = Vec::with_capacity(item.children.len());
     for child in item.children.iter() {
-        let label = authored_name_at(si.clone(), child.clone());
+        let label = node_authored_text(child.clone());
         let target = marshal_variant_arm_target(ctx, si, child)?;
         edges.push(edge_named(ctx, &label, target));
     }
@@ -559,7 +559,7 @@ fn decls_parse_only_from_disk(
             if !want_kinds.contains(&item_kind(item.clone())) {
                 continue;
             }
-            let name = authored_name_at(si.clone(), item.clone());
+            let name = node_authored_text(item.clone());
             if name.is_empty() {
                 continue;
             }
@@ -698,18 +698,15 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
 /// empty means the parse did not carry one; treating unknown as "not a string" would
 /// under-report exactly the survivors a census exists to find.
 fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
-    data_item_declared_type_name(&decl.item, &decl.source_indices)
+    data_item_declared_type_name(&decl.item)
 }
 
 /// The same spelling for a data item the caller already holds, so the parse sweep can record it
 /// at ingestion (`declaration_index::record_from_module`) without a second rule beside this one.
-pub(crate) fn data_item_declared_type_name(
-    item: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub(crate) fn data_item_declared_type_name(item: &Rc<Node>) -> String {
     match item.type_annotation.as_ref() {
         Some(ann) => {
-            let authored = authored_name_at(source_indices.clone(), ann.clone());
+            let authored = node_authored_text(ann.clone());
             if authored.is_empty() {
                 ann.name.clone()
             } else {
@@ -844,10 +841,9 @@ fn for_each_live_registry_item<F>(
 where
     F: FnMut(&str, &str, &Rc<Node>) -> InterpResult<()>,
 {
-    let si = ctx.source_indices();
     for module in ctx.modules.iter() {
         for item in module.items.iter() {
-            let name = authored_name_at(si.clone(), item.clone());
+            let name = node_authored_text(item.clone());
             if name.is_empty() {
                 continue;
             }
@@ -911,11 +907,11 @@ fn atom_identity_node(ctx: &InterpContext, identity: &str) -> Value {
     )
 }
 
-fn node_authored_name(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+fn node_authored_name(node: &Rc<Node>) -> String {
     if !node.name.is_empty() {
         node.name.clone()
     } else {
-        expr_var_name_at(node.clone(), si.clone())
+        expr_var_name_at(node.clone())
     }
 }
 
@@ -974,14 +970,11 @@ fn node_local_reference_name(node: &Rc<Node>, name: &str) -> Option<String> {
 // The lambda's own parameters (children[1..]; child 0 is the body) are bound WITHIN it, so
 // subtract them from its reference set: a `let` named like a lambda param must not be kept
 // live by the lambda's shadowing use.
-fn lambda_param_names_of(
-    node: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Vec<String> {
+fn lambda_param_names_of(node: &Rc<Node>) -> Vec<String> {
     node.children
         .iter()
         .skip(1)
-        .map(|c| authored_name_at(si.clone(), c.clone()))
+        .map(|c| node_authored_text(c.clone()))
         .filter(|s| !s.is_empty())
         .collect()
 }
@@ -1125,7 +1118,7 @@ fn marshal_generic(
     param_names: &[String],
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> (Value, std::collections::BTreeSet<String>) {
-    let name = node_authored_name(node, si);
+    let name = node_authored_name(node);
     let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
     let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) && !name.is_empty() {
@@ -1175,7 +1168,7 @@ fn marshal_generic(
         refs.extend(inner_refs);
     }
     if matches!(node.expr_data.as_ref(), ExprData::ExprLambda) {
-        for pname in lambda_param_names_of(node, si) {
+        for pname in lambda_param_names_of(node) {
             refs.remove(&pname);
         }
     }
@@ -1211,7 +1204,7 @@ fn marshal_stmt_sequence(
         let is_terminal = rev_idx == 0;
         match stmt.expr_data.as_ref() {
             ExprData::ExprLet => {
-                let bound = node_authored_name(stmt, si);
+                let bound = node_authored_name(stmt);
                 let cont = stmt.children.get(1);
                 if let Some(c) = cont {
                     let (cont_skel, cont_refs) = marshal_skeleton(ctx, c, param_names, si);
@@ -1254,13 +1247,13 @@ fn marshal_stmt_sequence(
 // type-expr child is a leaf named after itself (`T : T`), whereas a value parameter's names
 // a different type (`xs : List`). So: type parameter iff first child's authored name equals
 // its own.
-fn param_is_type_param(p: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
-    let pname = authored_name_at(si.clone(), p.clone());
+fn param_is_type_param(p: &Rc<Node>) -> bool {
+    let pname = node_authored_text(p.clone());
     if pname.is_empty() {
         return false;
     }
     match p.children.first() {
-        Some(child0) => authored_name_at(si.clone(), child0.clone()) == pname,
+        Some(child0) => node_authored_text(child0.clone()) == pname,
         None => false,
     }
 }
@@ -1275,13 +1268,13 @@ fn fn_arrow_param_record(ctx: &InterpContext, param_name: &str) -> Value {
     }
 }
 
-fn fn_item_param_names(item: &Rc<Node>, si: &SourceIndices) -> Vec<String> {
+fn fn_item_param_names(item: &Rc<Node>) -> Vec<String> {
     let mut param_names = Vec::new();
     for p in item.params.iter() {
-        if param_is_type_param(p, si) {
+        if param_is_type_param(p) {
             continue;
         }
-        let pn = param_node_name_at(p.clone(), si.clone());
+        let pn = param_node_name_at(p.clone());
         // A `_`-prefixed name is the declared-inert convention (e.g. node.dag
         // `step: fn(acc, _edge, sub)`): declared irrelevant, not a dead wire (plan section 4).
         if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
@@ -1298,7 +1291,7 @@ fn fn_arrow_output_skeleton(
     item: &Rc<Node>,
 ) -> Option<Value> {
     let body = item.body.as_ref()?;
-    let param_names = fn_item_param_names(item, si);
+    let param_names = fn_item_param_names(item);
     Some(marshal_fn_body_skeleton(ctx, body, &param_names, si))
 }
 
@@ -1310,7 +1303,7 @@ fn fn_arrow_decl_record(
     item: &Rc<Node>,
 ) -> Option<Value> {
     let output = fn_arrow_output_skeleton(ctx, si, item)?;
-    let param_names = fn_item_param_names(item, si);
+    let param_names = fn_item_param_names(item);
     let params: Vec<Value> = param_names
         .iter()
         .map(|pn| fn_arrow_param_record(ctx, pn))
@@ -1728,7 +1721,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
         files_parsed += 1;
         let si = parsed.source_indices;
         for item in parsed.items.iter() {
-            let name = authored_name_at(si.clone(), item.clone());
+            let name = node_authored_text(item.clone());
             if name.is_empty() {
                 continue;
             }
@@ -1824,10 +1817,10 @@ fn marshal_fn_export_signature_node(
     // `v2.std.arrow_signature` `declared_signature`, the one constructor of a domain and its order.
     let mut binders = Vec::new();
     for p in item.params.iter() {
-        if param_is_type_param(p, si) {
+        if param_is_type_param(p) {
             continue;
         }
-        let name = param_node_name_at(p.clone(), si.clone());
+        let name = param_node_name_at(p.clone());
         let ty = param_node_type_expr(p.clone());
         binders.push(edge_named(ctx, &name, marshal_type_expr_ref(ctx, si, &ty)?));
     }
@@ -2102,7 +2095,7 @@ fn typed_nullary_coproduct_item_from_call(
             msg: "coproduct_nullary_inhabitants: discriminator parameter missing".to_string(),
         })?;
     let parameter_type = param_node_type_expr(parameter.clone());
-    let parameter_type_name = authored_name_at(ctx.source_indices(), parameter_type);
+    let parameter_type_name = node_authored_text(parameter_type);
     match visible_coproduct_declaration_from_syntax_node(ctx, call, &parameter_type_name) {
         Ok(declaration) => Ok(TypedNullaryCoproductWitness {
             declaration,
@@ -2136,8 +2129,7 @@ fn typed_nullary_coproduct_item_from_call(
                                 .to_string(),
                     })?;
             let runtime_parameter_type = param_node_type_expr(runtime_parameter.clone());
-            let runtime_parameter_type_name =
-                authored_name_at(ctx.source_indices(), runtime_parameter_type);
+            let runtime_parameter_type_name = node_authored_text(runtime_parameter_type);
             let declaration = visible_coproduct_declaration_from_syntax_node(
                 ctx,
                 runtime_fn,
@@ -2216,8 +2208,7 @@ pub fn eval_coproduct_nullary_inhabitants(
             msg: "coproduct_nullary_inhabitants: not a closed coproduct".to_string(),
         });
     }
-    let si = ctx.source_indices();
-    let reflected_type_name = authored_name_at(si.clone(), requested_declaration.clone());
+    let reflected_type_name = node_authored_text(requested_declaration.clone());
     let mut inhabitants = Vec::with_capacity(requested_declaration.children.len());
     for variant in requested_declaration.children.iter() {
         if !variant_is_nullary(variant) {
@@ -2226,7 +2217,7 @@ pub fn eval_coproduct_nullary_inhabitants(
                 "coproduct_nullary_inhabitants: payload arm is not nullary",
             ));
         }
-        let label = authored_name_at(si.clone(), variant.clone());
+        let label = node_authored_text(variant.clone());
         let value = nullary_coproduct_variant_value(ctx, &reflected_type_name, &label);
         if discriminant_symbol(ctx, &value)? != label {
             return Ok(outcome_rejected_value(

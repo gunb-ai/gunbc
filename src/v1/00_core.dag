@@ -1339,7 +1339,7 @@ fn make_resource_use_node(occurrence_identity: NodeOccurrenceIdentity, name: Str
   }
 }
 
-fn resource_use_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn resource_use_name_at(n: Node) -> String { node_authored_text(node: n) }
 
 fn resource_use_resource(n: Node) -> Node {
   match n.children |> first {
@@ -1371,7 +1371,7 @@ fn make_field_binding_node(occurrence_identity: NodeOccurrenceIdentity, field_na
   }
 }
 
-fn field_binding_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn field_binding_name_at(n: Node) -> String { node_authored_text(node: n) }
 
 fn field_binding_pattern(n: Node) -> MatchPattern {
   match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
@@ -1426,15 +1426,14 @@ fn make_resolved_param_node(occurrence_identity: NodeOccurrenceIdentity, name: S
   }
 }
 
-fn param_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn param_node_name_at(n: Node) -> String { node_authored_text(node: n) }
 
-fn generic_param_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn generic_param_name_at(n: Node) -> String { node_authored_text(node: n) }
 
 // THE SPELLING THE SOURCE HAS AT A SPAN: the slice of the tokenized source when the span's file is
 // indexed, the kernel name a `<kernel:N>` pseudo-file spells, and `fallback` for any other file
-// (`no_span`, `<synthetic>`). authored_ident_at carries this value at construction; authored_name_at
-// still re-derives it per call until lane H2 PR 2 (v1 cull, brief ead5158ad23a section 9.8) moves its callers to
-// the carried text and deletes it.
+// (`no_span`, `<synthetic>`). authored_ident_at carries this value at construction; node_authored_text
+// reads it back, so no caller re-slices the source per call (v1 cull lane H2, brief ead5158ad23a section 9.8).
 fn authored_text_at(source_indices: Map<String, NewlineIndex>, span: SourceSpan, fallback: String) -> String {
   match map_get(source_indices, span.file) {
     Present { value: index } => source_text_at(index: index, span: span)
@@ -1451,22 +1450,22 @@ fn authored_ident_at(source_indices: Map<String, NewlineIndex>, span: SourceSpan
   AuthoredIdent { span: span, text: authored_text_at(source_indices: source_indices, span: span, fallback: fallback) }
 }
 
-fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> String {
+fn node_authored_text(node: Node) -> String {
   match node.ident_span {
-    Present { value: ident } => authored_text_at(source_indices: source_indices, span: ident.span, fallback: node.name)
+    Present { value: ident } => ident.text
     Absent => ""
   }
 }
 
-fn find_child_named(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
-  match n.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == name) |> first {
+fn find_child_named(n: Node, name: String) -> Node? {
+  match n.children |> filter(c => node_authored_text(node: c) == name) |> first {
     Present { value: ch } => Present { value: ch }
     Absent => none
   }
 }
 
-fn has_child_named(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  n.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == name)
+fn has_child_named(n: Node, name: String) -> Bool {
+  n.children |> any(c => node_authored_text(node: c) == name)
 }
 
 fn param_node_type_expr(n: Node) -> Node {
@@ -1496,7 +1495,7 @@ fn make_field_node(occurrence_identity: NodeOccurrenceIdentity, name: String, ty
   }
 }
 
-fn field_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn field_node_name_at(n: Node) -> String { node_authored_text(node: n) }
 
 fn field_node_type_expr(n: Node) -> Node {
   match n.children |> first {
@@ -1533,8 +1532,8 @@ fn field_node_default_value(n: Node) -> Node? {
 // is one spelling to compare against.
 data field_from_key_property_name: String = "from"
 
-fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match find_property(props: n.properties, prop_name: field_from_key_property_name, source_indices: source_indices) {
+fn field_node_from_key(n: Node) -> String? {
+  match find_property(props: n.properties, prop_name: field_from_key_property_name) {
     Present { value: p } => expr_literal_string_optional(expr: p)
     Absent => none
   }
@@ -1553,7 +1552,7 @@ fn make_variant_node(occurrence_identity: NodeOccurrenceIdentity, name: String, 
   }
 }
 
-fn variant_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn variant_node_name_at(n: Node) -> String { node_authored_text(node: n) }
 fn variant_node_fields(n: Node) -> List<Node> { n.children }
 fn variant_node_span(n: Node) -> SourceSpan { n.span }
 
@@ -1718,8 +1717,8 @@ fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
   }
 }
 
-fn arg_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  let name = authored_name_at(source_indices: source_indices, node: n)
+fn arg_name_at(n: Node) -> String? {
+  let name = node_authored_text(node: n)
   if name == "" { none } else { Present { value: name } }
 }
 
@@ -1745,8 +1744,8 @@ fn arm_body(n: Node) -> Node {
   }
 }
 
-fn field_init_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  authored_name_at(source_indices: source_indices, node: n)
+fn field_init_node_name_at(n: Node) -> String {
+  node_authored_text(node: n)
 }
 
 fn field_init_node_value(n: Node) -> Node {
@@ -1767,12 +1766,11 @@ fn decl_ref_coords_label(coords: DeclRefCoords) -> String {
 
 fn call_named_arg_string_optional(
   call: Node,
-  arg_name: String,
-  source_indices: Map<String, NewlineIndex>
+  arg_name: String
 ) -> String? {
   match call.children
     |> filter(a =>
-      match arg_name_at(n: a, source_indices: source_indices) {
+      match arg_name_at(n: a) {
         Present { value: n } => n == arg_name
         Absent => false
       })
@@ -1787,23 +1785,18 @@ type AdmitCallersEntry
   | AdmitCallersEntryUninterpretable { span: SourceSpan }
 
 fn decl_ref_coords_from_call_expr(
-  expr: Node,
-  source_indices: Map<String, NewlineIndex>
+  expr: Node
 ) -> DeclRefCoords? {
-  if expr_call_func_at(texpr: expr, source_indices: source_indices) != "decl_ref" {
+  if expr_call_func_at(texpr: expr) != "decl_ref" {
     none
   } else {
     match call_named_arg_string_optional(
       call: expr,
-      arg_name: "module_path",
-      source_indices: source_indices
-    ) {
+      arg_name: "module_path") {
       Present { value: mp } =>
         match call_named_arg_string_optional(
           call: expr,
-          arg_name: "decl_name",
-          source_indices: source_indices
-        ) {
+          arg_name: "decl_name") {
           Present { value: dn } =>
             Present { value: DeclRefCoords { module_path: mp, decl_name: dn } }
           Absent => none
@@ -1829,27 +1822,24 @@ fn decl_ref_coords_from_call_expr(
 // collect to a nonempty list and pass any threshold, while silently dropping a caller the
 // author explicitly admitted.
 fn admit_callers_entries_from_list(
-  exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  exprs: List<Node>
 ) -> List<AdmitCallersEntry> {
   map(
     exprs,
     e =>
-      match decl_ref_coords_from_call_expr(expr: e, source_indices: source_indices) {
+      match decl_ref_coords_from_call_expr(expr: e) {
         Present { value: coords } => AdmitCallersEntryCoords { coords: coords }
         Absent => AdmitCallersEntryUninterpretable { span: e.span }
       }
   )
 }
 
-fn fn_admit_callers(n: Node, source_indices: Map<String, NewlineIndex>) -> List<AdmitCallersEntry>? {
+fn fn_admit_callers(n: Node) -> List<AdmitCallersEntry>? {
   match n.properties |> filter(p => p.name == "admit_callers") |> first {
     Present { value: p } =>
       Present {
         value: admit_callers_entries_from_list(
-          exprs: field_init_node_value(n: p).children,
-          source_indices: source_indices
-        )
+          exprs: field_init_node_value(n: p).children)
       }
     Absent => Absent
   }
@@ -1889,10 +1879,10 @@ fn binop_right(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role
 
 fn unaryop_operand(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "unaryop operand") }
 
-fn expr_var_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn expr_var_name_at(texpr: Node) -> String { node_authored_text(node: texpr) }
 
 fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
-fn field_access_field_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn field_access_field_at(texpr: Node) -> String { node_authored_text(node: texpr) }
 fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
   match texpr.expr_data { ExprFieldAccess { summary: s } => s  _ => none }
 }
@@ -1902,17 +1892,17 @@ type FieldAccessSpine {
   dotted: String
 }
 
-fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) -> FieldAccessSpine? {
+fn field_access_spine(texpr: Node) -> FieldAccessSpine? {
   match texpr.expr_data {
     ExprVar { binding_kind: _ } =>
-      let name = expr_var_name_at(texpr: texpr, source_indices: source_indices)
+      let name = expr_var_name_at(texpr: texpr)
       Present { value: FieldAccessSpine { root: name, dotted: name } }
     ExprFieldAccess { summary: _ } =>
-      match field_access_spine(texpr: field_access_base(texpr: texpr), source_indices: source_indices) {
+      match field_access_spine(texpr: field_access_base(texpr: texpr)) {
         Present { value: base_spine } =>
           Present { value: FieldAccessSpine {
             root: base_spine.root,
-            dotted: concat(base_spine.dotted, ".", field_access_field_at(texpr: texpr, source_indices: source_indices))
+            dotted: concat(base_spine.dotted, ".", field_access_field_at(texpr: texpr))
           } }
         Absent => none
       }
@@ -1920,7 +1910,7 @@ fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) ->
   }
 }
 
-fn expr_call_func_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn expr_call_func_at(texpr: Node) -> String { node_authored_text(node: texpr) }
 
 fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
   match texpr.expr_data {
@@ -1931,24 +1921,24 @@ fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
 
 fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
 fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
-fn expr_method_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn expr_method_name_at(texpr: Node) -> String { node_authored_text(node: texpr) }
 fn expr_method_call_semantics(texpr: Node) -> MethodSemantics? {
   match texpr.expr_data { ExprMethodCall { method_semantics: ms } => ms  _ => none }
 }
 
 fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
-fn lambda_param_names_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> { texpr.children |> skip(1) |> map(n => authored_name_at(source_indices: source_indices, node: n)) }
+fn lambda_param_names_at(texpr: Node) -> List<String> { texpr.children |> skip(1) |> map(n => node_authored_text(node: n)) }
 
 fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
 fn let_body(texpr: Node) -> Node? { texpr.children |> skip(1) |> first }
-fn let_binding_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn let_binding_name_at(texpr: Node) -> String { node_authored_text(node: texpr) }
 
 fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
 fn cast_target(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "cast target") }
 
 fn foreach_collection(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "foreach collection") }
 fn foreach_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }
-fn foreach_variable_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn foreach_variable_at(texpr: Node) -> String { node_authored_text(node: texpr) }
 
 fn index_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "index base") }
 fn index_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "index expression") }
@@ -1961,8 +1951,8 @@ fn return_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, rol
 
 fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
 
-fn record_lit_type_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  let name = authored_name_at(source_indices: source_indices, node: texpr)
+fn record_lit_type_name_at(texpr: Node) -> String? {
+  let name = node_authored_text(node: texpr)
   if name == "" { none } else { Present { value: name } }
 }
 
@@ -2060,15 +2050,15 @@ fn type_param_kind_property_name() -> String {
   "__param_kind"
 }
 
-fn find_property(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
-  match props |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == prop_name) |> first() {
+fn find_property(props: List<Node>, prop_name: String) -> Node? {
+  match props |> filter(p => field_init_node_name_at(n: p) == prop_name) |> first() {
     Present { value: fi } => Present { value: field_init_node_value(n: fi) }
     Absent => none
   }
 }
 
-fn find_property_string(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
-  match find_property(props: props, prop_name: prop_name, source_indices: source_indices) {
+fn find_property_string(props: List<Node>, prop_name: String) -> String? {
+  match find_property(props: props, prop_name: prop_name) {
     Present { value: n } => expr_literal_string_optional(expr: n)
     Absent => none
   }
@@ -2139,13 +2129,12 @@ fn record_lit_expr_optional(expr: Node) -> Node? {
 
 fn record_lit_named_field_value_optional(
   record_expr: Node,
-  field: String,
-  source_indices: Map<String, NewlineIndex>
+  field: String
 ) -> Node? {
   match record_lit_expr_optional(expr: record_expr) {
     Present { value: record } =>
       match record.children
-        |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field)
+        |> filter(fi => field_init_node_name_at(n: fi) == field)
         |> first {
         Present { value: fi } => Present { value: field_init_node_value(n: fi) }
         Absent => none
@@ -2154,12 +2143,12 @@ fn record_lit_named_field_value_optional(
   }
 }
 
-fn transport_base_path(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_path_key, source_indices: source_indices)
+fn transport_base_path(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_path_key)
 }
 
-fn transport_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_verb_key, source_indices: source_indices)
+fn transport_verb(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_verb_key)
 }
 
 fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
@@ -2174,9 +2163,9 @@ fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
 // `is_local_transport` is defined negatively -- local is genuinely the residual, and there is no
 // marker for it to carry. The file arm is NOT in this class: an omitted `path:` has no such role,
 // and `parse_file_fields` refuses it (gunbc#8949).
-fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
+fn is_rest_transport(t: Node) -> Bool { transport_base_url(t: t) != none }
 fn is_shell_transport(t: Node) -> Bool { t.body != none }
-fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
+fn is_file_transport(t: Node) -> Bool { transport_base_path(t: t) != none }
 // A local transport is the one local_transport_node builds: no properties, no argv, no body.
 fn is_bare_transport(t: Node) -> Bool {
   t.properties |> count == 0 && t.children |> count == 0 && t.body == none
@@ -2213,23 +2202,23 @@ fn is_bare_transport(t: Node) -> Bool {
 // discrimination -- and it is the reason no arm of bind_operation_transport requires a base_url
 // value: a binding that demanded one would move the classifier while its oracle watched only the
 // emitted bytes, which report THAT output moved and never that the CLASSIFIER moved.
-fn classify_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> TransportKind? {
-  if is_rest_transport(t: t, source_indices: source_indices) { Present { value: RestTransport } }
+fn classify_transport(t: Node) -> TransportKind? {
+  if is_rest_transport(t: t) { Present { value: RestTransport } }
   else if is_shell_transport(t: t) { Present { value: ShellTransport } }
-  else if is_file_transport(t: t, source_indices: source_indices) { Present { value: FileTransport } }
+  else if is_file_transport(t: t) { Present { value: FileTransport } }
   else if is_bare_transport(t: t) { Present { value: LocalTransport } }
   else { none }
 }
 
-fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match classify_transport(t: t, source_indices: source_indices) {
+fn is_local_transport(t: Node) -> Bool {
+  match classify_transport(t: t) {
     Present { value: LocalTransport } => true
     _ => false
   }
 }
 
-fn field_init_operation_modifier(field_init: Node, source_indices: Map<String, NewlineIndex>) -> OperationModifier? {
-  let fi_name = field_init_node_name_at(n: field_init, source_indices: source_indices)
+fn field_init_operation_modifier(field_init: Node) -> OperationModifier? {
+  let fi_name = field_init_node_name_at(n: field_init)
   if fi_name == "idempotent" { Present { value: Idempotent } }
   else if fi_name == "readonly" { Present { value: Readonly } }
   else if fi_name == "hermetic" { Present { value: Hermetic } }
@@ -2244,47 +2233,47 @@ fn operation_modifier_name(modifier: OperationModifier) -> String {
   }
 }
 
-fn transport_base_url(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_url_key, source_indices: source_indices)
+fn transport_base_url(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_url_key)
 }
 
-fn transport_auth_token(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_auth_token_key, source_indices: source_indices)
+fn transport_auth_token(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_auth_token_key)
 }
 
-fn transport_auth_header_name(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  find_property_string(props: t.properties, prop_name: transport_auth_header_key, source_indices: source_indices)
+fn transport_auth_header_name(t: Node) -> String? {
+  find_property_string(props: t.properties, prop_name: transport_auth_header_key)
 }
 
-fn transport_has_auth(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match find_property(props: t.properties, prop_name: transport_auth_token_key, source_indices: source_indices) {
+fn transport_has_auth(t: Node) -> Bool {
+  match find_property(props: t.properties, prop_name: transport_auth_token_key) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-fn transport_method(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_method_key, source_indices: source_indices)
+fn transport_method(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_method_key)
 }
 
-fn transport_path_template(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_path_template_key, source_indices: source_indices)
+fn transport_path_template(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_path_template_key)
 }
 
-fn transport_query(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_query_key, source_indices: source_indices)
+fn transport_query(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_query_key)
 }
 
-fn transport_request_body(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_body_key, source_indices: source_indices)
+fn transport_request_body(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_body_key)
 }
 
-fn transport_stdin(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_stdin_key, source_indices: source_indices)
+fn transport_stdin(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_stdin_key)
 }
 
-fn transport_response_format(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_response_format_key, source_indices: source_indices)
+fn transport_response_format(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_response_format_key)
 }
 
 fn is_config_reserved_key(name: String) -> Bool {
@@ -2297,27 +2286,27 @@ fn is_config_reserved_key(name: String) -> Bool {
     || name == transport_tls_key
 }
 
-fn transport_auth_basic(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_auth_basic_key, source_indices: source_indices)
+fn transport_auth_basic(t: Node) -> Node? {
+  find_property(props: t.properties, prop_name: transport_auth_basic_key)
 }
 
 
-fn transport_tls_posture(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match find_property(props: t.properties, prop_name: transport_tls_key, source_indices: source_indices) {
-    Present { value: n } => Present { value: authored_name_at(source_indices: source_indices, node: n) }
+fn transport_tls_posture(t: Node) -> String? {
+  match find_property(props: t.properties, prop_name: transport_tls_key) {
+    Present { value: n } => Present { value: node_authored_text(node: n) }
     Absent => Absent
   }
 }
 
-fn transport_headers(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+fn transport_headers(t: Node) -> List<Node> {
   t.properties |> filter(p =>
-    !is_config_reserved_key(name: field_init_node_name_at(n: p, source_indices: source_indices))
+    !is_config_reserved_key(name: field_init_node_name_at(n: p))
   )
 }
 
-fn transport_env(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+fn transport_env(t: Node) -> List<Node> {
   t.properties |> filter(p =>
-    !is_config_reserved_key(name: field_init_node_name_at(n: p, source_indices: source_indices))
+    !is_config_reserved_key(name: field_init_node_name_at(n: p))
   )
 }
 
@@ -2336,45 +2325,45 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
   }
 }
 
-fn expr_has_self_call(texpr: Node, fn_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      if expr_call_func_at(texpr: texpr, source_indices: source_indices) == fn_name { true }
-      else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_indices: source_indices)) }
-    _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_indices: source_indices))
+      if expr_call_func_at(texpr: texpr) == fn_name { true }
+      else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name)) }
+    _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name))
   }
 }
 
-fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> Bool {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      if expr_call_func_at(texpr: texpr, source_indices: source_indices) == fn_name {
+      if expr_call_func_at(texpr: texpr) == fn_name {
         if in_tail == false { true }
-        else { texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices)) }
+        else { texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false)) }
       } else {
-        texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+        texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
       }
     ExprError { kind: _, message: _ } => false
     ExprVar { binding_kind: _ } => false
     ExprLiteral { value: _ } => false
     ExprElaboratedLiteral { value: _, elaboration: _ } => false
     ExprFieldAccess { summary: _ } =>
-      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
     ExprMethodCall { method_semantics: _ } =>
-      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
     ExprIf =>
-      let cond_bad = expr_has_non_tail_self_call(texpr: if_condition(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
-      let then_bad = expr_has_non_tail_self_call(texpr: if_then_branch(texpr: texpr), fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)
-      let else_bad = match if_else_branch(texpr: texpr) { Present { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)  Absent => false }
+      let cond_bad = expr_has_non_tail_self_call(texpr: if_condition(texpr: texpr), fn_name: fn_name, in_tail: false)
+      let then_bad = expr_has_non_tail_self_call(texpr: if_then_branch(texpr: texpr), fn_name: fn_name, in_tail: in_tail)
+      let else_bad = match if_else_branch(texpr: texpr) { Present { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail)  Absent => false }
       cond_bad || then_bad || else_bad
     ExprMatch =>
-      let scrut_bad = expr_has_non_tail_self_call(texpr: match_scrutinee(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
+      let scrut_bad = expr_has_non_tail_self_call(texpr: match_scrutinee(texpr: texpr), fn_name: fn_name, in_tail: false)
       let arms_bad = match_arm_nodes(texpr: texpr) |> any(arm_node =>
-        expr_has_non_tail_self_call(texpr: arm_body(n: arm_node), fn_name: fn_name, in_tail: in_tail, source_indices: source_indices))
+        expr_has_non_tail_self_call(texpr: arm_body(n: arm_node), fn_name: fn_name, in_tail: in_tail))
       scrut_bad || arms_bad
     ExprLet =>
-      let val_bad = expr_has_non_tail_self_call(texpr: let_value(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
-      let body_bad = match let_body(texpr: texpr) { Present { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)  Absent => false }
+      let val_bad = expr_has_non_tail_self_call(texpr: let_value(texpr: texpr), fn_name: fn_name, in_tail: false)
+      let body_bad = match let_body(texpr: texpr) { Present { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail)  Absent => false }
       val_bad || body_bad
     ExprBlock =>
       let ss = texpr.children
@@ -2383,20 +2372,20 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
       else {
         let init_bad = ss |> enumerate
           |> filter(p => p.first < ss_count - 1)
-          |> any(p => expr_has_non_tail_self_call(texpr: p.second, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+          |> any(p => expr_has_non_tail_self_call(texpr: p.second, fn_name: fn_name, in_tail: false))
         let last_bad = match ss |> last {
           Present { value: last_expr } =>
-            expr_has_non_tail_self_call(texpr: last_expr, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)
+            expr_has_non_tail_self_call(texpr: last_expr, fn_name: fn_name, in_tail: in_tail)
           Absent => false
         }
         init_bad || last_bad
       }
     ExprReturn =>
-      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: true, source_indices: source_indices))
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: true))
     NoExprData =>
-      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices))
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: in_tail))
     _ =>
-      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
   }
 }
 
@@ -2476,28 +2465,28 @@ fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, aut
   concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop)
 }
 
-fn has_service_config(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  n.properties |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "svc_endpoint")
+fn has_service_config(n: Node) -> Bool {
+  n.properties |> any(p => field_init_node_name_at(n: p) == "svc_endpoint")
 }
 
-fn service_config_endpoint(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_endpoint", source_indices: source_indices)
+fn service_config_endpoint(n: Node) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_endpoint")
 }
 
-fn service_config_auth(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_auth", source_indices: source_indices)
+fn service_config_auth(n: Node) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth")
 }
 
-fn service_config_rate_limit(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_rate_limit", source_indices: source_indices)
+fn service_config_rate_limit(n: Node) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_rate_limit")
 }
 
-fn service_config_auth_input(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_auth_input", source_indices: source_indices)
+fn service_config_auth_input(n: Node) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth_input")
 }
 
-fn service_config_auth_source(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_auth_source", source_indices: source_indices)
+fn service_config_auth_source(n: Node) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth_source")
 }
 
 fn module_node(occurrence_identity: NodeOccurrenceIdentity, name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
@@ -2529,8 +2518,8 @@ fn import_is_all(n: Node) -> Bool {
   n.body != none
 }
 
-fn import_specific_names_at(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  n.children |> map(c => authored_name_at(source_indices: source_indices, node: c))
+fn import_specific_names_at(n: Node) -> List<String> {
+  n.children |> map(c => node_authored_text(node: c))
 }
 
 fn module_imports(n: Node) -> List<Node> {
@@ -2991,9 +2980,9 @@ fn type_node_name_is_authored(node: Node, source_indices: Map<String, NewlineInd
 
 fn authored_container_spelling_verdict(node: Node, source_indices: Map<String, NewlineIndex>) -> ContainerSpellingVerdict {
   if type_node_name_is_authored(node: node, source_indices: source_indices) {
-    container_spelling_verdict(name: authored_name_at(source_indices: source_indices, node: node))
+    container_spelling_verdict(name: node_authored_text(node: node))
   } else {
-    match container_expected_arity(name: authored_name_at(source_indices: source_indices, node: node)) {
+    match container_expected_arity(name: node_authored_text(node: node)) {
       Present { value: arity } => ContainerSpellingDeclared { arity: arity }
       Absent => NotAContainerSpelling
     }

@@ -44,10 +44,7 @@ pub fn str_expr(s: String) -> Rc<Node> {
 }
 
 pub fn kind_name(t: Rc<Node>) -> String {
-    match crate::v1_std_core::classify_transport(
-        t.clone(),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-    ) {
+    match crate::v1_std_core::classify_transport(t.clone()) {
         Some(TransportKind::RestTransport) => "rest".to_string(),
         Some(TransportKind::ShellTransport) => "shell".to_string(),
         Some(TransportKind::FileTransport) => "file".to_string(),
@@ -118,20 +115,14 @@ pub fn unrecognized_transport_matches_no_roster_member() -> bool {
 }
 
 pub fn unrecognized_transport_is_not_local() -> bool {
-    (crate::v1_std_core::is_local_transport(
-        keyless_transport(),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-    ) == false)
+    (crate::v1_std_core::is_local_transport(keyless_transport()) == false)
 }
 
 pub fn the_bare_node_is_still_local_positive_control() -> bool {
-    (crate::v1_std_core::is_local_transport(
-        crate::v1_std_core::local_transport_node(
-            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            crate::v1_std_core::no_span(),
-        ),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-    ) == true)
+    (crate::v1_std_core::is_local_transport(crate::v1_std_core::local_transport_node(
+        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        crate::v1_std_core::no_span(),
+    )) == true)
 }
 
 pub fn rest_wins_over_a_file_key_on_the_same_transport() -> bool {

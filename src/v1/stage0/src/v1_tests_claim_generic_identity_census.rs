@@ -21,7 +21,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::Arrow;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v1_std_core::{
-    authored_name_at, param_node_name_at, param_node_type_expr, Connective, InferredNode,
+    node_authored_text, param_node_name_at, param_node_type_expr, Connective, InferredNode,
     NewlineIndex, Node, ResolvedFormal,
 };
 use crate::NonEmptyBTreeSet;
@@ -170,8 +170,7 @@ pub fn gi_type_spells_unmarked(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if gi_is_bare(n.clone()) {
             (!gi_declaration_is_type_parameter(n.declaration.clone())
-                && (crate::v1_compiler_infer::type_node_label(n.clone(), si.clone())
-                    == name.clone()))
+                && (crate::v1_compiler_infer::type_node_label(n.clone()) == name.clone()))
         } else {
             {
                 let is_arrow = match n.connective.clone() {
@@ -254,10 +253,7 @@ pub fn gi_foreign_reading(ctx: Rc<GenericIdentityContext>, n: Rc<Node>) -> Forei
                             let value_params = Rc::new({
                                 let mut __result = Vec::new();
                                 for p in sig.params.clone().iter().cloned() {
-                                    if !crate::v1_compiler_infer::param_is_generic_decl(
-                                        p.clone(),
-                                        ctx.si.clone(),
-                                    ) {
+                                    if !crate::v1_compiler_infer::param_is_generic_decl(p.clone()) {
                                         __result.push(p);
                                     }
                                 }
@@ -323,7 +319,7 @@ pub fn gi_carries_type_variable(n: Rc<Node>) -> bool {
 pub fn gi_resolved_label(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            crate::v1_compiler_infer::type_node_label(rt.clone(), si.clone())
+            crate::v1_compiler_infer::type_node_label(rt.clone())
         }
         _ => "".to_string(),
     }
@@ -337,7 +333,7 @@ pub fn gi_node_rows(
     n: Rc<Node>,
 ) -> Rc<Vec<Rc<GenericIdentityRow>>> {
     {
-        let spelled = crate::v1_compiler_infer::type_node_label(n.clone(), ctx.si.clone());
+        let spelled = crate::v1_compiler_infer::type_node_label(n.clone());
         let in_scope = {
             let mut __found = false;
             for g in ctx.generic_names.clone().iter().cloned() {
@@ -396,8 +392,7 @@ pub fn gi_type_rows(
             )
         } else {
             {
-                let own_label =
-                    crate::v1_compiler_infer::type_node_label(n.clone(), ctx.si.clone());
+                let own_label = crate::v1_compiler_infer::type_node_label(n.clone());
                 let is_arrow = match n.connective.clone() {
                     Connective::Arrow => true,
                     _ => false,
@@ -545,7 +540,7 @@ pub fn gi_generic_names(
         for p in Rc::new({
             let mut __result = Vec::new();
             for p in params.iter().cloned() {
-                if crate::v1_compiler_infer::param_is_generic_decl(p.clone(), si.clone()) {
+                if crate::v1_compiler_infer::param_is_generic_decl(p.clone()) {
                     __result.push(p);
                 }
             }
@@ -554,10 +549,7 @@ pub fn gi_generic_names(
         .iter()
         .cloned()
         {
-            __result.push(crate::v1_std_core::param_node_name_at(
-                p.clone(),
-                si.clone(),
-            ));
+            __result.push(crate::v1_std_core::param_node_name_at(p.clone()));
         }
         __result
     })
@@ -581,7 +573,7 @@ pub fn gi_sig_rows(
         let value_params = Rc::new({
             let mut __result = Vec::new();
             for p in sig.params.clone().iter().cloned() {
-                if !crate::v1_compiler_infer::param_is_generic_decl(p.clone(), si.clone()) {
+                if !crate::v1_compiler_infer::param_is_generic_decl(p.clone()) {
                     __result.push(p);
                 }
             }
@@ -594,7 +586,7 @@ pub fn gi_sig_rows(
                     (*gi_type_rows(
                         ctx.clone(),
                         "signature_param_type".to_string(),
-                        crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
+                        crate::v1_std_core::param_node_name_at(p.clone()),
                         "".to_string(),
                         crate::v1_std_core::param_node_type_expr(p.clone()),
                     ))
@@ -627,7 +619,7 @@ pub fn gi_expr_rows(
             Some(InferredNode::Resolved { node: rt, .. }) => gi_type_rows(
                 ctx.clone(),
                 "body_expression_type".to_string(),
-                crate::v1_compiler_infer::type_node_label(e.clone(), ctx.si.clone()),
+                crate::v1_compiler_infer::type_node_label(e.clone()),
                 "".to_string(),
                 rt.clone(),
             ),
@@ -672,7 +664,7 @@ pub fn gi_item_body_rows(
         Some(b) => gi_expr_rows(
             Rc::new(GenericIdentityContext {
                 module_file: module_file.clone(),
-                enclosing: crate::v1_std_core::authored_name_at(si.clone(), item.clone()),
+                enclosing: crate::v1_std_core::node_authored_text(item.clone()),
                 generic_names: gi_generic_names(item.params.clone(), si.clone()),
                 si: si.clone(),
                 sigs: sigs.clone(),
@@ -688,7 +680,7 @@ pub fn gi_module_rows(
     sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
 ) -> Rc<Vec<Rc<GenericIdentityRow>>> {
     {
-        let module_file = crate::v1_std_core::authored_name_at(si.clone(), m.module.clone());
+        let module_file = crate::v1_std_core::node_authored_text(m.module.clone());
         let sig_rows = Rc::new({
             let mut __result = Vec::new();
             for sig in Rc::new(v1_rt::map_values(&m.func_env.local.clone()))
@@ -730,7 +722,7 @@ pub fn gi_all_sigs(
     modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
         |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, m: Rc<TypedModule>| {
-            let module_file = crate::v1_std_core::authored_name_at(si.clone(), m.module.clone());
+            let module_file = crate::v1_std_core::node_authored_text(m.module.clone());
             Rc::new(v1_rt::map_values(&m.func_env.local.clone()))
                 .iter()
                 .cloned()
@@ -1010,11 +1002,10 @@ pub fn gi_supplied_node_reading_lines(
                 "T".to_string(),
                 int_node.clone(),
             ),
-            si.clone(),
         );
         let substituted_child = gi_first_child(substituted.clone());
         let substituted_child_label = match substituted_child.clone() {
-            Some(c) => crate::v1_compiler_infer::type_node_label(c.clone(), si.clone()),
+            Some(c) => crate::v1_compiler_infer::type_node_label(c.clone()),
             std::option::Option::None => "no child".to_string(),
         };
         let substituted_child_declaration = match substituted_child.clone() {
@@ -1028,7 +1019,6 @@ pub fn gi_supplied_node_reading_lines(
                 "gic_no_such_parameter".to_string(),
                 int_node.clone(),
             ),
-            si.clone(),
         );
         let copied_child_key = match gi_first_child(copied.clone()) {
             Some(c) => gi_declaration_label(c.declaration.clone()),
@@ -1038,14 +1028,12 @@ pub fn gi_supplied_node_reading_lines(
             xs.substitution_basis.clone(),
             list_of_int.clone(),
             Rc::new(vec!["T".to_string()]),
-            si.clone(),
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
         );
         let bound_by_name_alone = crate::v1_compiler_infer::unify_generics(
             renamed_xs.substitution_basis.clone(),
             list_of_int.clone(),
             Rc::new(vec!["M".to_string()]),
-            si.clone(),
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
         );
         let renamed_child_key = match gi_first_child(renamed_xs.substitution_basis.clone()) {
@@ -1101,7 +1089,7 @@ pub fn gi_supplied_node_reading_lines(
                 match v1_rt::map_get(&bound_from_basis, "T".to_string()) {
                     Some(b) => v1_rt::concat(
                         "T := ".to_string(),
-                        crate::v1_compiler_infer::type_node_label(b.clone(), si.clone()),
+                        crate::v1_compiler_infer::type_node_label(b.clone()),
                     ),
                     std::option::Option::None => "T unbound".to_string(),
                 },
@@ -1115,7 +1103,7 @@ pub fn gi_supplied_node_reading_lines(
                 match v1_rt::map_get(&bound_by_name_alone, "M".to_string()) {
                     Some(b) => v1_rt::concat(
                         "M := ".to_string(),
-                        crate::v1_compiler_infer::type_node_label(b.clone(), si.clone()),
+                        crate::v1_compiler_infer::type_node_label(b.clone()),
                     ),
                     std::option::Option::None => "M unbound".to_string(),
                 },
@@ -1340,7 +1328,7 @@ pub fn gi_result_carrier_observation(
                         for item in Rc::new({
                             let mut __result = Vec::new();
                             for item in m.items.clone().iter().cloned() {
-                                if (crate::v1_std_core::authored_name_at(si.clone(), item.clone())
+                                if (crate::v1_std_core::node_authored_text(item.clone())
                                     == function_name.clone())
                                 {
                                     __result.push(item);
@@ -1352,8 +1340,7 @@ pub fn gi_result_carrier_observation(
                         .cloned()
                         {
                             __result.push(Rc::new(GenericIdentityContextItem {
-                                module_file: crate::v1_std_core::authored_name_at(
-                                    si.clone(),
+                                module_file: crate::v1_std_core::node_authored_text(
                                     m.module.clone(),
                                 ),
                                 item: item.clone(),
@@ -1398,10 +1385,7 @@ pub fn gi_result_carrier_observation(
                             sigs: sigs.clone(),
                         });
                         Rc::new(ResultCarrierObservation::ResultCarrierObserved {
-                            type_label: crate::v1_compiler_infer::type_node_label(
-                                rt.clone(),
-                                si.clone(),
-                            ),
+                            type_label: crate::v1_compiler_infer::type_node_label(rt.clone()),
                             carries_foreign_parameter: (gi_foreign_label(gi_foreign_reading(
                                 ctx.clone(),
                                 rt.clone(),
@@ -1532,7 +1516,7 @@ pub fn gi_owner_argument_arms_discriminate(
             let generic_params = Rc::new({
                 let mut __result = Vec::new();
                 for p in head_of.params.clone().iter().cloned() {
-                    if crate::v1_compiler_infer::param_is_generic_decl(p.clone(), si.clone()) {
+                    if crate::v1_compiler_infer::param_is_generic_decl(p.clone()) {
                         __result.push(p);
                     }
                 }
@@ -1541,7 +1525,7 @@ pub fn gi_owner_argument_arms_discriminate(
             let value_params = Rc::new({
                 let mut __result = Vec::new();
                 for p in head_of.params.clone().iter().cloned() {
-                    if !crate::v1_compiler_infer::param_is_generic_decl(p.clone(), si.clone()) {
+                    if !crate::v1_compiler_infer::param_is_generic_decl(p.clone()) {
                         __result.push(p);
                     }
                 }
@@ -1561,7 +1545,7 @@ pub fn gi_owner_argument_arms_discriminate(
                     .iter()
                     .cloned()
                     {
-                        if (crate::v1_std_core::authored_name_at(si.clone(), item.clone())
+                        if (crate::v1_std_core::node_authored_text(item.clone())
                             == "ints".to_string())
                         {
                             __result.push(item);

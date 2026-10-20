@@ -80,14 +80,14 @@ use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::FunctionValueBinding;
 pub use crate::v1_std_core::{
-    arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, cast_expr, cast_target,
-    expr_call_func_at, expr_field_access_summary, expr_method_call_semantics, expr_method_name_at,
-    expr_var_name_at, field_access_base, field_access_field_at, field_init_node_name_at,
-    field_init_node_value, foreach_body, foreach_collection, foreach_variable_at, if_condition,
-    if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
-    index_expr, is_rest_transport, is_shell_transport, lambda_body, let_binding_name_at, let_body,
-    let_value, make_expr_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_items, param_node_name_at, param_node_type_expr,
+    arg_value, arm_body, arm_guard, arm_pattern, cast_expr, cast_target, expr_call_func_at,
+    expr_field_access_summary, expr_method_call_semantics, expr_method_name_at, expr_var_name_at,
+    field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
+    foreach_body, foreach_collection, foreach_variable_at, if_condition, if_else_branch,
+    if_then_branch, import_is_all, import_specific_names_at, index_base, index_expr,
+    is_rest_transport, is_shell_transport, lambda_body, let_binding_name_at, let_body, let_value,
+    make_expr_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
+    module_imports, module_items, node_authored_text, param_node_name_at, param_node_type_expr,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
     slice_end, slice_start, transport_env, with_required_cardinality, Cardinality, Connective,
     DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
@@ -141,18 +141,12 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 let mut __result = Vec::new();
                 for tm in typed.modules.clone().iter().cloned() {
                     __result.push(emit_py_test_file(
-                        crate::v1_std_core::authored_name_at(
-                            tm.type_env.source_indices.clone(),
-                            tm.module.clone(),
-                        ),
+                        crate::v1_std_core::node_authored_text(tm.module.clone()),
                         Rc::new({
                             let mut __result = Vec::new();
                             for p in test_projections.iter().cloned() {
                                 if (p.module_name.clone()
-                                    == crate::v1_std_core::authored_name_at(
-                                        tm.type_env.source_indices.clone(),
-                                        tm.module.clone(),
-                                    ))
+                                    == crate::v1_std_core::node_authored_text(tm.module.clone()))
                                 {
                                     __result.push(p);
                                 }
@@ -218,10 +212,7 @@ pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
             for tm in modules.iter().cloned() {
                 __result.push({
                     let mod_name = crate::gunbc_rust_emitted_edge::module_to_filename(
-                        crate::v1_std_core::authored_name_at(
-                            tm.type_env.source_indices.clone(),
-                            tm.module.clone(),
-                        ),
+                        crate::v1_std_core::node_authored_text(tm.module.clone()),
                     );
                     let items =
                         crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Python)
@@ -270,16 +261,12 @@ pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> String {
             for p in projection.params.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
-                        crate::v1_std_core::param_node_name_at(
-                            p.clone(),
-                            projection.source_indices.clone(),
-                        ),
+                        crate::v1_std_core::param_node_name_at(p.clone()),
                         ": ".to_string(),
                     ),
                     crate::v1_compiler_emit::emit_node_type(
                         crate::v1_std_core::param_node_type_expr(p.clone()),
                         RenderTarget::Python,
-                        projection.source_indices.clone(),
                     ),
                 ));
             }
@@ -311,7 +298,6 @@ pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> String {
             crate::v1_compiler_emit::emit_node_type(
                 projection.inferred.clone(),
                 RenderTarget::Python,
-                projection.source_indices.clone(),
             ),
         )
     }
@@ -377,7 +363,6 @@ pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
                 __result.push(emit_py_mock_prop_setup(
                     mp.clone(),
                     v1_rt::int_add(depth.clone(), 1),
-                    projection.source_indices.clone(),
                 ));
             }
             __result
@@ -387,18 +372,11 @@ pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
     }
 }
 
-pub fn emit_py_mock_prop_setup(
-    mock_prop: Rc<Node>,
-    depth: i64,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn emit_py_mock_prop_setup(mock_prop: Rc<Node>, depth: i64) -> String {
     v1_rt::concat(
         v1_rt::concat(
             crate::v1_compiler_emit::emit_ident(
-                crate::v1_std_core::field_init_node_name_at(
-                    mock_prop.clone(),
-                    source_indices.clone(),
-                ),
+                crate::v1_std_core::field_init_node_name_at(mock_prop.clone()),
                 RenderTarget::Python,
             ),
             " = ".to_string(),
@@ -406,7 +384,6 @@ pub fn emit_py_mock_prop_setup(
         crate::v1_compiler_emit::emit_simple_expr(
             crate::v1_std_core::field_init_node_value(mock_prop.clone()),
             RenderTarget::Python,
-            source_indices.clone(),
         ),
     )
 }
@@ -418,11 +395,9 @@ pub fn emit_py_module(
     {
         let m = typed_module.module.clone();
         let scope = crate::v1_compiler_emit::module_emit_scope(typed_module.clone());
-        let si = scope.type_env.source_indices.clone();
-        let mod_name_str = crate::v1_std_core::authored_name_at(si.clone(), m.clone());
+        let mod_name_str = crate::v1_std_core::node_authored_text(m.clone());
         let prelude = emit_py_prelude(typed_module.clone());
-        let imports_str =
-            emit_py_imports(crate::v1_std_core::module_imports(m.clone()), si.clone());
+        let imports_str = emit_py_imports(crate::v1_std_core::module_imports(m.clone()));
         let imports_section = if (imports_str.clone() == "".to_string()) {
             "".to_string()
         } else {
@@ -478,10 +453,7 @@ pub fn emit_py_module(
     }
 }
 
-pub fn emit_py_imports(
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn emit_py_imports(imports: Rc<Vec<Rc<Node>>>) -> String {
     if ((imports.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -491,10 +463,7 @@ pub fn emit_py_imports(
                 for imp in imports.iter().cloned() {
                     __result.push({
                         let mod_name = crate::gunbc_rust_emitted_edge::module_to_filename(
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                imp.clone(),
-                            ),
+                            crate::v1_std_core::node_authored_text(imp.clone()),
                         );
                         let items = crate::v1_compiler_emit_core_support::language_spec(
                             RenderTarget::Python,
@@ -520,10 +489,8 @@ pub fn emit_py_imports(
                             )
                         } else {
                             {
-                                let specific_names = crate::v1_std_core::import_specific_names_at(
-                                    imp.clone(),
-                                    source_indices.clone(),
-                                );
+                                let specific_names =
+                                    crate::v1_std_core::import_specific_names_at(imp.clone());
                                 if ((specific_names.clone().len() as i64) == 0) {
                                     "".to_string()
                                 } else {
@@ -655,23 +622,16 @@ pub fn emit_py_typed_item(
                 if crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
                     emit_py_type_def_from_connective(item.clone(), env.clone())
                 } else {
-                    if crate::v1_compiler_emit_core_support::is_type_alias_item(
-                        item.clone(),
-                        env.source_indices.clone(),
-                    ) {
+                    if crate::v1_compiler_emit_core_support::is_type_alias_item(item.clone()) {
                         v1_rt::concat(
                             v1_rt::concat(item_text.clone(), " = ".to_string()),
                             crate::v1_compiler_emit::emit_node_type(
                                 crate::v1_compiler_infer_types::resolved_type(item.clone()),
                                 RenderTarget::Python,
-                                env.source_indices.clone(),
                             ),
                         )
                     } else {
-                        if crate::v1_compiler_emit_core_support::is_type_decl_item(
-                            item.clone(),
-                            env.source_indices.clone(),
-                        ) {
+                        if crate::v1_compiler_emit_core_support::is_type_decl_item(item.clone()) {
                             "".to_string()
                         } else {
                             emit_py_item_refusal(
@@ -828,7 +788,6 @@ pub fn emit_py_dataclass_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> 
         let ty = crate::v1_compiler_emit::emit_node_type(
             crate::v1_compiler_infer_types::resolved_type(child.clone()),
             RenderTarget::Python,
-            env.source_indices.clone(),
         );
         let is_optional = (crate::v1_compiler_infer_types::resolved_type(child.clone())
             .return_cardinality
@@ -1008,17 +967,10 @@ pub fn emit_py_fn_def(
 ) -> String {
     {
         let depth = 0;
-        let si = scope.type_env.source_indices.clone();
-        let params_str = crate::v1_compiler_emit::emit_params_shared(
-            params.clone(),
-            RenderTarget::Python,
-            si.clone(),
-        );
-        let ret_str = crate::v1_compiler_emit::emit_inferred_shared(
-            inferred.clone(),
-            RenderTarget::Python,
-            si.clone(),
-        );
+        let params_str =
+            crate::v1_compiler_emit::emit_params_shared(params.clone(), RenderTarget::Python);
+        let ret_str =
+            crate::v1_compiler_emit::emit_inferred_shared(inferred.clone(), RenderTarget::Python);
         let body_scope =
             crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
         let use_tco = crate::v1_compiler_emit::is_tco_eligible(
@@ -1028,7 +980,6 @@ pub fn emit_py_fn_def(
             }),
             body.clone(),
             registry.clone(),
-            si.clone(),
         );
         if use_tco.clone() {
             {
@@ -1044,7 +995,6 @@ pub fn emit_py_fn_def(
                         crate::v1_compiler_emit::emit_unified_pattern(
                             pat.clone(),
                             RenderTarget::Python,
-                            si.clone(),
                         )
                     },
                 );
@@ -1157,27 +1107,18 @@ pub fn emit_py_func_def(
             Some(info) => info.service_names.clone(),
             std::option::Option::None => Rc::new(vec![]),
         };
-        let params_str = emit_py_func_params(
-            params.clone(),
-            uses.clone(),
-            service_names.clone(),
-            scope.type_env.source_indices.clone(),
-        );
-        let ret_str = crate::v1_compiler_emit::emit_inferred_shared(
-            inferred.clone(),
-            RenderTarget::Python,
-            scope.type_env.source_indices.clone(),
-        );
+        let params_str = emit_py_func_params(params.clone(), uses.clone(), service_names.clone());
+        let ret_str =
+            crate::v1_compiler_emit::emit_inferred_shared(inferred.clone(), RenderTarget::Python);
         let body_scope =
             crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
-        let si = scope.type_env.source_indices.clone();
         let body_scope =
             uses.iter()
                 .cloned()
                 .fold(body_scope.clone(), |s: Rc<InferScope>, u: Rc<Node>| {
                     crate::v1_compiler_infer::extend_scope(
                         s,
-                        crate::v1_std_core::resource_use_name_at(u.clone(), si.clone()),
+                        crate::v1_std_core::resource_use_name_at(u.clone()),
                         crate::v1_std_core::resource_use_resource(u.clone()),
                         Rc::new(SubValueRelation::SubValueUnknown),
                     )
@@ -1233,7 +1174,6 @@ pub fn emit_py_func_params(
     params: Rc<Vec<Rc<Node>>>,
     uses: Rc<Vec<Rc<Node>>>,
     service_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let param_strs = Rc::new({
@@ -1242,7 +1182,6 @@ pub fn emit_py_func_params(
                 __result.push(crate::v1_compiler_emit::emit_param_shared(
                     p.clone(),
                     RenderTarget::Python,
-                    source_indices.clone(),
                 ));
             }
             __result
@@ -1253,10 +1192,7 @@ pub fn emit_py_func_params(
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         crate::v1_compiler_emit::emit_ident(
-                            crate::v1_std_core::resource_use_name_at(
-                                u.clone(),
-                                source_indices.clone(),
-                            ),
+                            crate::v1_std_core::resource_use_name_at(u.clone()),
                             RenderTarget::Python,
                         ),
                         ": ".to_string(),
@@ -1264,7 +1200,6 @@ pub fn emit_py_func_params(
                     crate::v1_compiler_emit::emit_node_type(
                         crate::v1_std_core::resource_use_resource(u.clone()),
                         RenderTarget::Python,
-                        source_indices.clone(),
                     ),
                 ));
             }
@@ -1305,13 +1240,7 @@ pub fn emit_py_typed_expr(
         scope.clone(),
         depth.clone(),
         fuel.clone(),
-        |pat| {
-            crate::v1_compiler_emit::emit_unified_pattern(
-                pat.clone(),
-                RenderTarget::Python,
-                scope.type_env.source_indices.clone(),
-            )
-        },
+        |pat| crate::v1_compiler_emit::emit_unified_pattern(pat.clone(), RenderTarget::Python),
     )
 }
 
@@ -1333,7 +1262,7 @@ pub fn emit_py_transport_body(
                 RenderTarget::Python,
             )
         },
-        |n, t, d, si| emit_py_shell_call(n.clone(), t.clone(), si.clone()),
+        |n, t, d, si| emit_py_shell_call(n.clone(), t.clone()),
         |n, d| emit_py_local_call(n.clone()),
     )
 }
@@ -1348,7 +1277,7 @@ pub fn emit_py_service_def(
         RenderTarget::Python,
         registry.clone(),
         env.clone(),
-        |name, transport, ops, si| emit_py_service_init(transport.clone(), ops.clone(), si.clone()),
+        |name, transport, ops, si| emit_py_service_init(transport.clone(), ops.clone()),
         |bound, op_name, si, depth| {
             emit_py_transport_body(bound.clone(), op_name.clone(), si.clone(), depth.clone())
         },
@@ -1358,13 +1287,11 @@ pub fn emit_py_service_def(
 pub fn emit_py_service_init(
     fallback_transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let fs = crate::v1_compiler_emit::compute_service_fields(
             fallback_transport.clone(),
             op_children.clone(),
-            source_indices.clone(),
         );
         let params = crate::v1_compiler_emit::service_field_decls(
             fs.clone(),
@@ -1404,13 +1331,9 @@ pub fn emit_py_service_init(
     }
 }
 
-pub fn emit_py_shell_call(
-    op_name: String,
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn emit_py_shell_call(op_name: String, transport: Rc<Node>) -> String {
     {
-        let envs = crate::v1_std_core::transport_env(transport.clone(), source_indices.clone());
+        let envs = crate::v1_std_core::transport_env(transport.clone());
         let env_dict_entries = Rc::new({
             let mut __result = Vec::new();
             for e in envs.iter().cloned() {
@@ -1418,17 +1341,13 @@ pub fn emit_py_shell_call(
                     v1_rt::concat(
                         v1_rt::concat(
                             "\"".to_string(),
-                            crate::v1_std_core::field_init_node_name_at(
-                                e.clone(),
-                                source_indices.clone(),
-                            ),
+                            crate::v1_std_core::field_init_node_name_at(e.clone()),
                         ),
                         "\": ".to_string(),
                     ),
                     crate::v1_compiler_emit::emit_simple_expr(
                         crate::v1_std_core::field_init_node_value(e.clone()),
                         RenderTarget::Python,
-                        source_indices.clone(),
                     ),
                 ));
             }
@@ -1546,10 +1465,7 @@ pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         crate::v1_compiler_emit::emit_ident(
-                            crate::v1_std_core::param_node_name_at(
-                                p.clone(),
-                                env.source_indices.clone(),
-                            ),
+                            crate::v1_std_core::param_node_name_at(p.clone()),
                             RenderTarget::Python,
                         ),
                         ": ".to_string(),
@@ -1557,7 +1473,6 @@ pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String
                     crate::v1_compiler_emit::emit_node_type(
                         crate::v1_std_core::param_node_type_expr(p.clone()),
                         RenderTarget::Python,
-                        env.source_indices.clone(),
                     ),
                 ));
             }
@@ -1572,7 +1487,6 @@ pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String
         let ret = crate::v1_compiler_emit::emit_node_type(
             crate::v1_compiler_infer_types::resolved_type(cap_node.clone()),
             RenderTarget::Python,
-            env.source_indices.clone(),
         );
         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("@abstractmethod\n".to_string(), crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Python).items.async_prefix.clone()), crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Python).items.func_keyword.clone()), " ".to_string()), crate::v1_compiler_emit::emit_ident(crate::v1_compiler_infer_env::authored_name(env.clone(), cap_node.clone()), RenderTarget::Python)), "(".to_string()), all_params.clone()), ") -> ".to_string()), ret.clone()), ":\n".to_string()), "    ...".to_string())
     }
@@ -1586,11 +1500,8 @@ pub fn emit_py_data_def(
     scope: Rc<InferScope>,
 ) -> String {
     {
-        let ty_str = crate::v1_compiler_emit::emit_node_type(
-            type_node.clone(),
-            RenderTarget::Python,
-            scope.type_env.source_indices.clone(),
-        );
+        let ty_str =
+            crate::v1_compiler_emit::emit_node_type(type_node.clone(), RenderTarget::Python);
         let upper_name = crate::v1_compiler_emit_core_support::to_screaming_snake(name.clone());
         let val_str = emit_py_typed_expr(value.clone(), registry.clone(), scope.clone(), 0, 1024);
         v1_rt::concat(

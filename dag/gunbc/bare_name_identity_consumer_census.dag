@@ -129,7 +129,7 @@ data bare_name_identity_consumers: List<BareNameConsumer> = [
   {
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_host_text_carrier_type"),
     fact_sought: "whether this type node realizes as the host String",
-    keys_on: "authored_name_at equals String, or equals FreeMonoid/List whose element is spelled Char",
+    keys_on: "node_authored_text equals String, or equals FreeMonoid/List whose element is spelled Char",
     identity: AvailableAtSite { holder_expression: "type_reference_decl_file(n: n) -- the same node n the predicate is given", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_render_checkpoint_scalar_bare") },
     outcome: SilentWrongProviderAnswer { what_is_emitted: "the literal String, for a reference resolving to a module whose String is the structural FreeMonoid<Char>" },
     reach: ReachedByMeasuredPopulation { measurement: "34 live E0308 sites in the 03_ingest closure pairing a String-declared position against a FreeMonoid-realized value (royal-dove-436, docs/probes/t2_t3_realization_route_2026-08-21.md)" },
@@ -139,7 +139,7 @@ data bare_name_identity_consumers: List<BareNameConsumer> = [
   {
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_host_optional_carrier_type"),
     fact_sought: "whether this type node realizes as the host Option",
-    keys_on: "authored_name_at equals Optional, with at least one child",
+    keys_on: "node_authored_text equals Optional, with at least one child",
     identity: AvailableAtSite { holder_expression: "type_reference_decl_file(n: n) -- the same node n the predicate is given", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_render_checkpoint_scalar_bare") },
     outcome: SilentWrongProviderAnswer { what_is_emitted: "Option<..>, for any declaration anywhere in the closure spelled Optional" },
     reach: ReachabilityUnmeasured { what_would_settle_it: "a second declaration spelled Optional in an emitted closure; no such declaration was searched for, and no divergence is claimed" },
@@ -149,7 +149,7 @@ data bare_name_identity_consumers: List<BareNameConsumer> = [
   {
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_host_diagnostics_carrier_type"),
     fact_sought: "whether this type node realizes as the host diagnostics carrier",
-    keys_on: "authored_name_at equals Diagnostics",
+    keys_on: "node_authored_text equals Diagnostics",
     identity: AvailableAtSite { holder_expression: "type_reference_decl_file(n: n) -- the same node n the predicate is given", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_render_checkpoint_scalar_bare") },
     outcome: SilentWrongProviderAnswer { what_is_emitted: "Option<NonEmptyDiagnostics>, for any declaration anywhere in the closure spelled Diagnostics" },
     reach: ReachabilityUnmeasured { what_would_settle_it: "a second declaration spelled Diagnostics in an emitted closure; no such declaration was searched for, and no divergence is claimed" },
@@ -180,7 +180,7 @@ data bare_name_identity_consumers: List<BareNameConsumer> = [
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_json_value_extract"),
     fact_sought: "which Rust type a REST response field decodes into",
     keys_on: "the authored type name, with decl_file hardcoded to the empty string",
-    identity: AvailableAtSite { holder_expression: "type_reference_decl_file(n: tn) -- both callers already compute authored_name_at on the very node tn", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_json_value_extract") },
+    identity: AvailableAtSite { holder_expression: "type_reference_decl_file(n: tn) -- both callers already compute node_authored_text on the very node tn", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_json_value_extract") },
     outcome: SilentWrongProviderAnswer { what_is_emitted: "the table's carrier and the matching serde_json accessor, chosen without regard to which module declares the response field's type" },
     reach: ReachabilityUnmeasured { what_would_settle_it: "a REST wire contract whose response field names a type with two declarations in the closure" },
     sibling: SiblingPresentButOrdered { sibling: decl_ref(module_path: "v1.compiler.coercion", decl_name: "coerce_primitive_type"), precedence: "the sibling IS the callee -- it takes decl_file and is handed the empty string, so the identity-keyed path is entered with identity erased rather than bypassed" },

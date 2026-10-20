@@ -23,7 +23,7 @@ import v1.std.core {
   Node,
   NewlineIndex,
   Resolved,
-  authored_name_at,
+  node_authored_text,
   qualified_last_segment,
   generic_param_name_at,
   param_node_type_expr,
@@ -137,8 +137,7 @@ fn v1_coproduct_all_variants_nullary(children: List<Node>) -> Bool {
 }
 
 fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
-  children: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  children: List<Node>
 ) -> ReprGroundingDeriveElemShape {
   if v1_coproduct_all_variants_nullary(children: children) {
     ReprDeriveElemNullaryEnumCopy
@@ -147,28 +146,27 @@ fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
   }
 }
 
-fn rust_nominal_identity_carrier_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  authored_name_at(source_indices: source_indices, node: n) == "Symbol"
+fn rust_nominal_identity_carrier_shape_eligible(n: Node) -> Bool {
+  node_authored_text(node: n) == "Symbol"
     && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective
 }
 
-fn rust_symbol_wrapped_ord_carrier_shape_eligible(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn rust_symbol_wrapped_ord_carrier_shape_eligible(children: List<Node>) -> Bool {
   if (children |> count) != 1 {
     false
   } else {
     match children |> first {
       Present { value: child } =>
-        rust_nominal_identity_carrier_shape_eligible(n: child_type_node(ch: child), source_indices: source_indices)
+        rust_nominal_identity_carrier_shape_eligible(n: child_type_node(ch: child))
       Absent => false
     }
   }
 }
 
 fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
-  children: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  children: List<Node>
 ) -> ReprGroundingDeriveElemShape {
-  if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
+  if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children) {
     ReprDeriveElemSymbolWrappedOrdCarrier
   } else {
     ReprDeriveElemUnknown
@@ -226,11 +224,11 @@ type KeyedMapVerdict
 fn v1_type_expr_keyed_map_verdict(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> KeyedMapVerdict {
   match authored_container_spelling_verdict(node: type_expr, source_indices: source_indices) {
     ContainerSpellingUnknown { container_leaf: _ } =>
-      KeyedMapUndecidable { name: authored_name_at(source_indices: source_indices, node: type_expr) }
+      KeyedMapUndecidable { name: node_authored_text(node: type_expr) }
     ContainerSpellingDeclared { arity: _ } =>
-      v1_keyed_map_verdict_from_algebra(type_expr: type_expr, source_indices: source_indices)
+      v1_keyed_map_verdict_from_algebra(type_expr: type_expr)
     NotAContainerSpelling =>
-      v1_keyed_map_verdict_from_algebra(type_expr: type_expr, source_indices: source_indices)
+      v1_keyed_map_verdict_from_algebra(type_expr: type_expr)
   }
 }
 
@@ -242,8 +240,8 @@ fn v1_type_expr_keyed_map_verdict(type_expr: Node, source_indices: Map<String, N
 // `map_key_required_derive_traits` exists to add -- a silent loss of a required bound, not a
 // diagnostic. `PartialFunction` stays in the test because a declaration may now name the open
 // carrier directly, and a keyed lookup is what both carriers are for.
-fn v1_keyed_map_verdict_from_algebra(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> KeyedMapVerdict {
-  match container_template_algebra(name: authored_name_at(source_indices: source_indices, node: type_expr)) {
+fn v1_keyed_map_verdict_from_algebra(type_expr: Node) -> KeyedMapVerdict {
+  match container_template_algebra(name: node_authored_text(node: type_expr)) {
     Present { value: algebra } =>
       if algebra == "FinitelySupportedFunction" || algebra == "PartialFunction" { KeyedMap } else { NotKeyedMap }
     Absent => NotKeyedMap
@@ -294,15 +292,14 @@ fn v1_map_key_head_names_in_type_expr(
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
   v1_map_key_head_type_exprs(type_expr: type_expr, source_indices: source_indices)
-    |> map(key => authored_name_at(source_indices: source_indices, node: key))
+    |> map(key => node_authored_text(node: key))
 }
 
 fn v1_type_expr_declared_identity(
   type_expr: Node,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> String {
-  match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+  match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr) {
     TypeDeclResolved { identity: identity, decl: _ } => identity
     TypeDeclLeafAmbiguous { leaf: _ } => ""
     TypeDeclKernelSpellingUndecided { leaf: _ } => ""
@@ -319,10 +316,9 @@ fn v1_type_expr_declared_identity(
 // (v1.compiler.infer_emit_info type_decl_reference_interim_arms_dissolve_on).
 fn v1_type_expr_map_key_declared_identities(
   type_expr: Node,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> List<String> {
-  match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+  match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr) {
     TypeDeclResolved { identity: identity, decl: _ } => [identity]
     TypeDeclLeafAmbiguous { leaf: leaf } => type_decl_identities_of_leaf(index: type_decl_items, leaf: leaf)
     TypeDeclKernelSpellingUndecided { leaf: leaf } => type_decl_identities_of_leaf(index: type_decl_items, leaf: leaf)
@@ -332,13 +328,12 @@ fn v1_type_expr_map_key_declared_identities(
 
 fn v1_type_expr_head_declared_identities(
   type_expr: Node,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> List<String> {
   concat(
-    v1_type_expr_map_key_declared_identities(type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices),
+    v1_type_expr_map_key_declared_identities(type_expr: type_expr, type_decl_items: type_decl_items),
     type_expr.children |> flat_map(ch =>
-      v1_type_expr_head_declared_identities(type_expr: child_type_node(ch: ch), type_decl_items: type_decl_items, source_indices: source_indices)
+      v1_type_expr_head_declared_identities(type_expr: child_type_node(ch: ch), type_decl_items: type_decl_items)
     )
   )
 }
@@ -363,16 +358,15 @@ data map_key_alias_hop_reconciliation_note: String = "RECONCILED (smart-ram-730,
 fn v1_map_key_propagate_round(
   round: MapKeyRequirementRound,
   declared_type_names: List<String>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> MapKeyRequirementRound {
   declared_type_names |> fold(init: round, f: (acc, type_name) =>
     if !set_contains(acc.names, type_name) { acc }
     else {
       match map_get(type_decl_items.by_identity, type_name) {
         Present { value: item } =>
-          v1_item_field_type_exprs(item: item, source_indices: source_indices) |> fold(init: acc, f: (inner, te) =>
-            v1_type_expr_head_declared_identities(type_expr: te, type_decl_items: type_decl_items, source_indices: source_indices)
+          v1_item_field_type_exprs(item: item) |> fold(init: acc, f: (inner, te) =>
+            v1_type_expr_head_declared_identities(type_expr: te, type_decl_items: type_decl_items)
               |> fold(init: inner, f: (deep, head) => v1_map_key_round_add(round: deep, name: head))
           )
         Absent => acc
@@ -385,8 +379,7 @@ fn v1_map_key_fixpoint_loop(
   round: MapKeyRequirementRound,
   declared_type_names: List<String>,
   type_decl_items: TypeDeclIndex,
-  remaining: Int,
-  source_indices: Map<String, NewlineIndex>
+  remaining: Int
 ) -> Set<String> {
   if remaining <= 0 {
     round.names
@@ -394,9 +387,7 @@ fn v1_map_key_fixpoint_loop(
     let next = v1_map_key_propagate_round(
       round: MapKeyRequirementRound { names: round.names, added: 0 },
       declared_type_names: declared_type_names,
-      type_decl_items: type_decl_items,
-      source_indices: source_indices
-    )
+      type_decl_items: type_decl_items)
     if next.added == 0 {
       next.names
     } else {
@@ -404,9 +395,7 @@ fn v1_map_key_fixpoint_loop(
         round: next,
         declared_type_names: declared_type_names,
         type_decl_items: type_decl_items,
-        remaining: remaining - 1,
-        source_indices: source_indices
-      )
+        remaining: remaining - 1)
     }
   }
 }
@@ -428,7 +417,7 @@ fn v1_map_key_required_type_names(
   let scanned = seed_type_exprs |> fold(init: MapKeyRequirementRound { names: empty_set(), added: 0 }, f: (acc, te) =>
     v1_map_key_head_type_exprs(type_expr: te, source_indices: source_indices)
       |> fold(init: acc, f: (inner, key) =>
-        v1_type_expr_map_key_declared_identities(type_expr: key, type_decl_items: type_decl_items, source_indices: source_indices)
+        v1_type_expr_map_key_declared_identities(type_expr: key, type_decl_items: type_decl_items)
           |> fold(init: inner, f: (deep, identity) => v1_map_key_round_add(round: deep, name: identity))
       )
   )
@@ -444,9 +433,7 @@ fn v1_map_key_required_type_names(
     round: seeded,
     declared_type_names: declared_type_names,
     type_decl_items: type_decl_items,
-    remaining: (declared_type_names |> count) + 1,
-    source_indices: source_indices
-  )
+    remaining: (declared_type_names |> count) + 1)
 }
 
 // ROW 1a (materialization_carriers board): a derive-only generic item whose only Clone-requiring
@@ -518,23 +505,21 @@ fn v1_freemonoid_filter_hand_written(traits: List<RustCapability>) -> List<RustC
 
 fn v1_freemonoid_element_params(
   generic_param_names: List<String>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
-      authored_name_at(source_indices: source_indices, node: te) == "FreeMonoid"
-        && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
+      node_authored_text(node: te) == "FreeMonoid"
+        && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c))
     )
   )
 }
 
 fn v1_freemonoid_param_in_fields(
   param_name: String,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> Bool {
-  field_type_exprs |> any(te => v1_type_expr_contains_param_name(param_name: param_name, type_expr: te, source_indices: source_indices))
+  field_type_exprs |> any(te => v1_type_expr_contains_param_name(param_name: param_name, type_expr: te))
 }
 
 fn v1_freemonoid_supplemental_bound_spelling() -> String {
@@ -563,15 +548,14 @@ fn v1_freemonoid_impl_type_params(
   header_clone_param_names: List<String>,
   fm_params: List<String>,
   field_type_exprs: List<Node>,
-  structural_spelling: String,
-  source_indices: Map<String, NewlineIndex>
+  structural_spelling: String
 ) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
     let entries = generic_param_names |> map(p =>
       let pascal = to_pascal(name: p)
       let header = v1_item_header_bound_spellings(param_name: p, header_clone_param_names: header_clone_param_names)
       let supplemental = if fm_params |> any(f => f == p) { [v1_freemonoid_supplemental_bound_spelling()] } else { [] }
-      let structural = if v1_freemonoid_param_in_fields(param_name: p, field_type_exprs: field_type_exprs, source_indices: source_indices) { [structural_spelling] } else { [] }
+      let structural = if v1_freemonoid_param_in_fields(param_name: p, field_type_exprs: field_type_exprs) { [structural_spelling] } else { [] }
       let parts = unique_strings(items: concat(header, concat(supplemental, structural)))
       if (parts |> count) == 0 { pascal } else { concat(pascal, ": ", parts |> join(separator: " + ")) }
     )
@@ -649,13 +633,12 @@ fn v1_freemonoid_serde_bound_attr(
 
 fn v1_set_element_params(
   generic_param_names: List<String>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
-      authored_name_at(source_indices: source_indices, node: te) == "Set"
-        && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
+      node_authored_text(node: te) == "Set"
+        && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c))
     )
   )
 }
@@ -739,13 +722,12 @@ fn v1_freemonoid_struct_debug_impl(
   header_clone_param_names: List<String>,
   fm_params: List<String>,
   children: List<Node>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> String {
-  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", source_indices: source_indices)
+  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug")
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let field_calls = children |> map(f =>
-    let ident = emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust)
+    let ident = emit_ident(name: node_authored_text(node: f), target: Rust)
     concat(".field(\"", ident, "\", &self.", ident, ")")
   )
   concat(
@@ -763,13 +745,12 @@ fn v1_freemonoid_struct_partial_eq_impl(
   header_clone_param_names: List<String>,
   fm_params: List<String>,
   children: List<Node>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> String {
-  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", source_indices: source_indices)
+  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq")
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let comparisons = children |> map(f =>
-    let ident = emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust)
+    let ident = emit_ident(name: node_authored_text(node: f), target: Rust)
     concat("self.", ident, " == other.", ident)
   )
   let body = if (comparisons |> count) == 0 { "true" } else { comparisons |> join(separator: " && ") }
@@ -788,17 +769,16 @@ fn v1_freemonoid_enum_debug_impl(
   header_clone_param_names: List<String>,
   fm_params: List<String>,
   children: List<Node>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> String {
-  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", source_indices: source_indices)
+  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug")
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
-    let vname = to_pascal(name: authored_name_at(source_indices: source_indices, node: variant))
+    let vname = to_pascal(name: node_authored_text(node: variant))
     if (variant.children |> count) == 0 {
       concat("            Self::", vname, " => f.write_str(\"", vname, "\"),")
     } else {
-      let fields = variant.children |> map(f => emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust))
+      let fields = variant.children |> map(f => emit_ident(name: node_authored_text(node: f), target: Rust))
       let bindings = fields |> join(separator: ", ")
       let field_calls = fields |> map(fi => concat(".field(\"", fi, "\", ", fi, ")")) |> join(separator: "")
       concat("            Self::", vname, " { ", bindings, " } => f.debug_struct(\"", vname, "\")", field_calls, ".finish(),")
@@ -821,17 +801,16 @@ fn v1_freemonoid_enum_partial_eq_impl(
   header_clone_param_names: List<String>,
   fm_params: List<String>,
   children: List<Node>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> String {
-  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", source_indices: source_indices)
+  let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq")
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
-    let vname = to_pascal(name: authored_name_at(source_indices: source_indices, node: variant))
+    let vname = to_pascal(name: node_authored_text(node: variant))
     if (variant.children |> count) == 0 {
       concat("            (Self::", vname, ", Self::", vname, ") => true,")
     } else {
-      let fields = variant.children |> map(f => emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust))
+      let fields = variant.children |> map(f => emit_ident(name: node_authored_text(node: f), target: Rust))
       let a_bindings = fields |> map(fi => concat(fi, ": a_", fi)) |> join(separator: ", ")
       let b_bindings = fields |> map(fi => concat(fi, ": b_", fi)) |> join(separator: ", ")
       let comparisons = fields |> map(fi => concat("a_", fi, " == b_", fi)) |> join(separator: " && ")
@@ -856,15 +835,14 @@ fn v1_set_impl_type_params(
   set_params: List<String>,
   field_type_exprs: List<Node>,
   structural_spelling: String,
-  derive_trait: RustCapability,
-  source_indices: Map<String, NewlineIndex>
+  derive_trait: RustCapability
 ) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
     let entries = generic_param_names |> map(p =>
       let pascal = to_pascal(name: p)
       let header = v1_item_header_bound_spellings(param_name: p, header_clone_param_names: header_clone_param_names)
       let supplemental = if set_params |> any(f => f == p) { [v1_set_supplemental_bound_spelling_for(derive_trait)] } else { [] }
-      let structural = if v1_freemonoid_param_in_fields(param_name: p, field_type_exprs: field_type_exprs, source_indices: source_indices) { [structural_spelling] } else { [] }
+      let structural = if v1_freemonoid_param_in_fields(param_name: p, field_type_exprs: field_type_exprs) { [structural_spelling] } else { [] }
       let parts = unique_strings(items: concat(header, concat(supplemental, structural)))
       if (parts |> count) == 0 { pascal } else { concat(pascal, ": ", parts |> join(separator: " + ")) }
     )
@@ -878,17 +856,16 @@ fn v1_set_enum_debug_impl(
   header_clone_param_names: List<String>,
   set_params: List<String>,
   children: List<Node>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> String {
-  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: RustDebug, source_indices: source_indices)
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: RustDebug)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
-    let vname = to_pascal(name: authored_name_at(source_indices: source_indices, node: variant))
+    let vname = to_pascal(name: node_authored_text(node: variant))
     if (variant.children |> count) == 0 {
       concat("            Self::", vname, " => f.write_str(\"", vname, "\"),")
     } else {
-      let fields = variant.children |> map(f => emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust))
+      let fields = variant.children |> map(f => emit_ident(name: node_authored_text(node: f), target: Rust))
       let bindings = fields |> join(separator: ", ")
       let field_calls = fields |> map(fi => concat(".field(\"", fi, "\", ", fi, ")")) |> join(separator: "")
       concat("            Self::", vname, " { ", bindings, " } => f.debug_struct(\"", vname, "\")", field_calls, ".finish(),")
@@ -911,17 +888,16 @@ fn v1_set_enum_partial_eq_impl(
   header_clone_param_names: List<String>,
   set_params: List<String>,
   children: List<Node>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> String {
-  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: RustPartialEq, source_indices: source_indices)
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: RustPartialEq)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
-    let vname = to_pascal(name: authored_name_at(source_indices: source_indices, node: variant))
+    let vname = to_pascal(name: node_authored_text(node: variant))
     if (variant.children |> count) == 0 {
       concat("            (Self::", vname, ", Self::", vname, ") => true,")
     } else {
-      let fields = variant.children |> map(f => emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust))
+      let fields = variant.children |> map(f => emit_ident(name: node_authored_text(node: f), target: Rust))
       let a_bindings = fields |> map(fi => concat(fi, ": a_", fi)) |> join(separator: ", ")
       let b_bindings = fields |> map(fi => concat(fi, ": b_", fi)) |> join(separator: ", ")
       let comparisons = fields |> map(fi => concat("a_", fi, " == b_", fi)) |> join(separator: " && ")
@@ -972,22 +948,18 @@ fn v1_set_enum_partial_eq_impl(
 // grain).
 
 fn v1_item_own_set_affected_param_names(
-  item: Node,
-  source_indices: Map<String, NewlineIndex>
+  item: Node
 ) -> List<String> {
   v1_set_element_params(
-    generic_param_names: item_generic_param_names(item: item, source_indices: source_indices),
-    field_type_exprs: v1_item_field_type_exprs(item: item, source_indices: source_indices),
-    source_indices: source_indices
-  )
+    generic_param_names: item_generic_param_names(item: item),
+    field_type_exprs: v1_item_field_type_exprs(item: item))
 }
 
 fn v1_ord_propagated_zip_loop(
   param_name: String,
   decl_params: List<Node>,
   type_args: List<Node>,
-  decl_set_affected_names: List<String>,
-  source_indices: Map<String, NewlineIndex>
+  decl_set_affected_names: List<String>
 ) -> Bool {
   match decl_params |> first {
     Absent => false
@@ -995,10 +967,10 @@ fn v1_ord_propagated_zip_loop(
       match type_args |> first {
         Absent => false
         Present { value: type_arg } =>
-          let slot_name = generic_param_name_at(n: decl_param, source_indices: source_indices)
+          let slot_name = generic_param_name_at(n: decl_param)
           let here =
             if decl_set_affected_names |> any(n => n == slot_name) {
-              v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_arg, source_indices: source_indices)
+              v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_arg)
             } else {
               false
             }
@@ -1006,9 +978,7 @@ fn v1_ord_propagated_zip_loop(
             param_name: param_name,
             decl_params: decl_params |> skip(1),
             type_args: type_args |> skip(1),
-            decl_set_affected_names: decl_set_affected_names,
-            source_indices: source_indices
-          )
+            decl_set_affected_names: decl_set_affected_names)
       }
   }
 }
@@ -1016,10 +986,9 @@ fn v1_ord_propagated_zip_loop(
 fn v1_field_type_expr_ord_propagated_for_param(
   param_name: String,
   type_expr: Node,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
-  match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+  match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr) {
     TypeDeclNotDeclared => false
     TypeDeclKernelSpellingUndecided { leaf: _ } => false
     TypeDeclLeafAmbiguous { leaf: _ } => false
@@ -1028,26 +997,21 @@ fn v1_field_type_expr_ord_propagated_for_param(
         param_name: param_name,
         decl_params: decl.params,
         type_args: type_expr.children,
-        decl_set_affected_names: v1_item_own_set_affected_param_names(item: decl, source_indices: source_indices),
-        source_indices: source_indices
-      )
+        decl_set_affected_names: v1_item_own_set_affected_param_names(item: decl))
   }
 }
 
 fn v1_item_ord_propagated_param_names(
   generic_param_names: List<String>,
   field_type_exprs: List<Node>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
       v1_field_type_expr_ord_propagated_for_param(
         param_name: p,
         type_expr: te,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
+        type_decl_items: type_decl_items)
     )
   )
 }
@@ -1069,11 +1033,10 @@ fn v1_set_element_bound_spellings() -> List<String> {
 fn v1_fn_signature_set_element_param_names(
   signature_type_exprs: List<Node>,
   generic_param_names: List<String>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> List<String> {
-  let direct = v1_set_element_params(generic_param_names: generic_param_names, field_type_exprs: signature_type_exprs, source_indices: source_indices)
-  let propagated = v1_item_ord_propagated_param_names(generic_param_names: generic_param_names, field_type_exprs: signature_type_exprs, type_decl_items: type_decl_items, source_indices: source_indices)
+  let direct = v1_set_element_params(generic_param_names: generic_param_names, field_type_exprs: signature_type_exprs)
+  let propagated = v1_item_ord_propagated_param_names(generic_param_names: generic_param_names, field_type_exprs: signature_type_exprs, type_decl_items: type_decl_items)
   generic_param_names |> filter(g => direct |> any(d => d == g) || propagated |> any(d => d == g))
 }
 
@@ -1083,13 +1046,12 @@ fn v1_set_struct_debug_impl(
   header_clone_param_names: List<String>,
   set_params: List<String>,
   children: List<Node>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> String {
-  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: RustDebug, source_indices: source_indices)
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: RustDebug)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let field_calls = children |> map(f =>
-    let ident = emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust)
+    let ident = emit_ident(name: node_authored_text(node: f), target: Rust)
     concat(".field(\"", ident, "\", &self.", ident, ")")
   )
   concat(
@@ -1107,13 +1069,12 @@ fn v1_set_struct_partial_eq_impl(
   header_clone_param_names: List<String>,
   set_params: List<String>,
   children: List<Node>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> String {
-  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: RustPartialEq, source_indices: source_indices)
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: RustPartialEq)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let comparisons = children |> map(f =>
-    let ident = emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust)
+    let ident = emit_ident(name: node_authored_text(node: f), target: Rust)
     concat("self.", ident, " == other.", ident)
   )
   let body = if (comparisons |> count) == 0 { "true" } else { comparisons |> join(separator: " && ") }
@@ -1146,8 +1107,7 @@ fn v1_emit_struct_derives(
   shared_types: Set<String>,
   has_fn_fields: Bool,
   map_key_required: Bool,
-  deserialize_forbidden: Bool,
-  source_indices: Map<String, NewlineIndex>
+  deserialize_forbidden: Bool
 ) -> String {
   if has_fn_fields {
     if map_key_required {
@@ -1155,8 +1115,8 @@ fn v1_emit_struct_derives(
     } else {
       rust_trait_derive_attr_from_traits(fn_field_derive_traits())
     }
-  } else if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
-    let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(children: children, source_indices: source_indices)
+  } else if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children) {
+    let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(children: children)
     let traits = v1_with_map_key_requirement(base: symbol_wrapped_ord_carrier_derive_traits(), map_key_required: map_key_required)
     if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), traits, shape) {
       rust_trait_derive_attr_from_traits(traits)
@@ -1194,8 +1154,7 @@ fn v1_emit_enum_derives(
   has_fn_fields: Bool,
   map_key_required: Bool,
   deserialize_forbidden: Bool,
-  generic_param_names: List<String>,
-  source_indices: Map<String, NewlineIndex>
+  generic_param_names: List<String>
 ) -> String {
   if has_fn_fields {
     if map_key_required {
@@ -1206,9 +1165,7 @@ fn v1_emit_enum_derives(
   let fm_params = if map_key_required { [] } else {
     v1_freemonoid_element_params(
       generic_param_names: generic_param_names,
-      field_type_exprs: v1_enum_variant_field_type_exprs(children: children),
-      source_indices: source_indices
-    )
+      field_type_exprs: v1_enum_variant_field_type_exprs(children: children))
   }
   if (fm_params |> count) > 0 {
     return concat(
@@ -1221,11 +1178,9 @@ fn v1_emit_enum_derives(
   let set_params = if map_key_required { [] } else {
     v1_set_element_params(
       generic_param_names: generic_param_names,
-      field_type_exprs: v1_enum_variant_field_type_exprs(children: children),
-      source_indices: source_indices
-    )
+      field_type_exprs: v1_enum_variant_field_type_exprs(children: children))
   }
-  let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(children: children, source_indices: source_indices)
+  let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(children: children)
   let nullary_traits = rust_traits_for_construction_contract(traits: v1_with_map_key_requirement(base: nullary_coproduct_derive_traits(), map_key_required: map_key_required), deserialize_forbidden: deserialize_forbidden)
   let payload_traits = rust_traits_for_construction_contract(traits: v1_with_map_key_requirement(base: payload_coproduct_derive_traits(), map_key_required: map_key_required), deserialize_forbidden: deserialize_forbidden)
   let set_row_refusal = if (set_params |> count) > 0 { v1_set_unroutable_row_refusal() } else { "" }
@@ -1259,18 +1214,15 @@ fn v1_emit_enum_derives(
 
 fn v1_type_expr_contains_param_name(
   param_name: String,
-  type_expr: Node,
-  source_indices: Map<String, NewlineIndex>
+  type_expr: Node
 ) -> Bool {
-  if authored_name_at(source_indices: source_indices, node: type_expr) == param_name {
+  if node_authored_text(node: type_expr) == param_name {
     true
   } else {
     type_expr.children |> any(c =>
       v1_type_expr_contains_param_name(
         param_name: param_name,
-        type_expr: c,
-        source_indices: source_indices
-      )
+        type_expr: c)
     )
   }
 }
@@ -1279,32 +1231,28 @@ fn v1_generic_param_used_as_collection_element(
   param_name: String,
   value_params: List<Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   value_params |> any(vp =>
     let te = param_node_type_expr(n: vp)
-    is_container_type(name: authored_name_at(source_indices: source_indices, node: te))
+    is_container_type(name: node_authored_text(node: te))
       && te.children |> any(c =>
         v1_type_expr_mentions_param_non_phantom(
           param_name: param_name,
-          type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+          type_expr: v1_wf_child_type_node(ch: c),
           bounds: bounds,
-          type_decl_items: type_decl_items,
-          source_indices: source_indices
-        )
+          type_decl_items: type_decl_items)
       )
   )
 }
 
 fn v1_generic_param_used_as_bare_value_param_type(
   param_name: String,
-  value_params: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  value_params: List<Node>
 ) -> Bool {
   value_params |> any(vp =>
     let te = param_node_type_expr(n: vp)
-    authored_name_at(source_indices: source_indices, node: te) == param_name
+    node_authored_text(node: te) == param_name
       && te.connective == NoConnective
       && (te.children |> count) == 0
   )
@@ -1314,27 +1262,23 @@ fn v1_generic_param_used_in_value_param_type_surface(
   param_name: String,
   value_params: List<Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   value_params |> any(vp =>
     v1_type_expr_mentions_param_non_phantom(
       param_name: param_name,
       type_expr: param_node_type_expr(n: vp),
       bounds: bounds,
-      type_decl_items: type_decl_items,
-      source_indices: source_indices
-    )
+      type_decl_items: type_decl_items)
   )
 }
 
 fn v1_item_phantom_only_param_names(
   item_identity: String,
   item: Node,
-  bounds: Map<String, Set<String>>,
-  source_indices: Map<String, NewlineIndex>
+  bounds: Map<String, Set<String>>
 ) -> List<String> {
-  item.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices)) |> filter(p =>
+  item.params |> map(p => generic_param_name_at(n: p)) |> filter(p =>
     match map_get(bounds, item_identity) {
       Present { value: s } => !set_contains(s, p)
       Absent => true
@@ -1352,8 +1296,7 @@ fn v1_declared_type_app_mentions_param_non_phantom_loop(
   type_args: List<Node>,
   phantom_slot_names: List<String>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   match decl_params |> first {
     Absent => false
@@ -1361,8 +1304,8 @@ fn v1_declared_type_app_mentions_param_non_phantom_loop(
       match type_args |> first {
         Absent => false
         Present { value: type_arg } =>
-          let slot_name = generic_param_name_at(n: decl_param, source_indices: source_indices)
-          let arg_expr = v1_wf_child_type_node(ch: type_arg, source_indices: source_indices)
+          let slot_name = generic_param_name_at(n: decl_param)
+          let arg_expr = v1_wf_child_type_node(ch: type_arg)
           let slot_is_phantom = v1_phantom_only_param_names_contains(
             names: phantom_slot_names,
             param_name: slot_name
@@ -1375,9 +1318,7 @@ fn v1_declared_type_app_mentions_param_non_phantom_loop(
                 param_name: param_name,
                 type_expr: arg_expr,
                 bounds: bounds,
-                type_decl_items: type_decl_items,
-                source_indices: source_indices
-              )
+                type_decl_items: type_decl_items)
             }
           here || v1_declared_type_app_mentions_param_non_phantom_loop(
             param_name: param_name,
@@ -1385,9 +1326,7 @@ fn v1_declared_type_app_mentions_param_non_phantom_loop(
             type_args: type_args |> skip(1),
             phantom_slot_names: phantom_slot_names,
             bounds: bounds,
-            type_decl_items: type_decl_items,
-            source_indices: source_indices
-          )
+            type_decl_items: type_decl_items)
       }
   }
 }
@@ -1398,8 +1337,7 @@ fn v1_declared_type_app_mentions_param_non_phantom(
   decl: Node,
   type_args: List<Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   v1_declared_type_app_mentions_param_non_phantom_loop(
     param_name: param_name,
@@ -1408,39 +1346,32 @@ fn v1_declared_type_app_mentions_param_non_phantom(
     phantom_slot_names: v1_item_phantom_only_param_names(
       item_identity: decl_name,
       item: decl,
-      bounds: bounds,
-      source_indices: source_indices
-    ),
+      bounds: bounds),
     bounds: bounds,
-    type_decl_items: type_decl_items,
-    source_indices: source_indices
-  )
+    type_decl_items: type_decl_items)
 }
 
 fn v1_type_expr_mentions_param_non_phantom(
   param_name: String,
   type_expr: Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
-  if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr, source_indices: source_indices) {
+  if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr) {
     true
   } else {
-    let name = authored_name_at(source_indices: source_indices, node: type_expr)
+    let name = node_authored_text(node: type_expr)
     if is_container_type(name: name)
       && type_expr.children |> any(c =>
         v1_type_expr_mentions_param_non_phantom(
           param_name: param_name,
-          type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+          type_expr: v1_wf_child_type_node(ch: c),
           bounds: bounds,
-          type_decl_items: type_decl_items,
-          source_indices: source_indices
-        )
+          type_decl_items: type_decl_items)
       ) {
       true
     } else {
-      match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+      match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr) {
         TypeDeclResolved { identity: identity, decl: decl } =>
           v1_declared_type_app_mentions_param_non_phantom(
             param_name: param_name,
@@ -1448,38 +1379,30 @@ fn v1_type_expr_mentions_param_non_phantom(
             decl: decl,
             type_args: type_expr.children,
             bounds: bounds,
-            type_decl_items: type_decl_items,
-            source_indices: source_indices
-          )
+            type_decl_items: type_decl_items)
         TypeDeclLeafAmbiguous { leaf: _ } =>
           type_expr.children |> any(c =>
             v1_type_expr_mentions_param_non_phantom(
               param_name: param_name,
-              type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+              type_expr: v1_wf_child_type_node(ch: c),
               bounds: bounds,
-              type_decl_items: type_decl_items,
-              source_indices: source_indices
-            )
+              type_decl_items: type_decl_items)
           )
         TypeDeclKernelSpellingUndecided { leaf: _ } =>
           type_expr.children |> any(c =>
             v1_type_expr_mentions_param_non_phantom(
               param_name: param_name,
-              type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+              type_expr: v1_wf_child_type_node(ch: c),
               bounds: bounds,
-              type_decl_items: type_decl_items,
-              source_indices: source_indices
-            )
+              type_decl_items: type_decl_items)
           )
         TypeDeclNotDeclared =>
           type_expr.children |> any(c =>
             v1_type_expr_mentions_param_non_phantom(
               param_name: param_name,
-              type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+              type_expr: v1_wf_child_type_node(ch: c),
               bounds: bounds,
-              type_decl_items: type_decl_items,
-              source_indices: source_indices
-            )
+              type_decl_items: type_decl_items)
           )
       }
     }
@@ -1491,8 +1414,7 @@ fn v1_fn_phantom_only_generic_param_names(
   value_params: List<Node>,
   ret: Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> List<String> {
   generic_param_names |> filter(p =>
     !(value_params |> any(vp =>
@@ -1500,36 +1422,29 @@ fn v1_fn_phantom_only_generic_param_names(
         param_name: p,
         type_expr: param_node_type_expr(n: vp),
         bounds: bounds,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
+        type_decl_items: type_decl_items)
     ))
     && !v1_type_expr_mentions_param_non_phantom(
       param_name: p,
       type_expr: ret,
       bounds: bounds,
-      type_decl_items: type_decl_items,
-      source_indices: source_indices
-    )
+      type_decl_items: type_decl_items)
   )
 }
 
 fn v1_type_expr_mentions_type_head(
   type_identity: String,
   type_expr: Node,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
-  if v1_type_expr_declared_identity(type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices) == type_identity {
+  if v1_type_expr_declared_identity(type_expr: type_expr, type_decl_items: type_decl_items) == type_identity {
     true
   } else {
     type_expr.children |> any(c =>
       v1_type_expr_mentions_type_head(
         type_identity: type_identity,
-        type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
+        type_expr: v1_wf_child_type_node(ch: c),
+        type_decl_items: type_decl_items)
     )
   }
 }
@@ -1538,13 +1453,12 @@ fn v1_fn_generic_clone_bound_via_referenced_decl(
   param_name: String,
   value_params: List<Node>,
   type_decl_items: TypeDeclIndex,
-  clone_bounds: Map<String, Set<String>>,
-  source_indices: Map<String, NewlineIndex>
+  clone_bounds: Map<String, Set<String>>
 ) -> Bool {
   map_keys(type_decl_items.by_identity) |> any(decl_name =>
     match map_get(type_decl_items.by_identity, decl_name) {
       Present { value: decl } =>
-        let decl_generics = decl.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+        let decl_generics = decl.params |> map(p => generic_param_name_at(n: p))
         if !(decl_generics |> any(dg => dg == param_name)) {
           false
         } else {
@@ -1557,9 +1471,7 @@ fn v1_fn_generic_clone_bound_via_referenced_decl(
                   v1_type_expr_mentions_type_head(
                     type_identity: decl_name,
                     type_expr: param_node_type_expr(n: vp),
-                    type_decl_items: type_decl_items,
-                    source_indices: source_indices
-                  )
+                    type_decl_items: type_decl_items)
                 )
               }
             Absent => false
@@ -1574,14 +1486,13 @@ fn v1_fn_generic_clone_bound_via_bounded_container_element(
   param_name: String,
   value_params: List<Node>,
   clone_bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   value_params |> any(vp =>
     let te = param_node_type_expr(n: vp)
-    is_container_type(name: authored_name_at(source_indices: source_indices, node: te))
+    is_container_type(name: node_authored_text(node: te))
       && te.children |> any(c =>
-        let head = v1_type_expr_declared_identity(type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices), type_decl_items: type_decl_items, source_indices: source_indices)
+        let head = v1_type_expr_declared_identity(type_expr: v1_wf_child_type_node(ch: c), type_decl_items: type_decl_items)
         match map_get(clone_bounds, head) {
           Present { value: bounded } => set_contains(bounded, param_name)
           Absent => false
@@ -1597,13 +1508,12 @@ fn v1_type_param_needs_clone_bound(
   body_is_param_ref: Bool,
   value_params: List<Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   let structural = (return_is_bare_generic && !body_is_param_ref && param_name == ret_name)
-    || v1_generic_param_used_as_collection_element(param_name: param_name, value_params: value_params, bounds: bounds, type_decl_items: type_decl_items, source_indices: source_indices)
-    || v1_generic_param_used_as_bare_value_param_type(param_name: param_name, value_params: value_params, source_indices: source_indices)
-    || v1_generic_param_used_in_value_param_type_surface(param_name: param_name, value_params: value_params, bounds: bounds, type_decl_items: type_decl_items, source_indices: source_indices)
+    || v1_generic_param_used_as_collection_element(param_name: param_name, value_params: value_params, bounds: bounds, type_decl_items: type_decl_items)
+    || v1_generic_param_used_as_bare_value_param_type(param_name: param_name, value_params: value_params)
+    || v1_generic_param_used_in_value_param_type_surface(param_name: param_name, value_params: value_params, bounds: bounds, type_decl_items: type_decl_items)
   structural
 }
 
@@ -1611,40 +1521,31 @@ fn v1_fn_param_type_needs_clone_bound(
   param_name: String,
   value_params: List<Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   value_params |> any(vp =>
     let te = param_node_type_expr(n: vp)
-    v1_type_expr_is_bare_param(param_name: param_name, type_expr: te, source_indices: source_indices)
+    v1_type_expr_is_bare_param(param_name: param_name, type_expr: te)
       || v1_type_expr_clone_impl_needs_param(
         param_name: param_name,
         type_expr: te,
         bounds: bounds,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
+        type_decl_items: type_decl_items)
       || v1_type_expr_wf_needs_clone_param(
         param_name: param_name,
         type_expr: te,
         bounds: bounds,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
+        type_decl_items: type_decl_items)
       || v1_fn_generic_clone_bound_via_referenced_decl(
         param_name: param_name,
         value_params: value_params,
         type_decl_items: type_decl_items,
-        clone_bounds: bounds,
-        source_indices: source_indices
-      )
+        clone_bounds: bounds)
       || v1_fn_generic_clone_bound_via_bounded_container_element(
         param_name: param_name,
         value_params: value_params,
         clone_bounds: bounds,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
+        type_decl_items: type_decl_items)
   )
 }
 
@@ -1656,27 +1557,22 @@ fn v1_generic_params_needing_clone_bound(
   body_is_param_ref: Bool,
   ret: Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> List<String> {
   let phantom_only = v1_fn_phantom_only_generic_param_names(
     generic_param_names: generic_param_names,
     value_params: value_params,
     ret: ret,
     bounds: bounds,
-    type_decl_items: type_decl_items,
-    source_indices: source_indices
-  )
+    type_decl_items: type_decl_items)
   generic_param_names |> filter(g =>
     v1_fn_param_wf_needs_clone(
       param_name: g,
       value_params: value_params,
       ret: ret,
       bounds: bounds,
-      type_decl_items: type_decl_items,
-      source_indices: source_indices
-    )
-    || v1_generic_param_cloned_by_returned_closure(param_name: g, value_params: value_params, ret: ret, source_indices: source_indices)
+      type_decl_items: type_decl_items)
+    || v1_generic_param_cloned_by_returned_closure(param_name: g, value_params: value_params, ret: ret)
     || (
       !v1_phantom_only_param_names_contains(names: phantom_only, param_name: g)
         && (
@@ -1687,16 +1583,12 @@ fn v1_generic_params_needing_clone_bound(
             body_is_param_ref: body_is_param_ref,
             value_params: value_params,
             bounds: bounds,
-            type_decl_items: type_decl_items,
-            source_indices: source_indices
-          )
+            type_decl_items: type_decl_items)
           || v1_fn_param_type_needs_clone_bound(
             param_name: g,
             value_params: value_params,
             bounds: bounds,
-            type_decl_items: type_decl_items,
-            source_indices: source_indices
-          )
+            type_decl_items: type_decl_items)
         )
     )
   )
@@ -1716,26 +1608,26 @@ fn v1_generic_params_needing_clone_bound(
 // already reads arrow `.params`; applying it to `ret` as well is the missing conjunct, not a
 // second derivation. Callers still inherit via v1_call_forwarding_clone_bound_param_names and
 // never re-derive at the call site.
-fn v1_generic_param_cloned_by_returned_closure(param_name: String, value_params: List<Node>, ret: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn v1_generic_param_cloned_by_returned_closure(param_name: String, value_params: List<Node>, ret: Node) -> Bool {
   (ret.params |> count) > 0
     && (
-      value_params |> any(vp => v1_arrow_type_expr_mentions_param(param_name: param_name, type_expr: param_node_type_expr(n: vp), source_indices: source_indices))
-      || v1_arrow_type_expr_mentions_param(param_name: param_name, type_expr: ret, source_indices: source_indices)
+      value_params |> any(vp => v1_arrow_type_expr_mentions_param(param_name: param_name, type_expr: param_node_type_expr(n: vp)))
+      || v1_arrow_type_expr_mentions_param(param_name: param_name, type_expr: ret)
     )
 }
 
-fn v1_arrow_type_expr_mentions_param(param_name: String, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn v1_arrow_type_expr_mentions_param(param_name: String, type_expr: Node) -> Bool {
   if (type_expr.params |> count) == 0 { false }
   else {
     let in_domain = type_expr.params |> any(p =>
       let pt = param_node_type_expr(n: p)
-      v1_type_expr_is_bare_param(param_name: param_name, type_expr: pt, source_indices: source_indices)
-        || pt.children |> any(c => v1_type_expr_is_bare_param(param_name: param_name, type_expr: c, source_indices: source_indices))
+      v1_type_expr_is_bare_param(param_name: param_name, type_expr: pt)
+        || pt.children |> any(c => v1_type_expr_is_bare_param(param_name: param_name, type_expr: c))
     )
     let in_codomain = match type_expr.inferred {
       Present { value: Resolved { node: r } } =>
-        v1_type_expr_is_bare_param(param_name: param_name, type_expr: r, source_indices: source_indices)
-          || r.children |> any(c => v1_type_expr_is_bare_param(param_name: param_name, type_expr: c, source_indices: source_indices))
+        v1_type_expr_is_bare_param(param_name: param_name, type_expr: r)
+          || r.children |> any(c => v1_type_expr_is_bare_param(param_name: param_name, type_expr: c))
       _ => false
     }
     in_domain || in_codomain
@@ -1744,14 +1636,13 @@ fn v1_arrow_type_expr_mentions_param(param_name: String, type_expr: Node, source
 
 fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
   param_name: String,
-  type_expr: Node,
-  source_indices: Map<String, NewlineIndex>
+  type_expr: Node
 ) -> Bool {
-  let name = authored_name_at(source_indices: source_indices, node: type_expr)
+  let name = node_authored_text(node: type_expr)
   if name == param_name && type_expr.connective == NoConnective && (type_expr.children |> count) == 0 {
     true
   } else if is_container_type(name: name)
-    && type_expr.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == param_name) {
+    && type_expr.children |> any(c => node_authored_text(node: c) == param_name) {
     true
   } else {
     false
@@ -1760,29 +1651,26 @@ fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
 
 fn v1_item_type_param_needs_clone_bound_struct(
   param_name: String,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
+  field_type_exprs: List<Node>
 ) -> Bool {
   field_type_exprs |> any(te =>
     v1_field_type_expr_needs_clone_bound_for_param_narrow(
       param_name: param_name,
-      type_expr: te,
-      source_indices: source_indices
-    )
+      type_expr: te)
   )
 }
 
-fn v1_wf_child_type_node(ch: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+fn v1_wf_child_type_node(ch: Node) -> Node {
   let resolved = child_type_node(ch: ch)
-  if authored_name_at(source_indices: source_indices, node: resolved) != "" {
+  if node_authored_text(node: resolved) != "" {
     resolved
   } else {
     ch
   }
 }
 
-fn v1_type_expr_is_bare_param(param_name: String, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  authored_name_at(source_indices: source_indices, node: type_expr) == param_name
+fn v1_type_expr_is_bare_param(param_name: String, type_expr: Node) -> Bool {
+  node_authored_text(node: type_expr) == param_name
     && type_expr.connective == NoConnective
     && (type_expr.children |> count) == 0
 }
@@ -1790,10 +1678,9 @@ fn v1_type_expr_is_bare_param(param_name: String, type_expr: Node, source_indice
 fn v1_type_expr_head_is_known(
   name: String,
   type_expr: Node,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
-  is_container_type(name: name) || match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+  is_container_type(name: name) || match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr) {
     TypeDeclResolved { identity: _, decl: _ } => true
     TypeDeclLeafAmbiguous { leaf: _ } => false
     TypeDeclKernelSpellingUndecided { leaf: _ } => false
@@ -1802,24 +1689,22 @@ fn v1_type_expr_head_is_known(
 }
 
 fn v1_item_generic_param_name_set(
-  item: Node,
-  source_indices: Map<String, NewlineIndex>
+  item: Node
 ) -> Set<String> {
   item.params |> fold(init: empty_set(), f: (acc, p) =>
-    set_insert(acc, generic_param_name_at(n: p, source_indices: source_indices))
+    set_insert(acc, generic_param_name_at(n: p))
   )
 }
 
 fn v1_type_expr_clone_undecided_head(
   type_expr: Node,
   type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>,
   item_generic_params: Set<String>
 ) -> String {
-  let name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))
+  let name = qualified_last_segment(name: node_authored_text(node: type_expr))
   if (type_expr.children |> count) == 0 {
     ""
-  } else if v1_type_expr_head_is_known(name: name, type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices)
+  } else if v1_type_expr_head_is_known(name: name, type_expr: type_expr, type_decl_items: type_decl_items)
     || set_contains(item_generic_params, name) {
     type_expr.children |> fold(init: "", f: (acc, c) =>
       if acc != "" {
@@ -1828,7 +1713,6 @@ fn v1_type_expr_clone_undecided_head(
         v1_type_expr_clone_undecided_head(
           type_expr: child_type_node(ch: c),
           type_decl_items: type_decl_items,
-          source_indices: source_indices,
           item_generic_params: item_generic_params
         )
       }
@@ -1842,15 +1726,14 @@ fn v1_type_expr_clone_impl_needs_param(
   param_name: String,
   type_expr: Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
-  if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr, source_indices: source_indices) {
+  if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr) {
     true
   } else if (type_expr.children |> count) == 0 {
     false
   } else {
-    match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+    match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr) {
       TypeDeclResolved { identity: identity, decl: decl } =>
         v1_declared_type_app_clone_impl_needs_param(
           param_name: param_name,
@@ -1858,38 +1741,30 @@ fn v1_type_expr_clone_impl_needs_param(
           decl: decl,
           type_args: type_expr.children,
           bounds: bounds,
-          type_decl_items: type_decl_items,
-          source_indices: source_indices
-        )
+          type_decl_items: type_decl_items)
       TypeDeclLeafAmbiguous { leaf: _ } =>
         type_expr.children |> any(c =>
           v1_type_expr_clone_impl_needs_param(
             param_name: param_name,
-            type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+            type_expr: v1_wf_child_type_node(ch: c),
             bounds: bounds,
-            type_decl_items: type_decl_items,
-            source_indices: source_indices
-          )
+            type_decl_items: type_decl_items)
         )
       TypeDeclKernelSpellingUndecided { leaf: _ } =>
         type_expr.children |> any(c =>
           v1_type_expr_clone_impl_needs_param(
             param_name: param_name,
-            type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+            type_expr: v1_wf_child_type_node(ch: c),
             bounds: bounds,
-            type_decl_items: type_decl_items,
-            source_indices: source_indices
-          )
+            type_decl_items: type_decl_items)
         )
       TypeDeclNotDeclared =>
         type_expr.children |> any(c =>
           v1_type_expr_clone_impl_needs_param(
             param_name: param_name,
-            type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+            type_expr: v1_wf_child_type_node(ch: c),
             bounds: bounds,
-            type_decl_items: type_decl_items,
-            source_indices: source_indices
-          )
+            type_decl_items: type_decl_items)
         )
     }
   }
@@ -1901,8 +1776,7 @@ fn v1_declared_type_app_clone_impl_needs_param_loop(
   type_args: List<Node>,
   phantom_slot_names: List<String>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   match decl_params |> first {
     Absent => false
@@ -1910,8 +1784,8 @@ fn v1_declared_type_app_clone_impl_needs_param_loop(
       match type_args |> first {
         Absent => false
         Present { value: type_arg } =>
-          let slot_name = generic_param_name_at(n: decl_param, source_indices: source_indices)
-          let arg_expr = v1_wf_child_type_node(ch: type_arg, source_indices: source_indices)
+          let slot_name = generic_param_name_at(n: decl_param)
+          let arg_expr = v1_wf_child_type_node(ch: type_arg)
           let slot_is_phantom = v1_phantom_only_param_names_contains(
             names: phantom_slot_names,
             param_name: slot_name
@@ -1924,9 +1798,7 @@ fn v1_declared_type_app_clone_impl_needs_param_loop(
                 param_name: param_name,
                 type_expr: arg_expr,
                 bounds: bounds,
-                type_decl_items: type_decl_items,
-                source_indices: source_indices
-              )
+                type_decl_items: type_decl_items)
             }
           here || v1_declared_type_app_clone_impl_needs_param_loop(
             param_name: param_name,
@@ -1934,9 +1806,7 @@ fn v1_declared_type_app_clone_impl_needs_param_loop(
             type_args: type_args |> skip(1),
             phantom_slot_names: phantom_slot_names,
             bounds: bounds,
-            type_decl_items: type_decl_items,
-            source_indices: source_indices
-          )
+            type_decl_items: type_decl_items)
       }
   }
 }
@@ -1947,8 +1817,7 @@ fn v1_declared_type_app_clone_impl_needs_param(
   decl: Node,
   type_args: List<Node>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   v1_declared_type_app_clone_impl_needs_param_loop(
     param_name: param_name,
@@ -1957,13 +1826,9 @@ fn v1_declared_type_app_clone_impl_needs_param(
     phantom_slot_names: v1_item_phantom_only_param_names(
       item_identity: decl_name,
       item: decl,
-      bounds: bounds,
-      source_indices: source_indices
-    ),
+      bounds: bounds),
     bounds: bounds,
-    type_decl_items: type_decl_items,
-    source_indices: source_indices
-  )
+    type_decl_items: type_decl_items)
 }
 
 fn v1_declared_arg_positions_need_clone_param(
@@ -1972,8 +1837,7 @@ fn v1_declared_arg_positions_need_clone_param(
   type_args: List<Node>,
   bound_params: Set<String>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   match decl_params |> first {
     Absent => false
@@ -1981,23 +1845,19 @@ fn v1_declared_arg_positions_need_clone_param(
       match type_args |> first {
         Absent => false
         Present { value: type_arg } =>
-          let here = set_contains(bound_params, generic_param_name_at(n: decl_param, source_indices: source_indices))
+          let here = set_contains(bound_params, generic_param_name_at(n: decl_param))
             && v1_type_expr_clone_impl_needs_param(
               param_name: param_name,
-              type_expr: v1_wf_child_type_node(ch: type_arg, source_indices: source_indices),
+              type_expr: v1_wf_child_type_node(ch: type_arg),
               bounds: bounds,
-              type_decl_items: type_decl_items,
-              source_indices: source_indices
-            )
+              type_decl_items: type_decl_items)
           here || v1_declared_arg_positions_need_clone_param(
             param_name: param_name,
             decl_params: decl_params |> skip(1),
             type_args: type_args |> skip(1),
             bound_params: bound_params,
             bounds: bounds,
-            type_decl_items: type_decl_items,
-            source_indices: source_indices
-          )
+            type_decl_items: type_decl_items)
       }
   }
 }
@@ -2039,8 +1899,7 @@ fn v1_type_expr_wf_needs_clone_param(
   param_name: String,
   type_expr: Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   if (type_expr.children |> count) == 0 {
     false
@@ -2048,13 +1907,11 @@ fn v1_type_expr_wf_needs_clone_param(
     let nested = type_expr.children |> any(c =>
       v1_type_expr_wf_needs_clone_param(
         param_name: param_name,
-        type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+        type_expr: v1_wf_child_type_node(ch: c),
         bounds: bounds,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
+        type_decl_items: type_decl_items)
     )
-    match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+    match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr) {
       TypeDeclResolved { identity: identity, decl: decl } =>
         let bound_params = match map_get(bounds, identity) {
           Present { value: s } => s
@@ -2066,9 +1923,7 @@ fn v1_type_expr_wf_needs_clone_param(
           type_args: type_expr.children,
           bound_params: bound_params,
           bounds: bounds,
-          type_decl_items: type_decl_items,
-          source_indices: source_indices
-        )
+          type_decl_items: type_decl_items)
       TypeDeclLeafAmbiguous { leaf: _ } => nested
       TypeDeclKernelSpellingUndecided { leaf: _ } => nested
       TypeDeclNotDeclared => nested
@@ -2082,8 +1937,8 @@ fn v1_type_expr_wf_needs_clone_param(
 // (dag_name, decl_file) resolves to no Rust checkpoint (lookup_checkpoint == Absent), meaning the
 // emitter has no native realization for it and renders its declared structure. `type Hash =
 // Fnv1a64Structural` in v2.std.node has no checkpoint row, so its RHS is the walk's one field type
-// expression and the map-key fixpoint reaches Fnv1a64Structural. `type Int =
-// AbelianGroup<GroupCompletion<Nat>>` and std.nat's `type Nat = Zero | Succ { prev: Nat }` DO have
+// expression and the map-key fixpoint reaches Fnv1a64Structural. std.integer's `type Int =
+// NonNegative { n: Nat } | Negative { pred: Nat }` and std.nat's `type Nat = Zero | Succ { prev: Nat }` DO have
 // checkpoint rows (they realize as i64), so lookup_checkpoint returns Present and the arm below
 // contributes nothing for them -- the measured false positive (AbelianGroup/CommutativeSemiring at
 // map-key position) that sank the earlier attempt never recurs, because the gate is keyed on
@@ -2096,9 +1951,9 @@ fn v1_type_expr_wf_needs_clone_param(
 // field-type-expression authority single (DESIGN section 2/3) instead of forking a second copy that
 // could drift.
 
-fn v1_item_alias_hop_type_exprs(item: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
-  if is_type_alias_item(item: item, source_indices: source_indices) {
-    let dag_name = authored_name_at(source_indices: source_indices, node: item)
+fn v1_item_alias_hop_type_exprs(item: Node) -> List<Node> {
+  if is_type_alias_item(item: item) {
+    let dag_name = node_authored_text(node: item)
     match realized_checkpoint(decision: declaration_realization(item: item, dag_name: dag_name, target: Rust)) {
       Present { value: _ } => []
       Absent => [resolved_type(n: item)]
@@ -2108,13 +1963,13 @@ fn v1_item_alias_hop_type_exprs(item: Node, source_indices: Map<String, NewlineI
   }
 }
 
-fn v1_item_field_type_exprs(item: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+fn v1_item_field_type_exprs(item: Node) -> List<Node> {
   if is_coproduct_type(n: item) {
     item.children |> flat_map(variant => variant.children |> map(f => child_type_node(ch: f)))
   } else if item.children |> count > 0 {
     item.children |> map(f => child_type_node(ch: f))
   } else {
-    v1_item_alias_hop_type_exprs(item: item, source_indices: source_indices)
+    v1_item_alias_hop_type_exprs(item: item)
   }
 }
 
@@ -2140,8 +1995,7 @@ fn v1_item_field_type_expr_wf_needs_clone_param(
   param_name: String,
   type_expr: Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   let callable_components = v1_callable_type_expr_component_type_exprs(type_expr: type_expr)
   if (callable_components |> count) > 0 {
@@ -2150,18 +2004,14 @@ fn v1_item_field_type_expr_wf_needs_clone_param(
         param_name: param_name,
         type_expr: c,
         bounds: bounds,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
+        type_decl_items: type_decl_items)
     )
   } else {
     v1_type_expr_wf_needs_clone_param(
       param_name: param_name,
       type_expr: type_expr,
       bounds: bounds,
-      type_decl_items: type_decl_items,
-      source_indices: source_indices
-    )
+      type_decl_items: type_decl_items)
   }
 }
 
@@ -2169,17 +2019,14 @@ fn v1_item_param_wf_needs_clone(
   param_name: String,
   item: Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
-  v1_item_field_type_exprs(item: item, source_indices: source_indices) |> any(te =>
+  v1_item_field_type_exprs(item: item) |> any(te =>
     v1_item_field_type_expr_wf_needs_clone_param(
       param_name: param_name,
       type_expr: te,
       bounds: bounds,
-      type_decl_items: type_decl_items,
-      source_indices: source_indices
-    )
+      type_decl_items: type_decl_items)
   )
 }
 
@@ -2188,24 +2035,19 @@ fn v1_fn_param_wf_needs_clone(
   value_params: List<Node>,
   ret: Node,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Bool {
   value_params |> any(vp =>
     v1_type_expr_wf_needs_clone_param(
       param_name: param_name,
       type_expr: param_node_type_expr(n: vp),
       bounds: bounds,
-      type_decl_items: type_decl_items,
-      source_indices: source_indices
-    )
+      type_decl_items: type_decl_items)
   ) || v1_type_expr_wf_needs_clone_param(
     param_name: param_name,
     type_expr: ret,
     bounds: bounds,
-    type_decl_items: type_decl_items,
-    source_indices: source_indices
-  )
+    type_decl_items: type_decl_items)
 }
 
 // THE REFUSAL FOR A REFERENCE NO ARM RESOLVES. v1.compiler.infer_emit_info
@@ -2220,39 +2062,36 @@ fn v1_fn_param_wf_needs_clone(
 // walk resolved, is a kernel spelling, or names no declared type.
 fn v1_type_expr_ambiguous_declared_head(
   type_expr: Node,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> String {
-  match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+  match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr) {
     TypeDeclLeafAmbiguous { leaf: leaf } => leaf
-    TypeDeclResolved { identity: _, decl: _ } => v1_type_expr_components_ambiguous_declared_head(type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices)
-    TypeDeclKernelSpellingUndecided { leaf: _ } => v1_type_expr_components_ambiguous_declared_head(type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices)
-    TypeDeclNotDeclared => v1_type_expr_components_ambiguous_declared_head(type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices)
+    TypeDeclResolved { identity: _, decl: _ } => v1_type_expr_components_ambiguous_declared_head(type_expr: type_expr, type_decl_items: type_decl_items)
+    TypeDeclKernelSpellingUndecided { leaf: _ } => v1_type_expr_components_ambiguous_declared_head(type_expr: type_expr, type_decl_items: type_decl_items)
+    TypeDeclNotDeclared => v1_type_expr_components_ambiguous_declared_head(type_expr: type_expr, type_decl_items: type_decl_items)
   }
 }
 
 fn v1_type_expr_components_ambiguous_declared_head(
   type_expr: Node,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> String {
   concat(
-    type_expr.children |> map(c => v1_wf_child_type_node(ch: c, source_indices: source_indices)),
+    type_expr.children |> map(c => v1_wf_child_type_node(ch: c)),
     v1_callable_type_expr_component_type_exprs(type_expr: type_expr)
   ) |> fold(init: "", f: (acc, component) =>
     if acc != "" { acc }
-    else { v1_type_expr_ambiguous_declared_head(type_expr: component, type_decl_items: type_decl_items, source_indices: source_indices) }
+    else { v1_type_expr_ambiguous_declared_head(type_expr: component, type_decl_items: type_decl_items) }
   )
 }
 
 fn v1_type_exprs_ambiguous_declared_head(
   type_exprs: List<Node>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> String {
   type_exprs |> fold(init: "", f: (acc, te) =>
     if acc != "" { acc }
-    else { v1_type_expr_ambiguous_declared_head(type_expr: te, type_decl_items: type_decl_items, source_indices: source_indices) }
+    else { v1_type_expr_ambiguous_declared_head(type_expr: te, type_decl_items: type_decl_items) }
   )
 }
 
@@ -2262,18 +2101,16 @@ fn v1_ambiguous_declared_head_refusal(subject: String, leaf: String) -> String {
 
 fn v1_item_clone_undecided_head(
   item: Node,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> String {
-  let item_generic_params = v1_item_generic_param_name_set(item: item, source_indices: source_indices)
-  v1_item_field_type_exprs(item: item, source_indices: source_indices) |> fold(init: "", f: (acc, te) =>
+  let item_generic_params = v1_item_generic_param_name_set(item: item)
+  v1_item_field_type_exprs(item: item) |> fold(init: "", f: (acc, te) =>
     if acc != "" {
       acc
     } else {
       v1_type_expr_clone_undecided_head(
         type_expr: te,
         type_decl_items: type_decl_items,
-        source_indices: source_indices,
         item_generic_params: item_generic_params
       )
     }
@@ -2308,18 +2145,15 @@ fn v1_clone_bound_round_for_item(
   round: CloneBoundRound,
   type_name: String,
   item: Node,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> CloneBoundRound {
   item.params |> fold(init: round, f: (acc, p) =>
-    let param_name = generic_param_name_at(n: p, source_indices: source_indices)
+    let param_name = generic_param_name_at(n: p)
     if v1_item_param_wf_needs_clone(
       param_name: param_name,
       item: item,
       bounds: acc.bounds,
-      type_decl_items: type_decl_items,
-      source_indices: source_indices
-    ) {
+      type_decl_items: type_decl_items) {
       v1_clone_bound_round_add(round: acc, type_name: type_name, param_name: param_name)
     } else {
       acc
@@ -2330,20 +2164,17 @@ fn v1_clone_bound_round_for_item(
 fn v1_clone_bound_seed_for_item(
   round: CloneBoundRound,
   type_name: String,
-  item: Node,
-  source_indices: Map<String, NewlineIndex>
+  item: Node
 ) -> CloneBoundRound {
   if is_coproduct_type(n: item) {
     round
   } else {
-    let field_type_exprs = v1_item_field_type_exprs(item: item, source_indices: source_indices)
+    let field_type_exprs = v1_item_field_type_exprs(item: item)
     item.params |> fold(init: round, f: (acc, p) =>
-      let param_name = generic_param_name_at(n: p, source_indices: source_indices)
+      let param_name = generic_param_name_at(n: p)
       if v1_item_type_param_needs_clone_bound_struct(
         param_name: param_name,
-        field_type_exprs: field_type_exprs,
-        source_indices: source_indices
-      ) {
+        field_type_exprs: field_type_exprs) {
         v1_clone_bound_round_add(round: acc, type_name: type_name, param_name: param_name)
       } else {
         acc
@@ -2356,8 +2187,7 @@ fn v1_clone_bound_fixpoint_loop(
   generic_type_names: List<String>,
   type_decl_items: TypeDeclIndex,
   bounds: Map<String, Set<String>>,
-  remaining: Int,
-  source_indices: Map<String, NewlineIndex>
+  remaining: Int
 ) -> Map<String, Set<String>> {
   if remaining <= 0 {
     bounds
@@ -2369,9 +2199,7 @@ fn v1_clone_bound_fixpoint_loop(
             round: acc,
             type_name: type_name,
             item: item,
-            type_decl_items: type_decl_items,
-            source_indices: source_indices
-          )
+            type_decl_items: type_decl_items)
         Absent => acc
       }
     )
@@ -2382,9 +2210,7 @@ fn v1_clone_bound_fixpoint_loop(
         generic_type_names: generic_type_names,
         type_decl_items: type_decl_items,
         bounds: round.bounds,
-        remaining: remaining - 1,
-        source_indices: source_indices
-      )
+        remaining: remaining - 1)
     }
   }
 }
@@ -2399,8 +2225,7 @@ fn v1_generic_declared_type_names(type_decl_items: TypeDeclIndex) -> List<String
 }
 
 fn v1_clone_bounded_type_params(
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Map<String, Set<String>> {
   let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items)
   let seeded = generic_type_names |> fold(init: CloneBoundRound { bounds: empty_map(), added: 0 }, f: (acc, type_name) =>
@@ -2409,9 +2234,7 @@ fn v1_clone_bounded_type_params(
         v1_clone_bound_seed_for_item(
           round: acc,
           type_name: type_name,
-          item: item,
-          source_indices: source_indices
-        )
+          item: item)
       Absent => acc
     }
   )
@@ -2419,9 +2242,7 @@ fn v1_clone_bounded_type_params(
     generic_type_names: generic_type_names,
     type_decl_items: type_decl_items,
     bounds: seeded.bounds,
-    remaining: (generic_type_names |> count) + 1,
-    source_indices: source_indices
-  )
+    remaining: (generic_type_names |> count) + 1)
 }
 
 data clone_impl_required_type_params_note: String = "THE SECOND RECORD, and the reason there must be two. v1_clone_bounded_type_params answers 'does naming G<A..> require P: Clone' — well-formedness, which is what a DECLARATION must print, because naming an ill-formed type is an error whether or not you clone. This one answers 'does CLONING G<A..> require P: Clone' — the derive-impl fact, because derive(Clone) on G emits impl<P: Clone> Clone for G<P>.
@@ -2439,17 +2260,14 @@ NOT CLOSED BY THIS: a carrier whose declaration is UPSTREAM. im::Vector<T> has n
 fn v1_clone_impl_seed_for_item(
   round: CloneBoundRound,
   type_name: String,
-  item: Node,
-  source_indices: Map<String, NewlineIndex>
+  item: Node
 ) -> CloneBoundRound {
-  let field_type_exprs = v1_item_field_type_exprs(item: item, source_indices: source_indices)
+  let field_type_exprs = v1_item_field_type_exprs(item: item)
   item.params |> fold(init: round, f: (acc, p) =>
-    let param_name = generic_param_name_at(n: p, source_indices: source_indices)
+    let param_name = generic_param_name_at(n: p)
     if v1_item_type_param_needs_clone_bound_struct(
       param_name: param_name,
-      field_type_exprs: field_type_exprs,
-      source_indices: source_indices
-    ) {
+      field_type_exprs: field_type_exprs) {
       v1_clone_bound_round_add(round: acc, type_name: type_name, param_name: param_name)
     } else {
       acc
@@ -2458,8 +2276,7 @@ fn v1_clone_impl_seed_for_item(
 }
 
 fn v1_clone_impl_required_type_params(
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> Map<String, Set<String>> {
   let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items)
   let seeded = generic_type_names |> fold(init: CloneBoundRound { bounds: empty_map(), added: 0 }, f: (acc, type_name) =>
@@ -2468,9 +2285,7 @@ fn v1_clone_impl_required_type_params(
         v1_clone_impl_seed_for_item(
           round: acc,
           type_name: type_name,
-          item: item,
-          source_indices: source_indices
-        )
+          item: item)
       Absent => acc
     }
   )
@@ -2478,9 +2293,7 @@ fn v1_clone_impl_required_type_params(
     generic_type_names: generic_type_names,
     type_decl_items: type_decl_items,
     bounds: seeded.bounds,
-    remaining: (generic_type_names |> count) + 1,
-    source_indices: source_indices
-  )
+    remaining: (generic_type_names |> count) + 1)
 }
 
 fn v1_item_clone_bounded_param_names(
@@ -2501,13 +2314,12 @@ fn v1_item_clone_bounded_param_names(
 // equality needed this generalization rather than a second renderer beside it.
 fn v1_emit_type_params_with_bounds(
   params: List<Node>,
-  bounds_by_param: Map<String, List<String>>,
-  source_indices: Map<String, NewlineIndex>
+  bounds_by_param: Map<String, List<String>>
 ) -> String {
   if params |> count == 0 { "" }
   else {
     let names = params |> map(p =>
-      let pname = generic_param_name_at(n: p, source_indices: source_indices)
+      let pname = generic_param_name_at(n: p)
       let pascal = to_pascal(name: pname)
       match map_get(bounds_by_param, pname) {
         Present { value: traits } =>
@@ -2560,8 +2372,7 @@ fn v1_item_wf_propagated_clone_bounded_param_names(
   item: Node,
   generic_param_names: List<String>,
   bounds: Map<String, Set<String>>,
-  type_decl_items: TypeDeclIndex,
-  source_indices: Map<String, NewlineIndex>
+  type_decl_items: TypeDeclIndex
 ) -> List<String> {
   v1_item_clone_bounded_param_names(
     item_identity: item_identity,
@@ -2572,9 +2383,7 @@ fn v1_item_wf_propagated_clone_bounded_param_names(
       param_name: g,
       item: item,
       bounds: bounds,
-      type_decl_items: type_decl_items,
-      source_indices: source_indices
-    )
+      type_decl_items: type_decl_items)
   )
 }
 
@@ -2590,11 +2399,11 @@ fn v1_item_wf_propagated_clone_bounded_param_names(
 // reading `.children` of the raw child saw `Wrapper` and lost the `K` inside `Wrapper<K>`; only a
 // bare `K` key was found, through the head. The same resolved node answers the head and the
 // arguments, so one walk covers both.
-fn v1_type_expr_all_names(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let node = v1_wf_child_type_node(ch: type_expr, source_indices: source_indices)
+fn v1_type_expr_all_names(type_expr: Node) -> List<String> {
+  let node = v1_wf_child_type_node(ch: type_expr)
   concat(
-    [authored_name_at(source_indices: source_indices, node: node)],
-    node.children |> flat_map(c => v1_type_expr_all_names(type_expr: c, source_indices: source_indices))
+    [node_authored_text(node: node)],
+    node.children |> flat_map(c => v1_type_expr_all_names(type_expr: c))
   )
 }
 
@@ -2602,7 +2411,7 @@ fn v1_map_key_nested_names_in_type_expr(type_expr: Node, source_indices: Map<Str
   let own = match v1_type_expr_keyed_map_verdict(type_expr: type_expr, source_indices: source_indices) {
     KeyedMap =>
       match type_expr.children |> first {
-        Present { value: key_child } => v1_type_expr_all_names(type_expr: key_child, source_indices: source_indices)
+        Present { value: key_child } => v1_type_expr_all_names(type_expr: key_child)
         Absent => []
       }
     NotKeyedMap => []
@@ -2633,10 +2442,10 @@ fn v1_map_key_bound_seed_for_item(
   item: Node,
   source_indices: Map<String, NewlineIndex>
 ) -> CloneBoundRound {
-  let names = v1_item_field_type_exprs(item: item, source_indices: source_indices)
+  let names = v1_item_field_type_exprs(item: item)
     |> flat_map(te => v1_map_key_nested_names_in_type_expr(type_expr: te, source_indices: source_indices))
   item.params |> fold(init: round, f: (acc, p) =>
-    let param_name = generic_param_name_at(n: p, source_indices: source_indices)
+    let param_name = generic_param_name_at(n: p)
     if names |> any(n => n == param_name) {
       v1_clone_bound_round_add(round: acc, type_name: type_name, param_name: param_name)
     } else {
@@ -2661,9 +2470,7 @@ fn v1_map_key_bounded_type_params(
     generic_type_names: generic_type_names,
     type_decl_items: type_decl_items,
     bounds: seeded.bounds,
-    remaining: (generic_type_names |> count) + 1,
-    source_indices: source_indices
-  )
+    remaining: (generic_type_names |> count) + 1)
 }
 
 fn v1_item_map_key_bounded_param_names(
@@ -2678,31 +2485,25 @@ fn v1_item_map_key_bounded_param_names(
 fn v1_emit_type_params_with_map_key_bounds(
   params: List<Node>,
   clone_param_names: List<String>,
-  key_param_names: List<String>,
-  source_indices: Map<String, NewlineIndex>
+  key_param_names: List<String>
 ) -> String {
   v1_emit_type_params_with_bounds(
     params: params,
     bounds_by_param: params |> fold(init: empty_map(), f: (m, p) =>
-      let n = generic_param_name_at(n: p, source_indices: source_indices)
+      let n = generic_param_name_at(n: p)
       let c = if clone_param_names |> any(x => x == n) { ["Clone"] } else { [] }
       let k = if key_param_names |> any(x => x == n) { ["std::cmp::Eq", "std::hash::Hash"] } else { [] }
       map_insert(m, n, concat(c, k))
-    ),
-    source_indices: source_indices
-  )
+    ))
 }
 
 fn v1_emit_type_params_with_clone_bounds(
   params: List<Node>,
-  clone_param_names: List<String>,
-  source_indices: Map<String, NewlineIndex>
+  clone_param_names: List<String>
 ) -> String {
   v1_emit_type_params_with_bounds(
     params: params,
-    bounds_by_param: clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"])),
-    source_indices: source_indices
-  )
+    bounds_by_param: clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"])))
 }
 
 fn v1_emit_struct_from_capability_table(
@@ -2713,18 +2514,17 @@ fn v1_emit_struct_from_capability_table(
   has_fn_fields: Bool,
   map_key_required: Bool,
   generic_param_names: List<String>,
-  source_indices: Map<String, NewlineIndex>,
   header_clone_param_names: List<String>,
   deserialize_forbidden: Bool,
   type_decl_items: TypeDeclIndex
 ) -> StructCapabilityEmit {
   let field_type_exprs = children |> map(f => child_type_node(ch: f))
   let fm_params = if has_fn_fields || map_key_required
-    || rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices)
+    || rust_symbol_wrapped_ord_carrier_shape_eligible(children: children)
     || repr_grounding_group_completion_carrier(module_path: module_path, name: name) {
     []
   } else {
-    v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices)
+    v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs)
   }
   if (fm_params |> count) > 0 {
     let base = if set_contains(shared_types, name) { v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden) } else { v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden) }
@@ -2736,18 +2536,18 @@ fn v1_emit_struct_from_capability_table(
     )
     let impl_bodies = concat(
       "\n\n",
-      v1_freemonoid_struct_debug_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices),
+      v1_freemonoid_struct_debug_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs),
       "\n\n",
-      v1_freemonoid_struct_partial_eq_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices)
+      v1_freemonoid_struct_partial_eq_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs)
     )
     StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
   } else {
     let ord_propagated_params = if has_fn_fields || map_key_required
-      || rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices)
+      || rust_symbol_wrapped_ord_carrier_shape_eligible(children: children)
       || repr_grounding_group_completion_carrier(module_path: module_path, name: name) {
       []
     } else {
-      v1_item_ord_propagated_param_names(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, type_decl_items: type_decl_items, source_indices: source_indices)
+      v1_item_ord_propagated_param_names(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, type_decl_items: type_decl_items)
     }
     if (ord_propagated_params |> count) > 0 {
       let base = if set_contains(shared_types, name) { v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden) } else { v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden) }
@@ -2760,9 +2560,9 @@ fn v1_emit_struct_from_capability_table(
       )
       let impl_bodies = concat(
         "\n\n",
-        v1_set_struct_debug_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: ord_propagated_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices),
+        v1_set_struct_debug_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: ord_propagated_params, children: children, field_type_exprs: field_type_exprs),
         "\n\n",
-        v1_set_struct_partial_eq_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: ord_propagated_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices)
+        v1_set_struct_partial_eq_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: ord_propagated_params, children: children, field_type_exprs: field_type_exprs)
       )
       StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
     } else {
@@ -2772,9 +2572,7 @@ fn v1_emit_struct_from_capability_table(
         shared_types: shared_types,
         has_fn_fields: has_fn_fields,
         map_key_required: map_key_required,
-        deserialize_forbidden: deserialize_forbidden,
-        source_indices: source_indices
-      )
+        deserialize_forbidden: deserialize_forbidden)
       let impl_bodies = if repr_grounding_group_completion_carrier(module_path: module_path, name: name)
         && repr_grounding_derive_completeness_predicate(
           rust_capability_shape_table(),
@@ -2799,25 +2597,24 @@ fn v1_emit_enum_supplemental_impls(
   name: String,
   children: List<Node>,
   generic_param_names: List<String>,
-  header_clone_param_names: List<String>,
-  source_indices: Map<String, NewlineIndex>
+  header_clone_param_names: List<String>
 ) -> String {
   let field_type_exprs = v1_enum_variant_field_type_exprs(children: children)
-  let fm_params = v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices)
-  let set_params = v1_set_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices)
+  let fm_params = v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs)
+  let set_params = v1_set_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs)
   if (fm_params |> count) > 0 {
     concat(
       "\n\n",
-      v1_freemonoid_enum_debug_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices),
+      v1_freemonoid_enum_debug_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs),
       "\n\n",
-      v1_freemonoid_enum_partial_eq_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices)
+      v1_freemonoid_enum_partial_eq_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, fm_params: fm_params, children: children, field_type_exprs: field_type_exprs)
     )
   } else if (set_params |> count) > 0 {
     concat(
       "\n\n",
-      v1_set_enum_debug_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices),
+      v1_set_enum_debug_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, children: children, field_type_exprs: field_type_exprs),
       "\n\n",
-      v1_set_enum_partial_eq_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices)
+      v1_set_enum_partial_eq_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, children: children, field_type_exprs: field_type_exprs)
     )
   } else {
     ""
@@ -2829,6 +2626,6 @@ data trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_on:
 
 data trait_derive_emit_item_clone_bound_contract_fork_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: v2 Rust emitter consumes target_derive_supplemental_generic_bound_contract for item-level generic bounds; then delete this structural implementation — do not accumulate beside the contract.")
 
-data trait_derive_emit_symbol_ord_carrier_dissolve_on: DissolutionCondition = unbound_dissolution(description: "rust_nominal_identity_carrier_shape_eligible gates on authored_name_at == \\\"Symbol\\\"; dissolves when Symbol kernel grounds on target_model.symbol_kernel_type_node (or equivalent typed atom) instead of string match. Single authority: trait_derive_emit (emit_rust imports; duplicate removed review 42525).")
+data trait_derive_emit_symbol_ord_carrier_dissolve_on: DissolutionCondition = unbound_dissolution(description: "rust_nominal_identity_carrier_shape_eligible gates on node_authored_text == \\\"Symbol\\\"; dissolves when Symbol kernel grounds on target_model.symbol_kernel_type_node (or equivalent typed atom) instead of string match. Single authority: trait_derive_emit (emit_rust imports; duplicate removed review 42525).")
 
 data trait_derive_emit_v1_coproduct_shape_dissolve_on: DissolutionCondition = unbound_dissolution(description: "v1_coproduct_all_variants_nullary duplicates v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary (nullary = zero Conj children on v1 Node); dissolves when v1 trait_derive_emit imports the v2 shape authority instead of minting a parallel walk.")

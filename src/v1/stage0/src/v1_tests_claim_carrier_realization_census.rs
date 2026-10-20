@@ -49,7 +49,7 @@ use crate::v1_std_core::Connective::Arrow;
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration;
 pub use crate::v1_std_core::{
-    authored_name_at, declaration_provenance_of, param_node_type_expr, provenance_reported_file,
+    declaration_provenance_of, node_authored_text, param_node_type_expr, provenance_reported_file,
     type_reference_identity, type_reference_provenance, Connective, InferredNode, NewlineIndex,
     Node, ParsedModuleItemKind,
 };
@@ -195,7 +195,7 @@ pub fn identity_query_provenance(
 }
 
 pub fn legacy_claims_text(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
-    crate::v1_compiler_emit_rust::is_host_text_carrier_type(n.clone(), si.clone())
+    crate::v1_compiler_emit_rust::is_host_text_carrier_type(n.clone())
 }
 
 pub fn authority_realizes(name: String, provenance: Rc<TypeDeclarationProvenance>) -> bool {
@@ -213,7 +213,7 @@ pub fn authority_realizes(name: String, provenance: Rc<TypeDeclarationProvenance
 }
 
 pub fn legacy_base_label(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    if crate::v1_compiler_emit_rust::is_host_text_carrier_type(n.clone(), si.clone()) {
+    if crate::v1_compiler_emit_rust::is_host_text_carrier_type(n.clone()) {
         "String".to_string()
     } else {
         "<not-short-circuited>".to_string()
@@ -265,7 +265,7 @@ pub fn typed_decision_row(
         let identity = identity_observation(inferred.clone(), environment.clone());
         let query_provenance = identity_query_provenance(identity.clone());
         let query_file = crate::v1_std_core::provenance_reported_file(query_provenance.clone());
-        let name = crate::v1_std_core::authored_name_at(si.clone(), n.clone());
+        let name = crate::v1_std_core::node_authored_text(n.clone());
         let claims_text = legacy_claims_text(n.clone(), si.clone());
         Rc::new(TypedCarrierRow {
             module_file: module_file.clone(),
@@ -287,7 +287,6 @@ pub fn typed_decision_row(
                     crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
                         type_decls.clone(),
                         n.clone(),
-                        si.clone(),
                     ),
                 ),
             outcome: outcome_of(
@@ -359,7 +358,6 @@ pub fn typed_occurrence_rows(
                 let decl_identity =
                     crate::v1_compiler_infer_env::type_reference_declaration_reading(
                         n.clone(),
-                        si.clone(),
                         env.clone(),
                     );
                 let is_kernel_mint = match (*decl_identity.clone()).clone() {
@@ -444,7 +442,7 @@ pub fn typed_item_rows(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedCarrierRow>>> {
     {
-        let enclosing = crate::v1_std_core::authored_name_at(si.clone(), item.clone());
+        let enclosing = crate::v1_std_core::node_authored_text(item.clone());
         let decl_rows = if !crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
             no_typed_rows()
         } else {
@@ -525,7 +523,7 @@ pub fn typed_module_rows(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedCarrierRow>>> {
     {
-        let module_file = crate::v1_std_core::authored_name_at(si.clone(), m.module.clone());
+        let module_file = crate::v1_std_core::node_authored_text(m.module.clone());
         m.items
             .clone()
             .iter()

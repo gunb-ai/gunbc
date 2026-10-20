@@ -79,13 +79,13 @@ use crate::v1_interpreter::str_value;
 use crate::v1_interpreter::Value;
 use crate::v1_rt;
 use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_pattern, authored_name_at, block_stmts,
-    build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
-    empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
-    field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    arg_name_at, arg_value, arm_body, arm_pattern, block_stmts, build_newline_index,
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
+    empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
+    field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
+    inferred_to_node, intern, is_error_diagnostic, is_interpreter_blocking_diagnostic,
+    let_binding_name_at, let_value, make_error_node, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_items, no_span, node_authored_text,
     param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
     ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
     Node,
@@ -531,7 +531,6 @@ fn project_resolved_rust_fn_signatures(
     let Some(graph) = resolved.graph.as_ref() else {
         return Vec::new();
     };
-    let source_indices = resolved.source_indices.clone();
     // Bare Fn/Func name → how many TypedModules publish it. Count > 1 ⇒ omit every row for
     // that name (see doc above); never publish the un-expanded loser.
     let mut bare_fn_module_count: HashMap<String, usize> = HashMap::new();
@@ -569,7 +568,7 @@ fn project_resolved_rust_fn_signatures(
                     let mut ordered: Vec<String> = Vec::new();
                     for p in info.params.iter() {
                         ordered.push(emit_ident(
-                            param_node_name_at(p.clone(), source_indices.clone()),
+                            param_node_name_at(p.clone()),
                             RenderTarget::Rust,
                         ));
                     }
@@ -1259,7 +1258,6 @@ fn primitive_call_edge_at(
     texpr: &Rc<crate::v1_std_core::Node>,
     caller_module: &str,
     caller_decl: &str,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     out: &mut Vec<crate::cli_run::PrimitiveCallEdgeRow>,
 ) {
     use crate::cli_run::{PrimitiveCallEdgeRow, PrimitiveCalleeIdentity};
@@ -1269,8 +1267,7 @@ fn primitive_call_edge_at(
     let (authored_spelling, callee): (String, Option<PrimitiveCalleeIdentity>) =
         match &*texpr.expr_data {
             ExprData::ExprCall { call_semantics, .. } => {
-                let spelling =
-                    crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone());
+                let spelling = crate::v1_std_core::expr_call_func_at(texpr.clone());
                 let callee = match call_semantics.as_deref() {
                     Some(CallSemantics::PlainCallSemantics { target })
                     | Some(CallSemantics::ResolvedDirectCallSemantics { target, .. })
@@ -1285,8 +1282,7 @@ fn primitive_call_edge_at(
                 (spelling, callee)
             }
             ExprData::ExprMethodCall { method_semantics } => {
-                let spelling =
-                    crate::v1_std_core::expr_method_name_at(texpr.clone(), source_indices.clone());
+                let spelling = crate::v1_std_core::expr_method_name_at(texpr.clone());
                 let callee = match method_semantics.as_deref() {
                     Some(MethodSemantics::AlgebraMethodSemantics {
                         algebra_template, ..
@@ -1334,12 +1330,11 @@ fn collect_primitive_call_edges(
     texpr: &Rc<crate::v1_std_core::Node>,
     caller_module: &str,
     caller_decl: &str,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     out: &mut Vec<crate::cli_run::PrimitiveCallEdgeRow>,
 ) {
     let mut pending: Vec<Rc<crate::v1_std_core::Node>> = vec![texpr.clone()];
     while let Some(node) = pending.pop() {
-        primitive_call_edge_at(&node, caller_module, caller_decl, source_indices, out);
+        primitive_call_edge_at(&node, caller_module, caller_decl, out);
         // Every field that can carry an expression node: `children` (arguments, a service's
         // operations, a type's variants), `body`, `params` (a default argument), `properties`
         // (a fn's admit props), `transport` (a service transport expression).
@@ -1365,14 +1360,13 @@ fn primitive_call_edges_from_module(
     module: &TypedModule,
     out: &mut Vec<crate::cli_run::PrimitiveCallEdgeRow>,
 ) {
-    let si = module.type_env.source_indices.clone();
-    let module_name = crate::v1_std_core::authored_name_at(si.clone(), module.module.clone());
+    let module_name = crate::v1_std_core::node_authored_text(module.module.clone());
     for item in module.items.iter() {
-        let decl_name = crate::v1_std_core::authored_name_at(si.clone(), item.clone());
+        let decl_name = crate::v1_std_core::node_authored_text(item.clone());
         // The ITEM NODE is the walk root, so every expression-bearing field of a declaration --
         // body, params (default arguments), children (a service's operations, a type's
         // variants), properties (admit props), transport -- is inside the denominator.
-        collect_primitive_call_edges(item, &module_name, &decl_name, &si, out);
+        collect_primitive_call_edges(item, &module_name, &decl_name, out);
     }
 }
 
@@ -1528,10 +1522,7 @@ fn compile_dag_primitive_call_edges_on_this_thread(
         if !admitted(&module_file) {
             continue;
         }
-        let module_name = crate::v1_std_core::authored_name_at(
-            module.type_env.source_indices.clone(),
-            module.module.clone(),
-        );
+        let module_name = crate::v1_std_core::node_authored_text(module.module.clone());
         if !walked_modules.insert(module_name.clone()) {
             // Two modules in one resolved graph carrying one authored name is an ambiguity
             // the census must SEE: a typed refusal row, never a shortened population.
@@ -1974,9 +1965,7 @@ pub fn compile_dag_operation_requires(
         })?;
     use crate::v1_compiler_parse::OperationRequiresDeclaration::*;
     Ok(
-        match crate::v1_compiler_parse::operation_requires_declaration(op.clone(), source_indices)
-            .as_ref()
-        {
+        match crate::v1_compiler_parse::operation_requires_declaration(op.clone()).as_ref() {
             RequiresUndeclared => vec!["undeclared".to_string()],
             RequiresNone => vec!["none".to_string()],
             RequiresOpaque => vec!["opaque".to_string()],
@@ -2318,7 +2307,7 @@ pub(crate) fn fixture_render_selection(
     let mut fixture: Vec<String> = Vec::new();
     let mut read: Vec<String> = Vec::new();
     for tm in graph.modules.iter() {
-        let name = authored_name_at(tm.type_env.source_indices.clone(), tm.module.clone());
+        let name = node_authored_text(tm.module.clone());
         let path = crate::v1_compiler_emit_rust::rust_module_emit_path(name);
         let basename = path
             .strip_prefix(root.as_str())
@@ -2343,20 +2332,14 @@ pub(crate) fn fixture_render_selection(
     Ok(selected(fixture))
 }
 
-pub(crate) fn transport_script_body_arg_node(
-    node: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    let args = crate::v1_compiler_infer::call_args_by_name(node.clone(), source_indices.clone());
+pub(crate) fn transport_script_body_arg_node(node: &Rc<Node>) -> Option<Rc<Node>> {
+    let args = crate::v1_compiler_infer::call_args_by_name(node.clone());
     v1_rt::map_get(&args, "body".to_string())
 }
 
-pub(crate) fn transport_script_arg_node(
-    node: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+pub(crate) fn transport_script_arg_node(node: &Rc<Node>) -> Option<Rc<Node>> {
     for arg in method_arg_nodes(node.clone()).iter() {
-        if arg_name_at(arg.clone(), source_indices.clone()).as_deref() == Some("script") {
+        if arg_name_at(arg.clone()).as_deref() == Some("script") {
             return Some(arg_value(arg.clone()));
         }
     }
