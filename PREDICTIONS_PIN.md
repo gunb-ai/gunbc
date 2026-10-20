@@ -127,3 +127,20 @@ This is the push gate stern-bat-401 required (msg_79410475, msg_1c6d0180): the p
 main on every compiler input, so both closures refuse nothing that main does not already refuse, and lose
 nothing main refuses. Combined with B3 (emit-and-build of the self-host product, SELF_HOST_RC=0 lines=25,
 matching main's control) this head is green on every gate I can run; CI on the head is the final word.
+
+## Gate re-run at the documentation-only head 7c32c1359f3 (job jf111355c)
+
+NOT pre-registered in the strict sense: I dispatched the run and am writing this while it is still
+running, so these are expectations stated after dispatch but before reading any result. Stating them
+anyway is better than reading the numbers first and agreeing afterwards; the reader should weigh them
+as weaker than B1-B6, which were written before their runs.
+
+Head 7c32c1359f3 = merge commit of origin/main 9de8941f73f (ten commits, incl. #14354 and #14524) + the
+row-only change. The diff against origin/main is ONE file, a `dag/gunbc/recurring_failure_mode/` row:
+  - corpus parse: expect CORPUS_PARSE_RC=0 / VERDICT=CLEAN / ERROR_LINES=0 with a real binary under the
+    private target dir (not a ctrl-build shim). The previous head at this gate gave exactly that. A
+    non-zero here can only come from my row's text (the quote bug class), since no code changed.
+  - emit-and-build: expect build rc=0 and SELF_HOST_RC=0 lines=25 with EMITTED_BUILD_FAILED_LINES=0,
+    matching the controls on main tips. A red here would be the MERGE's fault, not the row's -- the base
+    moved ten commits since the last emit-build measurement -- so if it is red I must re-run it against
+    plain origin/main 9de8941f73f before attributing anything to this PR.
