@@ -67,6 +67,7 @@ module gunbc.provisioning.altra_autoinstall_seed
 // — so a strategy name cannot quietly change what the seed promises.
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.os.types { NobleNumbat2404Lts, UbuntuDistribution }
 import std.measure { ByteSize, CharacterCount, byte_size_count, character_count, measure_le }
 import std.optional { Optional, Absent, Present }
 import std.content_hash {
@@ -91,10 +92,20 @@ import extdeps.libxcrypt.crypt_scheme {
 }
 import extdeps.uri { Uri, Https }
 import extdeps.os.ubuntu_autoinstall {
+  AutoinstallDeliveryMethod,
   AutoinstallIdentity,
   AutoinstallStoragePolicy,
+  NoCloudLocal,
+  NoCloudNet,
   StoragePolicyDirectLayout,
+  UbuntuAutoinstallPayload,
 }
+// THE RENDERER IS THE ONE THE FLEET ALREADY BOOTS FROM. (review: merry-fox-82, HOLD section 1) This module
+// does not emit YAML and does not imitate the cloud-config writer: it builds the upstream payload record and
+// hands it to the same fold os_install uses, so a seed whose payload cannot be written is a seed that cannot
+// be bound. Importing the fold rather than restating its output is what makes "the document the machine was
+// given" answerable — a local string that merely resembles the payload proves nothing about the document.
+import gunbc.os_install_emit { AutoinstallUserData, autoinstall_user_data }
 import extdeps.ssh.keys { SshPublicKey, ssh_public_key_line }
 import extdeps.storage.types {
   BareDevice,
@@ -354,10 +365,10 @@ fn altra_install_driver_package(driver: AltraInstallDriver) -> NonEmptyStr {
 // UnclassifiedPackage and is still refused.
 fn altra_required_late_package_rows() -> List<PackageIntent> {
   [
-    PackageVerifiedSilent { name: "nvme-cli" as NonEmptyStr, silence: nvme_cli_silence_receipt },
-    PackageVerifiedSilent { name: "ipmitool" as NonEmptyStr, silence: ipmitool_silence_receipt },
-    PackageVerifiedSilent { name: "dmidecode" as NonEmptyStr, silence: dmidecode_silence_receipt },
-    PackageVerifiedSilent { name: "rasdaemon" as NonEmptyStr, silence: rasdaemon_silence_receipt },
+    PackageVerifiedSilent { silence: nvme_cli_silence_receipt },
+    PackageVerifiedSilent { silence: ipmitool_silence_receipt },
+    PackageVerifiedSilent { silence: dmidecode_silence_receipt },
+    PackageVerifiedSilent { silence: rasdaemon_silence_receipt },
   ]
 }
 
@@ -367,21 +378,25 @@ fn altra_required_late_package_rows() -> List<PackageIntent> {
 // standings are identical today because all four were measured the same way; they are separate rows so that when
 // one of them is only transcribed, or is found to prompt, it can change its standing without touching the others.
 data nvme_cli_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  package: "nvme-cli" as NonEmptyStr,
   observed_version: "2.8-1build2" as NonEmptyStr,
   standing: CitedToAuthority { authority: nvme_cli_deb_authority },
 }
 
 data ipmitool_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  package: "ipmitool" as NonEmptyStr,
   observed_version: "1.8.19-7build2" as NonEmptyStr,
   standing: CitedToAuthority { authority: ipmitool_deb_authority },
 }
 
 data dmidecode_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  package: "dmidecode" as NonEmptyStr,
   observed_version: "3.5-3build1" as NonEmptyStr,
   standing: CitedToAuthority { authority: dmidecode_deb_authority },
 }
 
 data rasdaemon_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  package: "rasdaemon" as NonEmptyStr,
   observed_version: "0.8.0-2" as NonEmptyStr,
   standing: CitedToAuthority { authority: rasdaemon_deb_authority },
 }
@@ -568,7 +583,7 @@ type PackageIntent =
     QuestionAnswered { package: KnownPromptingPackage, debconf_seed: NonEmptyStr }
   | QuestionUnanswered { package: KnownPromptingPackage }
   | UnclassifiedPackage { name: NonEmptyStr, debconf_seed: Optional<NonEmptyStr> }
-  | PackageVerifiedSilent { name: NonEmptyStr, silence: PackageSilenceReceipt }
+  | PackageVerifiedSilent { silence: PackageSilenceReceipt }
 
 // THE WARRANT BEHIND A SILENCE CLAIM, AND HOW FAR IT REACHES. `observed_version` is the build the claim was made
 // against, and it travels with the claim because silence is a property of a BUILD, not of a name: an upstream
@@ -580,9 +595,23 @@ type PackageIntent =
 // domain; a local twin would have let a silence row claim a rung the corpus does not recognise. Its third arm
 // (ObservedByReceipt) is sealed upstream, which is the right strictness: a receipt of our own observation is
 // minted only by a fold that reads committed data, never by hand.
+// THE RECEIPT NAMES THE PACKAGE IT WAS ESTABLISHED FOR, and the intent arm below therefore carries the receipt
+// and NOTHING ELSE (review: merry-fox-82, HOLD section 5). The arm used to spell the name a second time beside
+// the receipt, so a reader could pair nvme-cli's version and citation with a claim about ipmitool and the audit
+// would emit NothingToAsk for a package whose silence nobody ever established. One name, in the evidence; the
+// verdict reads it out rather than being handed it. A future silent package authors its own receipt — the name
+// comes along for free and cannot be left behind.
 type PackageSilenceReceipt = SilentReceipt {
+  package: NonEmptyStr
   observed_version: NonEmptyStr
   standing: CitedFigureStanding
+}
+
+// WHICH PACKAGE A SILENCE CLAIM IS ABOUT — read from the evidence, which is the only place it is written.
+fn silenced_package(receipt: PackageSilenceReceipt) -> NonEmptyStr {
+  match receipt {
+    SilentReceipt { package: pkg, observed_version: _, standing: _ } => pkg
+  }
 }
 
 // THE AUDIT'S VERDICT ON ONE INTENT, IN THE SAME THREE PARTS THE INTENT IS STATED IN. Derived, never stored:
@@ -610,23 +639,55 @@ type PackagePromptingVerdict =
 // and the parametric key is spelled with its placeholder because the area is the operator's choice, not a fact
 // this repository may fix. A future package that asks three things adds a third string here and the audit follows
 // without an edit.
-fn required_debconf_keys(package: KnownPromptingPackage) -> List<NonEmptyStr> {
+// THE REQUIREMENT IS A CLOSED SHAPE, NOT A KEY STRING WITH A TRAILING PLACEHOLDER. The earlier spelling was
+// ["tzdata/Areas", "tzdata/Zones/"]: a truncated key that no record could ever carry, which is exactly why the
+// substring audit passed it. A parametric question is a DIFFERENT KIND OF REQUIREMENT — it is answered by the key
+// its own sibling answer builds — so it gets its own arm, and the join is executed by the auditor below instead
+// of being written as prose. A package that asks a third fixed question adds a string to its list; a package
+// whose second question is parametric on some other answer adds a ParametricKey arm naming which answer it reads.
+type DebconfRequirement
+  = FixedKey { key: NonEmptyStr }
+  | ParametricKey { prefix: NonEmptyStr, answered_by: NonEmptyStr }
+
+fn debconf_requirements(package: KnownPromptingPackage) -> List<DebconfRequirement> {
   match package {
-    ConsoleSetupPackage => ["console-setup/ask_detect"]
-    KeyboardConfigurationPackage => ["keyboard-configuration/layout"]
-    TzdataPackage => ["tzdata/Areas", "tzdata/Zones/"]
-    PostfixPackage => ["postfix/main_mailer_type"]
-    NtpPackage => ["ntp/utc"]
-    OpenSshServerPackage => ["openssh-server/password-authentication"]
-    CloudInitPackage => ["cloud-init/datasources"]
+    ConsoleSetupPackage => [FixedKey { key: "console-setup/ask_detect" as NonEmptyStr }]
+    KeyboardConfigurationPackage => [FixedKey { key: "keyboard-configuration/layout" as NonEmptyStr }]
+    // debian/tzdata.postinst: db_get tzdata/Areas, then db_get "tzdata/Zones/$AREA". The second question does
+    // not exist as a name until the first is answered, so it is stated as a function of it.
+    TzdataPackage => [
+      FixedKey { key: "tzdata/Areas" as NonEmptyStr },
+      ParametricKey { prefix: "tzdata/Zones/" as NonEmptyStr, answered_by: "tzdata/Areas" as NonEmptyStr },
+    ]
+    PostfixPackage => [FixedKey { key: "postfix/main_mailer_type" as NonEmptyStr }]
+    NtpPackage => [FixedKey { key: "ntp/utc" as NonEmptyStr }]
+    OpenSshServerPackage => [FixedKey { key: "openssh-server/password-authentication" as NonEmptyStr }]
+    CloudInitPackage => [FixedKey { key: "cloud-init/datasources" as NonEmptyStr }]
   }
 }
 
-// THE AUDIT ANSWERS KEYS, NOT PACKAGES. Every key the row requires must appear in the seeded text, so a partially
-// answered package stays an open question instead of being credited as closed. Matching is by key substring rather
-// than by parsing debconf's own "owner key type value" line format, because this repository does not implement
-// debconf-set-selections and must not pretend to: the seed field is the text handed to the installer, and what is
-// checkable here is that every key the package will ask is present in it.
+// THE LABEL A REQUIREMENT IS SATISFIED BY, or Absent when the answer it is parametric on was never established —
+// in which case there is no label to look for and the requirement is unanswered, not silently skipped.
+fn requirement_label(seed: String, owner: NonEmptyStr, requirement: DebconfRequirement) -> Optional<NonEmptyStr> {
+  match requirement {
+    FixedKey { key: key } => Present { value: key }
+    ParametricKey { prefix: prefix, answered_by: source } =>
+      match established_content(seed: seed, owner: owner, label: source) {
+        Present { value: area } => Present { value: concat(prefix, area) as NonEmptyStr }
+        Absent => Absent
+      }
+  }
+}
+
+// THE AUDIT ANSWERS KEYS, NOT PACKAGES, AND A KEY IS ANSWERED BY A RECORD AND NOTHING ELSE. Every key the row
+// requires must be the LABEL of an established record whose OWNER is this package and which carries a value, so a
+// partially answered package stays an open question instead of being credited as closed. This used to be a
+// substring test over the whole seeded text, which is the defect merry-fox-82 caught: a line that merely MENTIONS
+// a key closed the audit — including a comment line, which debconf's own reader drops (debconf 1.5.92
+// debconf-set-selections line 206, `next if /^\s*$/ || /^\s*\#/;`). The parse here follows that reader's shape,
+// record by record (line 209 requires the fourth field, so this module is deliberately stricter than a lenient
+// grep and refuses a value-less record it could not have installed anyway). Absence of a record is the only
+// honest "not answered"; no sentinel, no empty string, no substring.
 fn package_prompting_verdict(intent: PackageIntent) -> PackagePromptingVerdict {
   match intent {
     QuestionAnswered { package: named, debconf_seed: answer } =>
@@ -646,16 +707,279 @@ fn package_prompting_verdict(intent: PackageIntent) -> PackagePromptingVerdict {
     }
     UnclassifiedPackage { name: un, debconf_seed: _ } =>
       UnclassifiedPrompting { name: un }
-    PackageVerifiedSilent { name: nm, silence: receipt } => NothingToAsk { name: nm, silence: receipt }
+    PackageVerifiedSilent { silence: receipt } => NothingToAsk {
+      name: silenced_package(receipt: receipt),
+      silence: receipt,
+    }
   }
 }
 
+// WHAT COUNTS AS AN ANSWER: AN ESTABLISHED RECORD, NOT A MENTION.
+//
+// WHY THE OLD FORM WAS WRONG (review: merry-fox-82, HOLD section 5). The audit asked whether each required key
+// name was a SUBSTRING of the seed text. debconf's own selection reader SKIPS blank lines and lines whose first
+// non-space character is `#` (debconf 1.5.92, debconf-set-selections line 206:
+// `next if /^\s*$/ || /^\s*\#/;`), and it splits every line it does read into an owner, a label, a type, and a
+// content (same file, line 209: `my ($owner, $label, $type, $content) =
+// /^\s*(\S+)\s+(\S+)\s+(\S+)(?:\s(.*))?/;`). A tzdata postinst that comments its own zone template while
+// leaving the question live therefore CLOSED the whole tzdata audit under the substring rule:
+//     # tzdata/Areas tzdata/Zones/America
+// is a comment, and a comment is not an answer. That is precisely the failure this module exists to prevent — a
+// seed that certifies itself non-interactive and then hangs at minute twelve with nobody at the panel.
+//
+// ONE DECODER, ONE AUTHORITY. Text becomes records here and only here; every question the audit asks is asked
+// of the records. Nothing may ask the seed string whether it "contains" a key again.
+type EstablishedAnswer {
+  owner: NonEmptyStr
+  label: NonEmptyStr
+  kind: NonEmptyStr
+  content: NonEmptyStr
+}
+
+// WHAT IS OURS AND WHAT IS UPSTREAM'S, stated because a reviewer must be able to tell (DESIGN.md §4d, "do not
+// assert as deduced what is only inferred"). Skipping comments and blanks is upstream's rule, cited above.
+// Splitting on whitespace and keeping the tail whole is upstream's regex, also cited. THE VALUE FIELD IS
+// REQUIRED HERE AND IS OPTIONAL UPSTREAM: a three-field line makes upstream store an EMPTY content, and an
+// empty answer to `tzdata/Areas` selects no area, so the package still asks. Refusing to credit it is STRICTER
+// than upstream and is our policy, not its spelling. A future requirement to match upstream's leniency exactly
+// adds one arm to `established_answer_from` admitting an empty content for a kind whose empty value is
+// meaningful, and would have to name which question that unblocks; there is no such kind in this seed today.
+//
+// A record whose LABEL names a question this module has no row for is KEPT, not dropped, and is inert: the
+// audit only ever asks for a label it took from required_debconf_keys, so an unrecognised label can neither pass
+// nor fail anything. Filtering it here instead would mean a second copy of the key table — the same keys spelled
+// twice, which is the drift §3 forbids and which an earlier revision of this module actually had.
+fn established_answer_from(line: String) -> Optional<EstablishedAnswer> {
+  let trimmed = leading_spaces_removed(text: line)
+  match trimmed {
+    // Blank, or a comment. Neither establishes anything, however precisely it spells a question.
+    "" => Absent
+    _ => match trimmed.starts_with(prefix: "#") {
+      True => Absent
+      False => match record_fields(line: trimmed) {
+        Present { value: triple } =>
+          Present { value: EstablishedAnswer {
+            owner: triple.owner,
+            label: triple.label,
+            kind: triple.kind,
+            content: triple.value,
+          } }
+        Absent => Absent
+      }
+    }
+  }
+}
+
+// A CANDIDATE RECORD CARRIES THREE KEY FIELDS AND THEN A VALUE. Each key field is non-empty and separated from
+// the next by at least one space; the fourth field is what remains, and must exist (see the policy note above).
+// The value is cut HERE rather than by a second pass over the line: scanning the same text twice is how the two
+// halves of a record came to disagree about where the fields end.
+type RecordFields { owner: NonEmptyStr label: NonEmptyStr kind: NonEmptyStr value: NonEmptyStr }
+
+fn record_fields(line: String) -> Optional<RecordFields> {
+  match first_field(text: line) {
+    Present { value: first } =>
+      match remainder_after_first_field(text: line) {
+        Present { value: after_first } =>
+          match first_field(text: after_first) {
+            Present { value: second } =>
+              match remainder_after_first_field(text: after_first) {
+                Present { value: after_second } =>
+                  match first_field(text: after_second) {
+                    Present { value: third } =>
+                      match remainder_after_first_field(text: after_second) {
+                        Present { value: value_tail } =>
+                          match value_tail.trim() {
+                            "" => Absent
+                            _ => Present { value: RecordFields {
+                              owner: first as NonEmptyStr,
+                              label: second as NonEmptyStr,
+                              kind: third as NonEmptyStr,
+                              value: value_tail.trim() as NonEmptyStr,
+                            } }
+                          }
+                        Absent => Absent
+                      }
+                    Absent => Absent
+                  }
+                Absent => Absent
+              }
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+// THE FIRST WHITESPACE-DELIMITED FIELD, or Absent when the text opens with a separator or is empty. Built from
+// substring and length alone: this language exposes no character-indexing builtin for a String, and a scanner
+// written against one would not typecheck.
+fn first_field(text: String) -> Optional<NonEmptyStr> {
+  field_end_of(text: text, index: 0, seen: false)
+}
+
+fn field_end_of(text: String, index: Int, seen: Bool) -> Optional<NonEmptyStr> {
+  match index < text.length() {
+    True => match is_space(text: text, index: index) {
+      True => match seen {
+        True => Present { value: text.substring(start: 0, end: index) as NonEmptyStr }
+        False => field_end_of(text: text, index: index + 1, seen: false)
+      }
+      False => field_end_of(text: text, index: index + 1, seen: true)
+    }
+    False => match seen {
+      True => Present { value: text.substring(start: 0, end: index) as NonEmptyStr }
+      False => Absent
+    }
+  }
+}
+
+// WHAT FOLLOWS A FIELD AND ITS SEPARATOR RUN — the boundary the value is cut at. Absent means the text ended
+// with the field: there was no separator, so there is nothing after it.
+fn remainder_after_first_field(text: String) -> Optional<NonEmptyStr> {
+  field_boundary_of(text: text, index: 0, seen: false)
+}
+
+fn field_boundary_of(text: String, index: Int, seen: Bool) -> Optional<NonEmptyStr> {
+  match index < text.length() {
+    True => match is_space(text: text, index: index) {
+      True => match seen {
+        True => skip_separator_run(text: text, index: index)
+        False => field_boundary_of(text: text, index: index + 1, seen: false)
+      }
+      False => field_boundary_of(text: text, index: index + 1, seen: true)
+    }
+    False => Absent
+  }
+}
+
+fn skip_separator_run(text: String, index: Int) -> Optional<NonEmptyStr> {
+  match index < text.length() {
+    True => match is_space(text: text, index: index) {
+      True => skip_separator_run(text: text, index: index + 1)
+      False => Present { value: text.substring(start: index, end: text.length()) as NonEmptyStr }
+    }
+    // The line ends inside the separator run. Upstream would store an empty content for it; we say there is no
+    // value field at all, which is the stricter policy stated above.
+    False => Absent
+  }
+}
+
+fn is_space(text: String, index: Int) -> Bool {
+  match text.substring(start: index, end: index + 1) {
+    " " => true
+    "\t" => true
+    _ => false
+  }
+}
+
+fn leading_spaces_removed(text: String) -> String {
+  match text.length() {
+    0 => ""
+    _ => match is_space(text: text, index: 0) {
+      True => leading_spaces_removed(text: text.substring(start: 1, end: text.length()))
+      False => text
+    }
+  }
+}
+
+// THE ANSWERS THE SEED HAS ESTABLISHED, in seed order, comments and malformed lines dropped. EVERY question the
+// audit asks goes through this list; no caller may interrogate the seed text directly. That single change is
+// what closes the defect this section was written for.
+fn established_answers(seed: String) -> List<EstablishedAnswer> {
+  answers_from_lines(lines: seed.split(sep: "\n"), kept: [])
+}
+
+fn answers_from_lines(lines: List<String>, kept: List<EstablishedAnswer>) -> List<EstablishedAnswer> {
+  match lines {
+    Empty => kept
+    Cons { head: line, tail: rest } =>
+      match established_answer_from(line: line) {
+        Present { value: answer } => answers_from_lines(lines: rest, kept: kept.append(value: answer))
+        Absent => answers_from_lines(lines: rest, kept: kept)
+      }
+  }
+}
+
+// THE RECORD ESTABLISHED UNDER ONE KEY BY ONE OWNER, if any. THE OWNER IS CHECKED, which is what makes an
+// answer BELONG to a package: a record written for `keyboard-configuration` cannot close a tzdata question, and
+// — symmetrically, which is the half that matters for the 8-bay board — a record written for some other package
+// can never close this package's question, so a seed cannot answer tzdata by mentioning tzdata inside another
+// package's line.
+fn established_content(seed: String, owner: NonEmptyStr, label: NonEmptyStr) -> Optional<NonEmptyStr> {
+  content_from(answers: established_answers(seed: seed), owner: owner, label: label)
+}
+
+fn content_from(answers: List<EstablishedAnswer>, owner: NonEmptyStr, label: NonEmptyStr) -> Optional<NonEmptyStr> {
+  match answers {
+    Empty => Absent
+    Cons { head: answer, tail: rest } =>
+      match answer.owner == owner {
+        True => match answer.label == label {
+          True => Present { value: answer.content }
+          False => content_from(answers: rest, owner: owner, label: label)
+        }
+        False => content_from(answers: rest, owner: owner, label: label)
+      }
+  }
+}
+
+// THE AUDIT, OVER ESTABLISHED RECORDS ONLY. Every key the package will ask must be the LABEL of a record whose
+// OWNER is the package and which carries a value. A comment, a three-field fragment, a record belonging to
+// another package, and a parametric key named in prose are all the same thing here: no record, no answer, seed
+// refused.
 fn all_required_keys_present(package: KnownPromptingPackage, seed: String) -> Bool {
-  fold(
-    required_debconf_keys(package: package),
-    init: true,
-    f: (all_present, key) => all_present && seed.contains(needle: key as String),
-  )
+  match first_unestablished(
+    needed: debconf_requirements(package: package),
+    seed: seed,
+    owner: known_prompting_package_name(package: package),
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn first_unestablished(
+  needed: List<DebconfRequirement>,
+  seed: String,
+  owner: NonEmptyStr,
+) -> Optional<DebconfRequirement> {
+  match needed {
+    Empty => Absent
+    Cons { head: requirement, tail: rest } =>
+      match requirement_label(seed: seed, owner: owner, requirement: requirement) {
+        // The label this requirement is answered under, looked up as a RECORD of this owner — so the answer must
+        // exist, carry a value, and name this package. A comment that spells the label is not a record.
+        Present { value: label } =>
+          match established_content(seed: seed, owner: owner, label: label) {
+            Present { value: _ } => first_unestablished(needed: rest, seed: seed, owner: owner)
+            Absent => Present { value: requirement }
+          }
+        // Its sibling answer never existed, so this question cannot have been answered either. Reporting the
+        // requirement (not a fabricated label) is what lets a consumer say which one is missing.
+        Absent => Present { value: requirement }
+      }
+  }
+}
+
+// THE AREA/ZONE JOIN, AS AN ARM OF THE AUDIT RATHER THAN A COMMENT ABOUT IT. tzdata's second key is
+// `tzdata/Zones/<area>`, so the zone record is looked up under the key the AREA RECORD BUILDS from its own
+// content. Seeding `tzdata tzdata/Areas select Etc` while the only zone record is `tzdata/Zones/America`
+// establishes nothing: the key built is tzdata/Zones/Etc, no record carries it, the verdict is OpenQuestion and
+// the seed is refused. Under the old substring rule the bare word "America" anywhere in the seed — including in
+// a comment — passed this.
+fn zone_key_for_area(area: NonEmptyStr) -> NonEmptyStr {
+  concat("tzdata/Zones/", area) as NonEmptyStr
+}
+
+// THE ZONE KEY THE SEED'S OWN AREA ANSWER BUILDS, or Absent when no area is established. Exposed so a consumer
+// can see WHICH area a seed committed to, rather than taking the join on faith.
+fn established_zone_key(seed: String, owner: NonEmptyStr) -> Optional<NonEmptyStr> {
+  match established_content(seed: seed, owner: owner, label: "tzdata/Areas" as NonEmptyStr) {
+    Present { value: area } => Present { value: zone_key_for_area(area: area) }
+    Absent => Absent
+  }
 }
 
 // THE ONE PLACE A KNOWN PROMPTING PACKAGE'S NAME IS SPELLED, for the known arms of PackageIntent and for the
@@ -923,8 +1247,18 @@ type TargetDiskSelector =
 // keyed on payload identity, and any arm of a sealed sum can be written by hand. With the provenance on the
 // selection, the binding needs no selector argument at all: it reads the rule out of the evidence, so "seed
 // says rule A, binding says rule B" is not refused at runtime, it is unnameable.
+// THE CHOSEN DISK'S IDENTITY IS SEALED IN HERE, BESIDE THE RULE THAT PICKED IT, so the two can never be
+// separated. The earlier shape put the device on DiskSelected beside a provenance carrying only the selector and
+// the tallies, which left a seam exactly as wide as it looks: a caller could pair a legitimate provenance with a
+// DIFFERENT device — a valid disk, a real selection, and a record proving nothing about the disk the install is
+// about to erase. Sealing the identity removes the seam instead of policing it: one device field in the whole
+// selection, minted only by the branch that established the disk is the single admissible match, and every
+// reader (the projection, the binding, the digest) must go through it. The identity is the closed
+// BoundDiskEvidence variant rather than a string because an unreadable serial is a state of the world with a
+// different remedy, not an empty string.
 type DiskSelectionProvenance sole_constructor {
   selector: TargetDiskSelector
+  chosen: BoundDiskEvidence
   // How many observed disks the rule picked out, and how many the probe reported. Both are recorded so a
   // reader can see the rule's discriminating power without re-running it: one-in-eight and one-in-one are
   // different amounts of luck, and the second is a rule that was never tested against competition.
@@ -932,23 +1266,47 @@ type DiskSelectionProvenance sole_constructor {
   observed: Int
 }
 
-// THE ONLY DOOR THAT CAN SAY "INSTALL HERE", and the only minter of the provenance above. Every field is read
-// from arguments this function has already validated: the selector is the one the caller asked about, and the
-// counts come from the same filter the refusal arms report. There is no parameter for the caller to get wrong,
-// which is the whole point — a provenance a caller could write is a provenance that proves nothing.
+// MINTED ONLY BY THE ADMISSION BRANCH, AND IT MINTS THE DISK'S IDENTITY ITSELF from the device it was handed.
+// Before this the caller passed the device to a separate evidence builder, which is the seam HOLD section 2
+// found: a legitimate provenance and a different device could be paired by hand.
 fn disk_selection_provenance(
   selector: TargetDiskSelector,
+  admitted: StorageDevice,
   observed: List<StorageDevice>,
 ) -> DiskSelectionProvenance {
   DiskSelectionProvenance {
     selector: selector,
+    chosen: bound_disk_identity(
+      device: admitted,
+      matched: candidate_count(selector: selector, observed: observed),
+      observed: list_length(items: observed),
+    ),
     matched: candidate_count(selector: selector, observed: observed),
-    observed: observed.length(),
+    observed: list_length(items: observed),
+  }
+}
+
+// THE IDENTITY, DERIVED FROM THE PROBE'S OWN OBSERVATION and never from an argument a caller assembles. Two arms
+// because the probe either read a serial or it did not, and the remedies differ: a serial is a handle the
+// operator can check against the tray label, while a part number plus capacity is a catalog description a second
+// drive could share. Collapsing the second into an empty serial hands the operator a handle that opens nothing.
+fn bound_disk_identity(device: StorageDevice, matched: Int, observed: Int) -> BoundDiskEvidence {
+  match storage_device_serial(d: device) {
+    Present { value: serial } => BoundDisk { serial: serial, matched: matched, observed: observed }
+    Absent => BoundDiskUnread { part_number: candidate_identity_label(device: device) }
+  }
+}
+
+// WHICH DISK THE SEALED PROVENANCE SELECTED — the ONLY way anything gets a disk out of a selection, so no reader
+// can be handed one the selection did not establish.
+fn provenance_chosen_identity(provenance: DiskSelectionProvenance) -> BoundDiskEvidence {
+  match provenance {
+    DiskSelectionProvenance { selector: _, chosen: identity, matched: _, observed: _ } => identity
   }
 }
 
 type TargetDiskSelection
-  = DiskSelected { device: StorageDevice, provenance: DiskSelectionProvenance }
+  = DiskSelected { provenance: DiskSelectionProvenance }
   | SelectionRefused { cause: DiskSelectionRefusalCause }
 
 type DiskSelectionRefusalCause
@@ -1030,8 +1388,11 @@ fn select_target_disk(
             }
             1 => match admissible_candidate(selector: selector, observed: observed) {
               Present { value: only } => DiskSelected {
-                device: only,
-                provenance: disk_selection_provenance(selector: selector, observed: observed),
+                provenance: disk_selection_provenance(
+                  selector: selector,
+                  admitted: only,
+                  observed: observed,
+                ),
               }
               Absent => SelectionRefused { cause: NoDiskMatches { selector: selector } }
             }
@@ -1417,7 +1778,7 @@ fn intent_answered_its_question(intent: PackageIntent) -> Bool {
     // SILENT IS NOT ANSWERED. The tally counts questions the seed CLOSED; a package that never asked one closed
     // nothing, so crediting it would let a seed pad its own proof of non-interactivity by installing packages.
     // This arm and the blocking arm below are deliberately different answers about the same value.
-    PackageVerifiedSilent { name: _, silence: _ } => false
+    PackageVerifiedSilent { silence: _ } => false
   }
 }
 
@@ -1467,6 +1828,13 @@ type AltraAutoinstallSeed sole_constructor {
   disk: TargetDiskSelector,
   entry: AdminAccessAuthorisation,
   credential: AdminCredentialPosture,
+  // THE READ TRAVELS WITH THE POSTURE IT READS. A receipt is evidence about exactly one secret; sitting beside
+  // the handle it was read from, it can only ever be paired with that handle. Held instead as a bind-time or
+  // render-time parameter — which is how this was first written — the same function could be handed a seed and
+  // some other secret's receipt, and the only thing stopping a wrong join would be the caller's care. The
+  // constructor re-checks the pairing, so the field cannot be filled from an unrelated read. (review:
+  // merry-fox-82)
+  password_read: Optional<AdminPasswordHashReceipt>,
   locale: SeedLocale,
   delivery: SeedDeliveryStrategy,
   keyboard: CeremonialKeyboardLayout,
@@ -1489,6 +1857,13 @@ fn build_altra_autoinstall_seed(
   disk: TargetDiskSelector,
   entry: AdminAccessAuthorisation,
   credential: AdminCredentialPosture,
+  // NOT A PROOF, AND NOT OPTIONAL BY CONVENIENCE. The caller hands over the receipt it actually read for THIS
+  // handle — or Absent when it read none, which is the honest way to say "the vault read failed" and is a
+  // documented reason a seed then refuses to render a document. The pairing is re-checked below rather than
+  // trusted: a receipt naming another secret makes the build Absent, so a mismatched join cannot reach a
+  // rendered file. Absent-with-a-handle and Absent-without-one stay distinguishable because the posture is
+  // stored beside it.
+  password_read: Optional<AdminPasswordHashReceipt>,
   locale: SeedLocale,
   delivery: SeedDeliveryStrategy,
   keyboard: CeremonialKeyboardLayout,
@@ -1506,26 +1881,73 @@ fn build_altra_autoinstall_seed(
       ) {
         SeedRefused { cause: _ } => Absent
         SeedIsNonInteractive { evidence: established } =>
-          Present {
-            value: AltraAutoinstallSeed {
-              target: admitted,
-              network: network,
-              install_drivers: install_drivers,
-              loadable_modules: loadable_modules,
-              late_drivers: late_drivers,
-              install_packages: install_packages,
-              late_packages: late_packages,
-              disk: disk,
-              entry: entry,
-              credential: credential,
-              locale: locale,
-              delivery: delivery,
-              keyboard: keyboard,
-              proof: established,
-            },
+          match receipt_pairs_credential(credential: credential, password_read: password_read) {
+            False => Absent
+            True =>
+              Present {
+                value: AltraAutoinstallSeed {
+                target: admitted,
+                network: network,
+                install_drivers: install_drivers,
+                loadable_modules: loadable_modules,
+                late_drivers: late_drivers,
+                install_packages: install_packages,
+                late_packages: late_packages,
+                disk: disk,
+                entry: entry,
+                credential: credential,
+                password_read: password_read,
+                locale: locale,
+                delivery: delivery,
+                keyboard: keyboard,
+                proof: established,
+                },
+            }
           }
       }
   }
+}
+
+// THE PAIRING IS CHECKED, NOT ASSUMED. A receipt is a record of a read of ONE secret, and it carries the
+// locator and version it was read from for exactly this moment: handed the wrong one, a seed would render a
+// credential nobody sourced for it. Refusing at construction is what makes the seed's password_read field
+// evidence rather than a caller's assertion — a reader of the stored seed does not have to re-audit the join,
+// because a mismatched join never became a seed. Two absences are distinguished here by the posture stored
+// beside the read: PasswordUnset with no read is the declined case, and a handle with no read is "the vault
+// read failed", which stays buildable so its refusal can be reported by name at document time instead of
+// collapsing into the same nothing as a bad seed.
+fn receipt_pairs_credential(
+  credential: AdminCredentialPosture,
+  password_read: Optional<AdminPasswordHashReceipt>,
+) -> Bool {
+  match credential {
+    // A DECLINED CREDENTIAL CARRIES NO READ. A receipt naming a secret for a seed that says it has no password
+    // is not extra evidence, it is a caller who has lost track of which seed they are holding.
+    PasswordUnset =>
+      match password_read {
+        Absent => true
+        Present { value: _ } => false
+      }
+    PasswordHandle { handle: source } =>
+      match password_read {
+        // NO READ YET IS HONEST, AND IT IS NOT A REFUSAL TO BUILD. The seed can exist before the vault has been
+        // read; what it cannot do is render a document, which is refused by name there. Refusing the build too
+        // would erase the difference between "the vault is down" and "this seed is bad".
+        Absent => true
+        Present { value: issued } => receipt_matches_handle(handle: source, issued: issued)
+      }
+  }
+}
+
+// WHICH RECEIPT BELONGS TO WHICH HANDLE — THE WHOLE RULE, IN ONE PLACE (DESIGN §3: each fact lives in exactly
+// one place). This used to be spelled three times: here, in the identity projection, and in the password field
+// the renderer fills. Three copies of a pairing rule is how a rotated secret ends up in a rendered shadow entry
+// — loosening one copy (dropping the version, say, to "fix" a vault migration) changes one of the three doors
+// and no test of the other two can see it, because they are different comparisons. If the rule moves again, it
+// moves HERE: a future requirement such as accepting a receipt one version behind adds a parameter to this
+// function and every door inherits it at once.
+fn receipt_matches_handle(handle: AdminPasswordHandle, issued: AdminPasswordHashReceipt) -> Bool {
+  issued.secret_locator == handle.secret_locator && issued.secret_version == handle.secret_version
 }
 
 // THE RECEIPT IS A SHA-512 CRYPT DIGEST, AND ITS ONLY CONSTRUCTOR PARSES ONE RATHER THAN CHECKING FOR THE
@@ -1548,6 +1970,15 @@ fn build_altra_autoinstall_seed(
 // the door's whole rule is that a credential leaves this module as a reference, and a receipt is the artifact
 // most likely to be logged. sole_constructor stays on the payload record, and the only minter (below) fills both
 // fields from the handle it was passed, so nobody can write a receipt whose provenance is invented.
+//
+// WHAT A RECEIPT DOES AND DOES NOT ASSERT (review: merry-fox-82, HOLD §4d). It is a FORMAT-VALIDATED CANDIDATE
+// ASSOCIATED WITH A SUPPLIED HANDLE AND VERSION — nothing more. It does not prove a read happened: this module
+// never contacts a secret store, and a caller could hand over a digest without opening anything. The claim is
+// therefore deliberately weaker than "this is the password". Two things make it worth having, and they are the
+// only two claimed: the string cannot have been a plaintext password, and it names the secret it purports to come
+// from, so the join against the seed's handle can be checked at all. Anyone who needs "a read actually happened"
+// must read that off the vault's own audit trail, which lives outside this programme's modules and is not
+// reconstituted here by a field named like a receipt.
 type AdminPasswordHashReceipt sole_constructor { crypt_digest: NonEmptyStr, secret_locator: NonEmptyStr, secret_version: NonEmptyStr }
 
 // ONE SUM, SO AN ATTEMPT ANSWERS "WHICH PART FAILED" WITHOUT A SECOND FUNCTION RECOMPUTING THE VERDICT (DESIGN
@@ -1564,6 +1995,15 @@ type AdminPasswordReceiptResult = ReceiptAccepted { receipt: AdminPasswordHashRe
 
 type AdminPasswordRefusalCause
   = NotACryptDigest
+  // FIVE FIELDS WITH NO ROOM FOR A SALT. The cost marker was found, so the generator meant to carry a cost, and
+  // the field the salt should occupy is the cost's. Naming it separately matters because this is the shape the
+  // shipped library ACCEPTS and then reinterprets — it uses the unrecognised middle field as the salt — so a
+  // candidate arriving in this shape was not produced by the library at all.
+  | CostFormMissingSalt { fields_seen: Int }
+  // A FIELD BEFORE THE SALT THAT IS NEITHER THE SALT NOR A COST. Same five-field count as a legitimate costed
+  // setting, minus the marker. The library hashes it (measured: it takes that field as the salt), which is
+  // exactly why a crypt_r success cannot be the oracle and this arm has to exist.
+  | UnaccountedFieldBeforeSalt { fields_seen: Int }
   | SchemeUnsupported
   | RoundsMalformed
   | SaltAbsent
@@ -1646,6 +2086,10 @@ fn admin_password_hash_receipt(
 fn admin_digest_refusal(crypt_digest: NonEmptyStr) -> Optional<AdminPasswordRefusalCause> {
   let segments = (crypt_digest as String).split(sep: "$")
   let count = list_length(items: segments)
+  // ONE LAYOUT FOR THE WHOLE WALK: every position-sensitive arm receives this value rather than deriving a
+  // position of its own, because two derivations is exactly how two arms came to disagree about where the salt
+  // lives (see crypt_layout).
+  let layout = crypt_layout(segments: segments, count: count)
   first_refusal(
     causes: [
       // THE SHARED SCAN RUNS FIRST, BECAUSE UPSTREAM RUNS IT FIRST. libxcrypt checks the whole setting string in
@@ -1657,11 +2101,12 @@ fn admin_digest_refusal(crypt_digest: NonEmptyStr) -> Optional<AdminPasswordRefu
       // See crypt_acceptance_rules in extdeps.libxcrypt.crypt_scheme, which states the same order as data and is
       // swept by the witness so a reordering here cannot become silent.
       reject_shared_scan(candidate: crypt_digest),
-      reject_shape(segments: segments, count: count),
+      reject_layout(count: count, layout: layout),
+      reject_shape(segments: segments),
       reject_scheme(segments: segments, count: count),
-      reject_cost(segments: segments),
-      reject_salt(segments: segments, count: count),
-      reject_digest(segments: segments, count: count),
+      reject_cost(segments: segments, layout: layout),
+      reject_salt_for_layout(segments: segments, layout: layout),
+      reject_digest_for_layout(segments: segments, layout: layout),
     ],
   )
 }
@@ -1672,15 +2117,61 @@ fn admin_digest_refusal(crypt_digest: NonEmptyStr) -> Optional<AdminPasswordRefu
 // same thing from the other end -- "observations this repository makes are receipts in the observing
 // layer, not facts of the observed upstream". libxcrypt publishes a document; it does not publish
 // what its shipped .so did when this repository called it. Every row below is therefore ours, and it
-// is consumed here rather than shelved: the two sweep witnesses run every row through the door above
-// and require this module's verdict to agree with the recorded one, so the rows are a differential
-// against the library that ships in the target image, and deleting one or flipping one reddens a
-// witness. (The width disagreements -- a one-character salt, an 85-character digest, which the
-// LIBRARY accepts and this module's shadow-entry contract refuses -- are deliberately NOT in either
-// list: they are this module's own policy, and they are pinned by their own witnesses.)
+// is consumed here rather than shelved: three sweep witnesses run every row through the door above, and
+// the rows are a differential against the library that ships in the target image — deleting one or
+// flipping one reddens a witness. The ledger's per-arm composition (settings the library accepted that really
+// are complete stored hashes / accepted that are not / refused outright) is DERIVED, not transcribed: the witness
+// re-counts it on every run through accepted_row_count, stored_hash_gap_row_count and refused_row_count, and the
+// sweeps assert those counts against the total. No number in a comment here can be edited into agreement with a
+// changed row set, which is the failure a stated denominator invites.
+//
+// WHAT IS DELIBERATELY NOT A ROW: the width disagreements — an 85-character digest, or a salt outside the
+// documented range — where the library agrees and this module's shadow-entry contract still refuses.
+// Those are this module's own policy, not a measurement of a disagreement, and they are pinned by their
+// own witnesses (an 85-char digest, a one-character salt) rather than by a ledger row that would imply
+// somebody measured the library's tolerance and found it tolerant. A one-character salt with a COMPLETE
+// digest is a row, because the library really did accept it and it really is a usable stored hash; the
+// refusal of the same width by the shadow-entry contract is a separate claim, stated where it is tested.
+//
+// THE MEASUREMENT EVIDENCE IS THE RECORD ITSELF, NOT A CITATION TO THE MANUAL (review: merry-fox-82).
+// observed_build names the exact package version the probe linked against and observed_on names the
+// architecture and image; the probe's source and its per-candidate watchdog live with the measurement
+// (driver source in the PR's evidence account). libxcrypt's manual, cited on the extdeps shelf, establishes
+// the CONTRACT; it cannot establish what the shipped .so did, and it is not offered here as if it did.
+//
+// THREE ARMS, BECAUSE A SUCCESSFUL crypt_r CALL ANSWERS A WEAKER QUESTION THAN "IS THIS A STORED HASH"
+// (review: merry-fox-82). The library never reads back the digest field it was handed, so it hashes
+// settings whose digest slot is a salt, or whose middle field it does not recognise, and returns a real
+// string. Measured against libcrypt1 1:4.4.36-4build1 (Noble arm64, direct-linked, per-candidate
+// watchdog; exact.c prints the library's OWN output): "$6$rounds=1000$<86>" comes back as a hash whose
+// salt field IS the 86-character digest, and in "$6$ignored$saltsalt$<86>" the unrecognised middle
+// field is used as the salt. So "the library accepted it" and "this can authenticate a login" are
+// different claims, and recording them in one arm would hide the only disagreement that matters: on the
+// rows in the middle arm the module must REFUSE where the library agrees. If those rows were folded into
+// the accepted arm, the sweep witness would demand agreement with the library and this module would have
+// to be wrong to pass it — which is the failure mode the whole shadow-entry contract exists to avoid.
 type CryptLibraryVerdict
   = LibraryAccepted { setting: NonEmptyStr }
+  // MEASURED ACCEPTED BY THE SHIPPING LIBRARY, AND NOT A COMPLETE STORED HASH. Every row here is a
+  // setting the library hashed and no login could ever reproduce. The module must refuse each one by the
+  // GAP arm it carries — not by an alphabet, a width, or a scheme.
+  | LibraryAcceptedButNotAStoredHash { setting: NonEmptyStr, gap: UnstoredHashGap }
   | LibraryRefused { setting: NonEmptyStr }
+
+// WHY AN ACCEPTED SETTING COULD NEVER VERIFY A PASSWORD. Closed, because these are exactly the two
+// structures measured, and each sends an operator to a different generator bug: a build pipeline that
+// dropped the salt after the cost, versus one that inserted a field the format has no name for. Each
+// carries the field count the measurement saw, so a row cannot be re-labelled later without saying how
+// many fields were involved. A third gap (a cost marker in the wrong case, say) is not added here on
+// speculation — it needs its own measurement and its own row.
+// THE ARMS ARE PREFIXED, NOT SHARED. They name the same two defects the door's refusal arms name, and the
+// witness checks the pairing arm-for-arm. The prefix exists because one closure may not hold two variants of
+// that spelling, and because a ledger row and a refusal are different kinds of thing: the row records what the
+// library did, the refusal is what this module does about it. Collapsing the two would let a row be "satisfied"
+// by whatever the door happened to say instead of by what was measured.
+type UnstoredHashGap
+  = GapCostFormMissingSalt { fields_seen: Int }
+  | GapUnaccountedFieldBeforeSalt { fields_seen: Int }
 
 // THE MEASUREMENT, AS A CLOSED ROW RATHER THAN A PROSE PARAGRAPH. Three arms and no free text: the
 // build the measurement was taken against, the rows, and the single thing still owed. The build is a
@@ -1704,14 +2195,33 @@ data crypt_library_acceptance: CryptLibraryAcceptance = CryptLibraryAcceptance {
     "the CI image, Debian libcrypt1 4.4.38-1" as NonEmptyStr,
   ],
   verdicts: [
+    // ACCEPTED, AND A COMPLETE STORED HASH: four- and five-field settings whose digest slot really holds the
+    // 86 characters. These are where this module's door and the library agree, and the sweep requires it.
     LibraryAccepted { setting: "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // plain salt
     LibraryAccepted { setting: "$6$rounds=1000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost at the documented floor
     LibraryAccepted { setting: "$6$rounds=999999999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost at the documented ceiling
-    LibraryAccepted { setting: "$6$~a.b_c-d+e$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // punctuation the class admits
+    LibraryAccepted { setting: "$6$~a.b_c-d+e$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // punctuation INSIDE a four-field salt: not the shared scan's set, and the digest slot still holds the 86
     LibraryAccepted { setting: "$6$sa=ltx$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // an '=' inside the salt
-    LibraryAccepted { setting: "$6$ROUNDS=1000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // the marker written upper-case
-    LibraryAccepted { setting: "$6$s$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // one character
+    LibraryAccepted { setting: "$6$s$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // a one-character salt — a WIDTH disagreement, so the digest slot is still complete
     LibraryAccepted { setting: "$6$ssssssssssssssss$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // sixteen characters
+    // ACCEPTED BY THE LIBRARY, AND NOT A STORED HASH — the disagreement, kept where it cannot be swept away.
+    LibraryAcceptedButNotAStoredHash {
+      setting: "$6$rounds=1000$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr,
+      gap: GapCostFormMissingSalt { fields_seen: 4 },
+    }, // the library's own reply uses the 86 as the SALT (exact.c)
+    LibraryAcceptedButNotAStoredHash {
+      setting: "$6$ignored$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr,
+      gap: GapUnaccountedFieldBeforeSalt { fields_seen: 5 },
+    }, // "ignored" is hashed AS the salt
+    LibraryAcceptedButNotAStoredHash {
+      setting: "$6$ROUNDS=1000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr,
+      gap: GapUnaccountedFieldBeforeSalt { fields_seen: 5 },
+    }, // the marker's case is load-bearing upstream too
+    LibraryAcceptedButNotAStoredHash {
+      setting: "$6$9999$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr,
+      gap: GapUnaccountedFieldBeforeSalt { fields_seen: 5 },
+    }, // digits with no marker are not a cost
+    // REFUSED BY THE LIBRARY, and refused here too.
     LibraryRefused { setting: "$6$sa!tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
     LibraryRefused { setting: "$6$sa:ltsa$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
     LibraryRefused { setting: "$6$sa*tsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // salt
@@ -1726,7 +2236,7 @@ data crypt_library_acceptance: CryptLibraryAcceptance = CryptLibraryAcceptance {
     LibraryRefused { setting: "$6$rounds=05000$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
     LibraryRefused { setting: "$6$rounds=1000rounds=garbage$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6dy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj." as NonEmptyStr }, // cost field
   ],
-  owed: Present { value: "*0 tells you the library refused, not WHY: reserved-character and malformed-setting both arrive as errno=22, and separating them needs the library source or a status field the probe does not read. The refusals above are established; their causes are not." as NonEmptyStr },
+  owed: Present { value: "*0 tells you the library refused, not WHY: reserved-character and malformed-setting both arrive as errno=22, and separating them needs the library source or a status field the probe does not read. The refusals above are established; their causes are not. The same limit runs the other way: the middle arm records THAT the library hashed a setting, and the salt it used was read from the library's own reply — the probe does not ask the library which field it chose, so each gap is stated by the shape of the setting, not by a claim about the library's internals." as NonEmptyStr },
 }
 
 // THE ROWS, FOR A CONSUMER THAT MUST CHECK ITS OWN VERDICT AGAINST THEM. A function rather than the
@@ -1789,42 +2299,109 @@ fn first_reserved_character(candidate: NonEmptyStr) -> NonEmptyStr {
   }
 }
 
-fn reject_shape(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
-  match count == 4 || count == 5 {
-    False => Present { value: NotACryptDigest }
-    True =>
-      match piece_at(pieces: segments, index: 0) {
-        Present { value: leading } =>
-          match leading == "" {
-            True => Absent
-            False => Present { value: NotACryptDigest }
+// WHERE EACH FIELD SITS. One parse of the setting produces this, and every position-sensitive arm downstream
+// reads its index out of IT rather than recomputing from the field count. That is the whole point: an earlier
+// revision asked "four fields or five?" separately in four functions, and when one of them disagreed about a
+// five-field setting the digest check was silently skipped and a garbage digest was accepted as a password hash.
+// Two members because sha512-crypt has exactly two spellings — with and without the optional cost — and a third
+// shape is a refusal, not a layout. A future scheme with a different grammar adds its own layout type beside this
+// one; it does not widen this one, or the two-arm exhaustiveness that makes the skipping impossible is gone.
+type CryptLayout
+  = FourFieldsWithoutCost { salt_index: Int, digest_index: Int }
+  | FiveFieldsWithCost { cost_index: Int, salt_index: Int, digest_index: Int }
+
+// THE ONE PARSE. Returns Absent when the candidate's field structure is not a sha512-crypt setting at all, and
+// names WHICH structural failure it was rather than folding the cases together: a cost with no room for a salt, a
+// field before the salt that is neither the salt nor a cost, or a field count outside the two-member grammar.
+// Those are three different operator conversations, and collapsing them is how a shell-assembled string gets
+// diagnosed as a bad password.
+fn crypt_layout(segments: List<String>, count: Int) -> Optional<CryptLayout> {
+  match sha512_crypt_format {
+    Sha512CryptFormat {
+      scheme_token: _, cost_marker: marker, salt_forbidden_characters: _, salt_least_characters: _,
+      salt_greatest_characters: _, digest_alphabet: _, digest_exact_characters: _, cost_least_digits: _,
+      cost_greatest_digits: _, figure_standing: _,
+    } =>
+      match piece_at(pieces: segments, index: 2) {
+        Absent => Absent
+        // THE COST IS RECOGNISED BY ITS MARKER AT ITS OWN POSITION. Position 2, because the grammar has no other
+        // place a cost can sit; and the marker comparison is case-sensitive, because upstream's strncmp against
+        // "rounds=" is: "$6$ROUNDS=1000$..." is not a cost upstream either, it is a field that means nothing.
+        Present { value: field } =>
+          match field.starts_with(prefix: marker as String) {
+            True =>
+              match count {
+                // A cost and then nothing to hash: the token after the cost was going to be read as the salt and
+                // there is no token left. Upstream hashes this anyway — measured, not alleged: against libcrypt1
+                // 1:4.4.36-4build1 (Noble arm64, direct-linked, ldd-verified, crypt_r under a per-candidate
+                // watchdog) "$6$rounds=1000$<86>" returns a real hash whose own salt field is the 86-character
+                // digest. THAT is why a successful crypt_r cannot be our oracle: the library never reads the
+                // digest it returns, so it accepts settings that could never verify a password.
+                4 => Absent
+                5 => Present { value: FiveFieldsWithCost { cost_index: 2, salt_index: 3, digest_index: 4 } }
+                _ => Absent
+              }
+            False =>
+              match count {
+                4 => Present { value: FourFieldsWithoutCost { salt_index: 2, digest_index: 3 } }
+                5 => Absent
+                _ => Absent
+              }
           }
-        Absent => Present { value: NotACryptDigest }
       }
+  }
+}
+
+// WHICH STRUCTURAL FAILURE, SAID SEPARATELY. Split out of crypt_layout so the three diagnoses stay three arms
+// (a type cannot carry "which of my Absent branches fired" without lying about the others).
+// THE STRUCTURAL SENTENCE ABOUT A PARSE THAT ALREADY HAPPENED. This function no longer looks at the segments at
+// all: an earlier revision re-tested the cost marker and the field count here, because reject_layout had to
+// "know" whether field 2 was a cost. That was a SECOND implementation of the grammar, and DESIGN §5 names the
+// defect exactly — "a check restating a constraint the model already carries is a second representation of it".
+// Two derivations is also how the two functions came to disagree about where the salt lives, and it made the
+// grammar mutable in two places at once: loosening the field-count rule here while crypt_layout stayed strict
+// changed only the SENTENCE an operator reads, never the verdict, so no test of acceptance could see it. Now
+// there is one parse, and this maps its Absent reasons onto the three operator conversations. A future grammar
+// change (say a cost permitted in a sixth field) edits crypt_layout and gains a CryptLayout arm; nothing here
+// needs to know the new spelling.
+fn reject_layout(count: Int, layout: Optional<CryptLayout>) -> Optional<AdminPasswordRefusalCause> {
+  match layout {
+    Present { value: _ } => Absent
+    // WHICH OF THE GRAMMAR'S THREE REFUSALS, told apart by the only thing the parse could not use: the count.
+    Absent =>
+      match count {
+        // A cost, and then no token left to hash. Distinct from the next arm because the remedies differ: this
+        // one is a truncated string, usually a shell quoting accident, while that one is a field the grammar has
+        // no name for.
+        4 => Present { value: CostFormMissingSalt { fields_seen: count } }
+        // A fifth field that is neither a cost at its position nor a recognised token; the salt is in position 3
+        // by elimination, and the shipping library would hash on it as the salt (measured), which is why the
+        // shape is refused here rather than forgiven.
+        5 => Present { value: UnaccountedFieldBeforeSalt { fields_seen: count } }
+        // Neither documented spelling, at any count: not a sha512-crypt setting at all.
+        _ => Present { value: NotACryptDigest }
+      }
+  }
+}
+
+// THE LEADING-TOKEN RULE ONLY. The FIELD COUNT is reject_layout's to own: it has to know the count to decide
+// whether field 2 is a cost, and asking the same question in two functions is precisely how the two answers came
+// to disagree. This function contributes the one thing reject_layout cannot see — that a sha512-crypt setting
+// begins with '$', so the split's first token is empty.
+fn reject_shape(segments: List<String>) -> Optional<AdminPasswordRefusalCause> {
+  match piece_at(pieces: segments, index: 0) {
+    Present { value: leading } =>
+      match leading == "" {
+        True => Absent
+        False => Present { value: NotACryptDigest }
+      }
+    Absent => Present { value: NotACryptDigest }
   }
 }
 
 // THE SCHEME TOKEN IS READ FROM THE CITED ROW, never re-typed here. This is the check that makes the row
 // load-bearing in this module: retyping "6" locally, or pointing at a different row, is what would let the
 // figures and their citation drift apart while every witness still passed.
-fn reject_scheme(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
-  match sha512_crypt_format {
-    Sha512CryptFormat {
-      scheme_token: token, cost_marker: _, salt_forbidden_characters: _, salt_least_characters: _,
-      salt_greatest_characters: _, digest_alphabet: _, digest_exact_characters: _, cost_least_digits: _,
-      cost_greatest_digits: _, figure_standing: _,
-    } =>
-      match piece_at(pieces: segments, index: 1) {
-        Present { value: found } =>
-          match found == (token as String) {
-            True => Absent
-            False => Present { value: SchemeUnsupported }
-          }
-        Absent => Present { value: SchemeUnsupported }
-      }
-  }
-}
-
 // THE COST IS RECOGNISED AT ITS POSITION, NOT BY HOW MANY DELIMITERS THE CANDIDATE HAPPENS TO CONTAIN
 // (review: merry-fox-82). The old rule read `count == 5` and only then looked at the cost, which silently made
 // segment COUNT the thing that decides — and libxcrypt never counts segments. It memcmps "rounds=" at the start
@@ -1846,20 +2423,40 @@ fn reject_scheme(segments: List<String>, count: Int) -> Optional<AdminPasswordRe
 // salt that contains the marker. Deliberately not a split on the marker anywhere in the string: the first split
 // was what let garbage hide after a valid cost, because the digits field it produced looked well-formed while the
 // rest of the field was never examined.
-fn reject_cost(segments: List<String>) -> Optional<AdminPasswordRefusalCause> {
-  match piece_at(pieces: segments, index: 2) {
-    // Nothing follows the scheme token: no cost, and reject_salt reports the absent salt.
+// THE COST, CHECKED AT THE POSITION THE LAYOUT GAVE IT — and only when the layout says one exists. The earlier
+// version asked this field whether it began with the marker and, when it did not, consulted a SECOND answer (the
+// raw segment count) to decide whether to complain; count 5 with an unrecognised middle field was then refused by
+// nobody, because the count rule had already passed and this arm stayed silent. Silence is not a verdict here.
+//
+// WHY REFUSE "$6$ignored$saltsalt$D86" AT ALL WHEN UPSTREAM HASHES IT. Measured against the shipping library
+// (libcrypt1 1:4.4.36-4build1, Noble arm64, direct-linked, ldd-verified, crypt_r under a per-candidate watchdog),
+// that candidate is ACCEPTED: crypt_r returns a real 106-character hash whose own salt field is "ignored" — the
+// library read the unrecognised middle field as part of the SALT. So a successful crypt_r cannot be our oracle for
+// a stored hash: the library never reads back the digest it was handed, and it will happily derive a key from a
+// salt nobody chose. A string that hashes against an unintended salt is a string that can be stored as a
+// credential and then NEVER verify against the password it was generated from, which is the failure this shelf
+// exists to keep off the board. The refusal is therefore OURS, on that ground, and the acceptance ledger keeps
+// reporting what the library does without this arm inheriting it.
+// FUTURE REQUIREMENT: a second cost spelling upstream enters as another marker on the cited row and this arm
+// widens by reading it. It never widens by admitting an unexamined field.
+fn reject_cost(
+  segments: List<String>,
+  layout: Optional<CryptLayout>,
+) -> Optional<AdminPasswordRefusalCause> {
+  match layout {
+    // No layout, no verdict: reject_layout has already refused this candidate and named why.
     Absent => Absent
-    Present { value: field } =>
-      match sha512_crypt_format {
-        Sha512CryptFormat {
-          scheme_token: _, cost_marker: marker, salt_forbidden_characters: _, salt_least_characters: _,
-          salt_greatest_characters: _, digest_alphabet: _, digest_exact_characters: _, cost_least_digits: _,
-          cost_greatest_digits: _, figure_standing: _,
-        } =>
-          match field.starts_with(prefix: marker as String) {
-            False => Absent
-            True =>
+    Present { value: FourFieldsWithoutCost { salt_index: _, digest_index: _ } } => Absent
+    Present { value: FiveFieldsWithCost { cost_index: index, salt_index: _, digest_index: _ } } =>
+      match piece_at(pieces: segments, index: index) {
+        Absent => Present { value: RoundsMalformed }
+        Present { value: field } =>
+          match sha512_crypt_format {
+            Sha512CryptFormat {
+              scheme_token: _, cost_marker: marker, salt_forbidden_characters: _, salt_least_characters: _,
+              salt_greatest_characters: _, digest_alphabet: _, digest_exact_characters: _, cost_least_digits: _,
+              cost_greatest_digits: _, figure_standing: _,
+            } =>
               match cost_field_is_well_formed(digits: field.substring(start: marker.length(), end: field.length())) {
                 True => Absent
                 False => Present { value: RoundsMalformed }
@@ -1873,15 +2470,33 @@ fn reject_cost(segments: List<String>) -> Optional<AdminPasswordRefusalCause> {
 // hard-coded positions that have to agree with each other. Width is read from the cited row and the character
 // test is the upstream FORBIDDEN-set scan, not an allowed-alphabet strip (see the note above for why the
 // difference is a safety property and not a style choice).
-fn reject_salt(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
-  let measured_salt = character_count(count: salt_length_of(segments: segments, count: count))
+// THE WIDTHS, READ THE SAME WAY THE CHECKS READ THEM. If the segment is missing the check that refuses for it
+// fires first, so zero is not a lie about a real salt — it is simply never compared. Keeping these beside
+// piece_at rather than calling .length() at two call sites is what stops the measured value and the refused value
+// from ever being read out of different segments.
+// THE POSITIONS, ASKED OF THE LAYOUT — never recomputed from the count. `count - 2` happened to be the salt in
+// both arities, which is exactly the kind of coincidence that survives a grammar change silently: with the cost
+// present the salt is at 3 and the digest at 4, and only the layout knows that.
+// THE SALT SITS ONE FROM THE END IN BOTH SPELLINGS, so the index follows the count instead of being two
+// hard-coded positions that have to agree with each other. Width is read from the cited row and the character
+// test is the upstream FORBIDDEN-set scan, not an allowed-alphabet strip (see the note above for why the
+// difference is a safety property and not a style choice).
+fn reject_salt_for_layout(segments: List<String>, layout: Optional<CryptLayout>) -> Optional<AdminPasswordRefusalCause> {
+  match layout {
+    Absent => Absent
+    Present { value: shape } => reject_salt_at(segments: segments, layout: shape)
+  }
+}
+
+fn reject_salt_at(segments: List<String>, layout: CryptLayout) -> Optional<AdminPasswordRefusalCause> {
+  let measured_salt = character_count(count: salt_length_of(segments: segments, layout: layout))
   match sha512_crypt_format {
     Sha512CryptFormat {
       scheme_token: _, cost_marker: _, salt_forbidden_characters: _, salt_least_characters: least,
       salt_greatest_characters: greatest, digest_alphabet: _, digest_exact_characters: _, cost_least_digits: _,
       cost_greatest_digits: _, figure_standing: _,
     } =>
-      match piece_at(pieces: segments, index: count - 2) {
+      match piece_at(pieces: segments, index: salt_index_of(layout: layout)) {
         Absent => Present { value: SaltAbsent }
         Present { value: salt } =>
           // Compared ON THE COUNT AXIS rather than against a bare Int. `a < b` is `not (b <= a)` because
@@ -1918,15 +2533,22 @@ fn reject_salt(segments: List<String>, count: Int) -> Optional<AdminPasswordRefu
 // gets in — the likeliest corruption when a hash is copied out of a terminal or a log line — to sit in a shadow
 // entry where it can never authenticate, leaving a board that looks like it has no password set. The character
 // test is the allowed-alphabet strip, because the digest's class IS an enumeration upstream.
-fn reject_digest(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
-  let measured_digest = character_count(count: digest_length_of(segments: segments, count: count))
+fn reject_digest_for_layout(segments: List<String>, layout: Optional<CryptLayout>) -> Optional<AdminPasswordRefusalCause> {
+  match layout {
+    Absent => Absent
+    Present { value: shape } => reject_digest_at(segments: segments, layout: shape)
+  }
+}
+
+fn reject_digest_at(segments: List<String>, layout: CryptLayout) -> Optional<AdminPasswordRefusalCause> {
+  let measured_digest = character_count(count: digest_length_of(segments: segments, layout: layout))
   match sha512_crypt_format {
     Sha512CryptFormat {
       scheme_token: _, cost_marker: _, salt_forbidden_characters: _, salt_least_characters: _,
       salt_greatest_characters: _, digest_alphabet: _, digest_exact_characters: width, cost_least_digits: _,
       cost_greatest_digits: _, figure_standing: _,
     } =>
-      match piece_at(pieces: segments, index: count - 1) {
+      match piece_at(pieces: segments, index: digest_index_of(layout: layout)) {
         Absent => Present { value: DigestAbsent }
         Present { value: digest } =>
           match digest.length() == 0 {
@@ -1949,17 +2571,27 @@ fn reject_digest(segments: List<String>, count: Int) -> Optional<AdminPasswordRe
 // fires first, so zero is not a lie about a real salt — it is simply never compared. Keeping these beside
 // piece_at rather than calling .length() at two call sites is what stops the measured value and the refused value
 // from ever being read out of different segments.
-fn salt_length_of(segments: List<String>, count: Int) -> Int {
-  match piece_at(pieces: segments, index: count - 2) {
+// THE POSITIONS, ASKED OF THE LAYOUT — never recomputed from the count. `count - 2` happened to be the salt in
+// both arities, which is exactly the kind of coincidence that survives a grammar change silently: with the cost
+// present the salt is at 3 and the digest at 4, and only the layout knows that.
+fn digest_length_of(segments: List<String>, layout: CryptLayout) -> Int {
+  match piece_at(pieces: segments, index: digest_index_of(layout: layout)) {
     Absent => 0
-    Present { value: salt } => salt.length()
+    Present { value: digest } => digest.length()
   }
 }
 
-fn digest_length_of(segments: List<String>, count: Int) -> Int {
-  match piece_at(pieces: segments, index: count - 1) {
-    Absent => 0
-    Present { value: digest } => digest.length()
+fn salt_index_of(layout: CryptLayout) -> Int {
+  match layout {
+    FourFieldsWithoutCost { salt_index: index, digest_index: _ } => index
+    FiveFieldsWithCost { cost_index: _, salt_index: index, digest_index: _ } => index
+  }
+}
+
+fn digest_index_of(layout: CryptLayout) -> Int {
+  match layout {
+    FourFieldsWithoutCost { salt_index: _, digest_index: index } => index
+    FiveFieldsWithCost { cost_index: _, salt_index: _, digest_index: index } => index
   }
 }
 
@@ -1967,6 +2599,31 @@ fn digest_length_of(segments: List<String>, count: Int) -> Int {
 // is indistinguishable from an empty segment; this walks the structure so a missing piece is REFUSED rather than
 // silently read as the empty string — which, for a digest, would mean a length of zero and a wrong-length
 // refusal that blamed the wrong part.
+fn salt_length_of(segments: List<String>, layout: CryptLayout) -> Int {
+  match piece_at(pieces: segments, index: salt_index_of(layout: layout)) {
+    Absent => 0
+    Present { value: salt } => salt.length()
+  }
+}
+
+fn reject_scheme(segments: List<String>, count: Int) -> Optional<AdminPasswordRefusalCause> {
+  match sha512_crypt_format {
+    Sha512CryptFormat {
+      scheme_token: token, cost_marker: _, salt_forbidden_characters: _, salt_least_characters: _,
+      salt_greatest_characters: _, digest_alphabet: _, digest_exact_characters: _, cost_least_digits: _,
+      cost_greatest_digits: _, figure_standing: _,
+    } =>
+      match piece_at(pieces: segments, index: 1) {
+        Present { value: found } =>
+          match found == (token as String) {
+            True => Absent
+            False => Present { value: SchemeUnsupported }
+          }
+        Absent => Present { value: SchemeUnsupported }
+      }
+  }
+}
+
 fn piece_at(pieces: List<String>, index: Int) -> Optional<String> {
   match pieces {
     Empty => Absent
@@ -2016,7 +2673,7 @@ fn project_autoinstall_identity(
       match receipt {
         Absent => IdentityReceiptMissing
         Present { value: issued } =>
-          match issued.secret_locator == source.secret_locator && issued.secret_version == source.secret_version {
+          match receipt_matches_handle(handle: source, issued: issued) {
             // A receipt from a different secret is refused by name — locator and version, both of which are
             // references and neither of which is the secret. Naming them is how an operator tells "the vault
             // moved" from "the seed is stale", and it is safe precisely because a locator is not a credential.
@@ -2063,9 +2720,9 @@ type StorageProjection
 
 fn project_storage_policy(selection: TargetDiskSelection) -> StorageProjection {
   match selection {
-    DiskSelected { device: chosen, provenance: provenance } => Projected {
+    DiskSelected { provenance: provenance } => Projected {
       policy: StoragePolicyDirectLayout,
-      device: bound_disk_evidence(device: chosen, provenance: provenance),
+      device: provenance_chosen_identity(provenance: provenance),
       provenance: provenance,
     }
     SelectionRefused { cause: cause } => ProjectionUnresolved { cause: cause }
@@ -2102,7 +2759,7 @@ fn render_altra_autoinstall_seed(seed: AltraAutoinstallSeed) -> NonEmptyStr {
     concat("addressing=", addressing_diagnostic(addressing: seed.network.addressing)),
     concat("family=", address_family_diagnostic(family: seed.network.family)),
     concat("mirror=", mirror_diagnostic(mirror: seed.network.mirror)),
-    concat("disk=", selector_diagnostic(selector: seed.disk)),
+    concat("disk=", configuration_identity_of_selector(selector: seed.disk)),
     concat("entry=", entrypoint_diagnostic(entry: seed.entry)),
     concat("password=", credential_diagnostic(posture: seed.credential)),
     concat("drivers=", install_driver_list_diagnostic(drivers: seed.install_drivers)),
@@ -2144,6 +2801,177 @@ fn altra_autoinstall_seed_digest(seed: AltraAutoinstallSeed) -> Fnv1a64Structura
     tag: "gunbc.provisioning.altra_autoinstall_seed/1",
     payload: content_hash_atom(value: render_altra_autoinstall_seed(seed: seed)),
   )
+}
+
+// ---------------------------------------------------------------------------
+// 8b. THE DOCUMENT. A seed is not a configuration until something can be written down and served;
+// what is served is the payload, and what the binding records is a digest OF THAT DOCUMENT.
+// ---------------------------------------------------------------------------
+
+// WHY THE PAYLOAD IS BUILT FROM THE AXES AND NOT STORED BESIDE THEM. Every field below is derived by the fn
+// that owns its spelling: the locale by seed_locale_wire, the keyboard by ceremonial_keyboard_layout_wire, the
+// transport by payload_delivery_for, the key list by the seed's own admitted authorisation. So the document
+// cannot disagree with the seed it came from, which is the only sense in which "the machine booted seed X" is
+// a question with an answer. A future field the upstream payload grows (a proxy, a timezones section) is added
+// HERE, in the one projection, and the witness below that compares documents has to see it change.
+type SeedDocument
+  = DocumentBuilt { payload: UbuntuAutoinstallPayload, content: NonEmptyStr }
+  // REFUSAL IS A FIRST-CLASS OUTCOME, NOT AN ERROR. The YAML substrate refuses a value it cannot write with
+  // its intended meaning rather than writing something merely similar; that refusal is a fact about THIS seed,
+  // and the binding has to be able to say "this seed has no document, and here is why" instead of quietly
+  // recording a digest of a rendering nobody was ever served.
+  | DocumentRefused { reason: NonEmptyStr }
+
+fn seed_document(seed: AltraAutoinstallSeed) -> SeedDocument {
+  match autoinstall_payload(seed: seed) {
+    Absent => DocumentRefused { reason: "seed-declares-nothing-to-write" as NonEmptyStr }
+    Present { value: payload } =>
+      match autoinstall_user_data(payload: payload) {
+        AutoinstallUserDataRefused { reason: why } => DocumentRefused { reason: why as NonEmptyStr }
+        AutoinstallUserDataRendered { content: body } =>
+          DocumentBuilt { payload: payload, content: body as NonEmptyStr }
+      }
+  }
+}
+
+// THE PAYLOAD, OR THE REASON THERE IS NONE. Absent is reserved for the one honest case: a seed carrying no
+// admin password receipt cannot fill upstream's hashed_password field, and inventing a string there would put
+// a fabricated credential into a document that is about to be served to a board. (review: merry-fox-82) The
+// earlier projection handed a placeholder digest to the payload and the witness then compared placeholders —
+// both sides of an equality over something that was never read.
+fn autoinstall_payload(seed: AltraAutoinstallSeed) -> Optional<UbuntuAutoinstallPayload> {
+  match password_field_from(seed: seed) {
+    Present { value: hashed } =>
+      Present { value: UbuntuAutoinstallPayload {
+        autoinstall_version: 1,
+        delivery: payload_delivery_for(delivery: seed.delivery),
+        fully_automated: true,
+        target_distribution: NobleNumbat2404Lts,
+        identity: AutoinstallIdentity {
+          hostname: "altra-installer" as NonEmptyStr,
+          username: "gunbc-admin" as NonEmptyStr,
+          realname: "gunbc provisioning" as NonEmptyStr,
+          hashed_password: hashed,
+        },
+        locale: seed_locale_wire(locale: seed.locale),
+        keyboard_layout: ceremonial_keyboard_layout_wire(layout: seed.keyboard),
+        install_openssh_server: openssh_is_installed(intents: seed.install_packages),
+        ssh_authorized_keys: seed.entry.authorised_keys,
+        ssh_password_auth: false,
+        storage_policy: StoragePolicyDirectLayout,
+      } }
+    Absent => Absent
+  }
+}
+
+// THE PASSWORD FIELD COMES FROM A READ, OR THE DOCUMENT IS NOT BUILT. A hash the module minted itself is not a
+// password; it is a placeholder, and a placeholder in a credential field is how a headless board ends up with
+// an account nobody can name. So: only a receipt admitted against the seed's own handle, naming the same secret
+// and version, fills this field. A handle whose read is missing, or whose read names a different secret, yields
+// Absent — and Absent means no document, not a document with a hole in it.
+//
+// THE DECLINED CASE IS A LOCK MARKER, NOT AN EMPTY STRING, AND NOT A HASH. Upstream's payload demands a
+// NonEmptyStr here, so declining a password still has to produce a string; the earlier draft passed "" and the
+// compiler was right to refuse it (the refinement is exactly the claim "a credential field is never empty").
+// The honest string is the lock marker: crypt(3) stores a locked account as a password field whose first
+// character is '!' or '*', which can never be produced by a hash — and that is not folklore in this repo, it is
+// a consequence of the shelf: '!' is a member of extdeps.libxcrypt's reserved set, so NO admitted digest can
+// ever equal or begin with it. Two states therefore stay distinguishable in the rendered document: a seed that
+// declined a password shows the lock marker and nothing else, and a seed that has one shows a digest this
+// module admitted. Both are only survivable because the entry posture had to justify itself at admission —
+// a locked password with no authorised key never became a seed (AdminEntryHasNoKey).
+fn password_field_from(seed: AltraAutoinstallSeed) -> Optional<NonEmptyStr> {
+  match seed.credential {
+    PasswordUnset => Present { value: "!*" as NonEmptyStr }
+    // THE READ TRAVELS INSIDE THE SEED, SO THERE IS NOTHING LEFT TO RE-PROVE HERE. An earlier revision
+    // re-ran receipt_matches_handle on this path; the re-check was UNREACHABLE, because the only minter of a
+    // seed refuses to build one whose read belongs to another handle, and a loosened copy of it could not be
+    // detected by any test — which is DESIGN §5's definition of a check restating a constraint the model
+    // already carries. The pairing therefore lives in exactly two places, each with a caller that can reach
+    // it: at construction (receipt_pairs_credential), and in the identity projection, whose receipt arrives
+    // from OUTSIDE the seed as a parameter and so is genuinely unaudited until checked. A future requirement
+    // that lets a seed be assembled from parts adds a minter that pairs; it does not add a comparison here.
+    PasswordHandle { handle: _ } =>
+      match seed.password_read {
+        Absent => Absent
+        Present { value: issued } => Present { value: issued.crypt_digest }
+      }
+  }
+}
+
+// THE TRANSPORT, IN UPSTREAM'S OWN VOCABULARY. The seed's delivery axis is a decision about HOW the installer
+// arrives; upstream's NoCloud pair is a decision about where the answer file is READ FROM. They are not the same
+// axis, and this fn is where the two are related — deliberately one way, and deliberately lossy in the direction
+// that matters: a PXE boot and a virtual-media boot both read NoCloud from the media, and no field of the seed
+// selects a PXE server here. A future requirement to serve the document over HTTP (a seed_url) adds the arm and
+// has to say which evidence names the URL; it may not name a machine.
+fn payload_delivery_for(delivery: SeedDeliveryStrategy) -> AutoinstallDeliveryMethod {
+  match delivery {
+    PxeStrategy { boot_mode: _ } => NoCloudLocal
+    VirtualMediaStrategy { media_stem: _ } => NoCloudLocal
+  }
+}
+
+// THE FIRST INTENT NAMING A PACKAGE, whichever arm it is in. The arms classify WHY a package is installable;
+// they do not classify its name, so a lookup has to see through all four. Kept as its own fn rather than
+// inlined into the caller because the audit below and the payload projection above must ask the same question of
+// the same list — two spellings of "is this package in the seed" is two answers.
+fn first_intent_named(intents: List<PackageIntent>, wanted: NonEmptyStr) -> Optional<PackageIntent> {
+  match intents {
+    Empty => Absent
+    Cons { head: intent, tail: rest } =>
+      match package_intent_names(intent: intent, wanted: wanted) {
+        True => Present { value: intent }
+        False => first_intent_named(intents: rest, wanted: wanted)
+      }
+  }
+}
+
+// THE NAME OF ANY ARM. Each arm carries its package name in exactly one place — inside the silence receipt for
+// a silent row, which is where it moved when the mismatched-pair defect was closed — so reading it never
+// duplicates a name, it reads the one that exists.
+fn package_intent_names(intent: PackageIntent, wanted: NonEmptyStr) -> Bool {
+  match intent {
+    QuestionAnswered { package: named, debconf_seed: _ } =>
+      wanted == known_prompting_package_name(package: named)
+    QuestionUnanswered { package: named } => wanted == known_prompting_package_name(package: named)
+    UnclassifiedPackage { name: un, debconf_seed: _ } => wanted == un
+    PackageVerifiedSilent { silence: receipt } => wanted == silenced_package(receipt: receipt)
+  }
+}
+
+// WHETHER THE SEED ASKS FOR sshd AT ALL, read from the seed's own package intents rather than from a bool// WHETHER THE SEED ASKS FOR sshd AT ALL, read from the seed's own package intents rather than from a bool
+// beside them. Two fields that must agree is two fields that can disagree, and this one would disagree in the
+// worst direction: a payload claiming an SSH server the seed never installs leaves the board unreachable by
+// the only channel a headless box has.
+fn openssh_is_installed(intents: List<PackageIntent>) -> Bool {
+  match first_intent_named(intents: intents, wanted: "openssh-server" as NonEmptyStr) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// THE DOCUMENT'S DIGEST — AND IT IS A DIGEST OF THE RENDERED DOCUMENT, NOT OF THE SEED'S FIELDS. (review:
+// merry-fox-82, HOLD section 1) The binding used to record a digest of this module's own diagnostic rendering
+// and then answer "did the machine boot seed X?" from a comparison of two local values, neither of which had
+// ever been handed to a machine. A digest of a rendering nobody served can be computed, matched, and be
+// completely unrelated to what was on the wire. So the binding takes the SHA-256 of the bytes the renderer
+// produced; the rendering above stays, as a human-readable configuration identity, and is no longer what
+// proves a boot.
+fn rendered_document_digest(content: NonEmptyStr) -> Fnv1a64Structural {
+  let hex = sha256_hex_of_text(text: content)
+  match hex == "" {
+    True =>
+      content_hash_tagged_structural(
+        tag: "gunbc.provisioning.altra_autoinstall_seed.document/unavailable",
+        payload: content_hash_atom(value: content),
+      )
+    False =>
+      content_hash_tagged_structural(
+        tag: "gunbc.provisioning.altra_autoinstall_seed.document/sha256",
+        payload: content_hash_atom(value: hex as NonEmptyStr),
+      )
+  }
 }
 
 // EVERY DERIVED SPELLING BELOW EXISTS SO THAT THE RENDERING NEVER READS A STORED STRING. Each is the only
@@ -2209,16 +3037,41 @@ fn mirror_diagnostic(mirror: ArchiveMirror) -> NonEmptyStr {
   }
 }
 
-fn selector_diagnostic(selector: TargetDiskSelector) -> NonEmptyStr {
+// THE SELECTOR'S CONFIGURATION IDENTITY, WITH ITS FIELDS FRAMED SO THEY CANNOT BLEED INTO ONE ANOTHER. The
+// earlier spelling here was selector_diagnostic, which concatenated the part number and the capacity with no
+// delimiter — and because of that, "WDS200T2X0E2000" at 398934016 bytes and "WDS200T2X0E" at 2000398934016 bytes
+// rendered identically, so two seeds that selected different drives digested the same while the receipt claimed
+// to frame the rule. Each field now carries its own label AND the length of the string it holds: the length is
+// what makes the framing immune rather than the punctuation, because a part number containing the delimiter can
+// no longer shift where a boundary falls.
+//
+// THE LOSSY SPELLING IS GONE, NOT KEPT ALONGSIDE THIS ONE. selector_diagnostic had exactly one caller — the
+// digest line above — so leaving a human-facing version beside a safe one would be dead code plus a comment
+// claiming a consumer that does not exist. A display string is added when something actually displays it, and it
+// is built from these pieces, never by re-gluing fields. FUTURE REQUIREMENT: a new TargetDiskSelector arm adds a
+// branch here AND one in selectors_are_the_same; both are exhaustive matches with no catch-all, so the compiler
+// catches the first and a reviewer must catch the second.
+fn configuration_identity_of_selector(selector: TargetDiskSelector) -> NonEmptyStr {
   match selector {
-    ByObservedSerial { serial: s } => concat("serial=", s) as NonEmptyStr
+    ByObservedSerial { serial: s } =>
+      framed_field(label: "serial", value: s) as NonEmptyStr
     ByCatalogIdentity { part_number: p, capacity_bytes: c } =>
-      concat(concat("catalog=", p), capacity_diagnostic(capacity: c)) as NonEmptyStr
+      concat(
+        framed_field(label: "catalog", value: p),
+        concat("|", framed_field(label: "capacity", value: to_string(byte_size_count(b: c)) as NonEmptyStr)),
+      ) as NonEmptyStr
   }
 }
 
-// THE CAPACITY REACHES THE DIGEST AS A COUNT, NOT AS A MEASURE'S OWN SPELLING: the digest must not move if
-// the unit is restated in a different scale (Gibibyte vs ByteSize), only if the size it refers to changes.
+// ONE FRAMED FIELD: "label[<character-count>]:<value>". The count is taken from the value itself, so it cannot
+// disagree with it, and it is what stops a value containing ':' or '|' from moving the boundary.
+fn framed_field(label: NonEmptyStr, value: NonEmptyStr) -> NonEmptyStr {
+  concat(
+    concat(concat(label, "["), to_string(value.length()) as NonEmptyStr),
+    concat("]:", value),
+  ) as NonEmptyStr
+}
+
 fn capacity_diagnostic(capacity: ByteSize) -> NonEmptyStr {
   to_string(byte_size_count(b: capacity)) as NonEmptyStr
 }
@@ -2293,10 +3146,17 @@ fn entrypoint_diagnostic(entry: AdminAccessAuthorisation) -> NonEmptyStr {
 fn credential_diagnostic(posture: AdminCredentialPosture) -> NonEmptyStr {
   match posture {
     PasswordUnset => "unset"
+    // FRAMED, NOT GLUED. The first version emitted `locator=<l>|version=<v>`, and two DIFFERENT handles
+    // produced identical text: (locator "vault://L|version=v1", version "v2") and (locator "vault://L", version
+    // "v1|version=v2") — the delimiter was inside the free-form locator, so the boundary moved. Those two
+    // handles are otherwise-equal seeds digesting alike, which is the same failure the disk selector had and it
+    // was found here by the same kind of example. Each part now carries its own label and its own character
+    // count, so a value containing '=' or '|' cannot move a boundary. `admin_password_handle` accepted both
+    // handles before this, so nothing upstream would have caught it. (review: merry-fox-82)
     PasswordHandle { handle: h } =>
       concat(
-        concat(concat("locator=", h.secret_locator), "|version="),
-        h.secret_version,
+        framed_field(label: "locator", value: h.secret_locator),
+        concat("|", framed_field(label: "version", value: h.secret_version)),
       ) as NonEmptyStr
   }
 }
@@ -2388,9 +3248,9 @@ fn package_intent_diagnostic(intent: PackageIntent) -> NonEmptyStr {
     // and how it was established. A seed that carried a silent row at one version and another at a second
     // version are two different installs — the second may prompt where the first could not — so they must not
     // hash alike, and a transcribed claim must not hash the same as a measured one.
-    PackageVerifiedSilent { name: nm, silence: receipt } =>
+    PackageVerifiedSilent { silence: receipt } =>
       concat(
-        concat(concat(nm, "+silent,"), silence_receipt_diagnostic(receipt: receipt)),
+        concat(concat(silenced_package(receipt: receipt), "+silent,"), silence_receipt_diagnostic(receipt: receipt)),
         ",count=0",
       ) as NonEmptyStr
   }
@@ -2401,7 +3261,7 @@ fn package_intent_diagnostic(intent: PackageIntent) -> NonEmptyStr {
 // could not tell them apart could not later answer "what did this board actually get".
 fn silence_receipt_diagnostic(receipt: PackageSilenceReceipt) -> NonEmptyStr {
   match receipt {
-    SilentReceipt { observed_version: version, standing: how } =>
+    SilentReceipt { package: _, observed_version: version, standing: how } =>
       concat(
         concat("silent@", version),
         match cited_figure_read_obligation(standing: how) {
@@ -2420,7 +3280,7 @@ fn silence_receipt_diagnostic(receipt: PackageSilenceReceipt) -> NonEmptyStr {
 // still transcribed rather than having to re-derive that it is. Absent means nothing is owed.
 fn silence_read_obligation(receipt: PackageSilenceReceipt) -> Optional<NonEmptyStr> {
   match receipt {
-    SilentReceipt { observed_version: _, standing: how } => cited_figure_read_obligation(standing: how)
+    SilentReceipt { package: _, observed_version: _, standing: how } => cited_figure_read_obligation(standing: how)
   }
 }
 
@@ -2457,7 +3317,15 @@ fn render_sorted_names(names: List<String>) -> NonEmptyStr {
 type AltraAutoinstallSeedBinding sole_constructor {
   unit_key: UnitKey
   attempt: IntakeAttemptId
+  // TWO DIGESTS BECAUSE THERE ARE TWO QUESTIONS. `seed_digest` answers "which configuration" and is computed
+  // from the seed's semantic axes; `document_digest` answers "what was served" and is the SHA-256 of the bytes
+  // gunbc.os_install_emit wrote for the payload (review: merry-fox-82, HOLD section 1). The record used to
+  // carry one digest — of this module's own diagnostic rendering — and the boot verdict stood on it, so the
+  // verdict was a comparison between two strings neither of which had ever been handed to a machine. Drop the
+  // first and two documents produced by different writer versions become indistinguishable; drop the second
+  // and "the machine booted seed X" has no evidence behind it at all.
   seed_digest: Fnv1a64Structural
+  document_digest: Fnv1a64Structural
   seed_rendering: NonEmptyStr
   delivery: SeedDeliveryStrategy
   disk: TargetDiskSelector
@@ -2499,6 +3367,12 @@ type BindingBlocker
   // to know which of the two is wrong; naming them `seed`/`run` rather than two `TargetDiskSelector`s keeps the
   // executed side's evidence — the counts it matched — attached to the refusal.
   | DiskSelectorDisagreesWithSeed { seed: TargetDiskSelector, run: DiskSelectionProvenance }
+  // THE SEED HAS NO SERVEABLE DOCUMENT. Either the upstream writer refused a payload field it cannot write with
+  // its intended meaning, or the seed names a credential handle that carries no password read. Either way there
+  // is nothing to serve the board, so a binding would be this module certifying a boot that cannot happen. Its
+  // own arm rather than TargetNotAdmitted because the board is fine: the page of the runbook is "fix the seed",
+  // not "re-admit the unit", and folding the two sends an operator to the wrong machine.
+  | SeedHasNoRenderableDocument { reason: NonEmptyStr }
 
 // THE TWO OUTCOMES OF A BINDING ATTEMPT, as arms rather than Optional, for the reason above: the green arm
 // carries the record, the red arm carries why there is no record.
@@ -2528,7 +3402,7 @@ fn bind_altra_autoinstall_seed(
         // defect this closes (review: merry-fox-82) was that a perfectly valid disk selected under a DIFFERENT
         // rule could be bound to this seed: the disk existed, the serial matched something, and the receipt
         // recorded a selector that had never been run against the probe.
-        DiskSelected { device: chosen, provenance: provenance } =>
+        DiskSelected { provenance: provenance } =>
           match selectors_are_the_same(a: seed.disk, b: provenance.selector) {
             // THE PAYLOAD NAMES BOTH RULES AND SAYS WHICH IS WHICH. "seed" is the rule the seed commanded;
             // "run" is the rule that was actually executed against the probe and whose provenance is being
@@ -2537,60 +3411,78 @@ fn bind_altra_autoinstall_seed(
             // wrong disk, and sends them to edit a seed that was correct.
             False => BindRefused { blocker: DiskSelectorDisagreesWithSeed { seed: seed.disk, run: provenance } }
             True =>
+              // NO DOCUMENT, NO BINDING. The digest that leaves this function is the digest of what the board
+              // will be served, so it has to be produced before the record can exist.
+              match seed_document(seed: seed) {
+                DocumentRefused { reason: why } =>
+                  BindRefused { blocker: SeedHasNoRenderableDocument { reason: why } }
+                DocumentBuilt { payload: _, content: document } =>
               Bound {
                 binding: AltraAutoinstallSeedBinding {
                   unit_key: unit_key,
                   attempt: attempt,
                   seed_digest: altra_autoinstall_seed_digest(seed: seed),
+                  document_digest: rendered_document_digest(content: document),
                   // THE RENDERING IS CARRIED, not just its digest, so the receipt can be re-checked without the
                   // seed still existing. And the disk evidence is inside the digest below, so "the machine
                   // booted seed X" cannot be answered for a machine that was pointed at a different drive.
                   seed_rendering: render_altra_autoinstall_seed(seed: seed),
                   delivery: seed.delivery,
                   disk: seed.disk,
-                  disk_selection: bound_disk_evidence(device: chosen, provenance: provenance),
+                  disk_selection: provenance_chosen_identity(provenance: provenance),
                 },
+              }
               }
           }
       }
   }
 }
 
-// TWO WAYS TO SAY THE SAME RULE. Comparing structurally rather than by rendered text: two spellings of one rule
-// are a rendering bug elsewhere, and the selector is closed data whose fields ARE the rule.
+// SELECTORS ARE COMPARED FIELD BY FIELD, NEVER BY A FLATTENED STRING (review: merry-fox-82, HOLD section 2).
+// The earlier version hashed selector_diagnostic of both sides, and that diagnostic is not injective: it glues
+// the part number to the capacity with no delimiter, so two DISTINCT selectors
+//   ByCatalogIdentity { part_number: "WDS200T2X0E2000", capacity_bytes: 398934016 }
+//   ByCatalogIdentity { part_number: "WDS200T2X0E",     capacity_bytes: 2000398934016 }
+// produced the SAME string, "catalog=WDS200T2X0E2000398934016", and the comparison called them one rule — two
+// drives, one of them the wrong size by three orders of magnitude, accepted as the seed's target. Comparing the
+// arms and then their fields is the only version that means what it says: the variant must match (a serial rule
+// is never a catalog rule) and every field inside it must match by its own type — NonEmptyStr by string identity,
+// ByteSize by measure equality, so a capacity can never agree with a part number by an accident of spelling.
+//
+// WHY THE FIELDS ARE FRAMED IN THE CONFIGURATION IDENTITY TOO (see configuration_identity_of_selector). The same
+// collision merged two different seed renderings while the render claimed to frame the rule, which would let a
+// receipt agree with a seed that meant something else. FUTURE REQUIREMENT: a new TargetDiskSelector arm adds a
+// branch here and a branch in configuration_identity_of_selector; the compiler forces the first, and the second
+// is the row a reviewer must see filled, which is why both are exhaustive with no catch-all.
 fn selectors_are_the_same(a: TargetDiskSelector, b: TargetDiskSelector) -> Bool {
-  match content_hash_eq_structural(
-    left: content_hash_atom(value: selector_diagnostic(selector: a)),
-    right: content_hash_atom(value: selector_diagnostic(selector: b)),
-  ) {
-    // The structural comparison is the answer; the diagnostic exists so a refusal can be printed, and hashing
-    // two identical spellings can only ever be equal. Written as an explicit match so there is no default arm
-    // for a future selector variant to fall through.
-    True => true
-    False => false
+  match a {
+    ByObservedSerial { serial: left } =>
+      match b {
+        ByObservedSerial { serial: right } => left == right
+        ByCatalogIdentity { part_number: _, capacity_bytes: _ } => false
+      }
+    ByCatalogIdentity { part_number: left_part, capacity_bytes: left_capacity } =>
+      match b {
+        ByObservedSerial { serial: _ } => false
+        ByCatalogIdentity { part_number: right_part, capacity_bytes: right_capacity } =>
+          left_part == right_part && left_capacity == right_capacity
+      }
   }
 }
 
-fn bound_disk_evidence(device: StorageDevice, provenance: DiskSelectionProvenance) -> BoundDiskEvidence {
-  match storage_device_serial(d: device) {
-    // THE EVIDENCE NAMES THE DISK AND THE RULE THAT CHOSE IT. A serial alone says "this drive"; the pairing
-    // says "this drive, because the seed's rule matched it against N of M observed devices", which is what a
-    // reviewer needs in order to disagree with the choice later.
-    Present { value: serial } => BoundDisk { serial: serial, matched: provenance.matched, observed: provenance.observed }
-    // The probe could not read an identity for the very device it picked. That is not a disk to install onto
-    // and it is not recorded as one: an unread identity is kept as its own verdict so the receipt cannot read
-    // as "installed on the drive whose serial is the empty string".
-    Absent => BoundDiskUnread { part_number: candidate_identity_label(device: device) }
-  }
-}
-
-// THE ANSWER TO "DID THIS MACHINE BOOT SEED X?" — computed, never recalled. Re-rendering the seed in hand
-// and comparing digests is the whole check; a mismatch is not a comparison failure to retry, it is a
-// first-class verdict, because the two states it distinguishes (wrong seed vs same seed different config)
-// have opposite operational meanings.
+// WHAT A BINDING CHECK CAN AND CANNOT SAY (review: merry-fox-82, HOLD section 1). This fn compares a binding, a
+// seed, and the (unit, attempt) they name — all three of which are values the caller already holds. Nothing here
+// has ever contacted a board, fetched a URL, or read a console, so no outcome of this function may be spelled in
+// the past tense of a boot. The names used to be BootedThisSeed / BootedADifferentSeed, and the body advertised
+// a standing it had no way to observe: a caller reading "BootedThisSeed" from a local digest compare would
+// believe an event had happened. What is actually decided here is whether the RECORD agrees with the SEED. The
+// boot standing lives below, in boot_standing, and is reachable only through an observation.
+//
+// THREE ARMS, ALL POSITIVE CLAIMS ABOUT RECORDS. A fourth — "unobserved" — would be redundant here: this
+// function is never the place a boot is reported, so it never needs to say "not yet".
 type BindingVerdict
-  = BootedThisSeed
-  | BootedADifferentSeed
+  = BoundConfigurationMatchesSeed
+  | BoundConfigurationDiffersFromSeed
   // NO PAYLOAD: the arm asserts that the binding does not name the unit and attempt being asked about, which
   // is fully determined by the two comparisons below. A note there would be prose stored as data, constructed
   // once and read by nobody. A future need to distinguish WHICH identity mismatched adds a field with a real
@@ -2609,6 +3501,72 @@ fn check_binding_against_seed(
       match content_hash_eq_structural(
         left: binding.seed_digest,
         right: altra_autoinstall_seed_digest(seed: seed),
+      ) {
+        True => BoundConfigurationMatchesSeed
+        False => BoundConfigurationDiffersFromSeed
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 9b. THE BOOT OBSERVATION. Nothing in this module may say a board booted until somebody brings back
+// what the board was actually served.
+// ---------------------------------------------------------------------------
+
+// AN OBSERVATION OF WHAT A BOARD WAS SERVED. This is an observation THIS REPOSITORY makes, so it is a receipt in
+// the observing layer (DESIGN.md §3b: "observations this repository makes are receipts in the observing layer,
+// not facts of the observed upstream") — it is not a field of the seed and not a fact about libxcrypt, Ubuntu, or
+// the BMC. It exists because the alternative was worse: the binding used to answer "did it boot this seed?" from
+// two digests computed in the same process, which is a tautology with a receipt printed on it.
+//
+// THE CONSTRUCTOR TAKES THE BYTES AND DERIVES THE DIGEST. That ordering is the whole point. A record that stored
+// a digest someone handed it alongside a document it never read could assert any boot it liked; here the digest
+// is computed from the fetched text by the same fn the binding's digest came from, so a boot claim can only be
+// built from something that was actually fetched. The authority is the anchor for where the text came from — the
+// TFTP/HTTP location and the fetch — because "the machine booted seed X" is only evidence if someone can go and
+// re-read the source.
+type SeedBootObservation sole_constructor {
+  observed_document_digest: Fnv1a64Structural
+  observed_from: ExternalAuthority
+}
+
+fn record_seed_boot_observation(
+  served_document: NonEmptyStr,
+  observed_from: ExternalAuthority,
+) -> SeedBootObservation {
+  SeedBootObservation {
+    observed_document_digest: rendered_document_digest(content: served_document),
+    observed_from: observed_from,
+  }
+}
+
+// THE STANDING, JOINED. `BootedThisSeed` is now reachable from exactly one place: an observation whose digest
+// equals the digest of the document THIS binding was built to serve. With no observation the answer is
+// BootNotObserved — a first-class outcome, not an error and not a sentinel — which is what every attempt looks
+// like until somebody fetches what the board fetched.
+//
+// WHY THE COMPARISON IS AGAINST THE DOCUMENT DIGEST AND NOT THE CONFIGURATION DIGEST: the board was handed
+// bytes. Two configurations can render to the same document and one configuration can render differently
+// across writer versions, so only the document is what the boot can be matched against. The configuration
+// digest stays on the binding, where it answers "which configuration did we intend".
+type BootStanding
+  = BootedThisSeed
+  | BootedADifferentSeed
+  // UNOBSERVED IS AN OUTCOME. No fetch, no standing — and the caller has to carry that forward rather than
+  // defaulting to the flattering arm. A future requirement to distinguish "nobody looked" from "looked and the
+  // document was not there" adds an arm with its own evidence, not a note field here.
+  | BootNotObserved
+
+fn boot_standing(
+  binding: AltraAutoinstallSeedBinding,
+  observation: Optional<SeedBootObservation>,
+) -> BootStanding {
+  match observation {
+    Absent => BootNotObserved
+    Present { value: seen } =>
+      match content_hash_eq_structural(
+        left: binding.document_digest,
+        right: seen.observed_document_digest,
       ) {
         True => BootedThisSeed
         False => BootedADifferentSeed

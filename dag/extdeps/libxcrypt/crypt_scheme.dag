@@ -24,7 +24,8 @@ module extdeps.libxcrypt.crypt_scheme
 // "$6$saltsalt$…!" passes the 86-character base64 alphabet test only if the '!' is not noticed, and the board
 // then carries a shadow entry its own crypt(3) refuses to verify — an install that reports success and a root
 // account nobody can open, found out at the only console the machine has. So both rules are modelled, and
-// accepted means BOTH accept (see shared_restriction and the composed sha512_crypt_format_accepted).
+// accepted means BOTH accept (see shared_restriction; the consumer that composes the two is a single function,
+// gunbc.provisioning.altra_autoinstall_seed (singular), admin_digest_refusal).
 //
 // WHAT IS *NOT* UPSTREAM, AND SO IS NOT CLAIMED HERE. The four-segment / five-segment grammar (splitting on '$'),
 // which refusal fires first, and the refusal type itself are the consumer's parsing convenience and stay in the
@@ -241,7 +242,7 @@ fn cost_field_is_well_formed(digits: String) -> Bool {
 // WHY CONSUMERS MAY NOT SKIP IT. A candidate that satisfies the scheme row but not this one is exactly the
 // failure this cut exists to prevent: the seed admits a digest, shadow stores it, and the board's own crypt(3)
 // refuses to verify it. That surfaces as an install that reported success and a root account nobody can open, on
-// a machine whose only console is the BMC. So accepted means BOTH rules accept — see sha512_crypt_format_accepted.
+// a machine whose only console is the BMC. So accepted means BOTH rules accept — the consumer that composes both is gunbc.provisioning.altra_autoinstall_seed (singular), admin_digest_refusal.
 type CryptSharedRestriction = PrintableAsciiMinusReserved {
   // The five characters the document names, and the ONLY character list this record carries.
   //
