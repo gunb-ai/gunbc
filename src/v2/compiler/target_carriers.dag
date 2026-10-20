@@ -22,7 +22,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   None
 }
-import v2.std.node { Disj, Arrow, Occupancy, Instantiation, ComputationNode, Atom, Conj, Node, Symbol, TypeNode }
+import v2.std.node { Disj, Arrow, Instantiation, ComputationNode, Atom, Conj, Node, Symbol, TypeNode }
 import v2.std.node_query {
   NamedChildAmbiguous,
   NamedChildFound,
@@ -79,7 +79,6 @@ fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<DecodeFideli
       }
     TypeNode { connective: Disj } => fidelity_disposition_malformed(node: node)
     TypeNode { connective: Arrow } => fidelity_disposition_malformed(node: node)
-    TypeNode { connective: Occupancy } => fidelity_disposition_malformed(node: node)
     TypeNode { connective: Instantiation } => fidelity_disposition_malformed(node: node)
     ComputationNode { behavior: _ } => fidelity_disposition_malformed(node: node)
   }
@@ -123,7 +122,6 @@ fn fidelity_quotient_decode_fidelity(quotient: Node) -> Outcome<DecodeFidelity> 
     TypeNode { connective: Atom { identity: _ } } => fidelity_quotient_malformed(quotient: quotient)
     TypeNode { connective: Disj } => fidelity_quotient_malformed(quotient: quotient)
     TypeNode { connective: Arrow } => fidelity_quotient_malformed(quotient: quotient)
-    TypeNode { connective: Occupancy } => fidelity_quotient_malformed(quotient: quotient)
     TypeNode { connective: Instantiation } => fidelity_quotient_malformed(quotient: quotient)
     ComputationNode { behavior: _ } => fidelity_quotient_malformed(quotient: quotient)
   }
