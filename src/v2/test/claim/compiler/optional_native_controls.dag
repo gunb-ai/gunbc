@@ -9,7 +9,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.types { Bool, String }
 import v2.compiler.infer { infer }
 import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
@@ -139,7 +139,7 @@ test fn onc_none_at_a_non_optional_position_refuses() -> Bool {
 
 test fn onc_none_without_std_optional_in_the_closure_refuses_at_resolve() -> Bool {
   match onc_assemble_without_optional(body: "fn mk() -> Int { none }\n") {
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_generated_reference_declaration_absent
     Accepted { value: _, diagnostics: _ } => false
   }
 }
