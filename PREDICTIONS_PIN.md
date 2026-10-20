@@ -237,3 +237,33 @@ NULL RESULT, also named: if CONTROL and MUTANT print byte-identical output for A
 evidence the guard is irrelevant -- it may mean the mutated .rs/.dag pair is not what the built binary
 used. The guard-state lines printed from the built tree are what distinguishes these two readings, so a
 null result is only interpretable if those lines differ.
+
+## PR-2 two-closure at the Acc-only head (session/quiet-hawk-507 = 97e47f8e562)
+
+PRE-REGISTERED before the first dispatch:
+  T1 both sides rc=0 and lines>0, else VOID (no counts readable).
+  T2 the Acc-only head is NOT corpus-clean: Map-family structural refusals appear,
+     self-host in the 70s, v2-native in the 60s, both closures emitted=0.
+  T3 no main identity disappears (no silent fix), and the new identities include the
+     "A bound as Map(Primitive(K),Primitive(V)) ... got Map(Primitive(String),Coproduct(..))" shape.
+
+MEASURED (j05cf96e0, reproduced identically by an earlier independent dispatch):
+  PINNED head=97e47f8e562 main=7956cb45df8 instrument=209c5ab7f54
+  [head] self-host       rc=2 lines=88 type-mismatch=76 emitted=0   -> T2 CONFIRMED (76, self-host)
+  [head] v2-native-cli   rc=2 lines=79 type-mismatch=67 emitted=0   -> T2 CONFIRMED (67, v2-native)
+  [main] self-host       rc=0 lines=25 type-mismatch=0  emitted=2
+  [main] v2-native-cli   rc=0 lines=32 type-mismatch=0  emitted=2
+  comparator rc=0 both closures (json 1240 / 1363 bytes)
+  T1 PASS (all four sides produced data; rc=2 is the MEASURED refusal, not an abort).
+  T3 is POST-DISPATCH: the by-identity table is printed only by instrument 054fd88d1cf,
+     run afterwards; read it before asserting "no main identity disappeared".
+
+CORRECTION TO MY OWN EARLIER RECORD: the "0 hard diagnostics / 0 identities both
+closures" entry was measured at 5cc80be8e59, which carries NEITHER UnifyGenericsAcc NOR
+the span-keyed mint (verified by git grep on that ref). It validated PR-1 only and was
+wrongly cited as PR-2 evidence. Any count from 5cc80be8e59/e5cc5d903e1/7c32c1359f3 says
+nothing about PR-2's fold.
+
+GATE DEFECT FOUND AND FIXED: gate_two_closures_14152.sh exits 0 for "measurement
+completed", NOT for "green"; and it printed only the comparator JSON's byte count. Both
+made a red head look like a completed pass. It now prints the per-module JSON in full.
