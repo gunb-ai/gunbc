@@ -578,7 +578,6 @@ fn decls_parse_only_from_disk(
 /// Parse-only decl extraction over `build_module_path_index` — fail-closed on parse
 /// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)` and
 /// `data_decl_type_facts(pool_roots)`; distinct from `decl_facts_corpus_walk` which skips
-
 fn decls_parse_only_fail_closed(
     roots: &[String],
     files: &[String],
