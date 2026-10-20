@@ -40,7 +40,7 @@ import v2.extdeps.languages.dag {
   dag_lex
 }
 import v2.std.compilers.lexing { Token }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetModel, target_model_emit_transforms_empty
 }
@@ -145,6 +145,7 @@ fn ingest_fixture_bundle_with_rules(rules: Node) -> Node {
 
 fn ingest_fixture_model_from_bundle(bundle: Node) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: bundle,
     lex: dag_lex(),
