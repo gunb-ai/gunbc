@@ -367,3 +367,14 @@ PRE-REGISTERED before dispatch:
      hardcoded-table objection survives whatever the consumer answer is.
   S4 (new, learned today) if either closure fails to terminate, record it as a finding and do not
      retry silently.
+
+## PR-2 BLOCKER (stern ruling msg_f1427119): non-returning fold on trivial input
+At the Acc head (97e47f8e562, probe 2790ba4bd6c) compile_dag_diagnostic_census did not return
+within 200s for ANY of seven fixtures, including the four-line control F5 (fn f5(m: Map<String,Int>)
+-> Map<String,Int> { map_insert(m: m, key: "k", value: 1) }). DESIGN §4 makes bounded, forward
+execution a property of the substrate: a type checker that hangs on trivial input cannot land
+however the families come out. LIMIT, stated as ruled: this is AT 200s and NOT YET SHOWN to be
+divergence -- slowness is not excluded. Consistent with the gate's emitted=0 at the head.
+NEXT PER RULING, only if the strip-head gate still diverges on F5: F5 ALONE at three heads --
+main, the Acc head, and the Acc head minus generic_alias_unfold/generic_type_unify_unfold/
+peel_alias_rhs_once. One input locates the boundary without a long run.
