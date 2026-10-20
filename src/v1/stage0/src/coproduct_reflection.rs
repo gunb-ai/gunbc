@@ -2705,30 +2705,52 @@ mod field_binder_default_tests {
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{ExecutionMode, InterpContext, InterpError};
     use crate::v1_std_core::{
-        empty_node_list, make_field_node, make_named_expr_node, Cardinality, ExprData, Node,
-        SourceSpan,
+        build_newline_index, empty_node_list, make_field_node, make_named_expr_node, Cardinality,
+        ExprData, Node, SourceSpan,
     };
 
-    use super::marshal_field_binder;
+    use super::{literal_source_lexeme, marshal_field_binder};
 
-    fn span() -> Rc<SourceSpan> {
+    // The fixture's one source file. Every expression's span covers its own spelling in it, so
+    // `literal_source_lexeme` READS that spelling: the source-text acceptance path the refusal must
+    // not take is reachable, not starved by an empty index.
+    const SOURCE: &str = "default_computed false";
+
+    fn span_of(start: i64, end: i64) -> Rc<SourceSpan> {
         Rc::new(SourceSpan {
             file: "test.dag".to_string(),
-            start: 0,
-            end: 1,
+            start,
+            end,
         })
     }
 
-    fn expr(name: &str, data: ExprData) -> Rc<Node> {
+    fn span() -> Rc<SourceSpan> {
+        span_of(0, SOURCE.len() as i64)
+    }
+
+    fn expr_at(name: &str, data: ExprData, at: Rc<SourceSpan>) -> Rc<Node> {
         make_named_expr_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name.to_string(),
             Rc::new(data),
             empty_node_list(),
             None,
-            span(),
-            span(),
+            at.clone(),
+            at,
         )
+    }
+
+    fn expr(name: &str, data: ExprData) -> Rc<Node> {
+        expr_at(name, data, span_of(0, 1))
+    }
+
+    fn source_indices() -> Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>> {
+        let mut m = HashMap::new();
+        m.insert(
+            "test.dag".to_string(),
+            build_newline_index("test.dag".to_string(), SOURCE.to_string()),
+        );
+        Rc::new(m)
     }
 
     fn marshal_with_default(default: Rc<Node>) -> Result<(), InterpError> {
@@ -2738,7 +2760,7 @@ mod field_binder_default_tests {
             item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
         };
-        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic);
+        let ctx = InterpContext::new(&graph, source_indices(), ExecutionMode::Hermetic);
         let si = ctx.source_indices();
         let type_expr = expr("Int", ExprData::NoExprData);
         let field = make_field_node(
@@ -2758,7 +2780,17 @@ mod field_binder_default_tests {
     // as its source text under BinderDefaultEdge (review 83500).
     #[test]
     fn a_non_literal_default_refuses() {
-        let reference = expr("default_computed", ExprData::ExprVar { binding_kind: None });
+        let reference = expr_at(
+            "default_computed",
+            ExprData::ExprVar { binding_kind: None },
+            span_of(0, 16),
+        );
+        // Precondition that makes this a discriminator: the source IS readable at the default's span,
+        // so restoring a source-text acceptance arm would marshal it and fail the refusal below.
+        assert_eq!(
+            literal_source_lexeme(&reference, &source_indices()).as_deref(),
+            Some("default_computed")
+        );
         match marshal_with_default(reference) {
             Err(InterpError::TypeError { msg }) => assert!(msg.contains("not a literal"), "{msg}"),
             other => panic!("expected a typed refusal, got {other:?}"),
@@ -2769,11 +2801,12 @@ mod field_binder_default_tests {
     // shape and not the field.
     #[test]
     fn a_literal_default_marshals() {
-        let literal = expr(
+        let literal = expr_at(
             "false",
             ExprData::ExprLiteral {
                 value: Rc::new(LiteralValue::LitBool { value: false }),
             },
+            span_of(17, 22),
         );
         marshal_with_default(literal).expect("a literal default marshals");
     }
