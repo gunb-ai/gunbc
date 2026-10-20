@@ -29,7 +29,7 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   BoundToken,
   ConcreteSyntaxToken,
@@ -711,6 +711,7 @@ fn semantic_decl_serialize_target(
         f: fn(binding_spellings) {
           outcome_accepted(
             value: TargetModel {
+              primitive_realizations: PrimitiveRealizationsUnwired,
               produced_decl_support: ProducedDeclUnwired,
               bundle: target_model_type_conj_node(
                 children: [
