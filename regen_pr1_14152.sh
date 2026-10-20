@@ -98,10 +98,20 @@ while :; do
   # created there this dispatch can yield a binary that will not exec. Print the mode, chmod, retest;
   # only then run --required-regen, or fail with a reason instead of an rc=126 that looks like drift.
   if [ ! -x "$CE_BIN" ]; then
-    echo "PRE-X not executable: $(ls -l "$CE_BIN" 2>&1 | cut -c1-120)  umask=$(umask)"
-    chmod +x "$CE_BIN" 2>/dev/null || echo "CHMOD_FAILED"
-    [ -x "$CE_BIN" ] || { echo "FATAL emitter binary not executable at $CE_BIN (target dir on this runner cannot exec what cargo wrote; run with CARGO_TARGET_DIR under /tmp)"; exit 6; }
-    echo "POST-X chmod repaired it"
+    # The in-dispatch cargo is /usr/local/ctrl-build-shims/cargo, a WRAPPER that dispatches the real
+    # build; it has been observed to report "Finished ... 5m 45s" rc=0 while my requested
+    # $CARGO_TARGET_DIR holds nothing, and to compile /root/workspace/repo-root rather than the cwd
+    # it was launched from. So do not conclude "not executable" -- LOCATE what the wrapper produced.
+    echo "PRE-X absent at $CE_BIN (umask=$(umask)); searching for what the wrapper built"
+    echo "  build log tail:"; tail -6 "$LOGS/emitter_build_$round.log" | sed 's/^/    /'
+    FOUND=$(find "$CARGO_TARGET_DIR" /root/workspace -maxdepth 6 -type f -name claim_executor 2>/dev/null | head -3)
+    echo "  found: ${FOUND:-NOTHING}"
+    if [ -n "$FOUND" ]; then
+      CE_BIN=$(echo "$FOUND" | head -1)
+      echo "  USING $CE_BIN"; ls -l "$CE_BIN" | cut -c1-120
+      chmod +x "$CE_BIN" 2>/dev/null || true
+    fi
+    [ -x "$CE_BIN" ] || { echo "FATAL no runnable claim_executor anywhere near $CARGO_TARGET_DIR"; exit 6; }
   fi
   rm -rf target/stage0-regen-candidate
   timeout -k 60 "${REGEN_TIMEOUT:-1800}" "$CE_BIN" --required-regen \
