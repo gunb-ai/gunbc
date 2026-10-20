@@ -41490,7 +41490,6 @@ pub fn shell_argv_emit_scope(
             caller_decl_name: empty.caller_decl_name.clone(),
             in_flight_lambda_param_names: empty.in_flight_lambda_param_names.clone(),
             enclosing_declared_type_param_names: empty.enclosing_declared_type_param_names.clone(),
-            fn_return_expected: empty.fn_return_expected.clone(),
         })
     }
 }

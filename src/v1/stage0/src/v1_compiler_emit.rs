@@ -638,7 +638,6 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
         caller_decl_name: "".to_string(),
         in_flight_lambda_param_names: Rc::new(vec![]),
         enclosing_declared_type_param_names: Rc::new(vec![]),
-        fn_return_expected: std::option::Option::None,
     })
 }
 
@@ -659,7 +658,6 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         caller_decl_name: "".to_string(),
         in_flight_lambda_param_names: Rc::new(vec![]),
         enclosing_declared_type_param_names: Rc::new(vec![]),
-        fn_return_expected: std::option::Option::None,
     })
 }
 

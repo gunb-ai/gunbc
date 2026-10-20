@@ -208,22 +208,19 @@ pub fn occurrence_id_for_authored_name(
     transport: Rc<OccurrenceTransport>,
     name: String,
 ) -> Option<OccurrenceId> {
-    {
-        let found_occurrence = transport.index.entries.clone().iter().cloned().fold(
-            std::option::Option::None,
-            |found: Option<OccurrenceId>, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
-                Some(_) => found.clone(),
-                std::option::Option::None => {
-                    match (entry.projection.authored_name.clone() == name.clone()) {
-                        true => Some(entry.projection.occurrence.clone()),
-                        false => std::option::Option::None,
-                    }
+    match transport.index.entries.clone().iter().cloned().fold(
+        std::option::Option::None,
+        |found: Option<OccurrenceId>, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
+            Some(_) => found.clone(),
+            std::option::Option::None => {
+                match (entry.projection.authored_name.clone() == name.clone()) {
+                    true => Some(entry.projection.occurrence.clone()),
+                    false => std::option::Option::None,
                 }
-            },
-        );
-        match found_occurrence.clone() {
-            Some(occurrence) => Some(occurrence.clone()),
-            std::option::Option::None => std::option::Option::None,
-        }
+            }
+        },
+    ) {
+        Some(occurrence) => Some(occurrence.clone()),
+        std::option::Option::None => std::option::Option::None,
     }
 }
