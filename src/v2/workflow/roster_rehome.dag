@@ -1262,6 +1262,40 @@ fn rehome_controls_exit() -> ProcessExit {
   if report == "" { ExitSuccess } else { exit_failure(reason: report) }
 }
 
+// THE INHABITANCE CONTROL FOR THE SUPPLIED CENSUS ROWS (tidy-ant-251's ruling on #14553): a REAL WaveBaseReceipt, produced
+// by `gunbc test //gunbc/instruments:namespace-wave-binding-diff` in base mode, is admitted by the gate's own key check, its
+// rows are read by the same reader the controls' supplied rows go through, and the declaration contract of `home.name` is
+// ESTABLISHED from them on the real file. Exit 0 only when every step holds; the printed reason names the step that did not.
+//   gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/roster_rehome.dag \
+//     --function rehome_receipt_inhabited_wire --arg receipt_path=<base receipt> --arg base_rev=<rev> --arg instr_rev=<rev> \
+//     --arg home=<module the receipt covers> --arg name=<declaration in it>
+fn rehome_receipt_inhabited_wire(receipt_path: String, base_rev: String, instr_rev: String, home: String, name: String) -> CliWireResponse {
+  match rehome_receipt_census(root: "", receipt_path: receipt_path, base_rev: base_rev, instr_rev: instr_rev) {
+    RehomeCensusRefused { cause: c } => rehome_inhabit_fail(reason: "receipt not admitted: " + c)
+    RehomeCensusRows { rows: census } =>
+      if is_empty(xs: census) { rehome_inhabit_fail(reason: "receipt admitted but carried no row") } else {
+        match dag_prepared_grammar() {
+          Rejected { diagnostics: _ } => rehome_inhabit_fail(reason: "grammar-unprepared")
+          Accepted { value: prepared, diagnostics: _ } =>
+            match rehome_sole_fact(home: home, name: name) {
+              RehomeFactRefused { reason: r } => rehome_inhabit_fail(reason: "declaration " + home + "." + name + ": " + rehome_refusal_text(r: r))
+              RehomeFactFound { fact: f } =>
+                match rehome_contract_of(home: home, name: name, path: f.rel_path, prepared: prepared, lex: dag_prepared_lex(), census: census) {
+                  RehomeContractUnestablished { cause: c } => rehome_inhabit_fail(reason: "contract unestablished on the real receipt: " + c)
+                  RehomeContractRead { node: _, identities: ids } =>
+                    if is_empty(xs: ids) { rehome_inhabit_fail(reason: "contract established with no reference row: the declaration's extent matched nothing") }
+                    else { CliWirePrintable { bytes: "INHABITED " + int_to_decimal_string(value: length(xs: census)) + " rows; " + home + "." + name + " contract: " + roster_join(xs: ids, sep: ", ") + "\n", exit: ExitSuccess } }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn rehome_inhabit_fail(reason: String) -> CliWireResponse {
+  CliWirePrintable { bytes: reason + "\n", exit: exit_failure(reason: reason) }
+}
+
 // THE GATED ENTRY: `gunbc test //gunbc/instruments:roster-rehome-controls` (gunbc.instrument_targets
 // roster_rehome_controls_binding).
 fn rehome_controls_wire() -> CliWireResponse {
