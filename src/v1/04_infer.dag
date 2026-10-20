@@ -3462,7 +3462,7 @@ fn width_declaration_over_int(d: DeclarationRef, type_env: TypeEnv, source_indic
           Present { value: app } =>
             match app.children |> first {
               Present { value: base } =>
-                if authored_name_at(source_indices: source_indices, node: base) == "Int" {
+                if base_is_kernel_int(base: base, type_env: type_env, source_indices: source_indices) {
                   true
                 } else {
                   match type_reference_declaration_ref(n: base, source_indices: source_indices, env: type_env) {
@@ -3486,6 +3486,14 @@ fn width_declaration_over_int(d: DeclarationRef, type_env: TypeEnv, source_indic
         }
       Absent => false
     }
+  }
+}
+
+// The Compose base IS the kernel Int when its declaration reading is the kernel type Int; no spelling is compared.
+fn base_is_kernel_int(base: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match type_reference_declaration_reading(n: base, source_indices: source_indices, env: type_env) {
+    TypeReferenceIsKernelType { name: kernel } => kernel == "Int"
+    _ => false
   }
 }
 
